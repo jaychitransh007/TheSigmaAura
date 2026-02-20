@@ -1,0 +1,2 @@
+"""Catalog enrichment package."""
+
