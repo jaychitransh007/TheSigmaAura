@@ -1,10 +1,14 @@
 # Project Summary
 
-## Work Completed
-- Reviewed requirements in `CATALOG_MODULE.md` and attribute definitions in `ATTRIBUTE_LIST.md`.
-- Created architecture blueprint in `ARCHITECTURE.md`.
-- Created implementation tracker in `STATUS.md`.
-- Implemented modular Python pipeline for catalog enrichment:
+## Scope
+- Batch enrichment pipeline using `gpt-5-nano` for catalog rows with mandatory columns: `description`, `store`, `image`, `url`.
+- Structured output with strict schema and per-attribute confidence scores.
+
+## Delivered
+- Architecture and planning docs:
+  - `ARCHITECTURE.md`
+  - `STATUS.md`
+- End-to-end implementation:
   - `catalog_enrichment/config.py`
   - `catalog_enrichment/attributes.py`
   - `catalog_enrichment/schema_builder.py`
@@ -16,37 +20,34 @@
   - `catalog_enrichment/quality.py`
   - `catalog_enrichment/main.py`
   - `run_catalog_enrichment.py`
-- Added local secret loading and safety files:
-  - `.env` support via config loader
+- Safety and ops:
+  - `.env` support (`OPENAI_API_KEY`)
   - `.env.example`
-  - `.gitignore` entries for `.env`, `out/`, caches
-- Added safety limit for initial runs:
-  - `--num-products` accepts `5` or `all`
-  - default is `5`
-- Implemented per-attribute confidence output for all listed attributes.
-- Implemented retry input generation for failed rows: `out/retry_batch_input.jsonl`.
+  - `.gitignore` coverage for `.env`, cache, and run artifacts
+  - `--num-products` guardrail (`5` default, `all` optional)
+  - Retry input generation for failed rows: `out/retry_batch_input.jsonl`
 
-## Current State
-- Core implementation is complete and runnable.
-- Mandatory input columns are enforced: `description`, `store`, `image`, `url`.
-- `prepare` mode verified locally (JSONL generation works).
-- `merge` mode verified locally with mock output (enriched CSV + report generated).
-- Live batch path is implemented and ready for API execution.
-- Attribute scope currently follows `ATTRIBUTE_LIST.md` (27 attributes).
+## Attribute Model
+- Current scope follows `ATTRIBUTE_LIST.md` with 30 attributes total:
+  - 28 structured categorical/enum attributes
+  - 2 free-text color attributes: `PrimaryColor`, `SecondaryColor`
+- Added attribute:
+  - `GarmentCategory` (enum)
+- Every attribute includes `<attribute>_confidence` in `[0,1]`.
 
-## Testing Plan
-1. Pilot run with default 5 products.
-2. Validate artifacts:
-   - `out/batch_input.jsonl` line count is 5
-   - `out/enriched.csv` contains enum + confidence columns
-   - `out/run_report.json` generated
-3. Manual quality review of pilot rows for enum correctness, null behavior, and confidence sanity.
-4. Validate retry behavior (`out/retry_batch_input.jsonl` for non-`ok` rows).
-5. Promote to full run using `--num-products all` only after pilot quality passes.
-6. Add unit tests for header validation, schema builder, parser, and merge mapping.
+## Cost Optimization Decision
+- No image re-hosting required currently.
+- Use Shopify CDN resize parameter in image URLs (`width=512`) to reduce vision token load and batch cost.
+- Keep ability to raise resolution (for example, `width=768`) if quality drops on fine-detail attributes.
 
-## Run Commands
-### Pilot (safe default: 5)
+## Validation Status
+- `prepare` mode validated locally.
+- `merge` mode validated with mock output.
+- Compile checks pass.
+- Live batch execution path is implemented and ready.
+
+## How To Run
+### Pilot run (default 5 products)
 ```bash
 python3 run_catalog_enrichment.py --input sample.csv --output out/enriched.csv --mode all --out-dir out
 ```
@@ -56,9 +57,15 @@ python3 run_catalog_enrichment.py --input sample.csv --output out/enriched.csv -
 python3 run_catalog_enrichment.py --input sample.csv --output out/enriched.csv --mode all --out-dir out --num-products all
 ```
 
-### Stage-wise
+### Stage-wise run
 ```bash
 python3 run_catalog_enrichment.py --input sample.csv --output out/enriched.csv --mode prepare --out-dir out
 python3 run_catalog_enrichment.py --input sample.csv --output out/enriched.csv --mode run_batch --out-dir out
 python3 run_catalog_enrichment.py --input sample.csv --output out/enriched.csv --mode merge --out-dir out --batch-output-jsonl out/batch_output.jsonl
 ```
+
+## Next Actions
+1. Run live pilot and review attribute quality/confidence row-by-row.
+2. Add unit tests for schema, parser, merge, and header validation.
+3. Add URL rewrite utility to force `width=512` systematically before batch generation.
+4. Promote to full run once pilot quality and cost are acceptable.

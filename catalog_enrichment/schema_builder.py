@@ -1,16 +1,30 @@
 from typing import Dict, Any
 
-from .attributes import ATTRIBUTES
+from .attributes import ENUM_ATTRIBUTES, TEXT_ATTRIBUTES
 
 
 def build_schema() -> Dict[str, Any]:
     properties: Dict[str, Any] = {}
     required = []
 
-    for name, enum_values in ATTRIBUTES.items():
+    for name, enum_values in ENUM_ATTRIBUTES.items():
         properties[name] = {
             "anyOf": [
                 {"type": "string", "enum": enum_values},
+                {"type": "null"},
+            ]
+        }
+        properties[f"{name}_confidence"] = {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+        }
+        required.extend([name, f"{name}_confidence"])
+
+    for name in TEXT_ATTRIBUTES:
+        properties[name] = {
+            "anyOf": [
+                {"type": "string"},
                 {"type": "null"},
             ]
         }
@@ -36,4 +50,3 @@ def response_format() -> Dict[str, Any]:
         "strict": True,
         "schema": build_schema(),
     }
-

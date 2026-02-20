@@ -1,4 +1,14 @@
-ATTRIBUTES = {
+ENUM_ATTRIBUTES = {
+    "GarmentCategory": [
+        "top", "bottom", "outerwear", "one_piece", "set", "shirt", "tshirt", "blouse",
+        "kurta", "kurti", "sweater", "sweatshirt", "cardigan", "hoodie", "shrug",
+        "poncho", "kaftan", "dupatta", "jacket_top", "trouser", "pants", "jeans",
+        "palazzo", "skirt", "shorts", "track_pants", "leggings", "jeggings",
+        "dungarees", "jacket", "blazer", "coat", "nehru_jacket", "shacket", "dress",
+        "gown", "jumpsuit", "playsuit", "saree", "salwar_suit", "anarkali",
+        "co_ord_set", "kurta_set", "salwar_set", "lehenga_set", "suit_set",
+        "tracksuit", "tunic", "ethnic_set",
+    ],
     "GarmentLength": [
         "cropped", "waist", "hip", "mid_thigh", "thigh", "knee", "calf", "ankle", "floor",
     ],
@@ -42,5 +52,9 @@ ATTRIBUTES = {
     "BodyFocusZone": ["shoulders", "bust", "waist", "hips", "legs", "back", "full_length", "face_neck"],
 }
 
-ATTRIBUTE_NAMES = list(ATTRIBUTES.keys())
+TEXT_ATTRIBUTES = [
+    "PrimaryColor",
+    "SecondaryColor",
+]
 
+ATTRIBUTE_NAMES = list(ENUM_ATTRIBUTES.keys()) + TEXT_ATTRIBUTES

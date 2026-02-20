@@ -1,4 +1,5 @@
 Garment Attribute	Type	All Defined Values
+GarmentCategory	Enum	top | bottom | outerwear | one_piece | set | shirt | tshirt | blouse | kurta | kurti | sweater | sweatshirt | cardigan | hoodie | shrug | poncho | kaftan | dupatta | jacket_top | trouser | pants | jeans | palazzo | skirt | shorts | track_pants | leggings | jeggings | dungarees | jacket | blazer | coat | nehru_jacket | shacket | dress | gown | jumpsuit | playsuit | saree | salwar_suit | anarkali | co_ord_set | kurta_set | salwar_set | lehenga_set | suit_set | tracksuit | tunic | ethnic_set
 GarmentLength	Enum	cropped | waist | hip | mid_thigh | thigh | knee | calf | ankle | floor
 SilhouetteType	Enum	straight | fitted | relaxed | oversized | flared | a_line | tapered | boxy | wrap | peplum | empire | mermaid
 FitType	Enum	slim | regular | relaxed | boxy | tailored | loose
@@ -26,3 +27,5 @@ WaistDefinition	Enum	undefined | natural | defined | cinched | dropped | empire
 EmbellishmentLevel	Enum	none | minimal | subtle | moderate | heavy | statement
 EmbellishmentZone	Enum	neckline | shoulder | waist | hem | sleeve | back | allover
 BodyFocusZone	Enum	shoulders | bust | waist | hips | legs | back | full_length | face_neck
+PrimaryColor	String	Most prominent detailed color-shade name; free text; nullable
+SecondaryColor	String	Secondary detailed color-shade name; free text; nullable

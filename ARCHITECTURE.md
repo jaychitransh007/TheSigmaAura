@@ -3,7 +3,7 @@
 ## 1) Scope and Inputs
 - Input: `catalog.csv` with `name, description, store, image_url, url, price`.
 - Target: derive categorical attributes from `ATTRIBUTE_LIST.md` and produce per-attribute confidence.
-- Note: current `ATTRIBUTE_LIST.md` defines **27** attributes (not 22). This design supports all 27.
+- Note: current `ATTRIBUTE_LIST.md` defines **30** attributes (original 27 + `GarmentCategory`, `PrimaryColor`, `SecondaryColor`).
 
 ## 2) Output Contract
 For each attribute `X`, output:
@@ -12,8 +12,8 @@ For each attribute `X`, output:
 
 Final enriched CSV:
 - Original columns
-- 27 attribute columns
-- 27 confidence columns
+- 30 attribute columns
+- 30 confidence columns
 - optional: `row_status`, `error_reason`
 
 ## 3) Batch Pipeline
@@ -60,34 +60,37 @@ Operational rules:
 - If schema validation fails, mark row failed and retry.
 
 ## 6) Attribute Set (from ATTRIBUTE_LIST.md)
-All attributes are categorical enums:
-1. `GarmentLength`
-2. `SilhouetteType`
-3. `FitType`
-4. `VisualWeightPlacement`
-5. `NecklineType`
-6. `NecklineDepth`
-7. `SleeveLength`
-8. `SkinExposureLevel`
-9. `FormalitySignalStrength`
-10. `OccasionFit`
-11. `TimeOfDay`
-12. `ColorTemperature`
-13. `ColorSaturation`
-14. `ColorCount`
-15. `ColorValue`
-16. `ConstructionDetail`
-17. `ContrastLevel`
-18. `PatternType`
-19. `PatternScale`
-20. `PatternOrientation`
-21. `FabricDrape`
-22. `FabricWeight`
-23. `FabricTexture`
-24. `WaistDefinition`
-25. `EmbellishmentLevel`
-26. `EmbellishmentZone`
-27. `BodyFocusZone`
+Attributes:
+1. `GarmentCategory` (enum)
+2. `GarmentLength` (enum)
+3. `SilhouetteType` (enum)
+4. `FitType` (enum)
+5. `VisualWeightPlacement` (enum)
+6. `NecklineType` (enum)
+7. `NecklineDepth` (enum)
+8. `SleeveLength` (enum)
+9. `SkinExposureLevel` (enum)
+10. `FormalitySignalStrength` (enum)
+11. `OccasionFit` (enum)
+12. `TimeOfDay` (enum)
+13. `ColorTemperature` (enum)
+14. `ColorSaturation` (enum)
+15. `ColorCount` (enum)
+16. `ColorValue` (enum)
+17. `ConstructionDetail` (enum)
+18. `ContrastLevel` (enum)
+19. `PatternType` (enum)
+20. `PatternScale` (enum)
+21. `PatternOrientation` (enum)
+22. `FabricDrape` (enum)
+23. `FabricWeight` (enum)
+24. `FabricTexture` (enum)
+25. `WaistDefinition` (enum)
+26. `EmbellishmentLevel` (enum)
+27. `EmbellishmentZone` (enum)
+28. `BodyFocusZone` (enum)
+29. `PrimaryColor` (free-text, nullable)
+30. `SecondaryColor` (free-text, nullable)
 
 ## 7) Confidence by Attribute Family
 - Silhouette/Fit family (`GarmentLength`, `SilhouetteType`, `FitType`, `WaistDefinition`): image-dominant, text-secondary.
@@ -110,7 +113,7 @@ All attributes are categorical enums:
   - per-attribute mean confidence
   - drift alerts when confidence/null rate shifts materially
 
-## 9) 22 vs 27 Reconciliation
+## 9) 22 vs 30 Reconciliation
 If business requires exactly 22:
 - keep this architecture unchanged
 - configure an `active_attribute_list` containing the chosen 22

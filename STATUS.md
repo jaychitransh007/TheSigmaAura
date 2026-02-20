@@ -22,12 +22,38 @@ Each derived categorical attribute must include a confidence score.
 - [x] Add run report (quality metrics)
 - [ ] Add unit tests for critical functions
 - [ ] Pilot run on sample catalog
+- [ ] Add image URL rewrite/normalization for `width=512`
 
 ## Current Status
-- Phase: Initial end-to-end implementation
+- Phase: Pilot readiness with schema updates
 - State: In progress
-- Next milestone: run live Batch (`run_batch`/`all`) with API key and verify output quality on pilot subset
+- Next milestone: run live Batch pilot (`--num-products 5`) and validate quality/cost
+
+## Completed Since Last Update
+- Added new attributes end-to-end:
+  - `GarmentCategory` (enum)
+  - `PrimaryColor` (string, nullable)
+  - `SecondaryColor` (string, nullable)
+- Updated schema generation to support both enum and free-text attributes with confidence fields.
+- Updated prompt guidance for the new attributes.
+- Updated architecture and summary documentation for 30-attribute scope.
+- Confirmed `prepare` output includes the new fields.
+
+## Action Items
+1. Run pilot batch with 5 products and check:
+   - `out/batch_metadata.json`
+   - `out/batch_output.jsonl`
+   - `out/enriched.csv`
+   - `out/run_report.json`
+2. Validate enum correctness for `GarmentCategory`.
+3. Validate `PrimaryColor`/`SecondaryColor` shade quality and confidence behavior.
+4. Implement deterministic image URL rewrite to enforce Shopify `width=512` in batch input.
+5. Add unit tests for:
+   - schema fields and required keys
+   - parser handling of output variants
+   - merge mapping by `custom_id`
+   - mandatory CSV column validation
 
 ## Notes
-- `ATTRIBUTE_LIST.md` currently lists 27 attributes; implementation will support all listed attributes.
+- `ATTRIBUTE_LIST.md` currently lists 30 attributes (including `GarmentCategory`, `PrimaryColor`, `SecondaryColor`); implementation supports all listed attributes.
 - If business scope must remain 22 attributes, an `active_attribute_list` filter will be added.
