@@ -1,30 +1,48 @@
 import json
+from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from typing import Dict, List
 
 from .config import PipelineConfig
 from .schema_builder import response_format
 
 
-SYSTEM_PROMPT = (
-    "You are a precision garment analyst trained to extract body-fit and silhouette "
-    "attributes from fashion product images. Return strict JSON only per schema. "
-    "Never guess; if uncertain return null with low confidence. "
-    "GarmentCategory must be one of the allowed enum values in the schema. "
-    "PrimaryColor and SecondaryColor should be descriptive color-shade names "
-    "(for example: dusty_rose, deep_teal, warm_beige) and are not enum-limited."
-)
+_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "system_prompt.txt"
+
+
+def _load_system_prompt() -> str:
+    with _PROMPT_PATH.open("r", encoding="utf-8") as f:
+        prompt = f.read().strip()
+    if not prompt:
+        raise ValueError(f"System prompt file is empty: {_PROMPT_PATH}")
+    return prompt
+
+
+SYSTEM_PROMPT = _load_system_prompt()
 
 
 def build_request_body(row: Dict[str, str], config: PipelineConfig) -> Dict:
     text_blob = (
         f"Description: {row.get('description', '')}\n"
         f"Store: {row.get('store', '')}\n"
-        f"Product URL: {row.get('url', '')}"
+        f"Product URL: {row.get('url', '')}\n"
+        "You must use both images together when inferring every attribute."
     )
-    image_url = row.get("image", "")
+    image_0 = _normalize_image_url((row.get("images__0__src", "") or "").strip())
+    image_1 = _normalize_image_url((row.get("images__1__src", "") or "").strip())
+
+    user_content = [{"type": "input_text", "text": text_blob}]
+    if image_0:
+        user_content.append({"type": "input_text", "text": "Image 1:"})
+        user_content.append({"type": "input_image", "image_url": image_0})
+    if image_1:
+        user_content.append({"type": "input_text", "text": "Image 2:"})
+        user_content.append({"type": "input_image", "image_url": image_1})
 
     return {
         "model": config.model,
+        "temperature": config.temperature,
+        "top_p": config.top_p,
         "input": [
             {
                 "role": "system",
@@ -32,14 +50,21 @@ def build_request_body(row: Dict[str, str], config: PipelineConfig) -> Dict:
             },
             {
                 "role": "user",
-                "content": [
-                    {"type": "input_text", "text": text_blob},
-                    {"type": "input_image", "image_url": image_url},
-                ],
+                "content": user_content,
             },
         ],
         "text": {"format": response_format()},
     }
+
+
+def _normalize_image_url(url: str) -> str:
+    if not url:
+        return url
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["width"] = "768"
+    new_query = urlencode(query)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, new_query, parts.fragment))
 
 
 def build_batch_input_jsonl(rows: List[Dict[str, str]], output_jsonl_path: str, config: PipelineConfig) -> None:

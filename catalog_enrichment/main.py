@@ -1,6 +1,7 @@
 import argparse
 import os
 
+from .audit import run_schema_audit, write_audit_report
 from .batch_builder import build_batch_input_jsonl, build_retry_batch_input_jsonl
 from .batch_runner import BatchRunner, extract_file_ids, save_batch_metadata
 from .config import PipelineConfig, get_api_key
@@ -29,6 +30,11 @@ def parse_args() -> argparse.Namespace:
         default="5",
         help="Safety limit for product rows to process. Default is 5.",
     )
+    parser.add_argument(
+        "--skip-audit",
+        action="store_true",
+        help="Skip pre-run schema/prompt audit.",
+    )
     return parser.parse_args()
 
 
@@ -43,10 +49,20 @@ def run() -> None:
     batch_meta_json = os.path.join(args.out_dir, "batch_metadata.json")
     report_json = os.path.join(args.out_dir, "run_report.json")
     retry_jsonl = os.path.join(args.out_dir, "retry_batch_input.jsonl")
+    schema_audit_json = os.path.join(args.out_dir, "schema_audit.json")
 
     rows = read_csv_rows(args.input)
     if args.num_products == "5":
         rows = rows[:5]
+
+    if args.mode in {"prepare", "run_batch", "all"} and not args.skip_audit:
+        audit_report = run_schema_audit()
+        write_audit_report(audit_report, schema_audit_json)
+        if audit_report["status"] != "pass":
+            raise RuntimeError(
+                "Schema audit failed. See "
+                f"{schema_audit_json} for details."
+            )
 
     if args.mode in {"prepare", "all"}:
         build_batch_input_jsonl(rows, batch_input_jsonl, config)

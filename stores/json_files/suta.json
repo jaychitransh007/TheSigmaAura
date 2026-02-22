@@ -1,0 +1,3560 @@
+{
+  "products": [
+    {
+      "id": 15288296898931,
+      "title": "Minty Polka",
+      "handle": "minty-polka",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.11 m (111.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003EViscose Blend\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EViscose is produced from regenerated cellulose. It is a versatile fabric known for its softness, breathability and drape. It can be dyed easily and is often used as a substitute for natural silk or cotton. It is comfortable and has a beautiful sheen.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:05:28+05:30",
+      "created_at": "2026-02-07T14:08:26+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516851081587,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB632",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "700.00",
+          "grams": 76,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296898931,
+          "created_at": "2026-02-07T14:08:26+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536509964659,
+          "created_at": "2026-02-07T14:54:20+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:54:21+05:30",
+          "product_id": 15288296898931,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/MintyPolka-1.jpg?v=1770456261",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536510030195,
+          "created_at": "2026-02-07T14:54:20+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:54:34+05:30",
+          "product_id": 15288296898931,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/MintyPolka-3.jpg?v=1770456274",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536509997427,
+          "created_at": "2026-02-07T14:54:20+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:54:34+05:30",
+          "product_id": 15288296898931,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/MintyPolka-2.jpg?v=1770456274",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296866163,
+      "title": "Rose Petal Honey",
+      "handle": "rose-petal-honey",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.16 m (116.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003EViscose Organza With Zari\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EViscose is a biodegradable, sustainable fabric that is made using the viscose fibre. It is a man-made, manufactured fibre of cellulose origin that is produced using fully natural materials, contrary to popular beliefs, and the final product is very similar to naturally occurring fibres such as cotton in terms of look and feel. The fabric is versatile, drapes beautifully, has an added sheen to it that lends a beautiful touch and its soft texture makes it a delight to wear.\u003C/p\u003E\n\u003Cp\u003ELight as air and translucent like a rainbow, organza silk is a fabric that exudes delicate grandeur. Woven with twisted silk yarn on the warp as well as the weft, this fabric is hailed for its slight transparency and its slightly stiff and yet fluid texture. The slight sheen adds to its charisma, making it the perfect saree to drape for both festive and formal occasions.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:05:22+05:30",
+      "created_at": "2026-02-07T14:08:25+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516851048819,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB631",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "500.00",
+          "grams": 160,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296866163,
+          "created_at": "2026-02-07T14:08:25+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536508752243,
+          "created_at": "2026-02-07T14:52:09+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:53:48+05:30",
+          "product_id": 15288296866163,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/RosePetalHoney-2.jpg?v=1770456228",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536508785011,
+          "created_at": "2026-02-07T14:52:09+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:53:48+05:30",
+          "product_id": 15288296866163,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/RosePetalHoney-3.jpg?v=1770456228",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536508719475,
+          "created_at": "2026-02-07T14:52:09+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:53:48+05:30",
+          "product_id": 15288296866163,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/RosePetalHoney-1.jpg?v=1770456228",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536508817779,
+          "created_at": "2026-02-07T14:52:09+05:30",
+          "position": 4,
+          "updated_at": "2026-02-07T14:52:11+05:30",
+          "product_id": 15288296866163,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/RosePetalHoney-4.jpg?v=1770456131",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296833395,
+      "title": "Red Tulip",
+      "handle": "red-tulip",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.05 m (105.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003EPoly Cotton\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EPoly-cotton is blend of cotton and polyester. One of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. Cotton is naturally sustainable and its cultivation supports local farmers and communities. A low maintenance fabric, cotton is also hypoallergenic, making it the perfect choice around the year, especially for the Indian climate. Poly-cotton combines the comfort of cotton with the fluidity and durability of polyester to create a stylish but imminently wearable fabric.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:05:18+05:30",
+      "created_at": "2026-02-07T14:08:25+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516851016051,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB630",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "1300.00",
+          "grams": 59,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296833395,
+          "created_at": "2026-02-07T14:08:25+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536508096883,
+          "created_at": "2026-02-07T14:51:45+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:51:46+05:30",
+          "product_id": 15288296833395,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/RedTulip1.jpg?v=1770456106",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536508129651,
+          "created_at": "2026-02-07T14:51:45+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:51:46+05:30",
+          "product_id": 15288296833395,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/RedTulip2.jpg?v=1770456106",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536508162419,
+          "created_at": "2026-02-07T14:51:45+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:51:46+05:30",
+          "product_id": 15288296833395,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/RedTulip3.jpg?v=1770456106",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296800627,
+      "title": "Jasmine Sugar Syrup",
+      "handle": "jasmine-sugar-syrup",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.13 m (113.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003EPolyester\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EPolyester is a synthetically manufactured fabric that is woven along with natural fibres for durability and a characteristic smoothness. The combination of cotton and polyester results in a fabric that has the strengths of both types of fibres.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:05:14+05:30",
+      "created_at": "2026-02-07T14:08:24+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850983283,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB629",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "250.00",
+          "grams": 84,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296800627,
+          "created_at": "2026-02-07T14:08:24+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536507769203,
+          "created_at": "2026-02-07T14:50:47+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:50:59+05:30",
+          "product_id": 15288296800627,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/JasmineSugarSyrup-2-2.jpg?v=1770456059",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536507736435,
+          "created_at": "2026-02-07T14:50:47+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:50:59+05:30",
+          "product_id": 15288296800627,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/JasmineSugarSyrup-1-2.jpg?v=1770456059",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536507801971,
+          "created_at": "2026-02-07T14:50:47+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:50:49+05:30",
+          "product_id": 15288296800627,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/JasmineSugarSyrup-3-2.jpg?v=1770456049",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296702323,
+      "title": "Dalchini Cashew Mousse",
+      "handle": "dalchini-cashew-mousse",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.16 m (116.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003EArtificial Silk\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EArtificial silk is composed of any synthetic fibre, which mimics real silk in terms of its texture and appearance. It could be composed of bamboo viscose, or soybean fibres, or synthetic fibres such as nylon, polyester. Besides the above, it can also be made of semi-synthetic materials such as rayon, and mercerised cotton.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:05:11+05:30",
+      "created_at": "2026-02-07T14:08:22+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850884979,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB626",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "280.00",
+          "grams": 115,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296702323,
+          "created_at": "2026-02-07T14:08:22+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536505835891,
+          "created_at": "2026-02-07T14:48:17+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:48:25+05:30",
+          "product_id": 15288296702323,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/DalchiniCashewmousse-3.jpg?v=1770455905",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536505770355,
+          "created_at": "2026-02-07T14:48:17+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:48:25+05:30",
+          "product_id": 15288296702323,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/DalchiniCashewmousse-1.jpg?v=1770455905",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536505803123,
+          "created_at": "2026-02-07T14:48:17+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:48:25+05:30",
+          "product_id": 15288296702323,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/DalchiniCashewmousse-2.jpg?v=1770455905",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296636787,
+      "title": "Checkered Pearl",
+      "handle": "checkered-pearl",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.13 m (113.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003ESilk\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003ESilk exudes a regality that very few other fabrics can match. The brilliant shine that vibrates from a silk saree spells class and traditional beauty. India is one of the top producers of silk in the world and the fabric is always in demand for its visual attractiveness. People associate silk with special occasions and richness. Silk is alluring and can boast of a grand appeal as well as a tinge of nostalgia. On the whole, silk is a fabric that can never go wrong.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:05:07+05:30",
+      "created_at": "2026-02-07T14:08:22+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850819443,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB624",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "500.00",
+          "grams": 56,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296636787,
+          "created_at": "2026-02-07T14:08:22+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536499216755,
+          "created_at": "2026-02-07T14:45:03+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:45:11+05:30",
+          "product_id": 15288296636787,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/Checkeredpearl-2.jpg?v=1770455711",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536499183987,
+          "created_at": "2026-02-07T14:45:03+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:45:11+05:30",
+          "product_id": 15288296636787,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/Checkeredpearl-1.jpg?v=1770455711",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536499249523,
+          "created_at": "2026-02-07T14:45:03+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:45:05+05:30",
+          "product_id": 15288296636787,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/Checkeredpearl-3.jpg?v=1770455705",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296604019,
+      "title": "Lilly Blossom",
+      "handle": "lilly-blossom",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.09 m (109.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003ESilk\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003ESilk exudes a regality that very few other fabrics can match. The brilliant shine that vibrates from a silk saree spells class and traditional beauty. India is one of the top producers of silk in the world and the fabric is always in demand for its visual attractiveness. People associate silk with special occasions and richness. Silk is alluring and can boast of a grand appeal as well as a tinge of nostalgia. On the whole, silk is a fabric that can never go wrong.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:05:04+05:30",
+      "created_at": "2026-02-07T14:08:21+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850786675,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB623",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "1120.00",
+          "grams": 62,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296604019,
+          "created_at": "2026-02-07T14:08:21+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536494727539,
+          "created_at": "2026-02-07T14:42:53+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:44:36+05:30",
+          "product_id": 15288296604019,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/LillyBlossom-2.jpg?v=1770455676",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536494694771,
+          "created_at": "2026-02-07T14:42:53+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:44:36+05:30",
+          "product_id": 15288296604019,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/LillyBlossom-1.jpg?v=1770455676",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536494760307,
+          "created_at": "2026-02-07T14:42:53+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:42:55+05:30",
+          "product_id": 15288296604019,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/LillyBlossom-3.jpg?v=1770455575",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296571251,
+      "title": "Charred Lavender",
+      "handle": "charred-lavender",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.50 m (150.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003ECotton\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EOne of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. It is a low maintenance fabric hypoallergenic, making it the perfect choice around the year, especially for the Indian climate.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:05:01+05:30",
+      "created_at": "2026-02-07T14:08:20+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850753907,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB622",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "360.00",
+          "grams": 165,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296571251,
+          "created_at": "2026-02-07T14:08:20+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536494465395,
+          "created_at": "2026-02-07T14:42:22+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:42:31+05:30",
+          "product_id": 15288296571251,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/CharredLavender-2.jpg?v=1770455551",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536494432627,
+          "created_at": "2026-02-07T14:42:22+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:42:31+05:30",
+          "product_id": 15288296571251,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/CharredLavender-1.jpg?v=1770455551",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536494498163,
+          "created_at": "2026-02-07T14:42:22+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:42:24+05:30",
+          "product_id": 15288296571251,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/CharredLavender-3.jpg?v=1770455544",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296538483,
+      "title": "Rosewater Rekha",
+      "handle": "rosewater-rekha",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.17 m (117.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003EViscose Zari\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EViscose is a biodegradable, sustainable fabric that is made using the viscose fibre. It is a man-made, manufactured fibre of cellulose origin that is produced using fully natural materials, contrary to popular beliefs, and the final product is very similar to naturally occurring fibres such as cotton in terms of look and feel. The fabric is versatile, drapes beautifully, has an added sheen to it that lends a beautiful touch and its soft texture makes it a delight to wear.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:04:58+05:30",
+      "created_at": "2026-02-07T14:08:20+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850721139,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB621",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "480.00",
+          "grams": 56,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296538483,
+          "created_at": "2026-02-07T14:08:20+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536494203251,
+          "created_at": "2026-02-07T14:41:34+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:41:47+05:30",
+          "product_id": 15288296538483,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/Rosewaterrekha-2.jpg?v=1770455507",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536494236019,
+          "created_at": "2026-02-07T14:41:34+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:41:47+05:30",
+          "product_id": 15288296538483,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/Rosewaterrekha-3.jpg?v=1770455507",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536494170483,
+          "created_at": "2026-02-07T14:41:34+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:41:47+05:30",
+          "product_id": 15288296538483,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/Rosewaterrekha-1.jpg?v=1770455507",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296440179,
+      "title": "Saffron Soaked Cream",
+      "handle": "saffron-soaked-cream",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.02 m (102.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003EArtificial Silk\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EArtificial silk is composed of any synthetic fibre, which mimics real silk in terms of its texture and appearance. It could be composed of bamboo viscose, or soybean fibres, or synthetic fibres such as nylon, polyester. Besides the above, it can also be made of semi-synthetic materials such as rayon, and mercerised cotton.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:04:55+05:30",
+      "created_at": "2026-02-07T14:08:18+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850622835,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB619",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "1100.00",
+          "grams": 73,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296440179,
+          "created_at": "2026-02-07T14:08:18+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536488763763,
+          "created_at": "2026-02-07T14:39:06+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:40:22+05:30",
+          "product_id": 15288296440179,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SaffronSoakedCream-4.jpg?v=1770455422",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536488665459,
+          "created_at": "2026-02-07T14:39:06+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:40:22+05:30",
+          "product_id": 15288296440179,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SaffronSoakedCream-1.jpg?v=1770455422",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536488698227,
+          "created_at": "2026-02-07T14:39:06+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:40:22+05:30",
+          "product_id": 15288296440179,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SaffronSoakedCream-2.jpg?v=1770455422",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536488730995,
+          "created_at": "2026-02-07T14:39:06+05:30",
+          "position": 4,
+          "updated_at": "2026-02-07T14:40:12+05:30",
+          "product_id": 15288296440179,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SaffronSoakedCream-3.jpg?v=1770455412",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296407411,
+      "title": "Caramel Rekha",
+      "handle": "caramel-rekha",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.19 m (119.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003EViscose Zari\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EViscose is a biodegradable, sustainable fabric that is made using the viscose fibre. It is a man-made, manufactured fibre of cellulose origin that is produced using fully natural materials, contrary to popular beliefs, and the final product is very similar to naturally occurring fibres such as cotton in terms of look and feel. The fabric is versatile, drapes beautifully, has an added sheen to it that lends a beautiful touch and its soft texture makes it a delight to wear.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:04:52+05:30",
+      "created_at": "2026-02-07T14:08:18+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850590067,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB617",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "350.00",
+          "grams": 80,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296407411,
+          "created_at": "2026-02-07T14:08:18+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536487977331,
+          "created_at": "2026-02-07T14:37:45+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:37:46+05:30",
+          "product_id": 15288296407411,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/CaramelRekha-1.jpg?v=1770455266",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536488042867,
+          "created_at": "2026-02-07T14:37:45+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:38:02+05:30",
+          "product_id": 15288296407411,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/CaramelRekha-3.jpg?v=1770455282",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536488010099,
+          "created_at": "2026-02-07T14:37:45+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:38:02+05:30",
+          "product_id": 15288296407411,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/CaramelRekha-2.jpg?v=1770455282",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296309107,
+      "title": "Chamomile Cream Drip",
+      "handle": "chamomile-cream-drip",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.08 m (108.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003EViscose Blend\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EViscose is produced from regenerated cellulose. It is a versatile fabric known for its softness, breathability and drape. It can be dyed easily and is often used as a substitute for natural silk or cotton. It is comfortable and has a beautiful sheen.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:04:49+05:30",
+      "created_at": "2026-02-07T14:08:16+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850491763,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB615",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "350.00",
+          "grams": 203,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296309107,
+          "created_at": "2026-02-07T14:08:16+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536474706291,
+          "created_at": "2026-02-07T14:22:32+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:22:34+05:30",
+          "product_id": 15288296309107,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/ChamomileCreamDrip-1.jpg?v=1770454354",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536474739059,
+          "created_at": "2026-02-07T14:22:32+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:22:33+05:30",
+          "product_id": 15288296309107,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/ChamomileCreamDrip-2.jpg?v=1770454353",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536474771827,
+          "created_at": "2026-02-07T14:22:32+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:22:34+05:30",
+          "product_id": 15288296309107,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/ChamomileCreamDrip-3.jpg?v=1770454354",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296276339,
+      "title": "Gulkand Honey Melt",
+      "handle": "gulkand-honey-melt",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.11 m (111.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003ECotton\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EOne of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. It is a low maintenance fabric hypoallergenic, making it the perfect choice around the year, especially for the Indian climate.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:04:46+05:30",
+      "created_at": "2026-02-07T14:08:16+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850458995,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB614",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "360.00",
+          "grams": 124,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296276339,
+          "created_at": "2026-02-07T14:08:16+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536474083699,
+          "created_at": "2026-02-07T14:21:18+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:22:10+05:30",
+          "product_id": 15288296276339,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GulkandHoneyMelt-4.jpg?v=1770454330",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536473985395,
+          "created_at": "2026-02-07T14:21:18+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:22:10+05:30",
+          "product_id": 15288296276339,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GulkandHoneyMelt-1.jpg?v=1770454330",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536474018163,
+          "created_at": "2026-02-07T14:21:18+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:22:10+05:30",
+          "product_id": 15288296276339,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GulkandHoneyMelt-2.jpg?v=1770454330",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536474050931,
+          "created_at": "2026-02-07T14:21:18+05:30",
+          "position": 4,
+          "updated_at": "2026-02-07T14:22:10+05:30",
+          "product_id": 15288296276339,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GulkandHoneyMelt-3.jpg?v=1770454330",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296243571,
+      "title": "Lotus Stem",
+      "handle": "lotus-stem",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.12 m (112.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003ECotton\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EOne of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. It is a low maintenance fabric hypoallergenic, making it the perfect choice around the year, especially for the Indian climate.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:04:43+05:30",
+      "created_at": "2026-02-07T14:08:16+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850426227,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB612",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "250.00",
+          "grams": 79,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296243571,
+          "created_at": "2026-02-07T14:08:16+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536473002355,
+          "created_at": "2026-02-07T14:18:10+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:18:20+05:30",
+          "product_id": 15288296243571,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/LotusStem-2.jpg?v=1770454100",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536472969587,
+          "created_at": "2026-02-07T14:18:10+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:18:20+05:30",
+          "product_id": 15288296243571,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/LotusStem-1.jpg?v=1770454100",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536473067891,
+          "created_at": "2026-02-07T14:18:10+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:18:20+05:30",
+          "product_id": 15288296243571,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/LotusStem-4.jpg?v=1770454100",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536473035123,
+          "created_at": "2026-02-07T14:18:10+05:30",
+          "position": 4,
+          "updated_at": "2026-02-07T14:18:20+05:30",
+          "product_id": 15288296243571,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/LotusStem-3.jpg?v=1770454100",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296178035,
+      "title": "Midnight Tuberose",
+      "handle": "midnight-tuberose",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.11 m (111.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003ETissue\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E",
+      "published_at": "2026-02-20T18:04:40+05:30",
+      "created_at": "2026-02-07T14:08:14+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850393459,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB611",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "1950.00",
+          "grams": 334,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296178035,
+          "created_at": "2026-02-07T14:08:14+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536472609139,
+          "created_at": "2026-02-07T14:17:47+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:17:48+05:30",
+          "product_id": 15288296178035,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/MidnightTuberose-1.jpg?v=1770454068",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536472641907,
+          "created_at": "2026-02-07T14:17:47+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:17:49+05:30",
+          "product_id": 15288296178035,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/MidnightTuberose-2.jpg?v=1770454069",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536472674675,
+          "created_at": "2026-02-07T14:17:47+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:17:49+05:30",
+          "product_id": 15288296178035,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/MidnightTuberose-3.jpg?v=1770454069",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536472707443,
+          "created_at": "2026-02-07T14:17:47+05:30",
+          "position": 4,
+          "updated_at": "2026-02-07T14:17:49+05:30",
+          "product_id": 15288296178035,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/MidnightTuberose-4.jpg?v=1770454069",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296145267,
+      "title": "Honeyed Parijat",
+      "handle": "honeyed-parijat",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.25 m (125.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003ECotton\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EOne of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. It is a low maintenance fabric hypoallergenic, making it the perfect choice around the year, especially for the Indian climate.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:04:36+05:30",
+      "created_at": "2026-02-07T14:08:14+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850327923,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB608",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "380.00",
+          "grams": 250,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296145267,
+          "created_at": "2026-02-07T14:08:14+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536470249843,
+          "created_at": "2026-02-07T14:16:18+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:16:20+05:30",
+          "product_id": 15288296145267,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/HoneyedParijat-1.jpg?v=1770453980",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536470348147,
+          "created_at": "2026-02-07T14:16:18+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:16:30+05:30",
+          "product_id": 15288296145267,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/HoneyedParijat-4.jpg?v=1770453990",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536470282611,
+          "created_at": "2026-02-07T14:16:18+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:16:30+05:30",
+          "product_id": 15288296145267,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/HoneyedParijat-2.jpg?v=1770453990",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536470315379,
+          "created_at": "2026-02-07T14:16:18+05:30",
+          "position": 4,
+          "updated_at": "2026-02-07T14:16:30+05:30",
+          "product_id": 15288296145267,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/HoneyedParijat-3.jpg?v=1770453990",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15288296112499,
+      "title": "Black Tea & Orchid",
+      "handle": "black-tea-orchid",
+      "body_html": "\u003Ch3\u003EDetails\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength:\u003C/strong\u003E 1.00 m (100.00 cm) \u003Cstrong\u003E; Width:\u003C/strong\u003E 1.10 m (110.00 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric: \u003C/strong\u003ECotton\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Gentle Hand Wash\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003ENote : Price as per one meter\u003C/strong\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003Cspan\u003E \u003C/span\u003E\u003C/strong\u003EThe pictures are clicked in daylight. Color may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\u003Cstrong\u003EDescription \u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003EOne of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. It is a low maintenance fabric hypoallergenic, making it the perfect choice around the year, especially for the Indian climate.\u003C/p\u003E",
+      "published_at": "2026-02-20T18:04:33+05:30",
+      "created_at": "2026-02-07T14:08:14+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Fabric",
+      "tags": [
+        "Discount eligible 2025",
+        "discount_applicable",
+        "Fab-Feb-26",
+        "Fabric",
+        "Size_1 Meter"
+      ],
+      "variants": [
+        {
+          "id": 62516850295155,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAFAB609",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "450.00",
+          "grams": 670,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15288296112499,
+          "created_at": "2026-02-07T14:08:14+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66536471265651,
+          "created_at": "2026-02-07T14:16:45+05:30",
+          "position": 1,
+          "updated_at": "2026-02-07T14:16:54+05:30",
+          "product_id": 15288296112499,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/BlackTea_Orchid-4.jpg?v=1770454014",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536471167347,
+          "created_at": "2026-02-07T14:16:45+05:30",
+          "position": 2,
+          "updated_at": "2026-02-07T14:16:54+05:30",
+          "product_id": 15288296112499,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/BlackTea_Orchid-1.jpg?v=1770454014",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536471200115,
+          "created_at": "2026-02-07T14:16:45+05:30",
+          "position": 3,
+          "updated_at": "2026-02-07T14:16:54+05:30",
+          "product_id": 15288296112499,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/BlackTea_Orchid-2.jpg?v=1770454014",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66536471232883,
+          "created_at": "2026-02-07T14:16:45+05:30",
+          "position": 4,
+          "updated_at": "2026-02-07T14:16:54+05:30",
+          "product_id": 15288296112499,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/BlackTea_Orchid-3.jpg?v=1770454014",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293753524595,
+      "title": "Bulbul Bloom",
+      "handle": "bulbul-bloom",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric : \u003C/strong\u003E\u003Cspan data-sheets-root=\"1\"\u003ECotton\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EType :\u003C/strong\u003E Padded \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EBlouse Length :\u003C/strong\u003E 0.66 m (66 cm) \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003ESleeves Length :\u003C/strong\u003E Sleeveless \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EOpening :\u003C/strong\u003E Back Knot \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003ENeckline :\u003C/strong\u003E Halter Neck \u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan\u003E\u003Cstrong\u003EWash Care \u003C/strong\u003E: Dry Wash\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan\u003E\u003C/span\u003E\u003Cspan\u003E\u003C/span\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E The pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\n\u003Cspan lang=\"EN-IN\"\u003E\u003C/span\u003E\u003Cstrong\u003E\u003Cspan style=\"box-sizing: border-box;\"\u003EDescription\u003C/span\u003E\u003C/strong\u003E \u003Cbr\u003E\n\u003C/h3\u003E\n\u003Cp\u003EOne of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. It is a low maintenance fabric hypoallergenic, making it the perfect choice around the year, especially for the Indian climate.\u003Cimg\u003E\u003Cimg\u003E\u003Cimg\u003E\u003C/p\u003E",
+      "published_at": "2026-02-20T17:41:34+05:30",
+      "created_at": "2026-02-18T12:21:41+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Blouse",
+      "tags": [
+        "Adjustable",
+        "Back Knot",
+        "Back Knot Opening",
+        "Back Open",
+        "Back Opening",
+        "Back Tie Up",
+        "Back_Deep Back",
+        "Back_Hook Opening",
+        "Back_Opening",
+        "Blouse",
+        "Blouse Type_Padded",
+        "Blouses",
+        "Casual Blouse",
+        "Colour_Multicolour",
+        "Colour_Red",
+        "Corset",
+        "Daily Blouse",
+        "Floral",
+        "Halter",
+        "Halter Neck",
+        "Halter Strap",
+        "Kurta Blouse",
+        "Long Blouse",
+        "Multicolour blouse",
+        "Neckline_Halter",
+        "Neckline_Halter Strap",
+        "New Arrival Blouses",
+        "Open Back",
+        "Open Back Blouse",
+        "Padded",
+        "Pattern_Floral",
+        "Pattern_Printed",
+        "Printed",
+        "Printed Blouse",
+        "Sexy Back Blouse",
+        "Sleeveless",
+        "sleeveless blouse",
+        "Sleeves_Sleeveless",
+        "Type_Floral",
+        "Type_Halter",
+        "Type_Printed"
+      ],
+      "variants": [
+        {
+          "id": 62550655304051,
+          "title": "XS",
+          "option1": "XS",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1612A",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "1900.00",
+          "grams": 123,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293753524595,
+          "created_at": "2026-02-19T12:39:52+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550655336819,
+          "title": "S",
+          "option1": "S",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1612B",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "1900.00",
+          "grams": 123,
+          "compare_at_price": null,
+          "position": 2,
+          "product_id": 15293753524595,
+          "created_at": "2026-02-19T12:39:52+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550655369587,
+          "title": "M",
+          "option1": "M",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1612C",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "1900.00",
+          "grams": 123,
+          "compare_at_price": null,
+          "position": 3,
+          "product_id": 15293753524595,
+          "created_at": "2026-02-19T12:39:52+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550655402355,
+          "title": "L",
+          "option1": "L",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1612D",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "1900.00",
+          "grams": 123,
+          "compare_at_price": null,
+          "position": 4,
+          "product_id": 15293753524595,
+          "created_at": "2026-02-19T12:39:52+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550655435123,
+          "title": "XL",
+          "option1": "XL",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1612E",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "1900.00",
+          "grams": 123,
+          "compare_at_price": null,
+          "position": 5,
+          "product_id": 15293753524595,
+          "created_at": "2026-02-19T12:39:52+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550685450611,
+          "title": "XXL",
+          "option1": "XXL",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1612F",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "1900.00",
+          "grams": 123,
+          "compare_at_price": null,
+          "position": 6,
+          "product_id": 15293753524595,
+          "created_at": "2026-02-19T13:24:41+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66680161698163,
+          "created_at": "2026-02-18T12:20:24+05:30",
+          "position": 1,
+          "updated_at": "2026-02-18T12:20:26+05:30",
+          "product_id": 15293753524595,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/BulbulBloom-2.jpg?v=1771397426",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680157536627,
+          "created_at": "2026-02-18T12:16:30+05:30",
+          "position": 2,
+          "updated_at": "2026-02-18T12:16:31+05:30",
+          "product_id": 15293753524595,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/20250522-DSC_2986.jpg?v=1771397191",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680157503859,
+          "created_at": "2026-02-18T12:16:30+05:30",
+          "position": 3,
+          "updated_at": "2026-02-18T12:16:31+05:30",
+          "product_id": 15293753524595,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/20250522-DSC_2981.jpg?v=1771397191",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680161665395,
+          "created_at": "2026-02-18T12:20:24+05:30",
+          "position": 4,
+          "updated_at": "2026-02-18T12:20:26+05:30",
+          "product_id": 15293753524595,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/BulbulBloom-1.jpg?v=1771397426",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680157602163,
+          "created_at": "2026-02-18T12:16:30+05:30",
+          "position": 5,
+          "updated_at": "2026-02-18T12:16:31+05:30",
+          "product_id": 15293753524595,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/BulbulBloom.jpg?v=1771397191",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680157372787,
+          "created_at": "2026-02-18T12:16:30+05:30",
+          "position": 6,
+          "updated_at": "2026-02-18T12:16:31+05:30",
+          "product_id": 15293753524595,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/20250522-DSC_2954.jpg?v=1771397191",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680157569395,
+          "created_at": "2026-02-18T12:16:30+05:30",
+          "position": 7,
+          "updated_at": "2026-02-18T12:16:31+05:30",
+          "product_id": 15293753524595,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/20250522-DSC_2990.jpg?v=1771397191",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680157405555,
+          "created_at": "2026-02-18T12:16:30+05:30",
+          "position": 8,
+          "updated_at": "2026-02-18T12:16:31+05:30",
+          "product_id": 15293753524595,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/20250522-DSC_2957.jpg?v=1771397191",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Size",
+          "position": 1,
+          "values": [
+            "XS",
+            "S",
+            "M",
+            "L",
+            "XL",
+            "XXL"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293751525747,
+      "title": "Puchki Pop",
+      "handle": "puchki-pop",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric : \u003C/strong\u003E\u003Cspan data-sheets-root=\"1\"\u003ECotton\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EType :\u003C/strong\u003E Non-Padded \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EBlouse Length :\u003C/strong\u003E 0.67 m (67 cm) \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003ESleeves Length :\u003C/strong\u003E 0.56 m (56 cm) \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EOpening :\u003C/strong\u003E No Opening\u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003ENeckline :\u003C/strong\u003E V Neck \u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan\u003E\u003Cstrong\u003EWash Care \u003C/strong\u003E: Dry Wash\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan\u003E\u003C/span\u003E\u003Cspan\u003E\u003C/span\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E The pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\n\u003Cspan lang=\"EN-IN\"\u003E\u003C/span\u003E\u003Cstrong\u003E\u003Cspan style=\"box-sizing: border-box;\"\u003EDescription\u003C/span\u003E\u003C/strong\u003E \u003Cbr\u003E\n\u003C/h3\u003E\n\u003Cp\u003EOne of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. It is a low maintenance fabric hypoallergenic, making it the perfect choice around the year, especially for the Indian climate.\u003Cimg\u003E\u003Cimg\u003E\u003Cimg\u003E\u003C/p\u003E",
+      "published_at": "2026-02-20T17:41:33+05:30",
+      "created_at": "2026-02-18T12:15:17+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Blouse",
+      "tags": [
+        "Blouse",
+        "Blouse Type_Padded",
+        "Blouses",
+        "Casual Blouse",
+        "Colour_Blue",
+        "Colour_Multicolour",
+        "Colour_Navy Blue",
+        "Daily Blouse",
+        "Floral",
+        "Kurta Blouse",
+        "Long Blouse",
+        "Loose Fit",
+        "Loose Sleeves",
+        "Loose Top",
+        "Neckline_V Neck",
+        "New Arrival Blouses",
+        "Padded",
+        "Pattern_Floral",
+        "Pattern_Printed",
+        "Printed",
+        "Printed Blouse",
+        "Sleeves_Full Sleeves",
+        "Type_Floral",
+        "Type_Printed",
+        "V Neck",
+        "V Neck Front"
+      ],
+      "variants": [
+        {
+          "id": 62550655533427,
+          "title": "XS",
+          "option1": "XS",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1611A",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2300.00",
+          "grams": 184,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293751525747,
+          "created_at": "2026-02-19T12:40:31+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550655566195,
+          "title": "S",
+          "option1": "S",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1611B",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2300.00",
+          "grams": 184,
+          "compare_at_price": null,
+          "position": 2,
+          "product_id": 15293751525747,
+          "created_at": "2026-02-19T12:40:31+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550655598963,
+          "title": "M",
+          "option1": "M",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1611C",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2300.00",
+          "grams": 184,
+          "compare_at_price": null,
+          "position": 3,
+          "product_id": 15293751525747,
+          "created_at": "2026-02-19T12:40:31+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550655631731,
+          "title": "L",
+          "option1": "L",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1611D",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2300.00",
+          "grams": 184,
+          "compare_at_price": null,
+          "position": 4,
+          "product_id": 15293751525747,
+          "created_at": "2026-02-19T12:40:31+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550655664499,
+          "title": "XL",
+          "option1": "XL",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1611E",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": false,
+          "price": "2300.00",
+          "grams": 184,
+          "compare_at_price": null,
+          "position": 5,
+          "product_id": 15293751525747,
+          "created_at": "2026-02-19T12:40:31+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550683976051,
+          "title": "XXL",
+          "option1": "XXL",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1611F",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2300.00",
+          "grams": 184,
+          "compare_at_price": null,
+          "position": 6,
+          "product_id": 15293751525747,
+          "created_at": "2026-02-19T13:23:40+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66680154980723,
+          "created_at": "2026-02-18T12:14:40+05:30",
+          "position": 1,
+          "updated_at": "2026-02-18T12:14:41+05:30",
+          "product_id": 15293751525747,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/PuchkiPop2.jpg?v=1771397081",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680155046259,
+          "created_at": "2026-02-18T12:14:40+05:30",
+          "position": 2,
+          "updated_at": "2026-02-18T12:14:41+05:30",
+          "product_id": 15293751525747,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/PuchkiPop-1.jpg?v=1771397081",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680154947955,
+          "created_at": "2026-02-18T12:14:40+05:30",
+          "position": 3,
+          "updated_at": "2026-02-18T12:14:41+05:30",
+          "product_id": 15293751525747,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/PuchkiPop1.jpg?v=1771397081",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680155013491,
+          "created_at": "2026-02-18T12:14:40+05:30",
+          "position": 4,
+          "updated_at": "2026-02-18T12:14:41+05:30",
+          "product_id": 15293751525747,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/PuchkiPop3.jpg?v=1771397081",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680155079027,
+          "created_at": "2026-02-18T12:14:40+05:30",
+          "position": 5,
+          "updated_at": "2026-02-18T12:14:41+05:30",
+          "product_id": 15293751525747,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/PuchkiPop-2.jpg?v=1771397081",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Size",
+          "position": 1,
+          "values": [
+            "XS",
+            "S",
+            "M",
+            "L",
+            "XL",
+            "XXL"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293748478323,
+      "title": "Mishti Muse",
+      "handle": "mishti-muse",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric : \u003C/strong\u003E\u003Cspan data-sheets-root=\"1\"\u003ECotton\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EType :\u003C/strong\u003E Padded \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EBlouse Length :\u003C/strong\u003E 0.67 m (67 cm) \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003ESleeves Length :\u003C/strong\u003E Sleeveless \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EOpening :\u003C/strong\u003E Back Knot \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003ENeckline :\u003C/strong\u003E Square Neck \u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan\u003E\u003Cstrong\u003EWash Care \u003C/strong\u003E: Dry Wash\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan\u003E\u003C/span\u003E\u003Cspan\u003E\u003C/span\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E The pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\n\u003Cspan lang=\"EN-IN\"\u003E\u003C/span\u003E\u003Cstrong\u003E\u003Cspan style=\"box-sizing: border-box;\"\u003EDescription\u003C/span\u003E\u003C/strong\u003E \u003Cbr\u003E\n\u003C/h3\u003E\n\u003Cp\u003EOne of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. It is a low maintenance fabric hypoallergenic, making it the perfect choice around the year, especially for the Indian climate.\u003Cimg\u003E\u003Cimg\u003E\u003Cimg\u003E\u003C/p\u003E",
+      "published_at": "2026-02-20T17:41:31+05:30",
+      "created_at": "2026-02-18T12:10:27+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Blouse",
+      "tags": [
+        "Adjustable",
+        "Back Tie Up",
+        "Blouse",
+        "Blouse Type_Padded",
+        "Blouses",
+        "Casual Blouse",
+        "Colour_Multicolour",
+        "Corset",
+        "Daily Blouse",
+        "Geometric",
+        "Kurta Blouse",
+        "Long Blouse",
+        "Multicolour blouse",
+        "New Arrival Blouses",
+        "Padded",
+        "Pattern_Geometric",
+        "Pattern_Printed",
+        "Printed",
+        "Printed Blouse",
+        "sleeveless blouse",
+        "Sleeves_Sleeveless",
+        "Sleeves_Spaghetti Sleeves",
+        "Type_Geometric",
+        "Type_Printed"
+      ],
+      "variants": [
+        {
+          "id": 62550655795571,
+          "title": "XS",
+          "option1": "XS",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1610A",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 113,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293748478323,
+          "created_at": "2026-02-19T12:41:27+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550655828339,
+          "title": "S",
+          "option1": "S",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1610B",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 113,
+          "compare_at_price": null,
+          "position": 2,
+          "product_id": 15293748478323,
+          "created_at": "2026-02-19T12:41:27+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550655861107,
+          "title": "M",
+          "option1": "M",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1610C",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 113,
+          "compare_at_price": null,
+          "position": 3,
+          "product_id": 15293748478323,
+          "created_at": "2026-02-19T12:41:27+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550655893875,
+          "title": "L",
+          "option1": "L",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1610D",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 113,
+          "compare_at_price": null,
+          "position": 4,
+          "product_id": 15293748478323,
+          "created_at": "2026-02-19T12:41:27+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550655926643,
+          "title": "XL",
+          "option1": "XL",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1610E",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 113,
+          "compare_at_price": null,
+          "position": 5,
+          "product_id": 15293748478323,
+          "created_at": "2026-02-19T12:41:27+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550683910515,
+          "title": "XXL",
+          "option1": "XXL",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1610F",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 113,
+          "compare_at_price": null,
+          "position": 6,
+          "product_id": 15293748478323,
+          "created_at": "2026-02-19T13:23:17+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66680148394355,
+          "created_at": "2026-02-18T12:10:14+05:30",
+          "position": 1,
+          "updated_at": "2026-02-18T12:10:16+05:30",
+          "product_id": 15293748478323,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/MishtiMuse2.jpg?v=1771396816",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680148427123,
+          "created_at": "2026-02-18T12:10:14+05:30",
+          "position": 2,
+          "updated_at": "2026-02-18T12:10:16+05:30",
+          "product_id": 15293748478323,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/MishtiMuse3.jpg?v=1771396816",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680148361587,
+          "created_at": "2026-02-18T12:10:14+05:30",
+          "position": 3,
+          "updated_at": "2026-02-18T12:10:16+05:30",
+          "product_id": 15293748478323,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/MishtiMuse1.jpg?v=1771396816",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680148459891,
+          "created_at": "2026-02-18T12:10:14+05:30",
+          "position": 4,
+          "updated_at": "2026-02-18T12:10:16+05:30",
+          "product_id": 15293748478323,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/MishtiMuse4.jpg?v=1771396816",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680148492659,
+          "created_at": "2026-02-18T12:10:14+05:30",
+          "position": 5,
+          "updated_at": "2026-02-18T12:10:16+05:30",
+          "product_id": 15293748478323,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/MishtiMuse.jpg?v=1771396816",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Size",
+          "position": 1,
+          "values": [
+            "XS",
+            "S",
+            "M",
+            "L",
+            "XL",
+            "XXL"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293746708851,
+      "title": "Chutki Charm",
+      "handle": "chutki-charm",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric : \u003C/strong\u003E\u003Cspan data-sheets-root=\"1\"\u003ECotton\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EType :\u003C/strong\u003E Padded \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EBlouse Length :\u003C/strong\u003E 0.85 m (85 cm) \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003ESleeves Length :\u003C/strong\u003E Sleeveless \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EOpening :\u003C/strong\u003E Neck Knot \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003ENeckline :\u003C/strong\u003E Halter Neck \u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan\u003E\u003Cstrong\u003EWash Care \u003C/strong\u003E: Dry Wash\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan\u003E\u003C/span\u003E\u003Cspan\u003E\u003C/span\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E The pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\n\u003Cspan lang=\"EN-IN\"\u003E\u003C/span\u003E\u003Cstrong\u003E\u003Cspan style=\"box-sizing: border-box;\"\u003EDescription\u003C/span\u003E\u003C/strong\u003E \u003Cbr\u003E\n\u003C/h3\u003E\n\u003Cp\u003EOne of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. It is a low maintenance fabric hypoallergenic, making it the perfect choice around the year, especially for the Indian climate.\u003Cimg\u003E\u003Cimg\u003E\u003Cimg\u003E\u003C/p\u003E",
+      "published_at": "2026-02-20T17:41:30+05:30",
+      "created_at": "2026-02-18T12:08:14+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Blouse",
+      "tags": [
+        "Back Knot Opening",
+        "Back Tie Up",
+        "Back_Deep Back",
+        "Backless",
+        "Blouse",
+        "Blouse Type_Padded",
+        "Blouses",
+        "Casual Blouse",
+        "Colour_Multicolour",
+        "Colour_Yellow",
+        "Daily Blouse",
+        "deep back",
+        "Halter",
+        "Halter Neck",
+        "Halter Strap",
+        "Kurta Blouse",
+        "Long Blouse",
+        "Multicolour blouse",
+        "Neckline_Halter",
+        "Neckline_Halter Strap",
+        "New Arrival Blouses",
+        "Open Back",
+        "Padded",
+        "Pattern_Printed",
+        "Printed",
+        "sleeveless blouse",
+        "Sleeves_Sleeveless",
+        "Type_Halter",
+        "Type_Printed",
+        "Yellow",
+        "Yellow blouse"
+      ],
+      "variants": [
+        {
+          "id": 62550656549235,
+          "title": "XS",
+          "option1": "XS",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1609A",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 119,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293746708851,
+          "created_at": "2026-02-19T12:42:03+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550656582003,
+          "title": "S",
+          "option1": "S",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1609B",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 119,
+          "compare_at_price": null,
+          "position": 2,
+          "product_id": 15293746708851,
+          "created_at": "2026-02-19T12:42:03+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550656614771,
+          "title": "M",
+          "option1": "M",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1609C",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 119,
+          "compare_at_price": null,
+          "position": 3,
+          "product_id": 15293746708851,
+          "created_at": "2026-02-19T12:42:03+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550656647539,
+          "title": "L",
+          "option1": "L",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1609D",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 119,
+          "compare_at_price": null,
+          "position": 4,
+          "product_id": 15293746708851,
+          "created_at": "2026-02-19T12:42:03+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550656680307,
+          "title": "XL",
+          "option1": "XL",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1609E",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 119,
+          "compare_at_price": null,
+          "position": 5,
+          "product_id": 15293746708851,
+          "created_at": "2026-02-19T12:42:03+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550683681139,
+          "title": "XXL",
+          "option1": "XXL",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1609F",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 119,
+          "compare_at_price": null,
+          "position": 6,
+          "product_id": 15293746708851,
+          "created_at": "2026-02-19T13:22:59+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66680136237427,
+          "created_at": "2026-02-18T12:03:28+05:30",
+          "position": 1,
+          "updated_at": "2026-02-18T12:03:29+05:30",
+          "product_id": 15293746708851,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/ChutkiCharm5.jpg?v=1771396409",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680136171891,
+          "created_at": "2026-02-18T12:03:28+05:30",
+          "position": 2,
+          "updated_at": "2026-02-18T12:03:29+05:30",
+          "product_id": 15293746708851,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/ChutkiCharm3.jpg?v=1771396409",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680136302963,
+          "created_at": "2026-02-18T12:03:28+05:30",
+          "position": 3,
+          "updated_at": "2026-02-18T12:03:29+05:30",
+          "product_id": 15293746708851,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/ChutkiCharm7.jpg?v=1771396409",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680136204659,
+          "created_at": "2026-02-18T12:03:28+05:30",
+          "position": 4,
+          "updated_at": "2026-02-18T12:03:29+05:30",
+          "product_id": 15293746708851,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/ChutkiCharm4.jpg?v=1771396409",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680136270195,
+          "created_at": "2026-02-18T12:03:28+05:30",
+          "position": 5,
+          "updated_at": "2026-02-18T12:03:29+05:30",
+          "product_id": 15293746708851,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/ChutkiCharm6.jpg?v=1771396409",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680136106355,
+          "created_at": "2026-02-18T12:03:28+05:30",
+          "position": 6,
+          "updated_at": "2026-02-18T12:03:29+05:30",
+          "product_id": 15293746708851,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/ChutkiCharm1.jpg?v=1771396409",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680136139123,
+          "created_at": "2026-02-18T12:03:28+05:30",
+          "position": 7,
+          "updated_at": "2026-02-18T12:03:29+05:30",
+          "product_id": 15293746708851,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/ChutkiCharm2.jpg?v=1771396409",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Size",
+          "position": 1,
+          "values": [
+            "XS",
+            "S",
+            "M",
+            "L",
+            "XL",
+            "XXL"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293741629811,
+      "title": "Banno Breeze",
+      "handle": "banno-breeze",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003EFabric : \u003C/strong\u003E\u003Cspan data-sheets-root=\"1\"\u003ECotton\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EType :\u003C/strong\u003E Padded \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EBlouse Length :\u003C/strong\u003E 0.67 m (67 cm) \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003ESleeves Length :\u003C/strong\u003E Sleeveless \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003EOpening :\u003C/strong\u003E Back Knot \u003Cbr\u003E\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan data-sheets-root=\"1\"\u003E\u003Cstrong\u003ENeckline :\u003C/strong\u003E U Neck \u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan\u003E\u003Cstrong\u003EWash Care \u003C/strong\u003E: Dry Wash\u003C/span\u003E\u003C/p\u003E\n\u003Cp\u003E\u003Cspan\u003E\u003C/span\u003E\u003Cspan\u003E\u003C/span\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E The pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness\u003C/p\u003E\n\u003Ch3\u003E\n\u003Cspan lang=\"EN-IN\"\u003E\u003C/span\u003E\u003Cstrong\u003E\u003Cspan style=\"box-sizing: border-box;\"\u003EDescription\u003C/span\u003E\u003C/strong\u003E \u003Cbr\u003E\n\u003C/h3\u003E\n\u003Cp\u003EOne of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. It is a low maintenance fabric hypoallergenic, making it the perfect choice around the year, especially for the Indian climate.\u003Cimg\u003E\u003Cimg\u003E\u003Cimg\u003E\u003C/p\u003E",
+      "published_at": "2026-02-20T17:41:28+05:30",
+      "created_at": "2026-02-18T12:01:37+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Blouse",
+      "tags": [
+        "Back Tie Up",
+        "Back_Deep Back",
+        "Backless",
+        "Blouse",
+        "Blouse Type_Padded",
+        "Blouses",
+        "Casual Blouse",
+        "Colour_Multicolour",
+        "Daily Blouse",
+        "deep back",
+        "Kurta Blouse",
+        "Long Blouse",
+        "Multicolour blouse",
+        "New Arrival Blouses",
+        "Open Back Blouse",
+        "Padded",
+        "Pattern_Printed",
+        "Printed",
+        "Round Back",
+        "sleeveless blouse",
+        "Sleeves_Sleeveless",
+        "Type_Printed"
+      ],
+      "variants": [
+        {
+          "id": 62550648226163,
+          "title": "XS",
+          "option1": "XS",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1608A",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 113,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293741629811,
+          "created_at": "2026-02-19T12:00:12+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550648258931,
+          "title": "S",
+          "option1": "S",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1608B",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 113,
+          "compare_at_price": null,
+          "position": 2,
+          "product_id": 15293741629811,
+          "created_at": "2026-02-19T12:00:12+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550648291699,
+          "title": "M",
+          "option1": "M",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1608C",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 113,
+          "compare_at_price": null,
+          "position": 3,
+          "product_id": 15293741629811,
+          "created_at": "2026-02-19T12:00:12+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550648324467,
+          "title": "L",
+          "option1": "L",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1608D",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 113,
+          "compare_at_price": null,
+          "position": 4,
+          "product_id": 15293741629811,
+          "created_at": "2026-02-19T12:00:12+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550648357235,
+          "title": "XL",
+          "option1": "XL",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1608E",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 113,
+          "compare_at_price": null,
+          "position": 5,
+          "product_id": 15293741629811,
+          "created_at": "2026-02-19T12:00:12+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        },
+        {
+          "id": 62550682567027,
+          "title": "XXL",
+          "option1": "XXL",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAB1608F",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2100.00",
+          "grams": 113,
+          "compare_at_price": null,
+          "position": 6,
+          "product_id": 15293741629811,
+          "created_at": "2026-02-19T13:22:26+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66680134205811,
+          "created_at": "2026-02-18T12:02:36+05:30",
+          "position": 1,
+          "updated_at": "2026-02-18T12:02:46+05:30",
+          "product_id": 15293741629811,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/BannoBreeze2.jpg?v=1771396366",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680134238579,
+          "created_at": "2026-02-18T12:02:36+05:30",
+          "position": 2,
+          "updated_at": "2026-02-18T12:02:46+05:30",
+          "product_id": 15293741629811,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/BannoBreeze3.jpg?v=1771396366",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680134173043,
+          "created_at": "2026-02-18T12:02:36+05:30",
+          "position": 3,
+          "updated_at": "2026-02-18T12:02:46+05:30",
+          "product_id": 15293741629811,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/BannoBreeze1.jpg?v=1771396366",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66680134271347,
+          "created_at": "2026-02-18T12:02:36+05:30",
+          "position": 4,
+          "updated_at": "2026-02-18T12:02:38+05:30",
+          "product_id": 15293741629811,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/BannoBreeze4.jpg?v=1771396358",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Size",
+          "position": 1,
+          "values": [
+            "XS",
+            "S",
+            "M",
+            "L",
+            "XL",
+            "XXL"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293105635699,
+      "title": "Sunflower in Shadow",
+      "handle": "sunflower-in-shadow",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength: \u003C/strong\u003E5.50 m (550.00 cm) \u003Cstrong\u003E ; \u003C/strong\u003E\u003Cstrong\u003EWidth:\u003C/strong\u003E  1.20 m (120 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EBlouse Piece:\u003C/strong\u003E No\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Dry Wash\u003C/p\u003E\n\u003Cp\u003E\u003Ca href=\"https://suta.in/products/golden-mind-blouse\"\u003E\u003C/a\u003E\u003Cstrong\u003EFabric:\u003C/strong\u003E Mul Cotton\u003C/p\u003E\n\u003Cp\u003E\u003Cb\u003EBlouse:\u003Cspan\u003E \u003C/span\u003E\u003C/b\u003EThe mannequin is wearing a blouse from our inhouse collection.\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E \u003Cspan\u003EThe pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness.\u003C/span\u003E\u003Cstrong\u003E\u003C/strong\u003E\u003C/p\u003E\n\u003Ch3\u003EDescription\u003C/h3\u003E\n\u003Cp\u003EThe mul cotton is what we call ˜made in heaven at Suta. Known in West Bengal as mul mul, the fabric is buttery soft and delicately beautiful. The weave of this fabric is very fine, and this lends a very fluid texture to it that makes draping it a breeze. It is truly like a hug that wraps you in its love!\u003C/p\u003E",
+      "published_at": "2026-02-20T11:09:08+05:30",
+      "created_at": "2026-02-17T14:27:00+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Saree",
+      "tags": [
+        "__with:pre-drape-this-saree",
+        "New",
+        "New arrival sarees",
+        "New Arrivals",
+        "new_arrivals",
+        "ook-feb-2026",
+        "Saree",
+        "Sarees",
+        "Sari",
+        "Saris"
+      ],
+      "variants": [
+        {
+          "id": 62542517535091,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAWS3267",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "4500.00",
+          "grams": 274,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293105635699,
+          "created_at": "2026-02-17T14:27:00+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66668777242995,
+          "created_at": "2026-02-17T14:55:10+05:30",
+          "position": 1,
+          "updated_at": "2026-02-17T14:56:35+05:30",
+          "product_id": 15293105635699,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SunflowerinShadow3.jpg?v=1771320395",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668777210227,
+          "created_at": "2026-02-17T14:55:10+05:30",
+          "position": 2,
+          "updated_at": "2026-02-17T14:56:35+05:30",
+          "product_id": 15293105635699,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SunflowerinShadow2.jpg?v=1771320395",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668777308531,
+          "created_at": "2026-02-17T14:55:10+05:30",
+          "position": 3,
+          "updated_at": "2026-02-17T14:56:35+05:30",
+          "product_id": 15293105635699,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SunflowerinShadow5.jpg?v=1771320395",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668777177459,
+          "created_at": "2026-02-17T14:55:10+05:30",
+          "position": 4,
+          "updated_at": "2026-02-17T14:56:35+05:30",
+          "product_id": 15293105635699,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SunflowerinShadow1.jpg?v=1771320395",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668777275763,
+          "created_at": "2026-02-17T14:55:10+05:30",
+          "position": 5,
+          "updated_at": "2026-02-17T14:56:35+05:30",
+          "product_id": 15293105635699,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SunflowerinShadow4.jpg?v=1771320395",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293105668467,
+      "title": "Creamy Mousse",
+      "handle": "creamy-mousse",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength: \u003C/strong\u003E5.50 m (550.00 cm) \u003Cstrong\u003E ; \u003C/strong\u003E\u003Cstrong\u003EWidth:\u003C/strong\u003E  1.20 m (120 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EBlouse Piece:\u003C/strong\u003E No\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Dry Wash\u003C/p\u003E\n\u003Cp\u003E\u003Ca href=\"https://suta.in/products/golden-mind-blouse\"\u003E\u003C/a\u003E\u003Cstrong\u003EFabric:\u003C/strong\u003E Cotton\u003C/p\u003E\n\u003Cp\u003E\u003Cb\u003EBlouse:\u003Cspan\u003E \u003C/span\u003E\u003C/b\u003EThe mannequin is wearing a blouse from our inhouse collection.\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E \u003Cspan\u003EThe pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness.\u003C/span\u003E\u003Cstrong\u003E\u003C/strong\u003E\u003C/p\u003E\n\u003Ch3\u003EDescription\u003C/h3\u003E\n\u003Cp\u003EOne of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. It is a low maintenance fabric hypoallergenic, making it the perfect choice around the year, especially for the Indian climate.\u003C/p\u003E",
+      "published_at": "2026-02-20T11:09:06+05:30",
+      "created_at": "2026-02-17T14:27:00+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Saree",
+      "tags": [
+        "__with:pre-drape-this-saree",
+        "New",
+        "New arrival sarees",
+        "New Arrivals",
+        "new_arrivals",
+        "ook-feb-2026",
+        "Saree",
+        "Sarees",
+        "Sari",
+        "Saris"
+      ],
+      "variants": [
+        {
+          "id": 62542517567859,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAWS3265",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "3500.00",
+          "grams": 285,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293105668467,
+          "created_at": "2026-02-17T14:27:00+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66668774785395,
+          "created_at": "2026-02-17T14:52:54+05:30",
+          "position": 1,
+          "updated_at": "2026-02-17T14:53:12+05:30",
+          "product_id": 15293105668467,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/CreamyMousse3.jpg?v=1771320192",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668774752627,
+          "created_at": "2026-02-17T14:52:54+05:30",
+          "position": 2,
+          "updated_at": "2026-02-17T14:53:12+05:30",
+          "product_id": 15293105668467,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/CreamyMousse2.jpg?v=1771320192",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668774850931,
+          "created_at": "2026-02-17T14:52:54+05:30",
+          "position": 3,
+          "updated_at": "2026-02-17T14:53:12+05:30",
+          "product_id": 15293105668467,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/CreamyMousse5.jpg?v=1771320192",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668774719859,
+          "created_at": "2026-02-17T14:52:54+05:30",
+          "position": 4,
+          "updated_at": "2026-02-17T14:53:12+05:30",
+          "product_id": 15293105668467,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/CreamyMousse1.jpg?v=1771320192",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668774818163,
+          "created_at": "2026-02-17T14:52:54+05:30",
+          "position": 5,
+          "updated_at": "2026-02-17T14:53:12+05:30",
+          "product_id": 15293105668467,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/CreamyMousse4.jpg?v=1771320192",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293105701235,
+      "title": "Rangeen Joba",
+      "handle": "rangeen-joba",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength: \u003C/strong\u003E5.50 m (550.00 cm) \u003Cstrong\u003E ; \u003C/strong\u003E\u003Cstrong\u003EWidth:\u003C/strong\u003E  1.20 m (120 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EBlouse Piece:\u003C/strong\u003E No\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Dry Wash\u003C/p\u003E\n\u003Cp\u003E\u003Ca href=\"https://suta.in/products/golden-mind-blouse\"\u003E\u003C/a\u003E\u003Cstrong\u003EFabric:\u003C/strong\u003E Mul Cotton\u003C/p\u003E\n\u003Cp\u003E\u003Cb\u003EBlouse:\u003Cspan\u003E \u003C/span\u003E\u003C/b\u003EThe mannequin is wearing a blouse from our inhouse collection.\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E \u003Cspan\u003EThe pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness.\u003C/span\u003E\u003Cstrong\u003E\u003C/strong\u003E\u003C/p\u003E\n\u003Ch3\u003EDescription\u003C/h3\u003E\n\u003Cp\u003EThe mul cotton is what we call ˜made in heaven at Suta. Known in West Bengal as mul mul, the fabric is buttery soft and delicately beautiful. The weave of this fabric is very fine, and this lends a very fluid texture to it that makes draping it a breeze. It is truly like a hug that wraps you in its love!\u003C/p\u003E",
+      "published_at": "2026-02-20T11:09:03+05:30",
+      "created_at": "2026-02-17T14:27:00+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Saree",
+      "tags": [
+        "__with:pre-drape-this-saree",
+        "New",
+        "New arrival sarees",
+        "New Arrivals",
+        "new_arrivals",
+        "ook-feb-2026",
+        "Saree",
+        "Sarees",
+        "Sari",
+        "Saris"
+      ],
+      "variants": [
+        {
+          "id": 62542517600627,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAWS3264",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "4500.00",
+          "grams": 302,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293105701235,
+          "created_at": "2026-02-17T14:27:00+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66668768723315,
+          "created_at": "2026-02-17T14:48:03+05:30",
+          "position": 1,
+          "updated_at": "2026-02-17T14:52:31+05:30",
+          "product_id": 15293105701235,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/RangeenJoba4.jpg?v=1771320151",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668768657779,
+          "created_at": "2026-02-17T14:48:03+05:30",
+          "position": 2,
+          "updated_at": "2026-02-17T14:52:31+05:30",
+          "product_id": 15293105701235,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/RangeenJoba2.jpg?v=1771320151",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668768756083,
+          "created_at": "2026-02-17T14:48:03+05:30",
+          "position": 3,
+          "updated_at": "2026-02-17T14:52:31+05:30",
+          "product_id": 15293105701235,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/RangeenJoba5.jpg?v=1771320151",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668768625011,
+          "created_at": "2026-02-17T14:48:03+05:30",
+          "position": 4,
+          "updated_at": "2026-02-17T14:52:31+05:30",
+          "product_id": 15293105701235,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/RangeenJoba1.jpg?v=1771320151",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668768690547,
+          "created_at": "2026-02-17T14:48:03+05:30",
+          "position": 5,
+          "updated_at": "2026-02-17T14:52:31+05:30",
+          "product_id": 15293105701235,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/RangeenJoba3.jpg?v=1771320151",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293105734003,
+      "title": "Gulabi Chandrika",
+      "handle": "gulabi-chandrika",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength: \u003C/strong\u003E5.50 m (550.00 cm) \u003Cstrong\u003E ; \u003C/strong\u003E\u003Cstrong\u003EWidth:\u003C/strong\u003E  1.20 m (120 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EBlouse Piece:\u003C/strong\u003E No\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Dry Wash\u003C/p\u003E\n\u003Cp\u003E\u003Ca href=\"https://suta.in/products/golden-mind-blouse\"\u003E\u003C/a\u003E\u003Cstrong\u003EFabric:\u003C/strong\u003E Mul Cotton\u003C/p\u003E\n\u003Cp\u003E\u003Cb\u003EBlouse:\u003Cspan\u003E \u003C/span\u003E\u003C/b\u003EThe mannequin is wearing a blouse from our inhouse collection.\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E \u003Cspan\u003EThe pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness.\u003C/span\u003E\u003Cstrong\u003E\u003C/strong\u003E\u003C/p\u003E\n\u003Ch3\u003EDescription\u003C/h3\u003E\n\u003Cp\u003EThe mul cotton is what we call ˜made in heaven at Suta. Known in West Bengal as mul mul, the fabric is buttery soft and delicately beautiful. The weave of this fabric is very fine, and this lends a very fluid texture to it that makes draping it a breeze. It is truly like a hug that wraps you in its love!\u003C/p\u003E",
+      "published_at": "2026-02-20T11:09:00+05:30",
+      "created_at": "2026-02-17T14:27:00+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Saree",
+      "tags": [
+        "__with:pre-drape-this-saree",
+        "New",
+        "New arrival sarees",
+        "New Arrivals",
+        "new_arrivals",
+        "ook-feb-2026",
+        "Saree",
+        "Sarees",
+        "Sari",
+        "Saris"
+      ],
+      "variants": [
+        {
+          "id": 62542517633395,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAWS3266",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "2500.00",
+          "grams": 243,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293105734003,
+          "created_at": "2026-02-17T14:27:00+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66668776391027,
+          "created_at": "2026-02-17T14:53:50+05:30",
+          "position": 1,
+          "updated_at": "2026-02-17T14:54:10+05:30",
+          "product_id": 15293105734003,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GulabiChandrika4.jpg?v=1771320250",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668776325491,
+          "created_at": "2026-02-17T14:53:50+05:30",
+          "position": 2,
+          "updated_at": "2026-02-17T14:54:10+05:30",
+          "product_id": 15293105734003,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GulabiChandrika2.jpg?v=1771320250",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668776423795,
+          "created_at": "2026-02-17T14:53:50+05:30",
+          "position": 3,
+          "updated_at": "2026-02-17T14:54:10+05:30",
+          "product_id": 15293105734003,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GulabiChandrika5.jpg?v=1771320250",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668776292723,
+          "created_at": "2026-02-17T14:53:50+05:30",
+          "position": 4,
+          "updated_at": "2026-02-17T14:54:10+05:30",
+          "product_id": 15293105734003,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GulabiChandrika1.jpg?v=1771320250",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668776358259,
+          "created_at": "2026-02-17T14:53:50+05:30",
+          "position": 5,
+          "updated_at": "2026-02-17T14:54:10+05:30",
+          "product_id": 15293105734003,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GulabiChandrika3.jpg?v=1771320250",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293105766771,
+      "title": "Sunlit Noir",
+      "handle": "sunlit-noir",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength: \u003C/strong\u003E5.50 m (550.00 cm) \u003Cstrong\u003E ; \u003C/strong\u003E\u003Cstrong\u003EWidth:\u003C/strong\u003E  1.20 m (120 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EBlouse Piece:\u003C/strong\u003E No\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Dry Wash\u003C/p\u003E\n\u003Cp\u003E\u003Ca href=\"https://suta.in/products/golden-mind-blouse\"\u003E\u003C/a\u003E\u003Cstrong\u003EFabric:\u003C/strong\u003E Cotton\u003C/p\u003E\n\u003Cp\u003E\u003Cb\u003EBlouse:\u003Cspan\u003E \u003C/span\u003E\u003C/b\u003EThe mannequin is wearing a blouse from our inhouse collection.\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E \u003Cspan\u003EThe pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness.\u003C/span\u003E\u003Cstrong\u003E\u003C/strong\u003E\u003C/p\u003E\n\u003Ch3\u003EDescription\u003C/h3\u003E\n\u003Cp\u003EOne of the most popular natural fibres in the world, cotton is hailed for its beauty, comfort, durability and versatility. It is a low maintenance fabric hypoallergenic, making it the perfect choice around the year, especially for the Indian climate.\u003C/p\u003E",
+      "published_at": "2026-02-20T11:08:57+05:30",
+      "created_at": "2026-02-17T14:27:02+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Saree",
+      "tags": [
+        "__with:pre-drape-this-saree",
+        "New",
+        "New arrival sarees",
+        "New Arrivals",
+        "new_arrivals",
+        "ook-feb-2026",
+        "Saree",
+        "Sarees",
+        "Sari",
+        "Saris"
+      ],
+      "variants": [
+        {
+          "id": 62542517666163,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAWS3268",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "3800.00",
+          "grams": 423,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293105766771,
+          "created_at": "2026-02-17T14:27:02+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66668782944627,
+          "created_at": "2026-02-17T14:57:51+05:30",
+          "position": 1,
+          "updated_at": "2026-02-17T14:58:22+05:30",
+          "product_id": 15293105766771,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SunlitNoir3.jpg?v=1771320502",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668782911859,
+          "created_at": "2026-02-17T14:57:51+05:30",
+          "position": 2,
+          "updated_at": "2026-02-17T14:58:22+05:30",
+          "product_id": 15293105766771,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SunlitNoir2.jpg?v=1771320502",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668783010163,
+          "created_at": "2026-02-17T14:57:51+05:30",
+          "position": 3,
+          "updated_at": "2026-02-17T14:58:22+05:30",
+          "product_id": 15293105766771,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SunlitNoir5.jpg?v=1771320502",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668782879091,
+          "created_at": "2026-02-17T14:57:51+05:30",
+          "position": 4,
+          "updated_at": "2026-02-17T14:58:22+05:30",
+          "product_id": 15293105766771,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SunlitNoir1.jpg?v=1771320502",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668782977395,
+          "created_at": "2026-02-17T14:57:51+05:30",
+          "position": 5,
+          "updated_at": "2026-02-17T14:58:22+05:30",
+          "product_id": 15293105766771,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/SunlitNoir4.jpg?v=1771320502",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293105799539,
+      "title": "Petals of the Midnight Sun",
+      "handle": "petals-of-the-midnight-sun",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength: \u003C/strong\u003E5.50 m (550.00 cm) \u003Cstrong\u003E\u003C/strong\u003E\u003Cstrong\u003EWidth:\u003C/strong\u003E 1.20 m (120 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EBlouse Piece:\u003C/strong\u003E No\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Dry Wash\u003C/p\u003E\n\u003Cp\u003E\u003Ca href=\"https://suta.in/products/golden-mind-blouse\"\u003E\u003C/a\u003E\u003Cstrong\u003EFabric:\u003C/strong\u003E Cotton Linen\u003C/p\u003E\n\u003Cp\u003E\u003Cb\u003EBlouse:\u003Cspan\u003E \u003C/span\u003E\u003C/b\u003EThe mannequin is wearing a blouse from our inhouse collection.\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E\u003Cspan\u003EThe pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness.\u003C/span\u003E\u003Cstrong\u003E\u003C/strong\u003E\u003C/p\u003E\n\u003Ch3\u003EDescription\u003C/h3\u003E\n\u003Cp\u003ELinen is considered the strongest of all natural fibres. Linen garments, therefore, are the perfect addition to conscious wardrobes. Made from the stalks of flax plants, linen has a low environmental impact and the production process is significantly less water intensive. As a natural fibre, linen is biodegradable. It is also breathable and very absorbent.\u003C/p\u003E",
+      "published_at": "2026-02-20T11:08:52+05:30",
+      "created_at": "2026-02-17T14:27:02+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Saree",
+      "tags": [
+        "__with:pre-drape-this-saree",
+        "New",
+        "New arrival sarees",
+        "New Arrivals",
+        "new_arrivals",
+        "ook-feb-2026",
+        "Saree",
+        "Sarees",
+        "Sari",
+        "Saris"
+      ],
+      "variants": [
+        {
+          "id": 62542517698931,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAWS3269",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "6000.00",
+          "grams": 502,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293105799539,
+          "created_at": "2026-02-17T14:27:02+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66668785434995,
+          "created_at": "2026-02-17T14:58:48+05:30",
+          "position": 1,
+          "updated_at": "2026-02-17T15:02:55+05:30",
+          "product_id": 15293105799539,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/PetalsoftheMidnightSun5.jpg?v=1771320775",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668785336691,
+          "created_at": "2026-02-17T14:58:48+05:30",
+          "position": 2,
+          "updated_at": "2026-02-17T15:02:55+05:30",
+          "product_id": 15293105799539,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/PetalsoftheMidnightSun2.jpg?v=1771320775",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668785402227,
+          "created_at": "2026-02-17T14:58:48+05:30",
+          "position": 3,
+          "updated_at": "2026-02-17T15:02:55+05:30",
+          "product_id": 15293105799539,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/PetalsoftheMidnightSun4.jpg?v=1771320775",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668785303923,
+          "created_at": "2026-02-17T14:58:48+05:30",
+          "position": 4,
+          "updated_at": "2026-02-17T15:02:55+05:30",
+          "product_id": 15293105799539,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/PetalsoftheMidnightSun1.jpg?v=1771320775",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668785369459,
+          "created_at": "2026-02-17T14:58:48+05:30",
+          "position": 5,
+          "updated_at": "2026-02-17T15:02:55+05:30",
+          "product_id": 15293105799539,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/PetalsoftheMidnightSun3.jpg?v=1771320775",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293105832307,
+      "title": "Golden Bloom in Black",
+      "handle": "golden-bloom-in-black",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength: \u003C/strong\u003E5.50 m (550.00 cm) \u003Cstrong\u003E\u003C/strong\u003E\u003Cstrong\u003EWidth:\u003C/strong\u003E 1.20 m (120 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EBlouse Piece:\u003C/strong\u003E No\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Dry Wash\u003C/p\u003E\n\u003Cp\u003E\u003Ca href=\"https://suta.in/products/golden-mind-blouse\"\u003E\u003C/a\u003E\u003Cstrong\u003EFabric:\u003C/strong\u003E Cotton Slub\u003C/p\u003E\n\u003Cp\u003E\u003Cb\u003EBlouse:\u003Cspan\u003E \u003C/span\u003E\u003C/b\u003EThe mannequin is wearing a blouse from our inhouse collection.\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E\u003Cspan\u003EThe pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness.\u003C/span\u003E\u003Cstrong\u003E\u003C/strong\u003E\u003C/p\u003E\n\u003Ch3\u003EDescription\u003C/h3\u003E\n\u003Cp\u003ECotton is celebrated for its natural softness and breathability, making it a cherished fabric in the world of textiles. Cotton slub takes this classic material a step further with its distinctive, textured surface and charming irregularities. Created through a special twisting process before weaving, cotton slub features subtle variations that add visual and tactile intrigue. This unique texture enhances the elegance of sarees, offering a blend of natural comfort and individual character that elevates each piece into a statement of refined style.\u003C/p\u003E",
+      "published_at": "2026-02-20T11:08:49+05:30",
+      "created_at": "2026-02-17T14:27:02+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Saree",
+      "tags": [
+        "__with:pre-drape-this-saree",
+        "New",
+        "New arrival sarees",
+        "New Arrivals",
+        "new_arrivals",
+        "ook-feb-2026",
+        "Saree",
+        "Sarees",
+        "Sari",
+        "Saris"
+      ],
+      "variants": [
+        {
+          "id": 62542517731699,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAWS3270",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": true,
+          "price": "4820.00",
+          "grams": 467,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293105832307,
+          "created_at": "2026-02-17T14:27:02+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66668800868723,
+          "created_at": "2026-02-17T15:05:08+05:30",
+          "position": 1,
+          "updated_at": "2026-02-17T15:05:26+05:30",
+          "product_id": 15293105832307,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GoldenBloominBlack3.jpg?v=1771320926",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668800835955,
+          "created_at": "2026-02-17T15:05:08+05:30",
+          "position": 2,
+          "updated_at": "2026-02-17T15:05:26+05:30",
+          "product_id": 15293105832307,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GoldenBloominBlack2.jpg?v=1771320926",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668800901491,
+          "created_at": "2026-02-17T15:05:08+05:30",
+          "position": 3,
+          "updated_at": "2026-02-17T15:05:26+05:30",
+          "product_id": 15293105832307,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GoldenBloominBlack4.jpg?v=1771320926",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668800803187,
+          "created_at": "2026-02-17T15:05:08+05:30",
+          "position": 4,
+          "updated_at": "2026-02-17T15:05:26+05:30",
+          "product_id": 15293105832307,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GoldenBloominBlack1.jpg?v=1771320926",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668800934259,
+          "created_at": "2026-02-17T15:05:08+05:30",
+          "position": 5,
+          "updated_at": "2026-02-17T15:05:10+05:30",
+          "product_id": 15293105832307,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/GoldenBloominBlack5.jpg?v=1771320910",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15293105865075,
+      "title": "Neelima Kusum",
+      "handle": "neelima-kusum",
+      "body_html": "\u003Ch3\u003E\u003Cstrong\u003EDetails\u003C/strong\u003E\u003C/h3\u003E\n\u003Cp\u003E\u003Cstrong\u003ELength: \u003C/strong\u003E5.50 m (550.00 cm) \u003Cstrong\u003E ; \u003C/strong\u003E\u003Cstrong\u003EWidth:\u003C/strong\u003E  1.20 m (120 cm)\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EBlouse Piece:\u003C/strong\u003E No\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EWash Care:\u003C/strong\u003E Dry Wash\u003C/p\u003E\n\u003Cp\u003E\u003Ca href=\"https://suta.in/products/golden-mind-blouse\"\u003E\u003C/a\u003E\u003Cstrong\u003EFabric:\u003C/strong\u003E Mul Cotton\u003C/p\u003E\n\u003Cp\u003E\u003Cb\u003EBlouse:\u003Cspan\u003E \u003C/span\u003E\u003C/b\u003EThe mannequin is wearing a blouse from our inhouse collection.\u003C/p\u003E\n\u003Cp\u003E\u003Cstrong\u003EDisclaimer:\u003C/strong\u003E \u003Cspan\u003EThe pictures are clicked in daylight. Colour may vary slightly from the image due to the screen brightness.\u003C/span\u003E\u003Cstrong\u003E\u003C/strong\u003E\u003C/p\u003E\n\u003Ch3\u003EDescription\u003C/h3\u003E\n\u003Cp\u003EThe mul cotton is what we call ˜made in heaven at Suta. Known in West Bengal as mul mul, the fabric is buttery soft and delicately beautiful. The weave of this fabric is very fine, and this lends a very fluid texture to it that makes draping it a breeze. It is truly like a hug that wraps you in its love!\u003C/p\u003E",
+      "published_at": "2026-02-20T11:08:46+05:30",
+      "created_at": "2026-02-17T14:27:02+05:30",
+      "updated_at": "2026-02-20T21:38:09+05:30",
+      "vendor": "suta.in",
+      "product_type": "Saree",
+      "tags": [
+        "__with:pre-drape-this-saree",
+        "New",
+        "New arrival sarees",
+        "New Arrivals",
+        "new_arrivals",
+        "ook-feb-2026",
+        "Saree",
+        "Sarees",
+        "Sari",
+        "Saris"
+      ],
+      "variants": [
+        {
+          "id": 62542517764467,
+          "title": "Default Title",
+          "option1": "Default Title",
+          "option2": null,
+          "option3": null,
+          "sku": "SUTAWS3271",
+          "requires_shipping": true,
+          "taxable": true,
+          "featured_image": null,
+          "available": false,
+          "price": "2800.00",
+          "grams": 298,
+          "compare_at_price": null,
+          "position": 1,
+          "product_id": 15293105865075,
+          "created_at": "2026-02-17T14:27:02+05:30",
+          "updated_at": "2026-02-20T21:38:09+05:30"
+        }
+      ],
+      "images": [
+        {
+          "id": 66668823347571,
+          "created_at": "2026-02-17T15:14:34+05:30",
+          "position": 1,
+          "updated_at": "2026-02-17T15:15:08+05:30",
+          "product_id": 15293105865075,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/NeelimaKusum5.jpg?v=1771321508",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668823249267,
+          "created_at": "2026-02-17T15:14:34+05:30",
+          "position": 2,
+          "updated_at": "2026-02-17T15:15:08+05:30",
+          "product_id": 15293105865075,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/NeelimaKusum2.jpg?v=1771321508",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668823314803,
+          "created_at": "2026-02-17T15:14:34+05:30",
+          "position": 3,
+          "updated_at": "2026-02-17T15:15:08+05:30",
+          "product_id": 15293105865075,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/NeelimaKusum4.jpg?v=1771321508",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668823216499,
+          "created_at": "2026-02-17T15:14:34+05:30",
+          "position": 4,
+          "updated_at": "2026-02-17T15:15:08+05:30",
+          "product_id": 15293105865075,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/NeelimaKusum1.jpg?v=1771321508",
+          "width": 1536,
+          "height": 2048
+        },
+        {
+          "id": 66668823282035,
+          "created_at": "2026-02-17T15:14:34+05:30",
+          "position": 5,
+          "updated_at": "2026-02-17T15:15:08+05:30",
+          "product_id": 15293105865075,
+          "variant_ids": [],
+          "src": "https://cdn.shopify.com/s/files/1/0026/6544/7536/files/NeelimaKusum3.jpg?v=1771321508",
+          "width": 1536,
+          "height": 2048
+        }
+      ],
+      "options": [
+        {
+          "name": "Title",
+          "position": 1,
+          "values": [
+            "Default Title"
+          ]
+        }
+      ]
+    }
+  ]
+}
