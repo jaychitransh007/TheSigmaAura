@@ -93,18 +93,22 @@ If batch run fails:
 python3 scripts/run_style_pipeline.py \
   --input out/enriched.csv \
   --profile out/sample_user_profile_tier2.json \
-  --occasion "Work Mode" \
-  --archetype "Classic" \
+  --occasion "Night Out" \
+  --archetype "Glamorous" \
   --gender Female \
   --age 25-30 \
   --tier2-strictness balanced \
   --out-dir out \
-  --prefix runbook_demo
+  --prefix nightout_glamorous_female_25_30
 ```
 
 Final ranked output:
-- `out/runbook_demo_ranked_summary.csv`
+- `out/nightout_glamorous_female_25_30_ranked_summary.csv`
 - includes rank, title, image URLs, and scores.
+
+Error behavior:
+- invalid context/inputs are handled gracefully (no traceback)
+- runner prints `error: <message>` and exits with code `2`
 ## 6) Core Artifacts
 - Enriched CSV: `out/enriched.csv`
 - Schema audit: `out/schema_audit.json`

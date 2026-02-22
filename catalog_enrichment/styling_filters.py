@@ -51,7 +51,21 @@ def _normalize(value: str) -> str:
 def _resolve_key(value: str, aliases: Dict[str, str], field_name: str) -> str:
     key = aliases.get(_normalize(value))
     if not key:
-        raise ValueError(f"Unsupported {field_name}: {value}")
+        normalized = _normalize(value)
+        canonical = sorted(set(aliases.values()))
+        if field_name == "archetype" and normalized in _OCCASION_ALIASES:
+            raise ValueError(
+                f"Unsupported archetype: {value}. It looks like an occasion value. "
+                f"Use --occasion for values like '{value}'. "
+                f"Valid archetypes: {', '.join(canonical)}"
+            )
+        if field_name == "occasion" and normalized in _ARCHETYPE_ALIASES:
+            raise ValueError(
+                f"Unsupported occasion: {value}. It looks like an archetype value. "
+                f"Use --archetype for values like '{value}'. "
+                f"Valid occasions: {', '.join(canonical)}"
+            )
+        raise ValueError(f"Unsupported {field_name}: {value}. Valid values: {', '.join(canonical)}")
     return key
 
 

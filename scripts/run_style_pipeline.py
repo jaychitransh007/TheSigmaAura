@@ -95,106 +95,110 @@ def _write_csv(path: Path, rows: List[Dict[str, str]]) -> None:
 
 
 def main() -> int:
-    args = parse_args()
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        args = parse_args()
+        out_dir = Path(args.out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-    filtered_csv = out_dir / f"{args.prefix}_filtered.csv"
-    filter_failures_json = out_dir / f"{args.prefix}_filter_failures.json"
-    ranked_csv = out_dir / f"{args.prefix}_ranked.csv"
-    explain_json = out_dir / f"{args.prefix}_ranked_explainability.json"
-    summary_csv = out_dir / f"{args.prefix}_ranked_summary.csv"
+        filtered_csv = out_dir / f"{args.prefix}_filtered.csv"
+        filter_failures_json = out_dir / f"{args.prefix}_filter_failures.json"
+        ranked_csv = out_dir / f"{args.prefix}_ranked.csv"
+        explain_json = out_dir / f"{args.prefix}_ranked_explainability.json"
+        summary_csv = out_dir / f"{args.prefix}_ranked_summary.csv"
 
-    rows = read_filter_csv_rows(args.input)
-    t1_rules = load_tier_a_rules()
-    t2_rules = load_tier2_rules()
-    relaxed = parse_relaxed_filters(args.relax)
-    ctx = UserContext(
-        occasion=args.occasion,
-        archetype=args.archetype,
-        gender=args.gender,
-        age=args.age,
-    )
-    passed, failed = filter_catalog_rows(rows=rows, ctx=ctx, rules=t1_rules, relaxed_filters=relaxed)
-    write_csv_rows(str(filtered_csv), passed)
-
-    with filter_failures_json.open("w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "total_rows": len(rows),
-                "passed_rows": len(passed),
-                "failed_rows": len(failed),
-                "context": {
-                    "occasion": args.occasion,
-                    "archetype": args.archetype,
-                    "gender": args.gender,
-                    "age": args.age,
-                    "relaxed_filters": sorted(relaxed),
-                },
-                "failures": failed,
-            },
-            f,
-            ensure_ascii=True,
-            indent=2,
+        rows = read_filter_csv_rows(args.input)
+        t1_rules = load_tier_a_rules()
+        t2_rules = load_tier2_rules()
+        relaxed = parse_relaxed_filters(args.relax)
+        ctx = UserContext(
+            occasion=args.occasion,
+            archetype=args.archetype,
+            gender=args.gender,
+            age=args.age,
         )
+        passed, failed = filter_catalog_rows(rows=rows, ctx=ctx, rules=t1_rules, relaxed_filters=relaxed)
+        write_csv_rows(str(filtered_csv), passed)
 
-    with open(args.profile, "r", encoding="utf-8") as f:
-        profile = json.load(f)
-
-    ranked = rank_garments(rows=passed, user_profile=profile, rules=t2_rules, strictness=args.tier2_strictness)
-    if args.limit > 0:
-        ranked = ranked[: args.limit]
-
-    ranked_rows = [r.row for r in ranked]
-    _write_ranked_csv(ranked_csv, ranked_rows)
-    summary_rows = _build_summary_rows(ranked_rows)
-    _write_csv(summary_csv, summary_rows)
-
-    with explain_json.open("w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "input_rows": len(rows),
-                "tier1_passed_rows": len(passed),
-                "tier1_failed_rows": len(failed),
-                "tier2_ranked_rows": len(ranked_rows),
-                "tier2_strictness": args.tier2_strictness,
-                "profile_path": args.profile,
-                "artifacts": {
-                    "filtered_csv": str(filtered_csv),
-                    "filter_failures_json": str(filter_failures_json),
-                    "ranked_csv": str(ranked_csv),
-                    "ranked_summary_csv": str(summary_csv),
+        with filter_failures_json.open("w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "total_rows": len(rows),
+                    "passed_rows": len(passed),
+                    "failed_rows": len(failed),
+                    "context": {
+                        "occasion": args.occasion,
+                        "archetype": args.archetype,
+                        "gender": args.gender,
+                        "age": args.age,
+                        "relaxed_filters": sorted(relaxed),
+                    },
+                    "failures": failed,
                 },
-                "top_results": [
-                    {
-                        "rank": i + 1,
-                        "id": r.row.get("id", ""),
-                        "title": r.row.get("title", ""),
-                        "image_1": r.row.get("images__0__src", ""),
-                        "image_2": r.row.get("images__1__src", ""),
-                        "tier2_final_score": r.final_score,
-                        "tier2_raw_score": r.raw_score,
-                        "tier2_confidence_multiplier": r.confidence_multiplier,
-                        "tier2_flags": r.flags,
-                    }
-                    for i, r in enumerate(ranked[:25])
-                ],
-            },
-            f,
-            ensure_ascii=True,
-            indent=2,
-        )
+                f,
+                ensure_ascii=True,
+                indent=2,
+            )
 
-    print(f"input_rows={len(rows)}")
-    print(f"tier1_passed={len(passed)}")
-    print(f"tier1_failed={len(failed)}")
-    print(f"tier2_ranked={len(ranked_rows)}")
-    print(f"filtered_csv={filtered_csv}")
-    print(f"filter_failures_json={filter_failures_json}")
-    print(f"ranked_csv={ranked_csv}")
-    print(f"ranked_summary_csv={summary_csv}")
-    print(f"explain_json={explain_json}")
-    return 0
+        with open(args.profile, "r", encoding="utf-8") as f:
+            profile = json.load(f)
+
+        ranked = rank_garments(rows=passed, user_profile=profile, rules=t2_rules, strictness=args.tier2_strictness)
+        if args.limit > 0:
+            ranked = ranked[: args.limit]
+
+        ranked_rows = [r.row for r in ranked]
+        _write_ranked_csv(ranked_csv, ranked_rows)
+        summary_rows = _build_summary_rows(ranked_rows)
+        _write_csv(summary_csv, summary_rows)
+
+        with explain_json.open("w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "input_rows": len(rows),
+                    "tier1_passed_rows": len(passed),
+                    "tier1_failed_rows": len(failed),
+                    "tier2_ranked_rows": len(ranked_rows),
+                    "tier2_strictness": args.tier2_strictness,
+                    "profile_path": args.profile,
+                    "artifacts": {
+                        "filtered_csv": str(filtered_csv),
+                        "filter_failures_json": str(filter_failures_json),
+                        "ranked_csv": str(ranked_csv),
+                        "ranked_summary_csv": str(summary_csv),
+                    },
+                    "top_results": [
+                        {
+                            "rank": i + 1,
+                            "id": r.row.get("id", ""),
+                            "title": r.row.get("title", ""),
+                            "image_1": r.row.get("images__0__src", ""),
+                            "image_2": r.row.get("images__1__src", ""),
+                            "tier2_final_score": r.final_score,
+                            "tier2_raw_score": r.raw_score,
+                            "tier2_confidence_multiplier": r.confidence_multiplier,
+                            "tier2_flags": r.flags,
+                        }
+                        for i, r in enumerate(ranked[:25])
+                    ],
+                },
+                f,
+                ensure_ascii=True,
+                indent=2,
+            )
+
+        print(f"input_rows={len(rows)}")
+        print(f"tier1_passed={len(passed)}")
+        print(f"tier1_failed={len(failed)}")
+        print(f"tier2_ranked={len(ranked_rows)}")
+        print(f"filtered_csv={filtered_csv}")
+        print(f"filter_failures_json={filter_failures_json}")
+        print(f"ranked_csv={ranked_csv}")
+        print(f"ranked_summary_csv={summary_csv}")
+        print(f"explain_json={explain_json}")
+        return 0
+    except (ValueError, FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

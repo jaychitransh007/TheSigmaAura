@@ -189,7 +189,11 @@ python3 run_catalog_enrichment.py --input stores/processed_sample_catalog.csv --
 ## 13) End-to-End Styling Runbook
 - Runbook doc: `context_files/STYLING_PIPELINE_RUNBOOK.md`
 - Single-command runner:
-  - `python3 scripts/run_style_pipeline.py --input out/enriched.csv --profile out/sample_user_profile_tier2.json --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --tier2-strictness balanced --out-dir out --prefix work_classic_female_25_30`
+  - `python3 scripts/run_style_pipeline.py --input out/enriched.csv --profile out/sample_user_profile_tier2.json --occasion "Night Out" --archetype "Glamorous" --gender Female --age 25-30 --tier2-strictness balanced --out-dir out --prefix nightout_glamorous_female_25_30`
 - Final ranked list for downstream UI/review:
   - `out/<prefix>_ranked_summary.csv`
   - Includes ranked `title`, both image URLs, and scores.
+- Error handling:
+  - input/validation issues are shown as one-line `error: ...` messages
+  - no traceback for expected user-input mistakes
+  - exits with code `2` on handled input/config errors
