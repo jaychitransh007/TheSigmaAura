@@ -9,6 +9,12 @@ This is the only authoritative context document for this project.
 
 ## 2) Current Folder Layout
 - Context doc: `context_files/SINGLE_SOURCE_OF_TRUTH.md`
+- Central config directory: `config/`
+  - `config/garment_attributes.json` (all garment enum + text attributes)
+  - `config/body_harmony_attributes.json` (all body-harmony enums)
+  - `config/user_context_attributes.json` (occasion/archetype/gender/age enums + aliases + Tier 1 filter order)
+  - `config/tier1_ranked_attributes.json` (Tier 1 context-to-garment ranked filter attributes)
+  - `config/tier2_ranked_attributes.json` (Tier 2 body-harmony ranking order + body↔garment ranked mapping)
 - Source JSON catalogs: `stores/json_files/`
 - Processed per-store CSV outputs: `stores/processed_csv_files/`
 - Main sample input CSV: `stores/processed_sample_catalog.csv`
@@ -21,6 +27,16 @@ This is the only authoritative context document for this project.
 - Per-store processed CSV generator: `save_file.py`
 - Schema audit CLI: `scripts/schema_audit.py`
 - Tier A outfit filter CLI: `scripts/filter_outfits.py`
+- Tier 2 ranking CLI: `scripts/rank_outfits.py`
+
+## 3A) Config-First Runtime Contract
+- Runtime behavior must be managed from `config/` files first; code should consume config.
+- Do not hardcode enums/aliases/ranked mappings in code when config exists.
+- Current runtime loaders:
+  - `catalog_enrichment/config_registry.py`
+  - `catalog_enrichment/attributes.py` (loads garment schema attrs from config)
+  - `catalog_enrichment/styling_filters.py` (loads user context aliases + relaxable filters + Tier 1 ranked mapping from config)
+  - `catalog_enrichment/tier2_ranker.py` (loads Tier 2 ranking order/mappings from config)
 
 ## 4) Input Contract (Enrichment Pipeline)
 - Mandatory columns (validated): `description`, `images__0__src`, `images__1__src`
@@ -34,7 +50,10 @@ Source of truth: `catalog_enrichment/config.py`, `catalog_enrichment/csv_io.py`,
 - Text attributes: 2 (`PrimaryColor`, `SecondaryColor`)
 - For each attribute `X`, output includes `X` and `X_confidence` with confidence in `[0,1]`.
 
-Source of truth: `catalog_enrichment/attributes.py`, `catalog_enrichment/schema_builder.py`
+Source of truth: `config/garment_attributes.json`, `catalog_enrichment/attributes.py`, `catalog_enrichment/schema_builder.py`
+
+Body harmony profile attribute enums are centrally defined in:
+- `config/body_harmony_attributes.json`
 
 ## 6) Prompt and Model Parameters
 - System prompt is externalized at `catalog_enrichment/prompts/system_prompt.txt`.
@@ -64,6 +83,8 @@ Source of truth: `catalog_enrichment/prompts/system_prompt.txt`, `catalog_enrich
 ## 7A) Tier A Styling Filters
 - Rules file: `catalog_enrichment/tier_a_filters_v1.json`
 - Engine: `catalog_enrichment/styling_filters.py`
+- Context enums/aliases and relaxable filters are loaded from `config/user_context_attributes.json`.
+- Ranked context attribute order is loaded from `config/tier1_ranked_attributes.json`.
 - Hard filters applied in order:
   1. Price range (`2000-5000`)
   2. Occasion
@@ -71,13 +92,46 @@ Source of truth: `catalog_enrichment/prompts/system_prompt.txt`, `catalog_enrich
   4. Gender (via `GenderExpression`)
   5. Age band
 - Relaxation mode:
-  - `--relax` can disable one or more hard filters among `price`, `age`, `archetype`.
+  - `--relax` can disable one or more hard filters among `price`, `age`, `archetype`, `occasion_archetype`.
   - Supports repeated or comma-separated values.
-  - Examples: `--relax age`, `--relax age,archetype`, `--relax age --relax price`.
+  - Examples: `--relax age`, `--relax age,archetype`, `--relax occasion_archetype`, `--relax age --relax price`.
   - Invalid relax names raise an explicit error.
+- Occasion-archetype compatibility:
+  - Rules are defined in `occasion_archetype_compatibility` inside `catalog_enrichment/tier_a_filters_v1.json`.
+  - In strict mode, incompatible occasion/archetype combinations are hard-rejected.
 - CLI usage:
   - `python3 scripts/filter_outfits.py --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --input out/enriched.csv --output out/filtered_outfits.csv --fail-log out/filtered_outfits_failures.json`
   - `python3 scripts/filter_outfits.py --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --relax age,archetype --input out/enriched.csv --output out/filtered_outfits_relaxed.csv --fail-log out/filtered_outfits_relaxed_failures.json`
+
+## 7B) Tier 2 Ranking (Body Harmony Scoring)
+- Rules file: `catalog_enrichment/tier2_rules_v1.json`
+- Engine: `catalog_enrichment/tier2_ranker.py`
+- Ranked body-harmony order and body→garment priority mapping are loaded from `config/tier2_ranked_attributes.json`.
+- Formula:
+  - `sum(W_bh(a) * sum(W_ga(a,g) * match(a,g) * conf(g))) * confidence_multiplier + color_delta`
+- `W_bh` supports scalable ranked-decay weighting via `config/tier2_ranked_attributes.json` (`bh_weighting`).
+- `W_ga` ordering comes from `body_to_garment_priority_order` in `config/tier2_ranked_attributes.json`, with decay formula:
+  - `W_ga_i = r^i / Σ(r^k)`
+- Match scale:
+  - Preferred = `1.0`
+  - Acceptable = `0.5`
+  - Not Permitted = `-0.25` (penalty, not auto-exclude in Tier 2)
+  - Unlisted = `0`
+- Conflict engine:
+  - preferred intersection
+  - acceptable fallback
+  - priority override
+  - not_permitted union on each garment attribute
+- Explainability contract:
+  - CSV fields: `tier2_raw_score`, `tier2_confidence_multiplier`, `tier2_color_delta`, `tier2_final_score`, `tier2_flags`, `tier2_reasons`, `tier2_penalties`
+  - JSON sections: `conflict_engine`, `top_positive_contributions`, `top_negative_contributions`, `formula`
+- CLI usage:
+  - `python3 scripts/rank_outfits.py --input out/filtered_outfits.csv --profile out/sample_user_profile_tier2.json --output out/ranked_outfits.csv --explain out/ranked_outfits_explainability.json`
+  - `python3 scripts/rank_outfits.py --input out/filtered_outfits.csv --profile out/sample_user_profile_tier2.json --tier2-strictness safe --output out/ranked_outfits_safe.csv --explain out/ranked_outfits_safe_explainability.json`
+- Strictness switch:
+  - `--tier2-strictness balanced` (default): baseline behavior
+  - `--tier2-strictness safe`: stronger penalties, more conservative ranking
+  - `--tier2-strictness bold`: lighter penalties, stronger standout boosts
 
 ## 8) Batch Pipeline Behavior
 1. Read CSV and validate headers.

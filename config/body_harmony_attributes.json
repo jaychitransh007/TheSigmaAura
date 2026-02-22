@@ -1,0 +1,122 @@
+{
+  "version": "body_harmony_attributes_v1",
+  "enum_attributes": {
+    "HeightCategory": [
+      "PETITE",
+      "SHORT",
+      "AVERAGE",
+      "TALL",
+      "VERY_TALL"
+    ],
+    "BodyShape": [
+      "HOURGLASS",
+      "PEAR",
+      "INVERTED_TRIANGLE",
+      "RECTANGLE",
+      "APPLE",
+      "OVAL",
+      "DIAMOND",
+      "TRAPEZOID"
+    ],
+    "VisualWeight": [
+      "SHOULDER_DOMINANT",
+      "BUST_DOMINANT",
+      "MIDSECTION_DOMINANT",
+      "HIP_THIGH_DOMINANT",
+      "BALANCED"
+    ],
+    "VerticalProportion": [
+      "SHORT_TORSO_LONG_LEGS",
+      "BALANCED",
+      "LONG_TORSO_SHORT_LEGS"
+    ],
+    "ArmVolume": [
+      "SLENDER",
+      "AVERAGE",
+      "FULL_SOFT",
+      "TONED_ATHLETIC"
+    ],
+    "MidsectionState": [
+      "TONED_ATHLETIC",
+      "SOFT_AVERAGE",
+      "LOWER_BELLY_BIAS",
+      "HIGH_MIDRIFF_FULLNESS"
+    ],
+    "WaistVisibility": [
+      "DEFINED",
+      "SOFT",
+      "STRAIGHT"
+    ],
+    "BustVolume": [
+      "LOW",
+      "MEDIUM",
+      "FULL"
+    ],
+    "SkinUndertone": [
+      "COOL",
+      "WARM",
+      "NEUTRAL",
+      "OLIVE"
+    ],
+    "SkinSurfaceColor": [
+      "FAIR",
+      "WHEATISH_LIGHT",
+      "WHEATISH_MEDIUM",
+      "DUSKY",
+      "DARK",
+      "DEEP"
+    ],
+    "SkinContrast": [
+      "MUTED_SOFT",
+      "MEDIUM_CONTRAST",
+      "HIGH_CONTRAST"
+    ],
+    "FaceShape": [
+      "OVAL",
+      "ROUND",
+      "SQUARE",
+      "HEART",
+      "TRIANGLE",
+      "OBLONG",
+      "DIAMOND"
+    ],
+    "NeckLength": [
+      "SHORT",
+      "AVERAGE",
+      "LONG"
+    ],
+    "HairLength": [
+      "PIXIE_SHORT",
+      "BOB_CHIN",
+      "SHOULDER_LENGTH",
+      "LONG"
+    ],
+    "HairColor": [
+      "JET_BLACK",
+      "DARK_BROWN",
+      "MEDIUM_BROWN",
+      "GOLDEN_BROWN",
+      "BLONDE",
+      "AUBURN_RED",
+      "HIGHLIGHTED",
+      "FASHION_COLOR"
+    ]
+  },
+  "attribute_names": [
+    "HeightCategory",
+    "BodyShape",
+    "VisualWeight",
+    "VerticalProportion",
+    "ArmVolume",
+    "MidsectionState",
+    "WaistVisibility",
+    "BustVolume",
+    "SkinUndertone",
+    "SkinSurfaceColor",
+    "SkinContrast",
+    "FaceShape",
+    "NeckLength",
+    "HairLength",
+    "HairColor"
+  ]
+}

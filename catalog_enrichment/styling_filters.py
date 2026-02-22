@@ -4,56 +4,31 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
+from .config_registry import load_tier1_ranked_attributes, load_user_context_attributes
+
 
 RULES_PATH = Path(__file__).resolve().parent / "tier_a_filters_v1.json"
+USER_CONTEXT_CONFIG = load_user_context_attributes()
+TIER1_RANKED_CONFIG = load_tier1_ranked_attributes()
 
-_OCCASION_ALIASES = {
-    "work mode": "work_mode",
-    "work_mode": "work_mode",
-    "social casual": "social_casual",
-    "social_casual": "social_casual",
-    "night out": "night_out",
-    "night_out": "night_out",
-    "formal events": "formal_events",
-    "formal_events": "formal_events",
-    "festive": "festive",
-    "beach & vacation": "beach_vacation",
-    "beach_vacation": "beach_vacation",
-    "dating": "dating",
-    "wedding vibes": "wedding_vibes",
-    "wedding_vibes": "wedding_vibes",
-}
 
-_ARCHETYPE_ALIASES = {
-    "classic": "classic",
-    "minimalist": "minimalist",
-    "modern professional": "modern_professional",
-    "modern_professional": "modern_professional",
-    "romantic": "romantic",
-    "glamorous": "glamorous",
-    "dramatic": "dramatic",
-    "creative": "creative",
-    "natural": "natural",
-    "sporty": "sporty",
-    "trend-forward": "trend_forward",
-    "trend forward": "trend_forward",
-    "trend_forward": "trend_forward",
-    "bohemian": "bohemian",
-    "edgy": "edgy",
-}
+def _build_alias_map(dimension_name: str) -> Dict[str, str]:
+    dimension = (USER_CONTEXT_CONFIG.get("dimensions") or {}).get(dimension_name) or {}
+    aliases = dict(dimension.get("aliases") or {})
+    canonical_values = list(dimension.get("canonical_values") or [])
+    for val in canonical_values:
+        aliases.setdefault(str(val), str(val))
+    return aliases
 
-_GENDER_ALIASES = {"male": "male", "female": "female"}
 
-_AGE_ALIASES = {
-    "18-24": "18_24",
-    "18_24": "18_24",
-    "25-30": "25_30",
-    "25_30": "25_30",
-    "30-35": "30_35",
-    "30_35": "30_35",
-}
+_OCCASION_ALIASES = _build_alias_map("occasion")
+_ARCHETYPE_ALIASES = _build_alias_map("archetype")
+_GENDER_ALIASES = _build_alias_map("gender")
+_AGE_ALIASES = _build_alias_map("age")
 
-RELAXABLE_FILTERS = {"price", "age", "archetype"}
+RELAXABLE_FILTERS = set(USER_CONTEXT_CONFIG.get("relaxable_filters") or [])
+if not RELAXABLE_FILTERS:
+    RELAXABLE_FILTERS = {"price", "age", "archetype", "occasion_archetype"}
 
 
 @dataclass(frozen=True)
@@ -114,14 +89,28 @@ def _row_matches_filters(
 ) -> Tuple[bool, List[str]]:
     failures: List[str] = []
 
+    if "occasion_archetype" not in relaxed_filters:
+        allowed_archetypes = set(rules["occasion_archetype_compatibility"][occasion_key])
+        if archetype_key not in allowed_archetypes:
+            failures.append("occasion_archetype")
+
     if "price" not in relaxed_filters:
         price = _to_float(row.get("price", ""))
         pr = rules["price_range_inr"]
         if not (pr["min"] <= price <= pr["max"]):
             failures.append("price")
 
+    ranked_by_context = dict(TIER1_RANKED_CONFIG.get("context_to_garment_attribute_priority_order") or {})
+
     def check_group(group_name: str, group_rules: Dict[str, List[str]]) -> None:
-        for attr, allowed in group_rules.items():
+        ordered_attrs = list(ranked_by_context.get(group_name) or [])
+        for attr in group_rules.keys():
+            if attr not in ordered_attrs:
+                ordered_attrs.append(attr)
+        for attr in ordered_attrs:
+            allowed = group_rules.get(attr)
+            if allowed is None:
+                continue
             val = (row.get(attr, "") or "").strip()
             if not val or val not in allowed:
                 failures.append(f"{group_name}:{attr}")

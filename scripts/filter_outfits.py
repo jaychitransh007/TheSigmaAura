@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", default="out/enriched.csv", help="Input enriched CSV path.")
     parser.add_argument("--occasion", required=True, help="Occasion context (e.g. 'Work Mode').")
     parser.add_argument("--archetype", required=True, help="Archetype context (e.g. 'Classic').")
-    parser.add_argument("--gender", required=True, choices=["Male", "Female", "male", "female"], help="User gender.")
+    parser.add_argument("--gender", required=True, help="User gender.")
     parser.add_argument("--age", required=True, help="Age band: 18-24, 25-30, or 30-35.")
     parser.add_argument("--output", default="out/filtered_outfits.csv", help="Output CSV path for passing items.")
     parser.add_argument("--fail-log", default="out/filtered_outfits_failures.json", help="Failure reason log path.")
@@ -32,7 +32,10 @@ def parse_args() -> argparse.Namespace:
         "--relax",
         action="append",
         default=[],
-        help="Relax hard filters: price, age, archetype. Repeat or comma-separate (e.g. --relax age --relax price,archetype).",
+        help=(
+            "Relax hard filters: price, age, archetype, occasion_archetype. "
+            "Repeat or comma-separate (e.g. --relax age --relax price,archetype)."
+        ),
     )
     return parser.parse_args()
 

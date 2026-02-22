@@ -54,6 +54,77 @@
       "TimeOfDay": ["day_to_night", "evening", "night"]
     }
   },
+  "occasion_archetype_compatibility": {
+    "work_mode": [
+      "classic",
+      "minimalist",
+      "modern_professional",
+      "natural",
+      "sporty",
+      "edgy"
+    ],
+    "social_casual": [
+      "natural",
+      "romantic",
+      "sporty",
+      "bohemian",
+      "creative",
+      "minimalist",
+      "classic",
+      "trend_forward",
+      "edgy"
+    ],
+    "night_out": [
+      "glamorous",
+      "edgy",
+      "dramatic",
+      "trend_forward",
+      "romantic",
+      "creative"
+    ],
+    "formal_events": [
+      "classic",
+      "modern_professional",
+      "glamorous",
+      "dramatic",
+      "minimalist"
+    ],
+    "festive": [
+      "romantic",
+      "glamorous",
+      "bohemian",
+      "creative",
+      "classic",
+      "dramatic",
+      "trend_forward"
+    ],
+    "beach_vacation": [
+      "natural",
+      "bohemian",
+      "sporty",
+      "romantic",
+      "creative",
+      "trend_forward"
+    ],
+    "dating": [
+      "romantic",
+      "glamorous",
+      "minimalist",
+      "edgy",
+      "classic",
+      "trend_forward",
+      "natural"
+    ],
+    "wedding_vibes": [
+      "glamorous",
+      "romantic",
+      "classic",
+      "dramatic",
+      "bohemian",
+      "creative",
+      "trend_forward"
+    ]
+  },
   "archetypes": {
     "classic": {
       "SilhouetteType": ["straight", "a_line", "fitted", "tapered", "wrap"],

@@ -1,0 +1,312 @@
+{
+  "version": "tier2_ranked_attributes_v1",
+  "bh_weighting": {
+    "mode": "ranked_decay",
+    "decay_factor": 0.8,
+    "ordered_attributes": [
+      "HeightCategory",
+      "BodyShape",
+      "VisualWeight",
+      "VerticalProportion",
+      "ArmVolume",
+      "MidsectionState",
+      "WaistVisibility",
+      "BustVolume",
+      "SkinUndertone",
+      "SkinSurfaceColor",
+      "SkinContrast",
+      "FaceShape",
+      "NeckLength",
+      "HairLength",
+      "HairColor"
+    ]
+  },
+  "ga_weighting": {
+    "decay_factor": 0.8,
+    "formula": "W_ga_i = r^i / sum(r^k)"
+  },
+  "body_to_garment_priority_order": {
+    "HeightCategory": [
+      "GarmentLength",
+      "PatternScale",
+      "PatternOrientation",
+      "VisualWeightPlacement",
+      "WaistDefinition",
+      "FabricWeight",
+      "ColorCount",
+      "ContrastLevel",
+      "SilhouetteType"
+    ],
+    "BodyShape": [
+      "SilhouetteType",
+      "FitType",
+      "WaistDefinition",
+      "VisualWeightPlacement",
+      "BodyFocusZone",
+      "NecklineType",
+      "EmbellishmentLevel",
+      "FabricDrape",
+      "FabricWeight",
+      "FabricTexture",
+      "SleeveLength",
+      "ConstructionDetail"
+    ],
+    "VisualWeight": [
+      "SilhouetteType",
+      "VisualWeightPlacement",
+      "BodyFocusZone",
+      "EmbellishmentLevel",
+      "EmbellishmentZone",
+      "PatternScale",
+      "NecklineType",
+      "FabricDrape",
+      "FabricTexture"
+    ],
+    "VerticalProportion": [
+      "WaistDefinition",
+      "GarmentLength",
+      "VisualWeightPlacement",
+      "SilhouetteType"
+    ],
+    "ArmVolume": [
+      "SleeveLength",
+      "SkinExposureLevel",
+      "FitType",
+      "BodyFocusZone",
+      "EmbellishmentLevel",
+      "EmbellishmentZone",
+      "NecklineType",
+      "FabricTexture"
+    ],
+    "MidsectionState": [
+      "SilhouetteType",
+      "FitType",
+      "WaistDefinition",
+      "FabricDrape",
+      "FabricTexture",
+      "BodyFocusZone",
+      "EmbellishmentLevel",
+      "EmbellishmentZone",
+      "ConstructionDetail"
+    ],
+    "WaistVisibility": [
+      "WaistDefinition",
+      "SilhouetteType",
+      "FitType",
+      "BodyFocusZone",
+      "ConstructionDetail"
+    ],
+    "BustVolume": [
+      "NecklineType",
+      "NecklineDepth",
+      "SilhouetteType",
+      "FitType",
+      "FabricDrape",
+      "BodyFocusZone",
+      "SleeveLength",
+      "EmbellishmentLevel",
+      "EmbellishmentZone",
+      "FabricWeight",
+      "FabricTexture"
+    ],
+    "SkinUndertone": [
+      "ColorTemperature",
+      "ColorSaturation"
+    ],
+    "SkinSurfaceColor": [
+      "ColorTemperature",
+      "ColorSaturation",
+      "ContrastLevel",
+      "ColorValue",
+      "FabricTexture"
+    ],
+    "SkinContrast": [
+      "ContrastLevel",
+      "ColorSaturation",
+      "PatternType",
+      "ColorCount"
+    ],
+    "FaceShape": [
+      "NecklineType",
+      "NecklineDepth",
+      "EmbellishmentLevel",
+      "EmbellishmentZone"
+    ],
+    "NeckLength": [
+      "NecklineType",
+      "NecklineDepth",
+      "EmbellishmentLevel",
+      "EmbellishmentZone"
+    ],
+    "HairLength": [
+      "NecklineType",
+      "NecklineDepth"
+    ],
+    "HairColor": [
+      "ContrastLevel",
+      "ColorTemperature",
+      "ColorValue"
+    ]
+  },
+  "garment_to_body_harmony_priority_order": {
+    "GarmentCategory": [],
+    "GarmentSubtype": [],
+    "GarmentLength": [
+      "HeightCategory",
+      "VerticalProportion"
+    ],
+    "SilhouetteContour": [],
+    "SilhouetteType": [
+      "HeightCategory",
+      "BodyShape",
+      "VisualWeight",
+      "VerticalProportion",
+      "MidsectionState",
+      "WaistVisibility",
+      "BustVolume"
+    ],
+    "VolumeProfile": [],
+    "FitEase": [],
+    "FitType": [
+      "BodyShape",
+      "ArmVolume",
+      "MidsectionState",
+      "WaistVisibility",
+      "BustVolume"
+    ],
+    "ShoulderStructure": [],
+    "NecklineType": [
+      "BodyShape",
+      "VisualWeight",
+      "ArmVolume",
+      "BustVolume",
+      "FaceShape",
+      "NeckLength",
+      "HairLength"
+    ],
+    "NecklineDepth": [
+      "BustVolume",
+      "FaceShape",
+      "NeckLength",
+      "HairLength"
+    ],
+    "SleeveLength": [
+      "BodyShape",
+      "ArmVolume",
+      "BustVolume"
+    ],
+    "SkinExposureLevel": [
+      "ArmVolume"
+    ],
+    "WaistDefinition": [
+      "HeightCategory",
+      "BodyShape",
+      "VerticalProportion",
+      "MidsectionState",
+      "WaistVisibility"
+    ],
+    "HipDefinition": [],
+    "FabricDrape": [
+      "BodyShape",
+      "VisualWeight",
+      "MidsectionState",
+      "BustVolume"
+    ],
+    "FabricWeight": [
+      "HeightCategory",
+      "BodyShape",
+      "BustVolume"
+    ],
+    "FabricTexture": [
+      "BodyShape",
+      "VisualWeight",
+      "ArmVolume",
+      "MidsectionState",
+      "BustVolume",
+      "SkinSurfaceColor"
+    ],
+    "StretchLevel": [],
+    "EdgeSharpness": [],
+    "ConstructionDetail": [
+      "BodyShape",
+      "MidsectionState",
+      "WaistVisibility"
+    ],
+    "EmbellishmentLevel": [
+      "BodyShape",
+      "VisualWeight",
+      "ArmVolume",
+      "MidsectionState",
+      "BustVolume",
+      "FaceShape",
+      "NeckLength"
+    ],
+    "EmbellishmentType": [],
+    "EmbellishmentZone": [
+      "VisualWeight",
+      "ArmVolume",
+      "MidsectionState",
+      "BustVolume",
+      "FaceShape",
+      "NeckLength"
+    ],
+    "VerticalWeightBias": [],
+    "VisualWeightPlacement": [
+      "HeightCategory",
+      "BodyShape",
+      "VisualWeight",
+      "VerticalProportion"
+    ],
+    "StructuralFocus": [],
+    "BodyFocusZone": [
+      "BodyShape",
+      "VisualWeight",
+      "ArmVolume",
+      "MidsectionState",
+      "WaistVisibility",
+      "BustVolume"
+    ],
+    "LineDirection": [],
+    "PatternType": [
+      "SkinContrast"
+    ],
+    "PatternScale": [
+      "HeightCategory",
+      "VisualWeight"
+    ],
+    "PatternOrientation": [
+      "HeightCategory"
+    ],
+    "ContrastLevel": [
+      "HeightCategory",
+      "SkinSurfaceColor",
+      "SkinContrast",
+      "HairColor"
+    ],
+    "ColorTemperature": [
+      "SkinUndertone",
+      "SkinSurfaceColor",
+      "HairColor"
+    ],
+    "ColorSaturation": [
+      "SkinUndertone",
+      "SkinSurfaceColor",
+      "SkinContrast"
+    ],
+    "ColorValue": [
+      "SkinSurfaceColor",
+      "HairColor"
+    ],
+    "ColorCount": [
+      "HeightCategory",
+      "SkinContrast"
+    ],
+    "FormalitySignalStrength": [],
+    "FormalityLevel": [],
+    "OccasionFit": [],
+    "OccasionSignal": [],
+    "TimeOfDay": [],
+    "GenderExpression": [],
+    "StylingCompleteness": []
+  }
+}

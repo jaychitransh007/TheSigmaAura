@@ -1,0 +1,406 @@
+{
+  "enum_attributes": {
+    "GarmentCategory": [
+      "top",
+      "bottom",
+      "outerwear",
+      "one_piece",
+      "set",
+      "accessory"
+    ],
+    "GarmentSubtype": [
+      "shirt",
+      "tshirt",
+      "blouse",
+      "kurta",
+      "kurti",
+      "sweater",
+      "sweatshirt",
+      "cardigan",
+      "hoodie",
+      "shrug",
+      "poncho",
+      "kaftan",
+      "dupatta",
+      "jacket",
+      "blazer",
+      "coat",
+      "nehru_jacket",
+      "shacket",
+      "trouser",
+      "pants",
+      "jeans",
+      "palazzo",
+      "skirt",
+      "shorts",
+      "track_pants",
+      "leggings",
+      "jeggings",
+      "dungarees",
+      "dress",
+      "gown",
+      "jumpsuit",
+      "playsuit",
+      "saree",
+      "salwar_suit",
+      "anarkali",
+      "co_ord_set",
+      "kurta_set",
+      "salwar_set",
+      "lehenga_set",
+      "suit_set",
+      "tracksuit",
+      "tunic",
+      "ethnic_set"
+    ],
+    "GarmentLength": [
+      "cropped",
+      "waist",
+      "hip",
+      "mid_thigh",
+      "thigh",
+      "knee",
+      "calf",
+      "ankle",
+      "floor"
+    ],
+    "SilhouetteContour": [
+      "straight",
+      "a_line",
+      "tapered",
+      "flared",
+      "fitted",
+      "box",
+      "wrap",
+      "empire",
+      "peplum",
+      "mermaid",
+      "asymmetrical"
+    ],
+    "SilhouetteType": [
+      "straight",
+      "fitted",
+      "relaxed",
+      "oversized",
+      "flared",
+      "a_line",
+      "tapered",
+      "boxy",
+      "wrap",
+      "peplum",
+      "empire",
+      "mermaid"
+    ],
+    "VolumeProfile": [
+      "flat",
+      "moderate",
+      "voluminous",
+      "exaggerated"
+    ],
+    "FitEase": [
+      "regular",
+      "slim",
+      "relaxed",
+      "oversized"
+    ],
+    "FitType": [
+      "slim",
+      "regular",
+      "relaxed",
+      "boxy",
+      "tailored",
+      "loose"
+    ],
+    "ShoulderStructure": [
+      "natural",
+      "dropped",
+      "extended",
+      "padded",
+      "sculpted"
+    ],
+    "NecklineType": [
+      "crew",
+      "v_neck",
+      "scoop",
+      "collared",
+      "square",
+      "high_neck",
+      "boat",
+      "halter",
+      "sweetheart",
+      "asymmetric",
+      "notched",
+      "mandarin"
+    ],
+    "NecklineDepth": [
+      "closed",
+      "shallow",
+      "moderate",
+      "deep",
+      "very_deep"
+    ],
+    "SleeveLength": [
+      "sleeveless",
+      "cap",
+      "short",
+      "elbow",
+      "three_quarter",
+      "full",
+      "not_applicable"
+    ],
+    "SkinExposureLevel": [
+      "very_low",
+      "low",
+      "medium",
+      "high",
+      "very_high"
+    ],
+    "WaistDefinition": [
+      "undefined",
+      "natural",
+      "defined",
+      "cinched",
+      "belted",
+      "dropped",
+      "empire"
+    ],
+    "HipDefinition": [
+      "undefined",
+      "shaped",
+      "flared",
+      "tapered"
+    ],
+    "FabricDrape": [
+      "fluid",
+      "soft_structured",
+      "crisp",
+      "rigid",
+      "sculpted"
+    ],
+    "FabricWeight": [
+      "very_light",
+      "light",
+      "medium",
+      "heavy"
+    ],
+    "FabricTexture": [
+      "smooth",
+      "ribbed",
+      "knit",
+      "pleated",
+      "matte",
+      "sheen",
+      "textured",
+      "metallic",
+      "embroidered"
+    ],
+    "StretchLevel": [
+      "none",
+      "low",
+      "moderate",
+      "high"
+    ],
+    "EdgeSharpness": [
+      "soft",
+      "defined",
+      "sharp"
+    ],
+    "ConstructionDetail": [
+      "none",
+      "ruched",
+      "gathered",
+      "draped",
+      "pleated",
+      "smocked",
+      "asymmetric_hem"
+    ],
+    "EmbellishmentLevel": [
+      "none",
+      "minimal",
+      "subtle",
+      "moderate",
+      "heavy",
+      "statement"
+    ],
+    "EmbellishmentType": [
+      "none",
+      "print",
+      "embroidery",
+      "beading",
+      "sequins",
+      "lace",
+      "applique",
+      "studs",
+      "mirror_work",
+      "distressing",
+      "mixed"
+    ],
+    "EmbellishmentZone": [
+      "neckline",
+      "shoulder",
+      "waist",
+      "hem",
+      "sleeve",
+      "back",
+      "allover",
+      "none"
+    ],
+    "VerticalWeightBias": [
+      "balanced",
+      "upper",
+      "upper_biased",
+      "lower_biased",
+      "lower"
+    ],
+    "VisualWeightPlacement": [
+      "upper",
+      "upper_biased",
+      "center",
+      "lower_biased",
+      "lower",
+      "distributed"
+    ],
+    "StructuralFocus": [
+      "neckline",
+      "shoulder",
+      "waist",
+      "hip",
+      "hem",
+      "sleeve",
+      "distributed"
+    ],
+    "BodyFocusZone": [
+      "shoulders",
+      "bust",
+      "waist",
+      "hips",
+      "legs",
+      "back",
+      "full_length",
+      "face_neck"
+    ],
+    "LineDirection": [
+      "minimal",
+      "vertical",
+      "horizontal",
+      "diagonal",
+      "mixed"
+    ],
+    "PatternType": [
+      "solid",
+      "stripes_vertical",
+      "stripes_horizontal",
+      "checks",
+      "abstract",
+      "floral",
+      "geometric",
+      "ethnic",
+      "motif",
+      "textured",
+      "animal"
+    ],
+    "PatternScale": [
+      "micro",
+      "small",
+      "medium",
+      "large",
+      "mixed",
+      "oversized"
+    ],
+    "PatternOrientation": [
+      "vertical",
+      "horizontal",
+      "diagonal",
+      "allover"
+    ],
+    "ContrastLevel": [
+      "low",
+      "medium",
+      "high",
+      "very_high"
+    ],
+    "ColorTemperature": [
+      "neutral",
+      "warm",
+      "cool",
+      "mixed"
+    ],
+    "ColorSaturation": [
+      "muted",
+      "medium",
+      "high",
+      "very_high"
+    ],
+    "ColorValue": [
+      "very_light",
+      "light",
+      "mid",
+      "dark",
+      "very_dark"
+    ],
+    "ColorCount": [
+      "single",
+      "tonal",
+      "two_color",
+      "multi_color"
+    ],
+    "FormalitySignalStrength": [
+      "low",
+      "medium",
+      "high",
+      "very_high"
+    ],
+    "FormalityLevel": [
+      "casual",
+      "smart_casual",
+      "semi_formal",
+      "formal",
+      "ceremonial"
+    ],
+    "OccasionFit": [
+      "very_casual",
+      "casual",
+      "smart_casual",
+      "semi_formal",
+      "formal",
+      "traditional",
+      "festive",
+      "party",
+      "workwear",
+      "active",
+      "travel"
+    ],
+    "OccasionSignal": [
+      "daily",
+      "office",
+      "party",
+      "festive",
+      "evening",
+      "athletic",
+      "travel"
+    ],
+    "TimeOfDay": [
+      "day",
+      "evening",
+      "night",
+      "day_to_night"
+    ],
+    "GenderExpression": [
+      "masculine",
+      "feminine",
+      "androgynous",
+      "unisex"
+    ],
+    "StylingCompleteness": [
+      "complete",
+      "needs_topwear",
+      "needs_bottomwear",
+      "needs_innerwear",
+      "dual_dependency"
+    ]
+  },
+  "text_attributes": [
+    "PrimaryColor",
+    "SecondaryColor"
+  ]
+}

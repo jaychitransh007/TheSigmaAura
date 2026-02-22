@@ -1,0 +1,37 @@
+{
+  "version": "tier1_ranked_attributes_v1",
+  "tier1_filter_priority_order": [
+    "price",
+    "occasion",
+    "occasion_archetype",
+    "archetype",
+    "gender",
+    "age"
+  ],
+  "context_to_garment_attribute_priority_order": {
+    "occasion": [
+      "OccasionFit",
+      "OccasionSignal",
+      "FormalityLevel",
+      "TimeOfDay"
+    ],
+    "archetype": [
+      "SilhouetteType",
+      "FitType",
+      "PatternType",
+      "ColorSaturation",
+      "ContrastLevel",
+      "EmbellishmentLevel"
+    ],
+    "gender": [
+      "GenderExpression"
+    ],
+    "age": [
+      "SkinExposureLevel",
+      "NecklineDepth",
+      "FormalityLevel",
+      "EmbellishmentLevel",
+      "PatternScale"
+    ]
+  }
+}
