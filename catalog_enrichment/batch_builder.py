@@ -41,8 +41,6 @@ def build_request_body(row: Dict[str, str], config: PipelineConfig) -> Dict:
 
     return {
         "model": config.model,
-        "temperature": config.temperature,
-        "top_p": config.top_p,
         "input": [
             {
                 "role": "system",

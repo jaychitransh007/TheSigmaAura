@@ -7,9 +7,7 @@ MANDATORY_COLUMNS = ["description", "images__0__src", "images__1__src"]
 
 @dataclass(frozen=True)
 class PipelineConfig:
-    model: str = "gpt-5-nano"
-    temperature: float = 0
-    top_p: float = 1
+    model: str = "gpt-5-mini"
     endpoint: str = "/v1/responses"
     completion_window: str = "24h"
     poll_interval_seconds: int = 30

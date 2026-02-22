@@ -5,7 +5,7 @@ Last reconciled: February 22, 2026
 This is the only authoritative context document for this project.
 
 ## 1) Project Purpose
-- Enrich a catalog CSV with garment attributes and per-attribute confidence using OpenAI Batch API (`/v1/responses`) and `gpt-5-nano`.
+- Enrich a catalog CSV with garment attributes and per-attribute confidence using OpenAI Batch API (`/v1/responses`) and `gpt-5-mini`.
 
 ## 2) Current Folder Layout
 - Context doc: `context_files/SINGLE_SOURCE_OF_TRUTH.md`
@@ -35,12 +35,11 @@ Source of truth: `catalog_enrichment/config.py`, `catalog_enrichment/csv_io.py`,
 
 Source of truth: `catalog_enrichment/attributes.py`, `catalog_enrichment/schema_builder.py`
 
-## 6) Prompt and Sampling
+## 6) Prompt and Model Parameters
 - System prompt is externalized at `catalog_enrichment/prompts/system_prompt.txt`.
 - Prompt includes drift-priority micro-definitions, tie-break rules, and cross-field consistency rules.
-- Request sampling parameters are fixed in config:
-  - `temperature = 0`
-  - `top_p = 1`
+- Model is fixed in config as `gpt-5-mini`.
+- Batch requests do not send `temperature` or `top_p`.
 
 Source of truth: `catalog_enrichment/prompts/system_prompt.txt`, `catalog_enrichment/config.py`, `catalog_enrichment/batch_builder.py`
 
@@ -73,6 +72,11 @@ Source of truth: `catalog_enrichment/prompts/system_prompt.txt`, `catalog_enrich
 9. Merge model fields into original rows.
 10. Write enriched CSV and `out/run_report.json`.
 11. If rows fail, write `out/retry_batch_input.jsonl`.
+
+Result expectation:
+- `enriched.csv` always contains all schema-defined attribute columns and confidence columns.
+- Individual attribute values may be null/blank when the model is uncertain.
+- Use a fresh `--out-dir` per run (or clear old batch artifacts) to avoid stale-output merges.
 
 Source of truth: `catalog_enrichment/main.py`, `catalog_enrichment/batch_runner.py`, `catalog_enrichment/response_parser.py`, `catalog_enrichment/merge_writer.py`, `catalog_enrichment/quality.py`
 
