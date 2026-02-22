@@ -20,6 +20,7 @@ This is the only authoritative context document for this project.
 - Store JSON flattener: `stores/json_files/json_to_dataframe.py`
 - Per-store processed CSV generator: `save_file.py`
 - Schema audit CLI: `scripts/schema_audit.py`
+- Tier A outfit filter CLI: `scripts/filter_outfits.py`
 
 ## 4) Input Contract (Enrichment Pipeline)
 - Mandatory columns (validated): `description`, `images__0__src`, `images__1__src`
@@ -59,6 +60,24 @@ Source of truth: `catalog_enrichment/prompts/system_prompt.txt`, `catalog_enrich
     - `SilhouetteContour` vs `SilhouetteType`
     - `FitEase` vs `FitType`
     - `VerticalWeightBias` vs `VisualWeightPlacement`
+
+## 7A) Tier A Styling Filters
+- Rules file: `catalog_enrichment/tier_a_filters_v1.json`
+- Engine: `catalog_enrichment/styling_filters.py`
+- Hard filters applied in order:
+  1. Price range (`2000-5000`)
+  2. Occasion
+  3. Archetype
+  4. Gender (via `GenderExpression`)
+  5. Age band
+- Relaxation mode:
+  - `--relax` can disable one or more hard filters among `price`, `age`, `archetype`.
+  - Supports repeated or comma-separated values.
+  - Examples: `--relax age`, `--relax age,archetype`, `--relax age --relax price`.
+  - Invalid relax names raise an explicit error.
+- CLI usage:
+  - `python3 scripts/filter_outfits.py --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --input out/enriched.csv --output out/filtered_outfits.csv --fail-log out/filtered_outfits_failures.json`
+  - `python3 scripts/filter_outfits.py --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --relax age,archetype --input out/enriched.csv --output out/filtered_outfits_relaxed.csv --fail-log out/filtered_outfits_relaxed_failures.json`
 
 ## 8) Batch Pipeline Behavior
 1. Read CSV and validate headers.
