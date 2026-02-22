@@ -7,6 +7,9 @@ Last updated: February 22, 2026
 2. Run Tier 1 hard filtering
 3. Run Tier 2 personalized ranking
 
+Single-command orchestration is available via:
+- `scripts/run_style_pipeline.py`
+
 ## 0) Prerequisites
 - `OPENAI_API_KEY` available in environment or `.env`
 - Input CSV has mandatory columns:
@@ -85,11 +88,27 @@ If batch run fails:
 2. check model params in request body
 3. avoid stale output merges by using new `--out-dir`
 
-## 5) Core Artifacts
+## 5) Single Command Runbook
+```bash
+python3 scripts/run_style_pipeline.py \
+  --input out/enriched.csv \
+  --profile out/sample_user_profile_tier2.json \
+  --occasion "Work Mode" \
+  --archetype "Classic" \
+  --gender Female \
+  --age 25-30 \
+  --tier2-strictness balanced \
+  --out-dir out \
+  --prefix runbook_demo
+```
+
+Final ranked output:
+- `out/runbook_demo_ranked_summary.csv`
+- includes rank, title, image URLs, and scores.
+## 6) Core Artifacts
 - Enriched CSV: `out/enriched.csv`
 - Schema audit: `out/schema_audit.json`
 - Tier 1 pass CSV: `out/filtered_outfits.csv`
 - Tier 1 fail log: `out/filtered_outfits_failures.json`
 - Tier 2 ranked CSV: `out/ranked_outfits.csv`
 - Tier 2 explainability JSON: `out/ranked_outfits_explainability.json`
-

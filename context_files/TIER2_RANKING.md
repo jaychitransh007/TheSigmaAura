@@ -10,6 +10,8 @@ Engine:
 - `catalog_enrichment/tier2_ranker.py`
 - CLI: `scripts/rank_outfits.py`
 - Rules: `catalog_enrichment/tier2_rules_v1.json`
+- Ranked mappings config: `config/tier2_ranked_attributes.json`
+- End-to-end runner (invokes Tier 2): `scripts/run_style_pipeline.py`
 
 ## Inputs
 - Tier 1 filtered CSV (`out/filtered_outfits.csv` or equivalent)

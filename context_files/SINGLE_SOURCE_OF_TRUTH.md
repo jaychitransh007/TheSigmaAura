@@ -28,6 +28,7 @@ This is the only authoritative context document for this project.
 - Schema audit CLI: `scripts/schema_audit.py`
 - Tier A outfit filter CLI: `scripts/filter_outfits.py`
 - Tier 2 ranking CLI: `scripts/rank_outfits.py`
+- End-to-end styling runbook CLI: `scripts/run_style_pipeline.py`
 
 ## 3A) Config-First Runtime Contract
 - Runtime behavior must be managed from `config/` files first; code should consume config.
@@ -175,3 +176,20 @@ python3 run_catalog_enrichment.py --input stores/processed_sample_catalog.csv --
 python3 run_catalog_enrichment.py --input stores/processed_sample_catalog.csv --output out/enriched.csv --mode run_batch --out-dir out
 python3 run_catalog_enrichment.py --input stores/processed_sample_catalog.csv --output out/enriched.csv --mode merge --out-dir out --batch-output-jsonl out/batch_output.jsonl
 ```
+
+## 12) Test Suite
+- Master test doc: `test_suite.md`
+- Test runner: `python3 -m unittest discover -s tests -v`
+- Test modules:
+  - `tests/test_config_and_schema.py`
+  - `tests/test_batch_builder.py`
+  - `tests/test_tier1_filters.py`
+  - `tests/test_tier2_ranker.py`
+
+## 13) End-to-End Styling Runbook
+- Runbook doc: `context_files/STYLING_PIPELINE_RUNBOOK.md`
+- Single-command runner:
+  - `python3 scripts/run_style_pipeline.py --input out/enriched.csv --profile out/sample_user_profile_tier2.json --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --tier2-strictness balanced --out-dir out --prefix work_classic_female_25_30`
+- Final ranked list for downstream UI/review:
+  - `out/<prefix>_ranked_summary.csv`
+  - Includes ranked `title`, both image URLs, and scores.

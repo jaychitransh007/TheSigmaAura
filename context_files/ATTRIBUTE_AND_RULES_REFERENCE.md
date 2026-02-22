@@ -4,7 +4,15 @@ Last updated: February 22, 2026
 
 ## Runtime Attribute Sources
 - Garment attributes:
-  - `catalog_enrichment/attributes.py`
+  - `config/garment_attributes.json`
+  - loaded by `catalog_enrichment/attributes.py`
+- Body harmony attributes:
+  - `config/body_harmony_attributes.json`
+- User context aliases and filter controls:
+  - `config/user_context_attributes.json`
+- Ranked mappings:
+  - `config/tier1_ranked_attributes.json`
+  - `config/tier2_ranked_attributes.json`
 - Structured output schema:
   - `catalog_enrichment/schema_builder.py`
 - Prompt instructions:
@@ -31,6 +39,8 @@ Last updated: February 22, 2026
   - `scripts/filter_outfits.py`
 - Tier 2 ranking:
   - `scripts/rank_outfits.py`
+- End-to-end filter+rank:
+  - `scripts/run_style_pipeline.py`
 - Schema audit:
   - `scripts/schema_audit.py`
 
@@ -63,4 +73,3 @@ These adjust:
 - skin merge penalty scale
 
 without changing base body-harmony rules.
-

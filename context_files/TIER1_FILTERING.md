@@ -13,6 +13,8 @@ Inputs:
   - `gender`
   - `age`
 - Tier 1 rule config (`catalog_enrichment/tier_a_filters_v1.json`)
+- User context aliases + relaxable filters (`config/user_context_attributes.json`)
+- Ranked context->garment order (`config/tier1_ranked_attributes.json`)
 
 Outputs:
 - Filtered CSV of pass candidates
@@ -21,6 +23,7 @@ Outputs:
 Engine:
 - `catalog_enrichment/styling_filters.py`
 - CLI: `scripts/filter_outfits.py`
+- End-to-end runner (invokes Tier 1): `scripts/run_style_pipeline.py`
 
 ## Hard Filter Order
 Applied in this sequence:
