@@ -3,6 +3,7 @@ import unittest
 from catalog_enrichment.styling_filters import (
     UserContext,
     filter_catalog_rows,
+    filter_catalog_rows_minimal_hard,
     load_tier_a_rules,
     parse_relaxed_filters,
 )
@@ -110,6 +111,21 @@ class Tier1FilterTests(unittest.TestCase):
         passed, failed = filter_catalog_rows(rows=[bad], ctx=self.ctx, rules=self.rules)
         self.assertEqual(0, len(passed))
         self.assertIn("gender:GenderExpression", failed[0]["fail_reasons"])
+
+    def test_minimal_hard_filters_pass_base_row(self) -> None:
+        row = _base_pass_row()
+        row["inventory_available"] = "true"
+        passed, failed = filter_catalog_rows_minimal_hard(rows=[row], ctx=self.ctx, rules=self.rules)
+        self.assertEqual(1, len(passed))
+        self.assertEqual(0, len(failed))
+
+    def test_minimal_hard_filters_exclude_policy_safety(self) -> None:
+        row = _base_pass_row()
+        row["inventory_available"] = "true"
+        row["title"] = "Sexy lingerie set"
+        passed, failed = filter_catalog_rows_minimal_hard(rows=[row], ctx=self.ctx, rules=self.rules)
+        self.assertEqual(0, len(passed))
+        self.assertIn("policy_safety", failed[0]["fail_reasons"])
 
 
 if __name__ == "__main__":

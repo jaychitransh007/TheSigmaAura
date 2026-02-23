@@ -101,6 +101,8 @@ class Tier2RankerTests(unittest.TestCase):
             "tier2_confidence_multiplier",
             "tier2_color_delta",
             "tier2_final_score",
+            "tier2_max_score",
+            "tier2_compatibility_confidence",
             "tier2_flags",
             "tier2_reasons",
             "tier2_penalties",

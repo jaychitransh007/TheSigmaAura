@@ -4,12 +4,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Set, Tuple
 
-from .config_registry import load_tier1_ranked_attributes, load_user_context_attributes
+from .config_registry import (
+    load_reinforcement_framework,
+    load_tier1_ranked_attributes,
+    load_user_context_attributes,
+)
 
 
 RULES_PATH = Path(__file__).resolve().parent / "tier_a_filters_v1.json"
 USER_CONTEXT_CONFIG = load_user_context_attributes()
 TIER1_RANKED_CONFIG = load_tier1_ranked_attributes()
+REINFORCEMENT_FRAMEWORK = load_reinforcement_framework()
 
 
 def _build_alias_map(dimension_name: str) -> Dict[str, str]:
@@ -74,6 +79,46 @@ def _to_float(value: str) -> float:
         return float(str(value).strip())
     except (TypeError, ValueError):
         return float("nan")
+
+
+def _is_truthy_str(value: str) -> bool:
+    v = (value or "").strip().lower()
+    return v in {"1", "true", "yes", "y", "in_stock", "available"}
+
+
+def _is_falsy_str(value: str) -> bool:
+    v = (value or "").strip().lower()
+    return v in {"0", "false", "no", "n", "out_of_stock", "unavailable", "sold_out"}
+
+
+def _is_in_stock(row: Dict[str, str]) -> bool:
+    # Current stage: inventory is a dummy pass-through gate.
+    # Keep this hook for future activation when reliable inventory
+    # signals are available in catalog rows.
+    _ = row
+    return True
+
+
+def _is_policy_safety_excluded(row: Dict[str, str], safety_exclusions: Dict[str, Any]) -> bool:
+    category = (row.get("GarmentCategory", "") or "").strip().lower()
+    subtype = (row.get("GarmentSubtype", "") or "").strip().lower()
+    text_blob = " ".join(
+        [
+            row.get("title", "") or "",
+            row.get("description", "") or "",
+            row.get("product_type", "") or "",
+            row.get("handle", "") or "",
+        ]
+    ).lower()
+
+    if category and category in {x.lower() for x in (safety_exclusions.get("excluded_categories") or [])}:
+        return True
+    if subtype and subtype in {x.lower() for x in (safety_exclusions.get("excluded_subtypes") or [])}:
+        return True
+    for kw in (safety_exclusions.get("keyword_exclusions") or []):
+        if kw.lower() in text_blob:
+            return True
+    return False
 
 
 def parse_relaxed_filters(relax_args: List[str]) -> Set[str]:
@@ -172,11 +217,69 @@ def filter_catalog_rows(
         else:
             failed.append(
                 {
+                    "row_idx": row.get("_row_idx", ""),
                     "id": row.get("id", ""),
                     "title": row.get("title", ""),
                     "fail_reasons": reasons,
                 }
             )
+    return passed, failed
+
+
+def filter_catalog_rows_minimal_hard(
+    rows: List[Dict[str, str]],
+    ctx: UserContext,
+    rules: Dict[str, Any],
+) -> Tuple[List[Dict[str, str]], List[Dict[str, Any]]]:
+    occasion_key = _resolve_key(ctx.occasion, _OCCASION_ALIASES, "occasion")
+    gender_key = _resolve_key(ctx.gender, _GENDER_ALIASES, "gender")
+
+    rl_profile = (
+        (REINFORCEMENT_FRAMEWORK.get("hard_filter_profiles") or {}).get("rl_ready_minimal") or {}
+    )
+    profile_price = (rl_profile.get("price_range_inr") or {}) if rl_profile else {}
+    price_range = profile_price or rules.get("price_range_inr") or {"min": 2000, "max": 5000}
+    safety_exclusions = dict(rl_profile.get("safety_exclusions") or {})
+
+    occasion_rules = dict((rules.get("occasions") or {}).get(occasion_key) or {})
+    gender_allowed = set((rules.get("gender_map") or {}).get(gender_key) or [])
+
+    passed: List[Dict[str, str]] = []
+    failed: List[Dict[str, Any]] = []
+    for row in rows:
+        reasons: List[str] = []
+
+        if not _is_in_stock(row):
+            reasons.append("inventory")
+
+        price = _to_float(row.get("price", ""))
+        if not (float(price_range.get("min", 2000)) <= price <= float(price_range.get("max", 5000))):
+            reasons.append("price")
+
+        for attr, allowed in occasion_rules.items():
+            val = (row.get(attr, "") or "").strip()
+            if not val or val not in allowed:
+                reasons.append(f"occasion:{attr}")
+
+        gender_expr = (row.get("GenderExpression", "") or "").strip()
+        if not gender_expr or gender_expr not in gender_allowed:
+            reasons.append("gender:GenderExpression")
+
+        if _is_policy_safety_excluded(row, safety_exclusions):
+            reasons.append("policy_safety")
+
+        if reasons:
+            failed.append(
+                {
+                    "row_idx": row.get("_row_idx", ""),
+                    "id": row.get("id", ""),
+                    "title": row.get("title", ""),
+                    "fail_reasons": reasons,
+                }
+            )
+        else:
+            passed.append(row)
+
     return passed, failed
 
 

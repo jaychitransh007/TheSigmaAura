@@ -15,6 +15,7 @@ This is the only authoritative context document for this project.
   - `config/user_context_attributes.json` (occasion/archetype/gender/age enums + aliases + Tier 1 filter order)
   - `config/tier1_ranked_attributes.json` (Tier 1 context-to-garment ranked filter attributes)
   - `config/tier2_ranked_attributes.json` (Tier 2 body-harmony ranking order + body↔garment ranked mapping)
+  - `config/reinforcement_framework_v1.json` (reward policy, RL-ready hard filter profile, telemetry contract)
 - Source JSON catalogs: `stores/json_files/`
 - Processed per-store CSV outputs: `stores/processed_csv_files/`
 - Main sample input CSV: `stores/processed_sample_catalog.csv`
@@ -29,6 +30,7 @@ This is the only authoritative context document for this project.
 - Tier A outfit filter CLI: `scripts/filter_outfits.py`
 - Tier 2 ranking CLI: `scripts/rank_outfits.py`
 - End-to-end styling runbook CLI: `scripts/run_style_pipeline.py`
+- Outcome event logger CLI: `scripts/log_styling_outcome.py`
 
 ## 3A) Config-First Runtime Contract
 - Runtime behavior must be managed from `config/` files first; code should consume config.
@@ -104,6 +106,17 @@ Source of truth: `catalog_enrichment/prompts/system_prompt.txt`, `catalog_enrich
   - `python3 scripts/filter_outfits.py --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --input out/enriched.csv --output out/filtered_outfits.csv --fail-log out/filtered_outfits_failures.json`
   - `python3 scripts/filter_outfits.py --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --relax age,archetype --input out/enriched.csv --output out/filtered_outfits_relaxed.csv --fail-log out/filtered_outfits_relaxed_failures.json`
 
+RL-ready minimal hard filter profile:
+- Used in `scripts/run_style_pipeline.py --hard-filter-profile rl_ready_minimal`
+- Enforced constraints:
+  1. inventory
+  2. price range (`2000-5000`)
+  3. occasion compatibility
+  4. gender compatibility
+  5. policy/safety exclusions (innerwear/sexywear patterns)
+- Source of truth:
+  - `config/reinforcement_framework_v1.json`
+
 ## 7B) Tier 2 Ranking (Body Harmony Scoring)
 - Rules file: `catalog_enrichment/tier2_rules_v1.json`
 - Engine: `catalog_enrichment/tier2_ranker.py`
@@ -124,7 +137,7 @@ Source of truth: `catalog_enrichment/prompts/system_prompt.txt`, `catalog_enrich
   - priority override
   - not_permitted union on each garment attribute
 - Explainability contract:
-  - CSV fields: `tier2_raw_score`, `tier2_confidence_multiplier`, `tier2_color_delta`, `tier2_final_score`, `tier2_flags`, `tier2_reasons`, `tier2_penalties`
+  - CSV fields: `tier2_raw_score`, `tier2_confidence_multiplier`, `tier2_color_delta`, `tier2_final_score`, `tier2_max_score`, `tier2_compatibility_confidence`, `tier2_flags`, `tier2_reasons`, `tier2_penalties`
   - JSON sections: `conflict_engine`, `top_positive_contributions`, `top_negative_contributions`, `formula`
 - CLI usage:
   - `python3 scripts/rank_outfits.py --input out/filtered_outfits.csv --profile out/sample_user_profile_tier2.json --output out/ranked_outfits.csv --explain out/ranked_outfits_explainability.json`
@@ -193,6 +206,15 @@ python3 run_catalog_enrichment.py --input stores/processed_sample_catalog.csv --
 - Final ranked list for downstream UI/review:
   - `out/<prefix>_ranked_summary.csv`
   - Includes ranked `title`, both image URLs, and scores.
+- RL-ready logs produced per run:
+  - `out/<prefix>_request_log.json`
+  - `out/<prefix>_candidate_set_log.csv`
+  - `out/<prefix>_impression_log.csv`
+  - `out/<prefix>_outcome_event_log_template.csv`
+- User outcome logging:
+  - `python3 scripts/log_styling_outcome.py --log-file <path> --request-id <id> --session-id <id> --user-id <id> --garment-id <id> --event-type like|share|buy|skip`
+- Reward policy:
+  - `like:+5`, `share:+10`, `buy:+50`, `skip:-1` from `config/reinforcement_framework_v1.json`
 - Error handling:
   - input/validation issues are shown as one-line `error: ...` messages
   - no traceback for expected user-input mistakes

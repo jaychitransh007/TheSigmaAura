@@ -461,6 +461,7 @@ def rank_garments(
     results: List[RankResult] = []
     for row in rows:
         raw = 0.0
+        max_raw = 0.0
         contributions: List[Tuple[str, str, float, float, float, float]] = []
         penalties: List[str] = []
         flags: List[str] = []
@@ -488,6 +489,7 @@ def rank_garments(
                 conf = _to_float(row.get(f"{garment_attr}_confidence", 0.0), default=0.0)
                 conf_adj = conf if conf >= 0.45 else conf * 0.5
                 c = float(w_bh) * float(wg) * float(m) * conf_adj
+                max_raw += float(w_bh) * float(wg) * 1.0 * 1.0
                 if c < 0:
                     c *= profile["negative_penalty_scale"]
                 raw += c
@@ -506,6 +508,11 @@ def rank_garments(
             continue
 
         final = raw * conf_multiplier + color_delta
+        max_score = max_raw * conf_multiplier + max(0.0, color_delta)
+        compatibility_confidence = 0.0
+        if max_score > 0:
+            compatibility_confidence = final / max_score
+        compatibility_confidence = max(0.0, min(1.0, compatibility_confidence))
         if final < float(rules["nearest_match_threshold"]):
             flags.append("nearest_match")
         if conf_multiplier < float(rules["limited_match_threshold"]):
@@ -522,6 +529,8 @@ def rank_garments(
             "confidence_multiplier": conf_multiplier,
             "color_delta": color_delta,
             "final_score": final,
+            "max_score": max_score,
+            "compatibility_confidence": compatibility_confidence,
             "strictness": strict,
             "strictness_profile": profile,
             "bh_weighting_mode": (rules.get("bh_weighting") or {}).get("mode", "fixed"),
@@ -538,6 +547,8 @@ def rank_garments(
         out_row["tier2_confidence_multiplier"] = f"{conf_multiplier:.4f}"
         out_row["tier2_color_delta"] = f"{color_delta:.4f}"
         out_row["tier2_final_score"] = f"{final:.6f}"
+        out_row["tier2_max_score"] = f"{max_score:.6f}"
+        out_row["tier2_compatibility_confidence"] = f"{compatibility_confidence:.6f}"
         out_row["tier2_flags"] = "|".join(flags)
         out_row["tier2_reasons"] = " ; ".join(reasons)
         out_row["tier2_penalties"] = " ; ".join(penalties)

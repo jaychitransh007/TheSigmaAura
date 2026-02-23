@@ -13,6 +13,8 @@ Last updated: February 22, 2026
 - Ranked mappings:
   - `config/tier1_ranked_attributes.json`
   - `config/tier2_ranked_attributes.json`
+- RL/reward framework:
+  - `config/reinforcement_framework_v1.json`
 - Structured output schema:
   - `catalog_enrichment/schema_builder.py`
 - Prompt instructions:
@@ -41,6 +43,8 @@ Last updated: February 22, 2026
   - `scripts/rank_outfits.py`
 - End-to-end filter+rank:
   - `scripts/run_style_pipeline.py`
+- Outcome event logger:
+  - `scripts/log_styling_outcome.py`
 - Schema audit:
   - `scripts/schema_audit.py`
 

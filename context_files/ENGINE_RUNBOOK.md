@@ -97,6 +97,7 @@ python3 scripts/run_style_pipeline.py \
   --archetype "Glamorous" \
   --gender Female \
   --age 25-30 \
+  --hard-filter-profile rl_ready_minimal \
   --tier2-strictness balanced \
   --out-dir out \
   --prefix nightout_glamorous_female_25_30
@@ -105,6 +106,11 @@ python3 scripts/run_style_pipeline.py \
 Final ranked output:
 - `out/nightout_glamorous_female_25_30_ranked_summary.csv`
 - includes rank, title, image URLs, and scores.
+- also writes RL-ready logs:
+  - `out/<prefix>_request_log.json`
+  - `out/<prefix>_candidate_set_log.csv`
+  - `out/<prefix>_impression_log.csv`
+  - `out/<prefix>_outcome_event_log_template.csv`
 
 Error behavior:
 - invalid context/inputs are handled gracefully (no traceback)

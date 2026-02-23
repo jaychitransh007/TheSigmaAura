@@ -1,0 +1,72 @@
+{
+  "version": "reinforcement_framework_v1",
+  "reward_policy_version": "reward_policy_v1",
+  "reward_weights": {
+    "like": 5,
+    "share": 10,
+    "buy": 50,
+    "skip": -1
+  },
+  "outcome_aggregation": {
+    "mode": "highest_reward_wins",
+    "event_priority": ["buy", "share", "like", "skip"]
+  },
+  "hard_filter_profiles": {
+    "legacy": {
+      "description": "Existing Tier 1 behavior including archetype and age hard filters."
+    },
+    "rl_ready_minimal": {
+      "description": "Minimal hard filters for future learned ranking.",
+      "enforce": [
+        "inventory",
+        "price_range",
+        "occasion_compatibility",
+        "gender_compatibility",
+        "policy_safety_exclusions"
+      ],
+      "price_range_inr": {
+        "min": 2000,
+        "max": 5000
+      },
+      "safety_exclusions": {
+        "excluded_categories": [
+          "innerwear",
+          "sexywear"
+        ],
+        "excluded_subtypes": [
+          "innerwear",
+          "lingerie",
+          "bralette",
+          "bra",
+          "panty",
+          "bikini",
+          "nightwear",
+          "nighty",
+          "babydoll",
+          "corset"
+        ],
+        "keyword_exclusions": [
+          "innerwear",
+          "lingerie",
+          "sexywear",
+          "sexy",
+          "bralette",
+          "bra",
+          "panty",
+          "bikini",
+          "thong",
+          "babydoll",
+          "corset",
+          "nighty"
+        ]
+      }
+    }
+  },
+  "logging_contract_version": "styling_logs_v1",
+  "logs": {
+    "request_log": "one row per recommendation request",
+    "candidate_set_log": "one row per candidate item before/after hard filtering with scores",
+    "impression_log": "one row per displayed ranked item",
+    "outcome_event_log": "one row per explicit user outcome event"
+  }
+}

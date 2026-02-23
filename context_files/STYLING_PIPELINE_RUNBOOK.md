@@ -4,7 +4,8 @@
 Run the complete styling engine in one command:
 1. Tier 1 hard filtering
 2. Tier 2 personalized ranking
-3. Final ranked summary export (`title`, image URLs, scores)
+3. RL-ready telemetry logs for future learning
+4. Final ranked summary export (`title`, image URLs, scores)
 
 ## Single Command
 ```bash
@@ -15,6 +16,9 @@ python3 scripts/run_style_pipeline.py \
   --archetype "Glamorous" \
   --gender Female \
   --age 25-30 \
+  --user-id user_123 \
+  --session-id session_abc \
+  --hard-filter-profile rl_ready_minimal \
   --tier2-strictness balanced \
   --out-dir out \
   --prefix nightout_glamorous_female_25_30
@@ -48,8 +52,8 @@ Use this as `out/sample_user_profile_tier2.json`:
 }
 ```
 
-## Optional Relaxation
-Relax one or more Tier 1 hard filters:
+## Legacy Hard Filter Mode (Optional)
+If you need old hard-filter behavior with archetype/age as hard constraints:
 ```bash
 python3 scripts/run_style_pipeline.py \
   --input out/enriched.csv \
@@ -58,6 +62,7 @@ python3 scripts/run_style_pipeline.py \
   --archetype "Classic" \
   --gender Female \
   --age 25-30 \
+  --hard-filter-profile legacy \
   --relax age,archetype
 ```
 
@@ -74,6 +79,10 @@ With `--out-dir out --prefix nightout_glamorous_female_25_30`, this produces:
 - `out/nightout_glamorous_female_25_30_ranked.csv`
 - `out/nightout_glamorous_female_25_30_ranked_explainability.json`
 - `out/nightout_glamorous_female_25_30_ranked_summary.csv`
+- `out/nightout_glamorous_female_25_30_request_log.json`
+- `out/nightout_glamorous_female_25_30_candidate_set_log.csv`
+- `out/nightout_glamorous_female_25_30_impression_log.csv`
+- `out/nightout_glamorous_female_25_30_outcome_event_log_template.csv`
 
 ## Final Ranked Output for UI/Review
 Use `*_ranked_summary.csv`. It includes:
@@ -82,9 +91,28 @@ Use `*_ranked_summary.csv`. It includes:
 - `images__0__src`
 - `images__1__src`
 - `tier2_final_score`
-- `tier2_raw_score`
-- `tier2_confidence_multiplier`
+- `tier2_max_score`
+- `tier2_compatibility_confidence`
 - `tier2_flags`
+
+## Logging Outcomes
+Append real user feedback events (like/share/buy/skip):
+```bash
+python3 scripts/log_styling_outcome.py \
+  --log-file out/nightout_glamorous_female_25_30_outcome_events.csv \
+  --request-id <request_id> \
+  --session-id <session_id> \
+  --user-id user_123 \
+  --garment-id <garment_id> \
+  --title "<title>" \
+  --event-type buy
+```
+
+Reward policy (config-driven):
+- `like = +5`
+- `share = +10`
+- `buy = +50`
+- `skip = -1`
 
 ## Error Handling
 - The runner handles common input/config errors gracefully and prints one-line messages without Python tracebacks.

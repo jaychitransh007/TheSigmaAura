@@ -44,6 +44,8 @@ python3 -m unittest discover -s tests -v
 - `test_price_failure_can_be_relaxed`
 - `test_occasion_archetype_incompatibility_and_relaxation`
 - `test_gender_filter_blocks_mismatch`
+- `test_minimal_hard_filters_pass_base_row`
+- `test_minimal_hard_filters_exclude_policy_safety`
 
 ### Tier 2
 - `test_invalid_strictness_raises`
@@ -55,8 +57,8 @@ python3 -m unittest discover -s tests -v
 - `test_ranked_bh_weights_from_config_used`
 
 ## Latest Run Report
-- Total tests: `24`
-- Passed: `24`
+- Total tests: `26`
+- Passed: `26`
 - Failed: `0`
 - Result: `OK`
 
