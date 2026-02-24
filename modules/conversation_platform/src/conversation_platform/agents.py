@@ -13,7 +13,8 @@ from style_engine.filters import (
     parse_relaxed_filters,
     read_csv_rows,
 )
-from style_engine.ranker import load_tier2_rules, rank_garments
+from style_engine.outfit_engine import rank_recommendation_candidates
+from style_engine.ranker import load_tier2_rules
 from user_profiler.config import UserProfilerConfig, get_api_key
 from user_profiler.service import infer_text_context, infer_visual_profile
 
@@ -83,6 +84,8 @@ class RecommendationAgent:
         strictness: str,
         hard_filter_profile: str,
         max_results: int,
+        recommendation_mode: str = "auto",
+        request_text: str = "",
     ) -> Dict[str, Any]:
         rows = read_csv_rows(self.catalog_csv_path)
         for i, row in enumerate(rows):
@@ -102,17 +105,37 @@ class RecommendationAgent:
             relax_filters=[],
         )
 
-        ranked = rank_garments(rows=passed, user_profile=profile, rules=self.tier2_rules, strictness=strictness)
-        total_ranked = len(ranked)
-        ranked = ranked[:max_results]
+        ranked, recommendation_meta = rank_recommendation_candidates(
+            rows=passed,
+            user_profile=profile,
+            tier2_rules=self.tier2_rules,
+            strictness=strictness,
+            mode=recommendation_mode,
+            request_text=request_text,
+            max_results=max_results,
+        )
+        total_ranked = recommendation_meta.returned_rows
 
         items: List[Dict[str, Any]] = []
         for idx, result in enumerate(ranked, start=1):
             row = result.row
-            reasons_str = str(row.get("tier2_reasons", ""))
-            flags_str = str(row.get("tier2_flags", ""))
-            reasons = [x for x in reasons_str.split("|") if x]
-            flags = [x for x in flags_str.split("|") if x]
+            reasons = [x.strip() for x in str(row.get("tier2_reasons", "")).split(";") if x.strip()]
+            flags = [x.strip() for x in str(row.get("tier2_flags", "")).split("|") if x.strip()]
+            component_ids_raw = str(row.get("component_ids_json", "[]"))
+            component_titles_raw = str(row.get("component_titles_json", "[]"))
+            component_image_urls_raw = str(row.get("component_image_urls_json", "[]"))
+            try:
+                component_ids = list(json.loads(component_ids_raw))
+            except json.JSONDecodeError:
+                component_ids = []
+            try:
+                component_titles = list(json.loads(component_titles_raw))
+            except json.JSONDecodeError:
+                component_titles = []
+            try:
+                component_image_urls = list(json.loads(component_image_urls_raw))
+            except json.JSONDecodeError:
+                component_image_urls = []
             items.append(
                 {
                     "rank": idx,
@@ -125,6 +148,12 @@ class RecommendationAgent:
                     "reasons": "; ".join(reasons),
                     "flags": flags,
                     "raw_reasons": reasons,
+                    "recommendation_kind": str(row.get("recommendation_kind", "single_garment")),
+                    "outfit_id": str(row.get("outfit_id", row.get("id", ""))),
+                    "component_count": int(row.get("component_count", 1) or 1),
+                    "component_ids": component_ids,
+                    "component_titles": component_titles,
+                    "component_image_urls": component_image_urls,
                 }
             )
 
@@ -137,6 +166,12 @@ class RecommendationAgent:
                 "ranked_rows": total_ranked,
                 "returned_rows": len(items),
                 "relaxed_filters": relaxed,
+                "recommendation_mode": recommendation_mode,
+                "resolved_recommendation_mode": recommendation_meta.resolved_mode,
+                "requested_categories": recommendation_meta.requested_categories,
+                "requested_subtypes": recommendation_meta.requested_subtypes,
+                "single_candidates": recommendation_meta.single_candidates,
+                "combo_candidates": recommendation_meta.combo_candidates,
             },
         }
 

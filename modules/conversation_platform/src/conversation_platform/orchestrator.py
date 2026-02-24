@@ -230,6 +230,8 @@ class ConversationOrchestrator:
             strictness=strictness,
             hard_filter_profile=hard_filter_profile,
             max_results=max_results,
+            recommendation_mode="auto",
+            request_text=message,
         )
         emit("tier1_tier2_recommendation", "completed")
 
@@ -306,6 +308,12 @@ class ConversationOrchestrator:
                     "max_score": item["max_score"],
                     "compatibility_confidence": item["compatibility_confidence"],
                     "reasons": item["reasons"],
+                    "recommendation_kind": item.get("recommendation_kind", "single_garment"),
+                    "outfit_id": item.get("outfit_id", item["garment_id"]),
+                    "component_count": item.get("component_count", 1),
+                    "component_ids": item.get("component_ids", []),
+                    "component_titles": item.get("component_titles", []),
+                    "component_image_urls": item.get("component_image_urls", []),
                 }
                 for item in items
             ],
@@ -320,8 +328,27 @@ class ConversationOrchestrator:
         rows = self.repo.get_recommendation_items(run_id)
         items = []
         for row in rows:
-            reasons = row.get("reasons_json") or []
-            reasons_text = "; ".join([str(x) for x in reasons]) if isinstance(reasons, list) else str(reasons)
+            reasons_payload = row.get("reasons_json") or {}
+            reasons_text = ""
+            recommendation_kind = "single_garment"
+            outfit_id = str(row.get("garment_id", ""))
+            component_count = 1
+            component_ids: List[str] = []
+            component_titles: List[str] = []
+            component_image_urls: List[str] = []
+
+            if isinstance(reasons_payload, dict):
+                reasons_text = str(reasons_payload.get("summary", ""))
+                recommendation_kind = str(reasons_payload.get("recommendation_kind", "single_garment"))
+                outfit_id = str(reasons_payload.get("outfit_id", outfit_id))
+                component_count = int(reasons_payload.get("component_count", 1) or 1)
+                component_ids = [str(x) for x in list(reasons_payload.get("component_ids") or [])]
+                component_titles = [str(x) for x in list(reasons_payload.get("component_titles") or [])]
+                component_image_urls = [str(x) for x in list(reasons_payload.get("component_image_urls") or [])]
+            elif isinstance(reasons_payload, list):
+                reasons_text = "; ".join([str(x) for x in reasons_payload])
+            else:
+                reasons_text = str(reasons_payload)
             items.append(
                 {
                     "rank": int(row.get("rank", 0)),
@@ -332,6 +359,12 @@ class ConversationOrchestrator:
                     "max_score": float(row.get("max_score", 0.0) or 0.0),
                     "compatibility_confidence": float(row.get("compatibility_confidence", 0.0) or 0.0),
                     "reasons": reasons_text,
+                    "recommendation_kind": recommendation_kind,
+                    "outfit_id": outfit_id,
+                    "component_count": component_count,
+                    "component_ids": component_ids,
+                    "component_titles": component_titles,
+                    "component_image_urls": component_image_urls,
                 }
             )
         return {

@@ -195,6 +195,16 @@ class ConversationRepository:
     def insert_recommendation_items(self, recommendation_run_id: str, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
         for item in items:
+            reasons_payload: Dict[str, Any] = {
+                "summary": item.get("reasons", ""),
+                "raw_reasons": item.get("raw_reasons", []),
+                "recommendation_kind": item.get("recommendation_kind", "single_garment"),
+                "outfit_id": item.get("outfit_id", item.get("garment_id", "")),
+                "component_count": int(item.get("component_count", 1) or 1),
+                "component_ids": item.get("component_ids", []),
+                "component_titles": item.get("component_titles", []),
+                "component_image_urls": item.get("component_image_urls", []),
+            }
             rows.append(
                 {
                     "recommendation_run_id": recommendation_run_id,
@@ -206,7 +216,7 @@ class ConversationRepository:
                     "max_score": item["max_score"],
                     "compatibility_confidence": item["compatibility_confidence"],
                     "flags_json": item.get("flags", []),
-                    "reasons_json": item.get("reasons", []),
+                    "reasons_json": reasons_payload,
                 }
             )
         return self.client.insert_many("recommendation_items", rows)

@@ -16,6 +16,7 @@ This is the only authoritative context document for this project.
   - `modules/style_engine/configs/config/user_context_attributes.json` (occasion/archetype/gender/age enums + aliases + Tier 1 filter order)
   - `modules/style_engine/configs/config/tier1_ranked_attributes.json` (Tier 1 context-to-garment ranked filter attributes)
   - `modules/style_engine/configs/config/tier2_ranked_attributes.json` (Tier 2 body-harmony ranking order + body↔garment ranked mapping)
+  - `modules/style_engine/configs/config/outfit_assembly_v1.json` (outfit candidate generation + pair-bonus rules + mode detection keywords)
   - `modules/style_engine/configs/config/reinforcement_framework_v1.json` (reward policy, RL-ready hard filter profile, telemetry contract)
 - Source JSON catalogs: `modules/catalog_enrichment/stores/json_files/`
 - Processed per-store CSV outputs: `modules/catalog_enrichment/stores/processed_csv_files/`
@@ -30,6 +31,7 @@ This is the only authoritative context document for this project.
 - Schema audit CLI: `ops/scripts/schema_audit.py`
 - Tier A outfit filter CLI: `ops/scripts/filter_outfits.py`
 - Tier 2 ranking CLI: `ops/scripts/rank_outfits.py`
+- Outfit candidate builder: `modules/style_engine/src/style_engine/outfit_engine.py`
 - End-to-end styling runbook CLI: `run_style_pipeline.py`
 - Outcome event logger CLI: `ops/scripts/log_styling_outcome.py`
 - User profile inference CLI: `run_user_profiler.py`
@@ -45,6 +47,7 @@ This is the only authoritative context document for this project.
   - `modules/catalog_enrichment/src/catalog_enrichment/attributes.py` (loads garment schema attrs from config)
   - `modules/style_engine/src/style_engine/filters.py` (loads user context aliases + relaxable filters + Tier 1 ranked mapping from config)
   - `modules/style_engine/src/style_engine/ranker.py` (loads Tier 2 ranking order/mappings from config)
+  - `modules/style_engine/src/style_engine/outfit_engine.py` (loads outfit assembly config and resolves auto/outfit/garment recommendation mode)
 
 ## 4) Input Contract (Enrichment Pipeline)
 - Mandatory columns (validated): `description`, `images__0__src`, `images__1__src`
@@ -125,6 +128,7 @@ RL-ready minimal hard filter profile:
 ## 7B) Tier 2 Ranking (Body Harmony Scoring)
 - Rules file: `modules/style_engine/src/style_engine/tier2_rules_v1.json`
 - Engine: `modules/style_engine/src/style_engine/ranker.py`
+- Outfit candidate composition engine: `modules/style_engine/src/style_engine/outfit_engine.py`
 - Ranked body-harmony order and body→garment priority mapping are loaded from `modules/style_engine/configs/config/tier2_ranked_attributes.json`.
 - Formula:
   - `sum(W_bh(a) * sum(W_ga(a,g) * match(a,g) * conf(g))) * confidence_multiplier + color_delta`
@@ -145,12 +149,18 @@ RL-ready minimal hard filter profile:
   - CSV fields: `tier2_raw_score`, `tier2_confidence_multiplier`, `tier2_color_delta`, `tier2_final_score`, `tier2_max_score`, `tier2_compatibility_confidence`, `tier2_flags`, `tier2_reasons`, `tier2_penalties`
   - JSON sections: `conflict_engine`, `top_positive_contributions`, `top_negative_contributions`, `formula`
 - CLI usage:
-  - `python3 ops/scripts/rank_outfits.py --input data/output/filtered_outfits.csv --profile data/output/sample_user_profile_tier2.json --output data/output/ranked_outfits.csv --explain data/output/ranked_outfits_explainability.json`
-  - `python3 ops/scripts/rank_outfits.py --input data/output/filtered_outfits.csv --profile data/output/sample_user_profile_tier2.json --tier2-strictness safe --output data/output/ranked_outfits_safe.csv --explain data/output/ranked_outfits_safe_explainability.json`
+  - `python3 ops/scripts/rank_outfits.py --input data/output/filtered_outfits.csv --profile data/output/sample_user_profile_tier2.json --recommendation-mode auto --request-text "I need a complete office look" --output data/output/ranked_outfits.csv --explain data/output/ranked_outfits_explainability.json`
+  - `python3 ops/scripts/rank_outfits.py --input data/output/filtered_outfits.csv --profile data/output/sample_user_profile_tier2.json --tier2-strictness safe --recommendation-mode garment --request-text "show me shirts" --output data/output/ranked_outfits_safe.csv --explain data/output/ranked_outfits_safe_explainability.json`
 - Strictness switch:
   - `--tier2-strictness balanced` (default): baseline behavior
   - `--tier2-strictness safe`: stronger penalties, more conservative ranking
   - `--tier2-strictness bold`: lighter penalties, stronger standout boosts
+
+Outfit-level behavior:
+- `recommendation_mode=auto`: if request text mentions a category/subtype (shirt, dress, jeans, etc.) it resolves to `garment`; otherwise it resolves to `outfit`.
+- `recommendation_mode=outfit`: complete-garment singles compete against top+bottom combo candidates.
+- Combo scoring: `((top_score + bottom_score) / 2) + pair_bonus`, where `pair_bonus` is config-driven and bounded.
+- Pair bonus signals currently include occasion fit coherence, formality distance, color temperature compatibility, pattern balance, embellishment clash, and oversized-silhouette clash.
 
 ## 7C) User Profile Inference Module
 - Module path: `modules/user_profiler/src/user_profiler/`
@@ -251,6 +261,8 @@ python3 ops/scripts/schema_audit.py --out data/output/schema_audit.json --strict
 python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/output/enriched.csv --mode all --out-dir data/output
 python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/output/enriched.csv --mode run_batch --out-dir data/output
 python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/output/enriched.csv --mode merge --out-dir data/output --batch-output-jsonl data/output/batch_output.jsonl
+python3 ops/scripts/rank_outfits.py --input data/output/filtered_outfits.csv --profile data/output/sample_user_profile_tier2.json --recommendation-mode auto --request-text "Need complete office looks" --output data/output/ranked_outfits.csv --explain data/output/ranked_outfits_explainability.json
+python3 run_style_pipeline.py --input data/output/enriched.csv --profile data/output/sample_user_profile_tier2.json --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --tier2-strictness balanced --recommendation-mode auto --request-text "Need complete office looks" --out-dir data/output --prefix demo_outfit
 python3 run_user_profiler.py --image /absolute/path/to/user.jpg --context-text "I need office and dinner looks"
 python3 run_conversation_platform.py --host 127.0.0.1 --port 8010
 ```

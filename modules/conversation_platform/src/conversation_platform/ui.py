@@ -346,8 +346,12 @@ def get_web_ui_html() -> str:
         img.alt = item.title || "";
         const body = document.createElement("div");
         body.className = "body";
+        const recommendationKind = item.recommendation_kind || "single_garment";
+        const componentTitles = Array.isArray(item.component_titles) ? item.component_titles.filter(Boolean).join(" + ") : "";
         body.innerHTML = `
           <div><strong>#${item.rank} ${item.title || ""}</strong></div>
+          <div>type: ${recommendationKind}</div>
+          <div>${componentTitles ? `components: ${componentTitles}` : ""}</div>
           <div>score: ${(item.score || 0).toFixed(3)} | conf: ${(item.compatibility_confidence || 0).toFixed(2)}</div>
           <div>${item.reasons || ""}</div>
         `;

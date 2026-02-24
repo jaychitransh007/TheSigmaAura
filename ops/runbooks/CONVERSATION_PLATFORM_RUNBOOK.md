@@ -92,6 +92,10 @@ curl -s -X POST http://127.0.0.1:8010/v1/conversations/<conversation_id>/turns \
   }'
 ```
 
+Recommendation routing behavior:
+- Garment-specific asks (e.g., "show shirts", "need jeans") return garment-mode recommendations.
+- Non-specific asks default to outfit-mode where complete garments and combos compete.
+
 ## 7) Log feedback
 ```bash
 curl -s -X POST http://127.0.0.1:8010/v1/feedback \

@@ -36,10 +36,8 @@ from style_engine.filters import (  # noqa: E402
     read_csv_rows as read_filter_csv_rows,
     write_csv_rows,
 )
-from style_engine.ranker import (  # noqa: E402
-    load_tier2_rules,
-    rank_garments,
-)
+from style_engine.outfit_engine import rank_recommendation_candidates  # noqa: E402
+from style_engine.ranker import load_tier2_rules  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -74,6 +72,17 @@ def parse_args() -> argparse.Namespace:
         default="balanced",
         choices=["safe", "balanced", "bold"],
         help="Tier 2 strictness profile.",
+    )
+    parser.add_argument(
+        "--recommendation-mode",
+        default="auto",
+        choices=["auto", "outfit", "garment"],
+        help="Recommendation mode (auto = outfit unless request text is garment-specific).",
+    )
+    parser.add_argument(
+        "--request-text",
+        default="",
+        help="Optional natural-language request used for auto recommendation mode resolution.",
     )
     parser.add_argument("--limit", type=int, default=0, help="Optional max displayed ranked rows (0 = all).")
     parser.add_argument("--out-dir", default="data/output", help="Output directory for artifacts.")
@@ -121,6 +130,8 @@ def _build_summary_rows(ranked_rows: List[Dict[str, str]]) -> List[Dict[str, str
                 "rank": str(i),
                 "id": str(row.get("id", "")),
                 "title": str(row.get("title", "")),
+                "recommendation_kind": str(row.get("recommendation_kind", "single_garment")),
+                "component_count": str(row.get("component_count", "")),
                 "images__0__src": str(row.get("images__0__src", "")),
                 "images__1__src": str(row.get("images__1__src", "")),
                 "tier2_final_score": str(row.get("tier2_final_score", "")),
@@ -208,6 +219,8 @@ def _build_impression_logs(
                 "timestamp": _now_iso(),
                 "shown_rank_position": rank_pos,
                 "garment_id": row.get("id", ""),
+                "recommendation_kind": row.get("recommendation_kind", "single_garment"),
+                "outfit_id": row.get("outfit_id", row.get("id", "")),
                 "title": row.get("title", ""),
                 "total_score": row.get("tier2_final_score", ""),
                 "max_score": row.get("tier2_max_score", ""),
@@ -235,6 +248,8 @@ def _build_outcome_template_logs(
                 "user_id": user_id,
                 "timestamp": "",
                 "garment_id": row.get("id", ""),
+                "recommendation_kind": row.get("recommendation_kind", "single_garment"),
+                "outfit_id": row.get("outfit_id", row.get("id", "")),
                 "title": row.get("title", ""),
                 "event_type": "",
                 "reward_value": "",
@@ -306,6 +321,8 @@ def main() -> int:
                         "gender": args.gender,
                         "age": args.age,
                         "relaxed_filters": relaxed,
+                        "recommendation_mode": args.recommendation_mode,
+                        "request_text": args.request_text,
                     },
                     "failures": failed,
                 },
@@ -314,9 +331,15 @@ def main() -> int:
                 indent=2,
             )
 
-        ranked_all = rank_garments(rows=passed, user_profile=profile, rules=t2_rules, strictness=args.tier2_strictness)
-        if args.limit > 0:
-            ranked_all = ranked_all[: args.limit]
+        ranked_all, recommendation_meta = rank_recommendation_candidates(
+            rows=passed,
+            user_profile=profile,
+            tier2_rules=t2_rules,
+            strictness=args.tier2_strictness,
+            mode=args.recommendation_mode,
+            request_text=args.request_text,
+            max_results=args.limit,
+        )
 
         ranked_rows = [_strip_internal_fields(r.row) for r in ranked_all]
         _write_ranked_csv(ranked_csv, ranked_rows)
@@ -336,6 +359,8 @@ def main() -> int:
         ranked_by_idx: Dict[str, Dict[str, str]] = {}
         rank_pos_by_idx: Dict[str, int] = {}
         for pos, rr in enumerate(ranked_rows, start=1):
+            if str(rr.get("recommendation_kind", "single_garment")) != "single_garment":
+                continue
             idx = str(rr.get("_row_idx", ""))
             if idx:
                 ranked_by_idx[idx] = rr
@@ -343,6 +368,8 @@ def main() -> int:
         if not ranked_by_idx:
             # if _row_idx stripped, recover from passed rows in order
             for pos, rr in enumerate(ranked_rows, start=1):
+                if str(rr.get("recommendation_kind", "single_garment")) != "single_garment":
+                    continue
                 for pr in passed:
                     if pr.get("id", "") == rr.get("id", "") and pr.get("title", "") == rr.get("title", ""):
                         idx = str(pr.get("_row_idx", ""))
@@ -355,6 +382,8 @@ def main() -> int:
             "age": args.age,
             "gender": args.gender,
             "archetype": args.archetype,
+            "recommendation_mode": args.recommendation_mode,
+            "request_text": args.request_text,
             "body_harmony": {k: v for k, v in profile.items() if k != "color_preferences"},
             "color_preferences": profile.get("color_preferences", {}),
         }
@@ -395,6 +424,8 @@ def main() -> int:
                     "timestamp": _now_iso(),
                     "hard_filter_profile": args.hard_filter_profile,
                     "tier2_strictness": args.tier2_strictness,
+                    "recommendation_mode": args.recommendation_mode,
+                    "resolved_recommendation_mode": recommendation_meta.resolved_mode,
                     "reward_policy_version": rf_cfg.get("reward_policy_version", "reward_policy_v1"),
                     "reward_weights": rf_cfg.get("reward_weights", {}),
                     "context": context_payload,
@@ -425,6 +456,8 @@ def main() -> int:
                     "tier2_ranked_rows": len(ranked_rows),
                     "hard_filter_profile": args.hard_filter_profile,
                     "tier2_strictness": args.tier2_strictness,
+                    "recommendation_mode": args.recommendation_mode,
+                    "resolved_recommendation_mode": recommendation_meta.resolved_mode,
                     "profile_path": args.profile,
                     "artifacts": {
                         "filtered_csv": str(filtered_csv),
@@ -449,9 +482,20 @@ def main() -> int:
                             "tier2_raw_score": r.raw_score,
                             "tier2_confidence_multiplier": r.confidence_multiplier,
                             "tier2_flags": r.flags,
+                            "recommendation_kind": r.row.get("recommendation_kind", "single_garment"),
+                            "component_ids_json": r.row.get("component_ids_json", "[]"),
                         }
                         for i, r in enumerate(ranked_all[:25])
                     ],
+                    "recommendation_meta": {
+                        "resolved_mode": recommendation_meta.resolved_mode,
+                        "requested_categories": recommendation_meta.requested_categories,
+                        "requested_subtypes": recommendation_meta.requested_subtypes,
+                        "base_ranked_rows": recommendation_meta.base_ranked_rows,
+                        "single_candidates": recommendation_meta.single_candidates,
+                        "combo_candidates": recommendation_meta.combo_candidates,
+                        "returned_rows": recommendation_meta.returned_rows,
+                    },
                 },
                 f,
                 ensure_ascii=True,
@@ -466,6 +510,10 @@ def main() -> int:
         print(f"tier1_passed={len(passed)}")
         print(f"tier1_failed={len(failed)}")
         print(f"tier2_ranked={len(ranked_rows)}")
+        print(f"recommendation_mode={args.recommendation_mode}")
+        print(f"resolved_recommendation_mode={recommendation_meta.resolved_mode}")
+        print(f"single_candidates={recommendation_meta.single_candidates}")
+        print(f"combo_candidates={recommendation_meta.combo_candidates}")
         print(f"filtered_csv={filtered_csv}")
         print(f"filter_failures_json={filter_failures_json}")
         print(f"ranked_csv={ranked_csv}")

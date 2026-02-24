@@ -13,6 +13,8 @@ Last updated: February 24, 2026
 - Ranked mappings:
   - `modules/style_engine/configs/config/tier1_ranked_attributes.json`
   - `modules/style_engine/configs/config/tier2_ranked_attributes.json`
+- Outfit assembly config:
+  - `modules/style_engine/configs/config/outfit_assembly_v1.json`
 - RL/reward framework:
   - `modules/style_engine/configs/config/reinforcement_framework_v1.json`
 - Structured output schema:
@@ -30,12 +32,16 @@ Last updated: February 24, 2026
   - `modules/style_engine/src/style_engine/tier_a_filters_v1.json`
 - Tier 2 ranking/scoring config:
   - `modules/style_engine/src/style_engine/tier2_rules_v1.json`
+- Outfit assembly/routing rules:
+  - `modules/style_engine/configs/config/outfit_assembly_v1.json`
 
 ## Engines
 - Tier 1 hard filter engine:
   - `modules/style_engine/src/style_engine/filters.py`
 - Tier 2 ranker:
   - `modules/style_engine/src/style_engine/ranker.py`
+- Outfit candidate engine:
+  - `modules/style_engine/src/style_engine/outfit_engine.py`
 - Schema audit:
   - `modules/catalog_enrichment/src/catalog_enrichment/audit.py`
 - User profile inference:
@@ -67,6 +73,7 @@ Last updated: February 24, 2026
   - optional relax controls
 - Tier 2:
   - weighted ranking
+  - outfit candidate generation (single complete garments + top/bottom combos)
   - body-harmony scoring
   - conflict engine
   - confidence-aware weighting

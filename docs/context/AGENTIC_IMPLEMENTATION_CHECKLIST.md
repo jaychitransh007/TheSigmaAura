@@ -24,6 +24,17 @@ Last updated: February 24, 2026
 - [x] Add clarification-first branch when context is insufficient.
 - [x] Add recommendation card actions (`Like`, `Share`, `Buy Now`) wired to feedback logging.
 
+## Outfit Assembly Action Plan + Status
+- [x] Define outfit-candidate generation strategy in context docs and runbook.
+- [x] Add centralized config for outfit assembly rules and pairing constraints.
+- [x] Implement style-engine outfit candidate builder (single complete garment + multi-garment combos).
+- [x] Integrate Tier 2 score composition for combo outfits and ensure combo-vs-single competition.
+- [x] Add request mode handling (auto/outfit/garment) with query-driven fallback behavior.
+- [x] Wire conversation recommendation agent to return outfit candidates with component metadata.
+- [x] Extend explainability contract and logs for outfit candidate IDs/components.
+- [x] Add/expand tests for outfit assembly, mode resolution, and conversation mapping.
+- [x] Run full test suite and reconcile docs with shipped behavior.
+
 ## Constraints
 - User-facing profile module uses standard real-time Responses API.
 - Local Supabase only (no cloud dependency for this implementation).
@@ -31,5 +42,5 @@ Last updated: February 24, 2026
 
 ## Validation Notes
 - Test command: `python3 -m unittest discover -s tests -p 'test_*.py' -v`
-- Current result: `60 passed, 0 failed` (includes conversation platform UI, async stage status, clarification branch, feedback API, orchestrator, and repository tests)
+- Current result: `70 passed, 0 failed` (includes outfit assembly mode tests, conversation platform UI, async stage status, clarification branch, feedback API, orchestrator, and repository tests)
 - API runner validation: `python3 run_conversation_platform.py --help`

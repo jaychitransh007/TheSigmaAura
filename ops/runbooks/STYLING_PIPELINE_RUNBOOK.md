@@ -23,9 +23,16 @@ python3 run_style_pipeline.py \
   --session-id session_abc \
   --hard-filter-profile rl_ready_minimal \
   --tier2-strictness balanced \
+  --recommendation-mode auto \
+  --request-text "I need a complete evening look" \
   --out-dir data/output \
   --prefix nightout_glamorous_female_25_30
 ```
+
+Mode options:
+- `--recommendation-mode auto` (default): garment-specific text triggers garment mode, otherwise outfit mode.
+- `--recommendation-mode outfit`: single complete garments + combo outfits compete together.
+- `--recommendation-mode garment`: single garments only.
 
 ## Optional Upstream Inference
 ```bash
@@ -101,6 +108,8 @@ With `--out-dir data/output --prefix nightout_glamorous_female_25_30`, this prod
 Use `*_ranked_summary.csv`. It includes:
 - `rank`
 - `title`
+- `recommendation_kind`
+- `component_count`
 - `images__0__src`
 - `images__1__src`
 - `tier2_final_score`

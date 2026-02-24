@@ -20,6 +20,7 @@ from catalog_enrichment.attributes import ATTRIBUTE_NAMES, ENUM_ATTRIBUTES, TEXT
 from catalog_enrichment.config_registry import (
     load_body_harmony_attributes,
     load_garment_attributes,
+    load_outfit_assembly_rules,
     load_tier1_ranked_attributes,
     load_tier2_ranked_attributes,
     load_user_context_attributes,
@@ -106,6 +107,13 @@ class ConfigAndSchemaTests(unittest.TestCase):
         parsed = json.loads(raw)
         self.assertIn("enum_attributes", parsed)
         self.assertIn("text_attributes", parsed)
+
+    def test_outfit_assembly_config_exists_and_loads(self) -> None:
+        cfg = load_outfit_assembly_rules()
+        self.assertIn("default_mode", cfg)
+        self.assertIn("pair_bonus", cfg)
+        self.assertIn("candidate_limits", cfg)
+        self.assertTrue(Path("modules/style_engine/configs/config/outfit_assembly_v1.json").exists())
 
 
 if __name__ == "__main__":

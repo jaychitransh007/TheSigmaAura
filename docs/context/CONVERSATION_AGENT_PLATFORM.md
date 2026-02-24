@@ -41,7 +41,7 @@ Service entrypoint:
 - `SupervisorAgent`: turn routing and tool sequence.
 - `ProfileAgent`: visual profile extraction from image.
 - `IntentAgent`: textual context extraction (`occasion`, `archetype`) from turn text.
-- `RecommendationAgent`: calls Tier 1 + Tier 2 to produce ranked candidates.
+- `RecommendationAgent`: calls Tier 1 + Tier 2 and outfit assembly to produce ranked single-garment and combo-outfit candidates.
 - `StylistAgent`: user-facing recommendation response and clarifications.
 - `MemoryAgent`: reads/writes state snapshots.
 - `TelemetryAgent`: logs all model/tool/recommendation events.
@@ -59,6 +59,10 @@ If context is missing or unclear, the agent returns:
 - `needs_clarification = true`
 - `clarifying_question` with specific next input needed
 - no recommendation run until required detail is provided
+
+Recommendation mode behavior:
+- If user text explicitly asks for a garment category/subtype (e.g., shirt, dress, jeans), recommendation mode resolves to garment-only.
+- Otherwise, mode resolves to outfit: complete garments and top+bottom combos compete in one ranked list.
 
 ## Processing Stages (Async)
 When the UI uses async turn execution, backend stages are streamed via polling:

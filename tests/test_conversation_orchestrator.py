@@ -57,6 +57,43 @@ class ConversationRepositoryTests(unittest.TestCase):
         self.assertEqual("user_1", out["external_user_id"])
         client.select_one.assert_called_once_with("users", filters={"id": "eq.u1"})
 
+    def test_insert_recommendation_items_persists_combo_metadata_payload(self) -> None:
+        client = Mock()
+        client.insert_many.return_value = [{"id": "ri_1"}]
+        repo = ConversationRepository(client)
+
+        repo.insert_recommendation_items(
+            recommendation_run_id="run_1",
+            items=[
+                {
+                    "rank": 1,
+                    "garment_id": "combo::g1|g2",
+                    "title": "Top + Bottom",
+                    "image_url": "https://img",
+                    "score": 0.82,
+                    "max_score": 1.0,
+                    "compatibility_confidence": 0.82,
+                    "flags": ["combo"],
+                    "reasons": "pair_bonus:+0.05",
+                    "raw_reasons": ["pair_bonus:+0.05"],
+                    "recommendation_kind": "outfit_combo",
+                    "outfit_id": "combo::g1|g2",
+                    "component_count": 2,
+                    "component_ids": ["g1", "g2"],
+                    "component_titles": ["Top", "Bottom"],
+                    "component_image_urls": ["https://img1", "https://img2"],
+                }
+            ],
+        )
+
+        args, _kwargs = client.insert_many.call_args
+        self.assertEqual("recommendation_items", args[0])
+        rows = args[1]
+        self.assertEqual(1, len(rows))
+        reasons_json = rows[0]["reasons_json"]
+        self.assertEqual("outfit_combo", reasons_json["recommendation_kind"])
+        self.assertEqual(["g1", "g2"], reasons_json["component_ids"])
+
 
 class ConversationOrchestratorTests(unittest.TestCase):
     def _build_visual_profile(self) -> dict:
@@ -231,6 +268,47 @@ class ConversationOrchestratorTests(unittest.TestCase):
         repo.insert_recommendation_items.assert_called_once()
         repo.finalize_turn.assert_called_once()
         repo.update_conversation_context.assert_called_once()
+
+    def test_get_recommendation_run_parses_combo_metadata(self) -> None:
+        repo = Mock()
+        repo.get_recommendation_run.return_value = {
+            "id": "run_1",
+            "strictness": "balanced",
+            "hard_filter_profile": "rl_ready_minimal",
+            "candidate_count": 10,
+            "returned_count": 2,
+        }
+        repo.get_recommendation_items.return_value = [
+            {
+                "rank": 1,
+                "garment_id": "combo::a|b",
+                "title": "A + B",
+                "image_url": "https://img",
+                "score": 0.9,
+                "max_score": 1.1,
+                "compatibility_confidence": 0.82,
+                "reasons_json": {
+                    "summary": "pair_bonus:+0.08",
+                    "recommendation_kind": "outfit_combo",
+                    "outfit_id": "combo::a|b",
+                    "component_count": 2,
+                    "component_ids": ["a", "b"],
+                    "component_titles": ["Top A", "Bottom B"],
+                    "component_image_urls": ["https://imgA", "https://imgB"],
+                },
+            }
+        ]
+        orchestrator = ConversationOrchestrator(repo=repo, catalog_csv_path="data/output/enriched.csv")
+
+        out = orchestrator.get_recommendation_run("run_1")
+
+        self.assertEqual("run_1", out["recommendation_run_id"])
+        self.assertEqual(1, len(out["items"]))
+        first = out["items"][0]
+        self.assertEqual("outfit_combo", first["recommendation_kind"])
+        self.assertEqual("combo::a|b", first["outfit_id"])
+        self.assertEqual(["a", "b"], first["component_ids"])
+        self.assertEqual(["Top A", "Bottom B"], first["component_titles"])
 
 
 if __name__ == "__main__":

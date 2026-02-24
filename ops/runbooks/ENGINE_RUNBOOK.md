@@ -71,6 +71,8 @@ python3 ops/scripts/rank_outfits.py \
   --input data/output/filtered_outfits.csv \
   --profile data/output/sample_user_profile_tier2.json \
   --tier2-strictness balanced \
+  --recommendation-mode auto \
+  --request-text "I need a complete office look" \
   --output data/output/ranked_outfits.csv \
   --explain data/output/ranked_outfits_explainability.json
 ```
@@ -105,13 +107,15 @@ python3 run_style_pipeline.py \
   --age 25-30 \
   --hard-filter-profile rl_ready_minimal \
   --tier2-strictness balanced \
+  --recommendation-mode auto \
+  --request-text "I need a complete evening outfit" \
   --out-dir data/output \
   --prefix nightout_glamorous_female_25_30
 ```
 
 Final ranked output:
 - `data/output/nightout_glamorous_female_25_30_ranked_summary.csv`
-- includes rank, title, image URLs, and scores.
+- includes rank, recommendation kind (`single_garment` / `outfit_combo`), title, image URLs, and scores.
 - also writes RL-ready logs:
   - `data/output/<prefix>_request_log.json`
   - `data/output/<prefix>_candidate_set_log.csv`

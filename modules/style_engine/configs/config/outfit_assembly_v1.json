@@ -1,0 +1,123 @@
+{
+  "version": "outfit_assembly_v1",
+  "default_mode": "auto",
+  "single_complete_values": [
+    "complete"
+  ],
+  "single_complete_categories": [
+    "one_piece",
+    "set"
+  ],
+  "top_categories": [
+    "top"
+  ],
+  "bottom_categories": [
+    "bottom"
+  ],
+  "outerwear_categories": [
+    "outerwear"
+  ],
+  "combo_requirements": {
+    "top_values": [
+      "needs_bottomwear"
+    ],
+    "bottom_values": [
+      "needs_topwear"
+    ],
+    "allow_unlabeled_top_bottom": true
+  },
+  "candidate_limits": {
+    "max_top_items": 24,
+    "max_bottom_items": 24,
+    "max_pairs_per_top": 6,
+    "max_total_combos": 120
+  },
+  "pair_bonus": {
+    "min": -0.2,
+    "max": 0.25,
+    "occasion_fit": {
+      "exact": 0.08,
+      "related": 0.04,
+      "mismatch": -0.06
+    },
+    "formality": {
+      "close": 0.05,
+      "adjacent": 0.02,
+      "far": -0.05
+    },
+    "color_temperature": {
+      "exact": 0.04,
+      "mixed_bridge": 0.02,
+      "mismatch": -0.03
+    },
+    "pattern_balance": {
+      "both_solid": 0.03,
+      "one_solid": 0.05,
+      "both_patterned": -0.04
+    },
+    "embellishment_balance": {
+      "heavy_clash": -0.04
+    },
+    "silhouette_balance": {
+      "dual_oversized": -0.05
+    }
+  },
+  "formality_order": [
+    "casual",
+    "smart_casual",
+    "semi_formal",
+    "formal",
+    "ceremonial"
+  ],
+  "occasion_fit_related_groups": [
+    [
+      "casual",
+      "very_casual",
+      "travel"
+    ],
+    [
+      "smart_casual",
+      "workwear",
+      "office"
+    ],
+    [
+      "semi_formal",
+      "formal"
+    ],
+    [
+      "party",
+      "festive",
+      "traditional"
+    ],
+    [
+      "active",
+      "athletic"
+    ]
+  ],
+  "explicit_request_keywords": {
+    "category": {
+      "top": ["top", "shirt", "tshirt", "tee", "blouse", "kurta", "kurti", "hoodie", "sweater", "jacket"],
+      "bottom": ["bottom", "trouser", "pants", "jeans", "skirt", "palazzo", "shorts", "leggings"],
+      "outerwear": ["outerwear", "blazer", "coat", "jacket", "shrug"],
+      "one_piece": ["dress", "gown", "jumpsuit", "playsuit", "one piece"],
+      "set": ["set", "co ord", "co-ord", "kurta set", "suit set", "tracksuit"]
+    },
+    "subtype": {
+      "shirt": ["shirt"],
+      "tshirt": ["tshirt", "t-shirt", "tee"],
+      "blouse": ["blouse"],
+      "kurta": ["kurta"],
+      "dress": ["dress"],
+      "gown": ["gown"],
+      "jumpsuit": ["jumpsuit"],
+      "trouser": ["trouser", "trousers"],
+      "pants": ["pants"],
+      "jeans": ["jeans"],
+      "skirt": ["skirt"],
+      "shorts": ["shorts"],
+      "blazer": ["blazer"],
+      "coat": ["coat"],
+      "saree": ["saree"]
+    }
+  }
+}

@@ -71,13 +71,22 @@ Blueprint for the conversation-agentic styling service that:
   "recommendations": [
     {
       "rank": 1,
-      "garment_id": "9259444797653",
-      "title": "Estate White Cotton Twill Shirt",
+      "garment_id": "combo::9259444797653|9259444764885",
+      "title": "Estate White Cotton Twill Shirt + Cedar Green Cotton Oxford Shirt",
       "image_url": "https://...",
       "score": 0.91,
       "max_score": 1.1,
       "compatibility_confidence": 0.83,
-      "reasons": "..."
+      "reasons": "...",
+      "recommendation_kind": "outfit_combo",
+      "outfit_id": "combo::9259444797653|9259444764885",
+      "component_count": 2,
+      "component_ids": ["9259444797653", "9259444764885"],
+      "component_titles": [
+        "Estate White Cotton Twill Shirt",
+        "Cedar Green Cotton Oxford Shirt"
+      ],
+      "component_image_urls": ["https://...", "https://..."]
     }
   ],
   "needs_clarification": false,
@@ -176,6 +185,10 @@ Migration: `supabase/migrations/20260224160000_conversation_platform.sql`
 7. Persist turn, run, items, telemetry.
 8. Return assistant response + ranked items.
 
+Recommendation mode:
+- Auto mode resolves to garment-only when message explicitly asks a garment category/subtype.
+- Otherwise it resolves to outfit mode where complete singles and combo outfits compete.
+
 Clarification branch:
 - If required context is incomplete (for example missing visual profile, or missing context fields),
   the turn returns `needs_clarification=true` with `clarifying_question` and no recommendation run.
@@ -190,3 +203,5 @@ Clarification branch:
 - [x] Runbook and context docs
 - [x] Tests (schemas + repository + orchestrator + agents)
 - [x] Full local test run
+- [x] Outfit assembly mode integration (auto/outfit/garment)
+- [x] Recommendation metadata contract for combo outfits

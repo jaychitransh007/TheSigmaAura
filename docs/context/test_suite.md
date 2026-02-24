@@ -8,6 +8,7 @@ Last run: February 24, 2026
 - Batch request builder behavior
 - Tier 1 filtering behavior (including relaxations)
 - Tier 2 ranking/scoring behavior and explainability contract
+- Outfit assembly behavior (mode resolution + combo candidate construction)
 - User profile inference schemas and image-input normalization
 - Conversation platform schemas, repository behavior, and orchestrator flow
 
@@ -21,6 +22,7 @@ python3 -m unittest discover -s tests -v
 - `tests/test_batch_builder.py`
 - `tests/test_tier1_filters.py`
 - `tests/test_tier2_ranker.py`
+- `tests/test_outfit_engine.py`
 - `tests/test_user_profiler.py`
 - `tests/test_conversation_platform.py`
 - `tests/test_conversation_orchestrator.py`
@@ -37,6 +39,7 @@ python3 -m unittest discover -s tests -v
 - `test_ranked_configs_reference_valid_garment_attributes`
 - `test_context_file_exists`
 - `test_garment_config_file_is_valid_json`
+- `test_outfit_assembly_config_exists_and_loads`
 
 ### Batch Builder
 - `test_normalize_image_url_adds_width`
@@ -67,6 +70,15 @@ python3 -m unittest discover -s tests -v
 - `test_color_loved_preference_boosts_score`
 - `test_compatibility_confidence_is_bounded`
 
+### Outfit Assembly
+- `test_outfit_mode_returns_combo_candidates`
+- `test_auto_mode_detects_garment_request`
+- `test_auto_mode_without_garment_keywords_prefers_outfits`
+- `test_combo_candidate_contains_component_metadata`
+- `test_invalid_recommendation_mode_raises`
+- `test_resolve_mode_detects_hyphenated_keyword`
+- `test_garment_mode_falls_back_if_no_targeted_match`
+
 ### User Profiler
 - `test_visual_schema_has_all_body_fields_plus_gender_age`
 - `test_textual_schema_uses_context_enums`
@@ -81,10 +93,12 @@ python3 -m unittest discover -s tests -v
 - `test_get_or_create_user_returns_existing`
 - `test_get_or_create_user_creates_when_missing`
 - `test_get_user_by_id`
+- `test_insert_recommendation_items_persists_combo_metadata_payload`
 - `test_get_conversation_state_includes_external_user_id`
 - `test_process_turn_requests_clarification_without_first_image`
 - `test_process_turn_requests_clarification_for_missing_text_context`
 - `test_process_turn_happy_path_with_image`
+- `test_get_recommendation_run_parses_combo_metadata`
 - `test_memory_agent_merges_context`
 - `test_stylist_agent_response_with_items`
 - `test_stylist_agent_response_without_items`
@@ -100,8 +114,8 @@ python3 -m unittest discover -s tests -v
 - `test_feedback_endpoint_success`
 
 ## Latest Run Report
-- Total tests: `60`
-- Passed: `60`
+- Total tests: `70`
+- Passed: `70`
 - Failed: `0`
 - Result: `OK`
 

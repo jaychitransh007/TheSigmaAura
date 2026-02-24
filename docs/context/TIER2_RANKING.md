@@ -8,9 +8,11 @@ It is a scoring layer (not hard exclusion except explicit color `never` preferen
 
 Engine:
 - `modules/style_engine/src/style_engine/ranker.py`
+- `modules/style_engine/src/style_engine/outfit_engine.py`
 - CLI: `ops/scripts/rank_outfits.py`
 - Rules: `modules/style_engine/src/style_engine/tier2_rules_v1.json`
 - Ranked mappings config: `modules/style_engine/configs/config/tier2_ranked_attributes.json`
+- Outfit assembly config: `modules/style_engine/configs/config/outfit_assembly_v1.json`
 - End-to-end runner (invokes Tier 2): `run_style_pipeline.py`
 
 Conversation runtime note:
@@ -30,6 +32,12 @@ Implemented formula:
 `Tier2Raw = Σ_a [ W_bh(a) * Σ_g ( W_ga(a,g) * match(a,g) * conf(g) ) ]`
 
 `FinalScore = Tier2Raw * confidence_multiplier + color_delta`
+
+Outfit combo score (for `recommendation_mode=outfit`):
+
+`OutfitScore = ((TopFinalScore + BottomFinalScore) / 2) + PairBonus`
+
+`PairBonus` is config-bounded and computed from outfit-level coherence signals.
 
 Where:
 - `a`: body harmony attribute
@@ -245,6 +253,25 @@ Exact strictness constants:
   - `negative_penalty_scale = 0.85`
   - `color_delta_scale = 1.15`
   - `skin_merge_penalty_scale = 0.85`
+
+## Recommendation Modes
+CLI switch:
+- `--recommendation-mode auto|outfit|garment`
+
+Behavior:
+- `auto`: request text is scanned for category/subtype keywords from `outfit_assembly_v1.json`.
+  - explicit garment ask -> `garment`
+  - otherwise -> `outfit`
+- `outfit`: single complete garments compete with top+bottom combos.
+- `garment`: only single-garment candidates are returned (optional category/subtype narrowing when detected).
+
+Pair bonus signals (config-driven):
+- occasion-fit coherence
+- formality distance
+- color-temperature compatibility
+- pattern balance (solid-vs-patterned)
+- heavy embellishment clash
+- dual oversized/boxy silhouette clash
 
 ## Output Contracts
 CSV adds per-row fields:

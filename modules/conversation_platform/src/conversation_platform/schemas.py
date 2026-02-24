@@ -45,6 +45,12 @@ class RecommendationItem(BaseModel):
     max_score: float
     compatibility_confidence: float
     reasons: str
+    recommendation_kind: str = "single_garment"
+    outfit_id: str = ""
+    component_count: int = 1
+    component_ids: List[str] = Field(default_factory=list)
+    component_titles: List[str] = Field(default_factory=list)
+    component_image_urls: List[str] = Field(default_factory=list)
 
 
 class TurnResponse(BaseModel):

@@ -24,10 +24,10 @@ for p in (
 
 from style_engine.ranker import (  # noqa: E402
     load_tier2_rules,
-    rank_garments,
     read_csv_rows,
     write_ranked_csv,
 )
+from style_engine.outfit_engine import rank_recommendation_candidates  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,6 +43,17 @@ def parse_args() -> argparse.Namespace:
         choices=["safe", "balanced", "bold"],
         help="Adjusts confidence multipliers and penalties without changing base rules.",
     )
+    parser.add_argument(
+        "--recommendation-mode",
+        default="auto",
+        choices=["auto", "outfit", "garment"],
+        help="Recommendation mode. Auto prefers outfit mode unless request text is garment-specific.",
+    )
+    parser.add_argument(
+        "--request-text",
+        default="",
+        help="Optional natural-language request text used for auto mode resolution.",
+    )
     return parser.parse_args()
 
 
@@ -53,21 +64,30 @@ def main() -> int:
         profile = json.load(f)
     rules = load_tier2_rules()
 
-    ranked = rank_garments(
+    ranked, recommendation_meta = rank_recommendation_candidates(
         rows=rows,
         user_profile=profile,
-        rules=rules,
+        tier2_rules=rules,
         strictness=args.tier2_strictness,
+        mode=args.recommendation_mode,
+        request_text=args.request_text,
+        max_results=args.limit,
     )
-    if args.limit > 0:
-        ranked = ranked[: args.limit]
 
     out_rows = [r.row for r in ranked]
     explain = {
         "total_input_rows": len(rows),
         "ranked_rows": len(ranked),
         "tier2_strictness": args.tier2_strictness,
+        "recommendation_mode": args.recommendation_mode,
+        "resolved_recommendation_mode": recommendation_meta.resolved_mode,
         "profile_used": profile,
+        "recommendation_meta": {
+            "requested_categories": recommendation_meta.requested_categories,
+            "requested_subtypes": recommendation_meta.requested_subtypes,
+            "single_candidates": recommendation_meta.single_candidates,
+            "combo_candidates": recommendation_meta.combo_candidates,
+        },
         "top_results": [
             {
                 "id": r.row.get("id", ""),
@@ -79,6 +99,8 @@ def main() -> int:
                 "flags": r.flags,
                 "reasons": r.reasons,
                 "penalties": r.penalties,
+                "recommendation_kind": r.row.get("recommendation_kind", "single_garment"),
+                "component_ids_json": r.row.get("component_ids_json", "[]"),
                 "explainability": r.explainability,
             }
             for r in ranked[: min(25, len(ranked))]
@@ -111,6 +133,8 @@ def main() -> int:
     print(f"input_rows={len(rows)}")
     print(f"ranked_rows={len(ranked)}")
     print(f"tier2_strictness={args.tier2_strictness}")
+    print(f"recommendation_mode={args.recommendation_mode}")
+    print(f"resolved_recommendation_mode={recommendation_meta.resolved_mode}")
     print(f"output_csv={args.output}")
     print(f"explain_json={args.explain}")
     return 0

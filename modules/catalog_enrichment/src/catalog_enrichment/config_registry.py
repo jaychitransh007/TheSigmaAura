@@ -54,3 +54,7 @@ def load_tier1_ranked_attributes() -> Dict[str, Any]:
 
 def load_reinforcement_framework() -> Dict[str, Any]:
     return load_json_config("reinforcement_framework_v1.json")
+
+
+def load_outfit_assembly_rules() -> Dict[str, Any]:
+    return load_json_config("outfit_assembly_v1.json")

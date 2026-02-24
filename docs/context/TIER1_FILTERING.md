@@ -22,6 +22,10 @@ Outputs:
 - User-side context can be inferred upstream using `run_user_profiler.py`
   (`data/output/user_style_context.json` provides `occasion`, `archetype`, `gender`, `age`).
 
+Downstream handoff:
+- Tier 1 output is consumed by outfit assembly + Tier 2 ranking.
+- In outfit mode, complete singles and multi-garment combos are generated only from Tier 1 pass rows.
+
 Engine:
 - `modules/style_engine/src/style_engine/filters.py`
 - CLI: `ops/scripts/filter_outfits.py`
