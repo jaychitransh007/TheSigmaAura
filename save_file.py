@@ -1,5 +1,20 @@
 import pandas as pd
-from stores.json_files.json_to_dataframe import load_store_products_flat
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent
+for p in (
+    ROOT,
+    ROOT / "modules" / "catalog_enrichment" / "src",
+    ROOT / "modules" / "style_engine" / "src",
+    ROOT / "modules" / "catalog_enrichment" / "stores" / "json_files",
+):
+    sp = str(p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
+
+from json_to_dataframe import load_store_products_flat
 
 
 filenames = [
@@ -24,7 +39,10 @@ filenames = [
 for fn in filenames:
     filename = f"{fn}.json"
     print(filename)
-    df = load_store_products_flat(file_name=filename, stores_dir="stores/json_files")
+    df = load_store_products_flat(
+        file_name=filename,
+        stores_dir="modules/catalog_enrichment/stores/json_files",
+    )
     df["store"] = fn
     df["price"] = df["variants__1__price"].astype("float64")
     df = df[df["price"] >= 2000].reset_index(drop=True)
@@ -50,5 +68,5 @@ for fn in filenames:
         ],
     ]
     print(df.columns)
-    csv_file = f"stores/processed_csv_files/{fn}_processed.csv"
+    csv_file = f"modules/catalog_enrichment/stores/processed_csv_files/{fn}_processed.csv"
     df.to_csv(csv_file)

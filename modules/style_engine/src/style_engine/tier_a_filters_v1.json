@@ -1,0 +1,253 @@
+{
+  "version": "tier_a_filters_v1",
+  "price_range_inr": {
+    "min": 2000,
+    "max": 5000
+  },
+  "occasions": {
+    "work_mode": {
+      "OccasionFit": ["workwear", "smart_casual", "semi_formal"],
+      "OccasionSignal": ["office", "daily"],
+      "FormalityLevel": ["smart_casual", "semi_formal", "formal"],
+      "TimeOfDay": ["day", "day_to_night"]
+    },
+    "social_casual": {
+      "OccasionFit": ["casual", "smart_casual", "very_casual"],
+      "OccasionSignal": ["daily", "evening"],
+      "FormalityLevel": ["casual", "smart_casual"],
+      "TimeOfDay": ["day", "day_to_night", "evening"]
+    },
+    "night_out": {
+      "OccasionFit": ["party", "smart_casual", "semi_formal"],
+      "OccasionSignal": ["party", "evening"],
+      "FormalityLevel": ["smart_casual", "semi_formal", "formal"],
+      "TimeOfDay": ["night", "evening"]
+    },
+    "formal_events": {
+      "OccasionFit": ["formal", "semi_formal", "traditional"],
+      "OccasionSignal": ["evening", "office"],
+      "FormalityLevel": ["formal", "ceremonial"],
+      "TimeOfDay": ["evening", "night", "day_to_night"]
+    },
+    "festive": {
+      "OccasionFit": ["festive", "traditional", "semi_formal"],
+      "OccasionSignal": ["festive", "evening"],
+      "FormalityLevel": ["semi_formal", "formal", "ceremonial"],
+      "TimeOfDay": ["day_to_night", "evening", "night"]
+    },
+    "beach_vacation": {
+      "OccasionFit": ["travel", "casual", "very_casual"],
+      "OccasionSignal": ["travel", "daily"],
+      "FormalityLevel": ["casual", "smart_casual"],
+      "TimeOfDay": ["day", "day_to_night"]
+    },
+    "dating": {
+      "OccasionFit": ["smart_casual", "casual", "party"],
+      "OccasionSignal": ["evening", "party", "daily"],
+      "FormalityLevel": ["smart_casual", "semi_formal"],
+      "TimeOfDay": ["evening", "night", "day_to_night"]
+    },
+    "wedding_vibes": {
+      "OccasionFit": ["festive", "traditional", "formal", "semi_formal"],
+      "OccasionSignal": ["festive", "evening"],
+      "FormalityLevel": ["formal", "ceremonial"],
+      "TimeOfDay": ["day_to_night", "evening", "night"]
+    }
+  },
+  "occasion_archetype_compatibility": {
+    "work_mode": [
+      "classic",
+      "minimalist",
+      "modern_professional",
+      "natural",
+      "sporty",
+      "edgy"
+    ],
+    "social_casual": [
+      "natural",
+      "romantic",
+      "sporty",
+      "bohemian",
+      "creative",
+      "minimalist",
+      "classic",
+      "trend_forward",
+      "edgy"
+    ],
+    "night_out": [
+      "glamorous",
+      "edgy",
+      "dramatic",
+      "trend_forward",
+      "romantic",
+      "creative"
+    ],
+    "formal_events": [
+      "classic",
+      "modern_professional",
+      "glamorous",
+      "dramatic",
+      "minimalist"
+    ],
+    "festive": [
+      "romantic",
+      "glamorous",
+      "bohemian",
+      "creative",
+      "classic",
+      "dramatic",
+      "trend_forward"
+    ],
+    "beach_vacation": [
+      "natural",
+      "bohemian",
+      "sporty",
+      "romantic",
+      "creative",
+      "trend_forward"
+    ],
+    "dating": [
+      "romantic",
+      "glamorous",
+      "minimalist",
+      "edgy",
+      "classic",
+      "trend_forward",
+      "natural"
+    ],
+    "wedding_vibes": [
+      "glamorous",
+      "romantic",
+      "classic",
+      "dramatic",
+      "bohemian",
+      "creative",
+      "trend_forward"
+    ]
+  },
+  "archetypes": {
+    "classic": {
+      "SilhouetteType": ["straight", "a_line", "fitted", "tapered", "wrap"],
+      "FitType": ["tailored", "regular", "slim"],
+      "PatternType": ["solid", "stripes_vertical", "stripes_horizontal", "checks", "geometric", "textured"],
+      "ColorSaturation": ["muted", "medium"],
+      "ContrastLevel": ["low", "medium"],
+      "EmbellishmentLevel": ["none", "minimal", "subtle"]
+    },
+    "minimalist": {
+      "SilhouetteType": ["straight", "fitted", "a_line", "tapered"],
+      "FitType": ["regular", "slim", "tailored"],
+      "PatternType": ["solid", "textured", "geometric"],
+      "ColorSaturation": ["muted", "medium"],
+      "ContrastLevel": ["low", "medium"],
+      "EmbellishmentLevel": ["none", "minimal"]
+    },
+    "modern_professional": {
+      "SilhouetteType": ["straight", "fitted", "a_line", "wrap", "tapered"],
+      "FitType": ["tailored", "slim", "regular"],
+      "PatternType": ["solid", "geometric", "checks", "stripes_vertical", "stripes_horizontal"],
+      "ColorSaturation": ["muted", "medium"],
+      "ContrastLevel": ["low", "medium"],
+      "EmbellishmentLevel": ["none", "minimal", "subtle"]
+    },
+    "romantic": {
+      "SilhouetteType": ["wrap", "a_line", "flared", "empire", "fitted"],
+      "FitType": ["regular", "relaxed", "slim"],
+      "PatternType": ["floral", "abstract", "motif"],
+      "ColorSaturation": ["muted", "medium", "high"],
+      "ContrastLevel": ["low", "medium"],
+      "EmbellishmentLevel": ["minimal", "subtle", "moderate"]
+    },
+    "glamorous": {
+      "SilhouetteType": ["fitted", "mermaid", "flared", "wrap", "peplum"],
+      "FitType": ["slim", "tailored", "regular"],
+      "PatternType": ["solid", "abstract", "textured", "motif"],
+      "ColorSaturation": ["high", "very_high"],
+      "ContrastLevel": ["high", "very_high"],
+      "EmbellishmentLevel": ["moderate", "heavy", "statement"]
+    },
+    "dramatic": {
+      "SilhouetteType": ["straight", "fitted", "oversized", "mermaid"],
+      "FitType": ["tailored", "slim", "loose"],
+      "PatternType": ["solid", "abstract", "geometric", "textured"],
+      "ColorSaturation": ["muted", "high", "very_high"],
+      "ContrastLevel": ["high", "very_high"],
+      "EmbellishmentLevel": ["none", "minimal", "statement"]
+    },
+    "creative": {
+      "SilhouetteType": ["oversized", "wrap", "flared", "peplum", "empire"],
+      "FitType": ["relaxed", "regular", "loose", "slim"],
+      "PatternType": ["abstract", "geometric", "motif", "ethnic", "textured"],
+      "ColorSaturation": ["medium", "high", "very_high"],
+      "ContrastLevel": ["medium", "high", "very_high"],
+      "EmbellishmentLevel": ["subtle", "moderate", "statement"]
+    },
+    "natural": {
+      "SilhouetteType": ["relaxed", "a_line", "wrap", "straight", "flared"],
+      "FitType": ["relaxed", "regular", "loose"],
+      "PatternType": ["floral", "ethnic", "textured", "solid"],
+      "ColorSaturation": ["muted", "medium"],
+      "ContrastLevel": ["low", "medium"],
+      "EmbellishmentLevel": ["none", "minimal", "subtle"]
+    },
+    "sporty": {
+      "SilhouetteType": ["straight", "relaxed", "tapered", "a_line"],
+      "FitType": ["regular", "relaxed", "slim"],
+      "PatternType": ["solid", "geometric", "stripes_vertical", "stripes_horizontal"],
+      "ColorSaturation": ["medium", "high"],
+      "ContrastLevel": ["medium", "high"],
+      "EmbellishmentLevel": ["none", "minimal"]
+    },
+    "trend_forward": {
+      "SilhouetteType": ["oversized", "wrap", "peplum", "fitted", "empire", "flared"],
+      "FitType": ["slim", "regular", "loose", "relaxed"],
+      "PatternType": ["abstract", "geometric", "floral", "stripes_vertical", "stripes_horizontal"],
+      "ColorSaturation": ["high", "very_high"],
+      "ContrastLevel": ["high", "very_high"],
+      "EmbellishmentLevel": ["subtle", "moderate", "statement"]
+    },
+    "bohemian": {
+      "SilhouetteType": ["flared", "relaxed", "a_line", "empire", "wrap"],
+      "FitType": ["relaxed", "loose", "regular"],
+      "PatternType": ["ethnic", "floral", "abstract", "motif"],
+      "ColorSaturation": ["medium", "high"],
+      "ContrastLevel": ["low", "medium"],
+      "EmbellishmentLevel": ["subtle", "moderate", "heavy"]
+    },
+    "edgy": {
+      "SilhouetteType": ["fitted", "straight", "oversized", "tapered"],
+      "FitType": ["slim", "tailored", "loose"],
+      "PatternType": ["solid", "abstract", "geometric", "animal", "textured"],
+      "ColorSaturation": ["muted", "high", "very_high"],
+      "ContrastLevel": ["high", "very_high"],
+      "EmbellishmentLevel": ["none", "minimal", "statement"]
+    }
+  },
+  "gender_map": {
+    "male": ["masculine", "androgynous", "unisex"],
+    "female": ["feminine", "androgynous", "unisex"]
+  },
+  "age_bands": {
+    "18_24": {
+      "SkinExposureLevel": ["low", "medium", "high", "very_high"],
+      "NecklineDepth": ["shallow", "moderate", "deep", "very_deep"],
+      "FormalityLevel": ["casual", "smart_casual", "semi_formal", "formal"],
+      "EmbellishmentLevel": ["minimal", "subtle", "moderate", "heavy", "statement"],
+      "PatternScale": ["small", "medium", "large", "mixed", "oversized"]
+    },
+    "25_30": {
+      "SkinExposureLevel": ["very_low", "low", "medium", "high", "very_high"],
+      "NecklineDepth": ["closed", "shallow", "moderate", "deep", "very_deep"],
+      "FormalityLevel": ["casual", "smart_casual", "semi_formal", "formal", "ceremonial"],
+      "EmbellishmentLevel": ["none", "minimal", "subtle", "moderate", "heavy", "statement"],
+      "PatternScale": ["micro", "small", "medium", "large", "mixed", "oversized"]
+    },
+    "30_35": {
+      "SkinExposureLevel": ["very_low", "low", "medium", "high"],
+      "NecklineDepth": ["closed", "shallow", "moderate", "deep"],
+      "FormalityLevel": ["smart_casual", "semi_formal", "formal", "ceremonial"],
+      "EmbellishmentLevel": ["minimal", "subtle", "moderate", "heavy"],
+      "PatternScale": ["small", "medium", "large"]
+    }
+  }
+}

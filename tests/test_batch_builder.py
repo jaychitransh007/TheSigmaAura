@@ -1,5 +1,19 @@
 import unittest
 
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+for p in (
+    ROOT,
+    ROOT / "modules" / "catalog_enrichment" / "src",
+    ROOT / "modules" / "style_engine" / "src",
+):
+    sp = str(p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
+
+
 from catalog_enrichment.batch_builder import _normalize_image_url, build_request_body
 from catalog_enrichment.config import PipelineConfig
 

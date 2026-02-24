@@ -2,6 +2,20 @@ import json
 import unittest
 from pathlib import Path
 
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+for p in (
+    ROOT,
+    ROOT / "modules" / "catalog_enrichment" / "src",
+    ROOT / "modules" / "style_engine" / "src",
+):
+    sp = str(p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
+
+
 from catalog_enrichment.attributes import ATTRIBUTE_NAMES, ENUM_ATTRIBUTES, TEXT_ATTRIBUTES
 from catalog_enrichment.config_registry import (
     load_body_harmony_attributes,
@@ -83,12 +97,12 @@ class ConfigAndSchemaTests(unittest.TestCase):
                 self.assertIn(attr, garment_attrs)
 
     def test_context_file_exists(self) -> None:
-        self.assertTrue(Path("context_files/SINGLE_SOURCE_OF_TRUTH.md").exists())
-        text = Path("context_files/SINGLE_SOURCE_OF_TRUTH.md").read_text(encoding="utf-8")
+        self.assertTrue(Path("docs/context/SINGLE_SOURCE_OF_TRUTH.md").exists())
+        text = Path("docs/context/SINGLE_SOURCE_OF_TRUTH.md").read_text(encoding="utf-8")
         self.assertIn("config/", text)
 
     def test_garment_config_file_is_valid_json(self) -> None:
-        raw = Path("config/garment_attributes.json").read_text(encoding="utf-8")
+        raw = Path("modules/style_engine/configs/config/garment_attributes.json").read_text(encoding="utf-8")
         parsed = json.loads(raw)
         self.assertIn("enum_attributes", parsed)
         self.assertIn("text_attributes", parsed)

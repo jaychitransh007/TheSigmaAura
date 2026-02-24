@@ -1,6 +1,20 @@
 import unittest
 
-from catalog_enrichment.styling_filters import (
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+for p in (
+    ROOT,
+    ROOT / "modules" / "catalog_enrichment" / "src",
+    ROOT / "modules" / "style_engine" / "src",
+):
+    sp = str(p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
+
+
+from style_engine.filters import (
     UserContext,
     filter_catalog_rows,
     filter_catalog_rows_minimal_hard,
@@ -48,6 +62,10 @@ class Tier1FilterTests(unittest.TestCase):
     def test_parse_relax_filters_invalid_raises(self) -> None:
         with self.assertRaises(ValueError):
             parse_relaxed_filters(["foo"])
+
+    def test_parse_relax_filters_trims_and_dedupes(self) -> None:
+        out = parse_relaxed_filters([" age , price ", "price"])
+        self.assertEqual({"age", "price"}, out)
 
     def test_strict_filter_passes_matching_row(self) -> None:
         rows = [_base_pass_row()]
@@ -111,6 +129,26 @@ class Tier1FilterTests(unittest.TestCase):
         passed, failed = filter_catalog_rows(rows=[bad], ctx=self.ctx, rules=self.rules)
         self.assertEqual(0, len(passed))
         self.assertIn("gender:GenderExpression", failed[0]["fail_reasons"])
+
+    def test_invalid_archetype_shows_occasion_hint(self) -> None:
+        ctx = UserContext(
+            occasion="Work Mode",
+            archetype="Night Out",
+            gender="Female",
+            age="25-30",
+        )
+        with self.assertRaisesRegex(ValueError, "looks like an occasion value"):
+            filter_catalog_rows(rows=[_base_pass_row()], ctx=ctx, rules=self.rules)
+
+    def test_invalid_occasion_shows_archetype_hint(self) -> None:
+        ctx = UserContext(
+            occasion="Classic",
+            archetype="Classic",
+            gender="Female",
+            age="25-30",
+        )
+        with self.assertRaisesRegex(ValueError, "looks like an archetype value"):
+            filter_catalog_rows(rows=[_base_pass_row()], ctx=ctx, rules=self.rules)
 
     def test_minimal_hard_filters_pass_base_row(self) -> None:
         row = _base_pass_row()

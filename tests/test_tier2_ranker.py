@@ -1,6 +1,20 @@
 import unittest
 
-from catalog_enrichment.tier2_ranker import load_tier2_rules, rank_garments
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+for p in (
+    ROOT,
+    ROOT / "modules" / "catalog_enrichment" / "src",
+    ROOT / "modules" / "style_engine" / "src",
+):
+    sp = str(p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
+
+
+from style_engine.ranker import load_tier2_rules, rank_garments
 
 
 def _row(**overrides: str) -> dict:
@@ -108,6 +122,9 @@ class Tier2RankerTests(unittest.TestCase):
             "tier2_penalties",
         ):
             self.assertIn(field, r)
+        explain = out[0].explainability
+        self.assertIn("conflict_engine", explain)
+        self.assertIn("formula", explain)
 
     def test_color_never_excludes_item(self) -> None:
         profile = _profile(color_preferences={"never": ["blue"]})
@@ -144,6 +161,22 @@ class Tier2RankerTests(unittest.TestCase):
         weights = out[0].explainability["effective_bh_weights"]
         self.assertAlmostEqual(1.0, sum(weights.values()), places=6)
         self.assertGreater(weights["HeightCategory"], weights["HairColor"])
+
+    def test_color_loved_preference_boosts_score(self) -> None:
+        row = _row(PrimaryColor="blue")
+        neutral = rank_garments(rows=[row], user_profile=_profile(color_preferences={}), rules=self.rules)[0].final_score
+        loved = rank_garments(
+            rows=[row],
+            user_profile=_profile(color_preferences={"loved": ["blue"]}),
+            rules=self.rules,
+        )[0].final_score
+        self.assertGreater(loved, neutral)
+
+    def test_compatibility_confidence_is_bounded(self) -> None:
+        out = rank_garments(rows=[_row()], user_profile=_profile(), rules=self.rules)
+        confidence = float(out[0].row["tier2_compatibility_confidence"])
+        self.assertGreaterEqual(confidence, 0.0)
+        self.assertLessEqual(confidence, 1.0)
 
 
 if __name__ == "__main__":
