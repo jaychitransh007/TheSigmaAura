@@ -132,17 +132,22 @@ Blueprint for the conversation-agentic styling service that:
 }
 ```
 - Reward map:
-  - `like: +5`
+  - `dislike: -5`
+  - `like: +2`
   - `share: +10`
-  - `buy: +50`
-  - `skip: -1`
+  - `buy: +20`
+  - `no_action: -1`
+  - `skip: -1` (alias for no-action flows)
 
 UI behavior:
-- Recommendation cards expose `Like`, `Share`, and `Buy Now` buttons.
+- Recommendation cards expose `Dislike`, `Like`, `Share`, and `Buy Now` buttons.
+- UI action layout is two-row: full-width `Buy Now`, then `Dislike | Like | Share`.
 - Each action writes a feedback event to `/v1/feedback` with the current `recommendation_run_id`.
 
 ## Table Blueprint
-Migration: `supabase/migrations/20260224160000_conversation_platform.sql`
+Migrations:
+- `supabase/migrations/20260224160000_conversation_platform.sql`
+- `supabase/migrations/20260224170500_feedback_events_event_type_v2.sql`
 
 - `users`
   - canonical user record (`external_user_id` unique)
@@ -172,7 +177,7 @@ Migration: `supabase/migrations/20260224160000_conversation_platform.sql`
 - Strict enums:
   - `strictness`: `safe|balanced|bold`
   - `hard_filter_profile`: `rl_ready_minimal|legacy`
-  - `event_type`: `like|share|buy|skip`
+  - `event_type`: `dislike|like|share|buy|skip|no_action`
   - resolved context: canonical `occasion/archetype/gender/age` values
 
 ## Runtime Flow

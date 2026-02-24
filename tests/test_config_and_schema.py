@@ -21,6 +21,7 @@ from catalog_enrichment.config_registry import (
     load_body_harmony_attributes,
     load_garment_attributes,
     load_outfit_assembly_rules,
+    load_reinforcement_framework,
     load_tier1_ranked_attributes,
     load_tier2_ranked_attributes,
     load_user_context_attributes,
@@ -114,6 +115,16 @@ class ConfigAndSchemaTests(unittest.TestCase):
         self.assertIn("pair_bonus", cfg)
         self.assertIn("candidate_limits", cfg)
         self.assertTrue(Path("modules/style_engine/configs/config/outfit_assembly_v1.json").exists())
+
+    def test_reinforcement_rewards_match_ui_contract(self) -> None:
+        cfg = load_reinforcement_framework()
+        rewards = cfg.get("reward_weights") or {}
+        self.assertEqual(20, rewards.get("buy"))
+        self.assertEqual(10, rewards.get("share"))
+        self.assertEqual(2, rewards.get("like"))
+        self.assertEqual(-5, rewards.get("dislike"))
+        self.assertEqual(-1, rewards.get("no_action"))
+        self.assertEqual(-1, rewards.get("skip"))
 
 
 if __name__ == "__main__":

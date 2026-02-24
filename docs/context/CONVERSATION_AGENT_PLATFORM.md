@@ -77,7 +77,10 @@ When the UI uses async turn execution, backend stages are streamed via polling:
 - `clarification_required` (conditional)
 
 ## Feedback Capture in UI
-- Recommendation cards render `Like`, `Share`, and `Buy Now`.
+- Recommendation cards render `Dislike`, `Like`, `Share`, and `Buy Now`.
+- Layout is two rows per card:
+  - row 1: full-width `Buy Now`
+  - row 2: `Dislike | Like | Share`
 - Each action logs an outcome event through `POST /v1/feedback`.
 
 ## Security and Privacy

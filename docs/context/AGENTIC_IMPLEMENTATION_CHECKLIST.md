@@ -22,7 +22,9 @@ Last updated: February 24, 2026
 - [x] Add browser conversational interface (`GET /`) with iterative turn handling.
 - [x] Add async processing stages (`turns/start` + status polling) for live agent progress.
 - [x] Add clarification-first branch when context is insufficient.
-- [x] Add recommendation card actions (`Like`, `Share`, `Buy Now`) wired to feedback logging.
+- [x] Add recommendation card actions (`Dislike`, `Like`, `Share`, `Buy Now`) wired to feedback logging.
+- [x] Expand feedback event enum/reward mapping (`dislike`, `like`, `share`, `buy`, `no_action`, `skip`).
+- [x] Patch local Supabase feedback constraint for existing projects.
 
 ## Outfit Assembly Action Plan + Status
 - [x] Define outfit-candidate generation strategy in context docs and runbook.
@@ -42,5 +44,5 @@ Last updated: February 24, 2026
 
 ## Validation Notes
 - Test command: `python3 -m unittest discover -s tests -p 'test_*.py' -v`
-- Current result: `70 passed, 0 failed` (includes outfit assembly mode tests, conversation platform UI, async stage status, clarification branch, feedback API, orchestrator, and repository tests)
+- Current result: `76 passed, 0 failed` (includes outfit assembly mode tests, conversation platform UI, async stage status, clarification branch, feedback API, orchestrator/repository tests, and UI/reward contract checks)
 - API runner validation: `python3 run_conversation_platform.py --help`

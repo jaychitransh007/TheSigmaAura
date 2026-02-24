@@ -40,6 +40,7 @@ python3 -m unittest discover -s tests -v
 - `test_context_file_exists`
 - `test_garment_config_file_is_valid_json`
 - `test_outfit_assembly_config_exists_and_loads`
+- `test_reinforcement_rewards_match_ui_contract`
 
 ### Batch Builder
 - `test_normalize_image_url_adds_width`
@@ -107,15 +108,20 @@ python3 -m unittest discover -s tests -v
 - `test_telemetry_reward_mapping`
 - `test_turn_request_defaults`
 - `test_feedback_event_type_validation`
+- `test_feedback_event_type_validation_dislike`
+- `test_feedback_event_type_validation_no_action`
 - `test_root_returns_html`
 - `test_favicon_route_exists`
 - `test_turn_job_start_and_status`
 - `test_turn_job_start_and_status_failed`
 - `test_feedback_endpoint_success`
+- `test_feedback_endpoint_dislike_success`
+- `test_feedback_endpoint_returns_migration_hint_for_old_event_type_constraint`
+- `test_root_contains_action_layout_and_reward_contract`
 
 ## Latest Run Report
-- Total tests: `70`
-- Passed: `70`
+- Total tests: `76`
+- Passed: `76`
 - Failed: `0`
 - Result: `OK`
 

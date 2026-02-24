@@ -100,7 +100,7 @@ create table if not exists feedback_events (
   conversation_id uuid not null references conversations(id) on delete cascade,
   recommendation_run_id uuid not null references recommendation_runs(id) on delete cascade,
   garment_id text not null,
-  event_type text not null check (event_type in ('like', 'share', 'buy', 'skip')),
+  event_type text not null check (event_type in ('dislike', 'like', 'share', 'buy', 'skip', 'no_action')),
   reward_value int not null,
   notes text,
   created_at timestamptz not null default now()

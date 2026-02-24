@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 Strictness = Literal["safe", "balanced", "bold"]
 HardFilterProfile = Literal["rl_ready_minimal", "legacy"]
-FeedbackEventType = Literal["like", "share", "buy", "skip"]
+FeedbackEventType = Literal["dislike", "like", "share", "buy", "skip", "no_action"]
 
 
 class ResolvedContext(BaseModel):

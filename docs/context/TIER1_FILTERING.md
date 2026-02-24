@@ -2,6 +2,10 @@
 
 Last updated: February 24, 2026
 
+Context sync note:
+- Tier 1 filtering rules are unchanged by the latest feedback/UI update.
+- Feedback schema/UI updates affect conversation telemetry only, not Tier 1 pass/fail logic.
+
 ## Purpose
 Tier 1 is the hard-filter stage. It narrows the enriched catalog to items that satisfy user context constraints before personalized ranking.
 

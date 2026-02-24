@@ -131,10 +131,11 @@ python3 ops/scripts/log_styling_outcome.py \
 ```
 
 Reward policy (config-driven):
-- `like = +5`
+- `dislike = -5`
+- `like = +2`
 - `share = +10`
-- `buy = +50`
-- `skip = -1`
+- `buy = +20`
+- `no_action = -1` (`skip` alias supported)
 
 ## Error Handling
 - The runner handles common input/config errors gracefully and prints one-line messages without Python tracebacks.

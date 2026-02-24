@@ -78,7 +78,11 @@ class ConversationPlatformTests(unittest.TestCase):
 
     def test_telemetry_reward_mapping(self) -> None:
         agent = TelemetryAgent()
-        self.assertEqual(50, agent.reward_for_event("buy"))
+        self.assertEqual(20, agent.reward_for_event("buy"))
+        self.assertEqual(10, agent.reward_for_event("share"))
+        self.assertEqual(2, agent.reward_for_event("like"))
+        self.assertEqual(-5, agent.reward_for_event("dislike"))
+        self.assertEqual(-1, agent.reward_for_event("no_action"))
         self.assertEqual(-1, agent.reward_for_event("skip"))
 
     def test_turn_request_defaults(self) -> None:
@@ -96,6 +100,26 @@ class ConversationPlatformTests(unittest.TestCase):
             event_type="like",
         )
         self.assertEqual("like", req.event_type)
+
+    def test_feedback_event_type_validation_dislike(self) -> None:
+        req = FeedbackRequest(
+            user_id="u1",
+            conversation_id="c1",
+            recommendation_run_id="r1",
+            garment_id="g1",
+            event_type="dislike",
+        )
+        self.assertEqual("dislike", req.event_type)
+
+    def test_feedback_event_type_validation_no_action(self) -> None:
+        req = FeedbackRequest(
+            user_id="u1",
+            conversation_id="c1",
+            recommendation_run_id="r1",
+            garment_id="g1",
+            event_type="no_action",
+        )
+        self.assertEqual("no_action", req.event_type)
 
     def test_load_config_accepts_supabase_cli_env_vars(self) -> None:
         with patch("conversation_platform.config._load_dotenv", return_value=None), patch.dict(

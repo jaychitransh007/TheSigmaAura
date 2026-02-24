@@ -259,13 +259,20 @@ class MemoryAgent:
 class TelemetryAgent:
     def __init__(self):
         framework = load_reinforcement_framework()
-        reward_map = framework.get("reward_policy") or {}
+        reward_map = framework.get("reward_weights") or framework.get("reward_policy") or {}
         self.reward_map = {str(k): int(v) for k, v in reward_map.items()} if reward_map else {
-            "like": 5,
+            "dislike": -5,
+            "like": 2,
             "share": 10,
-            "buy": 50,
+            "buy": 20,
+            "no_action": -1,
             "skip": -1,
         }
+        # Keep no_action and skip aligned for compatibility.
+        if "no_action" in self.reward_map and "skip" not in self.reward_map:
+            self.reward_map["skip"] = int(self.reward_map["no_action"])
+        if "skip" in self.reward_map and "no_action" not in self.reward_map:
+            self.reward_map["no_action"] = int(self.reward_map["skip"])
 
     def reward_for_event(self, event_type: str) -> int:
         return int(self.reward_map.get(event_type, 0))

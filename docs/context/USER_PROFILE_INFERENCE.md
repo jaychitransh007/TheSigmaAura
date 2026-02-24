@@ -2,6 +2,9 @@
 
 Last updated: February 24, 2026
 
+Context sync note:
+- Latest changes were in conversation feedback telemetry/UI; profiler schema and model routing remain unchanged.
+
 ## Purpose
 Infer user-side styling context from:
 - one uploaded user image (visual reasoning)

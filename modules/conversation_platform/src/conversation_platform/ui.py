@@ -132,11 +132,31 @@ def get_web_ui_html() -> str:
       border-radius: 10px;
       overflow: hidden;
     }
-    .card img {
+    .card-media {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 4px;
+      padding: 6px;
+      background: #f7f3ed;
+    }
+    .card-media.two {
+      grid-template-columns: 1fr 1fr;
+    }
+    .media-slot {
       width: 100%;
       height: 170px;
-      object-fit: cover;
+      border-radius: 8px;
+      overflow: hidden;
       background: #f0f0f0;
+      border: 1px solid #e6ddd2;
+    }
+    .card-media.two .media-slot {
+      height: 150px;
+    }
+    .media-slot img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
       display: block;
     }
     .card .body {
@@ -145,6 +165,16 @@ def get_web_ui_html() -> str:
     }
     .card-actions {
       margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .buy-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    .feedback-row {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
       gap: 6px;
@@ -163,6 +193,11 @@ def get_web_ui_html() -> str:
       background: var(--accent-2);
       border-color: var(--accent-2);
       color: #fff;
+    }
+    .mini-btn.dislike {
+      background: #f7e9e7;
+      border-color: #d8b8b3;
+      color: #6b1f16;
     }
     .mini-btn:disabled {
       opacity: 0.55;
@@ -200,6 +235,20 @@ def get_web_ui_html() -> str:
     }
     .stage-name {
       font-weight: 600;
+    }
+    .reward-box {
+      margin-top: 10px;
+      padding: 8px;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      background: #fff;
+      font-size: 12px;
+      color: var(--ink);
+    }
+    .build-tag {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 11px;
     }
     @media (max-width: 900px) {
       .wrap { grid-template-columns: 1fr; }
@@ -251,6 +300,15 @@ def get_web_ui_html() -> str:
       <div class="field" style="margin-top:10px;">
         <label>Agent Processing Stages</label>
         <div id="stageBox" class="stages"></div>
+      </div>
+      <div class="reward-box">
+        <div><strong>Rewards</strong></div>
+        <div>Buy Now: +20</div>
+        <div>Share: +10</div>
+        <div>Like: +2</div>
+        <div>Dislike: -5</div>
+        <div>No Action: -1</div>
+        <div class="build-tag">UI build: actions-v2</div>
       </div>
     </aside>
     <main class="panel chat">
@@ -341,12 +399,32 @@ def get_web_ui_html() -> str:
       for (const item of items) {
         const card = document.createElement("div");
         card.className = "card";
-        const img = document.createElement("img");
-        img.src = item.image_url || "";
-        img.alt = item.title || "";
+        const recommendationKind = item.recommendation_kind || "single_garment";
+        const componentImageUrls = Array.isArray(item.component_image_urls)
+          ? item.component_image_urls.filter(Boolean)
+          : [];
+        const hasCombo = recommendationKind === "outfit_combo" || (item.component_count || 0) > 1;
+        const media = document.createElement("div");
+        media.className = "card-media" + (hasCombo ? " two" : "");
+
+        const pickImages = hasCombo
+          ? [componentImageUrls[0] || item.image_url || "", componentImageUrls[1] || ""]
+          : [item.image_url || componentImageUrls[0] || ""];
+
+        for (const src of pickImages) {
+          const slot = document.createElement("div");
+          slot.className = "media-slot";
+          if (src) {
+            const img = document.createElement("img");
+            img.src = src;
+            img.alt = item.title || "";
+            slot.appendChild(img);
+          }
+          media.appendChild(slot);
+        }
+
         const body = document.createElement("div");
         body.className = "body";
-        const recommendationKind = item.recommendation_kind || "single_garment";
         const componentTitles = Array.isArray(item.component_titles) ? item.component_titles.filter(Boolean).join(" + ") : "";
         body.innerHTML = `
           <div><strong>#${item.rank} ${item.title || ""}</strong></div>
@@ -358,6 +436,14 @@ def get_web_ui_html() -> str:
 
         const actions = document.createElement("div");
         actions.className = "card-actions";
+        const buyRow = document.createElement("div");
+        buyRow.className = "buy-row";
+        const feedbackRow = document.createElement("div");
+        feedbackRow.className = "feedback-row";
+
+        const dislikeBtn = document.createElement("button");
+        dislikeBtn.className = "mini-btn dislike";
+        dislikeBtn.textContent = "Dislike";
         const likeBtn = document.createElement("button");
         likeBtn.className = "mini-btn";
         likeBtn.textContent = "Like";
@@ -371,12 +457,20 @@ def get_web_ui_html() -> str:
         const note = document.createElement("div");
         note.className = "feedback-note";
         if (!recommendationRunId) {
+          dislikeBtn.disabled = true;
           likeBtn.disabled = true;
           shareBtn.disabled = true;
           buyBtn.disabled = true;
           note.textContent = "Feedback disabled (no run id)";
         }
 
+        dislikeBtn.addEventListener("click", async () => {
+          try {
+            await sendFeedbackAction("dislike", item, recommendationRunId, note);
+          } catch (e) {
+            note.textContent = String(e);
+          }
+        });
         likeBtn.addEventListener("click", async () => {
           try {
             await sendFeedbackAction("like", item, recommendationRunId, note);
@@ -398,12 +492,15 @@ def get_web_ui_html() -> str:
             note.textContent = String(e);
           }
         });
-        actions.appendChild(likeBtn);
-        actions.appendChild(shareBtn);
-        actions.appendChild(buyBtn);
+        buyRow.appendChild(buyBtn);
+        feedbackRow.appendChild(dislikeBtn);
+        feedbackRow.appendChild(likeBtn);
+        feedbackRow.appendChild(shareBtn);
+        actions.appendChild(buyRow);
+        actions.appendChild(feedbackRow);
         body.appendChild(actions);
         body.appendChild(note);
-        card.appendChild(img);
+        card.appendChild(media);
         card.appendChild(body);
         wrap.appendChild(card);
       }

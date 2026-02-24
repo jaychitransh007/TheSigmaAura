@@ -17,7 +17,7 @@ Engine:
 
 Conversation runtime note:
 - Tier 2 outputs are used by the conversational UI card renderer.
-- Card actions (`Like`, `Share`, `Buy Now`) do not change this score immediately; they are logged for future optimization.
+- Card actions (`Dislike`, `Like`, `Share`, `Buy Now`) do not change this score immediately; they are logged for future optimization.
 
 ## Inputs
 - Tier 1 filtered CSV (`data/output/filtered_outfits.csv` or equivalent)

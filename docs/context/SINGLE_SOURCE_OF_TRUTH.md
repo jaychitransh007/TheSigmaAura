@@ -212,9 +212,11 @@ Outfit-level behavior:
   - `POST /v1/feedback`
 - Browser UX includes:
   - live stage panel using async turn status polling
-  - recommendation cards with `Like`, `Share`, `Buy Now` feedback actions
+  - recommendation cards with `Dislike`, `Like`, `Share`, `Buy Now` feedback actions
+  - two-row action layout (row 1 full-width buy; row 2 dislike/like/share)
 - Supabase schema migration:
   - `supabase/migrations/20260224160000_conversation_platform.sql`
+  - `supabase/migrations/20260224170500_feedback_events_event_type_v2.sql`
 - Service-level blueprint:
   - `docs/context/CONVERSATION_SERVICE_BLUEPRINT.md`
 - Runbook:

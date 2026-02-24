@@ -2,14 +2,16 @@
   "version": "reinforcement_framework_v1",
   "reward_policy_version": "reward_policy_v1",
   "reward_weights": {
-    "like": 5,
+    "dislike": -5,
+    "like": 2,
     "share": 10,
-    "buy": 50,
+    "buy": 20,
+    "no_action": -1,
     "skip": -1
   },
   "outcome_aggregation": {
     "mode": "highest_reward_wins",
-    "event_priority": ["buy", "share", "like", "skip"]
+    "event_priority": ["buy", "share", "like", "no_action", "skip", "dislike"]
   },
   "hard_filter_profiles": {
     "legacy": {

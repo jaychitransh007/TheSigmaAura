@@ -106,4 +106,9 @@ without changing base body-harmony rules.
 - Feedback logging route:
   - `POST /v1/feedback`
 - Feedback source in UI:
-  - recommendation card actions `Like`, `Share`, `Buy Now`
+  - recommendation card actions `Dislike`, `Like`, `Share`, `Buy Now` (two rows: full-width buy, then dislike/like/share)
+- Feedback event enum contract:
+  - `dislike | like | share | buy | no_action | skip`
+- Local Supabase migrations:
+  - `supabase/migrations/20260224160000_conversation_platform.sql`
+  - `supabase/migrations/20260224170500_feedback_events_event_type_v2.sql`

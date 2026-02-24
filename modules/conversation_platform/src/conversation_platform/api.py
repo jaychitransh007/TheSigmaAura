@@ -29,6 +29,20 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _map_supabase_error(exc: Exception) -> str:
+    msg = str(exc)
+    if (
+        "feedback_events_event_type_check" in msg
+        and "feedback_events" in msg
+        and "violates check constraint" in msg
+    ):
+        return (
+            "Feedback event type is not supported by current DB schema. "
+            "Apply latest Supabase migrations and retry."
+        )
+    return msg
+
+
 _TURN_JOB_LOCK = Lock()
 _TURN_JOBS: Dict[str, Dict[str, Any]] = {}
 
@@ -46,8 +60,16 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Sigma Aura Conversation Platform", version="1.0.0")
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def home() -> str:
-        return get_web_ui_html()
+    def home() -> HTMLResponse:
+        html = get_web_ui_html()
+        return HTMLResponse(
+            content=html,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> Response:
@@ -189,6 +211,6 @@ def create_app() -> FastAPI:
             )
             return FeedbackResponse(**out)
         except (ValueError, SupabaseError, RuntimeError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail=_map_supabase_error(exc)) from exc
 
     return app
