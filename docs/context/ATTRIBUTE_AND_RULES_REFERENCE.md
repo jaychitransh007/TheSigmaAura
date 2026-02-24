@@ -57,6 +57,8 @@ Last updated: February 24, 2026
   - `ops/scripts/schema_audit.py`
 - User profile inference:
   - `run_user_profiler.py`
+- Conversation platform API:
+  - `run_conversation_platform.py`
 
 ## Tier 1 vs Tier 2 Responsibilities
 - Tier 1:
@@ -87,3 +89,14 @@ These adjust:
 - skin merge penalty scale
 
 without changing base body-harmony rules.
+
+## Conversation Platform Contracts
+- UI route:
+  - `GET /` (browser conversational interface)
+- Async turn routes:
+  - `POST /v1/conversations/{conversation_id}/turns/start`
+  - `GET /v1/conversations/{conversation_id}/turns/{job_id}/status`
+- Feedback logging route:
+  - `POST /v1/feedback`
+- Feedback source in UI:
+  - recommendation card actions `Like`, `Share`, `Buy Now`

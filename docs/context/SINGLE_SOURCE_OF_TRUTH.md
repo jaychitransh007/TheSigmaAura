@@ -34,6 +34,8 @@ This is the only authoritative context document for this project.
 - Outcome event logger CLI: `ops/scripts/log_styling_outcome.py`
 - User profile inference CLI: `run_user_profiler.py`
 - User profile module: `modules/user_profiler/src/user_profiler/main.py`
+- Conversation platform API CLI: `run_conversation_platform.py`
+- Conversation platform module: `modules/conversation_platform/src/conversation_platform/`
 
 ## 3A) Config-First Runtime Contract
 - Runtime behavior must be managed from `modules/style_engine/configs/config/` files first; code should consume config.
@@ -181,6 +183,33 @@ RL-ready minimal hard filter profile:
 - CLI:
   - `python3 run_user_profiler.py --image /absolute/path/to/user.jpg --context-text "I need office and dinner looks"`
 
+## 7D) Conversation Platform Module
+- Module path: `modules/conversation_platform/src/conversation_platform/`
+- Entry point: `run_conversation_platform.py`
+- Local persistence: Supabase PostgREST via `modules/conversation_platform/src/conversation_platform/supabase_rest.py`
+- Orchestration:
+  - `modules/conversation_platform/src/conversation_platform/orchestrator.py`
+  - runs visual/text inference + memory merge + recommendation + telemetry logging
+- API endpoints:
+  - `GET /healthz`
+  - `GET /` (browser conversational interface)
+  - `POST /v1/conversations`
+  - `GET /v1/conversations/{conversation_id}`
+  - `POST /v1/conversations/{conversation_id}/turns`
+  - `POST /v1/conversations/{conversation_id}/turns/start`
+  - `GET /v1/conversations/{conversation_id}/turns/{job_id}/status`
+  - `GET /v1/recommendations/{run_id}`
+  - `POST /v1/feedback`
+- Browser UX includes:
+  - live stage panel using async turn status polling
+  - recommendation cards with `Like`, `Share`, `Buy Now` feedback actions
+- Supabase schema migration:
+  - `supabase/migrations/20260224160000_conversation_platform.sql`
+- Service-level blueprint:
+  - `docs/context/CONVERSATION_SERVICE_BLUEPRINT.md`
+- Runbook:
+  - `ops/runbooks/CONVERSATION_PLATFORM_RUNBOOK.md`
+
 ## 8) Batch Pipeline Behavior
 1. Read CSV and validate headers.
 2. Run schema audit (unless skipped).
@@ -222,10 +251,12 @@ python3 ops/scripts/schema_audit.py --out data/output/schema_audit.json --strict
 python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/output/enriched.csv --mode all --out-dir data/output
 python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/output/enriched.csv --mode run_batch --out-dir data/output
 python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/output/enriched.csv --mode merge --out-dir data/output --batch-output-jsonl data/output/batch_output.jsonl
+python3 run_user_profiler.py --image /absolute/path/to/user.jpg --context-text "I need office and dinner looks"
+python3 run_conversation_platform.py --host 127.0.0.1 --port 8010
 ```
 
 ## 12) Test Suite
-- Master test doc: `test_suite.md`
+- Master test doc: `docs/context/test_suite.md`
 - Test runner: `python3 -m unittest discover -s tests -v`
 - Test modules:
   - `tests/test_config_and_schema.py`
@@ -233,6 +264,9 @@ python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/proc
   - `tests/test_tier1_filters.py`
   - `tests/test_tier2_ranker.py`
   - `tests/test_user_profiler.py`
+  - `tests/test_conversation_platform.py`
+  - `tests/test_conversation_orchestrator.py`
+  - `tests/test_conversation_api_ui.py`
 
 ## 13) End-to-End Styling Runbook
 - Runbook doc: `ops/runbooks/STYLING_PIPELINE_RUNBOOK.md`

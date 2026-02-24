@@ -53,6 +53,10 @@ class UserProfilerTests(unittest.TestCase):
         url = "https://example.com/a.jpg"
         self.assertEqual(url, _image_to_input_url(url))
 
+    def test_image_to_input_url_supports_data_url(self) -> None:
+        data_url = "data:image/png;base64,AAAA"
+        self.assertEqual(data_url, _image_to_input_url(data_url))
+
     def test_image_to_input_url_supports_local_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "photo.jpg"
@@ -67,6 +71,13 @@ class UserProfilerTests(unittest.TestCase):
             artifacts_dir = Path(tmp) / "artifacts"
             meta = store_image_artifact(str(src), artifacts_dir)
             self.assertEqual("file", meta["source_type"])
+            self.assertTrue(Path(meta["stored_path"]).exists())
+
+    def test_store_image_artifact_for_data_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            artifacts_dir = Path(tmp) / "artifacts"
+            meta = store_image_artifact("data:image/png;base64,AAAA", artifacts_dir)
+            self.assertEqual("upload", meta["source_type"])
             self.assertTrue(Path(meta["stored_path"]).exists())
 
 

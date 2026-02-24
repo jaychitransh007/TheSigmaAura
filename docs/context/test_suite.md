@@ -9,6 +9,7 @@ Last run: February 24, 2026
 - Tier 1 filtering behavior (including relaxations)
 - Tier 2 ranking/scoring behavior and explainability contract
 - User profile inference schemas and image-input normalization
+- Conversation platform schemas, repository behavior, and orchestrator flow
 
 ## How To Run
 ```bash
@@ -21,6 +22,9 @@ python3 -m unittest discover -s tests -v
 - `tests/test_tier1_filters.py`
 - `tests/test_tier2_ranker.py`
 - `tests/test_user_profiler.py`
+- `tests/test_conversation_platform.py`
+- `tests/test_conversation_orchestrator.py`
+- `tests/test_conversation_api_ui.py`
 
 ## Case Matrix
 
@@ -67,13 +71,37 @@ python3 -m unittest discover -s tests -v
 - `test_visual_schema_has_all_body_fields_plus_gender_age`
 - `test_textual_schema_uses_context_enums`
 - `test_image_to_input_url_supports_http`
+- `test_image_to_input_url_supports_data_url`
 - `test_image_to_input_url_supports_local_file`
 - `test_visual_model_is_gpt_5_2_and_textual_is_gpt_5_mini`
+- `test_store_image_artifact_for_data_url`
 - `test_store_image_artifact_for_local_file`
 
+### Conversation Platform
+- `test_get_or_create_user_returns_existing`
+- `test_get_or_create_user_creates_when_missing`
+- `test_get_user_by_id`
+- `test_get_conversation_state_includes_external_user_id`
+- `test_process_turn_requests_clarification_without_first_image`
+- `test_process_turn_requests_clarification_for_missing_text_context`
+- `test_process_turn_happy_path_with_image`
+- `test_memory_agent_merges_context`
+- `test_stylist_agent_response_with_items`
+- `test_stylist_agent_response_without_items`
+- `test_stylist_agent_asks_refinement_on_low_confidence`
+- `test_stylist_agent_asks_refinement_on_short_ambiguous_prompt`
+- `test_telemetry_reward_mapping`
+- `test_turn_request_defaults`
+- `test_feedback_event_type_validation`
+- `test_root_returns_html`
+- `test_favicon_route_exists`
+- `test_turn_job_start_and_status`
+- `test_turn_job_start_and_status_failed`
+- `test_feedback_endpoint_success`
+
 ## Latest Run Report
-- Total tests: `37`
-- Passed: `37`
+- Total tests: `60`
+- Passed: `60`
 - Failed: `0`
 - Result: `OK`
 

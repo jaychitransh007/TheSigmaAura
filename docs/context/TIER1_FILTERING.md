@@ -27,6 +27,10 @@ Engine:
 - CLI: `ops/scripts/filter_outfits.py`
 - End-to-end runner (invokes Tier 1): `run_style_pipeline.py`
 
+Conversation runtime note:
+- In the conversation agent, Tier 1 runs only after minimum context is available.
+- If context is missing, the system asks clarifying questions first (`needs_clarification=true`) and defers filtering/ranking.
+
 ## Hard Filter Order
 Applied in this sequence:
 1. Price range (`2000–5000`)

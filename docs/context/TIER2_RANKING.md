@@ -13,6 +13,10 @@ Engine:
 - Ranked mappings config: `modules/style_engine/configs/config/tier2_ranked_attributes.json`
 - End-to-end runner (invokes Tier 2): `run_style_pipeline.py`
 
+Conversation runtime note:
+- Tier 2 outputs are used by the conversational UI card renderer.
+- Card actions (`Like`, `Share`, `Buy Now`) do not change this score immediately; they are logged for future optimization.
+
 ## Inputs
 - Tier 1 filtered CSV (`data/output/filtered_outfits.csv` or equivalent)
 - User profile JSON (body harmony + color preferences)

@@ -19,7 +19,7 @@ It uses the standard real-time API (not Batch API).
 
 ## OpenAI Calls
 1. Visual reasoning call (`gpt-5.2`)
-- Input: user image (local file path or URL)
+- Input: user image (local file path, URL, or browser-provided `data:image/...` payload)
 - Output fields:
   - `HeightCategory`
   - `BodyShape`

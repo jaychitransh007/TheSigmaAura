@@ -27,6 +27,9 @@ TEXTUAL_PROMPT = _load_prompt(_PROMPTS_DIR / "textual_prompt.txt")
 
 
 def _image_to_input_url(image_ref: str) -> str:
+    if image_ref.startswith("data:image/"):
+        return image_ref
+
     if image_ref.startswith("http://") or image_ref.startswith("https://"):
         return image_ref
 
@@ -81,6 +84,17 @@ def _guess_ext_from_mime(mime: str) -> str:
 
 def store_image_artifact(image_ref: str, artifacts_dir: Path) -> Dict[str, str]:
     artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    if image_ref.startswith("data:image/"):
+        # Accept browser-provided base64 data URLs for web chat turns.
+        header, encoded = image_ref.split(",", 1)
+        mime = header.split(";")[0].split(":", 1)[1] if ":" in header else "image/jpeg"
+        ext = _guess_ext_from_mime(mime)
+        digest = hashlib.sha1(image_ref.encode("utf-8")).hexdigest()[:12]
+        out_path = artifacts_dir / f"input_{digest}{ext}"
+        out_path.write_bytes(base64.b64decode(encoded))
+        return {"source_type": "upload", "source": "data_url", "stored_path": str(out_path)}
+
     if image_ref.startswith("http://") or image_ref.startswith("https://"):
         parsed = urlparse(image_ref)
         suffix = Path(parsed.path).suffix or ".jpg"
@@ -115,14 +129,12 @@ def _normalize_style_context(visual: Dict[str, Any], textual: Dict[str, Any]) ->
     }
 
 
-def infer_user_profile(
+def infer_visual_profile(
     *,
-    api_key: str,
+    client: OpenAI,
     image_ref: str,
-    context_text: str,
     config: UserProfilerConfig,
-) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
-    client = OpenAI(api_key=api_key)
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     artifacts_dir = Path(config.output_dir) / "user_profiler"
     image_artifact = store_image_artifact(image_ref, artifacts_dir)
     image_url = _image_to_input_url(image_ref)
@@ -146,7 +158,51 @@ def infer_user_profile(
         reasoning={"effort": config.visual_reasoning_effort},
         text={"format": visual_response_format()},
     )
+    visual_payload = visual_response.model_dump() if hasattr(visual_response, "model_dump") else {}
+    visual = _extract_response_json(visual_response)
 
+    visual_request_log = {
+        "model": config.visual_model,
+        "reasoning": {"effort": config.visual_reasoning_effort},
+        "input": [
+            {
+                "role": "system",
+                "content": [{"type": "input_text", "text": VISUAL_PROMPT}],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Analyze this person's image and return the required JSON."},
+                    {"type": "input_image", "image_url": image_artifact["stored_path"]},
+                ],
+            },
+        ],
+    }
+
+    log = {
+        "image_artifact": image_artifact,
+        "model": config.visual_model,
+        "reasoning_effort": config.visual_reasoning_effort,
+        "input_summary": {
+            "image_source_type": image_artifact["source_type"],
+            "image_source": image_artifact["source"],
+            "stored_image_path": image_artifact["stored_path"],
+            "user_text": "Analyze this person's image and return the required JSON.",
+        },
+        "request": visual_request_log,
+        "response": visual_payload,
+        "reasoning_notes": _extract_visual_reasoning(visual_payload),
+        "parsed_output": visual,
+    }
+    return visual, log
+
+
+def infer_text_context(
+    *,
+    client: OpenAI,
+    context_text: str,
+    config: UserProfilerConfig,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     textual_input = [
         {
             "role": "system",
@@ -170,57 +226,37 @@ def infer_user_profile(
         input=textual_input,
         text={"format": textual_response_format()},
     )
-
-    visual_payload = visual_response.model_dump() if hasattr(visual_response, "model_dump") else {}
     textual_payload = textual_response.model_dump() if hasattr(textual_response, "model_dump") else {}
-
-    visual = _extract_response_json(visual_response)
     textual = _extract_response_json(textual_response)
+    log = {
+        "model": config.textual_model,
+        "input_summary": {"context_text": context_text},
+        "request": {
+            "model": config.textual_model,
+            "input": textual_input,
+        },
+        "response": textual_payload,
+        "parsed_output": textual,
+    }
+    return textual, log
+
+
+def infer_user_profile(
+    *,
+    api_key: str,
+    image_ref: str,
+    context_text: str,
+    config: UserProfilerConfig,
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    client = OpenAI(api_key=api_key)
+
+    visual, visual_log = infer_visual_profile(client=client, image_ref=image_ref, config=config)
+    textual, textual_log = infer_text_context(client=client, context_text=context_text, config=config)
     style_input = _normalize_style_context(visual, textual)
 
-    visual_request_log = {
-        "model": config.visual_model,
-        "reasoning": {"effort": config.visual_reasoning_effort},
-        "input": [
-            {
-                "role": "system",
-                "content": [{"type": "input_text", "text": VISUAL_PROMPT}],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": "Analyze this person's image and return the required JSON."},
-                    {"type": "input_image", "image_url": image_artifact["stored_path"]},
-                ],
-            },
-        ],
-    }
-
     logs = {
-        "image_artifact": image_artifact,
-        "visual_call": {
-            "model": config.visual_model,
-            "reasoning_effort": config.visual_reasoning_effort,
-            "input_summary": {
-                "image_source_type": image_artifact["source_type"],
-                "image_source": image_artifact["source"],
-                "stored_image_path": image_artifact["stored_path"],
-                "user_text": "Analyze this person's image and return the required JSON.",
-            },
-            "request": visual_request_log,
-            "response": visual_payload,
-            "reasoning_notes": _extract_visual_reasoning(visual_payload),
-            "parsed_output": visual,
-        },
-        "textual_call": {
-            "model": config.textual_model,
-            "input_summary": {"context_text": context_text},
-            "request": {
-                "model": config.textual_model,
-                "input": textual_input,
-            },
-            "response": textual_payload,
-            "parsed_output": textual,
-        },
+        "image_artifact": visual_log.get("image_artifact", {}),
+        "visual_call": visual_log,
+        "textual_call": textual_log,
     }
     return visual, textual, style_input, logs
