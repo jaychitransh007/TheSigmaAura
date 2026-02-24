@@ -1,6 +1,6 @@
 # Tier 1 Filtering Specification
 
-Last updated: February 22, 2026
+Last updated: February 24, 2026
 
 ## Purpose
 Tier 1 is the hard-filter stage. It narrows the enriched catalog to items that satisfy user context constraints before personalized ranking.
@@ -19,6 +19,8 @@ Inputs:
 Outputs:
 - Filtered CSV of pass candidates
 - Failure log JSON with per-item reject reasons
+- User-side context can be inferred upstream using `run_user_profiler.py`
+  (`data/output/user_style_context.json` provides `occasion`, `archetype`, `gender`, `age`).
 
 Engine:
 - `modules/style_engine/src/style_engine/filters.py`

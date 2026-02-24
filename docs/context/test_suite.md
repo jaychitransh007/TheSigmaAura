@@ -1,6 +1,6 @@
 # Test Suite
 
-Last run: February 22, 2026
+Last run: February 24, 2026
 
 ## Scope
 - Config-driven contracts
@@ -8,6 +8,7 @@ Last run: February 22, 2026
 - Batch request builder behavior
 - Tier 1 filtering behavior (including relaxations)
 - Tier 2 ranking/scoring behavior and explainability contract
+- User profile inference schemas and image-input normalization
 
 ## How To Run
 ```bash
@@ -19,6 +20,7 @@ python3 -m unittest discover -s tests -v
 - `tests/test_batch_builder.py`
 - `tests/test_tier1_filters.py`
 - `tests/test_tier2_ranker.py`
+- `tests/test_user_profiler.py`
 
 ## Case Matrix
 
@@ -61,9 +63,17 @@ python3 -m unittest discover -s tests -v
 - `test_color_loved_preference_boosts_score`
 - `test_compatibility_confidence_is_bounded`
 
+### User Profiler
+- `test_visual_schema_has_all_body_fields_plus_gender_age`
+- `test_textual_schema_uses_context_enums`
+- `test_image_to_input_url_supports_http`
+- `test_image_to_input_url_supports_local_file`
+- `test_visual_model_is_gpt_5_2_and_textual_is_gpt_5_mini`
+- `test_store_image_artifact_for_local_file`
+
 ## Latest Run Report
-- Total tests: `31`
-- Passed: `31`
+- Total tests: `37`
+- Passed: `37`
 - Failed: `0`
 - Result: `OK`
 

@@ -1,6 +1,6 @@
 # Attribute and Rules Reference
 
-Last updated: February 22, 2026
+Last updated: February 24, 2026
 
 ## Runtime Attribute Sources
 - Garment attributes:
@@ -19,6 +19,11 @@ Last updated: February 22, 2026
   - `modules/catalog_enrichment/src/catalog_enrichment/schema_builder.py`
 - Prompt instructions:
   - `modules/catalog_enrichment/src/catalog_enrichment/prompts/system_prompt.txt`
+- User profiler prompts:
+  - `modules/user_profiler/src/user_profiler/prompts/visual_prompt.txt`
+  - `modules/user_profiler/src/user_profiler/prompts/textual_prompt.txt`
+- User profiler response schemas:
+  - `modules/user_profiler/src/user_profiler/schemas.py`
 
 ## Rules/Policy Sources
 - Tier 1 filter rules:
@@ -33,6 +38,9 @@ Last updated: February 22, 2026
   - `modules/style_engine/src/style_engine/ranker.py`
 - Schema audit:
   - `modules/catalog_enrichment/src/catalog_enrichment/audit.py`
+- User profile inference:
+  - `modules/user_profiler/src/user_profiler/service.py`
+  - uses standard real-time Responses API (`client.responses.create`)
 
 ## CLIs
 - Enrichment:
@@ -47,6 +55,8 @@ Last updated: February 22, 2026
   - `ops/scripts/log_styling_outcome.py`
 - Schema audit:
   - `ops/scripts/schema_audit.py`
+- User profile inference:
+  - `run_user_profiler.py`
 
 ## Tier 1 vs Tier 2 Responsibilities
 - Tier 1:

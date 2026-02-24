@@ -1,11 +1,12 @@
 # Single Source of Truth (Code-Accurate)
 
-Last reconciled: February 22, 2026
+Last reconciled: February 24, 2026
 
 This is the only authoritative context document for this project.
 
 ## 1) Project Purpose
 - Enrich a catalog CSV with garment attributes and per-attribute confidence using OpenAI Batch API (`/v1/responses`) and `gpt-5-mini`.
+- Infer user profile/context from user image + natural-language intent using two standard real-time OpenAI Responses API calls.
 
 ## 2) Current Folder Layout
 - Context doc: `docs/context/SINGLE_SOURCE_OF_TRUTH.md`
@@ -31,6 +32,8 @@ This is the only authoritative context document for this project.
 - Tier 2 ranking CLI: `ops/scripts/rank_outfits.py`
 - End-to-end styling runbook CLI: `run_style_pipeline.py`
 - Outcome event logger CLI: `ops/scripts/log_styling_outcome.py`
+- User profile inference CLI: `run_user_profiler.py`
+- User profile module: `modules/user_profiler/src/user_profiler/main.py`
 
 ## 3A) Config-First Runtime Contract
 - Runtime behavior must be managed from `modules/style_engine/configs/config/` files first; code should consume config.
@@ -147,6 +150,37 @@ RL-ready minimal hard filter profile:
   - `--tier2-strictness safe`: stronger penalties, more conservative ranking
   - `--tier2-strictness bold`: lighter penalties, stronger standout boosts
 
+## 7C) User Profile Inference Module
+- Module path: `modules/user_profiler/src/user_profiler/`
+- Entry point: `run_user_profiler.py`
+- Flow:
+  1. Visual reasoning call on uploaded image
+  2. Textual reasoning call on natural-language user context
+- Models:
+  - visual: `gpt-5.2` with `reasoning.effort=high`
+  - textual: `gpt-5-mini`
+- API mode:
+  - standard real-time Responses API (`client.responses.create`)
+  - not Batch API
+- Visual output attributes:
+  - body harmony: `HeightCategory`, `BodyShape`, `VisualWeight`, `VerticalProportion`, `ArmVolume`, `MidsectionState`, `WaistVisibility`, `BustVolume`, `SkinUndertone`, `SkinSurfaceColor`, `SkinContrast`, `FaceShape`, `NeckLength`, `HairLength`, `HairColor`
+  - context: `gender`, `age`
+- Textual output attributes:
+  - `occasion`, `archetype`
+- Output files (default):
+  - `data/output/user_profile_inference.json`
+  - `data/output/user_style_profile.json` (ready for `run_style_pipeline.py --profile`)
+  - `data/output/user_style_context.json` (occasion/archetype/gender/age)
+  - `data/output/user_profiler/input_*.{ext}` (stored uploaded image artifact)
+  - per-call request/response logs and visual reasoning notes are embedded in `user_profile_inference.json`
+- Prompts:
+  - `modules/user_profiler/src/user_profiler/prompts/visual_prompt.txt`
+  - `modules/user_profiler/src/user_profiler/prompts/textual_prompt.txt`
+- Schemas:
+  - `modules/user_profiler/src/user_profiler/schemas.py`
+- CLI:
+  - `python3 run_user_profiler.py --image /absolute/path/to/user.jpg --context-text "I need office and dinner looks"`
+
 ## 8) Batch Pipeline Behavior
 1. Read CSV and validate headers.
 2. Run schema audit (unless skipped).
@@ -198,6 +232,7 @@ python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/proc
   - `tests/test_batch_builder.py`
   - `tests/test_tier1_filters.py`
   - `tests/test_tier2_ranker.py`
+  - `tests/test_user_profiler.py`
 
 ## 13) End-to-End Styling Runbook
 - Runbook doc: `ops/runbooks/STYLING_PIPELINE_RUNBOOK.md`

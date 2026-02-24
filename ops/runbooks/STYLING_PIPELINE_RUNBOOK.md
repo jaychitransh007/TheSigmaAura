@@ -7,6 +7,9 @@ Run the complete styling engine in one command:
 3. RL-ready telemetry logs for future learning
 4. Final ranked summary export (`title`, image URLs, scores)
 
+Optional upstream step:
+- Infer profile/context from user image + text via `run_user_profiler.py`.
+
 ## Single Command
 ```bash
 python3 run_style_pipeline.py \
@@ -23,6 +26,16 @@ python3 run_style_pipeline.py \
   --out-dir data/output \
   --prefix nightout_glamorous_female_25_30
 ```
+
+## Optional Upstream Inference
+```bash
+python3 run_user_profiler.py \
+  --image /absolute/path/to/user_photo.jpg \
+  --context-text "I need looks for work days and evening outings."
+```
+This uses real-time Responses API calls:
+- visual: `gpt-5.2` with `reasoning.effort=high`
+- textual: `gpt-5-mini`
 
 ## Full Profile Example (Body Harmony + Preferences)
 Use this as `data/output/sample_user_profile_tier2.json`:

@@ -1,6 +1,6 @@
 # Tier 2 Ranking Specification
 
-Last updated: February 22, 2026
+Last updated: February 24, 2026
 
 ## Purpose
 Tier 2 ranks Tier-1-passed garments using body harmony and style preference signals.
@@ -17,6 +17,8 @@ Engine:
 - Tier 1 filtered CSV (`data/output/filtered_outfits.csv` or equivalent)
 - User profile JSON (body harmony + color preferences)
 - Tier 2 rules JSON
+- User profile can be inferred upstream using `run_user_profiler.py`
+  (`data/output/user_style_profile.json` is directly usable as `--profile` input).
 
 ## Core Formula
 Implemented formula:

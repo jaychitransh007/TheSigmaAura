@@ -1,14 +1,20 @@
 # Engine Runbook
 
-Last updated: February 22, 2026
+Last updated: February 24, 2026
 
 ## End-to-End Flow
+0. (Optional) infer user profile/context from image + text
 1. Enrich catalog with batch model
 2. Run Tier 1 hard filtering
 3. Run Tier 2 personalized ranking
 
 Single-command orchestration is available via:
 - `run_style_pipeline.py`
+
+Upstream inference command:
+- `run_user_profiler.py`
+- Visual model: `gpt-5.2` with `reasoning.effort=high` (real-time Responses API)
+- Textual model: `gpt-5-mini` (real-time Responses API)
 
 ## 0) Prerequisites
 - `OPENAI_API_KEY` available in environment or `.env`
