@@ -23,11 +23,11 @@ Conversation runtime note:
 - Card actions (`Dislike`, `Like`, `Share`, `Buy Now`) do not change this score immediately; they are logged for future optimization.
 
 ## Inputs
-- Tier 1 filtered CSV (`data/output/filtered_outfits.csv` or equivalent)
+- Tier 1 filtered CSV (`data/logs/filtered_outfits.csv` or equivalent)
 - User profile JSON (body harmony + color preferences)
 - Tier 2 rules JSON
 - User profile can be inferred upstream using `run_user_profiler.py`
-  (`data/output/user_style_profile.json` is directly usable as `--profile` input).
+  (`data/logs/user_style_profile.json` is directly usable as `--profile` input).
 
 ## Core Formula
 Implemented formula:
@@ -301,29 +301,29 @@ Explainability JSON includes:
 Balanced:
 ```bash
 python3 ops/scripts/rank_outfits.py \
-  --input data/output/filtered_outfits.csv \
-  --profile data/output/sample_user_profile_tier2.json \
+  --input data/logs/filtered_outfits.csv \
+  --profile data/logs/sample_user_profile_tier2.json \
   --tier2-strictness balanced \
-  --output data/output/ranked_outfits.csv \
-  --explain data/output/ranked_outfits_explainability.json
+  --output data/logs/ranked_outfits.csv \
+  --explain data/logs/ranked_outfits_explainability.json
 ```
 
 Safe:
 ```bash
 python3 ops/scripts/rank_outfits.py \
-  --input data/output/filtered_outfits.csv \
-  --profile data/output/sample_user_profile_tier2.json \
+  --input data/logs/filtered_outfits.csv \
+  --profile data/logs/sample_user_profile_tier2.json \
   --tier2-strictness safe \
-  --output data/output/ranked_outfits_safe.csv \
-  --explain data/output/ranked_outfits_safe_explainability.json
+  --output data/logs/ranked_outfits_safe.csv \
+  --explain data/logs/ranked_outfits_safe_explainability.json
 ```
 
 Bold:
 ```bash
 python3 ops/scripts/rank_outfits.py \
-  --input data/output/filtered_outfits.csv \
-  --profile data/output/sample_user_profile_tier2.json \
+  --input data/logs/filtered_outfits.csv \
+  --profile data/logs/sample_user_profile_tier2.json \
   --tier2-strictness bold \
-  --output data/output/ranked_outfits_bold.csv \
-  --explain data/output/ranked_outfits_bold_explainability.json
+  --output data/logs/ranked_outfits_bold.csv \
+  --explain data/logs/ranked_outfits_bold_explainability.json
 ```

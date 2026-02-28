@@ -9,7 +9,7 @@ from .repositories import ConversationRepository
 
 class ConversationOrchestrator:
     def __init__(self, repo: ConversationRepository, catalog_csv_path: str):
-        profiler_config = UserProfilerConfig(output_dir="data/output")
+        profiler_config = UserProfilerConfig(output_dir="data/logs")
         self.repo = repo
         self.profile_agent = ProfileAgent(config=profiler_config)
         self.intent_agent = IntentAgent(config=profiler_config)

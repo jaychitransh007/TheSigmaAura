@@ -54,11 +54,11 @@ It uses the standard real-time API (not Batch API).
 - User-context enums: `modules/style_engine/configs/config/user_context_attributes.json`
 
 ## Outputs
-Default outputs under `data/output/`:
+Default outputs under `data/logs/`:
 - Combined result: `user_profile_inference.json`
 - Tier2 profile payload: `user_style_profile.json`
 - Tier1/Tier2 context payload: `user_style_context.json`
-- Stored input image artifact: `data/output/user_profiler/input_*.{ext}`
+- Stored input image artifact: `data/logs/user_profiler/input_*.{ext}`
 
 `user_style_profile.json` is ready for `run_style_pipeline.py --profile`.
 `user_style_context.json` contains `occasion`, `archetype`, `gender`, `age`.
@@ -68,9 +68,9 @@ Default outputs under `data/output/`:
 python3 run_user_profiler.py \
   --image /absolute/path/to/user_photo.jpg \
   --context-text "I need looks for office days and occasional evening dinners." \
-  --out data/output/user_profile_inference.json \
-  --style-profile-out data/output/user_style_profile.json \
-  --style-context-out data/output/user_style_context.json
+  --out data/logs/user_profile_inference.json \
+  --style-profile-out data/logs/user_style_profile.json \
+  --style-context-out data/logs/user_style_context.json
 ```
 
 ## Notes

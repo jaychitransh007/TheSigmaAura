@@ -16,15 +16,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--image", required=True, help="User image path or URL.")
     parser.add_argument("--context-text", required=True, help="User natural-language context text.")
-    parser.add_argument("--out", default="data/output/user_profile_inference.json", help="Combined JSON output path.")
+    parser.add_argument("--out", default="data/logs/user_profile_inference.json", help="Combined JSON output path.")
     parser.add_argument(
         "--style-profile-out",
-        default="data/output/user_style_profile.json",
+        default="data/logs/user_style_profile.json",
         help="Style profile JSON output path (ready for run_style_pipeline.py --profile).",
     )
     parser.add_argument(
         "--style-context-out",
-        default="data/output/user_style_context.json",
+        default="data/logs/user_style_context.json",
         help="Style context JSON output path (occasion/archetype/gender/age).",
     )
     return parser.parse_args()
@@ -61,15 +61,15 @@ def run() -> None:
         "visual_reasoning_notes": call_logs.get("visual_call", {}).get("reasoning_notes", []),
         "style_pipeline_command_template": (
             "python3 run_style_pipeline.py "
-            "--input data/output/enriched.csv "
-            "--profile data/output/user_style_profile.json "
+            "--input data/catalog/enriched_catalog.csv "
+            "--profile data/logs/user_style_profile.json "
             f"--occasion {style_input['context']['occasion']} "
             f"--archetype {style_input['context']['archetype']} "
             f"--gender {style_input['context']['gender']} "
             f"--age {style_input['context']['age']} "
             "--tier2-strictness balanced "
             "--hard-filter-profile rl_ready_minimal "
-            "--out-dir data/output "
+            "--out-dir data/logs "
             "--prefix user_personalized"
         ),
     }

@@ -10,7 +10,7 @@ Run the conversation agentic styling API locally using local Supabase + existing
 - Docker daemon running locally (Supabase local stack dependency).
 - Local Supabase running (`supabase start`).
 - `OPENAI_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in `.env`.
-- Enriched catalog available at `data/output/enriched.csv`.
+- Enriched catalog available at `data/catalog/enriched_catalog.csv`.
 
 ## 1) Start local Supabase
 ```bash

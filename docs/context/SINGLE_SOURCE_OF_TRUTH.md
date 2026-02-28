@@ -21,7 +21,7 @@ This is the only authoritative context document for this project.
 - Source JSON catalogs: `modules/catalog_enrichment/stores/json_files/`
 - Processed per-store CSV outputs: `modules/catalog_enrichment/stores/processed_csv_files/`
 - Main sample input CSV: `modules/catalog_enrichment/stores/processed_sample_catalog.csv`
-- Batch/runtime artifacts: `data/output/`
+- Batch/runtime artifacts: `data/logs/`
 
 ## 3) Runtime Entry Points
 - Main launcher: `run_catalog_enrichment.py`
@@ -78,10 +78,10 @@ Source of truth: `modules/catalog_enrichment/src/catalog_enrichment/prompts/syst
 - Audit engine: `modules/catalog_enrichment/src/catalog_enrichment/audit.py`
 - Pipeline integration:
   - Automatically runs for `prepare`, `run_batch`, and `all` unless `--skip-audit` is passed.
-  - Writes `data/output/schema_audit.json`.
+  - Writes `data/logs/schema_audit.json`.
   - Pipeline fails only when audit `status = fail` (errors present).
 - Standalone CLI:
-  - `python3 ops/scripts/schema_audit.py --out data/output/schema_audit.json`
+  - `python3 ops/scripts/schema_audit.py --out data/logs/schema_audit.json`
   - `--strict` exits non-zero when warnings exist.
 - Audit report includes:
   - enum integrity checks
@@ -111,8 +111,8 @@ Source of truth: `modules/catalog_enrichment/src/catalog_enrichment/prompts/syst
   - Rules are defined in `occasion_archetype_compatibility` inside `modules/style_engine/src/style_engine/tier_a_filters_v1.json`.
   - In strict mode, incompatible occasion/archetype combinations are hard-rejected.
 - CLI usage:
-  - `python3 ops/scripts/filter_outfits.py --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --input data/output/enriched.csv --output data/output/filtered_outfits.csv --fail-log data/output/filtered_outfits_failures.json`
-  - `python3 ops/scripts/filter_outfits.py --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --relax age,archetype --input data/output/enriched.csv --output data/output/filtered_outfits_relaxed.csv --fail-log data/output/filtered_outfits_relaxed_failures.json`
+  - `python3 ops/scripts/filter_outfits.py --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --input data/catalog/enriched_catalog.csv --output data/logs/filtered_outfits.csv --fail-log data/logs/filtered_outfits_failures.json`
+  - `python3 ops/scripts/filter_outfits.py --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --relax age,archetype --input data/catalog/enriched_catalog.csv --output data/logs/filtered_outfits_relaxed.csv --fail-log data/logs/filtered_outfits_relaxed_failures.json`
 
 RL-ready minimal hard filter profile:
 - Used in `run_style_pipeline.py --hard-filter-profile rl_ready_minimal`
@@ -149,8 +149,8 @@ RL-ready minimal hard filter profile:
   - CSV fields: `tier2_raw_score`, `tier2_confidence_multiplier`, `tier2_color_delta`, `tier2_final_score`, `tier2_max_score`, `tier2_compatibility_confidence`, `tier2_flags`, `tier2_reasons`, `tier2_penalties`
   - JSON sections: `conflict_engine`, `top_positive_contributions`, `top_negative_contributions`, `formula`
 - CLI usage:
-  - `python3 ops/scripts/rank_outfits.py --input data/output/filtered_outfits.csv --profile data/output/sample_user_profile_tier2.json --recommendation-mode auto --request-text "I need a complete office look" --output data/output/ranked_outfits.csv --explain data/output/ranked_outfits_explainability.json`
-  - `python3 ops/scripts/rank_outfits.py --input data/output/filtered_outfits.csv --profile data/output/sample_user_profile_tier2.json --tier2-strictness safe --recommendation-mode garment --request-text "show me shirts" --output data/output/ranked_outfits_safe.csv --explain data/output/ranked_outfits_safe_explainability.json`
+  - `python3 ops/scripts/rank_outfits.py --input data/logs/filtered_outfits.csv --profile data/logs/sample_user_profile_tier2.json --recommendation-mode auto --request-text "I need a complete office look" --output data/logs/ranked_outfits.csv --explain data/logs/ranked_outfits_explainability.json`
+  - `python3 ops/scripts/rank_outfits.py --input data/logs/filtered_outfits.csv --profile data/logs/sample_user_profile_tier2.json --tier2-strictness safe --recommendation-mode garment --request-text "show me shirts" --output data/logs/ranked_outfits_safe.csv --explain data/logs/ranked_outfits_safe_explainability.json`
 - Strictness switch:
   - `--tier2-strictness balanced` (default): baseline behavior
   - `--tier2-strictness safe`: stronger penalties, more conservative ranking
@@ -180,10 +180,10 @@ Outfit-level behavior:
 - Textual output attributes:
   - `occasion`, `archetype`
 - Output files (default):
-  - `data/output/user_profile_inference.json`
-  - `data/output/user_style_profile.json` (ready for `run_style_pipeline.py --profile`)
-  - `data/output/user_style_context.json` (occasion/archetype/gender/age)
-  - `data/output/user_profiler/input_*.{ext}` (stored uploaded image artifact)
+  - `data/logs/user_profile_inference.json`
+  - `data/logs/user_style_profile.json` (ready for `run_style_pipeline.py --profile`)
+  - `data/logs/user_style_context.json` (occasion/archetype/gender/age)
+  - `data/logs/user_profiler/input_*.{ext}` (stored uploaded image artifact)
   - per-call request/response logs and visual reasoning notes are embedded in `user_profile_inference.json`
 - Prompts:
   - `modules/user_profiler/src/user_profiler/prompts/visual_prompt.txt`
@@ -225,18 +225,18 @@ Outfit-level behavior:
 ## 8) Batch Pipeline Behavior
 1. Read CSV and validate headers.
 2. Run schema audit (unless skipped).
-3. Build `data/output/batch_input.jsonl` with one request per row (`custom_id=row_{idx}`).
+3. Build `data/logs/batch_input.jsonl` with one request per row (`custom_id=row_{idx}`).
 4. Upload JSONL as `purpose=batch`.
 5. Create batch job on `/v1/responses`.
 6. Poll until terminal status.
 7. Download output/error files if present.
 8. Parse by `custom_id`.
 9. Merge model fields into original rows.
-10. Write enriched CSV and `data/output/run_report.json`.
-11. If rows fail, write `data/output/retry_batch_input.jsonl`.
+10. Write enriched CSV and `data/logs/run_report.json`.
+11. If rows fail, write `data/logs/retry_batch_input.jsonl`.
 
 Result expectation:
-- `enriched.csv` always contains all schema-defined attribute columns and confidence columns.
+- `data/catalog/enriched_catalog.csv` always contains all schema-defined attribute columns and confidence columns.
 - Individual attribute values may be null/blank when the model is uncertain.
 - Use a fresh `--out-dir` per run (or clear old batch artifacts) to avoid stale-output merges.
 
@@ -252,7 +252,7 @@ Source of truth: `modules/catalog_enrichment/src/catalog_enrichment/batch_builde
 - Required CLI args are defined in `modules/catalog_enrichment/src/catalog_enrichment/main.py`.
 - `modules/catalog_enrichment/src/catalog_enrichment/main.py` defaults:
   - `--mode prepare`
-  - `--out-dir data/output`
+  - `--out-dir data/logs`
   - `--num-products 5` (safety limit), `all` supported
 - Large-catalog automation:
   - `--auto-chunk` performs full chunked orchestration for `--mode all`
@@ -266,14 +266,14 @@ Source of truth: `modules/catalog_enrichment/src/catalog_enrichment/batch_builde
 
 ## 11) Example Commands
 ```bash
-python3 ops/scripts/schema_audit.py --out data/output/schema_audit.json
-python3 ops/scripts/schema_audit.py --out data/output/schema_audit.json --strict
-python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/output/enriched.csv --mode all --out-dir data/output
-python3 run_catalog_enrichment.py --input new_catalog.csv --output data/output/enriched_v2.csv --mode all --out-dir data/output --auto-chunk --max-batch-bytes 180000000 --num-products all
-python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/output/enriched.csv --mode run_batch --out-dir data/output
-python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/output/enriched.csv --mode merge --out-dir data/output --batch-output-jsonl data/output/batch_output.jsonl
-python3 ops/scripts/rank_outfits.py --input data/output/filtered_outfits.csv --profile data/output/sample_user_profile_tier2.json --recommendation-mode auto --request-text "Need complete office looks" --output data/output/ranked_outfits.csv --explain data/output/ranked_outfits_explainability.json
-python3 run_style_pipeline.py --input data/output/enriched.csv --profile data/output/sample_user_profile_tier2.json --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --tier2-strictness balanced --recommendation-mode auto --request-text "Need complete office looks" --out-dir data/output --prefix demo_outfit
+python3 ops/scripts/schema_audit.py --out data/logs/schema_audit.json
+python3 ops/scripts/schema_audit.py --out data/logs/schema_audit.json --strict
+python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/catalog/enriched_catalog.csv --mode all --out-dir data/logs
+python3 run_catalog_enrichment.py --input new_catalog.csv --output data/catalog/enriched_catalog.csv --mode all --out-dir data/logs --auto-chunk --max-batch-bytes 180000000 --num-products all
+python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/catalog/enriched_catalog.csv --mode run_batch --out-dir data/logs
+python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/catalog/enriched_catalog.csv --mode merge --out-dir data/logs --batch-output-jsonl data/logs/batch_output.jsonl
+python3 ops/scripts/rank_outfits.py --input data/logs/filtered_outfits.csv --profile data/logs/sample_user_profile_tier2.json --recommendation-mode auto --request-text "Need complete office looks" --output data/logs/ranked_outfits.csv --explain data/logs/ranked_outfits_explainability.json
+python3 run_style_pipeline.py --input data/catalog/enriched_catalog.csv --profile data/logs/sample_user_profile_tier2.json --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --tier2-strictness balanced --recommendation-mode auto --request-text "Need complete office looks" --out-dir data/logs --prefix demo_outfit
 python3 run_user_profiler.py --image /absolute/path/to/user.jpg --context-text "I need office and dinner looks"
 python3 run_conversation_platform.py --host 127.0.0.1 --port 8010
 ```
@@ -294,15 +294,15 @@ python3 run_conversation_platform.py --host 127.0.0.1 --port 8010
 ## 13) End-to-End Styling Runbook
 - Runbook doc: `ops/runbooks/STYLING_PIPELINE_RUNBOOK.md`
 - Single-command runner:
-  - `python3 run_style_pipeline.py --input data/output/enriched.csv --profile data/output/sample_user_profile_tier2.json --occasion "Night Out" --archetype "Glamorous" --gender Female --age 25-30 --tier2-strictness balanced --out-dir data/output --prefix nightout_glamorous_female_25_30`
+  - `python3 run_style_pipeline.py --input data/catalog/enriched_catalog.csv --profile data/logs/sample_user_profile_tier2.json --occasion "Night Out" --archetype "Glamorous" --gender Female --age 25-30 --tier2-strictness balanced --out-dir data/logs --prefix nightout_glamorous_female_25_30`
 - Final ranked list for downstream UI/review:
-  - `data/output/<prefix>_ranked_summary.csv`
+  - `data/logs/<prefix>_ranked_summary.csv`
   - Includes ranked `title`, both image URLs, and scores.
 - RL-ready logs produced per run:
-  - `data/output/<prefix>_request_log.json`
-  - `data/output/<prefix>_candidate_set_log.csv`
-  - `data/output/<prefix>_impression_log.csv`
-  - `data/output/<prefix>_outcome_event_log_template.csv`
+  - `data/logs/<prefix>_request_log.json`
+  - `data/logs/<prefix>_candidate_set_log.csv`
+  - `data/logs/<prefix>_impression_log.csv`
+  - `data/logs/<prefix>_outcome_event_log_template.csv`
 - User outcome logging:
   - `python3 ops/scripts/log_styling_outcome.py --log-file <path> --request-id <id> --session-id <id> --user-id <id> --garment-id <id> --event-type like|share|buy|skip`
 - Reward policy:

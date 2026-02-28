@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run full styling engine: hard filters + Tier 2 ranking + RL-ready logs."
     )
-    parser.add_argument("--input", default="data/output/enriched.csv", help="Input enriched CSV.")
+    parser.add_argument("--input", default="data/catalog/enriched_catalog.csv", help="Input enriched CSV.")
     parser.add_argument("--profile", required=True, help="User profile JSON path for Tier 2 ranking.")
     parser.add_argument("--occasion", required=True, help="Occasion context (e.g. 'Night Out').")
     parser.add_argument("--archetype", required=True, help="Archetype context (e.g. 'Glamorous').")
@@ -85,7 +85,7 @@ def parse_args() -> argparse.Namespace:
         help="Optional natural-language request used for auto recommendation mode resolution.",
     )
     parser.add_argument("--limit", type=int, default=0, help="Optional max displayed ranked rows (0 = all).")
-    parser.add_argument("--out-dir", default="data/output", help="Output directory for artifacts.")
+    parser.add_argument("--out-dir", default="data/logs", help="Output directory for artifacts.")
     parser.add_argument("--prefix", default="style_pipeline", help="Artifact filename prefix.")
     return parser.parse_args()
 

@@ -6,7 +6,7 @@ import os
 class ConversationPlatformConfig:
     supabase_rest_url: str
     supabase_service_role_key: str
-    catalog_csv_path: str = "data/output/enriched.csv"
+    catalog_csv_path: str = "data/catalog/enriched_catalog.csv"
     default_strictness: str = "balanced"
     default_hard_filter_profile: str = "rl_ready_minimal"
     default_max_results: int = 12
@@ -59,7 +59,10 @@ def load_config() -> ConversationPlatformConfig:
             "or export SERVICE_ROLE_KEY from `supabase status --output env`."
         )
 
-    catalog_csv_path = os.getenv("CATALOG_CSV_PATH", "data/output/enriched.csv").strip() or "data/output/enriched.csv"
+    catalog_csv_path = (
+        os.getenv("CATALOG_CSV_PATH", "data/catalog/enriched_catalog.csv").strip()
+        or "data/catalog/enriched_catalog.csv"
+    )
 
     return ConversationPlatformConfig(
         supabase_rest_url=_ensure_rest_url(supabase_url),

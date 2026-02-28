@@ -7,7 +7,7 @@ class UserProfilerConfig:
     visual_model: str = "gpt-5.2"
     textual_model: str = "gpt-5-mini"
     visual_reasoning_effort: str = "high"
-    output_dir: str = "data/output"
+    output_dir: str = "data/logs"
 
 
 def _load_dotenv(dotenv_path: str = ".env") -> None:

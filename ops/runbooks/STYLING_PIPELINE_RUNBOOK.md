@@ -13,8 +13,8 @@ Optional upstream step:
 ## Single Command
 ```bash
 python3 run_style_pipeline.py \
-  --input data/output/enriched.csv \
-  --profile data/output/sample_user_profile_tier2.json \
+  --input data/catalog/enriched_catalog.csv \
+  --profile data/logs/sample_user_profile_tier2.json \
   --occasion "Night Out" \
   --archetype "Glamorous" \
   --gender Female \
@@ -25,7 +25,7 @@ python3 run_style_pipeline.py \
   --tier2-strictness balanced \
   --recommendation-mode auto \
   --request-text "I need a complete evening look" \
-  --out-dir data/output \
+  --out-dir data/logs \
   --prefix nightout_glamorous_female_25_30
 ```
 
@@ -45,7 +45,7 @@ This uses real-time Responses API calls:
 - textual: `gpt-5-mini`
 
 ## Full Profile Example (Body Harmony + Preferences)
-Use this as `data/output/sample_user_profile_tier2.json`:
+Use this as `data/logs/sample_user_profile_tier2.json`:
 ```json
 {
   "HeightCategory": "AVERAGE",
@@ -76,8 +76,8 @@ Use this as `data/output/sample_user_profile_tier2.json`:
 If you need old hard-filter behavior with archetype/age as hard constraints:
 ```bash
 python3 run_style_pipeline.py \
-  --input data/output/enriched.csv \
-  --profile data/output/sample_user_profile_tier2.json \
+  --input data/catalog/enriched_catalog.csv \
+  --profile data/logs/sample_user_profile_tier2.json \
   --occasion "Work Mode" \
   --archetype "Classic" \
   --gender Female \
@@ -93,16 +93,16 @@ Supported `--relax` values:
 - `occasion_archetype`
 
 ## Output Artifacts
-With `--out-dir data/output --prefix nightout_glamorous_female_25_30`, this produces:
-- `data/output/nightout_glamorous_female_25_30_filtered.csv`
-- `data/output/nightout_glamorous_female_25_30_filter_failures.json`
-- `data/output/nightout_glamorous_female_25_30_ranked.csv`
-- `data/output/nightout_glamorous_female_25_30_ranked_explainability.json`
-- `data/output/nightout_glamorous_female_25_30_ranked_summary.csv`
-- `data/output/nightout_glamorous_female_25_30_request_log.json`
-- `data/output/nightout_glamorous_female_25_30_candidate_set_log.csv`
-- `data/output/nightout_glamorous_female_25_30_impression_log.csv`
-- `data/output/nightout_glamorous_female_25_30_outcome_event_log_template.csv`
+With `--out-dir data/logs --prefix nightout_glamorous_female_25_30`, this produces:
+- `data/logs/nightout_glamorous_female_25_30_filtered.csv`
+- `data/logs/nightout_glamorous_female_25_30_filter_failures.json`
+- `data/logs/nightout_glamorous_female_25_30_ranked.csv`
+- `data/logs/nightout_glamorous_female_25_30_ranked_explainability.json`
+- `data/logs/nightout_glamorous_female_25_30_ranked_summary.csv`
+- `data/logs/nightout_glamorous_female_25_30_request_log.json`
+- `data/logs/nightout_glamorous_female_25_30_candidate_set_log.csv`
+- `data/logs/nightout_glamorous_female_25_30_impression_log.csv`
+- `data/logs/nightout_glamorous_female_25_30_outcome_event_log_template.csv`
 
 ## Final Ranked Output for UI/Review
 Use `*_ranked_summary.csv`. It includes:
@@ -121,7 +121,7 @@ Use `*_ranked_summary.csv`. It includes:
 Append real user feedback events (like/share/buy/skip):
 ```bash
 python3 ops/scripts/log_styling_outcome.py \
-  --log-file data/output/nightout_glamorous_female_25_30_outcome_events.csv \
+  --log-file data/logs/nightout_glamorous_female_25_30_outcome_events.csv \
   --request-id <request_id> \
   --session-id <session_id> \
   --user-id user_123 \

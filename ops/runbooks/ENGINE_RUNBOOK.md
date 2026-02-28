@@ -28,18 +28,18 @@ Full run:
 ```bash
 python3 run_catalog_enrichment.py \
   --input modules/catalog_enrichment/stores/processed_sample_catalog.csv \
-  --output data/output/enriched.csv \
+  --output data/catalog/enriched_catalog.csv \
   --mode all \
-  --out-dir data/output
+  --out-dir data/logs
 ```
 
 Large catalog auto-chunk run:
 ```bash
 python3 run_catalog_enrichment.py \
   --input new_catalog.csv \
-  --output data/output/enriched_v2.csv \
+  --output data/catalog/enriched_catalog.csv \
   --mode all \
-  --out-dir data/output \
+  --out-dir data/logs \
   --auto-chunk \
   --max-batch-bytes 180000000 \
   --num-products all
@@ -52,7 +52,7 @@ Notes:
 - Automatic schema audit runs before prepare/run_batch/all unless skipped.
 - `--auto-chunk` splits by request JSONL bytes, runs chunk batches sequentially, and writes merged output.
 - If a chunk fails with organization enqueued-token-limit, auto-chunk now re-splits that chunk and retries automatically.
-- Chunk artifacts are written under `data/output/chunk_runs/` with summary `data/output/chunk_manifest.json`.
+- Chunk artifacts are written under `data/logs/chunk_runs/` with summary `data/logs/chunk_manifest.json`.
 
 ## 2) Tier 1 Filter
 Strict:
@@ -62,9 +62,9 @@ python3 ops/scripts/filter_outfits.py \
   --archetype "Classic" \
   --gender Female \
   --age 25-30 \
-  --input data/output/enriched.csv \
-  --output data/output/filtered_outfits.csv \
-  --fail-log data/output/filtered_outfits_failures.json
+  --input data/catalog/enriched_catalog.csv \
+  --output data/logs/filtered_outfits.csv \
+  --fail-log data/logs/filtered_outfits_failures.json
 ```
 
 With relax:
@@ -75,26 +75,26 @@ python3 ops/scripts/filter_outfits.py \
   --gender Female \
   --age 25-30 \
   --relax age,archetype \
-  --input data/output/enriched.csv \
-  --output data/output/filtered_outfits_relaxed.csv \
-  --fail-log data/output/filtered_outfits_relaxed_failures.json
+  --input data/catalog/enriched_catalog.csv \
+  --output data/logs/filtered_outfits_relaxed.csv \
+  --fail-log data/logs/filtered_outfits_relaxed_failures.json
 ```
 
 ## 3) Tier 2 Rank
 ```bash
 python3 ops/scripts/rank_outfits.py \
-  --input data/output/filtered_outfits.csv \
-  --profile data/output/sample_user_profile_tier2.json \
+  --input data/logs/filtered_outfits.csv \
+  --profile data/logs/sample_user_profile_tier2.json \
   --tier2-strictness balanced \
   --recommendation-mode auto \
   --request-text "I need a complete office look" \
-  --output data/output/ranked_outfits.csv \
-  --explain data/output/ranked_outfits_explainability.json
+  --output data/logs/ranked_outfits.csv \
+  --explain data/logs/ranked_outfits_explainability.json
 ```
 
 ## 4) Debug Checklist
 If Tier 1 returns too few:
-1. inspect `data/output/filtered_outfits_failures.json`
+1. inspect `data/logs/filtered_outfits_failures.json`
 2. relax one filter:
    - `--relax age`
    - `--relax archetype`
@@ -107,15 +107,15 @@ If Tier 2 scores look flat:
 3. try `--tier2-strictness bold`
 
 If batch run fails:
-1. check `data/output/batch_errors.jsonl`
+1. check `data/logs/batch_errors.jsonl`
 2. check model params in request body
 3. avoid stale output merges by using new `--out-dir`
 
 ## 5) Single Command Runbook
 ```bash
 python3 run_style_pipeline.py \
-  --input data/output/enriched.csv \
-  --profile data/output/sample_user_profile_tier2.json \
+  --input data/catalog/enriched_catalog.csv \
+  --profile data/logs/sample_user_profile_tier2.json \
   --occasion "Night Out" \
   --archetype "Glamorous" \
   --gender Female \
@@ -124,26 +124,26 @@ python3 run_style_pipeline.py \
   --tier2-strictness balanced \
   --recommendation-mode auto \
   --request-text "I need a complete evening outfit" \
-  --out-dir data/output \
+  --out-dir data/logs \
   --prefix nightout_glamorous_female_25_30
 ```
 
 Final ranked output:
-- `data/output/nightout_glamorous_female_25_30_ranked_summary.csv`
+- `data/logs/nightout_glamorous_female_25_30_ranked_summary.csv`
 - includes rank, recommendation kind (`single_garment` / `outfit_combo`), title, image URLs, and scores.
 - also writes RL-ready logs:
-  - `data/output/<prefix>_request_log.json`
-  - `data/output/<prefix>_candidate_set_log.csv`
-  - `data/output/<prefix>_impression_log.csv`
-  - `data/output/<prefix>_outcome_event_log_template.csv`
+  - `data/logs/<prefix>_request_log.json`
+  - `data/logs/<prefix>_candidate_set_log.csv`
+  - `data/logs/<prefix>_impression_log.csv`
+  - `data/logs/<prefix>_outcome_event_log_template.csv`
 
 Error behavior:
 - invalid context/inputs are handled gracefully (no traceback)
 - runner prints `error: <message>` and exits with code `2`
 ## 6) Core Artifacts
-- Enriched CSV: `data/output/enriched.csv`
-- Schema audit: `data/output/schema_audit.json`
-- Tier 1 pass CSV: `data/output/filtered_outfits.csv`
-- Tier 1 fail log: `data/output/filtered_outfits_failures.json`
-- Tier 2 ranked CSV: `data/output/ranked_outfits.csv`
-- Tier 2 explainability JSON: `data/output/ranked_outfits_explainability.json`
+- Enriched CSV: `data/catalog/enriched_catalog.csv`
+- Schema audit: `data/logs/schema_audit.json`
+- Tier 1 pass CSV: `data/logs/filtered_outfits.csv`
+- Tier 1 fail log: `data/logs/filtered_outfits_failures.json`
+- Tier 2 ranked CSV: `data/logs/ranked_outfits.csv`
+- Tier 2 explainability JSON: `data/logs/ranked_outfits_explainability.json`

@@ -11,7 +11,7 @@ Context sync note:
 Tier 1 is the hard-filter stage. It narrows the enriched catalog to items that satisfy user context constraints before personalized ranking.
 
 Inputs:
-- Enriched catalog CSV (`data/output/enriched.csv` or equivalent)
+- Enriched catalog CSV (`data/catalog/enriched_catalog.csv` or equivalent)
 - User context:
   - `occasion`
   - `archetype`
@@ -25,7 +25,7 @@ Outputs:
 - Filtered CSV of pass candidates
 - Failure log JSON with per-item reject reasons
 - User-side context can be inferred upstream using `run_user_profiler.py`
-  (`data/output/user_style_context.json` provides `occasion`, `archetype`, `gender`, `age`).
+  (`data/logs/user_style_context.json` provides `occasion`, `archetype`, `gender`, `age`).
 
 Downstream handoff:
 - Tier 1 output is consumed by outfit assembly + Tier 2 ranking.
@@ -52,7 +52,7 @@ Applied in this sequence:
 If any hard filter fails, the row is rejected.
 
 ## Exact Attribute Coverage (Tier 1)
-Tier 1 reads these garment attributes from `data/output/enriched.csv`:
+Tier 1 reads these garment attributes from `data/catalog/enriched_catalog.csv`:
 
 Occasion filter attributes:
 - `OccasionFit`
@@ -154,9 +154,9 @@ python3 ops/scripts/filter_outfits.py \
   --archetype "Classic" \
   --gender Female \
   --age 25-30 \
-  --input data/output/enriched.csv \
-  --output data/output/filtered_outfits.csv \
-  --fail-log data/output/filtered_outfits_failures.json
+  --input data/catalog/enriched_catalog.csv \
+  --output data/logs/filtered_outfits.csv \
+  --fail-log data/logs/filtered_outfits_failures.json
 ```
 
 Relax age + archetype:
@@ -167,9 +167,9 @@ python3 ops/scripts/filter_outfits.py \
   --gender Female \
   --age 25-30 \
   --relax age,archetype \
-  --input data/output/enriched.csv \
-  --output data/output/filtered_outfits_relaxed.csv \
-  --fail-log data/output/filtered_outfits_relaxed_failures.json
+  --input data/catalog/enriched_catalog.csv \
+  --output data/logs/filtered_outfits_relaxed.csv \
+  --fail-log data/logs/filtered_outfits_relaxed_failures.json
 ```
 
 Relax compatibility only:
@@ -180,7 +180,7 @@ python3 ops/scripts/filter_outfits.py \
   --gender Female \
   --age 25-30 \
   --relax occasion_archetype \
-  --input data/output/enriched.csv \
-  --output data/output/filtered_outfits_compat_relaxed.csv \
-  --fail-log data/output/filtered_outfits_compat_relaxed_failures.json
+  --input data/catalog/enriched_catalog.csv \
+  --output data/logs/filtered_outfits_compat_relaxed.csv \
+  --fail-log data/logs/filtered_outfits_compat_relaxed_failures.json
 ```
