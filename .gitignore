@@ -3,4 +3,7 @@ __pycache__/
 out/
 *.pyc
 data/
+archive/
 .DS_Store
+.claude/settings.local.json
+supabase/.temp/

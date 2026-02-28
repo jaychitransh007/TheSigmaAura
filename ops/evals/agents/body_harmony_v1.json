@@ -1,0 +1,48 @@
+{
+  "suite_id": "body_harmony_v1",
+  "agent": "BodyHarmonyAgent",
+  "version": "1.0.0",
+  "metrics": ["enum_valid_rate", "repeatability", "confidence_calibration"],
+  "thresholds": {
+    "pass": {"enum_valid_rate": 1.00, "repeatability": 0.90, "confidence_calibration_ece": 0.08},
+    "warning": {"enum_valid_rate": 0.995, "repeatability": 0.85, "confidence_calibration_ece": 0.12},
+    "fail_condition": "enum invalid output"
+  },
+  "cases": [
+    {
+      "id": "bh_001",
+      "description": "Extract body profile includes all BODY_ENUM keys",
+      "input": {"visual": "full_enum_visual"},
+      "expected": {"has_all_body_enum_keys": true, "has_color_preferences": true},
+      "tags": ["extract", "contract"]
+    },
+    {
+      "id": "bh_002",
+      "description": "Gender and age excluded from body profile",
+      "input": {"visual": "full_enum_visual_with_gender_age"},
+      "expected": {"excludes_keys": ["gender", "age"]},
+      "tags": ["extract", "exclusion"]
+    },
+    {
+      "id": "bh_003",
+      "description": "Non-empty profile produces body_harmony constraint",
+      "input": {"profile": {"HeightCategory": "tall"}},
+      "expected": {"style_constraints": ["body_harmony"]},
+      "tags": ["constraints"]
+    },
+    {
+      "id": "bh_004",
+      "description": "Empty profile produces no constraints",
+      "input": {"profile": {}},
+      "expected": {"style_constraints": []},
+      "tags": ["constraints", "edge_case"]
+    },
+    {
+      "id": "bh_005",
+      "description": "ProfileAgent alias points to BodyHarmonyAgent",
+      "input": {},
+      "expected": {"alias_valid": true},
+      "tags": ["contract"]
+    }
+  ]
+}

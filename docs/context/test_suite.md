@@ -1,157 +1,211 @@
-# Test Suite
+# Test Suite Map (Architecture-Locked)
 
-Last run: February 28, 2026
+Last updated: March 1, 2026
 
-## Scope
-- Config-driven contracts
-- Schema integrity
-- Batch request builder behavior
-- Tier 1 filtering behavior (including relaxations)
-- Tier 2 ranking/scoring behavior and explainability contract
-- Outfit assembly behavior (mode resolution + combo candidate construction)
-- User profile inference schemas and image-input normalization
-- Conversation platform schemas, repository behavior, and orchestrator flow
-- Conversation eval rubric scoring and aggregate reporting behavior
-
-## How To Run
+## Run Command
 ```bash
-python3 -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-## Test Files
-- `tests/test_config_and_schema.py`
-- `tests/test_batch_builder.py`
-- `tests/test_tier1_filters.py`
-- `tests/test_tier2_ranker.py`
-- `tests/test_outfit_engine.py`
-- `tests/test_user_profiler.py`
-- `tests/test_conversation_platform.py`
-- `tests/test_conversation_orchestrator.py`
-- `tests/test_conversation_api_ui.py`
-- `tests/test_conversation_eval.py`
-- `tests/test_intent_policy.py`
+## Coverage by Module Context
 
-## Case Matrix
+### 1) Config Contract and Context Integrity
+Primary files:
+1. `tests/test_config_and_schema.py`
+2. `tests/test_batch_builder.py`
 
-### Config + Schema
-- `test_garment_config_counts_match_context_contract`
-- `test_attributes_module_is_config_backed`
-- `test_schema_contains_value_and_confidence_for_all_attributes`
-- `test_user_context_config_has_expected_dimensions`
-- `test_body_harmony_config_has_all_attributes`
-- `test_ranked_configs_reference_valid_garment_attributes`
-- `test_context_file_exists`
-- `test_garment_config_file_is_valid_json`
-- `test_outfit_assembly_config_exists_and_loads`
-- `test_reinforcement_rewards_match_ui_contract`
-- `test_intent_policy_config_exists_and_loads`
+Covers:
+1. config-driven schema loading
+2. ranked-attribute contract validity
+3. context index file existence and baseline content checks
 
-### Batch Builder
-- `test_normalize_image_url_adds_width`
-- `test_normalize_image_url_overrides_existing_width`
-- `test_build_request_body_uses_model_and_prompt_and_images`
-- `test_split_rows_for_max_batch_bytes_splits_into_multiple_chunks`
-- `test_split_rows_for_max_batch_bytes_raises_when_row_exceeds_limit`
-- `test_detect_enqueued_token_limit_error`
-- `test_extract_batch_error_message_from_failed_batch`
-- `test_detect_billing_hard_limit_error`
+### 2) User Profile + Body Harmony
+Primary files:
+1. `tests/test_user_profiler.py`
+2. `tests/test_conversation_orchestrator.py`
 
-### Tier 1
-- `test_parse_relax_filters_valid`
-- `test_parse_relax_filters_invalid_raises`
-- `test_parse_relax_filters_trims_and_dedupes`
-- `test_invalid_archetype_shows_occasion_hint`
-- `test_invalid_occasion_shows_archetype_hint`
-- `test_strict_filter_passes_matching_row`
-- `test_price_failure_can_be_relaxed`
-- `test_occasion_archetype_incompatibility_and_relaxation`
-- `test_gender_filter_blocks_mismatch`
-- `test_minimal_hard_filters_pass_base_row`
-- `test_minimal_hard_filters_exclude_policy_safety`
+Covers:
+1. visual/text schema constraints
+2. image input normalization and artifact persistence
+3. clarification flow when profile/context is missing
 
-### Tier 2
-- `test_invalid_strictness_raises`
-- `test_explainability_contract_fields_exist`
-- `test_color_never_excludes_item`
-- `test_higher_confidence_improves_score`
-- `test_not_permitted_penalty_applies`
-- `test_strictness_profiles_affect_ranking_score`
-- `test_ranked_bh_weights_from_config_used`
-- `test_color_loved_preference_boosts_score`
-- `test_compatibility_confidence_is_bounded`
+### 3) Tier 1 Catalog and Policy Gating
+Primary files:
+1. `tests/test_tier1_filters.py`
+2. `tests/test_intent_policy.py`
 
-### Outfit Assembly
-- `test_outfit_mode_returns_combo_candidates`
-- `test_auto_mode_detects_garment_request`
-- `test_auto_mode_without_garment_keywords_prefers_outfits`
-- `test_combo_candidate_contains_component_metadata`
-- `test_invalid_recommendation_mode_raises`
-- `test_resolve_mode_detects_hyphenated_keyword`
-- `test_garment_mode_falls_back_if_no_targeted_match`
-- `test_high_stakes_policy_applies_prior_delta`
-- `test_complete_only_excludes_incomplete_one_piece_rows`
-- `test_complete_only_excludes_outerwear_without_explicit_outerwear_request`
-- `test_complete_only_allows_outerwear_when_explicitly_requested`
+Covers:
+1. hard filter behavior and relaxations
+2. policy exclusion behavior
+3. minimal hard-filter profile safety gates
 
-### Intent Policy
-- `test_resolve_high_stakes_work_for_presentation_prompt`
-- `test_policy_filter_excludes_risky_work_items`
+### 4) Tier 2 Style + Complete-the-Look
+Primary files:
+1. `tests/test_tier2_ranker.py`
+2. `tests/test_outfit_engine.py`
 
-### User Profiler
-- `test_visual_schema_has_all_body_fields_plus_gender_age`
-- `test_textual_schema_uses_context_enums`
-- `test_image_to_input_url_supports_http`
-- `test_image_to_input_url_supports_data_url`
-- `test_image_to_input_url_supports_local_file`
-- `test_visual_model_is_gpt_5_2_and_textual_is_gpt_5_mini`
-- `test_store_image_artifact_for_data_url`
-- `test_store_image_artifact_for_local_file`
+Covers:
+1. deterministic scoring behavior
+2. recommendation mode resolution
+3. combo construction and metadata integrity
+4. complete-only behavior constraints
 
-### Conversation Platform
-- `test_get_or_create_user_returns_existing`
-- `test_get_or_create_user_creates_when_missing`
-- `test_get_user_by_id`
-- `test_insert_recommendation_items_persists_combo_metadata_payload`
-- `test_get_conversation_state_includes_external_user_id`
-- `test_process_turn_requests_clarification_without_first_image`
-- `test_process_turn_requests_clarification_for_missing_text_context`
-- `test_process_turn_happy_path_with_image`
-- `test_get_recommendation_run_parses_combo_metadata`
-- `test_memory_agent_merges_context`
-- `test_stylist_agent_response_with_items`
-- `test_stylist_agent_response_without_items`
-- `test_stylist_agent_asks_refinement_on_low_confidence`
-- `test_stylist_agent_asks_refinement_on_short_ambiguous_prompt`
-- `test_telemetry_reward_mapping`
-- `test_turn_request_defaults`
-- `test_feedback_event_type_validation`
-- `test_feedback_event_type_validation_dislike`
-- `test_feedback_event_type_validation_no_action`
-- `test_root_returns_html`
-- `test_favicon_route_exists`
-- `test_turn_job_start_and_status`
-- `test_turn_job_start_and_status_failed`
-- `test_feedback_endpoint_success`
-- `test_feedback_endpoint_dislike_success`
-- `test_feedback_endpoint_returns_migration_hint_for_old_event_type_constraint`
-- `test_root_contains_action_layout_and_reward_contract`
-- `test_recommendation_policy_relaxes_when_complete_only_has_too_few_complete_items`
+### 5) Conversation API and Orchestration
+Primary files:
+1. `tests/test_conversation_platform.py`
+2. `tests/test_conversation_orchestrator.py`
+3. `tests/test_conversation_api_ui.py`
 
-### Conversation Eval
-- `test_evaluate_case_passes_for_well_aligned_results`
-- `test_evaluate_case_flags_integrity_failures`
-- `test_aggregate_case_evals_summarizes_dimensions`
+Covers:
+1. conversation and turn API contracts
+2. orchestration lifecycle and persistence calls
+3. async stage polling and UI wiring
+4. feedback event handling
 
-## Latest Run Report
-- Full-suite run: `python3 -m unittest discover -s tests -p 'test_*.py'`
-- Total tests: `93`
-- Passed: `93`
-- Failed: `0`
-- Result: `OK`
+### 6) Phase 1 Agentic Commerce (Contracts, Mode Routing, Checkout-Prep)
+Primary files:
+1. `tests/test_agentic_phase1.py`
 
-## Notes
-- Current suite includes policy-aware ranking/filter behavior for high-stakes work prompts.
-- `complete_only` integrity is explicitly covered by tests (incomplete singles and standalone outerwear gating).
-- Operational eval system is documented in:
-  - `ops/runbooks/CONVERSATION_EVAL_RUNBOOK.md`
-  - `ops/scripts/run_conversation_eval.py`
+Covers:
+1. new schema types and enums (ModePreference, ResolvedMode, AutonomyLevel, CheckoutPreparationStatus)
+2. SizeOverrides, InitialProfile, CheckoutPrepareRequest/Response models
+3. turn request/response new field defaults and validation
+4. repository methods for checkout preparation CRUD
+5. orchestrator mode routing logic (auto/garment/outfit resolution)
+6. complete_the_look_offer behavior
+7. style_constraints_applied and profile_fields_used in response
+8. initial_profile persistence on conversation create
+9. checkout-prep happy path, over-budget, and error cases
+10. API endpoint wiring for checkout/prepare and preparations GET
+11. DB migration file validation
+
+### 7) Phase 2 Agent Boundary Refactor
+Primary files:
+1. `tests/test_agentic_phase2.py`
+
+Covers:
+1. IntentModeRouterAgent mode resolution (auto/garment/outfit, target_garment_type, complete_the_look_offer)
+2. UserProfileAgent merge logic (last-write-wins, size_overrides, initial_profile, field extraction)
+3. BodyHarmonyAgent profile extraction and style constraints
+4. StyleRequirementInterpreter context parsing
+5. CatalogFilterSubAgent and GarmentRankerSubAgent initialization
+6. IntentPolicySubAgent resolution
+7. BrandVarianceComfortSubAgent passthrough
+8. RecommendationAgent sub-agent delegation and legacy ref preservation
+9. Orchestrator wiring verification (mode_router, user_profile_agent, body_harmony_agent)
+
+### 8) Phase 3/4 Completion (Mode Switch CTA, Substitution, Tool Traces)
+Primary files:
+1. `tests/test_agentic_phase3_4.py`
+
+Covers:
+1. `mode_switch_cta` schema field defaults and population
+2. garment mode CTA present, outfit mode CTA empty
+3. `SubstitutionSuggestion` schema model
+4. over-budget substitution suggestion from unused recommendation items
+5. over-budget with no cheaper alternative
+6. within-budget and no-budget-cap paths
+7. `log_tool_trace` called in `prepare_checkout`
+8. tool trace input/output contract
+
+### 9) Phase 5 Policy/Trust and Observability Hardening
+Primary files:
+1. `tests/test_agentic_phase5.py`
+
+Covers:
+1. `PolicyGuardrailAgent` blocking execute_purchase, place_order, confirm_order, submit_order
+2. allowed actions pass through (recommend, prepare_checkout)
+3. case-insensitive, hyphen/space normalization for blocked actions
+4. `ActionCheckRequest`/`ActionCheckResponse` schema models
+5. `/v1/actions/check` API endpoint wiring
+6. orchestrator `check_action` delegation and `policy_guardrail` attribute
+7. mode resolution trace logging (`mode_router.resolve_mode` tool trace)
+8. guardrail trace logging (`policy_guardrail.check_action` tool trace with blocked/ok status)
+9. `ops/queries/funnel_metrics.sql` file existence and key query content
+
+### 10) Phase 6 Per-Agent Eval Infrastructure
+Primary files:
+1. `tests/test_agentic_phase6.py`
+
+Covers:
+1. all 9 agent suite files exist and are valid JSON with required fields
+2. suite discovery from directory
+3. case execution for IntentModeRouterAgent, UserProfileAgent, BodyHarmonyAgent, PolicyGuardrailAgent, TelemetryAgent, StyleRequirementInterpreter
+4. metric hints match/mismatch detection
+5. gate semantics (worse_gate ordering: pass < warning < fail < fail_integrity)
+6. suite scoring with pass/fail/integrity gates
+7. aggregation across multiple suites
+8. full artifact contract (8 files written to output directory)
+9. integration run of single suite, all suites, and max_cases limit
+
+### 11) Phase 7 Rollout and Monitoring
+Primary files:
+1. `tests/test_agentic_phase7.py`
+
+Covers:
+1. CI workflow files exist (pr-eval, nightly-eval, weekly-eval)
+2. PR workflow has unit-tests, agent-evals, release-gate jobs with correct flags
+3. nightly workflow has E2E eval and schedule
+4. weekly workflow has drift report and 180-day artifact retention
+5. operational dashboard spec exists with all 8 panels and KPI targets
+6. release gate: all-pass, integrity failure, critical agent fail, non-critical fail, warning
+7. release gate: missing eval dir, policy guardrail side-effect rate, thresholds match spec
+8. integration: agent evals followed by release gate check
+
+### 12) End-to-End Eval Runner Logic
+Primary files:
+1. `tests/test_conversation_eval.py`
+
+Covers:
+1. rubric scoring logic
+2. integrity checks and aggregation behavior
+
+## Eval Layers Mapping
+1. `L0` static/unit: all existing `tests/test_*.py`
+2. `L1` per-agent evals: planned via `ops/scripts/run_agent_evals.py`
+3. `L2` integration evals: planned multi-agent fixture runs
+4. `L3` end-to-end evals: `ops/scripts/run_conversation_eval.py`
+5. `L4` drift monitoring: planned weekly trend checks
+
+## Planned Test Additions
+
+### Unit Tests (Phase 1 — DONE in `test_agentic_phase1.py`)
+1. [x] Turn schema tests for `mode_preference`, `target_garment_type`, `autonomy_level`, `size_overrides`.
+2. [x] Turn response schema tests for `resolved_mode`, `complete_the_look_offer`, `style_constraints_applied`, `profile_fields_used`.
+3. [x] Mode router classification tests (garment-specific vs broad-intent).
+4. [x] Checkout-prep status transition tests (`pending -> ready|needs_user_action|failed`).
+5. [x] Checkout-prep API endpoint tests.
+
+### Unit Tests (Phase 2+ — pending)
+1. [ ] Profile merge precedence and size override tests (last-write-wins).
+2. [ ] Style sub-agent contract tests (complete-the-look output shape, combo metadata).
+3. [ ] Budget substitution and guardrail tests.
+
+### Integration Tests (pending)
+1. [ ] `conversation create -> turn -> recommendation -> checkout/prepare` happy path.
+2. [ ] Garment mode with follow-up complete-the-look bundle.
+3. [ ] Outfit mode default with combo competition.
+4. [ ] Missing size -> clarification branch -> resumed recommendation.
+5. [ ] Stock/price drift at checkout prep with fallback substitutions.
+6. [ ] Policy block on any purchase-placement attempt.
+
+### Per-Agent Eval Runner Tests
+1. Suite load and case dispatch.
+2. Threshold gate enforcement.
+3. Gate semantics (pass/warning/fail/fail_integrity).
+4. Artifact integrity output contract.
+
+### E2E Eval Tests
+1. Run existing conversation suite with `complete_only`.
+2. Run again with `complete_plus_combos`.
+3. Compare score deltas and integrity pass rate.
+
+## Latest Validation Snapshot
+1. Full suite command: `python3 -m unittest discover -s tests -p 'test_*.py'`
+2. Pre-Phase-1 baseline: `93 passed, 0 failed`.
+3. Post-Phase-1 baseline: `137 passed, 0 failed` (44 new tests in `test_agentic_phase1.py`).
+4. Post-Phase-2 baseline: `166 passed, 0 failed` (29 new tests in `test_agentic_phase2.py`).
+5. Post-Phase-3/4 baseline: `182 passed, 0 failed` (16 new tests in `test_agentic_phase3_4.py`).
+6. Post-Phase-5 baseline: `211 passed, 0 failed` (29 new tests in `test_agentic_phase5.py`).
+7. Post-Phase-6 baseline: `239 passed, 0 failed` (28 new tests in `test_agentic_phase6.py`).
+8. Post-Phase-7 baseline: `266 passed, 0 failed` (27 new tests in `test_agentic_phase7.py`).

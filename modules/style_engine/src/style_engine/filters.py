@@ -14,7 +14,14 @@ from catalog_enrichment.config_registry import (
 RULES_PATH = Path(__file__).resolve().parent / "tier_a_filters_v1.json"
 USER_CONTEXT_CONFIG = load_user_context_attributes()
 TIER1_RANKED_CONFIG = load_tier1_ranked_attributes()
-REINFORCEMENT_FRAMEWORK = load_reinforcement_framework()
+_REINFORCEMENT_FRAMEWORK: Dict[str, Any] | None = None
+
+
+def _get_reinforcement_framework() -> Dict[str, Any]:
+    global _REINFORCEMENT_FRAMEWORK
+    if _REINFORCEMENT_FRAMEWORK is None:
+        _REINFORCEMENT_FRAMEWORK = load_reinforcement_framework()
+    return _REINFORCEMENT_FRAMEWORK
 
 
 def _build_alias_map(dimension_name: str) -> Dict[str, str]:
@@ -235,7 +242,7 @@ def filter_catalog_rows_minimal_hard(
     gender_key = _resolve_key(ctx.gender, _GENDER_ALIASES, "gender")
 
     rl_profile = (
-        (REINFORCEMENT_FRAMEWORK.get("hard_filter_profiles") or {}).get("rl_ready_minimal") or {}
+        (_get_reinforcement_framework().get("hard_filter_profiles") or {}).get("rl_ready_minimal") or {}
     )
     profile_price = (rl_profile.get("price_range_inr") or {}) if rl_profile else {}
     price_range = profile_price or rules.get("price_range_inr") or {"min": 2000, "max": 5000}

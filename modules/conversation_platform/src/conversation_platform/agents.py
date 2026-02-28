@@ -1,6 +1,6 @@
 import json
 import copy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from openai import OpenAI
 
@@ -17,13 +17,98 @@ from style_engine.filters import (
     parse_relaxed_filters,
     read_csv_rows,
 )
-from style_engine.outfit_engine import rank_recommendation_candidates
+from style_engine.outfit_engine import (
+    resolve_recommendation_mode,
+    rank_recommendation_candidates,
+)
 from style_engine.ranker import load_tier2_rules
 from user_profiler.config import UserProfilerConfig, get_api_key
+from user_profiler.schemas import BODY_ENUMS
 from user_profiler.service import infer_text_context, infer_visual_profile
 
 
-class ProfileAgent:
+# ---------------------------------------------------------------------------
+# Intent & Mode Router Agent
+# ---------------------------------------------------------------------------
+
+class IntentModeRouterAgent:
+    """Resolves mode_preference (auto|garment|outfit) into resolved_mode."""
+
+    def __init__(self) -> None:
+        self.outfit_rules = load_outfit_assembly_rules()
+
+    def resolve_mode(
+        self,
+        *,
+        mode_preference: str = "auto",
+        target_garment_type: Optional[str] = None,
+        request_text: str = "",
+    ) -> Dict[str, Any]:
+        effective_mode = mode_preference
+        if effective_mode == "auto":
+            if target_garment_type:
+                effective_mode = "garment"
+            else:
+                effective_mode = "outfit"
+
+        resolved_mode, requested_categories, requested_subtypes = resolve_recommendation_mode(
+            mode=effective_mode,
+            request_text=request_text,
+            rules=self.outfit_rules,
+        )
+
+        complete_the_look_offer = resolved_mode == "garment"
+
+        return {
+            "resolved_mode": resolved_mode,
+            "complete_the_look_offer": complete_the_look_offer,
+            "requested_categories": sorted(requested_categories),
+            "requested_subtypes": sorted(requested_subtypes),
+        }
+
+
+# ---------------------------------------------------------------------------
+# User Profile & Identity Agent
+# ---------------------------------------------------------------------------
+
+class UserProfileAgent:
+    """Owns explicit user profile: sizes, fit prefs, brand prefs, consent. Merge via last-write-wins."""
+
+    @staticmethod
+    def merge_profile(
+        existing: Optional[Dict[str, Any]],
+        size_overrides: Optional[Dict[str, Any]] = None,
+        initial_profile: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        profile = dict(existing or {})
+        if initial_profile:
+            for key, value in initial_profile.items():
+                if value is not None:
+                    profile[key] = value
+        if size_overrides:
+            sizes = dict(profile.get("sizes") or {})
+            for key, value in size_overrides.items():
+                if value is not None:
+                    sizes[key] = value
+            profile["sizes"] = sizes
+        return profile
+
+    @staticmethod
+    def profile_fields_used(profile: Dict[str, Any]) -> List[str]:
+        fields: List[str] = []
+        for key, value in profile.items():
+            if value and key != "color_preferences":
+                fields.append(key)
+        return fields
+
+
+# ---------------------------------------------------------------------------
+# Body Harmony & Archetype Agent
+# ---------------------------------------------------------------------------
+
+class BodyHarmonyAgent:
+    """Owns inferred body-harmony attributes and archetype confidence."""
+
     def __init__(self, config: UserProfilerConfig):
         self.config = config
         self._client: Optional[OpenAI] = None
@@ -36,6 +121,23 @@ class ProfileAgent:
 
     def infer_visual(self, image_ref: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         return infer_visual_profile(client=self.client, image_ref=image_ref, config=self.config)
+
+    @staticmethod
+    def extract_body_profile(visual: Dict[str, Any]) -> Dict[str, Any]:
+        profile = {key: visual[key] for key in BODY_ENUMS.keys()}
+        profile["color_preferences"] = {}
+        return profile
+
+    @staticmethod
+    def style_constraints_from_profile(profile: Dict[str, Any]) -> List[str]:
+        constraints: List[str] = []
+        if profile:
+            constraints.append("body_harmony")
+        return constraints
+
+
+# Legacy aliases for backward compatibility with existing orchestrator / tests.
+ProfileAgent = BodyHarmonyAgent
 
 
 class IntentAgent:
@@ -53,12 +155,123 @@ class IntentAgent:
         return infer_text_context(client=self.client, context_text=message, config=self.config)
 
 
+# ---------------------------------------------------------------------------
+# Style Sub-Agents
+# ---------------------------------------------------------------------------
+
+class StyleRequirementInterpreter:
+    """Parses request text into occasion, vibe, and constraint signals for downstream agents."""
+
+    @staticmethod
+    def interpret(request_text: str, context: Dict[str, str]) -> Dict[str, Any]:
+        return {
+            "occasion": context.get("occasion", ""),
+            "archetype": context.get("archetype", ""),
+            "request_text": request_text,
+        }
+
+
+class CatalogFilterSubAgent:
+    """Tier-1 hard filtering: inventory, price, occasion, gender, policy safety."""
+
+    def __init__(self) -> None:
+        self.tier1_rules = load_tier_a_rules()
+
+    def filter_rows(
+        self,
+        *,
+        rows: List[Dict[str, str]],
+        ctx: UserContext,
+        hard_filter_profile: str,
+        relax_filters: Optional[List[str]] = None,
+    ) -> Tuple[List[Dict[str, str]], List[Dict[str, Any]], List[str]]:
+        if hard_filter_profile == "legacy":
+            relaxed = parse_relaxed_filters(relax_filters or [])
+            passed, failed = filter_catalog_rows(
+                rows=rows,
+                ctx=ctx,
+                rules=self.tier1_rules,
+                relaxed_filters=relaxed,
+            )
+            return passed, failed, sorted(relaxed)
+
+        passed, failed = filter_catalog_rows_minimal_hard(rows=rows, ctx=ctx, rules=self.tier1_rules)
+        return passed, failed, []
+
+
+class GarmentRankerSubAgent:
+    """Tier-2 personalized ranking of individual garments."""
+
+    def __init__(self) -> None:
+        self.tier2_rules = load_tier2_rules()
+
+    def rank(
+        self,
+        *,
+        rows: List[Dict[str, str]],
+        user_profile: Dict[str, Any],
+        strictness: str,
+        mode: str,
+        include_combos: bool,
+        request_text: str,
+        max_results: int,
+        intent_policy_id: str,
+        intent_policy: Dict[str, Any],
+    ) -> Tuple[Any, Any]:
+        return rank_recommendation_candidates(
+            rows=rows,
+            user_profile=user_profile,
+            tier2_rules=self.tier2_rules,
+            strictness=strictness,
+            mode=mode,
+            include_combos=include_combos,
+            request_text=request_text,
+            max_results=max_results,
+            intent_policy_id=intent_policy_id,
+            intent_policy=intent_policy,
+        )
+
+
+class IntentPolicySubAgent:
+    """Resolves and applies intent policy constraints and ranking priors."""
+
+    @staticmethod
+    def resolve(request_text: str, context: Dict[str, str]) -> Dict[str, Any]:
+        return resolve_intent_policy(request_text=request_text, context=context)
+
+    @staticmethod
+    def apply_filters(rows: List[Dict[str, Any]], policy: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        return apply_intent_policy_filters(rows=rows, policy=policy)
+
+
+class BrandVarianceComfortSubAgent:
+    """Applies brand sizing heuristics and comfort/ease rules. Placeholder for MVP."""
+
+    @staticmethod
+    def apply(
+        items: List[Dict[str, Any]],
+        size_overrides: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        # MVP: pass-through. Brand variance and comfort adjustments will be
+        # added when per-brand heuristic data is available.
+        return items
+
+
+# ---------------------------------------------------------------------------
+# Recommendation Agent (orchestrates style sub-agents)
+# ---------------------------------------------------------------------------
+
 class RecommendationAgent:
     def __init__(self, catalog_csv_path: str):
         self.catalog_csv_path = catalog_csv_path
-        self.tier1_rules = load_tier_a_rules()
-        self.tier2_rules = load_tier2_rules()
+        self.catalog_filter = CatalogFilterSubAgent()
+        self.garment_ranker = GarmentRankerSubAgent()
+        self.intent_policy_agent = IntentPolicySubAgent()
+        self.brand_variance_agent = BrandVarianceComfortSubAgent()
         self.outfit_rules = load_outfit_assembly_rules()
+        # Keep direct references for legacy compatibility.
+        self.tier1_rules = self.catalog_filter.tier1_rules
+        self.tier2_rules = self.garment_ranker.tier2_rules
 
     @staticmethod
     def _norm(value: Any) -> str:
@@ -187,18 +400,12 @@ class RecommendationAgent:
         hard_filter_profile: str,
         relax_filters: Optional[List[str]] = None,
     ) -> Tuple[List[Dict[str, str]], List[Dict[str, Any]], List[str]]:
-        if hard_filter_profile == "legacy":
-            relaxed = parse_relaxed_filters(relax_filters or [])
-            passed, failed = filter_catalog_rows(
-                rows=rows,
-                ctx=ctx,
-                rules=self.tier1_rules,
-                relaxed_filters=relaxed,
-            )
-            return passed, failed, sorted(relaxed)
-
-        passed, failed = filter_catalog_rows_minimal_hard(rows=rows, ctx=ctx, rules=self.tier1_rules)
-        return passed, failed, []
+        return self.catalog_filter.filter_rows(
+            rows=rows,
+            ctx=ctx,
+            hard_filter_profile=hard_filter_profile,
+            relax_filters=relax_filters,
+        )
 
     def recommend(
         self,
@@ -230,7 +437,7 @@ class RecommendationAgent:
             relax_filters=[],
         )
 
-        policy_resolution = resolve_intent_policy(
+        policy_resolution = self.intent_policy_agent.resolve(
             request_text=request_text,
             context=context,
         )
@@ -261,7 +468,7 @@ class RecommendationAgent:
             final_stage_name = "strict"
             matched_stage = False
             for stage_name, stage_policy in stage_policies:
-                stage_rows, stage_failed = apply_intent_policy_filters(rows=passed, policy=stage_policy)
+                stage_rows, stage_failed = self.intent_policy_agent.apply_filters(rows=passed, policy=stage_policy)
                 final_stage_rows, final_stage_failed = stage_rows, stage_failed
                 final_stage_name = stage_name
                 if self._meets_policy_thresholds(
@@ -283,7 +490,7 @@ class RecommendationAgent:
                     stage3_base,
                     {"FormalityLevel": ["smart_casual"], "OccasionFit": ["smart_casual"]},
                 )
-                stage3_rows, stage3_failed = apply_intent_policy_filters(rows=passed, policy=stage3_policy)
+                stage3_rows, stage3_failed = self.intent_policy_agent.apply_filters(rows=passed, policy=stage3_policy)
                 stage3_limited, policy_smart_casual_trimmed = self._limit_smart_casual_rows(
                     rows=stage3_rows,
                     max_results=max_results,
@@ -311,10 +518,9 @@ class RecommendationAgent:
                 policy_failed = final_stage_failed
                 policy_relaxation_stage = "policy_relaxed_off"
 
-        ranked, recommendation_meta = rank_recommendation_candidates(
+        ranked, recommendation_meta = self.garment_ranker.rank(
             rows=passed,
             user_profile=profile,
-            tier2_rules=self.tier2_rules,
             strictness=strictness,
             mode=recommendation_mode,
             include_combos=include_combos,
@@ -391,6 +597,49 @@ class RecommendationAgent:
                 "intent_policy_smart_casual_trimmed": policy_smart_casual_trimmed,
             },
         }
+
+
+# ---------------------------------------------------------------------------
+# Policy & Trust Guardrail Agent
+# ---------------------------------------------------------------------------
+
+class PolicyGuardrailAgent:
+    """Enforces hard policy constraints. Blocks unsupported actions."""
+
+    BLOCKED_ACTIONS = frozenset({"execute_purchase", "place_order", "confirm_order", "submit_order"})
+
+    GUARDRAIL_EXPLANATIONS = {
+        "execute_purchase": (
+            "Aura is a recommendation and checkout-preparation assistant. "
+            "Order placement is not supported. Please complete your purchase "
+            "through the retailer's checkout flow using the prepared cart."
+        ),
+        "place_order": (
+            "Order placement is outside Aura's scope. "
+            "Use the checkout preparation to build your cart, then complete "
+            "the purchase through the retailer's checkout."
+        ),
+    }
+
+    DEFAULT_EXPLANATION = (
+        "This action is not supported by the Aura platform. "
+        "Aura assists with recommendations and checkout preparation only."
+    )
+
+    @classmethod
+    def check_action(cls, action: str) -> dict:
+        """Returns {"allowed": True} or {"allowed": False, "reason": "..."}."""
+        normalized = action.strip().lower().replace("-", "_").replace(" ", "_")
+        if normalized in cls.BLOCKED_ACTIONS:
+            explanation = cls.GUARDRAIL_EXPLANATIONS.get(
+                normalized, cls.DEFAULT_EXPLANATION
+            )
+            return {"allowed": False, "reason": explanation, "blocked_action": normalized}
+        return {"allowed": True, "blocked_action": None, "reason": ""}
+
+    @classmethod
+    def blocked_actions_list(cls) -> list:
+        return sorted(cls.BLOCKED_ACTIONS)
 
 
 class StylistAgent:

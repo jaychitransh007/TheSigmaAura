@@ -1,0 +1,34 @@
+{
+  "suite_id": "catalog_agent_v1",
+  "agent": "CatalogFilterSubAgent",
+  "version": "1.0.0",
+  "metrics": ["in_stock_precision", "requested_type_recall_at_k", "duplication_rate"],
+  "thresholds": {
+    "pass": {"in_stock_precision": 0.99, "requested_type_recall_at_k": 0.90, "duplication_rate": 0.05},
+    "warning": {"in_stock_precision": 0.97, "requested_type_recall_at_k": 0.85, "duplication_rate": 0.08},
+    "fail_condition": "in_stock_precision below warning"
+  },
+  "cases": [
+    {
+      "id": "ca_001",
+      "description": "Tier1 rules load successfully as dict",
+      "input": {},
+      "expected": {"tier1_rules_loaded": true},
+      "tags": ["init", "contract"]
+    },
+    {
+      "id": "ca_002",
+      "description": "IntentPolicySubAgent resolve returns dict with policy_id",
+      "input": {"request_text": "office presentation", "context": {"occasion": "work_mode", "archetype": "classic", "gender": "female", "age": "25_30"}},
+      "expected": {"has_policy_id": true, "result_type": "dict"},
+      "tags": ["intent_policy", "contract"]
+    },
+    {
+      "id": "ca_003",
+      "description": "BrandVarianceComfortSubAgent passthrough preserves items",
+      "input": {"items": [{"garment_id": "g1", "score": 0.9}]},
+      "expected": {"output_equals_input": true},
+      "tags": ["brand_variance", "passthrough"]
+    }
+  ]
+}

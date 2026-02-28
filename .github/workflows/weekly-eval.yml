@@ -1,0 +1,86 @@
+name: Weekly Eval (L4 Drift + Release Gate)
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # 6:00 AM UTC every Monday
+  workflow_dispatch:
+
+jobs:
+  full-eval:
+    name: Full L0-L3 Eval Suite
+    runs-on: ubuntu-latest
+    env:
+      AURA_API_BASE_URL: ${{ vars.AURA_API_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run unit tests (L0)
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Run per-agent evals (L1)
+        run: |
+          python ops/scripts/run_agent_evals.py \
+            --suite-dir ops/evals/agents \
+            --out-dir data/logs/agent_evals/weekly-${{ github.run_id }}
+      - name: Run E2E conversation eval (L3)
+        if: env.AURA_API_BASE_URL != ''
+        run: |
+          python ops/scripts/run_conversation_eval.py \
+            --base-url "$AURA_API_BASE_URL" \
+            --suite ops/evals/conversation_prompt_suite_diverse_v1.json \
+            --rubric ops/evals/conversation_eval_rubric_v1.json \
+            --out-dir data/logs/conversation_evals/weekly-${{ github.run_id }}
+      - name: Upload all artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-eval-artifacts
+          path: |
+            data/logs/agent_evals/weekly-${{ github.run_id }}/
+            data/logs/conversation_evals/weekly-${{ github.run_id }}/
+          retention-days: 180
+
+  drift-report:
+    name: L4 Drift Detection Report
+    runs-on: ubuntu-latest
+    needs: full-eval
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Generate drift report
+        run: |
+          python ops/scripts/run_release_gate.py \
+            --eval-dir data/logs/agent_evals/weekly-${{ github.run_id }} \
+            --output-report data/logs/drift_reports/weekly-${{ github.run_id }}.json
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-report-weekly
+          path: data/logs/drift_reports/
+          retention-days: 180
+
+  release-gate:
+    name: Release Readiness Gate
+    runs-on: ubuntu-latest
+    needs: [full-eval, drift-report]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run release gate (blocking)
+        run: |
+          python ops/scripts/run_release_gate.py \
+            --eval-dir data/logs/agent_evals/weekly-${{ github.run_id }} \
+            --fail-on-block

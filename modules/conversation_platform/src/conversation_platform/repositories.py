@@ -41,14 +41,32 @@ class ConversationRepository:
             patch={"session_context_json": session_context, "updated_at": _now_iso()},
         )
 
-    def create_turn(self, conversation_id: str, user_message: str) -> Dict[str, Any]:
-        payload = {
+    def update_user_profile(self, user_id: str, profile_json: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        return self.client.update_one(
+            "users",
+            filters={"id": f"eq.{user_id}"},
+            patch={"profile_json": profile_json, "profile_updated_at": _now_iso(), "updated_at": _now_iso()},
+        )
+
+    def create_turn(
+        self,
+        conversation_id: str,
+        user_message: str,
+        *,
+        mode_preference: Optional[str] = None,
+        autonomy_level: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
             "conversation_id": conversation_id,
             "user_message": user_message,
             "assistant_message": "",
             "resolved_context_json": {},
             "created_at": _now_iso(),
         }
+        if mode_preference is not None:
+            payload["mode_preference"] = mode_preference
+        if autonomy_level is not None:
+            payload["autonomy_level"] = autonomy_level
         return self.client.insert_one("conversation_turns", payload)
 
     def finalize_turn(
@@ -59,6 +77,7 @@ class ConversationRepository:
         resolved_context: Dict[str, Any],
         profile_snapshot_id: Optional[str],
         recommendation_run_id: Optional[str],
+        resolved_mode: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         patch: Dict[str, Any] = {
             "assistant_message": assistant_message,
@@ -68,6 +87,8 @@ class ConversationRepository:
             patch["profile_snapshot_id"] = profile_snapshot_id
         if recommendation_run_id is not None:
             patch["recommendation_run_id"] = recommendation_run_id
+        if resolved_mode is not None:
+            patch["resolved_mode"] = resolved_mode
         return self.client.update_one(
             "conversation_turns",
             filters={"id": f"eq.{turn_id}"},
@@ -178,8 +199,11 @@ class ConversationRepository:
         hard_filter_profile: str,
         candidate_count: int,
         returned_count: int,
+        resolved_mode: Optional[str] = None,
+        requested_garment_types_json: Optional[List[str]] = None,
+        style_constraints_json: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        payload = {
+        payload: Dict[str, Any] = {
             "conversation_id": conversation_id,
             "turn_id": turn_id,
             "profile_snapshot_id": profile_snapshot_id,
@@ -190,6 +214,12 @@ class ConversationRepository:
             "returned_count": returned_count,
             "created_at": _now_iso(),
         }
+        if resolved_mode is not None:
+            payload["resolved_mode"] = resolved_mode
+        if requested_garment_types_json is not None:
+            payload["requested_garment_types_json"] = requested_garment_types_json
+        if style_constraints_json is not None:
+            payload["style_constraints_json"] = style_constraints_json
         return self.client.insert_one("recommendation_runs", payload)
 
     def insert_recommendation_items(self, recommendation_run_id: str, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -305,3 +335,76 @@ class ConversationRepository:
             "created_at": _now_iso(),
         }
         return self.client.insert_one("tool_traces", payload)
+
+    # -- Checkout preparation ---------------------------------------------------
+
+    def create_checkout_preparation(
+        self,
+        *,
+        conversation_id: str,
+        turn_id: Optional[str],
+        recommendation_run_id: str,
+        user_id: str,
+        status: str = "pending",
+        cart_payload_json: Optional[List[Dict[str, Any]]] = None,
+        pricing_json: Optional[Dict[str, Any]] = None,
+        validation_json: Optional[Dict[str, Any]] = None,
+        checkout_ref: str = "",
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "conversation_id": conversation_id,
+            "recommendation_run_id": recommendation_run_id,
+            "user_id": user_id,
+            "status": status,
+            "cart_payload_json": cart_payload_json or [],
+            "pricing_json": pricing_json or {},
+            "validation_json": validation_json or {},
+            "checkout_ref": checkout_ref,
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        }
+        if turn_id is not None:
+            payload["turn_id"] = turn_id
+        return self.client.insert_one("checkout_preparations", payload)
+
+    def update_checkout_preparation(
+        self,
+        checkout_prep_id: str,
+        patch: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        patch["updated_at"] = _now_iso()
+        return self.client.update_one(
+            "checkout_preparations",
+            filters={"id": f"eq.{checkout_prep_id}"},
+            patch=patch,
+        )
+
+    def get_checkout_preparation(self, checkout_prep_id: str) -> Optional[Dict[str, Any]]:
+        return self.client.select_one("checkout_preparations", filters={"id": f"eq.{checkout_prep_id}"})
+
+    def insert_checkout_preparation_items(
+        self, checkout_preparation_id: str, items: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        for item in items:
+            rows.append(
+                {
+                    "checkout_preparation_id": checkout_preparation_id,
+                    "rank": item["rank"],
+                    "garment_id": item["garment_id"],
+                    "title": item.get("title", ""),
+                    "qty": item.get("qty", 1),
+                    "unit_price": item.get("unit_price", 0),
+                    "discount": item.get("discount", 0),
+                    "final_price": item.get("final_price", 0),
+                    "meta_json": item.get("meta_json", {}),
+                }
+            )
+        return self.client.insert_many("checkout_preparation_items", rows)
+
+    def get_checkout_preparation_items(self, checkout_preparation_id: str) -> List[Dict[str, Any]]:
+        return self.client.select_many(
+            "checkout_preparation_items",
+            filters={"checkout_preparation_id": f"eq.{checkout_preparation_id}"},
+            order="rank.asc",
+        )

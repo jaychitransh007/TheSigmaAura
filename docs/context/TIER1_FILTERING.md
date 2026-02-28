@@ -1,195 +1,62 @@
-# Tier 1 Filtering Specification
+# Tier 1 Filtering (Catalog + Policy Hard Constraints)
 
 Last updated: February 28, 2026
 
-Context sync note:
-- Tier 1 filtering rules are unchanged by the latest feedback/UI update.
-- Feedback schema/UI updates affect conversation telemetry only, not Tier 1 pass/fail logic.
-- Latest catalog update adds auto-chunk checkpoint/resume in enrichment; Tier 1 logic remains unchanged.
-- Conversation eval runner now tracks downstream Tier 1 quality impact through coverage/guardrail scoring.
-
 ## Purpose
-Tier 1 is the hard-filter stage. It narrows the enriched catalog to items that satisfy user context constraints before personalized ranking.
+Tier 1 defines hard-filtering and policy gating before Tier 2 scoring.
 
-Inputs:
-- Enriched catalog CSV (`data/catalog/enriched_catalog.csv` or equivalent)
-- User context:
-  - `occasion`
-  - `archetype`
-  - `gender`
-  - `age`
-- Tier 1 rule config (`modules/style_engine/src/style_engine/tier_a_filters_v1.json`)
-- User context aliases + relaxable filters (`modules/style_engine/configs/config/user_context_attributes.json`)
-- Ranked context->garment order (`modules/style_engine/configs/config/tier1_ranked_attributes.json`)
+## Inputs
+1. Resolved context (`occasion`, `archetype`, `gender`, `age`).
+2. Profile constraints (sizes, blocked styles, comfort constraints).
+3. Runtime filter profile (`rl_ready_minimal` or `legacy`).
+4. Mode context (`resolved_mode` garment or outfit).
 
-Outputs:
-- Filtered CSV of pass candidates
-- Failure log JSON with per-item reject reasons
-- User-side context can be inferred upstream using `run_user_profiler.py`
-  (`data/logs/user_style_context.json` provides `occasion`, `archetype`, `gender`, `age`).
+## Hard Filter Stages
+1. Inventory compatibility.
+2. Price range constraints.
+3. Occasion compatibility.
+4. Gender compatibility.
+5. Policy safety exclusions.
+6. Optional archetype and age constraints depending on filter profile.
 
-Downstream handoff:
-- Tier 1 output is consumed by outfit assembly + Tier 2 ranking.
-- In outfit mode, complete singles and multi-garment combos are generated only from Tier 1 pass rows.
+## Policy Gating
+Policy gating uses intent policy rules configured in:
+1. `modules/style_engine/configs/config/intent_policy_v1.json`
 
-Engine:
-- `modules/style_engine/src/style_engine/filters.py`
-- CLI: `ops/scripts/filter_outfits.py`
-- End-to-end runner (invokes Tier 1): `run_style_pipeline.py`
+Behavior:
+1. Resolve active policy from request text and context.
+2. Apply hard constraints.
+3. Relax by stage only if candidate thresholds are not met.
+4. Record active/relaxed stage in telemetry.
 
-Conversation runtime note:
-- In the conversation agent, Tier 1 runs only after minimum context is available.
-- If context is missing, the system asks clarifying questions first (`needs_clarification=true`) and defers filtering/ranking.
+## Mode-Sensitive Constraints
+1. In `garment` mode:
+- prioritize requested category/subtype coverage.
+- allow complete-the-look follow-up suggestions.
 
-## Hard Filter Order
-Applied in this sequence:
-1. Price range (`2000–5000`)
-2. Occasion constraints
-3. Occasion-Archetype compatibility gate
-4. Archetype constraints
-5. Gender compatibility via `GenderExpression`
-6. Age-band constraints
+2. In `outfit` mode:
+- allow complete singles and valid combos to compete.
 
-If any hard filter fails, the row is rejected.
+3. In `complete_only` result filter:
+- disallow combo rows.
+- enforce complete-single integrity.
+- block standalone outerwear unless explicitly requested.
 
-## Exact Attribute Coverage (Tier 1)
-Tier 1 reads these garment attributes from `data/catalog/enriched_catalog.csv`:
+## Safety and Guardrail Exclusions
+Safety exclusions come from reinforcement framework config:
+1. blocked categories (for example innerwear classes).
+2. blocked subtypes.
+3. blocked keyword patterns.
 
-Occasion filter attributes:
-- `OccasionFit`
-- `OccasionSignal`
-- `FormalityLevel`
-- `TimeOfDay`
+## Outputs
+1. Passed candidate rows.
+2. Failed row logs with failure reasons.
+3. Policy metadata for downstream scoring and tracing.
 
-Occasion-Archetype compatibility:
-- occasion key vs archetype key using `occasion_archetype_compatibility`
-
-Archetype filter attributes:
-- `SilhouetteType`
-- `FitType`
-- `PatternType`
-- `ColorSaturation`
-- `ContrastLevel`
-- `EmbellishmentLevel`
-
-Gender filter attribute:
-- `GenderExpression`
-
-Age-band filter attributes:
-- `SkinExposureLevel`
-- `NecklineDepth`
-- `FormalityLevel`
-- `EmbellishmentLevel`
-- `PatternScale`
-
-## Rule Sources
-All canonical rules are in:
-- `modules/style_engine/src/style_engine/tier_a_filters_v1.json`
-
-Sections:
-- `price_range_inr`
-- `occasions`
-- `occasion_archetype_compatibility`
-- `archetypes`
-- `gender_map`
-- `age_bands`
-
-## Context Normalization
-The engine normalizes aliases:
-- Occasions:
-  - `Work Mode` -> `work_mode`
-  - `Social Casual` -> `social_casual`
-  - `Night Out` -> `night_out`
-  - `Formal Events` -> `formal_events`
-  - `Beach & Vacation` -> `beach_vacation`
-  - `Wedding vibes` -> `wedding_vibes`
-- Archetypes:
-  - `Modern Professional` -> `modern_professional`
-  - `Trend-Forward` -> `trend_forward`
-- Age:
-  - `18-24` -> `18_24`
-  - `25-30` -> `25_30`
-  - `30-35` -> `30_35`
-
-## Relaxation Mode
-Tier 1 supports optional relaxation with `--relax`.
-
-Allowed relax keys:
-- `price`
-- `age`
-- `archetype`
-- `occasion_archetype`
-
-Format:
-- repeatable flags:
-  - `--relax age --relax price`
-- or comma-separated:
-  - `--relax age,archetype`
-
-If a filter is relaxed, that filter is skipped for pass/fail evaluation.
-
-## Failure Log Contract
-Failure log (`--fail-log`) JSON includes:
-- `total_rows`
-- `passed_rows`
-- `failed_rows`
-- `context` (occasion/archetype/gender/age/relaxed_filters)
-- `failures[]`
-  - `id`
-  - `title`
-  - `fail_reasons[]`
-
-Example reason tokens:
-- `price`
-- `occasion:OccasionFit`
-- `occasion_archetype`
-- `archetype:PatternType`
-- `age:PatternScale`
-- `gender:GenderExpression`
-
-## CLI Usage
-Strict:
-```bash
-python3 ops/scripts/filter_outfits.py \
-  --occasion "Work Mode" \
-  --archetype "Classic" \
-  --gender Female \
-  --age 25-30 \
-  --input data/catalog/enriched_catalog.csv \
-  --output data/logs/filtered_outfits.csv \
-  --fail-log data/logs/filtered_outfits_failures.json
-```
-
-Relax age + archetype:
-```bash
-python3 ops/scripts/filter_outfits.py \
-  --occasion "Work Mode" \
-  --archetype "Classic" \
-  --gender Female \
-  --age 25-30 \
-  --relax age,archetype \
-  --input data/catalog/enriched_catalog.csv \
-  --output data/logs/filtered_outfits_relaxed.csv \
-  --fail-log data/logs/filtered_outfits_relaxed_failures.json
-```
-
-Relax compatibility only:
-```bash
-python3 ops/scripts/filter_outfits.py \
-  --occasion "Work Mode" \
-  --archetype "Glamorous" \
-  --gender Female \
-  --age 25-30 \
-  --relax occasion_archetype \
-  --input data/catalog/enriched_catalog.csv \
-  --output data/logs/filtered_outfits_compat_relaxed.csv \
-  --fail-log data/logs/filtered_outfits_compat_relaxed_failures.json
-```
-
-## Evaluation Hooks
-Conversation eval runs (`ops/scripts/run_conversation_eval.py`) measure Tier-1 downstream behavior indirectly through:
-- recommendation coverage (`returned/max_results`)
-- avoid-keyword guardrails by occasion
-- integrity checks for recommendation run persistence/retrievability
-
-This keeps Tier 1 deterministic while continuously monitoring real prompt outcomes.
+## Telemetry Expectations
+Tier 1 traces must include:
+1. filter profile used.
+2. policy id and keyword hits.
+3. whether hard filter was relaxed.
+4. relaxation stage.
+5. counts: total, passed, failed.

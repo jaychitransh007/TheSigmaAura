@@ -1,0 +1,93 @@
+name: Nightly Eval (L2 + L3)
+
+on:
+  schedule:
+    - cron: "0 2 * * *"  # 2:00 AM UTC daily
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: L0 Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run unit tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+  agent-evals:
+    name: L1 Per-Agent Evals
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run per-agent evals
+        run: |
+          python ops/scripts/run_agent_evals.py \
+            --suite-dir ops/evals/agents \
+            --out-dir data/logs/agent_evals/nightly-${{ github.run_id }} \
+            --fail-on-gate
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-eval-artifacts-nightly
+          path: data/logs/agent_evals/nightly-${{ github.run_id }}/
+          retention-days: 90
+
+  e2e-evals:
+    name: L3 E2E Conversation Evals
+    runs-on: ubuntu-latest
+    needs: agent-evals
+    env:
+      AURA_API_BASE_URL: ${{ vars.AURA_API_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run E2E conversation eval
+        if: env.AURA_API_BASE_URL != ''
+        run: |
+          python ops/scripts/run_conversation_eval.py \
+            --base-url "$AURA_API_BASE_URL" \
+            --suite ops/evals/conversation_prompt_suite_diverse_v1.json \
+            --rubric ops/evals/conversation_eval_rubric_v1.json \
+            --out-dir data/logs/conversation_evals/nightly-${{ github.run_id }} \
+            --fail-on-integrity
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-eval-artifacts-nightly
+          path: data/logs/conversation_evals/nightly-${{ github.run_id }}/
+          retention-days: 90
+
+  release-gate:
+    name: Release Gate Check
+    runs-on: ubuntu-latest
+    needs: [unit-tests, agent-evals, e2e-evals]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run release gate
+        run: |
+          python ops/scripts/run_release_gate.py \
+            --eval-dir data/logs/agent_evals/nightly-${{ github.run_id }} \
+            --fail-on-block

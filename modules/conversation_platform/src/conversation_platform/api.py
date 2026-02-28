@@ -10,6 +10,10 @@ from .config import load_config
 from .orchestrator import ConversationOrchestrator
 from .repositories import ConversationRepository
 from .schemas import (
+    ActionCheckRequest,
+    ActionCheckResponse,
+    CheckoutPrepareRequest,
+    CheckoutPrepareResponse,
     ConversationResponse,
     ConversationStateResponse,
     CreateConversationRequest,
@@ -85,6 +89,7 @@ def create_app() -> FastAPI:
             out = orchestrator.create_conversation(
                 external_user_id=payload.user_id,
                 initial_context=payload.initial_context.model_dump() if payload.initial_context else None,
+                initial_profile=payload.initial_profile.model_dump(exclude_none=True) if payload.initial_profile else None,
             )
             return ConversationResponse(**out)
         except (ValueError, SupabaseError, RuntimeError) as exc:
@@ -110,6 +115,10 @@ def create_app() -> FastAPI:
                 hard_filter_profile=payload.hard_filter_profile,
                 max_results=payload.max_results,
                 result_filter=payload.result_filter,
+                mode_preference=payload.mode_preference,
+                target_garment_type=payload.target_garment_type,
+                autonomy_level=payload.autonomy_level,
+                size_overrides=payload.size_overrides.model_dump(exclude_none=True) if payload.size_overrides else None,
             )
             return TurnResponse(**out)
         except (ValueError, SupabaseError, RuntimeError) as exc:
@@ -150,6 +159,10 @@ def create_app() -> FastAPI:
                     hard_filter_profile=payload.hard_filter_profile,
                     max_results=payload.max_results,
                     result_filter=payload.result_filter,
+                    mode_preference=payload.mode_preference,
+                    target_garment_type=payload.target_garment_type,
+                    autonomy_level=payload.autonomy_level,
+                    size_overrides=payload.size_overrides.model_dump(exclude_none=True) if payload.size_overrides else None,
                     stage_callback=append_stage,
                 )
                 append_stage("turn_execution", "completed")
@@ -214,5 +227,39 @@ def create_app() -> FastAPI:
             return FeedbackResponse(**out)
         except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=_map_supabase_error(exc)) from exc
+
+    @app.post(
+        "/v1/conversations/{conversation_id}/checkout/prepare",
+        response_model=CheckoutPrepareResponse,
+    )
+    def prepare_checkout(conversation_id: str, payload: CheckoutPrepareRequest) -> CheckoutPrepareResponse:
+        try:
+            out = orchestrator.prepare_checkout(
+                conversation_id=conversation_id,
+                external_user_id=payload.user_id,
+                recommendation_run_id=payload.recommendation_run_id,
+                selected_item_ids=payload.selected_item_ids,
+                selected_outfit_id=payload.selected_outfit_id,
+                budget_cap=payload.budget_cap,
+            )
+            return CheckoutPrepareResponse(**out)
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get(
+        "/v1/checkout/preparations/{checkout_prep_id}",
+        response_model=CheckoutPrepareResponse,
+    )
+    def get_checkout_preparation(checkout_prep_id: str) -> CheckoutPrepareResponse:
+        try:
+            out = orchestrator.get_checkout_preparation(checkout_prep_id=checkout_prep_id)
+            return CheckoutPrepareResponse(**out)
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/v1/actions/check", response_model=ActionCheckResponse)
+    def check_action(payload: ActionCheckRequest) -> ActionCheckResponse:
+        result = orchestrator.check_action(payload.action)
+        return ActionCheckResponse(**result)
 
     return app

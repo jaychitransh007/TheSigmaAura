@@ -1,149 +1,51 @@
-# Attribute and Rules Reference
+# Attribute and Rules Reference (Config Contract Only)
 
 Last updated: February 28, 2026
 
-## Context Sync Note
-- Catalog enrichment now supports auto-chunk checkpoint/resume for org-level limits.
-- Checkpoint artifacts: `data/logs/auto_chunk_checkpoint.json`, `data/logs/partial_enriched.csv`, `data/logs/pending_chunks/pending_chunk_*.csv`.
-- Conversation styling now includes intent-policy overlays for high-stakes work prompts.
-- Conversation quality eval framework is now integrated (suite + rubric + scorer + artifact integrity checks).
+## Purpose
+This file is a config contract reference only. It defines where schema and rule configuration lives and how code should consume it.
 
-## Runtime Attribute Sources
-- Garment attributes:
-  - `modules/style_engine/configs/config/garment_attributes.json`
-  - loaded by `modules/catalog_enrichment/src/catalog_enrichment/attributes.py`
-- Body harmony attributes:
-  - `modules/style_engine/configs/config/body_harmony_attributes.json`
-- User context aliases and filter controls:
-  - `modules/style_engine/configs/config/user_context_attributes.json`
-- Ranked mappings:
-  - `modules/style_engine/configs/config/tier1_ranked_attributes.json`
-  - `modules/style_engine/configs/config/tier2_ranked_attributes.json`
-- Outfit assembly config:
-  - `modules/style_engine/configs/config/outfit_assembly_v1.json`
-- Intent policy config:
-  - `modules/style_engine/configs/config/intent_policy_v1.json`
-- RL/reward framework:
-  - `modules/style_engine/configs/config/reinforcement_framework_v1.json`
-- Structured output schema:
-  - `modules/catalog_enrichment/src/catalog_enrichment/schema_builder.py`
-- Prompt instructions:
-  - `modules/catalog_enrichment/src/catalog_enrichment/prompts/system_prompt.txt`
-- User profiler prompts:
-  - `modules/user_profiler/src/user_profiler/prompts/visual_prompt.txt`
-  - `modules/user_profiler/src/user_profiler/prompts/textual_prompt.txt`
-- User profiler response schemas:
-  - `modules/user_profiler/src/user_profiler/schemas.py`
+## Canonical Config Files
+1. Garment attribute schema:
+- `modules/style_engine/configs/config/garment_attributes.json`
 
-## Rules/Policy Sources
-- Tier 1 filter rules:
-  - `modules/style_engine/src/style_engine/tier_a_filters_v1.json`
-- Tier 2 ranking/scoring config:
-  - `modules/style_engine/src/style_engine/tier2_rules_v1.json`
-- Outfit assembly/routing rules:
-  - `modules/style_engine/configs/config/outfit_assembly_v1.json`
-- Intent-policy rules:
-  - `modules/style_engine/configs/config/intent_policy_v1.json`
+2. Body harmony attribute schema:
+- `modules/style_engine/configs/config/body_harmony_attributes.json`
 
-## Eval Sources
-- Prompt suite:
-  - `ops/evals/conversation_prompt_suite_diverse_v1.json`
-- Rubric:
-  - `ops/evals/conversation_eval_rubric_v1.json`
-- Eval runner:
-  - `ops/scripts/run_conversation_eval.py`
-- Eval runbook:
-  - `ops/runbooks/CONVERSATION_EVAL_RUNBOOK.md`
+3. User context dimensions and aliases:
+- `modules/style_engine/configs/config/user_context_attributes.json`
 
-## Engines
-- Tier 1 hard filter engine:
-  - `modules/style_engine/src/style_engine/filters.py`
-- Tier 2 ranker:
-  - `modules/style_engine/src/style_engine/ranker.py`
-- Outfit candidate engine:
-  - `modules/style_engine/src/style_engine/outfit_engine.py`
-- Intent policy engine:
-  - `modules/style_engine/src/style_engine/intent_policy.py`
-- Schema audit:
-  - `modules/catalog_enrichment/src/catalog_enrichment/audit.py`
-- User profile inference:
-  - `modules/user_profiler/src/user_profiler/service.py`
-  - uses standard real-time Responses API (`client.responses.create`)
+4. Tier 1 ranked attribute order:
+- `modules/style_engine/configs/config/tier1_ranked_attributes.json`
 
-## CLIs
-- Enrichment:
-  - `run_catalog_enrichment.py`
-- Tier 1 filtering:
-  - `ops/scripts/filter_outfits.py`
-- Tier 2 ranking:
-  - `ops/scripts/rank_outfits.py`
-- End-to-end filter+rank:
-  - `run_style_pipeline.py`
-- Outcome event logger:
-  - `ops/scripts/log_styling_outcome.py`
-- Schema audit:
-  - `ops/scripts/schema_audit.py`
-- User profile inference:
-  - `run_user_profiler.py`
-- Conversation platform API:
-  - `run_conversation_platform.py`
-- Conversation eval runner:
-  - `ops/scripts/run_conversation_eval.py`
+5. Tier 2 ranked attribute order and mappings:
+- `modules/style_engine/configs/config/tier2_ranked_attributes.json`
 
-## Tier 1 vs Tier 2 Responsibilities
-- Tier 1:
-  - hard pass/fail filtering
-  - occasion/archetype/gender/age/price constraints
-  - optional relax controls
-- Tier 2:
-  - weighted ranking
-  - outfit candidate generation (single complete garments + top/bottom combos)
-  - body-harmony scoring
-  - conflict engine
-  - confidence-aware weighting
-  - explainability generation
+6. Outfit assembly and mode keyword rules:
+- `modules/style_engine/configs/config/outfit_assembly_v1.json`
 
-## Confidence Usage
-- Every garment contribution in Tier 2 is multiplied by garment attribute confidence:
-  - `<attribute>_confidence`
-- Low confidence values are further downweighted.
+7. Intent policy config:
+- `modules/style_engine/configs/config/intent_policy_v1.json`
 
-## Strictness Modes (Tier 2)
-- `safe`
-- `balanced` (default)
-- `bold`
+8. Reinforcement framework and reward contract:
+- `modules/style_engine/configs/config/reinforcement_framework_v1.json`
 
-These adjust:
-- confidence multiplier scale
-- negative penalty scale
-- color delta scale
-- skin merge penalty scale
+## Loader References
+1. `modules/catalog_enrichment/src/catalog_enrichment/config_registry.py`
+2. `modules/style_engine/src/style_engine/filters.py`
+3. `modules/style_engine/src/style_engine/ranker.py`
+4. `modules/style_engine/src/style_engine/outfit_engine.py`
+5. `modules/style_engine/src/style_engine/intent_policy.py`
+6. `modules/user_profiler/src/user_profiler/schemas.py`
 
-without changing base body-harmony rules.
+## Contract Rules
+1. Runtime behavior must be config-first.
+2. Code must not hardcode enum vocabularies that already exist in config.
+3. Config edits must include tests for parser/load behavior and downstream usage.
+4. Any config version bump must be documented in context and eval artifacts.
 
-## Conversation Platform Contracts
-- UI route:
-  - `GET /` (browser conversational interface)
-- Async turn routes:
-  - `POST /v1/conversations/{conversation_id}/turns/start`
-  - `GET /v1/conversations/{conversation_id}/turns/{job_id}/status`
-- Feedback logging route:
-  - `POST /v1/feedback`
-- Feedback source in UI:
-  - recommendation card actions `Dislike`, `Like`, `Share`, `Buy Now` (two rows: full-width buy, then dislike/like/share)
-- Feedback event enum contract:
-  - `dislike | like | share | buy | no_action | skip`
-- Local Supabase migrations:
-  - `supabase/migrations/20260224160000_conversation_platform.sql`
-  - `supabase/migrations/20260224170500_feedback_events_event_type_v2.sql`
-
-## Eval Artifact Contract
-Each eval run writes:
-- `data/logs/evals/<run_id>/run_manifest.json`
-- `data/logs/evals/<run_id>/case_inputs.jsonl`
-- `data/logs/evals/<run_id>/case_outputs.jsonl`
-- `data/logs/evals/<run_id>/case_scores.jsonl`
-- `data/logs/evals/<run_id>/case_scores.csv`
-- `data/logs/evals/<run_id>/summary.json`
-- `data/logs/evals/<run_id>/summary.md`
-- `data/logs/evals/<run_id>/artifact_integrity.json`
+## Validation Checklist
+1. JSON parses successfully.
+2. Enums are internally consistent.
+3. Ranked mappings reference valid attributes.
+4. Policy and reward keys align with runtime contracts.

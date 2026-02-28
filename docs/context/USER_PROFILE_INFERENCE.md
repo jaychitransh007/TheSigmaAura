@@ -1,88 +1,95 @@
-# User Profile Inference
+# User Profile + Body Harmony Module
 
 Last updated: February 28, 2026
 
-Context sync note:
-- Latest changes were in conversation feedback telemetry/UI; profiler schema and model routing remain unchanged.
-- Latest catalog update adds auto-chunk checkpoint/resume in enrichment; profiler behavior remains unchanged.
-- Conversation eval runs can reuse profiler image artifacts (`data/logs/user_profiler/input_*.{ext}`) as fixed `--image-ref` inputs.
-
 ## Purpose
-Infer user-side styling context from:
-- one uploaded user image (visual reasoning)
-- one natural-language user intent text (textual reasoning)
+Define the canonical profile contract and body-harmony responsibilities used by the conversation system.
 
-The module makes exactly two OpenAI Responses API calls.
-It uses the standard real-time API (not Batch API).
+## Module Scope
+1. Infer and maintain body-harmony profile attributes.
+2. Maintain user identity and preference profile.
+3. Provide profile and constraints to recommendation flow.
 
-## Module Layout
-- Module package: `modules/user_profiler/src/user_profiler/`
-- Root entrypoint: `run_user_profiler.py`
-- Prompts:
-  - `modules/user_profiler/src/user_profiler/prompts/visual_prompt.txt`
-  - `modules/user_profiler/src/user_profiler/prompts/textual_prompt.txt`
+## Canonical User Profile Schema
 
-## OpenAI Calls
-1. Visual reasoning call (`gpt-5.2`)
-- Input: user image (local file path, URL, or browser-provided `data:image/...` payload)
-- Output fields:
-  - `HeightCategory`
-  - `BodyShape`
-  - `VisualWeight`
-  - `VerticalProportion`
-  - `ArmVolume`
-  - `MidsectionState`
-  - `WaistVisibility`
-  - `BustVolume`
-  - `SkinUndertone`
-  - `SkinSurfaceColor`
-  - `SkinContrast`
-  - `FaceShape`
-  - `NeckLength`
-  - `HairLength`
-  - `HairColor`
-  - `gender`
-  - `age`
-
-2. Textual reasoning call (`gpt-5-mini`)
-- Input: natural-language context text
-- Output fields:
-  - `occasion`
-  - `archetype`
-
-## Enum Sources
-- Body-harmony enums: `modules/style_engine/configs/config/body_harmony_attributes.json`
-- User-context enums: `modules/style_engine/configs/config/user_context_attributes.json`
-
-## Outputs
-Default outputs under `data/logs/`:
-- Combined result: `user_profile_inference.json`
-- Tier2 profile payload: `user_style_profile.json`
-- Tier1/Tier2 context payload: `user_style_context.json`
-- Stored input image artifact: `data/logs/user_profiler/input_*.{ext}`
-
-`user_style_profile.json` is ready for `run_style_pipeline.py --profile`.
-`user_style_context.json` contains `occasion`, `archetype`, `gender`, `age`.
-
-## CLI
-```bash
-python3 run_user_profiler.py \
-  --image /absolute/path/to/user_photo.jpg \
-  --context-text "I need looks for office days and occasional evening dinners." \
-  --out data/logs/user_profile_inference.json \
-  --style-profile-out data/logs/user_style_profile.json \
-  --style-context-out data/logs/user_style_context.json
+```json
+{
+  "sizes": {
+    "top_size": "M",
+    "bottom_size": "30",
+    "dress_size": "M",
+    "shoe_size": "39"
+  },
+  "fit_preferences": {
+    "fit_preference": "regular",
+    "comfort_preferences": ["stretch_fabric", "mid_rise", "breathable"],
+    "blocked_styles": ["sleeveless", "cropped"],
+    "blocked_categories": ["innerwear"]
+  },
+  "brand_preferences": {
+    "liked": ["BrandA", "BrandB"],
+    "disliked": ["BrandX"]
+  },
+  "budget_preferences": {
+    "soft_cap": 4000,
+    "hard_cap": 5000,
+    "currency": "INR"
+  },
+  "consent_flags": {
+    "image_inference_allowed": true,
+    "telemetry_allowed": true
+  }
+}
 ```
 
-## Notes
-- No `temperature` or `top_p` are sent.
-- Visual call uses highest reasoning effort (`reasoning.effort = high`).
-- Combined output logs per-call request/response payloads and visual reasoning notes.
-- If unsure between enum values, prompts force deterministic tie-break to earliest enum value.
-- Errors are returned as one-line `error: ...` messages from CLI.
+## Body Harmony Contract
+The body-harmony portion uses enum attributes configured in:
+1. `modules/style_engine/configs/config/body_harmony_attributes.json`
 
-## Role in Conversation Eval
-- Eval runner: `ops/scripts/run_conversation_eval.py`
-- Optional usage:
-  - pass `--image-ref data/logs/user_profiler/input_<id>.webp` so all prompts are evaluated with a stable visual profile context
-- This reduces clarification-only turns and improves comparability across eval runs.
+Current inferred fields:
+1. `HeightCategory`
+2. `BodyShape`
+3. `VisualWeight`
+4. `VerticalProportion`
+5. `ArmVolume`
+6. `MidsectionState`
+7. `WaistVisibility`
+8. `BustVolume`
+9. `SkinUndertone`
+10. `SkinSurfaceColor`
+11. `SkinContrast`
+12. `FaceShape`
+13. `NeckLength`
+14. `HairLength`
+15. `HairColor`
+16. `gender`
+17. `age`
+
+## Merge Strategy
+1. Explicit user input always wins over inferred values (last-write-wins for explicit fields).
+2. Inferred fields are updated only when confidence exceeds prior value or no prior exists.
+3. `size_overrides` from turn request are applied as explicit input.
+4. Confidence and timestamp are stored per inferred field.
+
+## Responsibility Boundary
+1. `User Profile & Identity` owns explicit user-provided profile fields and consent state.
+2. `Body Harmony & Archetype` owns inferred visual/body context and confidence.
+3. `Style Agent` consumes both outputs but does not own persistence of canonical profile data.
+
+## Confidence Handling
+1. Each inferred field should have confidence metadata.
+2. Confidence levels are stored in profile snapshot `confidence_json`.
+3. Explicit user input overrides inferred fields for overlapping concepts.
+
+## Clarification Triggers
+A clarification question is required when any of the below blocks recommendation execution:
+1. Missing `gender` and `age` with no reusable profile snapshot.
+2. Missing `occasion` and `archetype` after text inference.
+3. Missing essential size fields when user requests checkout preparation.
+4. Consent flags not present for image inference while image input is required.
+
+## Runtime Contract
+1. Visual inference call (model and prompt controlled by module config).
+2. Text inference call for context (`occasion`, `archetype`).
+3. Profile merge performed before recommendation stage.
+4. Snapshot persisted to conversation context and profile snapshots.
