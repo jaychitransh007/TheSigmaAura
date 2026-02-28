@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Sequence, Set, Tuple
 
 from catalog_enrichment.config_registry import load_outfit_assembly_rules
 
+from .intent_policy import apply_intent_policy_priors
 from .ranker import RankResult, rank_garments
 
 
@@ -48,13 +49,33 @@ def _parse_flags(raw: str) -> List[str]:
 def _is_complete_single(row: Dict[str, Any], rules: Dict[str, Any]) -> bool:
     complete_values = {_norm(x) for x in (rules.get("single_complete_values") or [])}
     complete_categories = {_norm(x) for x in (rules.get("single_complete_categories") or [])}
+    combo_req = dict(rules.get("combo_requirements") or {})
+    incomplete_values = {
+        _norm(x) for x in ((combo_req.get("top_values") or []) + (combo_req.get("bottom_values") or []))
+    }
     sc = _norm(row.get("StylingCompleteness", ""))
     category = _norm(row.get("GarmentCategory", ""))
+    if sc in incomplete_values:
+        return False
     if sc in complete_values:
         return True
     if category in complete_categories:
         return True
     return False
+
+
+def _is_outerwear_row(row: Dict[str, Any], rules: Dict[str, Any]) -> bool:
+    outerwear_categories = {_norm(x) for x in (rules.get("outerwear_categories") or [])}
+    category = _norm(row.get("GarmentCategory", ""))
+    return category in outerwear_categories
+
+
+def _is_outerwear_requested(requested_categories: Set[str], requested_subtypes: Set[str], rules: Dict[str, Any]) -> bool:
+    outerwear_categories = {_norm(x) for x in (rules.get("outerwear_categories") or [])}
+    if requested_categories.intersection(outerwear_categories):
+        return True
+    outerwear_subtypes = {"blazer", "coat", "jacket", "shrug", "trench"}
+    return bool(requested_subtypes.intersection(outerwear_subtypes))
 
 
 def _is_top_candidate(row: Dict[str, Any], rules: Dict[str, Any]) -> bool:
@@ -430,8 +451,11 @@ def rank_recommendation_candidates(
     tier2_rules: Dict[str, Any],
     strictness: str = "balanced",
     mode: str = "auto",
+    include_combos: bool = True,
     request_text: str = "",
     max_results: int = 0,
+    intent_policy_id: str = "",
+    intent_policy: Dict[str, Any] | None = None,
 ) -> Tuple[List[RankResult], RecommendationMeta]:
     assembly_rules = load_outfit_assembly_rules()
     base_ranked = rank_garments(rows=rows, user_profile=user_profile, rules=tier2_rules, strictness=strictness)
@@ -450,8 +474,9 @@ def rank_recommendation_candidates(
         single_candidates = [_as_single_candidate(r) for r in working]
     else:
         complete_only = [r for r in base_ranked if _is_complete_single(r.row, assembly_rules)]
-        if not complete_only:
-            complete_only = list(base_ranked)
+        outerwear_requested = _is_outerwear_requested(requested_categories, requested_subtypes, assembly_rules)
+        if not outerwear_requested:
+            complete_only = [r for r in complete_only if not _is_outerwear_row(r.row, assembly_rules)]
         single_candidates = [_as_single_candidate(r) for r in complete_only]
 
         limits = dict(assembly_rules.get("candidate_limits") or {})
@@ -490,7 +515,13 @@ def rank_recommendation_candidates(
                 break
         combo_candidates = sorted(combo_candidates, key=lambda x: x.final_score, reverse=True)[:max_total_combos]
 
-    merged = sorted(single_candidates + combo_candidates, key=lambda x: x.final_score, reverse=True)
+    merged_pool = single_candidates + combo_candidates if include_combos else single_candidates
+    merged = sorted(merged_pool, key=lambda x: x.final_score, reverse=True)
+    merged = apply_intent_policy_priors(
+        ranked_results=merged,
+        policy_id=intent_policy_id,
+        policy=intent_policy or {},
+    )
     if max_results > 0:
         merged = merged[:max_results]
     for rank, result in enumerate(merged, start=1):
@@ -502,7 +533,7 @@ def rank_recommendation_candidates(
         requested_subtypes=sorted(requested_subtypes),
         base_ranked_rows=len(base_ranked),
         single_candidates=len(single_candidates),
-        combo_candidates=len(combo_candidates),
+        combo_candidates=len(combo_candidates) if include_combos else 0,
         returned_rows=len(merged),
     )
     return merged, meta

@@ -27,6 +27,8 @@ Last updated: February 28, 2026
 - [x] Patch local Supabase feedback constraint for existing projects.
 - [x] Implement catalog enrichment auto-chunk orchestration.
 - [x] Add checkpoint/resume behavior for org-level limits (`enqueued token`, `billing_hard_limit_reached`).
+- [x] Implement conversation eval system (prompt suite + rubric + runner + integrity checks).
+- [x] Add conversation eval runbook and scorer unit tests.
 
 ## Outfit Assembly Action Plan + Status
 - [x] Define outfit-candidate generation strategy in context docs and runbook.
@@ -46,6 +48,6 @@ Last updated: February 28, 2026
 
 ## Validation Notes
 - Test command: `python3 -m unittest discover -s tests -p 'test_*.py' -v`
-- Latest targeted result: `8 passed, 0 failed` for `tests/test_batch_builder.py` (includes new billing/token-limit detection checks).
-- Full-suite note: local disk exhaustion currently breaks tempfile-based tests in this environment.
+- Latest full-suite result: `93 passed, 0 failed`.
+- Eval runner command: `python3 ops/scripts/run_conversation_eval.py --help`
 - API runner validation: `python3 run_conversation_platform.py --help`

@@ -14,7 +14,7 @@ Optional upstream step:
 ```bash
 python3 run_style_pipeline.py \
   --input data/catalog/enriched_catalog.csv \
-  --profile data/logs/sample_user_profile_tier2.json \
+  --profile data/logs/user_style_profile.json \
   --occasion "Night Out" \
   --archetype "Glamorous" \
   --gender Female \
@@ -45,7 +45,7 @@ This uses real-time Responses API calls:
 - textual: `gpt-5-mini`
 
 ## Full Profile Example (Body Harmony + Preferences)
-Use this as `data/logs/sample_user_profile_tier2.json`:
+Use this as `data/logs/user_style_profile.json`:
 ```json
 {
   "HeightCategory": "AVERAGE",
@@ -77,7 +77,7 @@ If you need old hard-filter behavior with archetype/age as hard constraints:
 ```bash
 python3 run_style_pipeline.py \
   --input data/catalog/enriched_catalog.csv \
-  --profile data/logs/sample_user_profile_tier2.json \
+  --profile data/logs/user_style_profile.json \
   --occasion "Work Mode" \
   --archetype "Classic" \
   --gender Female \

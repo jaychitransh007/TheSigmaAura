@@ -17,6 +17,7 @@ This is the only authoritative context document for this project.
   - `modules/style_engine/configs/config/tier1_ranked_attributes.json` (Tier 1 context-to-garment ranked filter attributes)
   - `modules/style_engine/configs/config/tier2_ranked_attributes.json` (Tier 2 body-harmony ranking order + body↔garment ranked mapping)
   - `modules/style_engine/configs/config/outfit_assembly_v1.json` (outfit candidate generation + pair-bonus rules + mode detection keywords)
+  - `modules/style_engine/configs/config/intent_policy_v1.json` (intent-triggered policy tiers, staged relaxation plan, ranking priors)
   - `modules/style_engine/configs/config/reinforcement_framework_v1.json` (reward policy, RL-ready hard filter profile, telemetry contract)
 - Source JSON catalogs: `modules/catalog_enrichment/stores/json_files/`
 - Processed per-store CSV outputs: `modules/catalog_enrichment/stores/processed_csv_files/`
@@ -38,6 +39,7 @@ This is the only authoritative context document for this project.
 - User profile module: `modules/user_profiler/src/user_profiler/main.py`
 - Conversation platform API CLI: `run_conversation_platform.py`
 - Conversation platform module: `modules/conversation_platform/src/conversation_platform/`
+- Conversation eval runner CLI: `ops/scripts/run_conversation_eval.py`
 
 ## 3A) Config-First Runtime Contract
 - Runtime behavior must be managed from `modules/style_engine/configs/config/` files first; code should consume config.
@@ -48,6 +50,7 @@ This is the only authoritative context document for this project.
   - `modules/style_engine/src/style_engine/filters.py` (loads user context aliases + relaxable filters + Tier 1 ranked mapping from config)
   - `modules/style_engine/src/style_engine/ranker.py` (loads Tier 2 ranking order/mappings from config)
   - `modules/style_engine/src/style_engine/outfit_engine.py` (loads outfit assembly config and resolves auto/outfit/garment recommendation mode)
+  - `modules/style_engine/src/style_engine/intent_policy.py` (resolves active intent policy and applies policy filters + ranking priors)
 
 ## 4) Input Contract (Enrichment Pipeline)
 - Mandatory columns (validated): `description`, `images__0__src`, `images__1__src`
@@ -117,7 +120,7 @@ Source of truth: `modules/catalog_enrichment/src/catalog_enrichment/prompts/syst
 RL-ready minimal hard filter profile:
 - Used in `run_style_pipeline.py --hard-filter-profile rl_ready_minimal`
 - Enforced constraints:
-  1. inventory
+  1. inventory (currently placeholder pass-through; `_is_in_stock()` always returns true)
   2. price range (`2000-5000`)
   3. occasion compatibility
   4. gender compatibility
@@ -149,8 +152,8 @@ RL-ready minimal hard filter profile:
   - CSV fields: `tier2_raw_score`, `tier2_confidence_multiplier`, `tier2_color_delta`, `tier2_final_score`, `tier2_max_score`, `tier2_compatibility_confidence`, `tier2_flags`, `tier2_reasons`, `tier2_penalties`
   - JSON sections: `conflict_engine`, `top_positive_contributions`, `top_negative_contributions`, `formula`
 - CLI usage:
-  - `python3 ops/scripts/rank_outfits.py --input data/logs/filtered_outfits.csv --profile data/logs/sample_user_profile_tier2.json --recommendation-mode auto --request-text "I need a complete office look" --output data/logs/ranked_outfits.csv --explain data/logs/ranked_outfits_explainability.json`
-  - `python3 ops/scripts/rank_outfits.py --input data/logs/filtered_outfits.csv --profile data/logs/sample_user_profile_tier2.json --tier2-strictness safe --recommendation-mode garment --request-text "show me shirts" --output data/logs/ranked_outfits_safe.csv --explain data/logs/ranked_outfits_safe_explainability.json`
+  - `python3 ops/scripts/rank_outfits.py --input data/logs/filtered_outfits.csv --profile data/logs/user_style_profile.json --recommendation-mode auto --request-text "I need a complete office look" --output data/logs/ranked_outfits.csv --explain data/logs/ranked_outfits_explainability.json`
+  - `python3 ops/scripts/rank_outfits.py --input data/logs/filtered_outfits.csv --profile data/logs/user_style_profile.json --tier2-strictness safe --recommendation-mode garment --request-text "show me shirts" --output data/logs/ranked_outfits_safe.csv --explain data/logs/ranked_outfits_safe_explainability.json`
 - Strictness switch:
   - `--tier2-strictness balanced` (default): baseline behavior
   - `--tier2-strictness safe`: stronger penalties, more conservative ranking
@@ -161,6 +164,21 @@ Outfit-level behavior:
 - `recommendation_mode=outfit`: complete-garment singles compete against top+bottom combo candidates.
 - Combo scoring: `((top_score + bottom_score) / 2) + pair_bonus`, where `pair_bonus` is config-driven and bounded.
 - Pair bonus signals currently include occasion fit coherence, formality distance, color temperature compatibility, pattern balance, embellishment clash, and oversized-silhouette clash.
+- `complete_only` runtime behavior:
+  - combos are disabled (`include_combos=false`)
+  - incomplete rows (`StylingCompleteness=needs_bottomwear|needs_topwear`) are excluded from complete singles
+  - standalone outerwear rows are excluded unless explicitly requested in user text (coat/blazer/jacket)
+
+Intent policy overlay (conversation runtime):
+- Policy config: `modules/style_engine/configs/config/intent_policy_v1.json`
+- Current production policy: `high_stakes_work` for work-mode high-stakes prompts (presentation/interview/client-facing cues).
+- Stage-based enforcement:
+  1. `strict`
+  2. `style_relaxed`
+  3. `formality_relaxed`
+  4. `smart_casual_limited`
+- If no stage satisfies minimum quality thresholds, policy hard filtering is relaxed off.
+- Policy priors are appended to explainability reasons as `high_stakes_work:*`.
 
 ## 7C) User Profile Inference Module
 - Module path: `modules/user_profiler/src/user_profiler/`
@@ -214,6 +232,7 @@ Outfit-level behavior:
   - live stage panel using async turn status polling
   - recommendation cards with `Dislike`, `Like`, `Share`, `Buy Now` feedback actions
   - two-row action layout (row 1 full-width buy; row 2 dislike/like/share)
+  - result filter toggle: `complete_only` vs `complete_plus_combos`
 - Supabase schema migration:
   - `supabase/migrations/20260224160000_conversation_platform.sql`
   - `supabase/migrations/20260224170500_feedback_events_event_type_v2.sql`
@@ -221,6 +240,32 @@ Outfit-level behavior:
   - `docs/context/CONVERSATION_SERVICE_BLUEPRINT.md`
 - Runbook:
   - `ops/runbooks/CONVERSATION_PLATFORM_RUNBOOK.md`
+
+## 7E) Conversation Evaluation System
+- Prompt suite:
+  - `ops/evals/conversation_prompt_suite_diverse_v1.json`
+- Rubric:
+  - `ops/evals/conversation_eval_rubric_v1.json`
+- Runner:
+  - `ops/scripts/run_conversation_eval.py`
+- Runbook:
+  - `ops/runbooks/CONVERSATION_EVAL_RUNBOOK.md`
+
+Run output contract:
+- `data/logs/evals/<run_id>/run_manifest.json`
+- `data/logs/evals/<run_id>/case_inputs.jsonl`
+- `data/logs/evals/<run_id>/case_outputs.jsonl`
+- `data/logs/evals/<run_id>/case_scores.jsonl`
+- `data/logs/evals/<run_id>/case_scores.csv`
+- `data/logs/evals/<run_id>/summary.json`
+- `data/logs/evals/<run_id>/summary.md`
+- `data/logs/evals/<run_id>/artifact_integrity.json`
+
+Per-case integrity checks:
+- `turn_id` present
+- `recommendation_run_id` present
+- recommendation retrievable via `GET /v1/recommendations/{run_id}`
+- non-empty recommendation list
 
 ## 8) Batch Pipeline Behavior
 1. Read CSV and validate headers.
@@ -252,7 +297,7 @@ Source of truth: `modules/catalog_enrichment/src/catalog_enrichment/batch_builde
 - Required CLI args are defined in `modules/catalog_enrichment/src/catalog_enrichment/main.py`.
 - `modules/catalog_enrichment/src/catalog_enrichment/main.py` defaults:
   - `--mode prepare`
-  - `--out-dir data/logs`
+  - `--out-dir out`
   - `--num-products 5` (safety limit), `all` supported
 - Large-catalog automation:
   - `--auto-chunk` performs full chunked orchestration for `--mode all`
@@ -272,10 +317,11 @@ python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/proc
 python3 run_catalog_enrichment.py --input new_catalog.csv --output data/catalog/enriched_catalog.csv --mode all --out-dir data/logs --auto-chunk --max-batch-bytes 180000000 --num-products all
 python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/catalog/enriched_catalog.csv --mode run_batch --out-dir data/logs
 python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/catalog/enriched_catalog.csv --mode merge --out-dir data/logs --batch-output-jsonl data/logs/batch_output.jsonl
-python3 ops/scripts/rank_outfits.py --input data/logs/filtered_outfits.csv --profile data/logs/sample_user_profile_tier2.json --recommendation-mode auto --request-text "Need complete office looks" --output data/logs/ranked_outfits.csv --explain data/logs/ranked_outfits_explainability.json
-python3 run_style_pipeline.py --input data/catalog/enriched_catalog.csv --profile data/logs/sample_user_profile_tier2.json --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --tier2-strictness balanced --recommendation-mode auto --request-text "Need complete office looks" --out-dir data/logs --prefix demo_outfit
+python3 ops/scripts/rank_outfits.py --input data/logs/filtered_outfits.csv --profile data/logs/user_style_profile.json --recommendation-mode auto --request-text "Need complete office looks" --output data/logs/ranked_outfits.csv --explain data/logs/ranked_outfits_explainability.json
+python3 run_style_pipeline.py --input data/catalog/enriched_catalog.csv --profile data/logs/user_style_profile.json --occasion "Work Mode" --archetype "Classic" --gender Female --age 25-30 --tier2-strictness balanced --recommendation-mode auto --request-text "Need complete office looks" --out-dir data/logs --prefix demo_outfit
 python3 run_user_profiler.py --image /absolute/path/to/user.jpg --context-text "I need office and dinner looks"
 python3 run_conversation_platform.py --host 127.0.0.1 --port 8010
+python3 ops/scripts/run_conversation_eval.py --base-url http://127.0.0.1:8010 --strictness balanced --hard-filter-profile rl_ready_minimal --max-results 3 --result-filter complete_only --image-ref data/logs/user_profiler/input_09322a34663f.webp --out-dir data/logs/evals --fail-on-integrity
 ```
 
 ## 12) Test Suite
@@ -286,15 +332,18 @@ python3 run_conversation_platform.py --host 127.0.0.1 --port 8010
   - `tests/test_batch_builder.py`
   - `tests/test_tier1_filters.py`
   - `tests/test_tier2_ranker.py`
+  - `tests/test_outfit_engine.py`
+  - `tests/test_intent_policy.py`
   - `tests/test_user_profiler.py`
   - `tests/test_conversation_platform.py`
   - `tests/test_conversation_orchestrator.py`
   - `tests/test_conversation_api_ui.py`
+  - `tests/test_conversation_eval.py`
 
 ## 13) End-to-End Styling Runbook
 - Runbook doc: `ops/runbooks/STYLING_PIPELINE_RUNBOOK.md`
 - Single-command runner:
-  - `python3 run_style_pipeline.py --input data/catalog/enriched_catalog.csv --profile data/logs/sample_user_profile_tier2.json --occasion "Night Out" --archetype "Glamorous" --gender Female --age 25-30 --tier2-strictness balanced --out-dir data/logs --prefix nightout_glamorous_female_25_30`
+  - `python3 run_style_pipeline.py --input data/catalog/enriched_catalog.csv --profile data/logs/user_style_profile.json --occasion "Night Out" --archetype "Glamorous" --gender Female --age 25-30 --tier2-strictness balanced --out-dir data/logs --prefix nightout_glamorous_female_25_30`
 - Final ranked list for downstream UI/review:
   - `data/logs/<prefix>_ranked_summary.csv`
   - Includes ranked `title`, both image URLs, and scores.
@@ -306,7 +355,7 @@ python3 run_conversation_platform.py --host 127.0.0.1 --port 8010
 - User outcome logging:
   - `python3 ops/scripts/log_styling_outcome.py --log-file <path> --request-id <id> --session-id <id> --user-id <id> --garment-id <id> --event-type like|share|buy|skip`
 - Reward policy:
-  - `like:+5`, `share:+10`, `buy:+50`, `skip:-1` from `modules/style_engine/configs/config/reinforcement_framework_v1.json`
+  - `dislike:-5`, `like:+2`, `share:+10`, `buy:+20`, `no_action:-1`, `skip:-1` from `modules/style_engine/configs/config/reinforcement_framework_v1.json`
 - Error handling:
   - input/validation issues are shown as one-line `error: ...` messages
   - no traceback for expected user-input mistakes

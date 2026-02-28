@@ -15,6 +15,7 @@ for p in (
         sys.path.insert(0, sp)
 
 from catalog_enrichment.config_registry import load_outfit_assembly_rules
+from catalog_enrichment.config_registry import load_intent_policy_rules
 from style_engine.outfit_engine import rank_recommendation_candidates, resolve_recommendation_mode
 from style_engine.ranker import load_tier2_rules
 
@@ -110,6 +111,7 @@ class OutfitEngineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.rules = load_tier2_rules()
         self.outfit_rules = load_outfit_assembly_rules()
+        self.intent_policies = load_intent_policy_rules()
         self.rows = [
             _base_row(
                 id="top_1",
@@ -241,6 +243,155 @@ class OutfitEngineTests(unittest.TestCase):
         self.assertEqual("garment", meta.resolved_mode)
         self.assertGreater(len(ranked), 0)
         self.assertTrue(all(r.row.get("recommendation_kind") == "single_garment" for r in ranked))
+
+    def test_high_stakes_policy_applies_prior_delta(self) -> None:
+        policy = dict((self.intent_policies.get("policies") or {}).get("high_stakes_work") or {})
+        rows = [
+            _base_row(
+                id="office_1",
+                title="Navy Sheath Office Dress",
+                GarmentCategory="one_piece",
+                GarmentSubtype="sheath",
+                StylingCompleteness="complete",
+                OccasionFit="workwear",
+                OccasionSignal="office",
+                FormalityLevel="semi_formal",
+                FitType="tailored",
+                GarmentLength="knee",
+                EmbellishmentLevel="minimal",
+            ),
+            _base_row(
+                id="casual_1",
+                title="Black Beaded Maxi Dress",
+                GarmentCategory="one_piece",
+                GarmentSubtype="dress",
+                StylingCompleteness="complete",
+                OccasionFit="smart_casual",
+                OccasionSignal="daily",
+                FormalityLevel="smart_casual",
+                GarmentLength="floor",
+                EmbellishmentLevel="statement",
+            ),
+        ]
+        ranked, _ = rank_recommendation_candidates(
+            rows=rows,
+            user_profile=_profile(),
+            tier2_rules=self.rules,
+            strictness="balanced",
+            mode="outfit",
+            include_combos=False,
+            request_text="Big presentation day at work!",
+            intent_policy_id="high_stakes_work",
+            intent_policy=policy,
+        )
+        deltas = {str(r.row.get("id")): float(r.row.get("tier2_policy_delta", "0")) for r in ranked}
+        self.assertGreater(deltas["office_1"], 0.0)
+        self.assertLess(deltas["casual_1"], 0.0)
+        self.assertEqual("office_1", str(ranked[0].row.get("id")))
+
+    def test_complete_only_excludes_incomplete_one_piece_rows(self) -> None:
+        rows = [
+            _base_row(
+                id="incomplete_one_piece",
+                title="Kurti Needs Bottom",
+                GarmentCategory="one_piece",
+                GarmentSubtype="kurti",
+                StylingCompleteness="needs_bottomwear",
+                OccasionFit="workwear",
+                FormalityLevel="semi_formal",
+            ),
+            _base_row(
+                id="complete_dress",
+                title="Office Sheath Dress",
+                GarmentCategory="one_piece",
+                GarmentSubtype="dress",
+                StylingCompleteness="complete",
+                OccasionFit="workwear",
+                FormalityLevel="semi_formal",
+            ),
+        ]
+        ranked, _ = rank_recommendation_candidates(
+            rows=rows,
+            user_profile=_profile(),
+            tier2_rules=self.rules,
+            strictness="balanced",
+            mode="outfit",
+            include_combos=False,
+            request_text="Need complete look for office",
+            max_results=5,
+        )
+        ids = [str(r.row.get("id", "")) for r in ranked]
+        self.assertIn("complete_dress", ids)
+        self.assertNotIn("incomplete_one_piece", ids)
+
+    def test_complete_only_excludes_outerwear_without_explicit_outerwear_request(self) -> None:
+        rows = [
+            _base_row(
+                id="outerwear_1",
+                title="Office Trench Coat",
+                GarmentCategory="outerwear",
+                GarmentSubtype="coat",
+                StylingCompleteness="complete",
+                OccasionFit="workwear",
+                FormalityLevel="semi_formal",
+            ),
+            _base_row(
+                id="dress_1",
+                title="Office Dress",
+                GarmentCategory="one_piece",
+                GarmentSubtype="dress",
+                StylingCompleteness="complete",
+                OccasionFit="workwear",
+                FormalityLevel="semi_formal",
+            ),
+        ]
+        ranked, _ = rank_recommendation_candidates(
+            rows=rows,
+            user_profile=_profile(),
+            tier2_rules=self.rules,
+            strictness="balanced",
+            mode="outfit",
+            include_combos=False,
+            request_text="Big presentation day at work",
+            max_results=5,
+        )
+        ids = [str(r.row.get("id", "")) for r in ranked]
+        self.assertIn("dress_1", ids)
+        self.assertNotIn("outerwear_1", ids)
+
+    def test_complete_only_allows_outerwear_when_explicitly_requested(self) -> None:
+        rows = [
+            _base_row(
+                id="outerwear_1",
+                title="Office Blazer",
+                GarmentCategory="outerwear",
+                GarmentSubtype="blazer",
+                StylingCompleteness="complete",
+                OccasionFit="workwear",
+                FormalityLevel="semi_formal",
+            ),
+            _base_row(
+                id="dress_1",
+                title="Office Dress",
+                GarmentCategory="one_piece",
+                GarmentSubtype="dress",
+                StylingCompleteness="complete",
+                OccasionFit="workwear",
+                FormalityLevel="semi_formal",
+            ),
+        ]
+        ranked, _ = rank_recommendation_candidates(
+            rows=rows,
+            user_profile=_profile(),
+            tier2_rules=self.rules,
+            strictness="balanced",
+            mode="outfit",
+            include_combos=False,
+            request_text="Need a blazer for my office presentation",
+            max_results=5,
+        )
+        ids = [str(r.row.get("id", "")) for r in ranked]
+        self.assertIn("outerwear_1", ids)
 
 
 if __name__ == "__main__":

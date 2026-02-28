@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 Strictness = Literal["safe", "balanced", "bold"]
 HardFilterProfile = Literal["rl_ready_minimal", "legacy"]
+ResultFilter = Literal["complete_only", "complete_plus_combos"]
 FeedbackEventType = Literal["dislike", "like", "share", "buy", "skip", "no_action"]
 
 
@@ -34,6 +35,7 @@ class CreateTurnRequest(BaseModel):
     strictness: Strictness = "balanced"
     hard_filter_profile: HardFilterProfile = "rl_ready_minimal"
     max_results: int = Field(default=12, ge=1, le=50)
+    result_filter: ResultFilter = "complete_plus_combos"
 
 
 class RecommendationItem(BaseModel):

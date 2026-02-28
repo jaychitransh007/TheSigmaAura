@@ -3,7 +3,9 @@
 Last updated: February 28, 2026
 
 Context sync note:
-- Latest catalog update adds auto-chunk checkpoint/resume in enrichment; Tier 2 scoring/ranking behavior is unchanged.
+- Conversation runtime now includes an intent-policy overlay for high-stakes work prompts.
+- `complete_only` behavior is now stricter: incomplete singles and standalone outerwear are excluded unless explicitly requested.
+- Conversation eval rubric now scores Tier 2 outputs for confidence/score quality/diversity and guardrail alignment.
 
 ## Purpose
 Tier 2 ranks Tier-1-passed garments using body harmony and style preference signals.
@@ -16,11 +18,13 @@ Engine:
 - Rules: `modules/style_engine/src/style_engine/tier2_rules_v1.json`
 - Ranked mappings config: `modules/style_engine/configs/config/tier2_ranked_attributes.json`
 - Outfit assembly config: `modules/style_engine/configs/config/outfit_assembly_v1.json`
+- Intent policy config: `modules/style_engine/configs/config/intent_policy_v1.json`
 - End-to-end runner (invokes Tier 2): `run_style_pipeline.py`
 
 Conversation runtime note:
 - Tier 2 outputs are used by the conversational UI card renderer.
 - Card actions (`Dislike`, `Like`, `Share`, `Buy Now`) do not change this score immediately; they are logged for future optimization.
+- In conversation runtime, Tier 2 ranking can be post-adjusted with policy priors (`high_stakes_work:*`) when intent policy is active.
 
 ## Inputs
 - Tier 1 filtered CSV (`data/logs/filtered_outfits.csv` or equivalent)
@@ -267,6 +271,11 @@ Behavior:
   - otherwise -> `outfit`
 - `outfit`: single complete garments compete with top+bottom combos.
 - `garment`: only single-garment candidates are returned (optional category/subtype narrowing when detected).
+- Conversation-only result filter (`result_filter`):
+  - `complete_plus_combos` -> `include_combos=true`
+  - `complete_only` -> `include_combos=false`
+  - under `complete_only`, rows with `StylingCompleteness=needs_bottomwear|needs_topwear` are never treated as complete.
+  - under `complete_only`, standalone `outerwear` rows are excluded unless outerwear is explicitly requested.
 
 Pair bonus signals (config-driven):
 - occasion-fit coherence
@@ -275,6 +284,29 @@ Pair bonus signals (config-driven):
 - pattern balance (solid-vs-patterned)
 - heavy embellishment clash
 - dual oversized/boxy silhouette clash
+
+## Intent Policy Overlay (Conversation Runtime)
+- Engine: `modules/style_engine/src/style_engine/intent_policy.py`
+- Policy config: `modules/style_engine/configs/config/intent_policy_v1.json`
+- Active policy for presentation-day prompts: `high_stakes_work`
+
+Policy flow:
+1. Detect policy from request text + context.
+2. Attempt staged hard constraints:
+   - `strict`
+   - `style_relaxed`
+   - `formality_relaxed`
+   - `smart_casual_limited`
+3. If no stage meets minimum thresholds, policy hard filtering is relaxed off.
+4. Apply policy ranking priors to Tier 2 outputs (boosts/penalties), recorded in reasons as `high_stakes_work:*`.
+
+Conversation meta fields expose policy status:
+- `intent_policy_id`
+- `intent_policy_keyword_hits`
+- `intent_policy_hard_filter_applied`
+- `intent_policy_hard_filter_relaxed`
+- `intent_policy_relaxation_stage`
+- `intent_policy_smart_casual_trimmed`
 
 ## Output Contracts
 CSV adds per-row fields:
@@ -302,7 +334,7 @@ Balanced:
 ```bash
 python3 ops/scripts/rank_outfits.py \
   --input data/logs/filtered_outfits.csv \
-  --profile data/logs/sample_user_profile_tier2.json \
+  --profile data/logs/user_style_profile.json \
   --tier2-strictness balanced \
   --output data/logs/ranked_outfits.csv \
   --explain data/logs/ranked_outfits_explainability.json
@@ -312,7 +344,7 @@ Safe:
 ```bash
 python3 ops/scripts/rank_outfits.py \
   --input data/logs/filtered_outfits.csv \
-  --profile data/logs/sample_user_profile_tier2.json \
+  --profile data/logs/user_style_profile.json \
   --tier2-strictness safe \
   --output data/logs/ranked_outfits_safe.csv \
   --explain data/logs/ranked_outfits_safe_explainability.json
@@ -322,8 +354,19 @@ Bold:
 ```bash
 python3 ops/scripts/rank_outfits.py \
   --input data/logs/filtered_outfits.csv \
-  --profile data/logs/sample_user_profile_tier2.json \
+  --profile data/logs/user_style_profile.json \
   --tier2-strictness bold \
   --output data/logs/ranked_outfits_bold.csv \
   --explain data/logs/ranked_outfits_bold_explainability.json
 ```
+
+## Evaluation Rubric Hooks (Conversation Runtime)
+Conversation eval runner (`ops/scripts/run_conversation_eval.py`) reads turn-level recommendation payloads and computes:
+- average `compatibility_confidence`
+- average `score/max_score` quality ratio
+- diversity ratio across `outfit_id`/`garment_id`
+- preferred keyword alignment and avoid-keyword guardrails
+- `complete_only` integrity (no `outfit_combo` in returned kinds)
+
+Rubric config:
+- `ops/evals/conversation_eval_rubric_v1.json`

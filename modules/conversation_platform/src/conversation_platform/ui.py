@@ -290,6 +290,13 @@ def get_web_ui_html() -> str:
         </select>
       </div>
       <div class="field">
+        <label>Result Mix</label>
+        <select id="resultFilter">
+          <option value="complete_only">Complete Outfit only</option>
+          <option value="complete_plus_combos" selected>Complete Outfit + Combos</option>
+        </select>
+      </div>
+      <div class="field">
         <label>Image Upload (first turn required)</label>
         <input id="imageInput" type="file" accept="image/*" />
       </div>
@@ -334,6 +341,7 @@ def get_web_ui_html() -> str:
     const strictnessEl = document.getElementById("strictness");
     const maxResultsEl = document.getElementById("maxResults");
     const hardFilterEl = document.getElementById("hardFilterProfile");
+    const resultFilterEl = document.getElementById("resultFilter");
     const stageBox = document.getElementById("stageBox");
     const sendBtn = document.getElementById("sendBtn");
 
@@ -590,6 +598,7 @@ def get_web_ui_html() -> str:
           strictness: strictnessEl.value,
           hard_filter_profile: hardFilterEl.value,
           max_results: parseInt(maxResultsEl.value || "8", 10),
+          result_filter: resultFilterEl.value,
         };
 
         const startRes = await fetch(`/v1/conversations/${conversationId}/turns/start`, {
@@ -611,6 +620,7 @@ def get_web_ui_html() -> str:
           `resolved: occasion=${data.resolved_context.occasion}, archetype=${data.resolved_context.archetype}, ` +
           `gender=${data.resolved_context.gender}, age=${data.resolved_context.age}`
         );
+        addMeta(`result mix: ${resultFilterEl.value}`);
         addRecommendationCards(data.recommendations || [], data.recommendation_run_id);
         messageEl.value = "";
         imageInputEl.value = "";

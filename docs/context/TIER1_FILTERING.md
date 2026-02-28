@@ -6,6 +6,7 @@ Context sync note:
 - Tier 1 filtering rules are unchanged by the latest feedback/UI update.
 - Feedback schema/UI updates affect conversation telemetry only, not Tier 1 pass/fail logic.
 - Latest catalog update adds auto-chunk checkpoint/resume in enrichment; Tier 1 logic remains unchanged.
+- Conversation eval runner now tracks downstream Tier 1 quality impact through coverage/guardrail scoring.
 
 ## Purpose
 Tier 1 is the hard-filter stage. It narrows the enriched catalog to items that satisfy user context constraints before personalized ranking.
@@ -184,3 +185,11 @@ python3 ops/scripts/filter_outfits.py \
   --output data/logs/filtered_outfits_compat_relaxed.csv \
   --fail-log data/logs/filtered_outfits_compat_relaxed_failures.json
 ```
+
+## Evaluation Hooks
+Conversation eval runs (`ops/scripts/run_conversation_eval.py`) measure Tier-1 downstream behavior indirectly through:
+- recommendation coverage (`returned/max_results`)
+- avoid-keyword guardrails by occasion
+- integrity checks for recommendation run persistence/retrievability
+
+This keeps Tier 1 deterministic while continuously monitoring real prompt outcomes.

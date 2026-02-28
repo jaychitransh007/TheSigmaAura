@@ -58,3 +58,7 @@ def load_reinforcement_framework() -> Dict[str, Any]:
 
 def load_outfit_assembly_rules() -> Dict[str, Any]:
     return load_json_config("outfit_assembly_v1.json")
+
+
+def load_intent_policy_rules() -> Dict[str, Any]:
+    return load_json_config("intent_policy_v1.json")

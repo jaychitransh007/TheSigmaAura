@@ -125,3 +125,20 @@ In web UI (`/`), feedback is also captured directly from recommendation cards:
 - `GET /v1/conversations/{conversation_id}/turns/{job_id}/status` (poll stage progress)
 - `GET /v1/recommendations/{run_id}`
 - `POST /v1/feedback`
+
+## Eval Workflow
+Run prompt-suite quality evaluation (scores + logs + integrity checks):
+```bash
+python3 ops/scripts/run_conversation_eval.py \
+  --base-url http://127.0.0.1:8010 \
+  --strictness balanced \
+  --hard-filter-profile rl_ready_minimal \
+  --max-results 3 \
+  --result-filter complete_only \
+  --image-ref data/logs/user_profiler/input_09322a34663f.webp \
+  --out-dir data/logs/evals \
+  --fail-on-integrity
+```
+
+See full eval operations guide:
+- `ops/runbooks/CONVERSATION_EVAL_RUNBOOK.md`

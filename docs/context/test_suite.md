@@ -11,6 +11,7 @@ Last run: February 28, 2026
 - Outfit assembly behavior (mode resolution + combo candidate construction)
 - User profile inference schemas and image-input normalization
 - Conversation platform schemas, repository behavior, and orchestrator flow
+- Conversation eval rubric scoring and aggregate reporting behavior
 
 ## How To Run
 ```bash
@@ -27,6 +28,8 @@ python3 -m unittest discover -s tests -v
 - `tests/test_conversation_platform.py`
 - `tests/test_conversation_orchestrator.py`
 - `tests/test_conversation_api_ui.py`
+- `tests/test_conversation_eval.py`
+- `tests/test_intent_policy.py`
 
 ## Case Matrix
 
@@ -41,6 +44,7 @@ python3 -m unittest discover -s tests -v
 - `test_garment_config_file_is_valid_json`
 - `test_outfit_assembly_config_exists_and_loads`
 - `test_reinforcement_rewards_match_ui_contract`
+- `test_intent_policy_config_exists_and_loads`
 
 ### Batch Builder
 - `test_normalize_image_url_adds_width`
@@ -84,6 +88,14 @@ python3 -m unittest discover -s tests -v
 - `test_invalid_recommendation_mode_raises`
 - `test_resolve_mode_detects_hyphenated_keyword`
 - `test_garment_mode_falls_back_if_no_targeted_match`
+- `test_high_stakes_policy_applies_prior_delta`
+- `test_complete_only_excludes_incomplete_one_piece_rows`
+- `test_complete_only_excludes_outerwear_without_explicit_outerwear_request`
+- `test_complete_only_allows_outerwear_when_explicitly_requested`
+
+### Intent Policy
+- `test_resolve_high_stakes_work_for_presentation_prompt`
+- `test_policy_filter_excludes_risky_work_items`
 
 ### User Profiler
 - `test_visual_schema_has_all_body_fields_plus_gender_age`
@@ -123,14 +135,23 @@ python3 -m unittest discover -s tests -v
 - `test_feedback_endpoint_dislike_success`
 - `test_feedback_endpoint_returns_migration_hint_for_old_event_type_constraint`
 - `test_root_contains_action_layout_and_reward_contract`
+- `test_recommendation_policy_relaxes_when_complete_only_has_too_few_complete_items`
+
+### Conversation Eval
+- `test_evaluate_case_passes_for_well_aligned_results`
+- `test_evaluate_case_flags_integrity_failures`
+- `test_aggregate_case_evals_summarizes_dimensions`
 
 ## Latest Run Report
-- Targeted run: `tests/test_batch_builder.py`
-- Total tests: `8`
-- Passed: `8`
+- Full-suite run: `python3 -m unittest discover -s tests -p 'test_*.py'`
+- Total tests: `93`
+- Passed: `93`
 - Failed: `0`
 - Result: `OK`
 
 ## Notes
-- During implementation, one Tier 1 test initially failed due fixture setup; it was corrected so the case isolates `occasion_archetype` relaxation without conflicting archetype-rule failures.
-- Full-suite run is currently blocked in this environment by disk exhaustion (`No usable temporary directory`).
+- Current suite includes policy-aware ranking/filter behavior for high-stakes work prompts.
+- `complete_only` integrity is explicitly covered by tests (incomplete singles and standalone outerwear gating).
+- Operational eval system is documented in:
+  - `ops/runbooks/CONVERSATION_EVAL_RUNBOOK.md`
+  - `ops/scripts/run_conversation_eval.py`

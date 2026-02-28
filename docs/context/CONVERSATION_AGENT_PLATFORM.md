@@ -3,7 +3,9 @@
 Last updated: February 28, 2026
 
 Context sync note:
-- Conversation module unchanged by latest work; update is in catalog enrichment auto-chunk resume/checkpoint behavior.
+- Conversation module now includes style-engine intent-policy integration for high-stakes work prompts.
+- UI/API recommendation path supports `complete_only` vs `complete_plus_combos` result filtering.
+- Conversation eval workflow is implemented with deterministic rubric scoring and integrity gates.
 
 ## Goal
 Build a conversation-first styling platform where users upload an image, express needs in natural language, iterate across turns, and receive ranked fashion recommendations.
@@ -16,6 +18,7 @@ Companion implementation blueprint:
 - Use OpenAI models for interpretation/inference and conversational reasoning.
 - Persist all turn-state and telemetry in local Supabase tables.
 - Keep catalog enrichment offline batch; keep user interaction online real-time.
+- Keep regression quality measurable through repeatable prompt-suite eval runs.
 
 ## Modules
 - `catalog_enrichment`: offline catalog attribute extraction (batch).
@@ -45,6 +48,7 @@ Service entrypoint:
 - `ProfileAgent`: visual profile extraction from image.
 - `IntentAgent`: textual context extraction (`occasion`, `archetype`) from turn text.
 - `RecommendationAgent`: calls Tier 1 + Tier 2 and outfit assembly to produce ranked single-garment and combo-outfit candidates.
+  - applies intent-policy staging (`strict -> style_relaxed -> formality_relaxed -> smart_casual_limited`) before final ranking.
 - `StylistAgent`: user-facing recommendation response and clarifications.
 - `MemoryAgent`: reads/writes state snapshots.
 - `TelemetryAgent`: logs all model/tool/recommendation events.
@@ -66,6 +70,9 @@ If context is missing or unclear, the agent returns:
 Recommendation mode behavior:
 - If user text explicitly asks for a garment category/subtype (e.g., shirt, dress, jeans), recommendation mode resolves to garment-only.
 - Otherwise, mode resolves to outfit: complete garments and top+bottom combos compete in one ranked list.
+- Result filter behavior:
+  - `complete_plus_combos`: include combos + complete singles
+  - `complete_only`: complete singles only (no combos), with incomplete rows and non-requested outerwear excluded
 
 ## Processing Stages (Async)
 When the UI uses async turn execution, backend stages are streamed via polling:
@@ -90,3 +97,26 @@ When the UI uses async turn execution, backend stages are streamed via polling:
 - Never expose service role key to client.
 - Store only required PII.
 - Record model logs for observability; redact sensitive fields when needed.
+
+## Evaluation + Regression Tracking
+- Eval runner:
+  - `ops/scripts/run_conversation_eval.py`
+- Prompt suite:
+  - `ops/evals/conversation_prompt_suite_diverse_v1.json`
+- Rubric:
+  - `ops/evals/conversation_eval_rubric_v1.json`
+- Runbook:
+  - `ops/runbooks/CONVERSATION_EVAL_RUNBOOK.md`
+
+Per-run artifacts:
+- `run_manifest.json` (settings, suite/rubric versions)
+- `case_inputs.jsonl` + `case_outputs.jsonl` (full traceability)
+- `case_scores.jsonl` + `case_scores.csv` (deterministic scoring)
+- `summary.json` + `summary.md` (aggregate view)
+- `artifact_integrity.json` (required files + per-file line-count checks)
+
+Integrity gates checked per case:
+- `turn_id` exists
+- `recommendation_run_id` exists
+- `/v1/recommendations/{run_id}` fetch succeeds
+- recommendation list is non-empty

@@ -5,6 +5,8 @@ Last updated: February 28, 2026
 ## Context Sync Note
 - Catalog enrichment now supports auto-chunk checkpoint/resume for org-level limits.
 - Checkpoint artifacts: `data/logs/auto_chunk_checkpoint.json`, `data/logs/partial_enriched.csv`, `data/logs/pending_chunks/pending_chunk_*.csv`.
+- Conversation styling now includes intent-policy overlays for high-stakes work prompts.
+- Conversation quality eval framework is now integrated (suite + rubric + scorer + artifact integrity checks).
 
 ## Runtime Attribute Sources
 - Garment attributes:
@@ -19,6 +21,8 @@ Last updated: February 28, 2026
   - `modules/style_engine/configs/config/tier2_ranked_attributes.json`
 - Outfit assembly config:
   - `modules/style_engine/configs/config/outfit_assembly_v1.json`
+- Intent policy config:
+  - `modules/style_engine/configs/config/intent_policy_v1.json`
 - RL/reward framework:
   - `modules/style_engine/configs/config/reinforcement_framework_v1.json`
 - Structured output schema:
@@ -38,6 +42,18 @@ Last updated: February 28, 2026
   - `modules/style_engine/src/style_engine/tier2_rules_v1.json`
 - Outfit assembly/routing rules:
   - `modules/style_engine/configs/config/outfit_assembly_v1.json`
+- Intent-policy rules:
+  - `modules/style_engine/configs/config/intent_policy_v1.json`
+
+## Eval Sources
+- Prompt suite:
+  - `ops/evals/conversation_prompt_suite_diverse_v1.json`
+- Rubric:
+  - `ops/evals/conversation_eval_rubric_v1.json`
+- Eval runner:
+  - `ops/scripts/run_conversation_eval.py`
+- Eval runbook:
+  - `ops/runbooks/CONVERSATION_EVAL_RUNBOOK.md`
 
 ## Engines
 - Tier 1 hard filter engine:
@@ -46,6 +62,8 @@ Last updated: February 28, 2026
   - `modules/style_engine/src/style_engine/ranker.py`
 - Outfit candidate engine:
   - `modules/style_engine/src/style_engine/outfit_engine.py`
+- Intent policy engine:
+  - `modules/style_engine/src/style_engine/intent_policy.py`
 - Schema audit:
   - `modules/catalog_enrichment/src/catalog_enrichment/audit.py`
 - User profile inference:
@@ -69,6 +87,8 @@ Last updated: February 28, 2026
   - `run_user_profiler.py`
 - Conversation platform API:
   - `run_conversation_platform.py`
+- Conversation eval runner:
+  - `ops/scripts/run_conversation_eval.py`
 
 ## Tier 1 vs Tier 2 Responsibilities
 - Tier 1:
@@ -116,3 +136,14 @@ without changing base body-harmony rules.
 - Local Supabase migrations:
   - `supabase/migrations/20260224160000_conversation_platform.sql`
   - `supabase/migrations/20260224170500_feedback_events_event_type_v2.sql`
+
+## Eval Artifact Contract
+Each eval run writes:
+- `data/logs/evals/<run_id>/run_manifest.json`
+- `data/logs/evals/<run_id>/case_inputs.jsonl`
+- `data/logs/evals/<run_id>/case_outputs.jsonl`
+- `data/logs/evals/<run_id>/case_scores.jsonl`
+- `data/logs/evals/<run_id>/case_scores.csv`
+- `data/logs/evals/<run_id>/summary.json`
+- `data/logs/evals/<run_id>/summary.md`
+- `data/logs/evals/<run_id>/artifact_integrity.json`

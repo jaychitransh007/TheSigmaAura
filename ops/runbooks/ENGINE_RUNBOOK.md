@@ -84,7 +84,7 @@ python3 ops/scripts/filter_outfits.py \
 ```bash
 python3 ops/scripts/rank_outfits.py \
   --input data/logs/filtered_outfits.csv \
-  --profile data/logs/sample_user_profile_tier2.json \
+  --profile data/logs/user_style_profile.json \
   --tier2-strictness balanced \
   --recommendation-mode auto \
   --request-text "I need a complete office look" \
@@ -115,7 +115,7 @@ If batch run fails:
 ```bash
 python3 run_style_pipeline.py \
   --input data/catalog/enriched_catalog.csv \
-  --profile data/logs/sample_user_profile_tier2.json \
+  --profile data/logs/user_style_profile.json \
   --occasion "Night Out" \
   --archetype "Glamorous" \
   --gender Female \

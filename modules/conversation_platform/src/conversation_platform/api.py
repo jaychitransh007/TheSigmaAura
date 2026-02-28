@@ -109,6 +109,7 @@ def create_app() -> FastAPI:
                 strictness=payload.strictness,
                 hard_filter_profile=payload.hard_filter_profile,
                 max_results=payload.max_results,
+                result_filter=payload.result_filter,
             )
             return TurnResponse(**out)
         except (ValueError, SupabaseError, RuntimeError) as exc:
@@ -148,6 +149,7 @@ def create_app() -> FastAPI:
                     strictness=payload.strictness,
                     hard_filter_profile=payload.hard_filter_profile,
                     max_results=payload.max_results,
+                    result_filter=payload.result_filter,
                     stage_callback=append_stage,
                 )
                 append_stage("turn_execution", "completed")

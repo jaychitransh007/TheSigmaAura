@@ -1,0 +1,81 @@
+{
+  "version": "intent_policy_v1",
+  "default_policy": "",
+  "policies": {
+    "high_stakes_work": {
+      "description": "Tighter constraints for high-stakes office moments (presentations, client-facing meetings).",
+      "activation": {
+        "occasion_in": ["work_mode"],
+        "any_keywords": [
+          "presentation",
+          "presenting",
+          "board meeting",
+          "boardroom",
+          "client meeting",
+          "leadership meeting",
+          "pitch",
+          "interview",
+          "work presentation",
+          "big day at work"
+        ]
+      },
+      "min_results_to_enforce": 8,
+      "min_complete_results_to_enforce": 3,
+      "hard_constraints": {
+        "require_values": {
+          "OccasionSignal": ["office"],
+          "OccasionFit": ["workwear"],
+          "FormalityLevel": ["formal"],
+          "EmbellishmentLevel": ["none", "minimal"],
+          "TimeOfDay": ["day", "day_to_night"],
+          "FitType": ["tailored", "regular"],
+          "ColorSaturation": ["muted", "medium"]
+        },
+        "exclude_title_keywords": [
+          "beaded",
+          "sequin",
+          "sequinned",
+          "glitter",
+          "party",
+          "maxi",
+          "slip on"
+        ],
+        "exclude_subtypes": [
+          "maxi_dress",
+          "slip_dress"
+        ]
+      },
+      "relaxation": {
+        "stage_1_drop_require_values": ["FitType", "ColorSaturation"],
+        "stage_2_expand_require_values": {
+          "FormalityLevel": ["semi_formal", "formal"],
+          "OccasionFit": ["workwear", "semi_formal"]
+        },
+        "stage_3_allow_limited_smart_casual": {
+          "enabled": true,
+          "max_fraction": 0.34,
+          "max_items": 2
+        }
+      },
+      "ranking_priors": {
+        "attribute_boosts": [
+          {"attribute": "OccasionSignal", "values": ["office"], "weight": 0.030},
+          {"attribute": "OccasionFit", "values": ["workwear"], "weight": 0.030},
+          {"attribute": "OccasionFit", "values": ["semi_formal"], "weight": 0.020},
+          {"attribute": "FormalityLevel", "values": ["formal"], "weight": 0.030},
+          {"attribute": "FormalityLevel", "values": ["semi_formal"], "weight": 0.020},
+          {"attribute": "FitType", "values": ["tailored"], "weight": 0.020},
+          {"attribute": "GarmentSubtype", "values": ["blazer", "trouser", "shirt", "sheath"], "weight": 0.015}
+        ],
+        "attribute_penalties": [
+          {"attribute": "GarmentLength", "values": ["floor"], "weight": -0.025},
+          {"attribute": "OccasionFit", "values": ["smart_casual"], "weight": -0.020},
+          {"attribute": "OccasionSignal", "values": ["daily"], "weight": -0.020}
+        ],
+        "title_keyword_penalties": [
+          {"keywords": ["beaded", "sequin", "party", "maxi"], "weight": -0.050}
+        ]
+      }
+    }
+  }
+}

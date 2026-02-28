@@ -1,0 +1,46 @@
+{
+  "rubric_id": "conversation_eval_rubric_v1",
+  "version": "1.0.0",
+  "description": "Deterministic rubric for conversation recommendation quality and logging integrity.",
+  "weights": {
+    "context_occasion": 0.15,
+    "context_archetype": 0.1,
+    "coverage": 0.1,
+    "keyword_alignment": 0.15,
+    "anti_keyword_guardrail": 0.2,
+    "confidence": 0.1,
+    "score_quality": 0.05,
+    "diversity": 0.05,
+    "complete_only_integrity": 0.1
+  },
+  "thresholds": {
+    "pass_score": 0.72,
+    "warning_score": 0.58,
+    "min_returned_results": 1,
+    "min_avg_compatibility_confidence": 0.45
+  },
+  "required_integrity_checks": [
+    "turn_id",
+    "recommendation_run_id",
+    "recommendation_fetch_ok",
+    "non_empty_recommendations"
+  ],
+  "occasion_guardrails": {
+    "work_mode": {
+      "avoid_keywords": [
+        "sequin",
+        "beaded",
+        "party",
+        "bodycon",
+        "slip",
+        "club"
+      ]
+    },
+    "formal_events": {
+      "avoid_keywords": [
+        "denim",
+        "athleisure"
+      ]
+    }
+  }
+}

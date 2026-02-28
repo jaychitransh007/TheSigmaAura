@@ -1,10 +1,14 @@
 import json
-from pathlib import Path
+import copy
 from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
 
-from catalog_enrichment.config_registry import load_reinforcement_framework
+from catalog_enrichment.config_registry import load_outfit_assembly_rules, load_reinforcement_framework
+from style_engine.intent_policy import (
+    apply_intent_policy_filters,
+    resolve_intent_policy,
+)
 from style_engine.filters import (
     UserContext,
     filter_catalog_rows,
@@ -54,6 +58,126 @@ class RecommendationAgent:
         self.catalog_csv_path = catalog_csv_path
         self.tier1_rules = load_tier_a_rules()
         self.tier2_rules = load_tier2_rules()
+        self.outfit_rules = load_outfit_assembly_rules()
+
+    @staticmethod
+    def _norm(value: Any) -> str:
+        return str(value or "").strip().lower()
+
+    def _count_complete_candidates(self, rows: List[Dict[str, Any]]) -> int:
+        complete_values = {self._norm(x) for x in (self.outfit_rules.get("single_complete_values") or [])}
+        complete_categories = {self._norm(x) for x in (self.outfit_rules.get("single_complete_categories") or [])}
+        combo_req = dict(self.outfit_rules.get("combo_requirements") or {})
+        incomplete_values = {
+            self._norm(x) for x in ((combo_req.get("top_values") or []) + (combo_req.get("bottom_values") or []))
+        }
+        count = 0
+        for row in rows:
+            sc = self._norm(row.get("StylingCompleteness", ""))
+            category = self._norm(row.get("GarmentCategory", ""))
+            if sc in incomplete_values:
+                continue
+            if sc in complete_values or category in complete_categories:
+                count += 1
+        return count
+
+    def _policy_thresholds(self, policy: Dict[str, Any], max_results: int) -> Tuple[int, int]:
+        min_results_to_enforce = int(policy.get("min_results_to_enforce", 0) or 0)
+        if min_results_to_enforce <= 0:
+            min_results_to_enforce = max(12, max_results * 2)
+        min_complete_results = int(policy.get("min_complete_results_to_enforce", 0) or 0)
+        return min_results_to_enforce, min_complete_results
+
+    def _meets_policy_thresholds(
+        self,
+        *,
+        rows: List[Dict[str, Any]],
+        include_combos: bool,
+        max_results: int,
+        min_results_to_enforce: int,
+        min_complete_results: int,
+    ) -> bool:
+        if len(rows) < min_results_to_enforce:
+            return False
+        if include_combos:
+            return True
+        required_complete = min_complete_results if min_complete_results > 0 else max(1, max_results // 2)
+        return self._count_complete_candidates(rows) >= required_complete
+
+    @staticmethod
+    def _drop_required_values(policy: Dict[str, Any], attrs: List[str]) -> Dict[str, Any]:
+        staged = copy.deepcopy(policy)
+        hard = dict(staged.get("hard_constraints") or {})
+        required = dict(hard.get("require_values") or {})
+        for attr in attrs:
+            required.pop(str(attr), None)
+        hard["require_values"] = required
+        staged["hard_constraints"] = hard
+        return staged
+
+    @staticmethod
+    def _expand_required_values(policy: Dict[str, Any], expansion: Dict[str, List[str]]) -> Dict[str, Any]:
+        staged = copy.deepcopy(policy)
+        hard = dict(staged.get("hard_constraints") or {})
+        required = dict(hard.get("require_values") or {})
+        for attr, values in (expansion or {}).items():
+            existing = [str(v) for v in (required.get(attr) or []) if str(v).strip()]
+            merged: List[str] = []
+            for value in existing + [str(v) for v in (values or []) if str(v).strip()]:
+                if value not in merged:
+                    merged.append(value)
+            required[attr] = merged
+        hard["require_values"] = required
+        staged["hard_constraints"] = hard
+        return staged
+
+    def _is_smart_casual_row(self, row: Dict[str, Any]) -> bool:
+        return self._norm(row.get("OccasionFit", "")) == "smart_casual" or self._norm(
+            row.get("FormalityLevel", "")
+        ) == "smart_casual"
+
+    def _smart_casual_rank_key(self, row: Dict[str, Any]) -> Tuple[int, int]:
+        score = 0
+        if self._norm(row.get("OccasionSignal", "")) == "office":
+            score += 2
+        if self._norm(row.get("OccasionFit", "")) == "workwear":
+            score += 2
+        if self._norm(row.get("FormalityLevel", "")) in {"semi_formal", "formal"}:
+            score += 2
+        if self._norm(row.get("FitType", "")) == "tailored":
+            score += 1
+        if self._norm(row.get("GarmentCategory", "")) == "outerwear":
+            score -= 2
+        return score, -int(row.get("_row_idx", "0") or 0)
+
+    def _limit_smart_casual_rows(
+        self,
+        *,
+        rows: List[Dict[str, Any]],
+        max_results: int,
+        min_total_rows: int,
+        limit_cfg: Dict[str, Any],
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        smart_rows = [r for r in rows if self._is_smart_casual_row(r)]
+        non_smart_rows = [r for r in rows if not self._is_smart_casual_row(r)]
+        if not smart_rows:
+            return rows, 0
+
+        max_fraction = float(limit_cfg.get("max_fraction", 0.34) or 0.34)
+        max_items = int(limit_cfg.get("max_items", 2) or 2)
+        fraction_cap = int((max_results * max_fraction) + 0.9999)
+        allowed_smart = max(0, min(max_items, fraction_cap))
+        required_for_floor = max(0, min_total_rows - len(non_smart_rows))
+        allowed_smart = max(allowed_smart, required_for_floor)
+        allowed_smart = min(allowed_smart, len(smart_rows))
+
+        if len(smart_rows) <= allowed_smart:
+            return rows, 0
+
+        smart_rows = sorted(smart_rows, key=self._smart_casual_rank_key, reverse=True)
+        kept_smart = smart_rows[:allowed_smart]
+        dropped = len(smart_rows) - len(kept_smart)
+        return non_smart_rows + kept_smart, dropped
 
     def _filter_rows(
         self,
@@ -85,6 +209,7 @@ class RecommendationAgent:
         hard_filter_profile: str,
         max_results: int,
         recommendation_mode: str = "auto",
+        include_combos: bool = True,
         request_text: str = "",
     ) -> Dict[str, Any]:
         rows = read_csv_rows(self.catalog_csv_path)
@@ -105,14 +230,98 @@ class RecommendationAgent:
             relax_filters=[],
         )
 
+        policy_resolution = resolve_intent_policy(
+            request_text=request_text,
+            context=context,
+        )
+        active_policy_id = str(policy_resolution.get("policy_id", ""))
+        active_policy = dict(policy_resolution.get("policy") or {})
+        policy_keyword_hits = list(policy_resolution.get("keyword_hits") or [])
+        policy_hard_filter_applied = False
+        policy_hard_filter_relaxed = False
+        policy_relaxation_stage = "none"
+        policy_smart_casual_trimmed = 0
+        policy_failed: List[Dict[str, Any]] = []
+
+        if active_policy_id and active_policy:
+            min_results_to_enforce, min_complete_results = self._policy_thresholds(active_policy, max_results)
+            relax_cfg = dict(active_policy.get("relaxation") or {})
+
+            stage_policies: List[Tuple[str, Dict[str, Any]]] = [("strict", active_policy)]
+            stage_1_drop = [str(x) for x in (relax_cfg.get("stage_1_drop_require_values") or []) if str(x).strip()]
+            if stage_1_drop:
+                stage_policies.append(("style_relaxed", self._drop_required_values(active_policy, stage_1_drop)))
+            stage_2_expand = dict(relax_cfg.get("stage_2_expand_require_values") or {})
+            if stage_2_expand:
+                base_for_stage2 = stage_policies[-1][1]
+                stage_policies.append(("formality_relaxed", self._expand_required_values(base_for_stage2, stage_2_expand)))
+
+            final_stage_rows: List[Dict[str, Any]] = []
+            final_stage_failed: List[Dict[str, Any]] = []
+            final_stage_name = "strict"
+            matched_stage = False
+            for stage_name, stage_policy in stage_policies:
+                stage_rows, stage_failed = apply_intent_policy_filters(rows=passed, policy=stage_policy)
+                final_stage_rows, final_stage_failed = stage_rows, stage_failed
+                final_stage_name = stage_name
+                if self._meets_policy_thresholds(
+                    rows=stage_rows,
+                    include_combos=include_combos,
+                    max_results=max_results,
+                    min_results_to_enforce=min_results_to_enforce,
+                    min_complete_results=min_complete_results,
+                ):
+                    matched_stage = True
+                    break
+
+            if (
+                not matched_stage
+                and bool((relax_cfg.get("stage_3_allow_limited_smart_casual") or {}).get("enabled", False))
+            ):
+                stage3_base = stage_policies[-1][1]
+                stage3_policy = self._expand_required_values(
+                    stage3_base,
+                    {"FormalityLevel": ["smart_casual"], "OccasionFit": ["smart_casual"]},
+                )
+                stage3_rows, stage3_failed = apply_intent_policy_filters(rows=passed, policy=stage3_policy)
+                stage3_limited, policy_smart_casual_trimmed = self._limit_smart_casual_rows(
+                    rows=stage3_rows,
+                    max_results=max_results,
+                    min_total_rows=min_results_to_enforce,
+                    limit_cfg=dict(relax_cfg.get("stage_3_allow_limited_smart_casual") or {}),
+                )
+                final_stage_rows, final_stage_failed = stage3_limited, stage3_failed
+                final_stage_name = "smart_casual_limited"
+                if self._meets_policy_thresholds(
+                    rows=stage3_limited,
+                    include_combos=include_combos,
+                    max_results=max_results,
+                    min_results_to_enforce=min_results_to_enforce,
+                    min_complete_results=min_complete_results,
+                ):
+                    matched_stage = True
+
+            if matched_stage:
+                passed = final_stage_rows
+                policy_failed = final_stage_failed
+                policy_hard_filter_applied = True
+                policy_relaxation_stage = final_stage_name
+            else:
+                policy_hard_filter_relaxed = True
+                policy_failed = final_stage_failed
+                policy_relaxation_stage = "policy_relaxed_off"
+
         ranked, recommendation_meta = rank_recommendation_candidates(
             rows=passed,
             user_profile=profile,
             tier2_rules=self.tier2_rules,
             strictness=strictness,
             mode=recommendation_mode,
+            include_combos=include_combos,
             request_text=request_text,
             max_results=max_results,
+            intent_policy_id=active_policy_id,
+            intent_policy=active_policy,
         )
         total_ranked = recommendation_meta.returned_rows
 
@@ -167,11 +376,19 @@ class RecommendationAgent:
                 "returned_rows": len(items),
                 "relaxed_filters": relaxed,
                 "recommendation_mode": recommendation_mode,
+                "include_combos": include_combos,
                 "resolved_recommendation_mode": recommendation_meta.resolved_mode,
                 "requested_categories": recommendation_meta.requested_categories,
                 "requested_subtypes": recommendation_meta.requested_subtypes,
                 "single_candidates": recommendation_meta.single_candidates,
                 "combo_candidates": recommendation_meta.combo_candidates,
+                "intent_policy_id": active_policy_id,
+                "intent_policy_keyword_hits": policy_keyword_hits,
+                "intent_policy_hard_filter_applied": policy_hard_filter_applied,
+                "intent_policy_hard_filter_relaxed": policy_hard_filter_relaxed,
+                "intent_policy_failed_rows": len(policy_failed),
+                "intent_policy_relaxation_stage": policy_relaxation_stage,
+                "intent_policy_smart_casual_trimmed": policy_smart_casual_trimmed,
             },
         }
 

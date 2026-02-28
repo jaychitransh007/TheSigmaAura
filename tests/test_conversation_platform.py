@@ -1,6 +1,6 @@
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import sys
 
@@ -17,9 +17,10 @@ for p in (
         sys.path.insert(0, sp)
 
 
-from conversation_platform.agents import MemoryAgent, StylistAgent, TelemetryAgent
+from conversation_platform.agents import MemoryAgent, RecommendationAgent, StylistAgent, TelemetryAgent
 from conversation_platform.config import load_config
 from conversation_platform.schemas import CreateTurnRequest, FeedbackRequest
+from style_engine.outfit_engine import RecommendationMeta
 
 
 class ConversationPlatformTests(unittest.TestCase):
@@ -90,6 +91,7 @@ class ConversationPlatformTests(unittest.TestCase):
         self.assertEqual("balanced", req.strictness)
         self.assertEqual("rl_ready_minimal", req.hard_filter_profile)
         self.assertEqual(12, req.max_results)
+        self.assertEqual("complete_plus_combos", req.result_filter)
 
     def test_feedback_event_type_validation(self) -> None:
         req = FeedbackRequest(
@@ -134,6 +136,68 @@ class ConversationPlatformTests(unittest.TestCase):
             cfg = load_config()
         self.assertEqual("http://127.0.0.1:55321/rest/v1", cfg.supabase_rest_url)
         self.assertEqual("service-role-jwt", cfg.supabase_service_role_key)
+
+    def test_recommendation_policy_relaxes_when_complete_only_has_too_few_complete_items(self) -> None:
+        base_row = {
+            "id": "",
+            "title": "Office Option",
+            "price": "3200",
+            "GenderExpression": "feminine",
+            "OccasionSignal": "office",
+            "OccasionFit": "workwear",
+            "FormalityLevel": "semi_formal",
+            "TimeOfDay": "day",
+            "EmbellishmentLevel": "minimal",
+            "GarmentCategory": "top",
+            "GarmentSubtype": "shirt",
+            "StylingCompleteness": "needs_bottomwear",
+            "images__0__src": "https://img/1.jpg",
+        }
+        passed = []
+        for idx in range(8):
+            row = dict(base_row)
+            row["id"] = f"g_{idx}"
+            if idx == 0:
+                row["GarmentCategory"] = "one_piece"
+                row["StylingCompleteness"] = "complete"
+                row["GarmentSubtype"] = "dress"
+                row["title"] = "Office Sheath Dress"
+            passed.append(row)
+
+        agent = RecommendationAgent(catalog_csv_path="data/catalog/enriched_catalog.csv")
+        mock_meta = RecommendationMeta(
+            resolved_mode="outfit",
+            requested_categories=[],
+            requested_subtypes=[],
+            base_ranked_rows=8,
+            single_candidates=8,
+            combo_candidates=0,
+            returned_rows=0,
+        )
+        with patch("conversation_platform.agents.read_csv_rows", return_value=passed), patch.object(
+            agent,
+            "_filter_rows",
+            return_value=(passed, [], []),
+        ), patch(
+            "conversation_platform.agents.rank_recommendation_candidates",
+            return_value=([], mock_meta),
+        ) as mock_rank:
+            out = agent.recommend(
+                context={"occasion": "work_mode", "archetype": "classic", "gender": "female", "age": "25_30"},
+                profile={"color_preferences": {}},
+                strictness="balanced",
+                hard_filter_profile="rl_ready_minimal",
+                max_results=6,
+                recommendation_mode="auto",
+                include_combos=False,
+                request_text="Big presentation day at work!",
+            )
+
+        kwargs = mock_rank.call_args.kwargs
+        self.assertEqual(8, len(kwargs["rows"]))
+        self.assertEqual("high_stakes_work", kwargs["intent_policy_id"])
+        self.assertFalse(out["meta"]["intent_policy_hard_filter_applied"])
+        self.assertTrue(out["meta"]["intent_policy_hard_filter_relaxed"])
 
 
 if __name__ == "__main__":

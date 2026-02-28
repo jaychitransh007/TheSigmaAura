@@ -84,6 +84,7 @@ class ConversationOrchestrator:
         strictness: str,
         hard_filter_profile: str,
         max_results: int,
+        result_filter: str = "complete_plus_combos",
         stage_callback: Optional[Callable[[str, str], None]] = None,
     ) -> Dict[str, Any]:
         def emit(stage: str, detail: str = "") -> None:
@@ -231,6 +232,7 @@ class ConversationOrchestrator:
             hard_filter_profile=hard_filter_profile,
             max_results=max_results,
             recommendation_mode="auto",
+            include_combos=(result_filter != "complete_only"),
             request_text=message,
         )
         emit("tier1_tier2_recommendation", "completed")
@@ -260,6 +262,7 @@ class ConversationOrchestrator:
                 "strictness": strictness,
                 "hard_filter_profile": hard_filter_profile,
                 "max_results": max_results,
+                "result_filter": result_filter,
             },
             output_json={"meta": meta},
         )

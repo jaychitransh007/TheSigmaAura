@@ -269,6 +269,66 @@ class ConversationOrchestratorTests(unittest.TestCase):
         repo.finalize_turn.assert_called_once()
         repo.update_conversation_context.assert_called_once()
 
+    def test_process_turn_complete_only_disables_combos(self) -> None:
+        repo = Mock()
+        repo.get_or_create_user.return_value = {"id": "user_uuid"}
+        repo.get_conversation.return_value = {"id": "c1", "user_id": "user_uuid", "session_context_json": {}}
+        repo.get_latest_profile_snapshot.return_value = None
+        repo.create_turn.return_value = {"id": "t1"}
+        repo.create_profile_snapshot.return_value = {"id": "ps1"}
+        repo.create_context_snapshot.return_value = {"id": "cs1"}
+        repo.create_recommendation_run.return_value = {"id": "run1"}
+
+        orchestrator = ConversationOrchestrator(repo=repo, catalog_csv_path="data/output/enriched.csv")
+        visual = self._build_visual_profile()
+        visual_log = {
+            "image_artifact": {
+                "source_type": "file",
+                "source": "/tmp/user.jpg",
+                "stored_path": "/tmp/user.jpg",
+            },
+            "model": "gpt-5.2",
+            "request": {"x": 1},
+            "response": {"y": 2},
+            "reasoning_notes": ["note"],
+        }
+        text_log = {"model": "gpt-5-mini", "request": {"a": 1}, "response": {"b": 2}}
+        orchestrator.profile_agent = Mock(infer_visual=Mock(return_value=(visual, visual_log)))
+        orchestrator.intent_agent = Mock(
+            infer_text=Mock(return_value=({"occasion": "work_mode", "archetype": "classic"}, text_log))
+        )
+        orchestrator.recommendation_agent = Mock(
+            recommend=Mock(
+                return_value={
+                    "items": [],
+                    "meta": {
+                        "total_catalog_rows": 20,
+                        "filtered_rows": 5,
+                        "failed_rows": 15,
+                        "ranked_rows": 5,
+                        "returned_rows": 0,
+                    },
+                }
+            )
+        )
+        orchestrator.stylist_agent = Mock(
+            build_response_message=Mock(return_value=("assistant message", False, ""))
+        )
+
+        orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user_1",
+            message="Big presentation day at work!",
+            image_refs=["/tmp/user.jpg"],
+            strictness="balanced",
+            hard_filter_profile="rl_ready_minimal",
+            max_results=8,
+            result_filter="complete_only",
+        )
+
+        kwargs = orchestrator.recommendation_agent.recommend.call_args.kwargs
+        self.assertFalse(kwargs["include_combos"])
+
     def test_get_recommendation_run_parses_combo_metadata(self) -> None:
         repo = Mock()
         repo.get_recommendation_run.return_value = {

@@ -3,7 +3,10 @@
 Last updated: February 28, 2026
 
 Context sync note:
-- Service blueprint remains valid; latest implementation changes are in catalog enrichment resilience (checkpoint/resume under org limits).
+- Service blueprint remains valid with these additions:
+  - intent-policy staging in recommendation flow for high-stakes work prompts
+  - result filter contract (`complete_only` vs `complete_plus_combos`) in turn requests
+  - offline conversation eval pipeline with rubric scoring + artifact integrity checks
 
 ## Scope
 Blueprint for the conversation-agentic styling service that:
@@ -54,7 +57,8 @@ Blueprint for the conversation-agentic styling service that:
   "image_refs": ["/absolute/path/user.jpg"],
   "strictness": "balanced",
   "hard_filter_profile": "rl_ready_minimal",
-  "max_results": 12
+  "max_results": 12,
+  "result_filter": "complete_plus_combos"
 }
 ```
 - Response:
@@ -180,6 +184,7 @@ Migrations:
 - Strict enums:
   - `strictness`: `safe|balanced|bold`
   - `hard_filter_profile`: `rl_ready_minimal|legacy`
+  - `result_filter`: `complete_only|complete_plus_combos`
   - `event_type`: `dislike|like|share|buy|skip|no_action`
   - resolved context: canonical `occasion/archetype/gender/age` values
 
@@ -196,11 +201,60 @@ Migrations:
 Recommendation mode:
 - Auto mode resolves to garment-only when message explicitly asks a garment category/subtype.
 - Otherwise it resolves to outfit mode where complete singles and combo outfits compete.
+- Result filtering:
+  - `complete_only` disables combos and enforces stricter complete-single integrity.
+  - `complete_plus_combos` keeps complete singles + combos.
+
+Intent policy overlay:
+- Configured at `modules/style_engine/configs/config/intent_policy_v1.json`.
+- Current high-stakes path uses stage-based enforcement:
+  1. `strict`
+  2. `style_relaxed`
+  3. `formality_relaxed`
+  4. `smart_casual_limited`
+- Tool traces expose policy metadata:
+  - `intent_policy_id`
+  - `intent_policy_keyword_hits`
+  - `intent_policy_hard_filter_applied`
+  - `intent_policy_hard_filter_relaxed`
+  - `intent_policy_relaxation_stage`
+  - `intent_policy_smart_casual_trimmed`
 
 Clarification branch:
 - If required context is incomplete (for example missing visual profile, or missing context fields),
   the turn returns `needs_clarification=true` with `clarifying_question` and no recommendation run.
 - The UI shows this as a follow-up prompt so user can continue iterating in the same conversation.
+
+## Eval Contract (Offline QA)
+Runner:
+- `ops/scripts/run_conversation_eval.py`
+
+Inputs:
+- prompt suite JSON (`ops/evals/conversation_prompt_suite_diverse_v1.json`)
+- rubric JSON (`ops/evals/conversation_eval_rubric_v1.json`)
+- runtime settings (`strictness`, `hard_filter_profile`, `max_results`, `result_filter`, optional `image_ref`)
+
+Per-case verification:
+- calls `POST /v1/conversations`
+- calls `POST /v1/conversations/{conversation_id}/turns`
+- validates retrievability via `GET /v1/recommendations/{run_id}`
+
+Per-run artifacts:
+- `data/logs/evals/<run_id>/run_manifest.json`
+- `data/logs/evals/<run_id>/case_inputs.jsonl`
+- `data/logs/evals/<run_id>/case_outputs.jsonl`
+- `data/logs/evals/<run_id>/case_scores.jsonl`
+- `data/logs/evals/<run_id>/case_scores.csv`
+- `data/logs/evals/<run_id>/summary.json`
+- `data/logs/evals/<run_id>/summary.md`
+- `data/logs/evals/<run_id>/artifact_integrity.json`
+
+Quality status model:
+- `pass`
+- `warning`
+- `fail`
+- `fail_integrity`
+- `error`
 
 ## Action Plan (Implementation State)
 - [x] Service schema and table migration
@@ -213,3 +267,4 @@ Clarification branch:
 - [x] Full local test run
 - [x] Outfit assembly mode integration (auto/outfit/garment)
 - [x] Recommendation metadata contract for combo outfits
+- [x] Conversation eval framework (suite/rubric/runner/integrity report)

@@ -5,6 +5,7 @@ Last updated: February 28, 2026
 Context sync note:
 - Latest changes were in conversation feedback telemetry/UI; profiler schema and model routing remain unchanged.
 - Latest catalog update adds auto-chunk checkpoint/resume in enrichment; profiler behavior remains unchanged.
+- Conversation eval runs can reuse profiler image artifacts (`data/logs/user_profiler/input_*.{ext}`) as fixed `--image-ref` inputs.
 
 ## Purpose
 Infer user-side styling context from:
@@ -79,3 +80,9 @@ python3 run_user_profiler.py \
 - Combined output logs per-call request/response payloads and visual reasoning notes.
 - If unsure between enum values, prompts force deterministic tie-break to earliest enum value.
 - Errors are returned as one-line `error: ...` messages from CLI.
+
+## Role in Conversation Eval
+- Eval runner: `ops/scripts/run_conversation_eval.py`
+- Optional usage:
+  - pass `--image-ref data/logs/user_profiler/input_<id>.webp` so all prompts are evaluated with a stable visual profile context
+- This reduces clarification-only turns and improves comparability across eval runs.

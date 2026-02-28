@@ -21,6 +21,7 @@ from catalog_enrichment.config_registry import (
     load_body_harmony_attributes,
     load_garment_attributes,
     load_outfit_assembly_rules,
+    load_intent_policy_rules,
     load_reinforcement_framework,
     load_tier1_ranked_attributes,
     load_tier2_ranked_attributes,
@@ -125,6 +126,12 @@ class ConfigAndSchemaTests(unittest.TestCase):
         self.assertEqual(-5, rewards.get("dislike"))
         self.assertEqual(-1, rewards.get("no_action"))
         self.assertEqual(-1, rewards.get("skip"))
+
+    def test_intent_policy_config_exists_and_loads(self) -> None:
+        cfg = load_intent_policy_rules()
+        self.assertIn("policies", cfg)
+        self.assertIn("high_stakes_work", cfg.get("policies") or {})
+        self.assertTrue(Path("modules/style_engine/configs/config/intent_policy_v1.json").exists())
 
 
 if __name__ == "__main__":
