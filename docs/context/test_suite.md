@@ -1,6 +1,6 @@
 # Test Suite
 
-Last run: February 24, 2026
+Last run: February 28, 2026
 
 ## Scope
 - Config-driven contracts
@@ -46,6 +46,11 @@ python3 -m unittest discover -s tests -v
 - `test_normalize_image_url_adds_width`
 - `test_normalize_image_url_overrides_existing_width`
 - `test_build_request_body_uses_model_and_prompt_and_images`
+- `test_split_rows_for_max_batch_bytes_splits_into_multiple_chunks`
+- `test_split_rows_for_max_batch_bytes_raises_when_row_exceeds_limit`
+- `test_detect_enqueued_token_limit_error`
+- `test_extract_batch_error_message_from_failed_batch`
+- `test_detect_billing_hard_limit_error`
 
 ### Tier 1
 - `test_parse_relax_filters_valid`
@@ -120,10 +125,12 @@ python3 -m unittest discover -s tests -v
 - `test_root_contains_action_layout_and_reward_contract`
 
 ## Latest Run Report
-- Total tests: `76`
-- Passed: `76`
+- Targeted run: `tests/test_batch_builder.py`
+- Total tests: `8`
+- Passed: `8`
 - Failed: `0`
 - Result: `OK`
 
 ## Notes
 - During implementation, one Tier 1 test initially failed due fixture setup; it was corrected so the case isolates `occasion_archetype` relaxation without conflicting archetype-rule failures.
+- Full-suite run is currently blocked in this environment by disk exhaustion (`No usable temporary directory`).

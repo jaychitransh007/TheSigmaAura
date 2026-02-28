@@ -16,6 +16,13 @@ for p in (
 
 from catalog_enrichment.batch_builder import _normalize_image_url, build_request_body
 from catalog_enrichment.config import PipelineConfig
+from catalog_enrichment.main import (
+    _extract_batch_error_message,
+    _is_billing_hard_limit_error,
+    _is_enqueued_token_limit_error,
+    _request_line_bytes,
+    _split_rows_for_max_batch_bytes,
+)
 
 
 class BatchBuilderTests(unittest.TestCase):
@@ -46,6 +53,74 @@ class BatchBuilderTests(unittest.TestCase):
         image_urls = [item["image_url"] for item in content if item.get("type") == "input_image"]
         self.assertEqual(2, len(image_urls))
         self.assertTrue(all("width=768" in u for u in image_urls))
+
+    def test_split_rows_for_max_batch_bytes_splits_into_multiple_chunks(self) -> None:
+        rows = [
+            {
+                "description": "Item one",
+                "store": "Demo",
+                "url": "https://example.com/p/1",
+                "images__0__src": "https://cdn.shopify.com/1.jpg",
+                "images__1__src": "https://cdn.shopify.com/2.jpg",
+            },
+            {
+                "description": "Item two",
+                "store": "Demo",
+                "url": "https://example.com/p/2",
+                "images__0__src": "https://cdn.shopify.com/3.jpg",
+                "images__1__src": "https://cdn.shopify.com/4.jpg",
+            },
+        ]
+        config = PipelineConfig()
+        first_line_bytes = _request_line_bytes(rows[0], 0, config)
+        chunks = _split_rows_for_max_batch_bytes(rows, config, max_batch_bytes=first_line_bytes + 8)
+        self.assertEqual(2, len(chunks))
+        self.assertEqual(1, len(chunks[0]))
+        self.assertEqual(1, len(chunks[1]))
+
+    def test_split_rows_for_max_batch_bytes_raises_when_row_exceeds_limit(self) -> None:
+        rows = [
+            {
+                "description": "Item one",
+                "store": "Demo",
+                "url": "https://example.com/p/1",
+                "images__0__src": "https://cdn.shopify.com/1.jpg",
+                "images__1__src": "https://cdn.shopify.com/2.jpg",
+            }
+        ]
+        config = PipelineConfig()
+        first_line_bytes = _request_line_bytes(rows[0], 0, config)
+        with self.assertRaises(RuntimeError):
+            _split_rows_for_max_batch_bytes(rows, config, max_batch_bytes=first_line_bytes - 1)
+
+    def test_detect_enqueued_token_limit_error(self) -> None:
+        message = (
+            "Enqueued token limit reached for gpt-5-mini in organization org_x. "
+            "Limit: 5,000,000 enqueued tokens."
+        )
+        self.assertTrue(_is_enqueued_token_limit_error(message))
+        self.assertFalse(_is_enqueued_token_limit_error("random network timeout"))
+
+    def test_detect_billing_hard_limit_error(self) -> None:
+        message = "Error code: 400 - {'error': {'code': 'billing_hard_limit_reached'}}"
+        self.assertTrue(_is_billing_hard_limit_error(message))
+        self.assertFalse(_is_billing_hard_limit_error("random network timeout"))
+
+    def test_extract_batch_error_message_from_failed_batch(self) -> None:
+        batch_data = {
+            "status": "failed",
+            "errors": {
+                "data": [
+                    {
+                        "code": "token_limit",
+                        "message": "Enqueued token limit reached for gpt-5-mini.",
+                    }
+                ]
+            },
+        }
+        msg = _extract_batch_error_message(batch_data)
+        self.assertIn("token_limit", msg)
+        self.assertIn("Enqueued token limit reached", msg)
 
 
 if __name__ == "__main__":

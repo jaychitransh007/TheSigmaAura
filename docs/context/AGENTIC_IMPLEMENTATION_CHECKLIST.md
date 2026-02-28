@@ -1,6 +1,6 @@
 # Agentic Implementation Checklist
 
-Last updated: February 24, 2026
+Last updated: February 28, 2026
 
 ## Status Legend
 - `[ ]` pending
@@ -25,6 +25,8 @@ Last updated: February 24, 2026
 - [x] Add recommendation card actions (`Dislike`, `Like`, `Share`, `Buy Now`) wired to feedback logging.
 - [x] Expand feedback event enum/reward mapping (`dislike`, `like`, `share`, `buy`, `no_action`, `skip`).
 - [x] Patch local Supabase feedback constraint for existing projects.
+- [x] Implement catalog enrichment auto-chunk orchestration.
+- [x] Add checkpoint/resume behavior for org-level limits (`enqueued token`, `billing_hard_limit_reached`).
 
 ## Outfit Assembly Action Plan + Status
 - [x] Define outfit-candidate generation strategy in context docs and runbook.
@@ -44,5 +46,6 @@ Last updated: February 24, 2026
 
 ## Validation Notes
 - Test command: `python3 -m unittest discover -s tests -p 'test_*.py' -v`
-- Current result: `76 passed, 0 failed` (includes outfit assembly mode tests, conversation platform UI, async stage status, clarification branch, feedback API, orchestrator/repository tests, and UI/reward contract checks)
+- Latest targeted result: `8 passed, 0 failed` for `tests/test_batch_builder.py` (includes new billing/token-limit detection checks).
+- Full-suite note: local disk exhaustion currently breaks tempfile-based tests in this environment.
 - API runner validation: `python3 run_conversation_platform.py --help`

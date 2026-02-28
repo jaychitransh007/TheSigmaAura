@@ -1,6 +1,9 @@
 # Conversation Service Blueprint (Local Supabase)
 
-Last updated: February 24, 2026
+Last updated: February 28, 2026
+
+Context sync note:
+- Service blueprint remains valid; latest implementation changes are in catalog enrichment resilience (checkpoint/resume under org limits).
 
 ## Scope
 Blueprint for the conversation-agentic styling service that:

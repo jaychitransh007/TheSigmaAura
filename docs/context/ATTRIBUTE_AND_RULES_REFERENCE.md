@@ -1,6 +1,10 @@
 # Attribute and Rules Reference
 
-Last updated: February 24, 2026
+Last updated: February 28, 2026
+
+## Context Sync Note
+- Catalog enrichment now supports auto-chunk checkpoint/resume for org-level limits.
+- Checkpoint artifacts: `data/output/auto_chunk_checkpoint.json`, `data/output/partial_enriched.csv`, `data/output/pending_chunks/pending_chunk_*.csv`.
 
 ## Runtime Attribute Sources
 - Garment attributes:

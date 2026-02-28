@@ -1,6 +1,9 @@
 # Conversation Agent Platform
 
-Last updated: February 24, 2026
+Last updated: February 28, 2026
+
+Context sync note:
+- Conversation module unchanged by latest work; update is in catalog enrichment auto-chunk resume/checkpoint behavior.
 
 ## Goal
 Build a conversation-first styling platform where users upload an image, express needs in natural language, iterate across turns, and receive ranked fashion recommendations.

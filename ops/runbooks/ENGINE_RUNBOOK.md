@@ -33,11 +33,26 @@ python3 run_catalog_enrichment.py \
   --out-dir data/output
 ```
 
+Large catalog auto-chunk run:
+```bash
+python3 run_catalog_enrichment.py \
+  --input new_catalog.csv \
+  --output data/output/enriched_v2.csv \
+  --mode all \
+  --out-dir data/output \
+  --auto-chunk \
+  --max-batch-bytes 180000000 \
+  --num-products all
+```
+
 Notes:
 - Model: `gpt-5-mini`
 - Batch endpoint: `/v1/responses`
 - Image normalization: `width=768`
 - Automatic schema audit runs before prepare/run_batch/all unless skipped.
+- `--auto-chunk` splits by request JSONL bytes, runs chunk batches sequentially, and writes merged output.
+- If a chunk fails with organization enqueued-token-limit, auto-chunk now re-splits that chunk and retries automatically.
+- Chunk artifacts are written under `data/output/chunk_runs/` with summary `data/output/chunk_manifest.json`.
 
 ## 2) Tier 1 Filter
 Strict:

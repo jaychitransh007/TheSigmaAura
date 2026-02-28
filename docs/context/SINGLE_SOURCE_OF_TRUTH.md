@@ -1,6 +1,6 @@
 # Single Source of Truth (Code-Accurate)
 
-Last reconciled: February 24, 2026
+Last reconciled: February 28, 2026
 
 This is the only authoritative context document for this project.
 
@@ -254,6 +254,14 @@ Source of truth: `modules/catalog_enrichment/src/catalog_enrichment/batch_builde
   - `--mode prepare`
   - `--out-dir data/output`
   - `--num-products 5` (safety limit), `all` supported
+- Large-catalog automation:
+  - `--auto-chunk` performs full chunked orchestration for `--mode all`
+  - `--max-batch-bytes` controls per-chunk JSONL cap (default `180000000`)
+  - chunk outputs/metadata are written under `<out-dir>/chunk_runs/` plus `<out-dir>/chunk_manifest.json`
+  - when org limits occur (`enqueued token` or `billing_hard_limit_reached`), pipeline checkpoints progress and can resume from:
+    - `<out-dir>/auto_chunk_checkpoint.json`
+    - `<out-dir>/partial_enriched.csv`
+    - `<out-dir>/pending_chunks/pending_chunk_*.csv`
 - No default input catalog is injected by `run_catalog_enrichment.py`; pass `--input` explicitly.
 
 ## 11) Example Commands
@@ -261,6 +269,7 @@ Source of truth: `modules/catalog_enrichment/src/catalog_enrichment/batch_builde
 python3 ops/scripts/schema_audit.py --out data/output/schema_audit.json
 python3 ops/scripts/schema_audit.py --out data/output/schema_audit.json --strict
 python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/output/enriched.csv --mode all --out-dir data/output
+python3 run_catalog_enrichment.py --input new_catalog.csv --output data/output/enriched_v2.csv --mode all --out-dir data/output --auto-chunk --max-batch-bytes 180000000 --num-products all
 python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/output/enriched.csv --mode run_batch --out-dir data/output
 python3 run_catalog_enrichment.py --input modules/catalog_enrichment/stores/processed_sample_catalog.csv --output data/output/enriched.csv --mode merge --out-dir data/output --batch-output-jsonl data/output/batch_output.jsonl
 python3 ops/scripts/rank_outfits.py --input data/output/filtered_outfits.csv --profile data/output/sample_user_profile_tier2.json --recommendation-mode auto --request-text "Need complete office looks" --output data/output/ranked_outfits.csv --explain data/output/ranked_outfits_explainability.json

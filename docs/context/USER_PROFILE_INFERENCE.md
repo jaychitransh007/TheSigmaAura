@@ -1,9 +1,10 @@
 # User Profile Inference
 
-Last updated: February 24, 2026
+Last updated: February 28, 2026
 
 Context sync note:
 - Latest changes were in conversation feedback telemetry/UI; profiler schema and model routing remain unchanged.
+- Latest catalog update adds auto-chunk checkpoint/resume in enrichment; profiler behavior remains unchanged.
 
 ## Purpose
 Infer user-side styling context from:

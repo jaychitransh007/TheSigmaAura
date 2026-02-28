@@ -1,6 +1,9 @@
 # Tier 2 Ranking Specification
 
-Last updated: February 24, 2026
+Last updated: February 28, 2026
+
+Context sync note:
+- Latest catalog update adds auto-chunk checkpoint/resume in enrichment; Tier 2 scoring/ranking behavior is unchanged.
 
 ## Purpose
 Tier 2 ranks Tier-1-passed garments using body harmony and style preference signals.
