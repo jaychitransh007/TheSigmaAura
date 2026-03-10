@@ -13,6 +13,7 @@ for p in (
     ROOT / "modules" / "style_engine" / "src",
     ROOT / "modules" / "user_profiler" / "src",
     ROOT / "modules" / "conversation_platform" / "src",
+    ROOT / "modules" / "onboarding" / "src",
 ):
     sp = str(p)
     if sp not in sys.path:

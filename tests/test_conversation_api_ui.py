@@ -11,6 +11,7 @@ for p in (
     ROOT / "modules" / "style_engine" / "src",
     ROOT / "modules" / "user_profiler" / "src",
     ROOT / "modules" / "conversation_platform" / "src",
+    ROOT / "modules" / "onboarding" / "src",
 ):
     sp = str(p)
     if sp not in sys.path:
@@ -27,7 +28,8 @@ class ConversationApiUiTests(unittest.TestCase):
         with patch("conversation_platform.api.load_config") as load_cfg, \
             patch("conversation_platform.api.SupabaseRestClient") as sb_client, \
             patch("conversation_platform.api.ConversationRepository") as repo_cls, \
-            patch("conversation_platform.api.ConversationOrchestrator") as orch_cls:
+            patch("conversation_platform.api.ConversationOrchestrator") as orch_cls, \
+            patch("conversation_platform.api.UserAnalysisService") as analysis_cls:
             load_cfg.return_value = Mock(
                 supabase_rest_url="http://127.0.0.1:55321/rest/v1",
                 supabase_service_role_key="x",
@@ -37,6 +39,7 @@ class ConversationApiUiTests(unittest.TestCase):
             sb_client.return_value = Mock()
             repo_cls.return_value = Mock()
             orch_cls.return_value = Mock()
+            analysis_cls.return_value = Mock()
 
             app = create_app()
             client = TestClient(app)
@@ -44,24 +47,17 @@ class ConversationApiUiTests(unittest.TestCase):
             self.assertEqual(200, resp.status_code)
             self.assertIn("text/html", resp.headers.get("content-type", ""))
             self.assertIn("no-store", resp.headers.get("cache-control", ""))
-            self.assertIn("Conversation Stylist", resp.text)
-            self.assertIn("Result Mix", resp.text)
-            self.assertIn("complete_only", resp.text)
-            self.assertIn("complete_plus_combos", resp.text)
-            self.assertIn("Buy Now", resp.text)
-            self.assertIn("Dislike", resp.text)
-            self.assertIn("Like", resp.text)
-            self.assertIn("Share", resp.text)
-            self.assertIn("buy-row", resp.text)
-            self.assertIn("feedback-row", resp.text)
-            self.assertIn("UI build: actions-v2", resp.text)
-            self.assertIn("No Action: -1", resp.text)
+            self.assertIn("Onboard before you enter the conversation studio.", resp.text)
+            self.assertIn("123456", resp.text)
+            self.assertIn("2:3 frame", resp.text)
+            self.assertIn("Mobile Number", resp.text)
 
-    def test_root_contains_action_layout_and_reward_contract(self) -> None:
+    def test_root_with_completed_user_contains_action_layout_and_reward_contract(self) -> None:
         with patch("conversation_platform.api.load_config") as load_cfg, \
             patch("conversation_platform.api.SupabaseRestClient") as sb_client, \
             patch("conversation_platform.api.ConversationRepository") as repo_cls, \
-            patch("conversation_platform.api.ConversationOrchestrator") as orch_cls:
+            patch("conversation_platform.api.ConversationOrchestrator") as orch_cls, \
+            patch("conversation_platform.api.UserAnalysisService") as analysis_cls:
             load_cfg.return_value = Mock(
                 supabase_rest_url="http://127.0.0.1:55321/rest/v1",
                 supabase_service_role_key="x",
@@ -71,13 +67,37 @@ class ConversationApiUiTests(unittest.TestCase):
             sb_client.return_value = Mock()
             repo_cls.return_value = Mock()
             orch_cls.return_value = Mock()
+            onboarding_profile = {
+                "user_id": "user_ready",
+                "mobile": "+919999999999",
+                "profile_complete": True,
+                "onboarding_complete": True,
+            }
+            sb_client.return_value.select_one.return_value = onboarding_profile
+            sb_client.return_value.select_many.return_value = [
+                {"category": "full_body"},
+                {"category": "headshot"},
+                {"category": "veins"},
+            ]
+            analysis_service = Mock()
+            analysis_service.get_analysis_status.return_value = {
+                "user_id": "user_ready",
+                "status": "completed",
+                "analysis_run_id": "run_1",
+                "error_message": "",
+                "agent_outputs": {},
+                "attributes": {},
+                "grouped_attributes": {},
+            }
+            analysis_cls.return_value = analysis_service
 
             app = create_app()
             client = TestClient(app)
-            resp = client.get("/")
+            resp = client.get("/?user=user_ready")
             self.assertEqual(200, resp.status_code)
 
             html = resp.text
+            self.assertIn("Conversation Stylist", html)
             self.assertIn("buy-row", html)
             self.assertIn("feedback-row", html)
             self.assertIn("Buy Now: +20", html)
@@ -97,12 +117,14 @@ class ConversationApiUiTests(unittest.TestCase):
                 html.find("feedbackRow.appendChild(likeBtn);"),
                 html.find("feedbackRow.appendChild(shareBtn);"),
             )
+            self.assertIn('value="user_ready"', html)
 
-    def test_favicon_route_exists(self) -> None:
+    def test_root_with_pending_analysis_shows_processing_screen(self) -> None:
         with patch("conversation_platform.api.load_config") as load_cfg, \
             patch("conversation_platform.api.SupabaseRestClient") as sb_client, \
             patch("conversation_platform.api.ConversationRepository") as repo_cls, \
-            patch("conversation_platform.api.ConversationOrchestrator") as orch_cls:
+            patch("conversation_platform.api.ConversationOrchestrator") as orch_cls, \
+            patch("conversation_platform.api.UserAnalysisService") as analysis_cls:
             load_cfg.return_value = Mock(
                 supabase_rest_url="http://127.0.0.1:55321/rest/v1",
                 supabase_service_role_key="x",
@@ -112,11 +134,183 @@ class ConversationApiUiTests(unittest.TestCase):
             sb_client.return_value = Mock()
             repo_cls.return_value = Mock()
             orch_cls.return_value = Mock()
+            sb_client.return_value.select_one.return_value = {
+                "user_id": "user_processing",
+                "mobile": "+919999999999",
+                "profile_complete": True,
+                "onboarding_complete": True,
+            }
+            sb_client.return_value.select_many.return_value = [
+                {"category": "full_body"},
+                {"category": "headshot"},
+                {"category": "veins"},
+            ]
+            analysis_service = Mock()
+            analysis_service.get_analysis_status.return_value = {
+                "user_id": "user_processing",
+                "status": "running",
+                "analysis_run_id": "run_2",
+                "error_message": "",
+                "agent_outputs": {},
+                "attributes": {},
+                "grouped_attributes": {},
+            }
+            analysis_cls.return_value = analysis_service
+
+            app = create_app()
+            client = TestClient(app)
+            resp = client.get("/?user=user_processing")
+            self.assertEqual(200, resp.status_code)
+            self.assertIn("Profile processing in progress.", resp.text)
+            self.assertIn("Body type analysis", resp.text)
+            self.assertIn("Open Conversation Platform", resp.text)
+
+    def test_favicon_route_exists(self) -> None:
+        with patch("conversation_platform.api.load_config") as load_cfg, \
+            patch("conversation_platform.api.SupabaseRestClient") as sb_client, \
+            patch("conversation_platform.api.ConversationRepository") as repo_cls, \
+            patch("conversation_platform.api.ConversationOrchestrator") as orch_cls, \
+            patch("conversation_platform.api.UserAnalysisService") as analysis_cls:
+            load_cfg.return_value = Mock(
+                supabase_rest_url="http://127.0.0.1:55321/rest/v1",
+                supabase_service_role_key="x",
+                request_timeout_seconds=5,
+                catalog_csv_path="data/output/enriched.csv",
+            )
+            sb_client.return_value = Mock()
+            repo_cls.return_value = Mock()
+            orch_cls.return_value = Mock()
+            analysis_cls.return_value = Mock()
 
             app = create_app()
             client = TestClient(app)
             resp = client.get("/favicon.ico")
             self.assertEqual(204, resp.status_code)
+
+    def test_normalize_image_endpoint_returns_jpeg_payload(self) -> None:
+        with patch("conversation_platform.api.load_config") as load_cfg, \
+            patch("conversation_platform.api.SupabaseRestClient") as sb_client, \
+            patch("conversation_platform.api.ConversationRepository") as repo_cls, \
+            patch("conversation_platform.api.ConversationOrchestrator") as orch_cls, \
+            patch("conversation_platform.api.UserAnalysisService") as analysis_cls, \
+            patch("onboarding.service.subprocess.run") as run_mock:
+            load_cfg.return_value = Mock(
+                supabase_rest_url="http://127.0.0.1:55321/rest/v1",
+                supabase_service_role_key="x",
+                request_timeout_seconds=5,
+                catalog_csv_path="data/output/enriched.csv",
+            )
+            sb_client.return_value = Mock()
+            repo_cls.return_value = Mock()
+            orch_cls.return_value = Mock()
+            analysis_cls.return_value = Mock()
+
+            def fake_run(cmd, check, capture_output, text):
+                Path(cmd[-1]).write_bytes(b"jpeg-preview")
+                return Mock()
+
+            run_mock.side_effect = fake_run
+
+            app = create_app()
+            client = TestClient(app)
+            resp = client.post(
+                "/v1/onboarding/images/normalize",
+                files={"file": ("portrait.heic", b"heic-bytes", "image/heic")},
+            )
+            self.assertEqual(200, resp.status_code)
+            self.assertEqual("image/jpeg", resp.headers.get("content-type"))
+            self.assertEqual("portrait.jpg", resp.headers.get("x-normalized-filename"))
+            self.assertEqual(b"jpeg-preview", resp.content)
+
+    def test_analysis_status_endpoint_returns_payload(self) -> None:
+        with patch("conversation_platform.api.load_config") as load_cfg, \
+            patch("conversation_platform.api.SupabaseRestClient") as sb_client, \
+            patch("conversation_platform.api.ConversationRepository") as repo_cls, \
+            patch("conversation_platform.api.ConversationOrchestrator") as orch_cls, \
+            patch("conversation_platform.api.UserAnalysisService") as analysis_cls:
+            load_cfg.return_value = Mock(
+                supabase_rest_url="http://127.0.0.1:55321/rest/v1",
+                supabase_service_role_key="x",
+                request_timeout_seconds=5,
+                catalog_csv_path="data/output/enriched.csv",
+            )
+            sb_client.return_value = Mock()
+            repo_cls.return_value = Mock()
+            orch_cls.return_value = Mock()
+            analysis_service = Mock()
+            analysis_service.get_analysis_status.return_value = {
+                "user_id": "user_ana",
+                "analysis_run_id": "run_ana",
+                "status": "completed",
+                "error_message": "",
+                "agent_outputs": {"body_type_analysis": {"Waist": {"value": "Medium", "confidence": 0.8, "evidence_note": "Visible taper.", "source_agent": "body_type_analysis"}}},
+                "attributes": {"Waist": {"value": "Medium", "confidence": 0.8, "evidence_note": "Visible taper.", "source_agent": "body_type_analysis"}},
+                "grouped_attributes": {"body_type_analysis": {"Waist": {"value": "Medium", "confidence": 0.8, "evidence_note": "Visible taper.", "source_agent": "body_type_analysis"}}},
+            }
+            analysis_cls.return_value = analysis_service
+
+            app = create_app()
+            client = TestClient(app)
+            resp = client.get("/v1/onboarding/analysis/user_ana")
+            self.assertEqual(200, resp.status_code)
+            payload = resp.json()
+            self.assertEqual("completed", payload["status"])
+            self.assertEqual("Medium", payload["attributes"]["Waist"]["value"])
+
+    def test_analysis_rerun_endpoint_starts_new_run(self) -> None:
+        class InlineThread:
+            def __init__(self, target=None, daemon=None):
+                self._target = target
+
+            def start(self):
+                if self._target is not None:
+                    self._target()
+
+        with patch("conversation_platform.api.load_config") as load_cfg, \
+            patch("conversation_platform.api.SupabaseRestClient") as sb_client, \
+            patch("conversation_platform.api.ConversationRepository") as repo_cls, \
+            patch("conversation_platform.api.ConversationOrchestrator") as orch_cls, \
+            patch("conversation_platform.api.Thread", InlineThread), \
+            patch("conversation_platform.api.UserAnalysisService") as analysis_cls:
+            load_cfg.return_value = Mock(
+                supabase_rest_url="http://127.0.0.1:55321/rest/v1",
+                supabase_service_role_key="x",
+                request_timeout_seconds=5,
+                catalog_csv_path="data/output/enriched.csv",
+            )
+            sb_client.return_value = Mock()
+            repo_cls.return_value = Mock()
+            orch_cls.return_value = Mock()
+            sb_client.return_value.select_one.return_value = {
+                "user_id": "user_rerun",
+                "mobile": "+919999999999",
+                "profile_complete": True,
+                "onboarding_complete": True,
+            }
+            sb_client.return_value.select_many.return_value = [
+                {"category": "full_body"},
+                {"category": "headshot"},
+                {"category": "veins"},
+            ]
+            analysis_service = Mock()
+            analysis_service.force_analysis_restart.return_value = {
+                "id": "run_rerun",
+                "status": "pending",
+            }
+            analysis_service.run_analysis.return_value = {
+                "user_id": "user_rerun",
+                "status": "completed",
+            }
+            analysis_cls.return_value = analysis_service
+
+            app = create_app()
+            client = TestClient(app)
+            resp = client.post("/v1/onboarding/analysis/rerun", json={"user_id": "user_rerun"})
+            self.assertEqual(200, resp.status_code)
+            payload = resp.json()
+            self.assertEqual("run_rerun", payload["analysis_run_id"])
+            self.assertEqual("Analysis re-run started", payload["message"])
+            analysis_service.force_analysis_restart.assert_called_once_with("user_rerun")
 
     def test_turn_job_start_and_status(self) -> None:
         class InlineThread:

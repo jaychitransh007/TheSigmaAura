@@ -6,6 +6,12 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
 
+from onboarding.api import create_onboarding_router
+from onboarding.analysis import UserAnalysisService
+from onboarding.repository import OnboardingRepository
+from onboarding.service import OnboardingService
+from onboarding.ui import get_onboarding_html, get_processing_html
+
 from .config import load_config
 from .orchestrator import ConversationOrchestrator
 from .repositories import ConversationRepository
@@ -63,9 +69,45 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Sigma Aura Conversation Platform", version="1.0.0")
 
+    onboarding_repo = OnboardingRepository(client)
+    onboarding_service = OnboardingService(repo=onboarding_repo)
+    analysis_service = UserAnalysisService(repo=onboarding_repo)
+    app.include_router(create_onboarding_router(onboarding_service, analysis_service))
+
+    @app.get("/onboard", response_class=HTMLResponse, include_in_schema=False)
+    def onboard() -> HTMLResponse:
+        html = get_onboarding_html()
+        return HTMLResponse(
+            content=html,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
+
+    @app.get("/onboard/processing", response_class=HTMLResponse, include_in_schema=False)
+    def onboard_processing(user: str = "") -> HTMLResponse:
+        html = get_processing_html(user_id=user)
+        return HTMLResponse(
+            content=html,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
+
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def home() -> HTMLResponse:
-        html = get_web_ui_html()
+    def home(user: str = "") -> HTMLResponse:
+        status = onboarding_service.get_status(user) if user else {"onboarding_complete": False}
+        analysis_status = analysis_service.get_analysis_status(user) if user else {"status": "not_started"}
+        if not status.get("onboarding_complete"):
+            html = get_onboarding_html()
+        elif analysis_status.get("status") != "completed":
+            html = get_processing_html(user_id=user)
+        else:
+            html = get_web_ui_html(user_id=user)
         return HTMLResponse(
             content=html,
             headers={

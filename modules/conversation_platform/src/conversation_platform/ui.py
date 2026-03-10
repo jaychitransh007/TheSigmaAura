@@ -1,5 +1,8 @@
-def get_web_ui_html() -> str:
-    return """<!doctype html>
+from html import escape
+
+
+def get_web_ui_html(user_id: str = "") -> str:
+    html = """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -262,7 +265,7 @@ def get_web_ui_html() -> str:
       <h1>Conversation Stylist</h1>
       <div class="field">
         <label>User ID</label>
-        <input id="userId" value="user_123" />
+        <input id="userId" value="__USER_ID__" />
       </div>
       <div class="field">
         <label>Conversation ID</label>
@@ -644,3 +647,4 @@ def get_web_ui_html() -> str:
 </body>
 </html>
 """
+    return html.replace("__USER_ID__", escape(user_id or "", quote=True))
