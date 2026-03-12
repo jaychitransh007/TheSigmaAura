@@ -14,8 +14,11 @@ def _discover_repo_root() -> Path:
 ROOT = _discover_repo_root()
 for p in (
     ROOT,
+    ROOT / "modules" / "user" / "src",
+    ROOT / "modules" / "agentic_application" / "src",
+    ROOT / "modules" / "catalog" / "src",
     ROOT / "modules" / "catalog_enrichment" / "src",
-    ROOT / "modules" / "style_engine" / "src",
+    ROOT / "modules" / "catalog_retrieval" / "src",
     ROOT / "modules" / "user_profiler" / "src",
     ROOT / "modules" / "conversation_platform" / "src",
     ROOT / "modules" / "onboarding" / "src",

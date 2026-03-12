@@ -16,6 +16,17 @@ class PipelineConfig:
 
 
 def _load_dotenv(dotenv_path: str = ".env") -> None:
+    env_file = os.getenv("ENV_FILE", "").strip()
+    app_env = os.getenv("APP_ENV", "").strip().lower()
+    if dotenv_path == ".env":
+        if env_file:
+            dotenv_path = env_file
+        elif app_env == "staging":
+            dotenv_path = ".env.staging"
+        elif app_env == "local" or os.path.exists(".env.local"):
+            dotenv_path = ".env.local"
+        else:
+            raise RuntimeError("Set APP_ENV=local or APP_ENV=staging, or provide ENV_FILE explicitly.")
     if not os.path.exists(dotenv_path):
         return
 
@@ -31,7 +42,7 @@ def _load_dotenv(dotenv_path: str = ".env") -> None:
             key, value = line.split("=", 1)
             key = key.strip()
             value = value.strip().strip('"').strip("'")
-            if key and key not in os.environ:
+            if key:
                 os.environ[key] = value
 
 

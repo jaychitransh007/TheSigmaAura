@@ -7,13 +7,32 @@ class ConversationPlatformConfig:
     supabase_rest_url: str
     supabase_service_role_key: str
     catalog_csv_path: str = "data/catalog/enriched_catalog.csv"
-    default_strictness: str = "balanced"
-    default_hard_filter_profile: str = "rl_ready_minimal"
-    default_max_results: int = 12
+    retrieval_match_count: int = 12
     request_timeout_seconds: int = 30
 
 
-def _load_dotenv(dotenv_path: str = ".env") -> None:
+def _resolve_env_file(explicit_path: str | None = None) -> str:
+    if explicit_path:
+        return explicit_path
+    env_file = os.getenv("ENV_FILE", "").strip()
+    if env_file:
+        return env_file
+    app_env = os.getenv("APP_ENV", "").strip().lower()
+    if app_env == "staging":
+        if not os.path.exists(".env.staging"):
+            raise RuntimeError("APP_ENV=staging requires .env.staging to exist.")
+        return ".env.staging"
+    if app_env == "local":
+        if not os.path.exists(".env.local"):
+            raise RuntimeError("APP_ENV=local requires .env.local to exist.")
+        return ".env.local"
+    if os.path.exists(".env.local"):
+        return ".env.local"
+    raise RuntimeError("Set APP_ENV=local or APP_ENV=staging, or provide ENV_FILE explicitly.")
+
+
+def _load_dotenv(dotenv_path: str | None = None) -> None:
+    dotenv_path = _resolve_env_file(dotenv_path)
     if not os.path.exists(dotenv_path):
         return
 
@@ -29,7 +48,7 @@ def _load_dotenv(dotenv_path: str = ".env") -> None:
             key, value = line.split("=", 1)
             key = key.strip()
             value = value.strip().strip('"').strip("'")
-            if key and key not in os.environ:
+            if key:
                 os.environ[key] = value
 
 

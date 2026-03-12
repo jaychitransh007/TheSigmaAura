@@ -7,7 +7,7 @@ def get_web_ui_html(user_id: str = "") -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sigma Aura Conversation Stylist</title>
+  <title>Sigma Aura Conversation Platform</title>
   <style>
     :root {
       --bg: #f4efe8;
@@ -16,7 +16,6 @@ def get_web_ui_html(user_id: str = "") -> str:
       --muted: #6a6f76;
       --line: #dad3cb;
       --accent: #1f6f5f;
-      --accent-2: #c97a2b;
     }
     body {
       margin: 0;
@@ -25,10 +24,10 @@ def get_web_ui_html(user_id: str = "") -> str:
       background: radial-gradient(circle at 15% 10%, #f7e9d7 0%, var(--bg) 45%, #f1ece5 100%);
     }
     .wrap {
-      max-width: 1100px;
+      max-width: 1120px;
       margin: 24px auto;
       display: grid;
-      grid-template-columns: 320px 1fr;
+      grid-template-columns: 300px 1fr;
       gap: 16px;
       padding: 0 16px;
     }
@@ -38,23 +37,11 @@ def get_web_ui_html(user_id: str = "") -> str:
       border-radius: 14px;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
     }
-    .controls {
-      padding: 14px;
-    }
-    .controls h1 {
-      margin: 0 0 12px 0;
-      font-size: 18px;
-    }
-    .field {
-      margin-bottom: 10px;
-    }
-    .field label {
-      display: block;
-      font-size: 12px;
-      color: var(--muted);
-      margin-bottom: 4px;
-    }
-    .field input, .field select, .field textarea {
+    .controls, .composer, .feed { padding: 14px; }
+    .chat { display: grid; grid-template-rows: 1fr auto; min-height: 78vh; }
+    .field { margin-bottom: 10px; }
+    .field label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+    .field input, .field textarea {
       width: 100%;
       box-sizing: border-box;
       border: 1px solid var(--line);
@@ -63,52 +50,7 @@ def get_web_ui_html(user_id: str = "") -> str:
       background: #fff;
       font-size: 14px;
     }
-    .row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-    .chat {
-      display: grid;
-      grid-template-rows: 1fr auto;
-      min-height: 78vh;
-    }
-    .feed {
-      padding: 14px;
-      overflow: auto;
-    }
-    .bubble {
-      padding: 10px 12px;
-      border-radius: 12px;
-      margin: 0 0 10px 0;
-      max-width: 82%;
-      border: 1px solid var(--line);
-      line-height: 1.35;
-      white-space: pre-wrap;
-    }
-    .user {
-      margin-left: auto;
-      background: #ebf4f2;
-      border-color: #b7d5ce;
-    }
-    .assistant {
-      background: #fff8ef;
-      border-color: #eadcc8;
-    }
-    .meta {
-      font-size: 12px;
-      color: var(--muted);
-      margin-bottom: 8px;
-    }
-    .composer {
-      border-top: 1px solid var(--line);
-      padding: 12px;
-    }
-    .btns {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
+    .btns { display:flex; gap:8px; flex-wrap:wrap; }
     button {
       border: 1px solid transparent;
       border-radius: 10px;
@@ -118,105 +60,42 @@ def get_web_ui_html(user_id: str = "") -> str:
       background: var(--accent);
       color: #fff;
     }
-    button.secondary {
-      background: #fff;
-      color: var(--ink);
-      border-color: var(--line);
+    button.secondary { background:#fff; color:var(--ink); border-color:var(--line); }
+    .feed { overflow:auto; }
+    .bubble {
+      padding: 10px 12px;
+      border-radius: 12px;
+      margin: 0 0 10px 0;
+      max-width: 84%;
+      border: 1px solid var(--line);
+      line-height: 1.4;
+      white-space: pre-wrap;
     }
+    .user { margin-left:auto; background:#ebf4f2; border-color:#b7d5ce; }
+    .assistant { background:#fff8ef; border-color:#eadcc8; }
+    .meta { font-size:12px; color:var(--muted); margin-bottom:8px; }
     .cards {
       margin-top: 8px;
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-      gap: 8px;
+      display:grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap:10px;
     }
     .card {
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      overflow: hidden;
+      background:#fff;
+      border:1px solid var(--line);
+      border-radius:12px;
+      overflow:hidden;
     }
-    .card-media {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 4px;
-      padding: 6px;
-      background: #f7f3ed;
-    }
-    .card-media.two {
-      grid-template-columns: 1fr 1fr;
-    }
-    .media-slot {
-      width: 100%;
-      height: 170px;
-      border-radius: 8px;
-      overflow: hidden;
-      background: #f0f0f0;
-      border: 1px solid #e6ddd2;
-    }
-    .card-media.two .media-slot {
-      height: 150px;
-    }
-    .media-slot img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .card .body {
-      padding: 8px;
-      font-size: 12px;
-    }
-    .card-actions {
-      margin-top: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .buy-row {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 6px;
-    }
-    .feedback-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 6px;
-    }
-    .mini-btn {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 6px 6px;
-      background: #fff;
-      color: var(--ink);
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .mini-btn.buy {
-      background: var(--accent-2);
-      border-color: var(--accent-2);
-      color: #fff;
-    }
-    .mini-btn.dislike {
-      background: #f7e9e7;
-      border-color: #d8b8b3;
-      color: #6b1f16;
-    }
-    .mini-btn:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
-    }
-    .feedback-note {
-      margin-top: 6px;
-      color: var(--muted);
-      font-size: 11px;
-      min-height: 14px;
-    }
-    .err {
-      color: #9d1e1e;
-      font-size: 13px;
-      margin-top: 8px;
-      white-space: pre-wrap;
+    .card img { width:100%; height:220px; object-fit:cover; display:block; background:#efe9e0; }
+    .card .body { padding:10px; font-size:12px; }
+    .chip {
+      display:inline-block;
+      margin: 0 6px 6px 0;
+      padding:4px 8px;
+      font-size:11px;
+      border-radius:999px;
+      background:#f3eee7;
+      border:1px solid #e6ddd2;
     }
     .stages {
       margin-top: 10px;
@@ -225,34 +104,25 @@ def get_web_ui_html(user_id: str = "") -> str:
       background: #fff;
       padding: 8px;
       min-height: 100px;
-      max-height: 220px;
+      max-height: 240px;
       overflow: auto;
       font-size: 12px;
     }
-    .stage-item {
-      padding: 6px 4px;
-      border-bottom: 1px dashed #e8e2da;
+    .stage-item { padding: 6px 4px; border-bottom: 1px dashed #e8e2da; }
+    .stage-item:last-child { border-bottom:none; }
+    .query-box {
+      margin-top:10px;
+      padding:8px;
+      border:1px dashed var(--line);
+      border-radius:10px;
+      background:#fff;
+      font-size:11px;
+      color:var(--muted);
+      white-space:pre-wrap;
+      max-height:220px;
+      overflow:auto;
     }
-    .stage-item:last-child {
-      border-bottom: none;
-    }
-    .stage-name {
-      font-weight: 600;
-    }
-    .reward-box {
-      margin-top: 10px;
-      padding: 8px;
-      border: 1px dashed var(--line);
-      border-radius: 10px;
-      background: #fff;
-      font-size: 12px;
-      color: var(--ink);
-    }
-    .build-tag {
-      margin-top: 6px;
-      color: var(--muted);
-      font-size: 11px;
-    }
+    .err { color:#9d1e1e; font-size:13px; margin-top:8px; white-space:pre-wrap; }
     @media (max-width: 900px) {
       .wrap { grid-template-columns: 1fr; }
       .chat { min-height: 70vh; }
@@ -262,7 +132,7 @@ def get_web_ui_html(user_id: str = "") -> str:
 <body>
   <div class="wrap">
     <aside class="panel controls">
-      <h1>Conversation Stylist</h1>
+      <h1>Conversation Platform</h1>
       <div class="field">
         <label>User ID</label>
         <input id="userId" value="__USER_ID__" />
@@ -270,38 +140,6 @@ def get_web_ui_html(user_id: str = "") -> str:
       <div class="field">
         <label>Conversation ID</label>
         <input id="conversationId" placeholder="auto-created on first send" readonly />
-      </div>
-      <div class="row">
-        <div class="field">
-          <label>Strictness</label>
-          <select id="strictness">
-            <option value="balanced">balanced</option>
-            <option value="safe">safe</option>
-            <option value="bold">bold</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Max Results</label>
-          <input id="maxResults" type="number" min="1" max="50" value="8" />
-        </div>
-      </div>
-      <div class="field">
-        <label>Hard Filter Profile</label>
-        <select id="hardFilterProfile">
-          <option value="rl_ready_minimal">rl_ready_minimal</option>
-          <option value="legacy">legacy</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Result Mix</label>
-        <select id="resultFilter">
-          <option value="complete_only">Complete Outfit only</option>
-          <option value="complete_plus_combos" selected>Complete Outfit + Combos</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Image Upload (first turn required)</label>
-        <input id="imageInput" type="file" accept="image/*" />
       </div>
       <div class="btns">
         <button class="secondary" id="newConversationBtn">New Conversation</button>
@@ -312,14 +150,9 @@ def get_web_ui_html(user_id: str = "") -> str:
         <label>Agent Processing Stages</label>
         <div id="stageBox" class="stages"></div>
       </div>
-      <div class="reward-box">
-        <div><strong>Rewards</strong></div>
-        <div>Buy Now: +20</div>
-        <div>Share: +10</div>
-        <div>Like: +2</div>
-        <div>Dislike: -5</div>
-        <div>No Action: -1</div>
-        <div class="build-tag">UI build: actions-v2</div>
+      <div class="field">
+        <label>Retrieval Query</label>
+        <div id="queryBox" class="query-box">No query generated yet.</div>
       </div>
     </aside>
     <main class="panel chat">
@@ -327,7 +160,7 @@ def get_web_ui_html(user_id: str = "") -> str:
       <div class="composer">
         <div class="field">
           <label>Your message</label>
-          <textarea id="message" rows="3" placeholder="Need work looks in earthy tones."></textarea>
+          <textarea id="message" rows="3" placeholder="Need casual office wear and want to look taller."></textarea>
         </div>
         <div class="btns">
           <button id="sendBtn">Send</button>
@@ -338,14 +171,10 @@ def get_web_ui_html(user_id: str = "") -> str:
   <script>
     const feed = document.getElementById("feed");
     const err = document.getElementById("errorBox");
+    const queryBox = document.getElementById("queryBox");
     const userIdEl = document.getElementById("userId");
     const convIdEl = document.getElementById("conversationId");
     const messageEl = document.getElementById("message");
-    const imageInputEl = document.getElementById("imageInput");
-    const strictnessEl = document.getElementById("strictness");
-    const maxResultsEl = document.getElementById("maxResults");
-    const hardFilterEl = document.getElementById("hardFilterProfile");
-    const resultFilterEl = document.getElementById("resultFilter");
     const stageBox = document.getElementById("stageBox");
     const sendBtn = document.getElementById("sendBtn");
     const logoutBtn = document.getElementById("logoutBtn");
@@ -367,153 +196,28 @@ def get_web_ui_html(user_id: str = "") -> str:
       feed.scrollTop = feed.scrollHeight;
     }
 
-    async function sendFeedbackAction(eventType, item, recommendationRunId, noteEl) {
-      const userId = userIdEl.value.trim();
-      const conversationId = convIdEl.value.trim();
-      if (!userId || !conversationId || !recommendationRunId) {
-        noteEl.textContent = "feedback unavailable";
-        return;
-      }
-      const payload = {
-        user_id: userId,
-        conversation_id: conversationId,
-        recommendation_run_id: recommendationRunId,
-        garment_id: item.garment_id,
-        event_type: eventType,
-        notes: "ui_action",
-      };
-      const res = await fetch("/v1/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "feedback failed");
-      noteEl.textContent = `${eventType} saved (reward ${data.reward_value})`;
-      addMeta(`feedback: ${eventType} -> ${item.title}`);
-
-      if (eventType === "share" && navigator.share) {
-        try {
-          await navigator.share({
-            title: item.title || "Style recommendation",
-            text: `Check this recommendation: ${item.title || "look"}`,
-            url: item.image_url || undefined,
-          });
-        } catch (_) {
-          // user canceled share, no-op
-        }
-      }
-    }
-
-    function addRecommendationCards(items, recommendationRunId) {
+    function renderRecommendations(items) {
       if (!items || !items.length) return;
       const wrap = document.createElement("div");
       wrap.className = "cards";
       for (const item of items) {
         const card = document.createElement("div");
         card.className = "card";
-        const recommendationKind = item.recommendation_kind || "single_garment";
-        const componentImageUrls = Array.isArray(item.component_image_urls)
-          ? item.component_image_urls.filter(Boolean)
-          : [];
-        const hasCombo = recommendationKind === "outfit_combo" || (item.component_count || 0) > 1;
-        const media = document.createElement("div");
-        media.className = "card-media" + (hasCombo ? " two" : "");
-
-        const pickImages = hasCombo
-          ? [componentImageUrls[0] || item.image_url || "", componentImageUrls[1] || ""]
-          : [item.image_url || componentImageUrls[0] || ""];
-
-        for (const src of pickImages) {
-          const slot = document.createElement("div");
-          slot.className = "media-slot";
-          if (src) {
-            const img = document.createElement("img");
-            img.src = src;
-            img.alt = item.title || "";
-            slot.appendChild(img);
-          }
-          media.appendChild(slot);
-        }
-
+        const image = document.createElement("img");
+        image.src = item.image_url || "";
+        image.alt = item.title || "Catalog match";
+        image.loading = "lazy";
         const body = document.createElement("div");
         body.className = "body";
-        const componentTitles = Array.isArray(item.component_titles) ? item.component_titles.filter(Boolean).join(" + ") : "";
         body.innerHTML = `
-          <div><strong>#${item.rank} ${item.title || ""}</strong></div>
-          <div>type: ${recommendationKind}</div>
-          <div>${componentTitles ? `components: ${componentTitles}` : ""}</div>
-          <div>score: ${(item.score || 0).toFixed(3)} | conf: ${(item.compatibility_confidence || 0).toFixed(2)}</div>
-          <div>${item.reasons || ""}</div>
+          <div style="font-weight:700; margin-bottom:6px;">${escapeHtml(item.title || "Untitled")}</div>
+          <div style="margin-bottom:8px;">Similarity ${Number(item.similarity || 0).toFixed(3)}</div>
+          <div class="chip">${escapeHtml(item.garment_category || "Unknown")}</div>
+          <div class="chip">${escapeHtml(item.garment_subtype || "Unknown")}</div>
+          <div class="chip">${escapeHtml(item.primary_color || "Unknown")}</div>
+          <div class="chip">${escapeHtml(item.price || "Unknown")}</div>
         `;
-
-        const actions = document.createElement("div");
-        actions.className = "card-actions";
-        const buyRow = document.createElement("div");
-        buyRow.className = "buy-row";
-        const feedbackRow = document.createElement("div");
-        feedbackRow.className = "feedback-row";
-
-        const dislikeBtn = document.createElement("button");
-        dislikeBtn.className = "mini-btn dislike";
-        dislikeBtn.textContent = "Dislike";
-        const likeBtn = document.createElement("button");
-        likeBtn.className = "mini-btn";
-        likeBtn.textContent = "Like";
-        const shareBtn = document.createElement("button");
-        shareBtn.className = "mini-btn";
-        shareBtn.textContent = "Share";
-        const buyBtn = document.createElement("button");
-        buyBtn.className = "mini-btn buy";
-        buyBtn.textContent = "Buy Now";
-
-        const note = document.createElement("div");
-        note.className = "feedback-note";
-        if (!recommendationRunId) {
-          dislikeBtn.disabled = true;
-          likeBtn.disabled = true;
-          shareBtn.disabled = true;
-          buyBtn.disabled = true;
-          note.textContent = "Feedback disabled (no run id)";
-        }
-
-        dislikeBtn.addEventListener("click", async () => {
-          try {
-            await sendFeedbackAction("dislike", item, recommendationRunId, note);
-          } catch (e) {
-            note.textContent = String(e);
-          }
-        });
-        likeBtn.addEventListener("click", async () => {
-          try {
-            await sendFeedbackAction("like", item, recommendationRunId, note);
-          } catch (e) {
-            note.textContent = String(e);
-          }
-        });
-        shareBtn.addEventListener("click", async () => {
-          try {
-            await sendFeedbackAction("share", item, recommendationRunId, note);
-          } catch (e) {
-            note.textContent = String(e);
-          }
-        });
-        buyBtn.addEventListener("click", async () => {
-          try {
-            await sendFeedbackAction("buy", item, recommendationRunId, note);
-          } catch (e) {
-            note.textContent = String(e);
-          }
-        });
-        buyRow.appendChild(buyBtn);
-        feedbackRow.appendChild(dislikeBtn);
-        feedbackRow.appendChild(likeBtn);
-        feedbackRow.appendChild(shareBtn);
-        actions.appendChild(buyRow);
-        actions.appendChild(feedbackRow);
-        body.appendChild(actions);
-        body.appendChild(note);
-        card.appendChild(media);
+        card.appendChild(image);
         card.appendChild(body);
         wrap.appendChild(card);
       }
@@ -521,136 +225,104 @@ def get_web_ui_html(user_id: str = "") -> str:
       feed.scrollTop = feed.scrollHeight;
     }
 
+    function escapeHtml(value) {
+      return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
     function renderStages(stages) {
       stageBox.innerHTML = "";
-      if (!stages || !stages.length) return;
-      for (const s of stages) {
+      for (const stage of stages || []) {
         const div = document.createElement("div");
         div.className = "stage-item";
-        const time = (s.timestamp || "").split("T")[1] || "";
-        div.innerHTML = `
-          <div class="stage-name">${s.stage}</div>
-          <div>${s.detail || ""}</div>
-          <div style="color:#777;">${time}</div>
-        `;
+        div.textContent = `${stage.timestamp}  ${stage.stage}${stage.detail ? "  " + stage.detail : ""}`;
         stageBox.appendChild(div);
       }
       stageBox.scrollTop = stageBox.scrollHeight;
     }
 
-    async function fileToDataUrl(file) {
-      return await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-    }
-
     async function ensureConversation() {
-      if (convIdEl.value) return convIdEl.value;
-      const payload = { user_id: userIdEl.value.trim() };
+      if (convIdEl.value.trim()) return convIdEl.value.trim();
       const res = await fetch("/v1/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ user_id: userIdEl.value.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to create conversation");
       convIdEl.value = data.conversation_id;
-      addMeta("conversation: " + data.conversation_id);
+      addMeta("conversation created");
       return data.conversation_id;
     }
 
-    logoutBtn.addEventListener("click", () => {
-      window.location.href = "/";
-    });
-
-    async function pollTurnJob(conversationId, jobId) {
+    async function pollJob(conversationId, jobId) {
       while (true) {
         const res = await fetch(`/v1/conversations/${conversationId}/turns/${jobId}/status`);
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Failed to fetch turn status");
+        if (!res.ok) throw new Error(data.detail || "Polling failed");
         renderStages(data.stages || []);
         if (data.status === "completed") return data.result;
         if (data.status === "failed") throw new Error(data.error || "Turn failed");
-        await new Promise((r) => setTimeout(r, 700));
+        await new Promise((resolve) => setTimeout(resolve, 800));
       }
     }
 
-    async function sendTurn() {
+    async function send() {
       err.textContent = "";
-      const msg = messageEl.value.trim();
-      if (!msg) return;
-      if (!userIdEl.value.trim()) {
-        err.textContent = "user_id is required.";
+      const userId = userIdEl.value.trim();
+      const message = messageEl.value.trim();
+      if (!userId) {
+        err.textContent = "User ID is required.";
+        return;
+      }
+      if (!message) {
+        err.textContent = "Message is required.";
         return;
       }
       sendBtn.disabled = true;
-      sendBtn.textContent = "Processing...";
-      addBubble(msg, "user");
-      renderStages([{ timestamp: new Date().toISOString(), stage: "ui", detail: "queued turn request" }]);
-
       try {
         const conversationId = await ensureConversation();
-        const imageRefs = [];
-        if (imageInputEl.files && imageInputEl.files.length > 0) {
-          const file = imageInputEl.files[0];
-          const dataUrl = await fileToDataUrl(file);
-          imageRefs.push(dataUrl);
-        }
-
-        const payload = {
-          user_id: userIdEl.value.trim(),
-          message: msg,
-          image_refs: imageRefs,
-          strictness: strictnessEl.value,
-          hard_filter_profile: hardFilterEl.value,
-          max_results: parseInt(maxResultsEl.value || "8", 10),
-          result_filter: resultFilterEl.value,
-        };
-
-        const startRes = await fetch(`/v1/conversations/${conversationId}/turns/start`, {
+        addBubble(message, "user");
+        messageEl.value = "";
+        const res = await fetch(`/v1/conversations/${conversationId}/turns/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ user_id: userId, message }),
         });
-        const startData = await startRes.json();
-        if (!startRes.ok) throw new Error(startData.detail || "Failed to start turn");
-        addMeta(`job: ${startData.job_id}`);
-
-        const data = await pollTurnJob(conversationId, startData.job_id);
-
-        addBubble(data.assistant_message || "(empty assistant message)", "assistant");
-        if (data.needs_clarification && data.clarifying_question) {
-          addBubble("Need more detail: " + data.clarifying_question, "assistant");
-        }
-        addMeta(
-          `resolved: occasion=${data.resolved_context.occasion}, archetype=${data.resolved_context.archetype}, ` +
-          `gender=${data.resolved_context.gender}, age=${data.resolved_context.age}`
-        );
-        addMeta(`result mix: ${resultFilterEl.value}`);
-        addRecommendationCards(data.recommendations || [], data.recommendation_run_id);
-        messageEl.value = "";
-        imageInputEl.value = "";
+        const job = await res.json();
+        if (!res.ok) throw new Error(job.detail || "Failed to start turn");
+        const result = await pollJob(conversationId, job.job_id);
+        queryBox.textContent = result.retrieval_query_document || "No query generated.";
+        addBubble(result.assistant_message || "", "assistant");
+        renderRecommendations(result.recommendations || []);
       } catch (e) {
-        err.textContent = String(e);
+        err.textContent = e.message || String(e);
       } finally {
         sendBtn.disabled = false;
-        sendBtn.textContent = "Send";
       }
     }
 
-    sendBtn.addEventListener("click", sendTurn);
-    messageEl.addEventListener("keydown", (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") sendTurn();
-    });
+    document.getElementById("sendBtn").addEventListener("click", send);
     document.getElementById("newConversationBtn").addEventListener("click", () => {
       convIdEl.value = "";
-      addMeta("new conversation requested");
+      stageBox.innerHTML = "";
+      queryBox.textContent = "No query generated yet.";
+      addMeta("started a new conversation session");
+    });
+    logoutBtn.addEventListener("click", () => {
+      window.location.href = "/";
+    });
+    messageEl.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        send();
+      }
     });
   </script>
 </body>
 </html>
 """
-    return html.replace("__USER_ID__", escape(user_id or "", quote=True))
+    return html.replace("__USER_ID__", escape(user_id))

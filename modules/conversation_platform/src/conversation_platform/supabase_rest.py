@@ -69,6 +69,22 @@ class SupabaseRestClient:
             return [out]
         raise SupabaseError(f"Unexpected bulk insert response for {table}: {out}")
 
+    def upsert_many(self, table: str, rows: List[Dict[str, Any]], *, on_conflict: str) -> List[Dict[str, Any]]:
+        if not rows:
+            return []
+        out = self._request(
+            "POST",
+            table,
+            query={"on_conflict": on_conflict},
+            body=rows,
+            prefer="resolution=merge-duplicates,return=representation",
+        )
+        if isinstance(out, list):
+            return out
+        if isinstance(out, dict):
+            return [out]
+        raise SupabaseError(f"Unexpected bulk upsert response for {table}: {out}")
+
     def select_many(
         self,
         table: str,
@@ -105,3 +121,6 @@ class SupabaseRestClient:
         if out is None:
             return None
         raise SupabaseError(f"Unexpected update response for {table}: {out}")
+
+    def rpc(self, function_name: str, payload: Dict[str, Any]) -> Any:
+        return self._request("POST", f"rpc/{function_name}", body=payload)

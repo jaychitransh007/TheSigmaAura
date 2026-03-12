@@ -1,4 +1,6 @@
 .env
+.env.local
+.env.staging
 __pycache__/
 out/
 *.pyc

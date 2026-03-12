@@ -3,9 +3,10 @@ from threading import Lock, Thread
 from typing import Any, Dict, List
 from uuid import uuid4
 
+from catalog.admin_api import create_catalog_admin_router
+from catalog.ui import get_catalog_admin_html
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
-from fastapi.staticfiles import StaticFiles
 
 from onboarding.api import create_onboarding_router
 from onboarding.analysis import UserAnalysisService
@@ -17,17 +18,10 @@ from .config import load_config
 from .orchestrator import ConversationOrchestrator
 from .repositories import ConversationRepository
 from .schemas import (
-    ActionCheckRequest,
-    ActionCheckResponse,
-    CheckoutPrepareRequest,
-    CheckoutPrepareResponse,
     ConversationResponse,
     ConversationStateResponse,
     CreateConversationRequest,
     CreateTurnRequest,
-    FeedbackRequest,
-    FeedbackResponse,
-    RecommendationRunResponse,
     TurnJobStartResponse,
     TurnJobStatusResponse,
     TurnResponse,
@@ -38,20 +32,6 @@ from .ui import get_web_ui_html
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _map_supabase_error(exc: Exception) -> str:
-    msg = str(exc)
-    if (
-        "feedback_events_event_type_check" in msg
-        and "feedback_events" in msg
-        and "violates check constraint" in msg
-    ):
-        return (
-            "Feedback event type is not supported by current DB schema. "
-            "Apply latest Supabase migrations and retry."
-        )
-    return msg
 
 
 _TURN_JOB_LOCK = Lock()
@@ -66,21 +46,20 @@ def create_app() -> FastAPI:
         timeout_seconds=cfg.request_timeout_seconds,
     )
     repo = ConversationRepository(client)
-    orchestrator = ConversationOrchestrator(repo=repo, catalog_csv_path=cfg.catalog_csv_path)
-
-    app = FastAPI(title="Sigma Aura Conversation Platform", version="1.0.0")
-    app.mount("/archetypes", StaticFiles(directory="archetypes"), name="archetypes")
-
     onboarding_repo = OnboardingRepository(client)
+    orchestrator = ConversationOrchestrator(repo=repo, onboarding_repo=onboarding_repo, config=cfg)
+
+    app = FastAPI(title="Sigma Aura Conversation Platform", version="2.0.0")
+
     onboarding_service = OnboardingService(repo=onboarding_repo)
     analysis_service = UserAnalysisService(repo=onboarding_repo)
     app.include_router(create_onboarding_router(onboarding_service, analysis_service))
+    app.include_router(create_catalog_admin_router())
 
     @app.get("/onboard", response_class=HTMLResponse, include_in_schema=False)
     def onboard() -> HTMLResponse:
-        html = get_onboarding_html()
         return HTMLResponse(
-            content=html,
+            content=get_onboarding_html(),
             headers={
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
                 "Pragma": "no-cache",
@@ -90,9 +69,19 @@ def create_app() -> FastAPI:
 
     @app.get("/onboard/processing", response_class=HTMLResponse, include_in_schema=False)
     def onboard_processing(user: str = "") -> HTMLResponse:
-        html = get_processing_html(user_id=user)
         return HTMLResponse(
-            content=html,
+            content=get_processing_html(user_id=user),
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
+
+    @app.get("/admin/catalog", response_class=HTMLResponse, include_in_schema=False)
+    def catalog_admin() -> HTMLResponse:
+        return HTMLResponse(
+            content=get_catalog_admin_html(),
             headers={
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
                 "Pragma": "no-cache",
@@ -154,15 +143,6 @@ def create_app() -> FastAPI:
                 conversation_id=conversation_id,
                 external_user_id=payload.user_id,
                 message=payload.message,
-                image_refs=payload.image_refs,
-                strictness=payload.strictness,
-                hard_filter_profile=payload.hard_filter_profile,
-                max_results=payload.max_results,
-                result_filter=payload.result_filter,
-                mode_preference=payload.mode_preference,
-                target_garment_type=payload.target_garment_type,
-                autonomy_level=payload.autonomy_level,
-                size_overrides=payload.size_overrides.model_dump(exclude_none=True) if payload.size_overrides else None,
             )
             return TurnResponse(**out)
         except (ValueError, SupabaseError, RuntimeError) as exc:
@@ -198,15 +178,6 @@ def create_app() -> FastAPI:
                     conversation_id=conversation_id,
                     external_user_id=payload.user_id,
                     message=payload.message,
-                    image_refs=payload.image_refs,
-                    strictness=payload.strictness,
-                    hard_filter_profile=payload.hard_filter_profile,
-                    max_results=payload.max_results,
-                    result_filter=payload.result_filter,
-                    mode_preference=payload.mode_preference,
-                    target_garment_type=payload.target_garment_type,
-                    autonomy_level=payload.autonomy_level,
-                    size_overrides=payload.size_overrides.model_dump(exclude_none=True) if payload.size_overrides else None,
                     stage_callback=append_stage,
                 )
                 append_stage("turn_execution", "completed")
@@ -226,11 +197,7 @@ def create_app() -> FastAPI:
                     job["error"] = str(exc)
 
         Thread(target=run_job, daemon=True).start()
-        return TurnJobStartResponse(
-            conversation_id=conversation_id,
-            job_id=job_id,
-            status="running",
-        )
+        return TurnJobStartResponse(conversation_id=conversation_id, job_id=job_id, status="running")
 
     @app.get("/v1/conversations/{conversation_id}/turns/{job_id}/status", response_model=TurnJobStatusResponse)
     def get_turn_job_status(conversation_id: str, job_id: str) -> TurnJobStatusResponse:
@@ -248,62 +215,5 @@ def create_app() -> FastAPI:
             error=str(job.get("error") or ""),
             result=job.get("result"),
         )
-
-    @app.get("/v1/recommendations/{run_id}", response_model=RecommendationRunResponse)
-    def get_recommendation_run(run_id: str) -> RecommendationRunResponse:
-        try:
-            out = orchestrator.get_recommendation_run(run_id=run_id)
-            return RecommendationRunResponse(**out)
-        except (ValueError, SupabaseError, RuntimeError) as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    @app.post("/v1/feedback", response_model=FeedbackResponse)
-    def create_feedback(payload: FeedbackRequest) -> FeedbackResponse:
-        try:
-            out = orchestrator.record_feedback(
-                external_user_id=payload.user_id,
-                conversation_id=payload.conversation_id,
-                recommendation_run_id=payload.recommendation_run_id,
-                garment_id=payload.garment_id,
-                event_type=payload.event_type,
-                notes=payload.notes,
-            )
-            return FeedbackResponse(**out)
-        except (ValueError, SupabaseError, RuntimeError) as exc:
-            raise HTTPException(status_code=400, detail=_map_supabase_error(exc)) from exc
-
-    @app.post(
-        "/v1/conversations/{conversation_id}/checkout/prepare",
-        response_model=CheckoutPrepareResponse,
-    )
-    def prepare_checkout(conversation_id: str, payload: CheckoutPrepareRequest) -> CheckoutPrepareResponse:
-        try:
-            out = orchestrator.prepare_checkout(
-                conversation_id=conversation_id,
-                external_user_id=payload.user_id,
-                recommendation_run_id=payload.recommendation_run_id,
-                selected_item_ids=payload.selected_item_ids,
-                selected_outfit_id=payload.selected_outfit_id,
-                budget_cap=payload.budget_cap,
-            )
-            return CheckoutPrepareResponse(**out)
-        except (ValueError, SupabaseError, RuntimeError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.get(
-        "/v1/checkout/preparations/{checkout_prep_id}",
-        response_model=CheckoutPrepareResponse,
-    )
-    def get_checkout_preparation(checkout_prep_id: str) -> CheckoutPrepareResponse:
-        try:
-            out = orchestrator.get_checkout_preparation(checkout_prep_id=checkout_prep_id)
-            return CheckoutPrepareResponse(**out)
-        except (ValueError, SupabaseError, RuntimeError) as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    @app.post("/v1/actions/check", response_model=ActionCheckResponse)
-    def check_action(payload: ActionCheckRequest) -> ActionCheckResponse:
-        result = orchestrator.check_action(payload.action)
-        return ActionCheckResponse(**result)
 
     return app
