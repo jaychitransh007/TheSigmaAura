@@ -49,7 +49,6 @@ BODY_TYPE_SPEC = AgentSpec(
     agent_name="body_type_analysis",
     prompt_filename="body_type_analysis.md",
     attribute_enums={
-        "Waist": ["Very Narrow", "Narrow", "Medium", "Wide", "Very Wide"],
         "ShoulderToHipRatio": [
             "Shoulders Much Wider",
             "Shoulders Slightly Wider",
@@ -63,7 +62,6 @@ BODY_TYPE_SPEC = AgentSpec(
         "VerticalProportion": ["Compact", "Moderate", "Elongated"],
         "ArmVolume": ["Slim", "Medium", "Full"],
         "MidsectionState": ["Flat", "Moderate Fullness", "Significant Fullness"],
-        "WaistVisibility": ["Clearly Defined", "Moderately Defined", "Not Defined"],
         "BustVolume": ["Flat / Minimal", "Small", "Medium", "Prominent", "Very Prominent"],
     },
     required_profile_fields=["gender", "date_of_birth", "height_cm", "waist_cm"],
@@ -112,6 +110,7 @@ ALL_AGENT_SPECS = [
     COLOR_VEINS_SPEC,
     OTHER_DETAILS_SPEC,
 ]
+AGENT_SPEC_BY_NAME = {spec.agent_name: spec for spec in ALL_AGENT_SPECS}
 
 
 class UserAnalysisService:
@@ -143,27 +142,32 @@ class UserAnalysisService:
             model_name=self._model,
         )
 
+    def force_agent_restart(self, user_id: str, agent_name: str) -> Dict[str, Any]:
+        if agent_name not in AGENT_SPEC_BY_NAME:
+            raise ValueError("Unknown analysis agent.")
+        baseline = self._repo.get_latest_analysis_snapshot(user_id)
+        run = self._repo.create_analysis_snapshot(
+            user_id=user_id,
+            status="pending",
+            model_name=self._model,
+        )
+        if baseline:
+            self._repo.update_analysis_snapshot(
+                str(run["id"]),
+                body_type_output=baseline.get("body_type_output") or {},
+                color_headshot_output=baseline.get("color_headshot_output") or {},
+                color_veins_output=baseline.get("color_veins_output") or {},
+                other_details_output=baseline.get("other_details_output") or {},
+                collated_output=baseline.get("collated_output") or {},
+            )
+        return run
+
     def run_analysis(self, user_id: str) -> Dict[str, Any]:
         run = self.ensure_analysis_started(user_id)
         run_id = str(run["id"])
         self._repo.update_analysis_snapshot(run_id, status="running", started_at=_now_iso(), error_message="")
 
-        profile = self._repo.get_profile_by_user_id(user_id)
-        if not profile:
-            raise ValueError("User not found.")
-        images = {row["category"]: row for row in self._repo.get_images(user_id)}
-        missing_categories = [category for category in ("full_body", "headshot", "veins") if category not in images]
-        if missing_categories:
-            raise ValueError(f"Missing required onboarding images: {', '.join(missing_categories)}")
-
-        api_key = get_api_key()
-        age = self._calculate_age(profile.get("date_of_birth"))
-        prompt_context = {
-            "gender": profile.get("gender") or "prefer_not_to_say",
-            "age": age,
-            "height": profile.get("height_cm") or "",
-            "waist": profile.get("waist_cm") or "",
-        }
+        profile, images, api_key, prompt_context = self._analysis_inputs(user_id)
 
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {
@@ -171,6 +175,46 @@ class UserAnalysisService:
                 for spec in ALL_AGENT_SPECS
             }
             agent_outputs = {name: future.result() for name, future in futures.items()}
+
+        collated = self._collate_outputs(agent_outputs)
+        derived = derive_interpretations(
+            collated["attributes"],
+            height_cm=float(profile.get("height_cm") or 0.0),
+            waist_cm=float(profile.get("waist_cm") or 0.0),
+        )
+        self._repo.update_analysis_snapshot(
+            run_id,
+            status="completed",
+            completed_at=_now_iso(),
+            error_message="",
+            body_type_output=agent_outputs["body_type_analysis"],
+            color_headshot_output=agent_outputs["color_analysis_headshot"],
+            color_veins_output=agent_outputs["color_analysis_veins"],
+            other_details_output=agent_outputs["other_details_analysis"],
+            collated_output={**collated, "derived_interpretations": derived},
+        )
+        self._repo.insert_interpretation_snapshot(
+            user_id=user_id,
+            analysis_snapshot_id=run_id,
+            interpretations=derived,
+        )
+        return self.get_analysis_status(user_id)
+
+    def run_agent_rerun(self, user_id: str, agent_name: str, *, run_id: str) -> Dict[str, Any]:
+        spec = AGENT_SPEC_BY_NAME.get(agent_name)
+        if spec is None:
+            raise ValueError("Unknown analysis agent.")
+        baseline = self._repo.get_previous_analysis_snapshot(user_id, run_id) or {}
+        self._repo.update_analysis_snapshot(run_id, status="running", started_at=_now_iso(), error_message="")
+
+        profile, images, api_key, prompt_context = self._analysis_inputs(user_id)
+        agent_outputs = {
+            "body_type_analysis": baseline.get("body_type_output") or {},
+            "color_analysis_headshot": baseline.get("color_headshot_output") or {},
+            "color_analysis_veins": baseline.get("color_veins_output") or {},
+            "other_details_analysis": baseline.get("other_details_output") or {},
+        }
+        agent_outputs[agent_name] = self._run_agent(api_key, spec, prompt_context, images)
 
         collated = self._collate_outputs(agent_outputs)
         derived = derive_interpretations(
@@ -207,9 +251,28 @@ class UserAnalysisService:
             )
         return self.get_analysis_status(user_id)
 
+    def _analysis_inputs(self, user_id: str) -> tuple[Dict[str, Any], Dict[str, Dict[str, Any]], str, Dict[str, Any]]:
+        profile = self._repo.get_profile_by_user_id(user_id)
+        if not profile:
+            raise ValueError("User not found.")
+        images = {row["category"]: row for row in self._repo.get_images(user_id)}
+        missing_categories = [category for category in ("full_body", "headshot", "veins") if category not in images]
+        if missing_categories:
+            raise ValueError(f"Missing required onboarding images: {', '.join(missing_categories)}")
+        api_key = get_api_key()
+        age = self._calculate_age(profile.get("date_of_birth"))
+        prompt_context = {
+            "gender": profile.get("gender") or "prefer_not_to_say",
+            "age": age,
+            "height": profile.get("height_cm") or "",
+            "waist": profile.get("waist_cm") or "",
+        }
+        return profile, images, api_key, prompt_context
+
     def get_analysis_status(self, user_id: str) -> Dict[str, Any]:
         latest = self._repo.get_latest_analysis_snapshot(user_id)
         profile = self._repo.get_profile_by_user_id(user_id)
+        latest_style_preference = self._repo.get_latest_style_preference_snapshot(user_id)
         latest_analysis_snapshot = self._repo.get_latest_analysis_snapshot(user_id)
         latest_interpretation_snapshot = (
             self._repo.get_interpretation_snapshot_for_analysis(str(latest_analysis_snapshot["id"]))
@@ -222,7 +285,7 @@ class UserAnalysisService:
                 "status": "not_started",
                 "analysis_run_id": "",
                 "error_message": "",
-                "profile": self._profile_summary(profile),
+                "profile": self._profile_summary(profile, latest_style_preference),
                 "agent_outputs": {},
                 "attributes": {},
                 "grouped_attributes": {},
@@ -243,7 +306,7 @@ class UserAnalysisService:
             "status": str(latest.get("status") or "not_started"),
             "analysis_run_id": str(latest.get("id") or ""),
             "error_message": str(latest.get("error_message") or ""),
-            "profile": self._profile_summary(profile),
+            "profile": self._profile_summary(profile, latest_style_preference),
             "agent_outputs": agent_outputs,
             "attributes": attributes,
             "grouped_attributes": grouped_attributes,
@@ -423,7 +486,7 @@ class UserAnalysisService:
                 return agent_name
         return "unknown"
 
-    def _profile_summary(self, profile: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def _profile_summary(self, profile: Optional[Dict[str, Any]], style_preference: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         if not profile:
             return {}
         return {
@@ -434,6 +497,13 @@ class UserAnalysisService:
             "height_cm": profile.get("height_cm"),
             "waist_cm": profile.get("waist_cm"),
             "profession": profile.get("profession", ""),
+            "style_preference": {
+                "primaryArchetype": (style_preference or {}).get("primary_archetype", ""),
+                "secondaryArchetype": (style_preference or {}).get("secondary_archetype"),
+                "riskTolerance": (style_preference or {}).get("risk_tolerance", ""),
+                "formalityLean": (style_preference or {}).get("formality_lean", ""),
+                "patternType": (style_preference or {}).get("pattern_type", ""),
+            },
         }
 
     def _calculate_age(self, raw_date: Any) -> int:

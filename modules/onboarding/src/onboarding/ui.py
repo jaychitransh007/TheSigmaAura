@@ -449,6 +449,98 @@ def get_onboarding_html() -> str:
       color: var(--muted);
       line-height: 1.5;
     }
+    .style-shell {
+      display: grid;
+      gap: 18px;
+    }
+    .style-counter {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .style-layer {
+      display: grid;
+      gap: 12px;
+    }
+    .style-layer.hidden {
+      display: none;
+    }
+    .style-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .style-card {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      background: #f7f1ea;
+      cursor: pointer;
+      transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+      min-height: 208px;
+    }
+    .style-card:hover {
+      transform: translateY(-1px);
+      border-color: var(--line-strong);
+    }
+    .style-card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(31, 111, 95, 0.12);
+    }
+    .style-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      aspect-ratio: 4 / 5;
+      background: #efe7dd;
+    }
+    .style-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(17, 17, 17, 0.52);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 700;
+      opacity: 0;
+      transition: opacity 140ms ease, background 140ms ease;
+    }
+    .style-card.selected .style-badge {
+      opacity: 1;
+      background: var(--accent);
+    }
+    .style-separator {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .style-separator::before,
+    .style-separator::after {
+      content: "";
+      height: 1px;
+      flex: 1;
+      background: rgba(188, 172, 151, 0.72);
+    }
     @media (max-width: 900px) {
       .shell {
         grid-template-columns: 1fr;
@@ -471,6 +563,9 @@ def get_onboarding_html() -> str:
       .crop-stage {
         max-width: 100%;
       }
+      .style-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
     }
   </style>
 </head>
@@ -481,7 +576,7 @@ def get_onboarding_html() -> str:
         <div class="eyebrow">Sigma Aura</div>
         <h1>Onboard before you enter the conversation studio.</h1>
       </div>
-      <p>This first pass collects the profile details and three reference photos needed for downstream analysis. Every image is adjusted inside a fixed 2:3 frame before upload.</p>
+      <p>This first pass collects the profile details, three reference photos, and a final style-archetype preference profile before downstream analysis begins.</p>
       <div class="status-card">
         <strong>OTP for local testing</strong>
         <div class="otp-pill">123456</div>
@@ -492,12 +587,13 @@ def get_onboarding_html() -> str:
         <div class="checklist-item"><span class="check-icon">2</span><span>Name, birth date, gender, height and waist</span></div>
         <div class="checklist-item"><span class="check-icon">3</span><span>Profession from a fixed set of values</span></div>
         <div class="checklist-item"><span class="check-icon">4</span><span>Full body, headshot, and vein reference photos</span></div>
+        <div class="checklist-item"><span class="check-icon">5</span><span>Progressive 8-archetype style preference selection</span></div>
       </div>
     </aside>
 
     <main class="main">
       <div class="topline">
-        <div class="step-meta" id="stepMeta">Step 1 of 10</div>
+        <div class="step-meta" id="stepMeta">Step 1 of 11</div>
         <div class="progress" id="progressBar"></div>
       </div>
 
@@ -706,7 +802,31 @@ def get_onboarding_html() -> str:
           <div class="error" id="veinsErr"></div>
           <div class="actions">
             <button class="btn secondary" data-back="8">Back</button>
-            <button class="btn primary" id="uploadVeinsBtn">Upload and Finish</button>
+            <button class="btn primary" id="uploadVeinsBtn">Upload and Continue</button>
+          </div>
+        </div>
+
+        <div class="step" id="step-style">
+          <h2 class="step-title">Select the outfits that feel like you.</h2>
+          <p class="step-desc">Choose between 3 and 5 images. More options will appear progressively as soon as your first and second choices sharpen the direction.</p>
+          <div class="style-shell">
+            <div class="style-counter" id="styleCounter">0 of 3-5 selected</div>
+            <div class="style-layer">
+              <div class="style-grid" id="styleLayer1"></div>
+            </div>
+            <div class="style-layer hidden" id="styleLayer2Block">
+              <div class="style-separator">More in this direction</div>
+              <div class="style-grid" id="styleLayer2"></div>
+            </div>
+            <div class="style-layer hidden" id="styleLayer3Block">
+              <div class="style-separator">Push the signal further</div>
+              <div class="style-grid" id="styleLayer3"></div>
+            </div>
+          </div>
+          <div class="error" id="styleErr"></div>
+          <div class="actions">
+            <button class="btn secondary" data-back="9">Back</button>
+            <button class="btn primary" id="saveStyleBtn" disabled>Continue to Profile Processing</button>
           </div>
         </div>
 
@@ -737,6 +857,7 @@ def get_onboarding_html() -> str:
       "img-fullbody",
       "img-headshot",
       "img-veins",
+      "style",
       "done"
     ];
 
@@ -789,6 +910,18 @@ def get_onboarding_html() -> str:
         fullbody: createCropState("fullbody"),
         headshot: createCropState("headshot"),
         veins: createCropState("veins")
+      },
+      style: {
+        gender: "male",
+        pool: [],
+        layer1: [],
+        layer2: [],
+        layer3: [],
+        layer2Triggered: false,
+        layer3Triggered: false,
+        selectedEvents: [],
+        shownImages: [],
+        loaded: false
       }
     };
 
@@ -821,6 +954,12 @@ def get_onboarding_html() -> str:
 
     const progressBar = document.getElementById("progressBar");
     const stepMeta = document.getElementById("stepMeta");
+    const styleCounter = document.getElementById("styleCounter");
+    const styleLayer1 = document.getElementById("styleLayer1");
+    const styleLayer2 = document.getElementById("styleLayer2");
+    const styleLayer3 = document.getElementById("styleLayer3");
+    const styleLayer2Block = document.getElementById("styleLayer2Block");
+    const styleLayer3Block = document.getElementById("styleLayer3Block");
 
     function initProgress() {
       progressBar.innerHTML = "";
@@ -847,6 +986,10 @@ def get_onboarding_html() -> str:
       stepMeta.textContent = index >= visibleStepCount
         ? "Ready for the platform"
         : "Step " + (index + 1) + " of " + visibleStepCount;
+
+      if (STEP_ORDER[index] === "style") {
+        ensureStyleSession();
+      }
     }
 
     function showError(id, message) {
@@ -951,17 +1094,228 @@ def get_onboarding_html() -> str:
       return /^\+?\d{10,15}$/.test(value);
     }
 
+    function stylePoolFind(matchFn, excludeIds) {
+      return state.style.pool.find((image) => !excludeIds.has(image.id) && matchFn(image)) || null;
+    }
+
+    function findBlendImage(arch1, arch2, excludeIds) {
+      return stylePoolFind((image) => image.imageType === "blend" && (
+        (image.primaryArchetype === arch1 && image.secondaryArchetype === arch2) ||
+        (image.primaryArchetype === arch2 && image.secondaryArchetype === arch1)
+      ), excludeIds);
+    }
+
+    function styleFallback(baseArchetype, excludeIds, preferred) {
+      for (const query of preferred) {
+        const match = stylePoolFind((image) => {
+          if (query.imageType && image.imageType !== query.imageType) return false;
+          if (query.primaryArchetype && image.primaryArchetype !== query.primaryArchetype) return false;
+          if (query.secondaryArchetype !== undefined && image.secondaryArchetype !== query.secondaryArchetype) return false;
+          if (query.intensity && image.intensity !== query.intensity) return false;
+          if (query.context && image.context !== query.context) return false;
+          return true;
+        }, excludeIds);
+        if (match) return match;
+      }
+      return stylePoolFind(() => true, excludeIds);
+    }
+
+    function renderStyleGrid(container, images, layerNumber) {
+      container.innerHTML = "";
+      images.forEach((image) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "style-card";
+        card.dataset.imageId = image.id;
+        card.innerHTML = '<img alt="" loading="lazy" src="' + image.imageUrl + '" /><span class="style-badge"></span>';
+        card.addEventListener("click", () => toggleStyleSelection(image, layerNumber));
+        container.appendChild(card);
+      });
+      syncStyleSelectionUI();
+    }
+
+    function syncStyleSelectionUI() {
+      const selectedIds = new Map(state.style.selectedEvents.map((event, index) => [event.image.id, index + 1]));
+      document.querySelectorAll(".style-card").forEach((card) => {
+        const order = selectedIds.get(card.dataset.imageId);
+        card.classList.toggle("selected", Boolean(order));
+        const badge = card.querySelector(".style-badge");
+        badge.textContent = order ? String(order) : "";
+      });
+      styleCounter.textContent = state.style.selectedEvents.length + " of 3-5 selected";
+      document.getElementById("saveStyleBtn").disabled = !(state.style.selectedEvents.length >= 3 && state.style.selectedEvents.length <= 5);
+    }
+
+    function currentShownImages() {
+      return [...state.style.layer1, ...state.style.layer2, ...state.style.layer3];
+    }
+
+    function createSelectionEvent(image, layerNumber) {
+      return {
+        image,
+        layer: layerNumber,
+        position: image.position || null,
+        selectionOrder: state.style.selectedEvents.length + 1
+      };
+    }
+
+    function toggleStyleSelection(image, layerNumber) {
+      hideError("styleErr");
+      const existingIndex = state.style.selectedEvents.findIndex((event) => event.image.id === image.id);
+      if (existingIndex >= 0) {
+        state.style.selectedEvents.splice(existingIndex, 1);
+        state.style.selectedEvents.forEach((event, index) => {
+          event.selectionOrder = index + 1;
+        });
+        syncStyleSelectionUI();
+        return;
+      }
+      if (state.style.selectedEvents.length >= 5) {
+        showError("styleErr", "You can select up to 5 images.");
+        return;
+      }
+      state.style.selectedEvents.push(createSelectionEvent(image, layerNumber));
+      if (layerNumber === 1 && !state.style.layer2Triggered) {
+        generateLayer2(image);
+      }
+      if (layerNumber === 2 && !state.style.layer3Triggered) {
+        generateLayer3(image);
+      }
+      syncStyleSelectionUI();
+    }
+
+    function generateLayer2(triggerImage) {
+      const adjacency = state.style.adjacency[triggerImage.primaryArchetype];
+      const usedIds = new Set(currentShownImages().map((image) => image.id));
+      const candidates = [
+        stylePoolFind((image) => image.primaryArchetype === triggerImage.primaryArchetype && image.imageType === "pure" && !image.secondaryArchetype && image.intensity === "bold", usedIds),
+        findBlendImage(triggerImage.primaryArchetype, adjacency.near, usedIds),
+        findBlendImage(triggerImage.primaryArchetype, adjacency.far, usedIds),
+        stylePoolFind((image) => image.primaryArchetype === triggerImage.primaryArchetype && image.imageType === "pure" && !image.secondaryArchetype && image.intensity === "restrained", usedIds)
+      ];
+      const next = [];
+      candidates.forEach((candidate, idx) => {
+        const image = candidate || styleFallback(triggerImage.primaryArchetype, usedIds, [
+          { primaryArchetype: triggerImage.primaryArchetype, secondaryArchetype: null, imageType: "pure", intensity: "moderate" },
+          { primaryArchetype: triggerImage.primaryArchetype, secondaryArchetype: null, imageType: "context", context: "casual" },
+          { primaryArchetype: triggerImage.primaryArchetype, secondaryArchetype: adjacency.third, imageType: "blend" },
+          { primaryArchetype: adjacency.near, secondaryArchetype: null, imageType: "pure", intensity: "moderate" }
+        ]);
+        usedIds.add(image.id);
+        next.push({ ...image, position: idx + 1 });
+      });
+      state.style.layer2 = next;
+      state.style.layer2Triggered = true;
+      styleLayer2Block.classList.remove("hidden");
+      renderStyleGrid(styleLayer2, next, 2);
+    }
+
+    function generateLayer3(triggerImage) {
+      const baseTrigger = state.style.selectedEvents.find((event) => event.layer === 1);
+      if (!baseTrigger) return;
+      const baseArchetype = baseTrigger.image.primaryArchetype;
+      const adjacency = state.style.adjacency[baseArchetype];
+      const usedIds = new Set(currentShownImages().map((image) => image.id));
+      let queries = [];
+      if (triggerImage.position === 1) {
+        queries = [
+          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "casual" },
+          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "elevated" },
+          { primaryArchetype: baseArchetype, secondaryArchetype: adjacency.third, imageType: "blend" },
+          { primaryArchetype: adjacency.near, secondaryArchetype: null, imageType: "pure", intensity: "moderate" }
+        ];
+      } else if (triggerImage.position === 2) {
+        const blendArchetype = triggerImage.secondaryArchetype || triggerImage.primaryArchetype;
+        const blendAdjacency = state.style.adjacency[blendArchetype];
+        queries = [
+          { primaryArchetype: blendArchetype, secondaryArchetype: null, imageType: "pure", intensity: "moderate" },
+          { primaryArchetype: blendArchetype, secondaryArchetype: null, imageType: "pure", intensity: "bold" },
+          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "casual" },
+          { primaryArchetype: blendArchetype, secondaryArchetype: blendAdjacency.near, imageType: "blend" }
+        ];
+      } else if (triggerImage.position === 3) {
+        const farArchetype = triggerImage.secondaryArchetype || triggerImage.primaryArchetype;
+        queries = [
+          { primaryArchetype: farArchetype, secondaryArchetype: null, imageType: "pure", intensity: "moderate" },
+          { primaryArchetype: farArchetype, secondaryArchetype: null, imageType: "pure", intensity: "restrained" },
+          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "elevated" },
+          { primaryArchetype: farArchetype, secondaryArchetype: state.style.adjacency[farArchetype].near, imageType: "blend" }
+        ];
+      } else {
+        queries = [
+          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "casual" },
+          { primaryArchetype: adjacency.near, secondaryArchetype: null, imageType: "pure", intensity: "restrained" },
+          { primaryArchetype: adjacency.far, secondaryArchetype: null, imageType: "pure", intensity: "restrained" },
+          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "elevated" }
+        ];
+      }
+      const next = [];
+      queries.forEach((query, idx) => {
+        const image = (
+          query.imageType === "blend" && query.secondaryArchetype
+            ? findBlendImage(query.primaryArchetype, query.secondaryArchetype, usedIds)
+            : stylePoolFind((candidate) => {
+                if (candidate.primaryArchetype !== query.primaryArchetype) return false;
+                if ((query.secondaryArchetype || null) !== (candidate.secondaryArchetype || null)) return false;
+                if (candidate.imageType !== query.imageType) return false;
+                if (query.intensity && candidate.intensity !== query.intensity) return false;
+                if (query.context && candidate.context !== query.context) return false;
+                return true;
+              }, usedIds)
+        ) || styleFallback(baseArchetype, usedIds, [
+          query,
+          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "casual" },
+          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "elevated" },
+          { primaryArchetype: adjacency.third, secondaryArchetype: null, imageType: "pure", intensity: "moderate" }
+        ]);
+        usedIds.add(image.id);
+        next.push({ ...image, position: idx + 1 });
+      });
+      state.style.layer3 = next;
+      state.style.layer3Triggered = true;
+      styleLayer3Block.classList.remove("hidden");
+      renderStyleGrid(styleLayer3, next, 3);
+    }
+
+    async function ensureStyleSession() {
+      if (!state.userId || state.style.loaded) return;
+      hideError("styleErr");
+      const response = await fetch("/v1/onboarding/style/session/" + encodeURIComponent(state.userId));
+      const data = await response.json();
+      if (!response.ok) {
+        showError("styleErr", extractError(data, "Unable to load style archetype images"));
+        return;
+      }
+      state.style.gender = data.gender;
+      state.style.pool = data.pool || [];
+      state.style.layer1 = data.layer1 || [];
+      state.style.adjacency = data.adjacency || {};
+      state.style.layer2 = [];
+      state.style.layer3 = [];
+      state.style.selectedEvents = [];
+      state.style.layer2Triggered = false;
+      state.style.layer3Triggered = false;
+      state.style.loaded = true;
+      styleLayer2Block.classList.add("hidden");
+      styleLayer3Block.classList.add("hidden");
+      renderStyleGrid(styleLayer1, state.style.layer1, 1);
+      styleLayer2.innerHTML = "";
+      styleLayer3.innerHTML = "";
+      syncStyleSelectionUI();
+    }
+
     function determineResumeDestination(status) {
       const uploaded = Array.isArray(status.images_uploaded) ? status.images_uploaded : [];
       const hasAllImages = REQUIRED_IMAGE_CATEGORIES.every((category) => uploaded.includes(category));
 
-      if (status.onboarding_complete || (status.profile_complete && hasAllImages)) {
+      if (status.onboarding_complete || (status.profile_complete && hasAllImages && status.style_preference_complete)) {
         return { type: "processing" };
       }
       if (status.profile_complete) {
         if (!uploaded.includes("full_body")) return { type: "step", index: 7 };
         if (!uploaded.includes("headshot")) return { type: "step", index: 8 };
         if (!uploaded.includes("veins")) return { type: "step", index: 9 };
+        if (!status.style_preference_complete) return { type: "step", index: 10 };
         return { type: "processing" };
       }
       return { type: "step", index: 2 };
@@ -1162,7 +1516,8 @@ def get_onboarding_html() -> str:
           throw new Error(extractError(data, "Image upload failed"));
         }
         if (key === "veins") {
-          window.location.href = "/onboard/processing?user=" + encodeURIComponent(state.userId);
+          state.style.loaded = false;
+          setStep(details.nextStep);
           return;
         }
         setStep(details.nextStep);
@@ -1316,7 +1671,31 @@ def get_onboarding_html() -> str:
         uploadImage("headshot", "uploadHeadshotBtn", "Upload and Continue");
       });
       document.getElementById("uploadVeinsBtn").addEventListener("click", () => {
-        uploadImage("veins", "uploadVeinsBtn", "Upload and Finish");
+        uploadImage("veins", "uploadVeinsBtn", "Upload and Continue");
+      });
+
+      document.getElementById("saveStyleBtn").addEventListener("click", async () => {
+        hideError("styleErr");
+        const button = document.getElementById("saveStyleBtn");
+        if (state.style.selectedEvents.length < 3 || state.style.selectedEvents.length > 5) {
+          showError("styleErr", "Select between 3 and 5 images.");
+          return;
+        }
+        button.disabled = true;
+        button.textContent = "Saving...";
+        try {
+          await postJson("/v1/onboarding/style/complete", {
+            user_id: state.userId,
+            shown_images: currentShownImages(),
+            selections: state.style.selectedEvents
+          }, "Unable to save style preference");
+          window.location.href = "/onboard/processing?user=" + encodeURIComponent(state.userId);
+        } catch (error) {
+          showError("styleErr", String(error.message || error));
+        } finally {
+          button.disabled = !(state.style.selectedEvents.length >= 3 && state.style.selectedEvents.length <= 5);
+          button.textContent = "Continue to Profile Processing";
+        }
       });
 
       document.getElementById("goToPlatformBtn").addEventListener("click", () => {
@@ -1506,9 +1885,18 @@ def get_processing_html(user_id: str = "") -> str:
       border-radius: 18px;
       padding: 18px;
       background: #fff;
+      display: grid;
+      gap: 12px;
+    }
+    .agent-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
     }
     .agent-card h3 {
-      margin: 0 0 8px;
+      margin: 0;
       font-size: 16px;
     }
     .agent-card p {
@@ -1516,6 +1904,12 @@ def get_processing_html(user_id: str = "") -> str:
       font-size: 13px;
       color: var(--muted);
       line-height: 1.45;
+    }
+    .agent-rerun-btn {
+      padding: 10px 12px;
+      font-size: 12px;
+      border-radius: 12px;
+      white-space: nowrap;
     }
     .results {
       display: grid;
@@ -1672,9 +2066,10 @@ def get_processing_html(user_id: str = "") -> str:
         </div>
         <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
         <div class="error" id="errorBox"></div>
-        <div class="actions">
+      <div class="actions">
           <button class="secondary hidden" id="retryBtn">Retry Analysis</button>
           <button class="secondary hidden" id="rerunBtn">Re-Run Analysis</button>
+          <button class="secondary" id="logoutBtn">Logout</button>
           <button class="primary hidden" id="openPlatformBtn">Open Conversation Platform</button>
         </div>
       </section>
@@ -1688,10 +2083,22 @@ def get_processing_html(user_id: str = "") -> str:
 
       <section class="card">
         <div class="agent-grid" id="agentGrid">
-          <div class="agent-card"><h3>Body Type Analysis</h3><p id="agent-body_type_analysis">Waiting to start.</p></div>
-          <div class="agent-card"><h3>Color Analysis 1</h3><p id="agent-color_analysis_headshot">Waiting to start.</p></div>
-          <div class="agent-card"><h3>Color Analysis 2</h3><p id="agent-color_analysis_veins">Waiting to start.</p></div>
-          <div class="agent-card"><h3>Other Details</h3><p id="agent-other_details_analysis">Waiting to start.</p></div>
+          <div class="agent-card">
+            <div class="agent-head"><h3>Body Type Analysis</h3><button class="secondary hidden agent-rerun-btn" data-agent="body_type_analysis">Re-Run This Section</button></div>
+            <p id="agent-body_type_analysis">Waiting to start.</p>
+          </div>
+          <div class="agent-card">
+            <div class="agent-head"><h3>Color Analysis 1</h3><button class="secondary hidden agent-rerun-btn" data-agent="color_analysis_headshot">Re-Run This Section</button></div>
+            <p id="agent-color_analysis_headshot">Waiting to start.</p>
+          </div>
+          <div class="agent-card">
+            <div class="agent-head"><h3>Color Analysis 2</h3><button class="secondary hidden agent-rerun-btn" data-agent="color_analysis_veins">Re-Run This Section</button></div>
+            <p id="agent-color_analysis_veins">Waiting to start.</p>
+          </div>
+          <div class="agent-card">
+            <div class="agent-head"><h3>Other Details</h3><button class="secondary hidden agent-rerun-btn" data-agent="other_details_analysis">Re-Run This Section</button></div>
+            <p id="agent-other_details_analysis">Waiting to start.</p>
+          </div>
         </div>
       </section>
 
@@ -1710,10 +2117,12 @@ def get_processing_html(user_id: str = "") -> str:
     const errorBox = document.getElementById("errorBox");
     const retryBtn = document.getElementById("retryBtn");
     const rerunBtn = document.getElementById("rerunBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
     const openPlatformBtn = document.getElementById("openPlatformBtn");
     const resultsCard = document.getElementById("resultsCard");
     const resultsWrap = document.getElementById("results");
     const profileGrid = document.getElementById("profileGrid");
+    const agentRerunButtons = Array.from(document.querySelectorAll(".agent-rerun-btn"));
 
     const AGENT_LABELS = {
       body_type_analysis: "Body type analysis",
@@ -1755,6 +2164,13 @@ def get_processing_html(user_id: str = "") -> str:
       if (node) node.textContent = text;
     }
 
+    function setAgentRerunVisibility(show) {
+      agentRerunButtons.forEach((button) => {
+        button.classList.toggle("hidden", !show);
+        button.disabled = !show;
+      });
+    }
+
     function renderProfile(profile) {
       profileGrid.innerHTML = "";
       const ordered = [
@@ -1764,7 +2180,12 @@ def get_processing_html(user_id: str = "") -> str:
         ["Gender", profile.gender || ""],
         ["Height (cm)", profile.height_cm || ""],
         ["Waist (cm)", profile.waist_cm || ""],
-        ["Profession", profile.profession || ""]
+        ["Profession", profile.profession || ""],
+        ["Primary Archetype", ((profile.style_preference || {}).primaryArchetype) || ""],
+        ["Secondary Archetype", ((profile.style_preference || {}).secondaryArchetype) || ""],
+        ["Risk Tolerance", ((profile.style_preference || {}).riskTolerance) || ""],
+        ["Formality Lean", ((profile.style_preference || {}).formalityLean) || ""],
+        ["Pattern Type", ((profile.style_preference || {}).patternType) || ""]
       ];
       ordered.forEach(([label, value]) => {
         const item = document.createElement("div");
@@ -1790,6 +2211,7 @@ def get_processing_html(user_id: str = "") -> str:
         retryBtn.classList.add("hidden");
         rerunBtn.classList.remove("hidden");
         openPlatformBtn.classList.remove("hidden");
+        setAgentRerunVisibility(true);
         hideError();
         Object.keys(AGENT_LABELS).forEach((agentName) => {
           const count = Object.keys(grouped[agentName] || {}).length;
@@ -1806,6 +2228,7 @@ def get_processing_html(user_id: str = "") -> str:
         retryBtn.classList.remove("hidden");
         rerunBtn.classList.add("hidden");
         openPlatformBtn.classList.add("hidden");
+        setAgentRerunVisibility(true);
         showError(status.error_message || "Analysis failed.");
         return;
       }
@@ -1821,6 +2244,7 @@ def get_processing_html(user_id: str = "") -> str:
       retryBtn.classList.add("hidden");
       rerunBtn.classList.add("hidden");
       openPlatformBtn.classList.add("hidden");
+      setAgentRerunVisibility(false);
       hideError();
 
       Object.keys(AGENT_LABELS).forEach((agentName) => {
@@ -1953,6 +2377,28 @@ def get_processing_html(user_id: str = "") -> str:
         rerunBtn.disabled = false;
         openPlatformBtn.disabled = false;
       }
+    });
+
+    logoutBtn.addEventListener("click", () => {
+      window.location.href = "/";
+    });
+
+    agentRerunButtons.forEach((button) => {
+      button.addEventListener("click", async () => {
+        const agentName = button.dataset.agent || "";
+        if (!agentName) return;
+        button.disabled = true;
+        hideError();
+        statusTitle.textContent = "Re-running " + (AGENT_LABELS[agentName] || "analysis section");
+        statusText.textContent = "The selected section is being regenerated and the saved interpretation will refresh when it completes.";
+        try {
+          await postJson("/v1/onboarding/analysis/rerun-agent", { user_id: userId, agent_name: agentName }, "Unable to re-run selected analysis section.");
+          await poll();
+        } catch (error) {
+          showError(error.message || "Unable to re-run selected analysis section.");
+          button.disabled = false;
+        }
+      });
     });
 
     openPlatformBtn.addEventListener("click", () => {

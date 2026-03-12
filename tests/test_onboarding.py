@@ -18,6 +18,7 @@ for p in (
         sys.path.insert(0, sp)
 
 from onboarding.service import OnboardingService, _encrypt_filename
+from onboarding.style_archetype import ARCHETYPE_ORDER
 from onboarding.analysis import UserAnalysisService
 from onboarding.ui import get_onboarding_html, get_processing_html
 from conversation_platform.supabase_rest import SupabaseError
@@ -111,7 +112,7 @@ class OnboardingTests(unittest.TestCase):
 
     def test_onboarding_html_contains_modular_step_flow_and_crop_frame(self) -> None:
         html = get_onboarding_html()
-        self.assertIn("Step 1 of 10", html)
+        self.assertIn("Step 1 of 11", html)
         self.assertIn("OTP for local testing", html)
         self.assertIn("2:3 frame", html)
         self.assertIn("Profession", html)
@@ -119,6 +120,10 @@ class OnboardingTests(unittest.TestCase):
         self.assertIn("/v1/onboarding/images/normalize", html)
         self.assertIn("determineResumeDestination", html)
         self.assertIn("/onboard/processing?user=", html)
+        self.assertIn("Select the outfits that feel like you.", html)
+        self.assertIn("/v1/onboarding/style/session/", html)
+        self.assertIn("/v1/onboarding/style/complete", html)
+        self.assertIn("saveStyleBtn", html)
 
     def test_processing_html_contains_profile_summary_section(self) -> None:
         html = get_processing_html("user_123")
@@ -126,6 +131,9 @@ class OnboardingTests(unittest.TestCase):
         self.assertIn("profileGrid", html)
         self.assertIn("Mobile Number", html)
         self.assertIn("Re-Run Analysis", html)
+        self.assertIn("Re-Run This Section", html)
+        self.assertIn("/v1/onboarding/analysis/rerun-agent", html)
+        self.assertIn("Logout", html)
 
     def test_analysis_reuses_pending_snapshot_instead_of_creating_duplicate_attempt(self) -> None:
         repo = Mock()
@@ -136,6 +144,77 @@ class OnboardingTests(unittest.TestCase):
 
         self.assertEqual("snap_1", run["id"])
         repo.create_analysis_snapshot.assert_not_called()
+
+    def test_get_style_archetype_session_returns_eight_base_images(self) -> None:
+        repo = Mock()
+        repo.get_profile_by_user_id.return_value = {
+            "user_id": "user_style",
+            "gender": "female",
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = OnboardingService(repo=repo, image_dir=tmp_dir)
+            session = service.get_style_archetype_session("user_style")
+
+        assert session is not None
+        self.assertEqual("user_style", session["user_id"])
+        self.assertEqual("female", session["gender"])
+        self.assertEqual(3, session["minSelections"])
+        self.assertEqual(5, session["maxSelections"])
+        self.assertEqual(8, len(session["layer1"]))
+        self.assertEqual(ARCHETYPE_ORDER, [image["primaryArchetype"] for image in session["layer1"]])
+
+    def test_get_status_exposes_style_preference_completion(self) -> None:
+        repo = Mock()
+        repo.get_profile_by_user_id.return_value = {
+            "user_id": "user_status",
+            "mobile": "+919999999999",
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "onboarding_complete": False,
+        }
+        repo.get_image_categories.return_value = ["full_body", "headshot", "veins"]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = OnboardingService(repo=repo, image_dir=tmp_dir)
+            status = service.get_status("user_status")
+
+        self.assertTrue(status["profile_complete"])
+        self.assertTrue(status["style_preference_complete"])
+        self.assertFalse(status["onboarding_complete"])
+        self.assertEqual(["full_body", "headshot", "veins"], status["images_uploaded"])
+
+    def test_save_style_preference_persists_selected_images_map_and_count(self) -> None:
+        repo = Mock()
+        repo.get_profile_by_user_id.return_value = {
+            "user_id": "user_style",
+            "gender": "female",
+            "profile_complete": True,
+            "style_preference_complete": False,
+        }
+        repo.get_image_categories.return_value = ["full_body", "headshot", "veins"]
+        shown_images = [
+            {"id": "P001", "primaryArchetype": "classic", "secondaryArchetype": None, "intensity": "moderate", "context": "neutral"},
+            {"id": "P002", "primaryArchetype": "dramatic", "secondaryArchetype": None, "intensity": "moderate", "context": "neutral"},
+            {"id": "P003", "primaryArchetype": "romantic", "secondaryArchetype": None, "intensity": "moderate", "context": "neutral"},
+        ]
+        selections = [
+            {"image": shown_images[0], "layer": 1, "position": None, "selectionOrder": 1},
+            {"image": shown_images[1], "layer": 1, "position": None, "selectionOrder": 2},
+            {"image": shown_images[2], "layer": 1, "position": None, "selectionOrder": 3},
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = OnboardingService(repo=repo, image_dir=tmp_dir)
+            result = service.save_style_preference("user_style", shown_images, selections)
+
+        assert result is not None
+        self.assertEqual({"1": "P001.png", "2": "P002.png", "3": "P003.png"}, result["selectedImages"])
+        self.assertEqual(3, result["selectionCount"])
+        repo.insert_style_preference_snapshot.assert_called_once()
+        saved_payload = repo.insert_style_preference_snapshot.call_args.kwargs["style_preference"]
+        self.assertEqual({"1": "P001.png", "2": "P002.png", "3": "P003.png"}, saved_payload["selectedImages"])
+        self.assertEqual(3, saved_payload["selectionCount"])
 
 
 if __name__ == "__main__":

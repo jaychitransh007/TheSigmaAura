@@ -21,11 +21,20 @@ ATTRIBUTES TO EXTRACT:
 
 3. HairLength
    Enum: Cropped | Short | Medium | Long
-   Instruction: Classify current visible hair length based on how far the hair extends relative to the ears, jawline, shoulders, and chest.
-   - Cropped: very close to the scalp or above ear level.
-   - Short: around ear to jaw length.
-   - Medium: below the jaw and above or around the shoulders.
-   - Long: clearly below the shoulders.
+   Instruction: Classify current visible hair length using a gender-aware baseline. Judge the person's current hair length relative to what is typical for their stated gender presentation, while still grounding the decision only in visible length. Do not use one shared men/women scale.
+   - For male users:
+     - Cropped: very close to the scalp, clipper-short, or clearly above ear level.
+     - Short: around the ears or up to the upper neck only. If the hair clearly covers the ears substantially, reaches the nape, flips at the neck, or forms a neck-length silhouette, do not classify it as Short.
+     - Medium: clearly reaches the nape, lower neck, or collar zone, including neck-length male haircuts, over-the-ear curtain styles, and fuller cuts that frame the face and extend behind the jaw.
+     - Long: clearly extends beyond the collar/neck area toward or past the shoulders. Male users with shoulder-length or longer hair should usually be classified as Long, not Short.
+   - For female users:
+     - Cropped: very close to the scalp or pixie-short above ear/jaw level.
+     - Short: around ear to jaw length.
+     - Medium: below the jaw and above or around the shoulders.
+     - Long: clearly below the shoulders.
+   - For non-binary or unclear presentation, use the visible length relative to head, neck, collar, and shoulders, and choose the category that best matches the underlying visible length without collapsing longer male hair into Short.
+   - Correct for styling or pose effects: tied-back hair, volume, curls, waves, and hair pulled behind the shoulders can visually shorten or lengthen the apparent silhouette. Estimate the underlying actual length where possible.
+   - Specific guardrail: for male users, hair that is visibly neck-length or nape-length should usually be Medium even if it is not shoulder-length.
 
 4. JawlineDefinition
    Enum: Soft | Balanced | Sharp

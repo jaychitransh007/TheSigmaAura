@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from onboarding.api import create_onboarding_router
 from onboarding.analysis import UserAnalysisService
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
     orchestrator = ConversationOrchestrator(repo=repo, catalog_csv_path=cfg.catalog_csv_path)
 
     app = FastAPI(title="Sigma Aura Conversation Platform", version="1.0.0")
+    app.mount("/archetypes", StaticFiles(directory="archetypes"), name="archetypes")
 
     onboarding_repo = OnboardingRepository(client)
     onboarding_service = OnboardingService(repo=onboarding_repo)

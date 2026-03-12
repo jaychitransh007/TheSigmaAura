@@ -51,6 +51,9 @@ class ConversationApiUiTests(unittest.TestCase):
             self.assertIn("123456", resp.text)
             self.assertIn("2:3 frame", resp.text)
             self.assertIn("Mobile Number", resp.text)
+            self.assertIn("Step 1 of 11", resp.text)
+            self.assertIn("Select the outfits that feel like you.", resp.text)
+            self.assertIn("Continue to Profile Processing", resp.text)
 
     def test_root_with_completed_user_contains_action_layout_and_reward_contract(self) -> None:
         with patch("conversation_platform.api.load_config") as load_cfg, \
@@ -100,6 +103,7 @@ class ConversationApiUiTests(unittest.TestCase):
             self.assertIn("Conversation Stylist", html)
             self.assertIn("buy-row", html)
             self.assertIn("feedback-row", html)
+            self.assertIn("Logout", html)
             self.assertIn("Buy Now: +20", html)
             self.assertIn("Share: +10", html)
             self.assertIn("Like: +2", html)
@@ -243,9 +247,13 @@ class ConversationApiUiTests(unittest.TestCase):
                 "analysis_run_id": "run_ana",
                 "status": "completed",
                 "error_message": "",
-                "agent_outputs": {"body_type_analysis": {"Waist": {"value": "Medium", "confidence": 0.8, "evidence_note": "Visible taper.", "source_agent": "body_type_analysis"}}},
-                "attributes": {"Waist": {"value": "Medium", "confidence": 0.8, "evidence_note": "Visible taper.", "source_agent": "body_type_analysis"}},
-                "grouped_attributes": {"body_type_analysis": {"Waist": {"value": "Medium", "confidence": 0.8, "evidence_note": "Visible taper.", "source_agent": "body_type_analysis"}}},
+                "agent_outputs": {"body_type_analysis": {"TorsoToLegRatio": {"value": "Balanced", "confidence": 0.8, "evidence_note": "Midpoint sits near the waist.", "source_agent": "body_type_analysis"}}},
+                "attributes": {"TorsoToLegRatio": {"value": "Balanced", "confidence": 0.8, "evidence_note": "Midpoint sits near the waist.", "source_agent": "body_type_analysis"}},
+                "grouped_attributes": {"body_type_analysis": {"TorsoToLegRatio": {"value": "Balanced", "confidence": 0.8, "evidence_note": "Midpoint sits near the waist.", "source_agent": "body_type_analysis"}}},
+                "derived_interpretations": {
+                    "HeightCategory": {"value": "Average", "confidence": 1.0, "evidence_note": "Derived from entered height.", "source_agent": "deterministic_interpreter"},
+                    "WaistSizeBand": {"value": "Medium", "confidence": 1.0, "evidence_note": "Derived from entered waist.", "source_agent": "deterministic_interpreter"},
+                },
             }
             analysis_cls.return_value = analysis_service
 
@@ -255,7 +263,46 @@ class ConversationApiUiTests(unittest.TestCase):
             self.assertEqual(200, resp.status_code)
             payload = resp.json()
             self.assertEqual("completed", payload["status"])
-            self.assertEqual("Medium", payload["attributes"]["Waist"]["value"])
+            self.assertEqual("Balanced", payload["attributes"]["TorsoToLegRatio"]["value"])
+            self.assertEqual("Average", payload["derived_interpretations"]["HeightCategory"]["value"])
+            self.assertEqual("Medium", payload["derived_interpretations"]["WaistSizeBand"]["value"])
+
+    def test_style_session_endpoint_returns_eight_archetypes(self) -> None:
+        with patch("conversation_platform.api.load_config") as load_cfg, \
+            patch("conversation_platform.api.SupabaseRestClient") as sb_client, \
+            patch("conversation_platform.api.ConversationRepository") as repo_cls, \
+            patch("conversation_platform.api.ConversationOrchestrator") as orch_cls, \
+            patch("conversation_platform.api.UserAnalysisService") as analysis_cls:
+            load_cfg.return_value = Mock(
+                supabase_rest_url="http://127.0.0.1:55321/rest/v1",
+                supabase_service_role_key="x",
+                request_timeout_seconds=5,
+                catalog_csv_path="data/output/enriched.csv",
+            )
+            supabase = Mock()
+            supabase.select_one.return_value = {
+                "user_id": "user_style",
+                "gender": "female",
+            }
+            supabase.select_many.return_value = []
+            sb_client.return_value = supabase
+            repo_cls.return_value = Mock()
+            orch_cls.return_value = Mock()
+            analysis_cls.return_value = Mock()
+
+            app = create_app()
+            client = TestClient(app)
+            resp = client.get("/v1/onboarding/style/session/user_style")
+            self.assertEqual(200, resp.status_code)
+            payload = resp.json()
+            self.assertEqual("female", payload["gender"])
+            self.assertEqual(3, payload["minSelections"])
+            self.assertEqual(5, payload["maxSelections"])
+            self.assertEqual(8, len(payload["layer1"]))
+            self.assertEqual(
+                ["classic", "dramatic", "romantic", "natural", "minimalist", "creative", "sporty", "edgy"],
+                [image["primaryArchetype"] for image in payload["layer1"]],
+            )
 
     def test_analysis_rerun_endpoint_starts_new_run(self) -> None:
         class InlineThread:
@@ -311,6 +358,69 @@ class ConversationApiUiTests(unittest.TestCase):
             self.assertEqual("run_rerun", payload["analysis_run_id"])
             self.assertEqual("Analysis re-run started", payload["message"])
             analysis_service.force_analysis_restart.assert_called_once_with("user_rerun")
+
+    def test_analysis_agent_rerun_endpoint_starts_selected_agent_run(self) -> None:
+        class InlineThread:
+            def __init__(self, target=None, daemon=None):
+                self._target = target
+
+            def start(self):
+                if self._target is not None:
+                    self._target()
+
+        with patch("conversation_platform.api.load_config") as load_cfg, \
+            patch("conversation_platform.api.SupabaseRestClient") as sb_client, \
+            patch("conversation_platform.api.ConversationRepository") as repo_cls, \
+            patch("conversation_platform.api.ConversationOrchestrator") as orch_cls, \
+            patch("conversation_platform.api.Thread", InlineThread), \
+            patch("conversation_platform.api.UserAnalysisService") as analysis_cls:
+            load_cfg.return_value = Mock(
+                supabase_rest_url="http://127.0.0.1:55321/rest/v1",
+                supabase_service_role_key="x",
+                request_timeout_seconds=5,
+                catalog_csv_path="data/output/enriched.csv",
+            )
+            sb_client.return_value = Mock()
+            repo_cls.return_value = Mock()
+            orch_cls.return_value = Mock()
+            sb_client.return_value.select_one.return_value = {
+                "user_id": "user_rerun_agent",
+                "mobile": "+919999999999",
+                "profile_complete": True,
+                "onboarding_complete": True,
+            }
+            sb_client.return_value.select_many.return_value = [
+                {"category": "full_body"},
+                {"category": "headshot"},
+                {"category": "veins"},
+            ]
+            analysis_service = Mock()
+            analysis_service.force_agent_restart.return_value = {
+                "id": "run_agent_rerun",
+                "status": "pending",
+            }
+            analysis_service.run_agent_rerun.return_value = {
+                "user_id": "user_rerun_agent",
+                "status": "completed",
+            }
+            analysis_cls.return_value = analysis_service
+
+            app = create_app()
+            client = TestClient(app)
+            resp = client.post(
+                "/v1/onboarding/analysis/rerun-agent",
+                json={"user_id": "user_rerun_agent", "agent_name": "other_details_analysis"},
+            )
+            self.assertEqual(200, resp.status_code)
+            payload = resp.json()
+            self.assertEqual("run_agent_rerun", payload["analysis_run_id"])
+            self.assertEqual("other_details_analysis re-run started", payload["message"])
+            analysis_service.force_agent_restart.assert_called_once_with("user_rerun_agent", "other_details_analysis")
+            analysis_service.run_agent_rerun.assert_called_once_with(
+                "user_rerun_agent",
+                "other_details_analysis",
+                run_id="run_agent_rerun",
+            )
 
     def test_turn_job_start_and_status(self) -> None:
         class InlineThread:

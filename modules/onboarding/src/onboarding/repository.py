@@ -5,7 +5,6 @@ from conversation_platform.supabase_rest import SupabaseRestClient
 
 
 ANALYSIS_ATTRIBUTE_COLUMN_PREFIXES = {
-    "Waist": "waist",
     "ShoulderToHipRatio": "shoulder_to_hip_ratio",
     "TorsoToLegRatio": "torso_to_leg_ratio",
     "BodyShape": "body_shape",
@@ -13,7 +12,6 @@ ANALYSIS_ATTRIBUTE_COLUMN_PREFIXES = {
     "VerticalProportion": "vertical_proportion",
     "ArmVolume": "arm_volume",
     "MidsectionState": "midsection_state",
-    "WaistVisibility": "waist_visibility",
     "BustVolume": "bust_volume",
     "SkinSurfaceColor": "skin_surface_color",
     "HairColor": "hair_color",
@@ -29,6 +27,7 @@ ANALYSIS_ATTRIBUTE_COLUMN_PREFIXES = {
 }
 
 INTERPRETATION_COLUMN_PREFIXES = {
+    "HeightCategory": "height_category",
     "SeasonalColorGroup": "seasonal_color_group",
     "ContrastLevel": "contrast_level",
     "FrameStructure": "frame_structure",
@@ -124,6 +123,15 @@ class OnboardingRepository:
         self.insert_onboarding_profile_snapshot(user_id, snapshot_reason="onboarding_completed")
         return result
 
+    def mark_style_preference_complete(self, user_id: str) -> Optional[Dict[str, Any]]:
+        result = self.client.update_one(
+            "onboarding_profiles",
+            filters={"user_id": f"eq.{user_id}"},
+            patch={"style_preference_complete": True, "updated_at": _now_iso()},
+        )
+        self.insert_onboarding_profile_snapshot(user_id, snapshot_reason="state_change")
+        return result
+
     def insert_onboarding_profile_snapshot(self, user_id: str, *, snapshot_reason: str) -> Optional[Dict[str, Any]]:
         profile = self.get_profile_by_user_id(user_id)
         if not profile:
@@ -142,6 +150,7 @@ class OnboardingRepository:
             "profession": profile.get("profession"),
             "profile_complete": bool(profile.get("profile_complete")),
             "onboarding_complete": bool(profile.get("onboarding_complete")),
+            "style_preference_complete": bool(profile.get("style_preference_complete")),
             "has_full_body_image": "full_body" in images,
             "has_headshot_image": "headshot" in images,
             "has_veins_image": "veins" in images,
@@ -218,6 +227,38 @@ class OnboardingRepository:
         rows = self.get_images(user_id)
         return [r["category"] for r in rows]
 
+    # -- user_style_preference_snapshots -------------------------------------
+
+    def insert_style_preference_snapshot(self, *, user_id: str, style_preference: Dict[str, Any]) -> Dict[str, Any]:
+        blend = style_preference.get("blendRatio") or {}
+        return self.client.insert_one("user_style_preference_snapshots", {
+            "user_id": user_id,
+            "gender": style_preference.get("gender") or "male",
+            "primary_archetype": style_preference.get("primaryArchetype") or "",
+            "secondary_archetype": style_preference.get("secondaryArchetype"),
+            "blend_ratio_primary": int(blend.get("primary") or 100),
+            "blend_ratio_secondary": int(blend.get("secondary") or 0),
+            "risk_tolerance": style_preference.get("riskTolerance") or "",
+            "formality_lean": style_preference.get("formalityLean") or "",
+            "pattern_type": style_preference.get("patternType") or "",
+            "comfort_boundaries_json": style_preference.get("comfortBoundaries") or [],
+            "archetype_scores_json": style_preference.get("archetypeScores") or {},
+            "selected_image_ids_json": style_preference.get("selectedImageIds") or [],
+            "selected_images_json": style_preference.get("selectedImages") or {},
+            "selection_count": int(style_preference.get("selectionCount") or 0),
+            "completed_at": style_preference.get("completedAt") or _now_iso(),
+            "created_at": _now_iso(),
+        })
+
+    def get_latest_style_preference_snapshot(self, user_id: str) -> Optional[Dict[str, Any]]:
+        rows = self.client.select_many(
+            "user_style_preference_snapshots",
+            filters={"user_id": f"eq.{user_id}"},
+            order="created_at.desc",
+            limit=1,
+        )
+        return rows[0] if rows else None
+
     # -- user_analysis_snapshots ---------------------------------------------
 
     def create_analysis_snapshot(
@@ -266,6 +307,18 @@ class OnboardingRepository:
             limit=1,
         )
         return rows[0] if rows else None
+
+    def get_previous_analysis_snapshot(self, user_id: str, exclude_id: str) -> Optional[Dict[str, Any]]:
+        rows = self.client.select_many(
+            "user_analysis_snapshots",
+            filters={"user_id": f"eq.{user_id}"},
+            order="created_at.desc",
+            limit=5,
+        )
+        for row in rows:
+            if str(row.get("id") or "") != exclude_id:
+                return row
+        return None
 
     # -- user_interpretation_snapshots ---------------------------------------
 

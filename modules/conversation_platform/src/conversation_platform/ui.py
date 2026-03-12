@@ -305,6 +305,7 @@ def get_web_ui_html(user_id: str = "") -> str:
       </div>
       <div class="btns">
         <button class="secondary" id="newConversationBtn">New Conversation</button>
+        <button class="secondary" id="logoutBtn">Logout</button>
       </div>
       <div class="err" id="errorBox"></div>
       <div class="field" style="margin-top:10px;">
@@ -347,6 +348,7 @@ def get_web_ui_html(user_id: str = "") -> str:
     const resultFilterEl = document.getElementById("resultFilter");
     const stageBox = document.getElementById("stageBox");
     const sendBtn = document.getElementById("sendBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
 
     function addBubble(text, kind) {
       const div = document.createElement("div");
@@ -559,6 +561,10 @@ def get_web_ui_html(user_id: str = "") -> str:
       addMeta("conversation: " + data.conversation_id);
       return data.conversation_id;
     }
+
+    logoutBtn.addEventListener("click", () => {
+      window.location.href = "/";
+    });
 
     async function pollTurnJob(conversationId, jobId) {
       while (true) {

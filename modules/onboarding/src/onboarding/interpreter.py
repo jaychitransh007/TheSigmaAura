@@ -8,6 +8,7 @@ def derive_interpretations(
     waist_cm: float = 0.0,
 ) -> Dict[str, Dict[str, Any]]:
     outputs = {
+        "HeightCategory": _derive_height_category(height_cm),
         "SeasonalColorGroup": _derive_seasonal_color_group(attributes),
         "ContrastLevel": _derive_contrast_level(attributes),
         "FrameStructure": _derive_frame_structure(attributes, height_cm=height_cm),
@@ -220,6 +221,28 @@ def _derive_frame_structure(attributes: Dict[str, Dict[str, Any]], *, height_cm:
         "value": label,
         "confidence": confidence,
         "evidence_note": f"{visual_weight} visual weight with {shoulder_slope.lower()} shoulders and {arm_volume.lower()} arm volume reads as {label}.",
+    }
+
+
+def _derive_height_category(height_cm: float) -> Dict[str, Any]:
+    if height_cm <= 0:
+        return {
+            "value": "Unable to Assess",
+            "confidence": 0.0,
+            "evidence_note": "Missing height measurement from onboarding profile.",
+        }
+
+    if height_cm < 160:
+        label = "Petite"
+    elif height_cm <= 175:
+        label = "Average"
+    else:
+        label = "Tall"
+
+    return {
+        "value": label,
+        "confidence": 1.0,
+        "evidence_note": f"Derived directly from entered height of {height_cm:.1f} cm.",
     }
 
 

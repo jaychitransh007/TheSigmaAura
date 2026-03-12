@@ -34,6 +34,7 @@ class OnboardingInterpreterTests(unittest.TestCase):
             "ArmVolume": _attr("Medium"),
         }
         out = derive_interpretations(attributes, height_cm=172, waist_cm=82)
+        self.assertEqual("Average", out["HeightCategory"]["value"])
         self.assertEqual("Clear Spring", out["SeasonalColorGroup"]["value"])
         self.assertEqual("Medium", out["ContrastLevel"]["value"])
         self.assertEqual("Medium and Balanced", out["FrameStructure"]["value"])
@@ -52,6 +53,7 @@ class OnboardingInterpreterTests(unittest.TestCase):
             "ArmVolume": _attr("Full"),
         }
         out = derive_interpretations(attributes, height_cm=184, waist_cm=112)
+        self.assertEqual("Tall", out["HeightCategory"]["value"])
         self.assertEqual("Clear Winter", out["SeasonalColorGroup"]["value"])
         self.assertEqual("High", out["ContrastLevel"]["value"])
         self.assertEqual("Solid and Broad", out["FrameStructure"]["value"])
@@ -59,6 +61,7 @@ class OnboardingInterpreterTests(unittest.TestCase):
 
     def test_returns_unable_to_assess_when_inputs_missing(self) -> None:
         out = derive_interpretations({}, height_cm=0, waist_cm=0)
+        self.assertEqual("Unable to Assess", out["HeightCategory"]["value"])
         self.assertEqual("Unable to Assess", out["SeasonalColorGroup"]["value"])
         self.assertEqual(0.0, out["SeasonalColorGroup"]["confidence"])
         self.assertEqual("Unable to Assess", out["ContrastLevel"]["value"])

@@ -5,6 +5,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
 from conversation_platform.supabase_rest import SupabaseError
 
 from .schemas import (
+    AnalysisAgentRerunRequest,
     AnalysisStartRequest,
     AnalysisStartResponse,
     AnalysisStatusResponse,
@@ -15,6 +16,9 @@ from .schemas import (
     ProfileResponse,
     SendOtpRequest,
     SendOtpResponse,
+    StyleArchetypeSessionResponse,
+    StylePreferenceCompleteRequest,
+    StylePreferenceResponse,
     VerifyOtpRequest,
     VerifyOtpResponse,
 )
@@ -115,6 +119,30 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         return OnboardingStatusResponse(**status)
 
+    @router.get("/style/session/{user_id}", response_model=StyleArchetypeSessionResponse)
+    def get_style_session(user_id: str) -> StyleArchetypeSessionResponse:
+        try:
+            session = service.get_style_archetype_session(user_id)
+        except (SupabaseError, RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        if not session:
+            raise HTTPException(status_code=404, detail="User not found.")
+        return StyleArchetypeSessionResponse(**session)
+
+    @router.post("/style/complete", response_model=StylePreferenceResponse)
+    def save_style_preference(payload: StylePreferenceCompleteRequest) -> StylePreferenceResponse:
+        try:
+            out = service.save_style_preference(
+                user_id=payload.user_id,
+                shown_images=payload.shown_images,
+                selections=[item.model_dump() for item in payload.selections],
+            )
+        except (SupabaseError, RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not out:
+            raise HTTPException(status_code=404, detail="User not found.")
+        return StylePreferenceResponse(user_id=payload.user_id, saved=True, style_preference=out)
+
     @router.post("/analysis/start", response_model=AnalysisStartResponse)
     def start_analysis(payload: AnalysisStartRequest) -> AnalysisStartResponse:
         try:
@@ -172,6 +200,39 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
             analysis_run_id=str(run.get("id") or ""),
             status=str(run.get("status") or "pending"),
             message="Analysis re-run started",
+        )
+
+    @router.post("/analysis/rerun-agent", response_model=AnalysisStartResponse)
+    def rerun_analysis_agent(payload: AnalysisAgentRerunRequest) -> AnalysisStartResponse:
+        try:
+            status = service.get_status(payload.user_id)
+        except (SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        if not status.get("onboarding_complete"):
+            raise HTTPException(status_code=400, detail="Complete onboarding before re-running analysis.")
+
+        try:
+            run = analysis_service.force_agent_restart(payload.user_id, payload.agent_name)
+        except (SupabaseError, RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        def run_job() -> None:
+            try:
+                analysis_service.run_agent_rerun(
+                    payload.user_id,
+                    payload.agent_name,
+                    run_id=str(run.get("id") or ""),
+                )
+            except Exception as exc:  # noqa: BLE001
+                analysis_service.fail_analysis(payload.user_id, str(exc))
+
+        Thread(target=run_job, daemon=True).start()
+
+        return AnalysisStartResponse(
+            user_id=payload.user_id,
+            analysis_run_id=str(run.get("id") or ""),
+            status=str(run.get("status") or "pending"),
+            message=f"{payload.agent_name} re-run started",
         )
 
     @router.get("/analysis/{user_id}", response_model=AnalysisStatusResponse)

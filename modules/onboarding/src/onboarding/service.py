@@ -11,6 +11,7 @@ from conversation_platform.supabase_rest import SupabaseError
 
 from .repository import OnboardingRepository
 from .schemas import FIXED_OTP, ImageCategory
+from .style_archetype import interpret_style_preference, selection_session
 
 
 REQUIRED_IMAGE_CATEGORIES = frozenset(("full_body", "headshot", "veins"))
@@ -172,8 +173,33 @@ class OnboardingService:
         if not profile or not profile.get("profile_complete"):
             return
         uploaded = set(self._repo.get_image_categories(user_id))
-        if REQUIRED_IMAGE_CATEGORIES <= uploaded:
+        if REQUIRED_IMAGE_CATEGORIES <= uploaded and profile.get("style_preference_complete"):
             self._repo.mark_onboarding_complete(user_id)
+
+    def get_style_archetype_session(self, user_id: str) -> Optional[dict]:
+        if self._repo is None:
+            return None
+        profile = self._repo.get_profile_by_user_id(user_id)
+        if not profile:
+            return None
+        gender = str(profile.get("gender") or "")
+        normalized_gender = "female" if gender == "female" else "male"
+        session = selection_session(normalized_gender)
+        session["user_id"] = user_id
+        return session
+
+    def save_style_preference(self, user_id: str, shown_images: list[dict], selections: list[dict]) -> Optional[dict]:
+        if self._repo is None:
+            return None
+        profile = self._repo.get_profile_by_user_id(user_id)
+        if not profile:
+            return None
+        gender = "female" if str(profile.get("gender") or "") == "female" else "male"
+        style_preference = interpret_style_preference(gender, shown_images, selections)
+        self._repo.insert_style_preference_snapshot(user_id=user_id, style_preference=style_preference)
+        self._repo.mark_style_preference_complete(user_id)
+        self._check_and_mark_complete(user_id)
+        return style_preference
 
     def _record_otp_verification_safe(
         self,
@@ -216,6 +242,7 @@ class OnboardingService:
                 "user_id": user_id,
                 "profile_complete": False,
                 "images_uploaded": [],
+                "style_preference_complete": False,
                 "onboarding_complete": False,
             }
         profile = self._repo.get_profile_by_user_id(user_id)
@@ -224,6 +251,7 @@ class OnboardingService:
                 "user_id": user_id,
                 "profile_complete": False,
                 "images_uploaded": [],
+                "style_preference_complete": False,
                 "onboarding_complete": False,
             }
         categories = self._repo.get_image_categories(user_id)
@@ -232,5 +260,6 @@ class OnboardingService:
             "mobile": profile.get("mobile", ""),
             "profile_complete": bool(profile.get("profile_complete")),
             "images_uploaded": categories,
+            "style_preference_complete": bool(profile.get("style_preference_complete")),
             "onboarding_complete": bool(profile.get("onboarding_complete")),
         }
