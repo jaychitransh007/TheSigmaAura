@@ -2,15 +2,38 @@
 
 Last updated: March 12, 2026
 
+## Current Implementation Status
+
+This document is both the target v1 contract and the current implementation reference for `modules/agentic_application`.
+
+Implemented now:
+- active runtime entrypoint in `agentic_application/api.py` with `AgenticOrchestrator`
+- saved user-context loading from onboarding/profile-analysis/style-preference persistence
+- rule-based live-context extraction with phrase-priority matching
+- server-side conversation-memory carry-forward across follow-up turns
+- LLM planning with deterministic fallback to `complete_only`, `paired_only`, or `mixed`
+- embedding retrieval from `catalog_item_embeddings` with hydration from `catalog_enriched`
+- direction-aware retrieval for complete outfits and top/bottom pairing
+- deterministic assembly and LLM evaluation with graceful fallback
+- persisted turn artifacts: live context, memory, plan, applied filters, retrieved IDs, assembled candidates, final recommendations
+- response formatting for `outfits` plus compatibility fallback for older `recommendations`
+- runtime URL synthesis from `store + handle` when canonical absolute product URLs are absent in catalog rows
+
+Still incomplete:
+- evaluator is not explicitly conditioned on persisted conversation memory beyond merged live context
+- follow-up refinement for `change_color` and `similar_to_previous` is still heuristic, not full constraint editing
+- retry logic only relaxes `occasion_fit`, then `formality_level`
+- application imports still cross legacy module boundaries in some places
+
 ## Overview
 
 The Application Layer handles every user recommendation request.
 
 It receives a natural language message from the user, loads the saved user profile, resolves live context from the message, generates one or more catalog-optimized retrieval queries, retrieves matching products, assembles outfit candidates when pairing is needed, evaluates them against the user's specific context, and returns ranked recommendations.
 
-No external knowledge documents are injected into prompts. The LLM is relied upon for its inherent fashion knowledge plus the structured user context supplied by the system.
+No external knowledge documents are injected into prompts in the active runtime. The LLM is relied upon for its inherent fashion knowledge plus the structured user context supplied by the system.
 
-This specification supersedes the current simplified runtime. It is the target v1 application contract.
+This specification now describes the active runtime closely enough to use as the canonical application reference.
 
 ## V1 Scope
 
@@ -134,6 +157,7 @@ class UserContext:
 - Use the actual current profile naming, not hypothetical alternate names.
 - `HeightCategory` and `WaistSizeBand` should come from deterministic interpretations.
 - Style preference should be loaded exactly as stored, including blend ratio, risk tolerance, formality lean, pattern type, and comfort boundaries.
+- Current runtime enforces a minimum usable profile before recommendations: `gender`, `SeasonalColorGroup`, and primary archetype/style preference signal.
 
 ## 3. Occasion Resolver
 
@@ -183,6 +207,7 @@ The orchestrator merges saved user context and live context into one payload.
 class CombinedContext:
     user: UserContext
     live: LiveContext
+    conversation_memory: dict | None
     hard_filters: dict
     previous_recommendations: list[dict] | None
 ```
@@ -199,6 +224,10 @@ Conditional hard filters:
 Direction-specific filters:
 - complete outfit directions use `StylingCompleteness = complete`
 - pairing directions use `StylingCompleteness = needs_pairing`
+
+Current runtime also derives query-document filters server-side from architect output and can relax:
+- `occasion_fit`
+- `formality_level`
 
 Important:
 - for v1, do not globally force complete outfits
@@ -221,6 +250,7 @@ Entry point for every recommendation request.
 - call the Outfit Evaluator
 - call the Response Formatter
 - persist turn artifacts
+- persist updated conversation memory back onto the conversation
 
 ### Main flow
 
@@ -239,6 +269,12 @@ async def handle_recommendation_request(request: RecommendationRequest) -> dict:
     await persist_turn_state(request, combined, plan, retrieved, evaluated, response)
     return response
 ```
+
+### Active runtime notes
+
+- Filter relaxation order is: no relaxation, then drop `occasion_fit`, then drop `occasion_fit` and `formality_level`.
+- `GenderExpression` is never relaxed.
+- Planner and evaluator both have deterministic fallbacks so the request can still complete if an LLM step fails.
 
 ## 6. Outfit Architect
 
@@ -358,6 +394,7 @@ class RetrievedSet:
     direction_id: str
     query_id: str
     role: str
+    applied_filters: dict
     products: list[dict]
 ```
 
@@ -518,6 +555,38 @@ Supported intents in v1:
 - `full_alternative`
 - `more_options`
 - `similar_to_previous`
+
+Current implementation note:
+- these intents are detected and persisted today
+- `increase_boldness`, `decrease_formality`, `increase_formality`, `full_alternative`, and `more_options` have meaningful runtime effect
+- `change_color` and `similar_to_previous` are only partially expressed through current heuristics
+
+## Runtime Testing
+
+Start the active app runtime:
+
+```bash
+APP_ENV=local python3 run_agentic_application.py --reload --port 8010
+```
+
+Run the targeted smoke flow:
+
+```bash
+USER_ID=your_completed_user_id bash ops/scripts/smoke_test_agentic_application.sh
+```
+
+Run automated tests:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+Focused suites used for the application layer:
+
+```bash
+python3 -m unittest tests.test_agentic_application -v
+python3 -m unittest tests.test_conversation_api_ui -v
+```
 
 ### Follow-up rule
 

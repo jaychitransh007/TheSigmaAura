@@ -137,36 +137,37 @@ const details = {
   },
   orchestrator: {
     title: "Orchestrator (orchestrator.py)",
-    desc: "Receives the user's live message, loads saved profile state, and combines them into a unified payload. Also runs a lightweight rule-based context resolver to extract occasion signals from the message. This is the active application runtime today, but it is still thinner than the full target multi-agent system.",
+    desc: "Active application runtime. It loads saved user state, resolves live message context, applies conversation memory, calls the planner, retrieval, assembly, evaluation, and formatting stages, then persists every turn artifact back to storage.",
     items: [
-      "Loads: user profile, analysis, interpretations, style preference",
-      "Extracts: occasion intent, style goal from live message",
-      "Sets: hard filters (gender_expression, styling_completeness=complete)",
-      "Passes: combined context → Query Builder",
+      "Loads: profile, analysis, interpretations, style preference",
+      "Resolves: live context + follow-up intent + memory carry-forward",
+      "Calls: Outfit Architect → Search → Assembler → Evaluator → Formatter",
+      "Persists: live context, plan, filters, candidates, recommendations",
     ]
   },
   context_resolver: {
-    title: "Context Resolver",
-    desc: "Rule-based extraction of lightweight live context from the user's message. Identifies occasion type, formality hints, and any specific needs (e.g., 'need to look tall').",
+    title: "Occasion Resolver",
+    desc: "Rule-based live-context extraction with phrase-priority matching. Identifies occasion, formality, time-of-day, specific needs, and whether the turn is a real follow-up based on prior recommendations.",
     items: [
       "Input: raw user message text",
-      "Extracts: occasion_signal, formality_hint, specific_needs",
-      "Example: 'farewell party' → occasion: party, formality: smart-casual, time: evening",
+      "Extracts: occasion_signal, formality_hint, time_hint, specific_needs",
+      "Follow-up aware: only active when prior recommendations exist",
+      "Example: 'work dinner, want to look taller' → occasion + formality + elongation",
     ]
   },
   query_builder: {
-    title: "Query Builder (query_builder.py)",
-    desc: "LLM call that translates the combined user context into catalog-facing retrieval language. Outputs a structured document with fixed sections that mirror catalog attribute vocabulary. This is currently the main intelligence layer before retrieval, but it should later become one agent inside a broader application flow.",
+    title: "Outfit Architect (outfit_architect.py)",
+    desc: "Planner agent that translates combined user context into a structured recommendation plan. It returns strict JSON with one or more retrieval directions and structured query documents that mirror the catalog embedding representation. Deterministic fallback planning exists when the LLM fails.",
     items: [
-      "Input: profile + style pref + occasion context",
-      "LLM system prompt: 'Output structured retrieval doc'",
+      "Input: saved profile + live context + conversation memory",
+      "Output: RecommendationPlan with complete, paired, or mixed directions",
       "Sections: USER_NEED, PROFILE_AND_STYLE, GARMENT_REQUIREMENTS, FABRIC_AND_BUILD, PATTERN_AND_COLOR, OCCASION_AND_SIGNAL",
-      "Output: natural language query in catalog semantic space",
+      "Server fallback: conservative complete/paired plan if LLM fails",
     ]
   },
   knowledge: {
     title: "Knowledge Context",
-    desc: "12 fashion knowledge modules (M01-M12) embedded into the Query Builder's system prompt. Enables the LLM to reason about body-shape-to-silhouette mapping, seasonal color application, proportion correction, and occasion conventions.",
+    desc: "Reference prompt/module architecture for future richer agent prompting. The active runtime does not inject these full modules directly; planner and evaluator currently rely on model priors plus structured user and catalog context.",
     items: [
       "M01: Universal Styling Principles",
       "M02: Body Shape & Silhouette Strategy",
@@ -186,32 +187,33 @@ const details = {
     ]
   },
   vector_search: {
-    title: "Vector Search (pgvector)",
-    desc: "PostgreSQL with pgvector extension. Applies hard SQL filters first to narrow the candidate pool, then runs cosine similarity on the embedding column to retrieve the top matches. Current runtime is intentionally simplified to complete-outfit retrieval only.",
+    title: "Catalog Search Agent + Vector Search",
+    desc: "Embeds each architect query document, applies merged hard filters, runs cosine similarity against pgvector, hydrates products from `catalog_enriched`, and supports filter relaxation when retrieval is too narrow. The active runtime supports both complete outfits and paired directions.",
     items: [
-      "Hard filters: GenderExpression, OccasionFit, StylingCompleteness",
-      "Current enforced scope: StylingCompleteness = complete",
+      "Hard filters: GenderExpression, OccasionFit, FormalityLevel, StylingCompleteness",
+      "Supports: complete directions and top/bottom pairing directions",
+      "Relaxation order: occasion_fit, then formality_level",
       "Vector: HNSW index, cosine distance",
-      "Returns: top 10-15 candidates with full product data",
+      "Returns: hydrated products + applied filter snapshot per query",
     ]
   },
   evaluator: {
     title: "Outfit Evaluator (LLM)",
-    desc: "Target application component. It should receive retrieved products plus full user context, reason through body harmony, color alignment, occasion fit, and style match, and then return ranked recommendations with explanations. This stage is not yet fully implemented in the active runtime.",
+    desc: "Active ranking component. It evaluates complete outfits and assembled pairs against body harmony, color, occasion, style, and user needs. If the LLM step fails, the runtime degrades gracefully to deterministic ordering based on assembly score and retrieval strength.",
     items: [
       "Input: 10-20 candidates + user profile + style pref + occasion",
-      "Knowledge: M07 Evaluation Framework + M01/M03 compact",
       "Evaluates: body harmony, color, occasion, style, cohesion",
+      "Graceful fallback: deterministic ranking when model call fails",
       "Output: top 3-5 ranked outfits with reasoning",
     ]
   },
   presentation: {
-    title: "Presentation to User",
-    desc: "Communicates top recommendations with accessible reasoning. In the target system, this layer should handle follow-up refinement requests that loop back through the application with updated constraints. Current runtime still uses simpler response formatting.",
+    title: "Response Formatter + UI",
+    desc: "Formats ranked recommendations into user-facing outfit cards and renders them in the conversation UI. The active runtime now carries image, title, price, similarity, and product URL, with compatibility fallback for older recommendation payloads.",
     items: [
-      "Shows: outfit images, title, price, reasoning",
-      "Explains: why each piece works for them specifically",
-      "Follow-ups: 'show bolder', 'different color' → re-query",
+      "Shows: outfit images, title, price, reasoning, product link, similarity",
+      "Prefers: result.outfits, falls back to legacy recommendations",
+      "Follow-ups: 'show bolder', 'different color' loop through orchestrator",
     ]
   },
   catalog_upload: {

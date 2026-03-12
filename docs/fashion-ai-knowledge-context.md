@@ -4,6 +4,11 @@
 
 This document contains the complete knowledge base for the Fashion Styling AI system. It is organized into focused modules, each assigned to specific agents. Agents load only their designated modules — never the full document.
 
+Current runtime note:
+- the active `agentic_application` implementation does not inject this document directly into prompts
+- these modules remain the reference knowledge architecture for future prompt/module loading and evaluation design
+- current planner/evaluator prompts rely on model priors plus structured user and catalog context
+
 ---
 
 ## Agent-to-Module Mapping

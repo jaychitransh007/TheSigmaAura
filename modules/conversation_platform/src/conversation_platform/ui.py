@@ -88,6 +88,12 @@ def get_web_ui_html(user_id: str = "") -> str:
     }
     .card img { width:100%; height:220px; object-fit:cover; display:block; background:#efe9e0; }
     .card .body { padding:10px; font-size:12px; }
+    .card .body a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .card .body a:hover { text-decoration: underline; }
     .chip {
       display:inline-block;
       margin: 0 6px 6px 0;
@@ -196,6 +202,16 @@ def get_web_ui_html(user_id: str = "") -> str:
       feed.scrollTop = feed.scrollHeight;
     }
 
+    function firstImageUrl(item) {
+      return (
+        item.image_url ||
+        item.primary_image_url ||
+        item.images__0__src ||
+        item.images_0_src ||
+        ""
+      );
+    }
+
     function renderRecommendations(items) {
       if (!items || !items.length) return;
       const wrap = document.createElement("div");
@@ -204,24 +220,43 @@ def get_web_ui_html(user_id: str = "") -> str:
         const card = document.createElement("div");
         card.className = "card";
         const image = document.createElement("img");
-        image.src = item.image_url || "";
+        image.src = firstImageUrl(item);
         image.alt = item.title || "Catalog match";
         image.loading = "lazy";
         const body = document.createElement("div");
         body.className = "body";
+        const url = item.product_url || item.url || "";
+        const title = item.title || item.product_id || "Untitled";
         body.innerHTML = `
-          <div style="font-weight:700; margin-bottom:6px;">${escapeHtml(item.title || "Untitled")}</div>
+          <div style="font-weight:700; margin-bottom:6px;">${escapeHtml(title)}</div>
           <div style="margin-bottom:8px;">Similarity ${Number(item.similarity || 0).toFixed(3)}</div>
           <div class="chip">${escapeHtml(item.garment_category || "Unknown")}</div>
           <div class="chip">${escapeHtml(item.garment_subtype || "Unknown")}</div>
           <div class="chip">${escapeHtml(item.primary_color || "Unknown")}</div>
           <div class="chip">${escapeHtml(item.price || "Unknown")}</div>
+          ${url ? `<div style="margin-top:8px;"><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Open product</a></div>` : ""}
         `;
         card.appendChild(image);
         card.appendChild(body);
         wrap.appendChild(card);
       }
       feed.appendChild(wrap);
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    function renderOutfits(outfits) {
+      if (!outfits || !outfits.length) return;
+      for (const outfit of outfits) {
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const bits = [];
+        if (outfit.rank != null) bits.push(`#${outfit.rank}`);
+        if (outfit.title) bits.push(outfit.title);
+        if (outfit.reasoning) bits.push(outfit.reasoning);
+        meta.textContent = bits.join("  ");
+        feed.appendChild(meta);
+        renderRecommendations(outfit.items || []);
+      }
       feed.scrollTop = feed.scrollHeight;
     }
 
@@ -298,7 +333,11 @@ def get_web_ui_html(user_id: str = "") -> str:
         const result = await pollJob(conversationId, job.job_id);
         queryBox.textContent = result.retrieval_query_document || "No query generated.";
         addBubble(result.assistant_message || "", "assistant");
-        renderRecommendations(result.recommendations || []);
+        if (result.outfits && result.outfits.length) {
+          renderOutfits(result.outfits);
+        } else {
+          renderRecommendations(result.recommendations || []);
+        }
       } catch (e) {
         err.textContent = e.message || String(e);
       } finally {
