@@ -61,7 +61,7 @@ class ConversationPlatformTests(unittest.TestCase):
             "attributes": {"BodyShape": {"value": "Rectangle"}},
             "derived_interpretations": {"HeightCategory": {"value": "Tall"}},
         }
-        query_document = "GARMENT_REQUIREMENTS:\\n- GarmentCategory: top\\nOCCASION_AND_SIGNAL:\\n- OccasionFit: smart_casual"
+        query_document = "GARMENT_REQUIREMENTS:\\n- GarmentCategory: dress\\n- StylingCompleteness: complete\\nOCCASION_AND_SIGNAL:\\n- OccasionFit: smart_casual"
         matches = [
             {
                 "product_id": "sku-1",
@@ -71,12 +71,12 @@ class ConversationPlatformTests(unittest.TestCase):
                     "price": "1999",
                     "GarmentCategory": "top",
                     "GarmentSubtype": "shirt",
-                    "StylingCompleteness": "needs_pairing",
+                    "StylingCompleteness": "complete",
                     "PrimaryColor": "blue",
                 },
-                "garment_category": "top",
-                "garment_subtype": "shirt",
-                "styling_completeness": "needs_pairing",
+                "garment_category": "dress",
+                "garment_subtype": "midi_dress",
+                "styling_completeness": "complete",
                 "primary_color": "blue",
                 "price": "1999",
                 "similarity": 0.82,
@@ -102,6 +102,7 @@ class ConversationPlatformTests(unittest.TestCase):
         self.assertEqual("c1", result["conversation_id"])
         self.assertEqual("t1", result["turn_id"])
         self.assertEqual("masculine", result["filters_applied"]["gender_expression"])
+        self.assertEqual("complete", result["filters_applied"]["styling_completeness"])
         self.assertEqual("sku-1", result["recommendations"][0]["product_id"])
         self.assertIn("embedding matches", result["assistant_message"])
 

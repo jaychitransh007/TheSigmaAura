@@ -211,6 +211,8 @@ class ConversationOrchestrator:
             value = self._normalize_filter_value(labeled_values.get(source_key, ""))
             if value:
                 filters[target_key] = value
+        # Current application scope retrieves only complete outfits.
+        filters["styling_completeness"] = "complete"
         return filters
 
     @staticmethod

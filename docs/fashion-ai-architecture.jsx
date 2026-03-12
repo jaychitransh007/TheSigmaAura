@@ -1,564 +1,448 @@
 import { useState } from "react";
 
-const COLORS = {
-  bg: "#0a0a0f",
-  surface: "#12121a",
-  surfaceHover: "#1a1a26",
-  border: "#2a2a3a",
-  borderActive: "#4a4a6a",
-  text: "#e8e8f0",
-  textMuted: "#8888a0",
-  textDim: "#5a5a72",
-  accent1: "#c4956a",
-  accent1Dim: "#c4956a33",
-  accent2: "#6a9ec4",
-  accent2Dim: "#6a9ec433",
-  accent3: "#8bc46a",
-  accent3Dim: "#8bc46a33",
-  accent4: "#c46a9e",
-  accent4Dim: "#c46a9e33",
-  accent5: "#c4c46a",
-  accent5Dim: "#c4c46a33",
-  accent6: "#9e6ac4",
-  accent6Dim: "#9e6ac433",
-  white: "#ffffff",
+const C = {
+  bg: "#08090d",
+  surface: "#0e1018",
+  surfaceAlt: "#141620",
+  border: "#1e2030",
+  borderActive: "#3a3f5c",
+  text: "#d8dae6",
+  textMuted: "#7a7f99",
+  textDim: "#4a4e66",
+  layer1: "#c49a6a",
+  layer1Dim: "#c49a6a22",
+  layer2: "#6a9ec4",
+  layer2Dim: "#6a9ec422",
+  layer3: "#8bc46a",
+  layer3Dim: "#8bc46a22",
+  accent: "#c46a9e",
+  accentDim: "#c46a9e22",
+  data: "#9e8bc4",
+  dataDim: "#9e8bc422",
+  warn: "#c4b86a",
+  warnDim: "#c4b86a22",
 };
 
-const AgentNode = ({ title, subtitle, items, color, colorDim, x, y, width = 220, onClick, isActive }) => (
-  <g
-    onClick={onClick}
-    style={{ cursor: "pointer" }}
-    className="agent-node"
-  >
-    <rect
-      x={x}
-      y={y}
-      width={width}
-      height={items ? 28 + items.length * 18 + 16 : 52}
-      rx={6}
-      fill={isActive ? colorDim : COLORS.surface}
-      stroke={isActive ? color : COLORS.border}
-      strokeWidth={isActive ? 1.5 : 0.5}
-    />
-    <rect
-      x={x}
-      y={y}
-      width={width}
-      height={26}
-      rx={6}
-      fill={colorDim}
-    />
-    <rect
-      x={x}
-      y={y + 20}
-      width={width}
-      height={6}
-      fill={colorDim}
-    />
-    <circle cx={x + 14} cy={y + 13} r={4} fill={color} opacity={0.8} />
-    <text x={x + 24} y={y + 17} fill={COLORS.text} fontSize="11" fontWeight="600" fontFamily="'JetBrains Mono', monospace">
-      {title}
-    </text>
-    {subtitle && !items && (
-      <text x={x + 14} y={y + 40} fill={COLORS.textMuted} fontSize="9" fontFamily="'JetBrains Mono', monospace">
-        {subtitle}
-      </text>
-    )}
+const F = "'JetBrains Mono', 'SF Mono', monospace";
+
+const Node = ({ x, y, w, h, title, items, color, dim, onClick, active, icon }) => (
+  <g onClick={onClick} style={{ cursor: onClick ? "pointer" : "default" }}>
+    <rect x={x} y={y} width={w} height={h} rx={5} fill={active ? dim : C.surface} stroke={active ? color : C.border} strokeWidth={active ? 1.5 : 0.5} />
+    <rect x={x} y={y} width={w} height={22} rx={5} fill={dim} />
+    <rect x={x} y={y + 17} width={w} height={5} fill={dim} />
+    {icon && <text x={x + 10} y={y + 15} fontSize="10" fill={color}>{icon}</text>}
+    <text x={x + (icon ? 22 : 10)} y={y + 15} fontSize="9.5" fontWeight="600" fill={C.text} fontFamily={F}>{title}</text>
     {items && items.map((item, i) => (
-      <text key={i} x={x + 14} y={y + 42 + i * 18} fill={COLORS.textMuted} fontSize="8.5" fontFamily="'JetBrains Mono', monospace">
-        {item}
-      </text>
+      <text key={i} x={x + 10} y={y + 36 + i * 14} fontSize="7.5" fill={C.textMuted} fontFamily={F}>{item}</text>
     ))}
   </g>
 );
 
-const Arrow = ({ x1, y1, x2, y2, color = COLORS.textDim, dashed = false, label = "" }) => {
-  const midX = (x1 + x2) / 2;
-  const midY = (y1 + y2) / 2;
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const len = Math.sqrt(dx * dx + dy * dy);
-  const ux = dx / len;
-  const uy = dy / len;
-  const ax2 = x2 - ux * 6;
-  const ay2 = y2 - uy * 6;
-
+const Arrow = ({ x1, y1, x2, y2, color = C.textDim, label, dashed }) => {
+  const dx = x2-x1, dy = y2-y1, len = Math.sqrt(dx*dx+dy*dy);
+  const ux = dx/len, uy = dy/len;
+  const ax = x2-ux*5, ay = y2-uy*5;
+  const mx = (x1+x2)/2, my = (y1+y2)/2;
   return (
     <g>
-      <line
-        x1={x1} y1={y1} x2={ax2} y2={ay2}
-        stroke={color}
-        strokeWidth={1}
-        strokeDasharray={dashed ? "4,3" : "none"}
-        opacity={0.6}
-      />
-      <polygon
-        points={`${x2},${y2} ${x2 - ux * 7 - uy * 3.5},${y2 - uy * 7 + ux * 3.5} ${x2 - ux * 7 + uy * 3.5},${y2 - uy * 7 - ux * 3.5}`}
-        fill={color}
-        opacity={0.6}
-      />
-      {label && (
-        <>
-          <rect
-            x={midX - label.length * 2.8}
-            y={midY - 7}
-            width={label.length * 5.6}
-            height={14}
-            rx={3}
-            fill={COLORS.bg}
-          />
-          <text x={midX} y={midY + 3} fill={COLORS.textDim} fontSize="7.5" fontFamily="'JetBrains Mono', monospace" textAnchor="middle">
-            {label}
-          </text>
-        </>
-      )}
+      <line x1={x1} y1={y1} x2={ax} y2={ay} stroke={color} strokeWidth={0.8} opacity={0.5} strokeDasharray={dashed?"3,2":"none"} />
+      <polygon points={`${x2},${y2} ${x2-ux*6-uy*3},${y2-uy*6+ux*3} ${x2-ux*6+uy*3},${y2-uy*6-ux*3}`} fill={color} opacity={0.5} />
+      {label && <>
+        <rect x={mx-label.length*2.5} y={my-6} width={label.length*5} height={12} rx={2} fill={C.bg} />
+        <text x={mx} y={my+3} fontSize="6.5" fill={C.textDim} fontFamily={F} textAnchor="middle">{label}</text>
+      </>}
     </g>
   );
 };
 
-const CurvedArrow = ({ x1, y1, x2, y2, cx, cy, color = COLORS.textDim, label = "" }) => {
+const CArrow = ({ x1, y1, x2, y2, cx, cy, color = C.textDim, label }) => {
   const path = `M ${x1},${y1} Q ${cx},${cy} ${x2},${y2}`;
-  const t = 0.95;
-  const nearEndX = (1-t)*(1-t)*x1 + 2*(1-t)*t*cx + t*t*x2;
-  const nearEndY = (1-t)*(1-t)*y1 + 2*(1-t)*t*cy + t*t*y2;
-  const dx = x2 - nearEndX;
-  const dy = y2 - nearEndY;
-  const len = Math.sqrt(dx*dx + dy*dy);
-  const ux = dx/len;
-  const uy = dy/len;
-  const midT = 0.5;
-  const midX = (1-midT)*(1-midT)*x1 + 2*(1-midT)*midT*cx + midT*midT*x2;
-  const midY = (1-midT)*(1-midT)*y1 + 2*(1-midT)*midT*cy + midT*midT*y2;
-
+  const t=0.95;
+  const nx = (1-t)*(1-t)*x1+2*(1-t)*t*cx+t*t*x2;
+  const ny = (1-t)*(1-t)*y1+2*(1-t)*t*cy+t*t*y2;
+  const ddx=x2-nx, ddy=y2-ny, dl=Math.sqrt(ddx*ddx+ddy*ddy);
+  const ux=ddx/dl, uy=ddy/dl;
+  const mt=0.5;
+  const mx=(1-mt)*(1-mt)*x1+2*(1-mt)*mt*cx+mt*mt*x2;
+  const my=(1-mt)*(1-mt)*y1+2*(1-mt)*mt*cy+mt*mt*y2;
   return (
     <g>
-      <path d={path} stroke={color} strokeWidth={1} fill="none" opacity={0.5} />
-      <polygon
-        points={`${x2},${y2} ${x2 - ux*7 - uy*3.5},${y2 - uy*7 + ux*3.5} ${x2 - ux*7 + uy*3.5},${y2 - uy*7 - ux*3.5}`}
-        fill={color} opacity={0.5}
-      />
-      {label && (
-        <>
-          <rect x={midX - label.length*2.8} y={midY-7} width={label.length*5.6} height={14} rx={3} fill={COLORS.bg} />
-          <text x={midX} y={midY+3} fill={COLORS.textDim} fontSize="7.5" fontFamily="'JetBrains Mono', monospace" textAnchor="middle">{label}</text>
-        </>
-      )}
+      <path d={path} stroke={color} strokeWidth={0.8} fill="none" opacity={0.4} />
+      <polygon points={`${x2},${y2} ${x2-ux*6-uy*3},${y2-uy*6+ux*3} ${x2-ux*6+uy*3},${y2-uy*6-ux*3}`} fill={color} opacity={0.4} />
+      {label && <>
+        <rect x={mx-label.length*2.5} y={my-6} width={label.length*5} height={12} rx={2} fill={C.bg} />
+        <text x={mx} y={my+3} fontSize="6.5" fill={C.textDim} fontFamily={F} textAnchor="middle">{label}</text>
+      </>}
     </g>
   );
 };
 
-const SectionLabel = ({ x, y, text, color }) => (
+const LayerBand = ({ y, h, label, color }) => (
   <g>
-    <line x1={x} y1={y + 4} x2={x + 18} y2={y + 4} stroke={color} strokeWidth={2} opacity={0.6} />
-    <text x={x + 24} y={y + 8} fill={color} fontSize="10" fontWeight="700" fontFamily="'JetBrains Mono', monospace" letterSpacing="2" opacity={0.8}>
-      {text}
-    </text>
+    <rect x={0} y={y} width={1080} height={h} fill={color} opacity={0.03} />
+    <line x1={0} y1={y} x2={1080} y2={y} stroke={color} strokeWidth={0.5} opacity={0.15} />
+    <text x={14} y={y+14} fontSize="8" fontWeight="700" fill={color} fontFamily={F} letterSpacing={2} opacity={0.6}>{label}</text>
+  </g>
+);
+
+const DataStore = ({ x, y, w, h, label, items, color, dim }) => (
+  <g>
+    <rect x={x} y={y} width={w} height={h} rx={3} fill={dim} stroke={color} strokeWidth={0.5} strokeDasharray="4,2" />
+    <text x={x+w/2} y={y+14} fontSize="8" fontWeight="600" fill={color} fontFamily={F} textAnchor="middle">{label}</text>
+    {items && items.map((item, i) => (
+      <text key={i} x={x+8} y={y+28+i*12} fontSize="7" fill={C.textMuted} fontFamily={F}>{item}</text>
+    ))}
   </g>
 );
 
 const details = {
-  user_context: {
-    title: "User Context Layer",
-    description: "Persistent client profile collected once and referenced every time. Contains all observable and derived attributes about the client.",
-    sections: [
-      { name: "Identity", items: ["Gender", "Age", "Profession"] },
-      { name: "Body Type", items: ["Height, Waist, Shoulder-to-hip ratio", "Torso-to-leg ratio, BodyShape", "VisualWeight, ArmVolume", "MidsectionState, BustVolume"] },
-      { name: "Color Analysis", items: ["SkinSurfaceColor, SkinUndertone", "HairColor, EyeColor", "HairColorTemperature, EyeClarity"] },
-      { name: "Additional Details", items: ["FaceShape, NeckLength, HairLength", "ShoulderSlope, JawlineDefinition"] },
-      { name: "Interpretations", items: ["ContrastLevel, WaistSizeBand", "FrameStructure, SeasonalColorGroup"] },
-    ],
+  onboarding: {
+    title: "User Onboarding Input",
+    desc: "Collects basic identity information from the user — gender, age range, profession. This is the entry point for the entire profiling pipeline.",
+    items: ["Gender", "Age range", "Profession/lifestyle context", "Stored as: onboarding_profile"]
+  },
+  image_analysis: {
+    title: "Image Analysis",
+    desc: "User uploads a photo. The system extracts observable body and color attributes using vision analysis. Produces raw measurements and observations before interpretation.",
+    items: [
+      "Body Type: Height, Waist, Shoulder-to-hip ratio, Torso-to-leg ratio, BodyShape, VisualWeight, ArmVolume, MidsectionState, BustVolume",
+      "Color Analysis: SkinSurfaceColor, SkinUndertone, HairColor, EyeColor, HairColorTemperature, EyeClarity",
+      "Additional: FaceShape, NeckLength, HairLength, ShoulderSlope, JawlineDefinition",
+    ]
+  },
+  interpretation: {
+    title: "Interpretation Engine",
+    desc: "Derives higher-level style attributes from raw analysis observations. These are the actionable attributes that feed into outfit recommendations.",
+    items: ["ContrastLevel (from skin + hair + eye interaction)", "WaistSizeBand (from waist measurement)", "FrameStructure (from shoulder, hip, visual weight)", "SeasonalColorGroup (from all color attributes)", "HeightCategory (from height analysis)"]
   },
   style_pref: {
-    title: "Style Preference Layer",
-    description: "Captures the client's aesthetic identity — who they want to be, not just who they are. Collected through guided visual conversation.",
-    sections: [
-      { name: "Attributes", items: ["StyleArchetype (classic, minimal, bohemian...)", "RiskTolerance (conservative → adventurous)", "ComfortPriorities (hard vetoes)", "AspirationGap (current vs desired self)"] },
-      { name: "Collection Method", items: ["Show curated reference images", "Capture reactions + reasoning", "Agent interprets to build profile"] },
-    ],
+    title: "Style Preference Identification",
+    desc: "Progressive image selection flow — 8 initial flat lays → 4 expansion images per selection → 3-5 total selections. Produces the StylePreference profile using the 104-image tagged pool.",
+    items: [
+      "Layer 1: 8 archetype images (2×4 grid)",
+      "Layer 2: 4 diagnostic images (triggered on first L1 select)",
+      "Layer 3: 4 refined images (triggered on first L2 select)",
+      "Output: StyleArchetype, RiskTolerance, FormalityLean, ComfortBoundaries, PatternType",
+    ]
+  },
+  user_profile: {
+    title: "User Profile Store",
+    desc: "Persistent storage of all user data collected during onboarding. Loaded by the orchestrator for every recommendation request.",
+    items: [
+      "onboarding_profile: gender, age, profession",
+      "analysis: all body + color attributes",
+      "interpretations: seasonal group, contrast, frame, height, waist",
+      "style_preference: archetype, risk, formality lean, boundaries",
+    ]
   },
   orchestrator: {
-    title: "Orchestrator Agent",
-    description: "The brain of the system. Receives user requests, decomposes into sub-tasks, routes to specialist agents, manages handoffs, and synthesizes final output.",
-    sections: [
-      { name: "Responsibilities", items: ["Parse user request intent", "Pull User Context + Style Preference", "Plan agent execution sequence", "Manage data flow between agents", "Set target recommendation count", "Handle follow-up loops"] },
-    ],
+    title: "Orchestrator (orchestrator.py)",
+    desc: "Receives the user's live message, loads saved profile state, and combines them into a unified payload. Also runs a lightweight rule-based context resolver to extract occasion signals from the message. This is the active application runtime today, but it is still thinner than the full target multi-agent system.",
+    items: [
+      "Loads: user profile, analysis, interpretations, style preference",
+      "Extracts: occasion intent, style goal from live message",
+      "Sets: hard filters (gender_expression, styling_completeness=complete)",
+      "Passes: combined context → Query Builder",
+    ]
   },
-  occasion: {
-    title: "Occasion Analyst Agent",
-    description: "Interprets the raw occasion description into structured styling constraints using deep knowledge of social and cultural dress conventions.",
-    sections: [
-      { name: "Input", items: ["Raw occasion description from user"] },
-      { name: "Output", items: ["Formality level & dress code", "Setting & climate context", "Time of day", "Social role (guest, host, participant)", "Cultural considerations", "Implicit rules & boundaries"] },
-    ],
+  context_resolver: {
+    title: "Context Resolver",
+    desc: "Rule-based extraction of lightweight live context from the user's message. Identifies occasion type, formality hints, and any specific needs (e.g., 'need to look tall').",
+    items: [
+      "Input: raw user message text",
+      "Extracts: occasion_signal, formality_hint, specific_needs",
+      "Example: 'farewell party' → occasion: party, formality: smart-casual, time: evening",
+    ]
   },
-  architect: {
-    title: "Outfit Architect Agent",
-    description: "The creative core. Reasons about what the ideal outfit should be and produces multiple outfit directions — each with different garment counts and detailed attribute-level specs.",
-    sections: [
-      { name: "Input", items: ["User Context + Style Preference", "Structured Occasion Context"] },
-      { name: "Output — Multiple Directions", items: ["Direction 1: Complete garment spec", "Direction 2: Two-piece specs + relationship", "Direction 3: Three-piece specs + relationship", "(Directions vary by occasion)"] },
-      { name: "Knowledge Required", items: ["Universal principles (proportion, color theory)", "Body-shape-to-silhouette mapping", "Seasonal palette application", "Proportion correction strategies"] },
-    ],
-  },
-  catalog_search: {
-    title: "Catalog Search Agent",
-    description: "Translates conceptual outfit directions into queries against the 46-attribute garment catalog using hybrid search — hard filters first, then multi-embedding semantic ranking.",
-    sections: [
-      { name: "Hybrid Search Strategy", items: ["Hard filters: GenderExpression, OccasionFit,", "  StylingCompleteness, GarmentCategory", "Then: Multi-embedding similarity ranking"] },
-      { name: "6 Embedding Columns", items: ["Occasion embedding", "Silhouette & proportion embedding", "Color & visual embedding", "Fabric & construction embedding", "Style identity embedding", "Pairing embedding"] },
-      { name: "Constraint Relaxation", items: ["Loosen: color specifics first", "Preserve: fit, occasion appropriateness"] },
-    ],
-  },
-  assembler: {
-    title: "Outfit Assembler Agent",
-    description: "Evaluates garment combinations when catalog returns individual pieces. Reasons about garment-to-garment compatibility to build complete outfits.",
-    sections: [
-      { name: "Compatibility Dimensions", items: ["Color harmony & temperature consistency", "Formality alignment", "Visual weight distribution & balance", "Fabric weight & texture cohesion", "Volume balance (top vs bottom)", "Proportion interplay"] },
-      { name: "Logic", items: ["Complete garments pass through directly", "Individual pieces get combined + evaluated", "Uses pairing embeddings + LLM reasoning"] },
-    ],
-  },
-  evaluator: {
-    title: "Outfit Evaluator Agent",
-    description: "Scores and ranks all candidate outfits holistically — both complete garments found and assembled combinations — using LLM reasoning rather than rigid formulas.",
-    sections: [
-      { name: "Evaluation Criteria", items: ["Body fit: does it flatter this person?", "Color match: seasonal palette alignment?", "Occasion: appropriate for context?", "Style match: archetype & risk tolerance?", "Cohesion: do pieces work together?", "Overall: would they feel good in this?"] },
-      { name: "Output", items: ["Ranked list with reasoning per candidate"] },
-    ],
-  },
-  presentation: {
-    title: "Presentation Agent",
-    description: "Communicates recommendations to the client with accessible reasoning. Handles follow-up requests that loop back through the Orchestrator.",
-    sections: [
-      { name: "Responsibilities", items: ["Present top 3-5 recommendations", "Explain reasoning in plain language", "Handle feedback & follow-ups", "Route refinements back to Orchestrator"] },
-    ],
+  query_builder: {
+    title: "Query Builder (query_builder.py)",
+    desc: "LLM call that translates the combined user context into catalog-facing retrieval language. Outputs a structured document with fixed sections that mirror catalog attribute vocabulary. This is currently the main intelligence layer before retrieval, but it should later become one agent inside a broader application flow.",
+    items: [
+      "Input: profile + style pref + occasion context",
+      "LLM system prompt: 'Output structured retrieval doc'",
+      "Sections: USER_NEED, PROFILE_AND_STYLE, GARMENT_REQUIREMENTS, FABRIC_AND_BUILD, PATTERN_AND_COLOR, OCCASION_AND_SIGNAL",
+      "Output: natural language query in catalog semantic space",
+    ]
   },
   knowledge: {
-    title: "Knowledge Context Layer",
-    description: "Domain expertise embedded into each agent's system prompt. Not a separate agent — it's the fashion education each specialist carries.",
-    sections: [
-      { name: "For Outfit Architect", items: ["Universal styling principles", "Body-shape-to-silhouette guidelines", "Seasonal palette definitions", "Proportion correction strategies"] },
-      { name: "For Occasion Analyst", items: ["Dress code definitions", "Cultural & regional conventions", "Social role expectations"] },
-      { name: "For Assembler", items: ["Color pairing principles", "Texture & fabric compatibility", "Visual weight distribution logic"] },
-      { name: "For Evaluator", items: ["What makes outfits cohesive", "How to weigh competing priorities", "When rule-breaks elevate vs undermine"] },
-    ],
+    title: "Knowledge Context",
+    desc: "12 fashion knowledge modules (M01-M12) embedded into the Query Builder's system prompt. Enables the LLM to reason about body-shape-to-silhouette mapping, seasonal color application, proportion correction, and occasion conventions.",
+    items: [
+      "M01: Universal Styling Principles",
+      "M02: Body Shape & Silhouette Strategy",
+      "M03: Seasonal Color System",
+      "M04: Proportion Correction + M05: Occasion Conventions",
+      "M08: Neckline/Detail + M09: Fabric Guidelines",
+    ]
   },
-  catalog: {
-    title: "Garment Catalog",
-    description: "The product database with 46 attributes per garment, stored with both structured fields for hard filtering and 6 specialized embedding columns for semantic search.",
-    sections: [
-      { name: "46 Attributes including", items: ["GarmentCategory, SilhouetteType, FitType", "NecklineType, SleeveLength, FabricDrape", "PatternType, ColorTemperature, FormalityLevel", "StylingCompleteness, OccasionFit, etc."] },
-      { name: "6 Embedding Columns", items: ["Occasion | Silhouette & Proportion", "Color & Visual | Fabric & Construction", "Style Identity | Pairing"] },
-      { name: "Search Strategy", items: ["Hybrid: Hard attribute filters →", "Multi-embedding weighted similarity"] },
-    ],
+  embedding_api: {
+    title: "Embedding API",
+    desc: "OpenAI text-embedding-3-small at 1536 dimensions. Same model is used for both catalog pre-embedding and live query embedding. Cosine similarity is the active distance metric.",
+    items: [
+      "Model: text-embedding-3-small",
+      "Dimensions: 1536",
+      "Cost: $0.02 / million tokens",
+      "~150 tokens per query sentence",
+    ]
+  },
+  vector_search: {
+    title: "Vector Search (pgvector)",
+    desc: "PostgreSQL with pgvector extension. Applies hard SQL filters first to narrow the candidate pool, then runs cosine similarity on the embedding column to retrieve the top matches. Current runtime is intentionally simplified to complete-outfit retrieval only.",
+    items: [
+      "Hard filters: GenderExpression, OccasionFit, StylingCompleteness",
+      "Current enforced scope: StylingCompleteness = complete",
+      "Vector: HNSW index, cosine distance",
+      "Returns: top 10-15 candidates with full product data",
+    ]
+  },
+  evaluator: {
+    title: "Outfit Evaluator (LLM)",
+    desc: "Target application component. It should receive retrieved products plus full user context, reason through body harmony, color alignment, occasion fit, and style match, and then return ranked recommendations with explanations. This stage is not yet fully implemented in the active runtime.",
+    items: [
+      "Input: 10-20 candidates + user profile + style pref + occasion",
+      "Knowledge: M07 Evaluation Framework + M01/M03 compact",
+      "Evaluates: body harmony, color, occasion, style, cohesion",
+      "Output: top 3-5 ranked outfits with reasoning",
+    ]
+  },
+  presentation: {
+    title: "Presentation to User",
+    desc: "Communicates top recommendations with accessible reasoning. In the target system, this layer should handle follow-up refinement requests that loop back through the application with updated constraints. Current runtime still uses simpler response formatting.",
+    items: [
+      "Shows: outfit images, title, price, reasoning",
+      "Explains: why each piece works for them specifically",
+      "Follow-ups: 'show bolder', 'different color' → re-query",
+    ]
+  },
+  catalog_upload: {
+    title: "Catalog Upload",
+    desc: "Raw product catalog uploaded (CSV/API). Contains base product fields: id, title, description, price, images, url. This is the starting point of the async enrichment pipeline.",
+    items: ["Base fields: id, title, description, price, images, url", "Raw unprocessed garment data"]
+  },
+  enrichment: {
+    title: "Attribute Enrichment Pipeline",
+    desc: "Async process that analyzes each garment (via LLM vision + text analysis) and populates all 44 enum attributes + 2 text color attributes + 44 confidence scores. Produces the 102-column enriched catalog.",
+    items: [
+      "Input: title + description + product images",
+      "Output: 44 enum attributes + 2 text colors",
+      "Also: 44 confidence scores (one per attribute)",
+      "Status: row_status + error_reason per row",
+    ]
+  },
+  sentence_gen: {
+    title: "Sentence Generator",
+    desc: "Converts enriched attributes into one structured embedding document per garment. Covers silhouette, color, fabric, occasion, and style identity while preserving explicit labeled fields for retrieval compatibility.",
+    items: [
+      "Quality gate: confidence >= 0.6 per attribute",
+      "Quality gate: skip if >40% attributes missing",
+      "Output: one structured embedding document per garment",
+      "Includes: title + description excerpt + all attributes",
+    ]
+  },
+  embedding_batch: {
+    title: "Batch Embedding",
+    desc: "Embeds all catalog documents using OpenAI text-embedding-3-small at 1536 dimensions. Runs as batch job. Same model as query-time embedding for compatibility.",
+    items: [
+      "Model: text-embedding-3-small (same as query-time)",
+      "Dimensions: 1536",
+      "Batch size: 200 sentences per API call",
+      "Cost: ~$0.03 for 10,000 garments",
+    ]
+  },
+  catalog_db: {
+    title: "Catalog Database",
+    desc: "PostgreSQL with pgvector. Stores enriched product data in `catalog_enriched` plus embedding vectors in `catalog_item_embeddings`. HNSW index is used on the embedding column.",
+    items: [
+      "Enriched product rows live in: catalog_enriched",
+      "Embedding column: VECTOR(1536)",
+      "Structured document text stored for debugging",
+      "HNSW index for cosine similarity search",
+    ]
   },
 };
 
-export default function FashionAIArchitecture() {
-  const [selected, setSelected] = useState(null);
-
-  const handleClick = (key) => {
-    setSelected(selected === key ? null : key);
-  };
-
-  const detail = selected ? details[selected] : null;
+export default function Architecture() {
+  const [sel, setSel] = useState(null);
+  const d = sel ? details[sel] : null;
 
   return (
-    <div style={{
-      background: COLORS.bg,
-      minHeight: "100vh",
-      fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
-      color: COLORS.text,
-      display: "flex",
-      flexDirection: "column",
-    }}>
+    <div style={{ background: C.bg, minHeight: "100vh", fontFamily: F, color: C.text, display: "flex", flexDirection: "column" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
-        .agent-node:hover rect:first-child {
-          filter: brightness(1.3);
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .detail-panel {
-          animation: fadeIn 0.2s ease-out;
-        }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: ${COLORS.bg}; }
-        ::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 3px; }
+        g[style*="pointer"]:hover rect:first-child { filter: brightness(1.2); }
+        .detail-panel { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: ${C.bg}; }
+        ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 3px; }
       `}</style>
 
-      {/* Header */}
-      <div style={{
-        padding: "24px 32px 8px",
-        borderBottom: `1px solid ${COLORS.border}`,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{
-            width: 8, height: 8, borderRadius: "50%",
-            background: COLORS.accent1,
-            boxShadow: `0 0 12px ${COLORS.accent1}66`,
-          }} />
-          <h1 style={{
-            fontSize: 16, fontWeight: 700, margin: 0,
-            letterSpacing: 3, color: COLORS.text, textTransform: "uppercase",
-          }}>
-            Fashion Styling AI — System Architecture
-          </h1>
+      <div style={{ padding: "20px 28px 6px", borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.layer1, boxShadow: `0 0 10px ${C.layer1}66` }} />
+          <h1 style={{ fontSize: 14, fontWeight: 700, margin: 0, letterSpacing: 3, textTransform: "uppercase" }}>Fashion Styling AI — Complete System Architecture</h1>
         </div>
-        <p style={{ fontSize: 10, color: COLORS.textMuted, margin: "8px 0 12px 20px", letterSpacing: 0.5 }}>
-          Agentic system for personalized outfit recommendation · Click any node for details
+        <p style={{ fontSize: 9, color: C.textMuted, margin: "6px 0 10px 17px", letterSpacing: 0.5 }}>
+          3-layer architecture: User Profiling · Application Intelligence · Catalog Pipeline &nbsp;·&nbsp; Click any node for details
         </p>
       </div>
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        {/* Diagram */}
-        <div style={{
-          flex: detail ? "0 0 65%" : "1",
-          overflow: "auto",
-          padding: "16px",
-          transition: "flex 0.3s ease",
-        }}>
-          <svg viewBox="0 0 960 820" style={{ width: "100%", height: "auto", minWidth: 700 }}>
-            {/* Background grid */}
+        <div style={{ flex: d ? "0 0 62%" : "1", overflow: "auto", padding: "12px", transition: "flex 0.3s ease" }}>
+          <svg viewBox="0 0 1080 920" style={{ width: "100%", height: "auto", minWidth: 700 }}>
             <defs>
-              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke={COLORS.border} strokeWidth="0.2" opacity="0.3" />
+              <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+                <path d="M 30 0 L 0 0 0 30" fill="none" stroke={C.border} strokeWidth="0.15" opacity="0.3" />
               </pattern>
             </defs>
-            <rect width="960" height="820" fill="url(#grid)" />
+            <rect width="1080" height="920" fill="url(#grid)" />
 
-            {/* === SECTION: INPUT LAYER === */}
-            <SectionLabel x={20} y={20} text="INPUT LAYER" color={COLORS.accent1} />
+            {/* === LAYER 1: USER PROFILING === */}
+            <LayerBand y={0} h={310} label="LAYER 1 — USER PROFILING (one-time onboarding)" color={C.layer1} />
 
-            {/* User Request */}
-            <AgentNode
-              title="User Request"
-              subtitle="'I need an outfit for...'"
-              color={COLORS.accent1} colorDim={COLORS.accent1Dim}
-              x={370} y={38} width={220}
-              onClick={() => {}} isActive={false}
-            />
+            <Node x={30} y={30} w={190} h={80} title="User Onboarding" icon="●" items={["Gender, Age, Profession", "Manual input via UI"]}
+              color={C.layer1} dim={C.layer1Dim} onClick={() => setSel("onboarding")} active={sel==="onboarding"} />
 
-            {/* === SECTION: PERSISTENT CONTEXT === */}
-            <SectionLabel x={20} y={106} text="PERSISTENT CONTEXT" color={COLORS.accent2} />
+            <Node x={260} y={30} w={220} h={95} title="Image Analysis" icon="◐" items={["Upload photo → vision analysis", "Body: shape, proportions, volume", "Color: skin, hair, eyes, undertone", "Details: face, neck, shoulder, jaw"]}
+              color={C.layer1} dim={C.layer1Dim} onClick={() => setSel("image_analysis")} active={sel==="image_analysis"} />
 
-            <AgentNode
-              title="User Context"
-              items={["Identity · Body Type", "Color Analysis · Additional Details", "→ Interpretations"]}
-              color={COLORS.accent2} colorDim={COLORS.accent2Dim}
-              x={100} y={124} width={220}
-              onClick={() => handleClick("user_context")} isActive={selected === "user_context"}
-            />
+            <Node x={520} y={30} w={200} h={80} title="Interpretation Engine" icon="◈" items={["SeasonalColorGroup", "ContrastLevel, FrameStructure", "HeightCategory, WaistSizeBand"]}
+              color={C.layer1} dim={C.layer1Dim} onClick={() => setSel("interpretation")} active={sel==="interpretation"} />
 
-            <AgentNode
-              title="Style Preference"
-              items={["StyleArchetype · RiskTolerance", "ComfortPriorities", "AspirationGap"]}
-              color={COLORS.accent2} colorDim={COLORS.accent2Dim}
-              x={370} y={124} width={220}
-              onClick={() => handleClick("style_pref")} isActive={selected === "style_pref"}
-            />
+            <Node x={30} y={145} w={280} h={95} title="Style Preference (Image Selection)" icon="◧" items={["104 flat-lay image pool (52M + 52F)", "L1: 8 archetype grid → L2: 4 diagnostic", "→ L3: 4 refined | Select 3-5 total", "→ StyleArchetype, RiskTolerance, Boundaries"]}
+              color={C.layer1} dim={C.layer1Dim} onClick={() => setSel("style_pref")} active={sel==="style_pref"} />
 
-            <AgentNode
-              title="Knowledge Context"
-              items={["Universal Principles", "Personal Styling Rules", "Occasion Conventions"]}
-              color={COLORS.accent2} colorDim={COLORS.accent2Dim}
-              x={640} y={124} width={220}
-              onClick={() => handleClick("knowledge")} isActive={selected === "knowledge"}
-            />
+            {/* Arrows within Layer 1 */}
+            <Arrow x1={220} y1={70} x2={260} y2={70} color={C.layer1} />
+            <Arrow x1={480} y1={70} x2={520} y2={70} color={C.layer1} />
 
-            {/* Arrows from context to orchestrator */}
-            <Arrow x1={210} y1={198} x2={430} y2={260} color={COLORS.accent2} label="profile" />
-            <Arrow x1={480} y1={198} x2={480} y2={260} color={COLORS.accent2} label="prefs" />
-            <Arrow x1={750} y1={198} x2={530} y2={260} color={COLORS.accent2} label="expertise" dashed />
+            {/* User Profile Store */}
+            <DataStore x={760} y={30} w={280} h={110} label="⬡ User Profile Store" color={C.data} dim={C.dataDim}
+              items={["onboarding: gender, age, profession", "analysis: body + color attributes", "interpretations: season, contrast, frame", "style_preference: archetype, risk, formality"]} />
 
-            {/* Arrow from user request to orchestrator */}
-            <Arrow x1={480} y1={90} x2={480} y2={260} color={COLORS.accent1} label="" />
+            {/* Arrows to profile store */}
+            <Arrow x1={120} y1={110} x2={760} y2={60} color={C.data} label="save" dashed />
+            <Arrow x1={720} y1={70} x2={760} y2={70} color={C.data} label="save" dashed />
+            <Arrow x1={310} y1={235} x2={760} y2={120} color={C.data} label="save" dashed />
 
-            {/* === SECTION: ORCHESTRATION === */}
-            <SectionLabel x={20} y={240} text="ORCHESTRATION" color={COLORS.accent3} />
+            {/* Divider area */}
+            <line x1={30} y1={280} x2={1050} y2={280} stroke={C.layer1} strokeWidth={0.3} opacity={0.2} strokeDasharray="6,3" />
 
-            <AgentNode
-              title="Orchestrator Agent"
-              items={["Decomposes request → sub-tasks", "Routes to specialist agents", "Manages data flow & handoffs"]}
-              color={COLORS.accent3} colorDim={COLORS.accent3Dim}
-              x={370} y={260} width={220}
-              onClick={() => handleClick("orchestrator")} isActive={selected === "orchestrator"}
-            />
+            {/* === LAYER 2: APPLICATION === */}
+            <LayerBand y={310} h={360} label="LAYER 2 — APPLICATION LAYER (per-request recommendation)" color={C.layer2} />
 
-            {/* === SECTION: SPECIALIST AGENTS === */}
-            <SectionLabel x={20} y={360} text="SPECIALIST AGENTS" color={COLORS.accent4} />
+            {/* User message */}
+            <Node x={30} y={335} w={200} h={50} title="User Message" icon="▸" items={['"I need outfit for a farewell party"']}
+              color={C.layer2} dim={C.layer2Dim} onClick={null} active={false} />
 
-            {/* Occasion Analyst */}
-            <AgentNode
-              title="Occasion Analyst"
-              items={["Formality · Dress code", "Setting · Climate · Time", "Social role · Culture"]}
-              color={COLORS.accent4} colorDim={COLORS.accent4Dim}
-              x={80} y={385} width={210}
-              onClick={() => handleClick("occasion")} isActive={selected === "occasion"}
-            />
+            {/* Orchestrator */}
+            <Node x={280} y={330} w={230} h={85} title="Orchestrator" icon="◉" items={["Loads saved user profile state", "Merges with live message", "Runs context resolver (rule-based)", "Sets hard filters → passes to Query Builder"]}
+              color={C.layer2} dim={C.layer2Dim} onClick={() => setSel("orchestrator")} active={sel==="orchestrator"} />
 
-            {/* Outfit Architect */}
-            <AgentNode
-              title="Outfit Architect"
-              items={["Generates outfit directions:", "Dir 1: Complete garment spec", "Dir 2: Two-piece + relationship", "Dir 3: Three-piece + relationship"]}
-              color={COLORS.accent4} colorDim={COLORS.accent4Dim}
-              x={370} y={380} width={220}
-              onClick={() => handleClick("architect")} isActive={selected === "architect"}
-            />
+            {/* Profile feed into orchestrator */}
+            <CArrow x1={900} y1={140} x2={400} y2={330} cx={900} cy={260} color={C.data} label="load profile" />
 
-            {/* Arrows: Orchestrator to Occasion Analyst */}
-            <Arrow x1={400} y1={334} x2={250} y2={385} color={COLORS.accent3} label="occasion desc" />
+            {/* Context Resolver */}
+            <Node x={280} y={430} w={230} h={55} title="Context Resolver" icon="⊞" items={["occasion: party, formality: smart-casual", "time: evening, specific_needs: none"]}
+              color={C.layer2} dim={C.layer2Dim} onClick={() => setSel("context_resolver")} active={sel==="context_resolver"} />
 
-            {/* Arrow: Occasion Analyst to Outfit Architect */}
-            <Arrow x1={290} y1={430} x2={370} y2={430} color={COLORS.accent4} label="context" />
+            <Arrow x1={130} y1={380} x2={280} y2={370} color={C.layer2} label="user_need" />
+            <Arrow x1={395} y1={415} x2={395} y2={430} color={C.layer2} />
 
-            {/* Arrow: Orchestrator to Outfit Architect */}
-            <Arrow x1={480} y1={334} x2={480} y2={380} color={COLORS.accent3} label="" />
+            {/* Knowledge Context */}
+            <DataStore x={30} y={510} w={200} h={90} label="⬡ Knowledge Context" color={C.warn} dim={C.warnDim}
+              items={["M01-M04: Styling principles", "M05: Occasion conventions", "M08-M09: Detail + Fabric", "Injected into LLM system prompt"]} />
 
-            {/* Knowledge feeding into agents */}
-            <CurvedArrow x1={750} y1={198} x2={265} y2={385} cx={300} cy={280} color={COLORS.accent2} label="" />
-            <CurvedArrow x1={780} y1={198} x2={480} y2={380} cx={700} cy={310} color={COLORS.accent2} label="" />
+            {/* Query Builder */}
+            <Node x={280} y={510} w={230} h={100} title="Query Builder (LLM)" icon="◆" items={["System prompt + knowledge context", "Structured output sections:", "GARMENT_REQUIREMENTS", "FABRIC_AND_BUILD, PATTERN_AND_COLOR", "OCCASION_AND_SIGNAL", "→ catalog-facing retrieval language"]}
+              color={C.layer2} dim={C.layer2Dim} onClick={() => setSel("query_builder")} active={sel==="query_builder"} />
 
+            <Arrow x1={395} y1={485} x2={395} y2={510} color={C.layer2} label="combined context" />
+            <Arrow x1={230} y1={555} x2={280} y2={555} color={C.warn} label="knowledge" dashed />
 
-            {/* === SECTION: CATALOG LAYER === */}
-            <SectionLabel x={20} y={498} text="SEARCH & ASSEMBLY" color={COLORS.accent5} />
+            {/* Embedding API (query-time) */}
+            <Node x={560} y={510} w={180} h={60} title="Embed Query" icon="⊕" items={["text-embedding-3-small", "1536 dims, cosine similarity"]}
+              color={C.layer2} dim={C.layer2Dim} onClick={() => setSel("embedding_api")} active={sel==="embedding_api"} />
 
-            {/* Catalog Search */}
-            <AgentNode
-              title="Catalog Search Agent"
-              items={["Hard filters → narrow pool", "Multi-embedding similarity ranking", "Constraint relaxation logic"]}
-              color={COLORS.accent5} colorDim={COLORS.accent5Dim}
-              x={165} y={520} width={240}
-              onClick={() => handleClick("catalog_search")} isActive={selected === "catalog_search"}
-            />
+            <Arrow x1={510} y1={545} x2={560} y2={545} color={C.layer2} label="query text" />
 
-            {/* Garment Catalog */}
-            <AgentNode
-              title="Garment Catalog"
-              items={["46 attributes per garment", "6 embedding columns", "Hybrid search: filters + vectors"]}
-              color={COLORS.accent5} colorDim={COLORS.accent5Dim}
-              x={165} y={616} width={240}
-              onClick={() => handleClick("catalog")} isActive={selected === "catalog"}
-            />
+            {/* Vector Search */}
+            <Node x={790} y={480} w={220} h={85} title="Vector Search (pgvector)" icon="⊙" items={["Hard filters: Gender, Occasion,", "  StylingCompleteness=complete", "Then: cosine similarity on embedding", "Returns: top 10-15 candidates"]}
+              color={C.layer2} dim={C.layer2Dim} onClick={() => setSel("vector_search")} active={sel==="vector_search"} />
 
-            {/* Outfit Assembler */}
-            <AgentNode
-              title="Outfit Assembler Agent"
-              items={["Complete garments → pass through", "Individual pieces → combine & evaluate", "Color, formality, volume, fabric checks"]}
-              color={COLORS.accent5} colorDim={COLORS.accent5Dim}
-              x={530} y={520} width={260}
-              onClick={() => handleClick("assembler")} isActive={selected === "assembler"}
-            />
+            <Arrow x1={740} y1={540} x2={790} y2={530} color={C.layer2} label="query vector" />
 
-            {/* Arrow: Architect to Catalog Search */}
-            <Arrow x1={420} y1={472} x2={340} y2={520} color={COLORS.accent4} label="directions" />
-
-            {/* Arrow: Catalog Search to Catalog */}
-            <Arrow x1={285} y1={594} x2={285} y2={616} color={COLORS.accent5} label="" />
-
-            {/* Arrow: Catalog to Catalog Search (return) */}
-            <Arrow x1={310} y1={616} x2={310} y2={594} color={COLORS.accent5} label="" />
-
-            {/* Arrow: Catalog Search to Assembler */}
-            <Arrow x1={405} y1={555} x2={530} y2={555} color={COLORS.accent5} label="candidates" />
-
-            {/* Knowledge feeding into assembler */}
-            <CurvedArrow x1={820} y1={198} x2={730} y2={520} cx={900} cy={400} color={COLORS.accent2} label="" />
-
-            {/* === SECTION: EVALUATION === */}
-            <SectionLabel x={20} y={660} text="EVALUATION & OUTPUT" color={COLORS.accent6} />
+            {/* Arrow from catalog DB to vector search */}
+            <CArrow x1={900} y1={810} x2={900} y2={565} cx={1040} cy={700} color={C.layer3} label="catalog vectors" />
 
             {/* Evaluator */}
-            <AgentNode
-              title="Outfit Evaluator Agent"
-              items={["Body fit · Color match · Occasion", "Style match · Cohesion · Feel", "→ Ranked list with reasoning"]}
-              color={COLORS.accent6} colorDim={COLORS.accent6Dim}
-              x={370} y={680} width={220}
-              onClick={() => handleClick("evaluator")} isActive={selected === "evaluator"}
-            />
+            <Node x={560} y={610} w={220} h={80} title="Outfit Evaluator (LLM)" icon="◆" items={["Target next stage, not fully active yet", "Should reason: body, color, occasion, style", "Should rerank retrieved candidates", "Returns: ranked top 3-5 with reasoning"]}
+              color={C.accent} dim={C.accentDim} onClick={() => setSel("evaluator")} active={sel==="evaluator"} />
 
-            {/* Presentation Agent */}
-            <AgentNode
-              title="Presentation Agent"
-              items={["Top 3-5 recommendations", "Plain language reasoning", "Handles follow-ups → loop back"]}
-              color={COLORS.accent6} colorDim={COLORS.accent6Dim}
-              x={370} y={760} width={220}
-              onClick={() => handleClick("presentation")} isActive={selected === "presentation"}
-            />
+            <Arrow x1={870} y1={565} x2={780} y2={620} color={C.layer2} label="10-20 products" />
+            <CArrow x1={900} y1={140} x2={580} y2={610} cx={1060} cy={400} color={C.data} label="user profile" />
 
-            {/* Arrow: Assembler to Evaluator */}
-            <Arrow x1={620} y1={594} x2={520} y2={680} color={COLORS.accent5} label="complete outfits" />
+            {/* Presentation */}
+            <Node x={280} y={625} w={230} h={55} title="Presentation to User" icon="▸" items={["Top 3-5 outfits with images + reasoning", "Follow-up → loops back to Orchestrator"]}
+              color={C.accent} dim={C.accentDim} onClick={() => setSel("presentation")} active={sel==="presentation"} />
 
-            {/* Arrow: Evaluator to Presentation */}
-            <Arrow x1={480} y1={754} x2={480} y2={760} color={COLORS.accent6} label="" />
+            <Arrow x1={560} y1={650} x2={510} y2={650} color={C.accent} label="ranked results" />
 
-            {/* Feedback loop: Presentation back to Orchestrator */}
-            <CurvedArrow
-              x1={590} y1={790}
-              x2={590} y2={290}
-              cx={900} cy={550}
-              color={COLORS.accent6}
-              label="follow-up loop"
-            />
+            {/* Follow-up loop */}
+            <CArrow x1={280} y1={645} x2={280} y2={380} cx={180} cy={510} color={C.accent} label="follow-up loop" />
 
-            {/* Knowledge to evaluator */}
-            <CurvedArrow x1={860} y1={198} x2={590} y2={690} cx={940} cy={500} color={COLORS.accent2} label="" />
+            {/* Divider */}
+            <line x1={30} y1={695} x2={1050} y2={695} stroke={C.layer2} strokeWidth={0.3} opacity={0.2} strokeDasharray="6,3" />
 
-            {/* Dashed lines showing knowledge feeds */}
-            <text x={870} y={350} fill={COLORS.accent2} fontSize="8" fontFamily="'JetBrains Mono', monospace" opacity={0.5} transform="rotate(90, 870, 350)">
-              knowledge feeds into all agents
-            </text>
+            {/* === LAYER 3: CATALOG === */}
+            <LayerBand y={700} h={220} label="LAYER 3 — CATALOG PIPELINE (async enrichment)" color={C.layer3} />
+
+            {/* Upload */}
+            <Node x={30} y={730} w={170} h={55} title="Catalog Upload" icon="▲" items={["CSV / API ingestion", "id, title, desc, price, images, url"]}
+              color={C.layer3} dim={C.layer3Dim} onClick={() => setSel("catalog_upload")} active={sel==="catalog_upload"} />
+
+            {/* Enrichment */}
+            <Node x={240} y={725} w={230} h={75} title="Attribute Enrichment" icon="◈" items={["LLM vision + text analysis per garment", "→ 44 enum + 2 text color attributes", "→ 44 confidence scores per attribute", "→ row_status + error_reason"]}
+              color={C.layer3} dim={C.layer3Dim} onClick={() => setSel("enrichment")} active={sel==="enrichment"} />
+
+            <Arrow x1={200} y1={757} x2={240} y2={757} color={C.layer3} />
+
+            {/* Sentence Gen */}
+            <Node x={510} y={725} w={200} h={75} title="Document Generator" icon="≡" items={["Converts enriched rows → structured docs", "Embedding-friendly labeled format", "Confidence gating (≥0.6)", "Includes title + description excerpt"]}
+              color={C.layer3} dim={C.layer3Dim} onClick={() => setSel("sentence_gen")} active={sel==="sentence_gen"} />
+
+            <Arrow x1={470} y1={757} x2={510} y2={757} color={C.layer3} label="102 cols" />
+
+            {/* Batch Embed */}
+            <Node x={510} y={825} w={200} h={60} title="Batch Embedding" icon="⊕" items={["text-embedding-3-small (same model)", "1536 dims, batch size 200", "~$0.03 for 10K garments"]}
+              color={C.layer3} dim={C.layer3Dim} onClick={() => setSel("embedding_batch")} active={sel==="embedding_batch"} />
+
+            <Arrow x1={610} y1={800} x2={610} y2={825} color={C.layer3} label="sentences" />
+
+            {/* Catalog DB */}
+            <DataStore x={790} y={735} w={250} h={95} label="⬡ Catalog Database (pgvector)" color={C.layer3} dim={C.layer3Dim}
+              items={["catalog_enriched + catalog_item_embeddings", "1 embedding column: VECTOR(1536)", "structured doc text stored for debug", "HNSW index, cosine similarity"]} />
+
+            <Arrow x1={710} y1={855} x2={790} y2={810} color={C.layer3} label="vectors" />
+            <Arrow x1={710} y1={757} x2={790} y2={757} color={C.layer3} label="enriched data" />
+
+            {/* Compatibility callout */}
+            <rect x={510} y={890} width={200} height={22} rx={3} fill={C.warnDim} stroke={C.warn} strokeWidth={0.5} />
+            <text x={610} y={904} fontSize="7" fontWeight="600" fill={C.warn} fontFamily={F} textAnchor="middle">⚠ Same model + dims for catalog & query</text>
 
           </svg>
         </div>
 
-        {/* Detail Panel */}
-        {detail && (
-          <div className="detail-panel" style={{
-            flex: "0 0 35%",
-            borderLeft: `1px solid ${COLORS.border}`,
-            padding: "24px",
-            overflow: "auto",
-            background: COLORS.surface,
-          }}>
+        {d && (
+          <div className="detail-panel" style={{ flex: "0 0 38%", borderLeft: `1px solid ${C.border}`, padding: "20px", overflow: "auto", background: C.surfaceAlt }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <h2 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: COLORS.text, letterSpacing: 1 }}>
-                {detail.title}
-              </h2>
-              <button
-                onClick={() => setSelected(null)}
-                style={{
-                  background: "none", border: `1px solid ${COLORS.border}`,
-                  color: COLORS.textMuted, cursor: "pointer", fontSize: 11,
-                  padding: "2px 8px", borderRadius: 4, fontFamily: "inherit",
-                }}
-              >
-                ✕
-              </button>
+              <h2 style={{ fontSize: 13, fontWeight: 700, margin: 0, letterSpacing: 1 }}>{d.title}</h2>
+              <button onClick={() => setSel(null)} style={{ background: "none", border: `1px solid ${C.border}`, color: C.textMuted, cursor: "pointer", fontSize: 10, padding: "2px 7px", borderRadius: 3, fontFamily: F }}>✕</button>
             </div>
-
-            <p style={{ fontSize: 11, color: COLORS.textMuted, lineHeight: 1.7, margin: "16px 0" }}>
-              {detail.description}
-            </p>
-
-            {detail.sections.map((section, i) => (
-              <div key={i} style={{ marginBottom: 20 }}>
-                <div style={{
-                  fontSize: 9, fontWeight: 700, color: COLORS.accent1,
-                  letterSpacing: 2, textTransform: "uppercase", marginBottom: 8,
-                }}>
-                  {section.name}
-                </div>
-                {section.items.map((item, j) => (
-                  <div key={j} style={{
-                    fontSize: 10, color: COLORS.textMuted, padding: "4px 0 4px 12px",
-                    borderLeft: `1px solid ${COLORS.border}`, marginBottom: 2, lineHeight: 1.5,
-                  }}>
-                    {item}
-                  </div>
-                ))}
-              </div>
+            <p style={{ fontSize: 10.5, color: C.textMuted, lineHeight: 1.7, margin: "14px 0" }}>{d.desc}</p>
+            <div style={{ fontSize: 9, fontWeight: 700, color: C.layer1, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>Details</div>
+            {d.items.map((item, i) => (
+              <div key={i} style={{ fontSize: 9.5, color: C.textMuted, padding: "5px 0 5px 10px", borderLeft: `1px solid ${C.border}`, marginBottom: 3, lineHeight: 1.5 }}>{item}</div>
             ))}
           </div>
         )}

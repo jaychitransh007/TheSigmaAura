@@ -104,7 +104,7 @@ class ConversationApiUiTests(unittest.TestCase):
             "assistant_message": "I pulled 1 embedding matches.",
             "resolved_context": {"request_summary": "Need office wear", "occasion": "office", "style_goal": ""},
             "retrieval_query_document": "USER_NEED:",
-            "filters_applied": {"gender_expression": "feminine"},
+            "filters_applied": {"gender_expression": "feminine", "styling_completeness": "complete"},
             "recommendations": [],
         }
         client = TestClient(app)
