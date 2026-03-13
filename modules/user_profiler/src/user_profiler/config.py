@@ -4,8 +4,8 @@ import os
 
 @dataclass(frozen=True)
 class UserProfilerConfig:
-    visual_model: str = "gpt-5.2"
-    textual_model: str = "gpt-5-mini"
+    visual_model: str = "gpt-5.4"
+    textual_model: str = "gpt-5.4"
     visual_reasoning_effort: str = "high"
     output_dir: str = "data/logs"
 

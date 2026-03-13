@@ -22,10 +22,10 @@ from user_profiler.service import _image_to_input_url, store_image_artifact
 
 
 class UserProfilerTests(unittest.TestCase):
-    def test_visual_model_is_gpt_5_2_and_textual_is_gpt_5_mini(self) -> None:
+    def test_visual_model_is_gpt_5_4_and_textual_is_gpt_5_4(self) -> None:
         cfg = UserProfilerConfig()
-        self.assertEqual("gpt-5.2", cfg.visual_model)
-        self.assertEqual("gpt-5-mini", cfg.textual_model)
+        self.assertEqual("gpt-5.4", cfg.visual_model)
+        self.assertEqual("gpt-5.4", cfg.textual_model)
         self.assertEqual("high", cfg.visual_reasoning_effort)
 
     def test_visual_schema_has_all_body_fields_plus_gender_age(self) -> None:

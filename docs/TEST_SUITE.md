@@ -16,7 +16,7 @@ Recommended context-loading order for future work:
 
 ## Running Tests
 
-Run all tests (266 tests):
+Run all tests (89 tests):
 ```bash
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
@@ -60,7 +60,9 @@ python3 -m unittest tests.test_agentic_application -v
 - Follow-up intents: increase_boldness, decrease_formality, increase_formality, change_color, full_alternative, more_options, similar_to_previous
 - Filter relaxation: no relaxation → drop occasion_fit → drop occasion_fit + formality_level
 - Assembly compatibility: formality, color temperature, occasion, pattern, volume checks
-- Response formatter output bounds (max 5 outfits)
+- Response formatter output bounds (max 3 outfits)
+- Concept-first paired planning: differentiated top/bottom colors, volume balance, pattern distribution, seasonal palette coverage
+- Model configuration: gpt-5.4 for architect/evaluator/orchestrator/profiler, gpt-5-mini for catalog enrichment only
 - Conversation memory build/apply cycle
 
 ### Onboarding

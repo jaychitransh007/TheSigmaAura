@@ -960,5 +960,170 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("", result)
 
 
+    # ------------------------------------------------------------------
+    # Concept-first paired planning tests
+    # ------------------------------------------------------------------
+
+    def test_paired_queries_have_different_primary_colors(self) -> None:
+        """Top and bottom queries should have different PrimaryColor values."""
+        context = CombinedContext(
+            user=UserContext(
+                user_id="u1",
+                gender="female",
+                derived_interpretations={"SeasonalColorGroup": {"value": "Cool Winter"}},
+                style_preference={"primaryArchetype": "classic", "patternType": "solid"},
+                profile_richness="full",
+            ),
+            live=LiveContext(user_need="I need office separates"),
+            hard_filters={"gender_expression": "feminine"},
+        )
+
+        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
+            "agentic_application.agents.outfit_architect.OpenAI"
+        ) as openai_cls:
+            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
+            architect = OutfitArchitect()
+            plan = architect.plan(context)
+
+        paired_dir = [d for d in plan.directions if d.direction_type == "paired"]
+        self.assertTrue(paired_dir, "Expected at least one paired direction")
+        queries = paired_dir[0].queries
+        self.assertEqual(2, len(queries))
+        top_doc = queries[0].query_document
+        bottom_doc = queries[1].query_document
+
+        # Extract PrimaryColor from each query document
+        top_color = [line for line in top_doc.splitlines() if "PrimaryColor:" in line][0]
+        bottom_color = [line for line in bottom_doc.splitlines() if "PrimaryColor:" in line][0]
+        self.assertNotEqual(top_color, bottom_color,
+                            f"Top and bottom should have different colors but both have: {top_color}")
+
+    def test_paired_queries_have_different_volume_profiles(self) -> None:
+        """Top and bottom queries should have complementary VolumeProfile values."""
+        context = CombinedContext(
+            user=UserContext(
+                user_id="u1",
+                gender="female",
+                derived_interpretations={
+                    "SeasonalColorGroup": {"value": "Warm Autumn"},
+                    "FrameStructure": {"value": "Light and Narrow"},
+                },
+                style_preference={"primaryArchetype": "romantic"},
+                profile_richness="full",
+            ),
+            live=LiveContext(user_need="casual weekend outfit"),
+            hard_filters={"gender_expression": "feminine"},
+        )
+
+        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
+            "agentic_application.agents.outfit_architect.OpenAI"
+        ) as openai_cls:
+            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
+            architect = OutfitArchitect()
+            plan = architect.plan(context)
+
+        paired_dir = [d for d in plan.directions if d.direction_type == "paired"]
+        self.assertTrue(paired_dir)
+        queries = paired_dir[0].queries
+        top_doc = queries[0].query_document
+        bottom_doc = queries[1].query_document
+
+        top_vol = [line for line in top_doc.splitlines() if "VolumeProfile:" in line][0]
+        bottom_vol = [line for line in bottom_doc.splitlines() if "VolumeProfile:" in line][0]
+        # Light and Narrow → relaxed top + slim bottom
+        self.assertIn("relaxed", top_vol)
+        self.assertIn("slim", bottom_vol)
+
+    def test_paired_pattern_distributed_to_top_only(self) -> None:
+        """When user has a pattern preference, it should go to top, bottom stays solid."""
+        context = CombinedContext(
+            user=UserContext(
+                user_id="u1",
+                gender="male",
+                derived_interpretations={"SeasonalColorGroup": {"value": "Deep Winter"}},
+                style_preference={"primaryArchetype": "creative", "patternType": "plaid"},
+                profile_richness="full",
+            ),
+            live=LiveContext(user_need="smart casual dinner"),
+            hard_filters={"gender_expression": "masculine"},
+        )
+
+        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
+            "agentic_application.agents.outfit_architect.OpenAI"
+        ) as openai_cls:
+            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
+            architect = OutfitArchitect()
+            plan = architect.plan(context)
+
+        paired_dir = [d for d in plan.directions if d.direction_type == "paired"]
+        self.assertTrue(paired_dir)
+        queries = paired_dir[0].queries
+        top_doc = queries[0].query_document
+        bottom_doc = queries[1].query_document
+
+        top_pat = [line for line in top_doc.splitlines() if "PatternType:" in line][0]
+        bottom_pat = [line for line in bottom_doc.splitlines() if "PatternType:" in line][0]
+        self.assertIn("plaid", top_pat)
+        self.assertIn("solid", bottom_pat)
+
+    def test_seasonal_palette_assigns_warm_autumn_colors(self) -> None:
+        """Warm Autumn palette should produce cream top + olive bottom."""
+        context = CombinedContext(
+            user=UserContext(
+                user_id="u1",
+                gender="female",
+                derived_interpretations={"SeasonalColorGroup": {"value": "Warm Autumn"}},
+                style_preference={"primaryArchetype": "classic"},
+                profile_richness="full",
+            ),
+            live=LiveContext(user_need="I need a pairing for work"),
+            hard_filters={"gender_expression": "feminine"},
+        )
+
+        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
+            "agentic_application.agents.outfit_architect.OpenAI"
+        ) as openai_cls:
+            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
+            architect = OutfitArchitect()
+            plan = architect.plan(context)
+
+        paired_dir = [d for d in plan.directions if d.direction_type == "paired"]
+        self.assertTrue(paired_dir)
+        queries = paired_dir[0].queries
+        top_doc = queries[0].query_document
+        bottom_doc = queries[1].query_document
+
+        self.assertIn("PrimaryColor: cream", top_doc)
+        self.assertIn("PrimaryColor: olive", bottom_doc)
+
+    def test_complete_outfit_queries_unchanged_by_concept(self) -> None:
+        """Complete outfit directions should NOT be affected by concept logic."""
+        context = CombinedContext(
+            user=UserContext(
+                user_id="u1",
+                gender="female",
+                derived_interpretations={"SeasonalColorGroup": {"value": "Cool Winter"}},
+                style_preference={"primaryArchetype": "classic"},
+                profile_richness="full",
+            ),
+            live=LiveContext(user_need="I need a complete outfit for a wedding"),
+            hard_filters={"gender_expression": "feminine"},
+        )
+
+        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
+            "agentic_application.agents.outfit_architect.OpenAI"
+        ) as openai_cls:
+            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
+            architect = OutfitArchitect()
+            plan = architect.plan(context)
+
+        complete_dir = [d for d in plan.directions if d.direction_type == "complete"]
+        self.assertTrue(complete_dir)
+        query_doc = complete_dir[0].queries[0].query_document
+        # Complete outfit should have a single uniform PrimaryColor, not concept-split
+        color_lines = [line for line in query_doc.splitlines() if "PrimaryColor:" in line]
+        self.assertEqual(1, len(color_lines))
+
+
 if __name__ == "__main__":
     unittest.main()

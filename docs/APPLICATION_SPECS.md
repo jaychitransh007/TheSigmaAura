@@ -12,11 +12,13 @@ Implemented now:
 - rule-based live-context extraction with phrase-priority matching
 - server-side conversation-memory carry-forward across follow-up turns
 - LLM planning with deterministic fallback to `complete_only`, `paired_only`, or `mixed`
+- concept-first paired planning with seasonal palette color assignment, body-shape volume balance, and pattern distribution
 - embedding retrieval from `catalog_item_embeddings` with hydration from `catalog_enriched`
 - direction-aware retrieval for complete outfits and top/bottom pairing
 - deterministic assembly and LLM evaluation with graceful fallback
 - persisted turn artifacts: live context, memory, plan, applied filters, retrieved IDs, assembled candidates, final recommendations
-- response formatting for `outfits`
+- response formatting for `outfits` (max 3 outfits)
+- virtual try-on via Gemini (`gemini-3.1-flash-image-preview`) with parallel image generation, inline UI rendering
 - canonical product URL persistence during catalog ingestion, with runtime product links resolved from persisted canonical URLs
 - catalog admin and ops support URL backfill for older `catalog_enriched` rows that still lack canonical product URLs
 
@@ -65,14 +67,19 @@ Not supported in v1:
 
 Active models used by application agents:
 
-| Agent | Model | Output Mode |
-|---|---|---|
-| Outfit Architect | `gpt-5-mini` | JSON schema (strict) |
-| Outfit Evaluator | `gpt-5-mini` | JSON schema (strict) |
-| User Analysis (onboarding) | `gpt-5.4` | JSON schema (strict), reasoning effort: high |
-| Query Embedding | `text-embedding-3-small` | 1536-dimensional vector |
+| Agent | Model | Provider | Output Mode |
+|---|---|---|---|
+| Outfit Architect | `gpt-5.4` | OpenAI | JSON schema (strict) |
+| Outfit Evaluator | `gpt-5.4` | OpenAI | JSON schema (strict) |
+| Orchestrator (intent + memory) | `gpt-5.4` | OpenAI | JSON schema (strict) |
+| User Profiler (visual) | `gpt-5.4` | OpenAI | JSON schema (strict), reasoning effort: high |
+| User Profiler (textual) | `gpt-5.4` | OpenAI | JSON schema (strict) |
+| User Analysis (onboarding) | `gpt-5.4` | OpenAI | JSON schema (strict), reasoning effort: high |
+| Query Embedding | `text-embedding-3-small` | OpenAI | 1536-dimensional vector |
+| Virtual Try-on | `gemini-3.1-flash-image-preview` | Google | Image generation |
+| Catalog Enrichment | `gpt-5-mini` | OpenAI | JSON schema |
 
-Both architect and evaluator use OpenAI's `json_schema` response format with strict validation. Deterministic fallback paths exist for both in case of LLM failure.
+Architect, evaluator, orchestrator, and profiler use OpenAI's `json_schema` response format with strict validation. Deterministic fallback paths exist for architect and evaluator in case of LLM failure. Virtual try-on uses Google Gemini with direct API key authentication (not Vertex AI / service accounts).
 
 ## Active Catalog Reality
 
@@ -100,7 +107,7 @@ Orchestrator (agentic_application/orchestrator.py)
     +--> 3. Conversation Memory (build + apply from session_context_json)
     |
     v
-4. Outfit Architect (gpt-5-mini, JSON schema)
+4. Outfit Architect (gpt-5.4, JSON schema)
     |
     v
 5. Catalog Search Agent
@@ -113,10 +120,16 @@ Orchestrator (agentic_application/orchestrator.py)
 6. Outfit Assembler (deterministic compatibility pruning)
     |
     v
-7. Outfit Evaluator (gpt-5-mini, JSON schema, fallback: assembly_score ranking)
+7. Outfit Evaluator (gpt-5.4, JSON schema, fallback: assembly_score ranking)
     |
     v
-8. Response Formatter (max 5 outfits)
+8. Response Formatter (max 3 outfits)
+    |
+    v
+9. Virtual Try-on (gemini-3.1-flash-image-preview, parallel generation)
+    |    +--> person image from onboarding full_body upload
+    |    +--> product image from first item in each outfit
+    |    +--> prompt from prompt/virtual_tryon.md
     |
     v
 User Response + Turn Persistence + Conversation Memory Update
@@ -374,6 +387,30 @@ Allowed:
 Not allowed in v1:
 - three-piece directions
 
+### Concept-first paired planning
+
+For paired directions, the architect uses a concept-first approach:
+
+1. **Build outfit concept**: `_build_outfit_concept()` derives a holistic outfit vision from the user's context — coordinated color scheme, volume balance, pattern distribution, and fabric story.
+2. **Decompose into role-specific queries**: The concept provides differentiated parameters for top and bottom queries instead of identical values.
+
+Key concept derivation rules:
+
+**Color assignment** — Uses seasonal palette data (`_SEASONAL_PALETTES`) mapping each of the 12 seasonal color groups to coordinated (top_accent, bottom_anchor) color pairs. Bottoms anchor with neutrals; tops carry accent/statement colors. Example: Warm Autumn → cream top + olive bottom.
+
+**Volume balance** — Uses `FrameStructure` from body analysis to assign complementary volumes. Example: Light and Narrow → relaxed top + slim bottom. Overrides apply for elongation/slimming needs.
+
+**Pattern distribution** — Pattern goes on ONE piece (top by default), other stays solid. Both solid is safe. Both patterned only for high risk-tolerance + boldness intent.
+
+**Fabric coordination** — Formal → both structured. Smart casual → top relaxed, bottom structured. Casual → top relaxed, bottom balanced.
+
+Follow-up intents interact with concepts:
+- `similar_to_previous` — carries forward previous volume/pattern/color into concept
+- `change_color` — rotates to second palette pair
+- explicit color mention — uses stated color as top accent, palette anchor for bottom
+
+Complete outfit directions are NOT affected by the concept layer — they use uniform parameters.
+
 ### Query document format
 
 The architect's `query_document` should mirror the catalog embedding representation:
@@ -625,6 +662,10 @@ class RecommendationResponse:
     metadata: dict
 ```
 
+### Hard output cap
+
+The response formatter caps output to a maximum of 3 outfits (`MAX_FORMATTED_OUTFITS = 3`).
+
 ### Outfit card rules
 
 Each outfit card should contain:
@@ -635,6 +676,45 @@ Each outfit card should contain:
 - style note
 - occasion note
 - one or more product cards
+- virtual try-on image (optional, generated by the try-on stage)
+
+## 11.5. Virtual Try-on
+
+### Purpose
+
+Generate photorealistic virtual try-on images showing the user wearing recommended garments.
+
+### Model
+
+`gemini-3.1-flash-image-preview` via Google Gemini API (direct API key, not Vertex AI).
+
+### Flow
+
+1. Load user's `full_body` image from onboarding uploads via `OnboardingGateway.get_person_image_path()`
+2. For each outfit (max 3), extract the first product image URL
+3. Send both images with a structured prompt to Gemini (parallel execution via `ThreadPoolExecutor`, max 3 workers)
+4. Attach returned try-on image as base64 `data_url` on the `OutfitCard.tryon_image` field
+5. UI renders try-on images inline above each outfit's product cards
+
+### Prompt
+
+The try-on prompt is maintained in `prompt/virtual_tryon.md`. Key principles:
+- Person's body is treated as immutable geometry — body shape, proportions, and silhouette must not change
+- Only the clothing is replaced with the target garment
+- Preserves pose, camera perspective, background, and lighting
+- Garment adapts to the body, not the other way around
+
+### Image handling
+
+- Images are resized to max 1024px on longest side before sending (Pillow/LANCZOS)
+- Each image is explicitly labeled in the content array ("This is the PERSON photo" / "This is the TARGET GARMENT")
+- Response modalities are set to `["IMAGE"]` only (no text fallback)
+
+### Configuration
+
+- `GEMINI_API_KEY` environment variable required (from Google AI Studio)
+- Client is lazy-initialized — missing key does not break app startup, only fails on actual try-on call
+- Graceful degradation: if try-on fails for an outfit, the outfit is still returned without a try-on image
 
 ## 12. Conversation State
 
@@ -754,8 +834,10 @@ Vector retrieval          < 150ms
 Assembly                  < 50ms
 Outfit Evaluator          < 5000ms
 Formatting                < 10ms
+Virtual Try-on (parallel) < 8000ms  (3 outfits in parallel)
 
-Target total              < 9000ms
+Target total              < 17000ms (with try-on)
+Target total              < 9000ms  (without try-on)
 ```
 
 ## 16. Implementation Sequence
@@ -839,6 +921,7 @@ Stages emitted during async processing:
 6. `outfit_assembly`
 7. `outfit_evaluation`
 8. `response_formatting`
+9. `virtual_tryon`
 
 Each stage emits `started` and `completed` (or `failed`) events with timestamps.
 
@@ -858,6 +941,7 @@ Each stage emits `started` and `completed` (or `failed`) events with timestamps.
 | POST | `/v1/conversations/{id}/turns` | Synchronous turn processing |
 | POST | `/v1/conversations/{id}/turns/start` | Async turn job start |
 | GET | `/v1/conversations/{id}/turns/{job_id}/status` | Async turn job status |
+| POST | `/v1/tryon` | Standalone virtual try-on (fallback endpoint) |
 
 ### Onboarding endpoints (mounted via onboarding gateway)
 
@@ -895,7 +979,8 @@ The Application Layer is considered complete for v1 when:
 - retrieval supports both complete outfits and pairing
 - assembler builds top+bottom combinations
 - evaluator ranks complete and paired candidates
-- formatter returns 3-5 outfit recommendations
+- formatter returns up to 3 outfit recommendations
+- virtual try-on generates inline try-on images for each outfit
 - follow-up requests refine prior recommendations
 - runtime is owned by `modules/agentic_application`
 - `platform_core` holds shared runtime infrastructure; `agentic_application` is the canonical application module

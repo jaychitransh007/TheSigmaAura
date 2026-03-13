@@ -164,7 +164,7 @@ class AgenticOrchestrator:
             turn_id=turn_id,
             service="agentic_application",
             call_type="outfit_architect",
-            model="gpt-5-mini",
+            model="gpt-5.4",
             request_json={
                 "combined_context_summary": {
                     "gender": user_context.gender,
@@ -213,7 +213,7 @@ class AgenticOrchestrator:
             turn_id=turn_id,
             service="agentic_application",
             call_type="outfit_evaluator",
-            model="gpt-5-mini",
+            model="gpt-5.4",
             request_json={"candidate_count": len(candidates)},
             response_json={"evaluation_count": len(evaluated)},
             reasoning_notes=[],

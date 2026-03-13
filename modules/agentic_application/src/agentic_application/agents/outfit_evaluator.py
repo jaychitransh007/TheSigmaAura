@@ -301,7 +301,7 @@ def _fallback_evaluations(
 
 
 class OutfitEvaluator:
-    def __init__(self, model: str = "gpt-5-mini") -> None:
+    def __init__(self, model: str = "gpt-5.4") -> None:
         self._client = OpenAI(api_key=get_api_key())
         self._model = model
         self._system_prompt = _load_prompt()

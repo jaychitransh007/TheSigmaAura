@@ -48,7 +48,7 @@ Implemented:
 - onboarding profile persistence (name, DOB, gender, height_cm, waist_cm, profession)
 - image upload with SHA256-encrypted filenames (user_id + category + timestamp), enforced 3:2 aspect ratio on frontend
 - image categories: `full_body`, `headshot`, `veins`
-- 4-agent analysis pipeline (model: `gpt-5.4`, reasoning effort: high, runs in parallel via ThreadPoolExecutor):
+- 4-agent analysis pipeline (model: `gpt-5.4`, reasoning effort: high, runs in parallel via `ThreadPoolExecutor`):
   1. `body_type_analysis` — uses full_body image → ShoulderToHipRatio, TorsoToLegRatio, BodyShape, VisualWeight, VerticalProportion, ArmVolume, MidsectionState, BustVolume
   2. `color_analysis_headshot` — uses headshot → SkinSurfaceColor, HairColor, HairColorTemperature, EyeColor, EyeClarity
   3. `color_analysis_veins` — uses veins image (+ enhanced version) → SkinUndertone
@@ -119,21 +119,22 @@ Status:
 - not yet final-quality
 
 Implemented:
-- orchestrated recommendation pipeline
+- orchestrated recommendation pipeline (9-stage)
 - saved user context loading
 - rule-based live context extraction
 - conversation memory carry-forward
-- planner with deterministic fallback
+- planner with deterministic fallback (model: `gpt-5.4`)
 - vector retrieval with hard filters
 - retrieval relaxation
 - complete-outfit and paired top/bottom support
-- assembly layer
-- evaluator with graceful fallback
-- response formatting and UI rendering support
+- assembly layer with deterministic compatibility pruning
+- evaluator with graceful fallback (model: `gpt-5.4`)
+- response formatting (max 3 outfits) and UI rendering support
+- virtual try-on via Gemini (`gemini-3.1-flash-image-preview`), parallel generation for all outfits
 - turn artifact persistence
 
 Main remaining gaps:
-- stronger planner/evaluator prompts and validation
+- stronger evaluator prompts and validation (planner now uses concept-first paired planning)
 - cleaner module boundaries
 - dedicated eval harness / run artifact model
 
@@ -146,13 +147,14 @@ Current execution order:
 1. load user context
 2. resolve live context from user message
 3. merge prior turn memory if the request is a refinement
-4. generate recommendation plan
-5. retrieve catalog products per query direction
+4. generate recommendation plan (gpt-5.4)
+5. retrieve catalog products per query direction (text-embedding-3-small)
 6. relax retrieval filters if necessary
-7. assemble outfit candidates
-8. evaluate and rank candidates
-9. format response payload
-10. persist turn artifacts and updated conversation context
+7. assemble outfit candidates (deterministic)
+8. evaluate and rank candidates (gpt-5.4, fallback: assembly_score)
+9. format response payload (max 3 outfits)
+10. generate virtual try-on images (gemini-3.1-flash-image-preview, parallel)
+11. persist turn artifacts and updated conversation context
 
 Current supported plan modes:
 - `complete_only`
@@ -258,7 +260,7 @@ Current alignment level:
 - behavioral alignment: partial
 
 Main strengths:
-- the active runtime follows the intended 7-stage agentic pipeline
+- the active runtime follows the intended 9-stage agentic pipeline (including virtual try-on)
 - typed context handoff exists between all major stages
 - planner and evaluator both have graceful fallbacks
 - follow-up state is persisted server-side instead of relying on client history
@@ -274,18 +276,20 @@ Working now:
 - profile analysis and interpretation
 - style preference capture
 - catalog enrichment and embeddings
-- recommendation orchestration
+- recommendation orchestration (9-stage pipeline)
 - complete-outfit retrieval
 - paired retrieval and assembly
 - recommendation rendering with images
 - title / price / product link rendering
 - similarity rendering
 - follow-up turns with persisted context
+- virtual try-on image generation (inline, automatic for all outfits)
+- try-on prompt engineering for body-preserving garment replacement
 
 ## What Is Not Finished
 
 Not finished:
-- robust silhouette-level color-change and similar-to-previous refinement
+- deeper silhouette-level refinement for change_color and similar_to_previous (concept-first planning now handles color coordination, volume carry-forward, and pattern preservation; remaining work is edge-case rule expansion)
 - catalog job model and admin observability
 - canonical URL ingestion for all catalog sources
 - removal of compatibility wrappers and stale placeholders
@@ -337,23 +341,24 @@ Supabase tables (19 migrations in `supabase/migrations/`):
 modules/
 ├── agentic_application/src/agentic_application/
 │   ├── api.py                    # FastAPI app factory, routes
-│   ├── orchestrator.py           # 7-stage pipeline
+│   ├── orchestrator.py           # 9-stage pipeline (incl. virtual try-on)
 │   ├── schemas.py                # Pydantic models
 │   ├── filters.py                # Hard filter construction and relaxation
 │   ├── product_links.py          # Canonical URL resolution
 │   ├── agents/
-│   │   ├── outfit_architect.py   # LLM planning (gpt-5-mini)
+│   │   ├── outfit_architect.py   # LLM planning (gpt-5.4)
 │   │   ├── catalog_search_agent.py # Embedding search + hydration
 │   │   ├── outfit_assembler.py   # Compatibility pruning
-│   │   ├── outfit_evaluator.py   # LLM ranking (gpt-5-mini)
-│   │   └── response_formatter.py # UI output generation
+│   │   ├── outfit_evaluator.py   # LLM ranking (gpt-5.4)
+│   │   └── response_formatter.py # UI output generation (max 3 outfits)
 │   ├── context/
 │   │   ├── user_context_builder.py  # Profile loading + richness scoring
 │   │   ├── occasion_resolver.py     # Rule-based live context extraction
 │   │   └── conversation_memory.py   # Cross-turn state
 │   └── services/
-│       ├── onboarding_gateway.py    # App-facing onboarding interface
-│       └── catalog_retrieval_gateway.py # App-facing retrieval interface
+│       ├── onboarding_gateway.py    # App-facing onboarding interface + person image lookup
+│       ├── catalog_retrieval_gateway.py # App-facing retrieval interface
+│       └── tryon_service.py         # Virtual try-on via Gemini (gemini-3.1-flash-image-preview)
 ├── onboarding/src/onboarding/
 │   ├── api.py                    # Onboarding REST endpoints
 │   ├── service.py                # OTP, profile, image handling
@@ -554,16 +559,49 @@ Definition of done:
 Definition of done:
 - catalog operations are fully manageable from `modules/catalog`
 
-### Application Quality
+### Application Quality: Concept-First Paired Planning
 
-- [ ] strengthen planner prompts and server-side plan validation
+**Problem:** The Outfit Architect generates identical query parameters for top and bottom. Both get the same PrimaryColor, VolumeProfile, PatternType, and FabricDrape — so retrieval returns similar items for both roles. The assembler then blindly cross-products them hoping for lucky pairings. This produces monochromatic, uncoordinated outfits.
+
+**Solution:** Concept-first planning. The architect defines a holistic outfit vision first (color scheme, volume balance, pattern distribution), then derives differentiated per-role queries from that vision.
+
+**Before:**
+```
+User context → top query (beige, warm, balanced) → 15 tops
+             → bottom query (beige, warm, balanced) → 15 bottoms
+             → blind 15×15 cross-product
+```
+
+**After:**
+```
+User context → OutfitConcept (cream top + navy bottom, relaxed-over-slim volume)
+             → top query (cream, relaxed, linen) → 15 tops
+             → bottom query (navy, slim, cotton) → 15 bottoms
+             → pre-coordinated pairs
+```
+
+#### Action items
+
+- [x] 1. Add seasonal palette data — anchor (bottom) and accent (top) colors per 12 seasonal groups
+- [x] 2. Add volume balance rules — complementary volume profiles for top vs bottom based on FrameStructure
+- [x] 3. Add `_build_outfit_concept()` — derives a per-direction concept from `CombinedContext` with differentiated color, volume, pattern, and fabric per role
+- [x] 4. Refactor `_query_sections()` to accept concept — role-specific color/volume/pattern/fabric from the concept instead of identical values
+- [x] 5. Update `prompt/outfit_architect.md` — instruct LLM to think concept-first for paired directions, produce coordinated top/bottom queries
+- [x] 6. Update `_query_specs()` to build concept for paired directions and pass to `_query_sections()`
+- [x] 7. Update tests — 5 new tests covering differentiated colors, volume balance, pattern distribution, seasonal palette, and complete-outfit isolation (89 total)
+- [x] 8. Update `docs/APPLICATION_SPECS.md` — document concept-first planning
+
+Success criteria:
+- paired top and bottom queries produce complementary (not identical) color/volume/pattern parameters
+- seasonal palette influences color distribution across roles
+- body shape influences volume distribution across roles
+- all existing tests still pass
+
+#### Remaining application quality items
+
 - [ ] strengthen evaluator prompts and context payload quality
-- [ ] add targeted regression coverage around:
-  - relaxed retrieval behavior
-  - follow-up refinement
-  - evaluator fallback
-  - formatter output bounds
-- [ ] keep `docs/APPLICATION_SPECS.md` synchronized with actual implementation behavior and active tests
+- [ ] add targeted regression coverage around relaxed retrieval, follow-up refinement, evaluator fallback
+- [x] keep `docs/APPLICATION_SPECS.md` synchronized with actual implementation behavior and active tests
 
 Definition of done:
 - architecture docs remain trustworthy and the active runtime behaves as specified

@@ -30,6 +30,7 @@ Fill `.env.staging` with:
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `GEMINI_API_KEY` (from Google AI Studio, required for virtual try-on)
 
 ## Before Running Against Staging
 ```bash

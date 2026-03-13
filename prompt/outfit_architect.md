@@ -111,10 +111,38 @@ OCCASION_AND_SIGNAL:
 - TimeOfDay: ...
 ```
 
+## Concept-First Paired Planning
+
+For `paired` directions, you MUST think in terms of a complete outfit concept BEFORE writing individual top and bottom queries. This means:
+
+1. **Define the outfit vision first**: decide the overall color scheme, volume balance, pattern distribution, and fabric story as one coherent concept.
+2. **Then decompose into role-specific queries**: the top query and bottom query should have DIFFERENT, COMPLEMENTARY parameters derived from the concept.
+
+### Color coordination rules
+- Top and bottom should have contrasting or complementary colors, NOT identical colors.
+- Use the user's `SeasonalColorGroup` to pick colors from within their palette.
+- Bottoms typically anchor with neutrals (navy, black, charcoal, olive, khaki). Tops carry the accent or statement color.
+- Example: Warm Autumn user → cream top + olive bottom, NOT olive top + olive bottom.
+
+### Volume balance rules
+- Top and bottom should create visual balance. If one piece is relaxed/oversized, the other should be slim/fitted.
+- Use the user's body shape (FrameStructure) to decide which piece gets more volume.
+- Example: narrow frame → relaxed top + slim bottom for visual balance.
+
+### Pattern distribution
+- Typically ONE piece carries the pattern and the other is solid.
+- Pattern usually goes on top unless the user requests otherwise.
+- Both solid is safe. Both patterned is only acceptable for high risk-tolerance users.
+
+### Fabric coordination
+- Formal occasions: both pieces structured.
+- Smart casual: top relaxed, bottom structured (classic contrast).
+- Casual: top relaxed, bottom balanced.
+
 ## Guidelines
 
 - Use explicit values from the provided context. Do not invent unsupported details.
-- For paired directions, the top query should describe the upper-body garment and the bottom query should describe the lower-body garment. Coordinate them for a coherent outfit.
+- For paired directions, the top query and bottom query MUST have different PrimaryColor, VolumeProfile, PatternType, and FabricDrape values reflecting a coordinated outfit concept.
 - Consider the user's body attributes, color profile, and style preference when choosing silhouette, fabric, and color parameters.
 - If the user has specific needs (elongation, slimming, broadening), reflect those in garment requirements.
 - If this is a follow-up request, adjust the plan based on the followup_intent (e.g., increase_boldness means bolder colors/patterns, change_color means different primary colors).

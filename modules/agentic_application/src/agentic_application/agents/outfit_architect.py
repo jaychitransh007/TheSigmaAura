@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
 
@@ -32,6 +33,158 @@ _COLOR_TERMS = [
     "orange",
     "purple",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Seasonal palette data: anchor (bottom) + accent (top) color pairs.
+# Each seasonal group maps to a list of (top_color, bottom_color) pairings
+# ordered by versatility.  The first pair is the safest default.
+# ---------------------------------------------------------------------------
+
+_SEASONAL_PALETTES: Dict[str, List[Tuple[str, str]]] = {
+    # --- Warm families ---
+    "warm spring": [("coral", "navy"), ("peach", "camel"), ("ivory", "olive"), ("turquoise", "beige")],
+    "light spring": [("blush", "light grey"), ("cream", "soft navy"), ("peach", "khaki"), ("mint", "stone")],
+    "clear spring": [("bright coral", "navy"), ("ivory", "black"), ("turquoise", "charcoal"), ("hot pink", "white")],
+    "warm autumn": [("cream", "olive"), ("rust", "dark brown"), ("mustard", "navy"), ("terracotta", "khaki")],
+    "soft autumn": [("dusty rose", "olive"), ("cream", "brown"), ("sage", "chocolate"), ("soft teal", "camel")],
+    "deep autumn": [("burnt orange", "black"), ("olive", "dark brown"), ("cream", "charcoal"), ("rust", "navy")],
+    # --- Cool families ---
+    "cool winter": [("white", "black"), ("icy blue", "charcoal"), ("fuchsia", "navy"), ("silver grey", "black")],
+    "deep winter": [("white", "black"), ("icy pink", "navy"), ("burgundy", "charcoal"), ("emerald", "black")],
+    "clear winter": [("hot pink", "black"), ("white", "navy"), ("cobalt", "charcoal"), ("icy violet", "black")],
+    "cool summer": [("dusty rose", "slate"), ("lavender", "navy"), ("soft white", "charcoal"), ("powder blue", "grey")],
+    "light summer": [("powder blue", "light grey"), ("soft pink", "dove grey"), ("lavender", "slate"), ("mint", "stone")],
+    "soft summer": [("mauve", "grey"), ("dusty blue", "charcoal"), ("rose", "slate"), ("sage", "soft navy")],
+}
+
+# Fallback when seasonal group is unknown or missing
+_DEFAULT_PALETTE: List[Tuple[str, str]] = [
+    ("white", "navy"), ("cream", "charcoal"), ("light blue", "black"), ("grey", "black"),
+]
+
+
+# ---------------------------------------------------------------------------
+# Volume balance rules: body shape → recommended (top_volume, bottom_volume).
+# Uses FrameStructure from derived interpretations.
+# ---------------------------------------------------------------------------
+
+_VOLUME_BALANCE: Dict[str, Tuple[str, str]] = {
+    "light and narrow": ("relaxed", "slim"),          # add volume on top to balance narrow frame
+    "light and broad": ("fitted", "straight"),         # follow broad frame without adding bulk
+    "medium and balanced": ("balanced", "balanced"),
+    "solid and narrow": ("fitted", "straight"),        # fitted top, clean bottom
+    "solid and broad": ("structured", "straight"),     # structured top, straight bottom
+}
+
+_DEFAULT_VOLUME: Tuple[str, str] = ("balanced", "balanced")
+
+
+# ---------------------------------------------------------------------------
+# Pattern distribution: one piece carries the pattern, the other stays solid.
+# ---------------------------------------------------------------------------
+
+def _distribute_pattern(pattern_type: str, *, boldness: bool) -> Tuple[str, str]:
+    """Return (top_pattern, bottom_pattern). Pattern goes on top by default."""
+    if boldness:
+        return pattern_type if pattern_type != "solid" else "statement", "solid"
+    if pattern_type in {"solid", "unknown", ""}:
+        return "solid", "solid"
+    # Pattern on top, solid on bottom
+    return pattern_type, "solid"
+
+
+# ---------------------------------------------------------------------------
+# Outfit concept: holistic vision for a paired outfit before query decomposition.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _OutfitConcept:
+    """Holistic outfit vision derived from user context for a paired direction."""
+    top_color: str
+    bottom_color: str
+    top_volume: str
+    bottom_volume: str
+    top_pattern: str
+    bottom_pattern: str
+    top_fabric_drape: str
+    bottom_fabric_drape: str
+    color_temperature: str
+
+
+def _build_outfit_concept(ctx: CombinedContext) -> _OutfitConcept:
+    """Derive a coordinated outfit concept from user context."""
+    derived = ctx.user.derived_interpretations
+    style_pref = ctx.user.style_preference
+    seasonal_group = _extract_value(derived, "SeasonalColorGroup").lower()
+    frame_structure = _extract_value(derived, "FrameStructure").lower()
+    formality = _resolve_formality(ctx)
+    boldness = ctx.live.followup_intent == "increase_boldness"
+    streamlined = any(need in {"elongation", "slimming"} for need in ctx.live.specific_needs)
+
+    # --- Color assignment ---
+    explicit_color = _extract_color_hint(ctx.live.user_need)
+    palette = _SEASONAL_PALETTES.get(seasonal_group, _DEFAULT_PALETTE)
+
+    if explicit_color != "unknown":
+        # User asked for a specific color — use it as primary, pick complementary anchor
+        top_color = explicit_color
+        bottom_color = palette[0][1]  # anchor from palette
+    elif ctx.live.followup_intent == "change_color":
+        # Rotate to second palette pair to change direction
+        pair = palette[1] if len(palette) > 1 else palette[0]
+        top_color, bottom_color = pair
+    elif ctx.live.followup_intent == "similar_to_previous":
+        prev_color = _previous_primary_color(ctx)
+        if prev_color:
+            top_color = prev_color
+            bottom_color = palette[0][1]
+        else:
+            top_color, bottom_color = palette[0]
+    else:
+        top_color, bottom_color = palette[0]
+
+    # --- Volume balance ---
+    if streamlined:
+        top_volume, bottom_volume = "streamlined", "slim"
+    elif ctx.live.followup_intent == "similar_to_previous":
+        prev_vol = _previous_list_value(ctx, "volume_profiles")
+        if prev_vol:
+            # Preserve previous volume on top, complement on bottom
+            top_volume = prev_vol
+            bottom_volume = "slim" if prev_vol in {"oversized", "relaxed"} else "balanced"
+        else:
+            top_volume, bottom_volume = _VOLUME_BALANCE.get(frame_structure, _DEFAULT_VOLUME)
+    else:
+        top_volume, bottom_volume = _VOLUME_BALANCE.get(frame_structure, _DEFAULT_VOLUME)
+
+    # --- Pattern distribution ---
+    raw_pattern = _safe_value(style_pref.get("patternType"))
+    if ctx.live.followup_intent == "similar_to_previous":
+        prev_pat = _previous_list_value(ctx, "pattern_types")
+        if prev_pat:
+            raw_pattern = prev_pat
+    top_pattern, bottom_pattern = _distribute_pattern(raw_pattern, boldness=boldness)
+
+    # --- Fabric drape ---
+    if formality in {"formal", "semi_formal"}:
+        top_drape, bottom_drape = "structured", "structured"
+    elif formality in {"business_casual"}:
+        top_drape, bottom_drape = "balanced", "structured"
+    else:
+        top_drape, bottom_drape = "relaxed", "balanced"
+
+    return _OutfitConcept(
+        top_color=top_color,
+        bottom_color=bottom_color,
+        top_volume=top_volume,
+        bottom_volume=bottom_volume,
+        top_pattern=top_pattern,
+        bottom_pattern=bottom_pattern,
+        top_fabric_drape=top_drape,
+        bottom_fabric_drape=bottom_drape,
+        color_temperature=_seasonal_temperature(seasonal_group),
+    )
 
 
 def _load_prompt() -> str:
@@ -299,6 +452,7 @@ def _query_sections(
     *,
     role: str,
     styling_completeness: str,
+    concept: Optional[_OutfitConcept] = None,
 ) -> Dict[str, Dict[str, str]]:
     derived = ctx.user.derived_interpretations
     style_pref = ctx.user.style_preference
@@ -309,7 +463,6 @@ def _query_sections(
     frame_structure = _extract_value(derived, "FrameStructure")
     height_category = _extract_value(derived, "HeightCategory")
     waist_size_band = _extract_value(derived, "WaistSizeBand")
-    primary_color = _resolved_primary_color(ctx)
     resolved_occasion = (
         _previous_occasion(ctx)
         if ctx.live.followup_intent == "similar_to_previous" and not ctx.live.occasion_signal
@@ -317,10 +470,7 @@ def _query_sections(
     )
     boldness = ctx.live.followup_intent == "increase_boldness"
     streamlined = any(need in {"elongation", "slimming"} for need in ctx.live.specific_needs)
-    volume_profile = _preserved_volume_profile(ctx, streamlined=streamlined)
-    fit_type = _preserved_fit_type(ctx, formality)
     silhouette_type = _preserved_silhouette_type(ctx)
-    pattern_type = _preserved_pattern_type(ctx, style_pref, boldness=boldness)
 
     if role == "top":
         garment_category = "top"
@@ -331,6 +481,29 @@ def _query_sections(
     else:
         garment_category = "unknown"
         garment_subtype = "unknown"
+
+    # --- Derive role-specific values from concept (paired) or fallback (complete) ---
+    if concept and role in ("top", "bottom"):
+        if role == "top":
+            primary_color = concept.top_color
+            volume_profile = concept.top_volume
+            pattern_type = concept.top_pattern
+            fabric_drape = concept.top_fabric_drape
+        else:
+            primary_color = concept.bottom_color
+            volume_profile = concept.bottom_volume
+            pattern_type = concept.bottom_pattern
+            fabric_drape = concept.bottom_fabric_drape
+        color_temperature = concept.color_temperature
+        fit_type = _preserved_fit_type(ctx, formality)
+    else:
+        # Complete outfit or no concept — use uniform values (original behavior)
+        primary_color = _resolved_primary_color(ctx)
+        volume_profile = _preserved_volume_profile(ctx, streamlined=streamlined)
+        pattern_type = _preserved_pattern_type(ctx, style_pref, boldness=boldness)
+        fabric_drape = "structured" if formality in {"formal", "semi_formal"} else "balanced"
+        color_temperature = _seasonal_temperature(seasonal_group)
+        fit_type = _preserved_fit_type(ctx, formality)
 
     return {
         "USER_NEED": {
@@ -351,7 +524,7 @@ def _query_sections(
             "GarmentCategory": garment_category,
             "GarmentSubtype": garment_subtype,
             "StylingCompleteness": styling_completeness,
-            "SilhouetteContour": "streamlined" if volume_profile == "streamlined" else "balanced",
+            "SilhouetteContour": "streamlined" if volume_profile in {"streamlined", "slim"} else "balanced",
             "SilhouetteType": silhouette_type,
             "VolumeProfile": volume_profile,
             "FitEase": "comfortable" if "comfort_priority" in ctx.live.specific_needs else "balanced",
@@ -366,7 +539,7 @@ def _query_sections(
             "SkinExposureLevel": "low" if "authority" in ctx.live.specific_needs else "balanced",
         },
         "FABRIC_AND_BUILD": {
-            "FabricDrape": "structured" if formality in {"formal", "semi_formal"} else "balanced",
+            "FabricDrape": fabric_drape,
             "FabricWeight": "medium",
             "FabricTexture": "smooth" if streamlined else "balanced",
             "StretchLevel": "moderate" if "comfort_priority" in ctx.live.specific_needs else "low",
@@ -378,7 +551,7 @@ def _query_sections(
             "PatternScale": "medium",
             "PatternOrientation": "vertical" if "elongation" in ctx.live.specific_needs else "balanced",
             "ContrastLevel": _safe_value(contrast_level),
-            "ColorTemperature": _seasonal_temperature(seasonal_group),
+            "ColorTemperature": color_temperature,
             "ColorSaturation": "high" if boldness else "balanced",
             "ColorValue": "medium_deep" if "slimming" in ctx.live.specific_needs else "balanced",
             "ColorCount": "2",
@@ -417,13 +590,15 @@ def _query_specs(ctx: CombinedContext, *, direction_id: str, direction_type: str
                 ),
             )
         ]
+    # Build concept for coordinated paired queries
+    concept = _build_outfit_concept(ctx)
     return [
         QuerySpec(
             query_id=f"{direction_id}1",
             role="top",
             hard_filters={"styling_completeness": "needs_pairing"},
             query_document=_format_query_document(
-                _query_sections(ctx, role="top", styling_completeness="needs_pairing")
+                _query_sections(ctx, role="top", styling_completeness="needs_pairing", concept=concept)
             ),
         ),
         QuerySpec(
@@ -431,7 +606,7 @@ def _query_specs(ctx: CombinedContext, *, direction_id: str, direction_type: str
             role="bottom",
             hard_filters={"styling_completeness": "needs_pairing"},
             query_document=_format_query_document(
-                _query_sections(ctx, role="bottom", styling_completeness="needs_pairing")
+                _query_sections(ctx, role="bottom", styling_completeness="needs_pairing", concept=concept)
             ),
         ),
     ]
@@ -482,7 +657,7 @@ def _build_user_payload(ctx: CombinedContext) -> str:
 
 
 class OutfitArchitect:
-    def __init__(self, model: str = "gpt-5-mini") -> None:
+    def __init__(self, model: str = "gpt-5.4") -> None:
         self._client = OpenAI(api_key=get_api_key())
         self._model = model
         self._system_prompt = _load_prompt()
