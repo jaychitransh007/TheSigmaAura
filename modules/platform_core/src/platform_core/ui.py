@@ -7,7 +7,7 @@ def get_web_ui_html(user_id: str = "") -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sigma Aura Conversation Platform</title>
+  <title>Sigma Aura</title>
   <style>
     :root {
       --bg: #f4efe8;
@@ -116,18 +116,6 @@ def get_web_ui_html(user_id: str = "") -> str:
     }
     .stage-item { padding: 6px 4px; border-bottom: 1px dashed #e8e2da; }
     .stage-item:last-child { border-bottom:none; }
-    .query-box {
-      margin-top:10px;
-      padding:8px;
-      border:1px dashed var(--line);
-      border-radius:10px;
-      background:#fff;
-      font-size:11px;
-      color:var(--muted);
-      white-space:pre-wrap;
-      max-height:220px;
-      overflow:auto;
-    }
     .err { color:#9d1e1e; font-size:13px; margin-top:8px; white-space:pre-wrap; }
     @media (max-width: 900px) {
       .wrap { grid-template-columns: 1fr; }
@@ -138,7 +126,7 @@ def get_web_ui_html(user_id: str = "") -> str:
 <body>
   <div class="wrap">
     <aside class="panel controls">
-      <h1>Conversation Platform</h1>
+      <h1>Sigma Aura</h1>
       <div class="field">
         <label>User ID</label>
         <input id="userId" value="__USER_ID__" />
@@ -155,10 +143,6 @@ def get_web_ui_html(user_id: str = "") -> str:
       <div class="field" style="margin-top:10px;">
         <label>Agent Processing Stages</label>
         <div id="stageBox" class="stages"></div>
-      </div>
-      <div class="field">
-        <label>Retrieval Query</label>
-        <div id="queryBox" class="query-box">No query generated yet.</div>
       </div>
     </aside>
     <main class="panel chat">
@@ -177,7 +161,6 @@ def get_web_ui_html(user_id: str = "") -> str:
   <script>
     const feed = document.getElementById("feed");
     const err = document.getElementById("errorBox");
-    const queryBox = document.getElementById("queryBox");
     const userIdEl = document.getElementById("userId");
     const convIdEl = document.getElementById("conversationId");
     const messageEl = document.getElementById("message");
@@ -331,13 +314,8 @@ def get_web_ui_html(user_id: str = "") -> str:
         const job = await res.json();
         if (!res.ok) throw new Error(job.detail || "Failed to start turn");
         const result = await pollJob(conversationId, job.job_id);
-        queryBox.textContent = result.retrieval_query_document || "No query generated.";
         addBubble(result.assistant_message || "", "assistant");
-        if (result.outfits && result.outfits.length) {
-          renderOutfits(result.outfits);
-        } else {
-          renderRecommendations(result.recommendations || []);
-        }
+        renderOutfits(result.outfits || []);
       } catch (e) {
         err.textContent = e.message || String(e);
       } finally {
@@ -349,7 +327,6 @@ def get_web_ui_html(user_id: str = "") -> str:
     document.getElementById("newConversationBtn").addEventListener("click", () => {
       convIdEl.value = "";
       stageBox.innerHTML = "";
-      queryBox.textContent = "No query generated yet.";
       addMeta("started a new conversation session");
     });
     logoutBtn.addEventListener("click", () => {

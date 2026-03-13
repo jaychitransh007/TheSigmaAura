@@ -9,7 +9,8 @@ for p in (
     ROOT,
     ROOT / "modules" / "catalog" / "src",
     ROOT / "modules" / "catalog_retrieval" / "src",
-    ROOT / "modules" / "conversation_platform" / "src",
+    ROOT / "modules" / "platform_core" / "src",
+    ROOT / "modules" / "user_profiler" / "src",
 ):
     sp = str(p)
     if sp not in sys.path:
@@ -20,6 +21,7 @@ from catalog_retrieval.document_builder import build_catalog_document, iter_cata
 from catalog_retrieval.repository import build_catalog_enriched_rows, build_catalog_item_rows
 from catalog_retrieval.schemas import CatalogEmbeddingRecord
 from catalog_retrieval.vector_store import SupabaseVectorStore
+from catalog.admin_service import CatalogAdminService
 
 
 class CatalogRetrievalTests(unittest.TestCase):
@@ -270,6 +272,24 @@ class CatalogRetrievalTests(unittest.TestCase):
         self.assertEqual(7, built[0]["source_row_number"])
         self.assertEqual("Oxford Shirt", built[0]["title"])
         self.assertEqual("top", built[0]["GarmentCategory"])
+        self.assertEqual("https://example.com/sku_7", built[0]["url"])
+
+    def test_build_catalog_enriched_rows_synthesizes_canonical_url_from_store_and_handle(self) -> None:
+        rows = [
+            {
+                "product_id": "sku_9",
+                "title": "Resort Shirt",
+                "store": "andamen",
+                "handle": "palm-green-cotton-resort-shirt",
+            }
+        ]
+
+        built = build_catalog_enriched_rows(rows)
+
+        self.assertEqual(
+            "https://www.andamen.com/products/palm-green-cotton-resort-shirt",
+            built[0]["url"],
+        )
 
     def test_build_catalog_enriched_rows_ignores_unnamed_columns(self) -> None:
         rows = [
@@ -283,6 +303,64 @@ class CatalogRetrievalTests(unittest.TestCase):
         built = build_catalog_enriched_rows(rows)
         self.assertEqual(1, len(built))
         self.assertNotIn("Unnamed: 0", built[0])
+
+    def test_catalog_admin_sync_reports_missing_url_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            csv_path = Path(tmp_dir) / "catalog.csv"
+            csv_path.write_text(
+                "product_id,title,store,handle,url\n"
+                "sku_1,Known URL,andamen,palm-green-cotton-resort-shirt,\n"
+                "sku_2,Missing URL,unknown-store,no-handle,\n",
+                encoding="utf-8",
+            )
+            vector_store = Mock()
+            vector_store.upsert_catalog_enriched.return_value = [{"product_id": "sku_1"}, {"product_id": "sku_2"}]
+            service = CatalogAdminService(vector_store=vector_store)
+
+            result = service.sync_catalog_items(input_csv_path=str(csv_path))
+
+        self.assertEqual(2, result["processed_rows"])
+        self.assertEqual(2, result["saved_rows"])
+        self.assertEqual(1, result["missing_url_rows"])
+
+    def test_catalog_admin_backfills_canonical_urls_for_existing_rows(self) -> None:
+        vector_store = Mock()
+        vector_store.client.select_many.return_value = [
+            {
+                "product_id": "sku_1",
+                "url": "",
+                "raw_row_json": {
+                    "store": "andamen",
+                    "handle": "palm-green-cotton-resort-shirt",
+                },
+            },
+            {
+                "product_id": "sku_2",
+                "url": "",
+                "raw_row_json": {
+                    "store": "unknown",
+                    "handle": "missing-url",
+                },
+            },
+        ]
+        vector_store.upsert_catalog_enriched.return_value = [
+            {
+                "product_id": "sku_1",
+                "url": "https://www.andamen.com/products/palm-green-cotton-resort-shirt",
+            }
+        ]
+        service = CatalogAdminService(vector_store=vector_store)
+
+        result = service.backfill_catalog_urls()
+
+        self.assertEqual(2, result["processed_rows"])
+        self.assertEqual(1, result["saved_rows"])
+        self.assertEqual(1, result["missing_url_rows"])
+        saved_rows = vector_store.upsert_catalog_enriched.call_args.args[0]
+        self.assertEqual(
+            "https://www.andamen.com/products/palm-green-cotton-resort-shirt",
+            saved_rows[0]["url"],
+        )
 
 
 if __name__ == "__main__":

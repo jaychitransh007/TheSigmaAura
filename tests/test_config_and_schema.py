@@ -98,9 +98,9 @@ class ConfigAndSchemaTests(unittest.TestCase):
                 self.assertIn(attr, garment_attrs)
 
     def test_context_file_exists(self) -> None:
-        self.assertTrue(Path("docs/context/SINGLE_SOURCE_OF_TRUTH.md").exists())
-        text = Path("docs/context/SINGLE_SOURCE_OF_TRUTH.md").read_text(encoding="utf-8")
-        self.assertIn("config/", text)
+        self.assertTrue(Path("docs/CURRENT_STATE.md").exists())
+        text = Path("docs/CURRENT_STATE.md").read_text(encoding="utf-8")
+        self.assertIn("agentic_application", text)
 
     def test_garment_config_file_is_valid_json(self) -> None:
         raw = Path("modules/style_engine/configs/config/garment_attributes.json").read_text(encoding="utf-8")

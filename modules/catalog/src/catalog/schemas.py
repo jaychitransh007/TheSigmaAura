@@ -11,6 +11,7 @@ class CatalogSyncResponse(BaseModel):
     input_csv_path: str
     processed_rows: int
     saved_rows: int
+    missing_url_rows: int = 0
     mode: str
 
 

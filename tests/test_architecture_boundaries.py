@@ -14,7 +14,7 @@ for p in (
     ROOT / "modules" / "agentic_application" / "src",
     ROOT / "modules" / "catalog" / "src",
     ROOT / "modules" / "catalog_retrieval" / "src",
-    ROOT / "modules" / "conversation_platform" / "src",
+    ROOT / "modules" / "platform_core" / "src",
     ROOT / "modules" / "user_profiler" / "src",
     ROOT / "modules" / "onboarding" / "src",
 ):

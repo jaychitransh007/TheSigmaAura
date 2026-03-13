@@ -118,6 +118,101 @@ def _extract_color_hint(text: str) -> str:
     return "unknown"
 
 
+def _latest_previous_recommendation(ctx: CombinedContext) -> Dict[str, Any]:
+    recommendations = ctx.previous_recommendations or []
+    if recommendations and isinstance(recommendations[0], dict):
+        return recommendations[0]
+    return {}
+
+
+def _previous_primary_color(ctx: CombinedContext) -> str:
+    previous = _latest_previous_recommendation(ctx)
+    colors = previous.get("primary_colors")
+    if isinstance(colors, list):
+        for color in colors:
+            normalized = str(color or "").strip().lower()
+            if normalized:
+                return normalized
+    return ""
+
+
+def _previous_occasion(ctx: CombinedContext) -> str:
+    previous = _latest_previous_recommendation(ctx)
+    occasions = previous.get("occasion_fits")
+    if isinstance(occasions, list):
+        for occasion in occasions:
+            normalized = str(occasion or "").strip().lower()
+            if normalized:
+                return normalized
+    return ""
+
+
+def _previous_candidate_type(ctx: CombinedContext) -> str:
+    previous = _latest_previous_recommendation(ctx)
+    candidate_type = str(previous.get("candidate_type") or "").strip().lower()
+    return candidate_type
+
+
+def _previous_list_value(ctx: CombinedContext, key: str) -> str:
+    previous = _latest_previous_recommendation(ctx)
+    values = previous.get(key)
+    if isinstance(values, list):
+        for value in values:
+            normalized = str(value or "").strip().lower()
+            if normalized:
+                return normalized
+    return ""
+
+
+def _resolved_primary_color(ctx: CombinedContext) -> str:
+    explicit_color = _extract_color_hint(ctx.live.user_need)
+    if explicit_color != "unknown":
+        return explicit_color
+    if ctx.live.followup_intent == "similar_to_previous":
+        previous_color = _previous_primary_color(ctx)
+        if previous_color:
+            return previous_color
+    return "unknown"
+
+
+def _preserved_pattern_type(ctx: CombinedContext, style_pref: Dict[str, Any], *, boldness: bool) -> str:
+    if boldness:
+        return "statement"
+    if ctx.live.followup_intent == "similar_to_previous":
+        previous_pattern = _previous_list_value(ctx, "pattern_types")
+        if previous_pattern:
+            return previous_pattern
+    return _safe_value(style_pref.get("patternType"))
+
+
+def _preserved_volume_profile(ctx: CombinedContext, *, streamlined: bool) -> str:
+    if streamlined:
+        return "streamlined"
+    if ctx.live.followup_intent == "similar_to_previous":
+        previous_volume = _previous_list_value(ctx, "volume_profiles")
+        if previous_volume:
+            return previous_volume
+    return "balanced"
+
+
+def _preserved_fit_type(ctx: CombinedContext, formality: str) -> str:
+    if ctx.live.followup_intent == "similar_to_previous":
+        previous_fit = _previous_list_value(ctx, "fit_types")
+        if previous_fit:
+            return previous_fit
+    return "tailored" if formality in {"formal", "semi_formal", "business_casual"} else "relaxed"
+
+
+def _preserved_silhouette_type(ctx: CombinedContext) -> str:
+    if "elongation" in ctx.live.specific_needs:
+        return "elongated"
+    if ctx.live.followup_intent == "similar_to_previous":
+        previous_silhouette = _previous_list_value(ctx, "silhouette_types")
+        if previous_silhouette:
+            return previous_silhouette
+    return "balanced"
+
+
 def _seasonal_temperature(seasonal_group: str) -> str:
     lowered = seasonal_group.lower()
     if "spring" in lowered or "autumn" in lowered or "fall" in lowered:
@@ -141,6 +236,13 @@ def _resolve_formality(ctx: CombinedContext) -> str:
 
 
 def _resolve_style_goal(ctx: CombinedContext) -> str:
+    if ctx.live.followup_intent == "similar_to_previous" and ctx.previous_recommendations:
+        return "similar to previous recommendation"
+    if ctx.live.followup_intent == "change_color":
+        previous_color = _previous_primary_color(ctx)
+        if previous_color:
+            return f"change color direction away from {previous_color}"
+        return "change color direction"
     if ctx.live.specific_needs:
         return ", ".join(ctx.live.specific_needs)
     if ctx.live.occasion_signal:
@@ -157,6 +259,12 @@ def _determine_plan_type(ctx: CombinedContext) -> str:
         for token in ("complete outfit", "full outfit", "one piece", "dress", "jumpsuit")
     ):
         return "complete_only"
+    previous_candidate_type = _previous_candidate_type(ctx)
+    if ctx.live.followup_intent == "similar_to_previous":
+        if previous_candidate_type == "paired":
+            return "paired_only"
+        if previous_candidate_type == "complete":
+            return "complete_only"
     if ctx.live.is_followup and ctx.conversation_memory and ctx.conversation_memory.plan_type:
         return ctx.conversation_memory.plan_type
     return "mixed"
@@ -201,9 +309,18 @@ def _query_sections(
     frame_structure = _extract_value(derived, "FrameStructure")
     height_category = _extract_value(derived, "HeightCategory")
     waist_size_band = _extract_value(derived, "WaistSizeBand")
-    primary_color = _extract_color_hint(ctx.live.user_need)
+    primary_color = _resolved_primary_color(ctx)
+    resolved_occasion = (
+        _previous_occasion(ctx)
+        if ctx.live.followup_intent == "similar_to_previous" and not ctx.live.occasion_signal
+        else str(ctx.live.occasion_signal or "").strip().lower()
+    )
     boldness = ctx.live.followup_intent == "increase_boldness"
     streamlined = any(need in {"elongation", "slimming"} for need in ctx.live.specific_needs)
+    volume_profile = _preserved_volume_profile(ctx, streamlined=streamlined)
+    fit_type = _preserved_fit_type(ctx, formality)
+    silhouette_type = _preserved_silhouette_type(ctx)
+    pattern_type = _preserved_pattern_type(ctx, style_pref, boldness=boldness)
 
     if role == "top":
         garment_category = "top"
@@ -234,11 +351,11 @@ def _query_sections(
             "GarmentCategory": garment_category,
             "GarmentSubtype": garment_subtype,
             "StylingCompleteness": styling_completeness,
-            "SilhouetteContour": "streamlined" if streamlined else "balanced",
-            "SilhouetteType": "elongated" if "elongation" in ctx.live.specific_needs else "balanced",
-            "VolumeProfile": "streamlined" if streamlined else "balanced",
+            "SilhouetteContour": "streamlined" if volume_profile == "streamlined" else "balanced",
+            "SilhouetteType": silhouette_type,
+            "VolumeProfile": volume_profile,
             "FitEase": "comfortable" if "comfort_priority" in ctx.live.specific_needs else "balanced",
-            "FitType": "tailored" if formality in {"formal", "semi_formal", "business_casual"} else "relaxed",
+            "FitType": fit_type,
             "GarmentLength": "long_line" if "elongation" in ctx.live.specific_needs else "balanced",
             "ShoulderStructure": "soft" if gender == "female" else "structured",
             "WaistDefinition": "defined" if "slimming" in ctx.live.specific_needs else "balanced",
@@ -257,7 +374,7 @@ def _query_sections(
             "ConstructionDetail": "clean_finish",
         },
         "PATTERN_AND_COLOR": {
-            "PatternType": "statement" if boldness else _safe_value(style_pref.get("patternType")),
+            "PatternType": pattern_type,
             "PatternScale": "medium",
             "PatternOrientation": "vertical" if "elongation" in ctx.live.specific_needs else "balanced",
             "ContrastLevel": _safe_value(contrast_level),
@@ -271,8 +388,8 @@ def _query_sections(
         "OCCASION_AND_SIGNAL": {
             "FormalitySignalStrength": "high" if formality in {"formal", "semi_formal"} else "medium",
             "FormalityLevel": formality,
-            "OccasionFit": _safe_value(ctx.live.occasion_signal),
-            "OccasionSignal": _safe_value(ctx.live.occasion_signal),
+            "OccasionFit": _safe_value(resolved_occasion),
+            "OccasionSignal": _safe_value(resolved_occasion),
             "TimeOfDay": _safe_value(ctx.live.time_hint),
         },
     }
@@ -356,12 +473,11 @@ def _build_user_payload(ctx: CombinedContext) -> str:
         "style_preference": user.style_preference,
         "live_context": ctx.live.model_dump(),
         "hard_filters": ctx.hard_filters,
+        "previous_recommendations": ctx.previous_recommendations,
         "conversation_memory": (
             ctx.conversation_memory.model_dump() if ctx.conversation_memory else None
         ),
     }
-    if ctx.previous_recommendations:
-        payload["previous_recommendations_count"] = len(ctx.previous_recommendations)
     return json.dumps(payload, indent=2, default=str)
 
 

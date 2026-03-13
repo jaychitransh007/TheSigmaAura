@@ -155,7 +155,7 @@ const details = {
       "Example: 'work dinner, want to look taller' → occasion + formality + elongation",
     ]
   },
-  query_builder: {
+  outfit_architect_query_docs: {
     title: "Outfit Architect (outfit_architect.py)",
     desc: "Planner agent that translates combined user context into a structured recommendation plan. It returns strict JSON with one or more retrieval directions and structured query documents that mirror the catalog embedding representation. Deterministic fallback planning exists when the LLM fails.",
     items: [
@@ -209,10 +209,10 @@ const details = {
   },
   presentation: {
     title: "Response Formatter + UI",
-    desc: "Formats ranked recommendations into user-facing outfit cards and renders them in the conversation UI. The active runtime now carries image, title, price, similarity, and product URL, with compatibility fallback for older recommendation payloads.",
+    desc: "Formats ranked recommendations into user-facing outfit cards and renders them in the conversation UI. The active runtime now carries image, title, price, similarity, and product URL in a single outfit-centric payload.",
     items: [
       "Shows: outfit images, title, price, reasoning, product link, similarity",
-      "Prefers: result.outfits, falls back to legacy recommendations",
+      "Reads: result.outfits",
       "Follow-ups: 'show bolder', 'different color' loop through orchestrator",
     ]
   },
@@ -355,9 +355,9 @@ export default function Architecture() {
             <DataStore x={30} y={510} w={200} h={90} label="⬡ Knowledge Context" color={C.warn} dim={C.warnDim}
               items={["M01-M04: Styling principles", "M05: Occasion conventions", "M08-M09: Detail + Fabric", "Injected into LLM system prompt"]} />
 
-            {/* Query Builder */}
-            <Node x={280} y={510} w={230} h={100} title="Query Builder (LLM)" icon="◆" items={["System prompt + knowledge context", "Structured output sections:", "GARMENT_REQUIREMENTS", "FABRIC_AND_BUILD, PATTERN_AND_COLOR", "OCCASION_AND_SIGNAL", "→ catalog-facing retrieval language"]}
-              color={C.layer2} dim={C.layer2Dim} onClick={() => setSel("query_builder")} active={sel==="query_builder"} />
+            {/* Outfit Architect Query Docs */}
+            <Node x={280} y={510} w={230} h={100} title="Architect Query Docs" icon="◆" items={["System prompt + knowledge context", "Structured output sections:", "GARMENT_REQUIREMENTS", "FABRIC_AND_BUILD, PATTERN_AND_COLOR", "OCCASION_AND_SIGNAL", "→ catalog-facing retrieval language"]}
+              color={C.layer2} dim={C.layer2Dim} onClick={() => setSel("outfit_architect_query_docs")} active={sel==="outfit_architect_query_docs"} />
 
             <Arrow x1={395} y1={485} x2={395} y2={510} color={C.layer2} label="combined context" />
             <Arrow x1={230} y1={555} x2={280} y2={555} color={C.warn} label="knowledge" dashed />

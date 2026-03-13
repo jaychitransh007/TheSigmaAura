@@ -9,7 +9,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 for p in (
     ROOT,
-    ROOT / "modules" / "conversation_platform" / "src",
+    ROOT / "modules" / "platform_core" / "src",
     ROOT / "modules" / "onboarding" / "src",
     ROOT / "modules" / "user_profiler" / "src",
 ):
@@ -21,7 +21,7 @@ from onboarding.service import OnboardingService, _encrypt_filename
 from onboarding.style_archetype import ARCHETYPE_ORDER
 from onboarding.analysis import UserAnalysisService
 from onboarding.ui import get_onboarding_html, get_processing_html
-from conversation_platform.supabase_rest import SupabaseError
+from platform_core.supabase_rest import SupabaseError
 
 
 class OnboardingTests(unittest.TestCase):

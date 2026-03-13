@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import sys
 from pathlib import Path
 
@@ -19,17 +20,23 @@ for p in (
     ROOT / "modules" / "catalog" / "src",
     ROOT / "modules" / "catalog_enrichment" / "src",
     ROOT / "modules" / "catalog_retrieval" / "src",
+    ROOT / "modules" / "platform_core" / "src",
     ROOT / "modules" / "user_profiler" / "src",
-    ROOT / "modules" / "conversation_platform" / "src",
     ROOT / "modules" / "onboarding" / "src",
 ):
     sp = str(p)
     if sp not in sys.path:
         sys.path.insert(0, sp)
 
-
-from conversation_platform.main import parse_args  # noqa: E402
 import uvicorn  # noqa: E402
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run agentic application API server.")
+    parser.add_argument("--host", default="127.0.0.1", help="Bind host.")
+    parser.add_argument("--port", type=int, default=8010, help="Bind port.")
+    parser.add_argument("--reload", action="store_true", help="Enable auto reload.")
+    return parser.parse_args()
 
 
 def main() -> int:

@@ -46,18 +46,18 @@ supabase db push --yes
 
 ## Run App Against Staging
 ```bash
-APP_ENV=staging python3 run_conversation_platform.py --host 127.0.0.1 --port 8010
+APP_ENV=staging python3 run_agentic_application.py --host 127.0.0.1 --port 8010
 ```
 
 ## Run App Against Local
 ```bash
-APP_ENV=local python3 run_conversation_platform.py --host 127.0.0.1 --port 8010
+APP_ENV=local python3 run_agentic_application.py --host 127.0.0.1 --port 8010
 ```
 
 ## Run Catalog Embeddings Against Staging
 ```bash
 ENV_FILE=.env.staging \
-PYTHONPATH=modules/catalog_retrieval/src:modules/user_profiler/src:modules/conversation_platform/src \
+PYTHONPATH=modules/catalog_retrieval/src:modules/user_profiler/src:modules/platform_core/src \
 python3 -m catalog_retrieval.main \
   --input data/catalog/enriched_catalog.csv \
   --documents-output data/catalog/embeddings/catalog_documents_sample.jsonl \

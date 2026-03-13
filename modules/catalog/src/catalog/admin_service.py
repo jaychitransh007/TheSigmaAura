@@ -7,7 +7,12 @@ from typing import Any, Dict, List
 from catalog_retrieval.config import CatalogEmbeddingConfig
 from catalog_retrieval.document_builder import iter_catalog_documents
 from catalog_retrieval.embedder import CatalogEmbedder
-from catalog_retrieval.repository import build_catalog_enriched_rows, read_catalog_rows, write_jsonl
+from catalog_retrieval.repository import (
+    build_catalog_enriched_rows,
+    canonical_product_url,
+    read_catalog_rows,
+    write_jsonl,
+)
 from catalog_retrieval.vector_store import SupabaseVectorStore
 
 
@@ -49,11 +54,51 @@ class CatalogAdminService:
         selected_rows = rows[:max_rows] if max_rows > 0 else rows
         item_rows = build_catalog_enriched_rows(selected_rows)
         saved = self.vector_store.upsert_catalog_enriched(item_rows)
+        missing_url_rows = sum(1 for row in item_rows if not str(row.get("url") or "").strip())
         return {
             "input_csv_path": input_csv_path,
             "processed_rows": len(selected_rows),
             "saved_rows": len(saved),
+            "missing_url_rows": missing_url_rows,
             "mode": "catalog_enriched",
+        }
+
+    def backfill_catalog_urls(self, *, max_rows: int = 0) -> Dict[str, int | str]:
+        limit = max_rows if max_rows > 0 else None
+        rows = self.vector_store.client.select_many(
+            "catalog_enriched",
+            filters={"or": "(url.is.null,url.eq.)"},
+            columns="product_id,url,raw_row_json",
+            limit=limit,
+        )
+        patches: List[Dict[str, Any]] = []
+        still_missing = 0
+        for row in rows:
+            raw_row = row.get("raw_row_json") or {}
+            if not isinstance(raw_row, dict):
+                raw_row = {}
+            canonical_url = canonical_product_url(
+                raw_url=str(row.get("url") or raw_row.get("url") or ""),
+                store=str(raw_row.get("store") or ""),
+                handle=str(raw_row.get("handle") or ""),
+            )
+            if not canonical_url:
+                still_missing += 1
+                continue
+            patches.append(
+                {
+                    "product_id": str(row.get("product_id") or ""),
+                    "url": canonical_url,
+                }
+            )
+
+        saved = self.vector_store.upsert_catalog_enriched(patches)
+        return {
+            "input_csv_path": "catalog_enriched",
+            "processed_rows": len(rows),
+            "saved_rows": len(saved),
+            "missing_url_rows": still_missing,
+            "mode": "catalog_enriched_url_backfill",
         }
 
     def sync_catalog_embeddings(

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from conversation_platform.supabase_rest import SupabaseError
+from platform_core.supabase_rest import SupabaseError
 
 from .repository import OnboardingRepository
 from .schemas import FIXED_OTP, ImageCategory

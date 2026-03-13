@@ -63,6 +63,14 @@ def _color_temp_compatible(a: str, b: str) -> Tuple[bool, str]:
     return False, f"color temperature clash: {a} vs {b}"
 
 
+def _occasion_compatible(a: str, b: str) -> Tuple[bool, str]:
+    if not a or not b:
+        return True, ""
+    if a == b:
+        return True, ""
+    return False, f"occasion mismatch: {a} vs {b}"
+
+
 def _pattern_compatible(a: str, b: str) -> Tuple[bool, str]:
     if not a or not b:
         return True, ""
@@ -192,6 +200,15 @@ class OutfitAssembler:
         if note:
             notes.append(note)
 
+        # Occasion compatibility
+        top_occ = _get_attr(top, "occasion_fit") or _get_attr(top, "OccasionFit")
+        bot_occ = _get_attr(bottom, "occasion_fit") or _get_attr(bottom, "OccasionFit")
+        ok, note = _occasion_compatible(top_occ, bot_occ)
+        if not ok:
+            return 0.0, [note]
+        if note:
+            notes.append(note)
+
         # Color temperature
         top_temp = _get_attr(top, "color_temperature") or _get_attr(top, "ColorTemperature")
         bot_temp = _get_attr(bottom, "color_temperature") or _get_attr(bottom, "ColorTemperature")
@@ -285,6 +302,26 @@ class OutfitAssembler:
             "formality_level": str(
                 product.enriched_data.get("formality_level")
                 or metadata.get("FormalityLevel") or ""
+            ),
+            "occasion_fit": str(
+                product.enriched_data.get("occasion_fit")
+                or metadata.get("OccasionFit") or ""
+            ),
+            "pattern_type": str(
+                product.enriched_data.get("pattern_type")
+                or metadata.get("PatternType") or ""
+            ),
+            "volume_profile": str(
+                product.enriched_data.get("volume_profile")
+                or metadata.get("VolumeProfile") or ""
+            ),
+            "fit_type": str(
+                product.enriched_data.get("fit_type")
+                or metadata.get("FitType") or ""
+            ),
+            "silhouette_type": str(
+                product.enriched_data.get("silhouette_type")
+                or metadata.get("SilhouetteType") or ""
             ),
         }
         if role:

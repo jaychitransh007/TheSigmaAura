@@ -1,3 +1,3 @@
-from conversation_platform.repositories import ConversationRepository
+from platform_core.repositories import ConversationRepository
 
 __all__ = ["ConversationRepository"]

@@ -252,6 +252,15 @@ def get_catalog_admin_html() -> str:
 
           <div class="step">
             <div class="step-num">STEP 3</div>
+            <h2>Backfill Canonical URLs</h2>
+            <p>Repair older `catalog_enriched` rows that are missing canonical absolute product URLs by rebuilding them from known `store + handle` mappings.</p>
+            <div class="btns">
+              <button id="backfillUrlsBtn" class="secondary">Backfill URLs</button>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num">STEP 4</div>
             <h2>Generate Embeddings</h2>
             <p>Generate embeddings for eligible rows and upsert them into `catalog_item_embeddings`. Existing rows are replaced per `product_id + model + dimensions`.</p>
             <div class="btns">
@@ -388,6 +397,22 @@ def get_catalog_admin_html() -> str:
       await refreshStatus();
     }
 
+    async function backfillUrls() {
+      setStatus('Backfilling canonical product URLs...');
+      const res = await fetch('/v1/admin/catalog/items/backfill-urls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload())
+      });
+      const data = await parseResponse(res);
+      setStatus(
+        'URL backfill complete. Processed ' + data.processed_rows +
+        ' rows, updated ' + data.saved_rows +
+        ', still missing ' + data.missing_url_rows + '.'
+      );
+      await refreshStatus();
+    }
+
     async function runFullPipeline() {
       try {
         await syncItems();
@@ -405,6 +430,9 @@ def get_catalog_admin_html() -> str:
     });
     document.getElementById('syncItemsBtn').addEventListener('click', async () => {
       try { await syncItems(); } catch (error) { setStatus(error.message || String(error)); }
+    });
+    document.getElementById('backfillUrlsBtn').addEventListener('click', async () => {
+      try { await backfillUrls(); } catch (error) { setStatus(error.message || String(error)); }
     });
     document.getElementById('syncEmbeddingsBtn').addEventListener('click', async () => {
       try { await syncEmbeddings(); } catch (error) { setStatus(error.message || String(error)); }

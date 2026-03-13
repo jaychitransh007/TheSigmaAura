@@ -3,11 +3,52 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
 
+_STORE_DOMAINS = {
+    "andamen": "andamen.com",
+    "bunaai": "bunaai.com",
+    "dashanddot": "dashanddot.com",
+    "houseoffett": "houseoffett.com",
+    "ikkivi": "ikkivi.com",
+    "kalki": "kalkifashion.com",
+    "kharakapas": "kharakapas.com",
+    "lovepangolin": "lovepangolin.com",
+    "nicobar": "nicobar.com",
+    "powerlook": "powerlook.in",
+    "saltattire": "saltattire.com",
+    "suta": "suta.in",
+    "thebearhouse": "thebearhouse.com",
+    "thehouseofrare": "thehouseofrare.com",
+}
+
+
 def _is_ignored_catalog_key(key: str, ignored: set[str]) -> bool:
     normalized = str(key or "").strip()
     if normalized in ignored:
         return True
     return normalized.lower().startswith("unnamed:")
+
+
+def canonical_product_url(*, raw_url: str = "", store: str = "", handle: str = "") -> str:
+    url = str(raw_url or "").strip()
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    if url.startswith("/"):
+        url = url[1:]
+    if url and "." in url and "/" in url:
+        return f"https://{url}"
+
+    normalized_store = str(store or "").strip().lower()
+    normalized_handle = str(handle or "").strip().strip("/")
+    if not normalized_handle:
+        normalized_handle = url
+    normalized_handle = str(normalized_handle or "").strip().strip("/")
+    if not normalized_handle:
+        return ""
+
+    domain = _STORE_DOMAINS.get(normalized_store)
+    if not domain:
+        return ""
+    return f"https://www.{domain}/products/{normalized_handle}"
 
 
 def read_catalog_rows(csv_path: str) -> List[Dict[str, str]]:
@@ -47,7 +88,7 @@ def build_catalog_item_rows(rows: Iterable[Dict[str, str]]) -> List[Dict[str, An
                 "price": price,
                 "primary_image_url": str(row.get("images__0__src") or ""),
                 "secondary_image_url": str(row.get("images__1__src") or ""),
-                "product_url": str(row.get("url") or ""),
+                "url": str(row.get("url") or ""),
                 "row_status": str(row.get("row_status") or ""),
                 "error_reason": str(row.get("error_reason") or ""),
                 "metadata_json": dict(row),
@@ -84,6 +125,11 @@ def build_catalog_enriched_rows(rows: Iterable[Dict[str, str]]) -> List[Dict[str
             price = float(price_value) if price_value else None
         except ValueError:
             price = None
+        canonical_url = canonical_product_url(
+            raw_url=str(row.get("url") or ""),
+            store=str(row.get("store") or ""),
+            handle=str(row.get("handle") or ""),
+        )
 
         record: Dict[str, Any] = {
             "product_id": product_id,
@@ -93,7 +139,7 @@ def build_catalog_enriched_rows(rows: Iterable[Dict[str, str]]) -> List[Dict[str
             "price": price,
             "images_0_src": str(row.get("images_0_src") or row.get("images__0__src") or ""),
             "images_1_src": str(row.get("images_1_src") or row.get("images__1__src") or ""),
-            "url": str(row.get("url") or ""),
+            "url": canonical_url,
             "row_status": str(row.get("row_status") or ""),
             "error_reason": str(row.get("error_reason") or ""),
             "raw_row_json": dict(row),
@@ -104,3 +150,12 @@ def build_catalog_enriched_rows(rows: Iterable[Dict[str, str]]) -> List[Dict[str
             record[key] = value
         output.append(record)
     return output
+
+
+__all__ = [
+    "build_catalog_enriched_rows",
+    "build_catalog_item_rows",
+    "canonical_product_url",
+    "read_catalog_rows",
+    "write_jsonl",
+]

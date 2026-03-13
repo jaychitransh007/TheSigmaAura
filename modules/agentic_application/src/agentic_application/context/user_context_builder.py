@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from onboarding.analysis import UserAnalysisService
-from onboarding.repository import OnboardingRepository
-
 from ..schemas import UserContext
+from ..services.onboarding_gateway import ApplicationOnboardingGateway
 
 
 def _compute_profile_richness(
@@ -38,11 +36,10 @@ def _compute_profile_richness(
 def build_user_context(
     user_id: str,
     *,
-    onboarding_repo: OnboardingRepository,
-    analysis_service: UserAnalysisService,
+    onboarding_gateway: ApplicationOnboardingGateway,
 ) -> UserContext:
     """Load all saved user state into a single UserContext object."""
-    status = analysis_service.get_analysis_status(user_id)
+    status = onboarding_gateway.get_analysis_status(user_id)
     if status.get("status") != "completed":
         raise ValueError(
             "User analysis is not complete. Finish onboarding and profile analysis first."

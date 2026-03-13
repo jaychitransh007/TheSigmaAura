@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from conversation_platform.supabase_rest import SupabaseRestClient
+from platform_core.supabase_rest import SupabaseRestClient
 
 
 ANALYSIS_ATTRIBUTE_COLUMN_PREFIXES = {

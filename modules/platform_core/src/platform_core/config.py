@@ -3,7 +3,7 @@ import os
 
 
 @dataclass(frozen=True)
-class ConversationPlatformConfig:
+class AuraRuntimeConfig:
     supabase_rest_url: str
     supabase_service_role_key: str
     catalog_csv_path: str = "data/catalog/enriched_catalog.csv"
@@ -59,7 +59,7 @@ def _ensure_rest_url(base: str) -> str:
     return f"{url}/rest/v1"
 
 
-def load_config() -> ConversationPlatformConfig:
+def load_config() -> AuraRuntimeConfig:
     _load_dotenv()
 
     supabase_url = (
@@ -83,7 +83,7 @@ def load_config() -> ConversationPlatformConfig:
         or "data/catalog/enriched_catalog.csv"
     )
 
-    return ConversationPlatformConfig(
+    return AuraRuntimeConfig(
         supabase_rest_url=_ensure_rest_url(supabase_url),
         supabase_service_role_key=service_key,
         catalog_csv_path=catalog_csv_path,

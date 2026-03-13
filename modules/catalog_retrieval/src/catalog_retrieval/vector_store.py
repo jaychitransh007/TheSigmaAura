@@ -1,7 +1,7 @@
 import os
 from typing import Any, Dict, Iterable, List
 
-from conversation_platform.supabase_rest import SupabaseRestClient
+from platform_core.supabase_rest import SupabaseRestClient
 
 from .schemas import CatalogEmbeddingRecord
 
@@ -72,6 +72,10 @@ def _has_blank_identity(row: Dict[str, Any], *, key_fields: List[str]) -> bool:
 class SupabaseVectorStore:
     def __init__(self, client: SupabaseRestClient | None = None) -> None:
         self._client = client or _load_supabase_client()
+
+    @property
+    def client(self) -> SupabaseRestClient:
+        return self._client
 
     def upsert_catalog_enriched(self, rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
         payload = [

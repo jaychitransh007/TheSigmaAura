@@ -134,3 +134,4 @@ class ConversationRepository:
             "created_at": _now_iso(),
         }
         return self.client.insert_one("tool_traces", payload)
+

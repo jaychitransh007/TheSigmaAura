@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List
 
-from catalog_retrieval.embedder import CatalogEmbedder
-from catalog_retrieval.vector_store import SupabaseVectorStore
-from conversation_platform.supabase_rest import SupabaseRestClient
+from platform_core.supabase_rest import SupabaseRestClient
 
 from ..filters import (
     build_directional_filters,
@@ -18,18 +16,17 @@ from ..schemas import (
     RetrievedProduct,
     RetrievedSet,
 )
+from ..services.catalog_retrieval_gateway import ApplicationCatalogRetrievalGateway
 
 
 class CatalogSearchAgent:
     def __init__(
         self,
         *,
-        embedder: CatalogEmbedder,
-        vector_store: SupabaseVectorStore,
+        retrieval_gateway: ApplicationCatalogRetrievalGateway,
         client: SupabaseRestClient,
     ) -> None:
-        self._embedder = embedder
-        self._vector_store = vector_store
+        self._retrieval_gateway = retrieval_gateway
         self._client = client
 
     def search(
@@ -51,8 +48,8 @@ class CatalogSearchAgent:
                     query.hard_filters,
                 )
                 filters = drop_filter_keys(filters, relaxed_keys)
-                embedding = self._embedder.embed_texts([query.query_document])[0]
-                matches = self._vector_store.similarity_search(
+                embedding = self._retrieval_gateway.embed_texts([query.query_document])[0]
+                matches = self._retrieval_gateway.similarity_search(
                     query_embedding=embedding,
                     match_count=plan.retrieval_count,
                     filters=filters,

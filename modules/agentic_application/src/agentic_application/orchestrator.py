@@ -2,14 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional
 
-from catalog_retrieval.config import CatalogEmbeddingConfig
-from catalog_retrieval.embedder import CatalogEmbedder
-from catalog_retrieval.vector_store import SupabaseVectorStore
-from onboarding.analysis import UserAnalysisService
-from onboarding.repository import OnboardingRepository
-
-from conversation_platform.config import ConversationPlatformConfig
-from conversation_platform.repositories import ConversationRepository
+from platform_core.config import AuraRuntimeConfig
+from platform_core.repositories import ConversationRepository
 
 from .agents.catalog_search_agent import CatalogSearchAgent
 from .agents.outfit_architect import OutfitArchitect
@@ -20,7 +14,8 @@ from .context.conversation_memory import apply_conversation_memory, build_conver
 from .context.occasion_resolver import resolve_occasion
 from .context.user_context_builder import build_user_context, validate_minimum_profile
 from .filters import build_global_hard_filters, normalize_filter_value
-from .product_links import resolve_product_url
+from .services.catalog_retrieval_gateway import ApplicationCatalogRetrievalGateway
+from .services.onboarding_gateway import ApplicationOnboardingGateway
 from .schemas import CombinedContext
 
 
@@ -31,21 +26,18 @@ class AgenticOrchestrator:
         self,
         *,
         repo: ConversationRepository,
-        onboarding_repo: OnboardingRepository,
-        config: ConversationPlatformConfig,
+        onboarding_gateway: ApplicationOnboardingGateway,
+        config: AuraRuntimeConfig,
     ) -> None:
         self.repo = repo
-        self.onboarding_repo = onboarding_repo
+        self.onboarding_gateway = onboarding_gateway
         self.config = config
-        self.analysis_service = UserAnalysisService(repo=onboarding_repo)
 
-        embedder = CatalogEmbedder(CatalogEmbeddingConfig(embedding_dimensions=1536))
-        vector_store = SupabaseVectorStore(repo.client)
+        retrieval_gateway = ApplicationCatalogRetrievalGateway(repo.client)
 
         self.outfit_architect = OutfitArchitect()
         self.catalog_search_agent = CatalogSearchAgent(
-            embedder=embedder,
-            vector_store=vector_store,
+            retrieval_gateway=retrieval_gateway,
             client=repo.client,
         )
         self.outfit_assembler = OutfitAssembler()
@@ -53,7 +45,7 @@ class AgenticOrchestrator:
         self.response_formatter = ResponseFormatter()
 
     # ------------------------------------------------------------------
-    # Conversation lifecycle (backward-compatible with ConversationOrchestrator)
+    # Conversation lifecycle
     # ------------------------------------------------------------------
 
     def create_conversation(
@@ -118,8 +110,7 @@ class AgenticOrchestrator:
         emit("user_context", "started")
         user_context = build_user_context(
             external_user_id,
-            onboarding_repo=self.onboarding_repo,
-            analysis_service=self.analysis_service,
+            onboarding_gateway=self.onboarding_gateway,
         )
         validate_minimum_profile(user_context)
         emit("user_context", "completed")
@@ -245,10 +236,7 @@ class AgenticOrchestrator:
         )
 
         # Store plan + recommendations for follow-up turns
-        rec_summary = [
-            {"candidate_id": e.candidate_id, "rank": e.rank, "title": e.title, "item_ids": e.item_ids}
-            for e in evaluated
-        ]
+        rec_summary = self._build_recommendation_summaries(evaluated, candidates)
         self.repo.update_conversation_context(
             conversation_id=conversation_id,
             session_context={
@@ -263,9 +251,6 @@ class AgenticOrchestrator:
             },
         )
 
-        # --- Build backward-compatible return ---
-        recommendations = self._build_legacy_recommendations(retrieved_sets)
-
         return {
             "conversation_id": conversation_id,
             "turn_id": turn_id,
@@ -279,9 +264,7 @@ class AgenticOrchestrator:
                     else ""
                 ),
             },
-            "retrieval_query_document": "",
             "filters_applied": self._flatten_applied_filters(retrieved_sets) or hard_filters,
-            "recommendations": recommendations,
             "outfits": [card.model_dump() for card in response.outfits],
             "follow_up_suggestions": response.follow_up_suggestions,
             "metadata": response.metadata,
@@ -379,89 +362,78 @@ class AgenticOrchestrator:
             "response_metadata": response_metadata,
         }
 
-    # ------------------------------------------------------------------
-    # Legacy compatibility
-    # ------------------------------------------------------------------
-
     @staticmethod
-    def _build_legacy_recommendations(
-        retrieved_sets: List,
+    def _build_recommendation_summaries(
+        evaluated: List[Any],
+        candidates: List[Any],
     ) -> List[Dict[str, Any]]:
-        """Flatten all retrieved products into the old recommendation format."""
-        seen: set = set()
-        rows: List[Dict[str, Any]] = []
-        rank = 0
-        for rs in retrieved_sets:
-            for product in rs.products:
-                if product.product_id in seen:
-                    continue
-                seen.add(product.product_id)
-                rank += 1
-                metadata = product.metadata
-                image_url = str(
-                    metadata.get("images__0__src")
-                    or metadata.get("images_0_src")
-                    or product.enriched_data.get("images__0__src")
-                    or product.enriched_data.get("images_0_src")
-                    or product.enriched_data.get("primary_image_url")
-                    or ""
-                )
-                title = str(
-                    metadata.get("title")
-                    or product.enriched_data.get("title")
-                    or product.product_id
-                    or ""
-                )
-                price = str(
-                    metadata.get("price")
-                    or product.enriched_data.get("price")
-                    or ""
-                )
-                product_url = resolve_product_url(
-                    raw_url=str(
-                        metadata.get("url")
-                        or product.enriched_data.get("url")
-                        or product.enriched_data.get("product_url")
-                        or ""
+        candidate_lookup = {
+            str(candidate.candidate_id): candidate
+            for candidate in candidates
+        }
+        summaries: List[Dict[str, Any]] = []
+        for row in evaluated:
+            candidate = candidate_lookup.get(str(row.candidate_id))
+            items = list(getattr(candidate, "items", []) or [])
+            primary_colors = []
+            garment_categories = []
+            garment_subtypes = []
+            roles = []
+            for item in items:
+                color = str(item.get("primary_color") or "").strip()
+                if color and color not in primary_colors:
+                    primary_colors.append(color)
+                category = str(item.get("garment_category") or "").strip()
+                if category and category not in garment_categories:
+                    garment_categories.append(category)
+                subtype = str(item.get("garment_subtype") or "").strip()
+                if subtype and subtype not in garment_subtypes:
+                    garment_subtypes.append(subtype)
+                role = str(item.get("role") or "").strip()
+                if role and role not in roles:
+                    roles.append(role)
+            summaries.append(
+                {
+                    "candidate_id": row.candidate_id,
+                    "rank": row.rank,
+                    "title": row.title,
+                    "item_ids": row.item_ids,
+                    "candidate_type": getattr(candidate, "candidate_type", ""),
+                    "direction_id": getattr(candidate, "direction_id", ""),
+                    "primary_colors": primary_colors,
+                    "garment_categories": garment_categories,
+                    "garment_subtypes": garment_subtypes,
+                    "roles": roles,
+                    "occasion_fits": _dedupe_values(
+                        str(item.get("occasion_fit") or "").strip() for item in items
                     ),
-                    store=str(
-                        product.enriched_data.get("store")
-                        or metadata.get("store")
-                        or ""
+                    "formality_levels": _dedupe_values(
+                        str(item.get("formality_level") or "").strip() for item in items
                     ),
-                    handle=str(
-                        product.enriched_data.get("handle")
-                        or metadata.get("handle")
-                        or ""
+                    "pattern_types": _dedupe_values(
+                        str(item.get("pattern_type") or "").strip() for item in items
                     ),
-                )
-                rows.append({
-                    "rank": rank,
-                    "product_id": product.product_id,
-                    "title": title,
-                    "image_url": image_url,
-                    "similarity": product.similarity,
-                    "price": price,
-                    "product_url": product_url,
-                    "garment_category": str(
-                        product.enriched_data.get("garment_category")
-                        or metadata.get("GarmentCategory") or ""
+                    "volume_profiles": _dedupe_values(
+                        str(item.get("volume_profile") or "").strip() for item in items
                     ),
-                    "garment_subtype": str(
-                        product.enriched_data.get("garment_subtype")
-                        or metadata.get("GarmentSubtype") or ""
+                    "fit_types": _dedupe_values(
+                        str(item.get("fit_type") or "").strip() for item in items
                     ),
-                    "styling_completeness": str(
-                        product.enriched_data.get("styling_completeness")
-                        or metadata.get("StylingCompleteness") or ""
+                    "silhouette_types": _dedupe_values(
+                        str(item.get("silhouette_type") or "").strip() for item in items
                     ),
-                    "primary_color": str(
-                        product.enriched_data.get("primary_color")
-                        or metadata.get("PrimaryColor") or ""
-                    ),
-                    "metadata": metadata,
-                })
-        return rows
+                }
+            )
+        return summaries
 
 
-ConversationOrchestrator = AgenticOrchestrator
+def _dedupe_values(values: Any) -> List[str]:
+    ordered: List[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        value = str(raw or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        ordered.append(value)
+    return ordered

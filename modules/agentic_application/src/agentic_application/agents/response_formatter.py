@@ -11,6 +11,8 @@ from ..schemas import (
     RecommendationResponse,
 )
 
+MAX_FORMATTED_OUTFITS = 5
+
 
 def _build_item_card(item: Dict[str, Any]) -> Dict[str, Any]:
     return {
@@ -59,7 +61,7 @@ class ResponseFormatter:
         items_lookup = _candidate_items_by_id(candidates)
         outfits: List[OutfitCard] = []
 
-        for rec in sorted(evaluated, key=lambda r: r.rank):
+        for rec in sorted(evaluated, key=lambda r: r.rank)[:MAX_FORMATTED_OUTFITS]:
             items = items_lookup.get(rec.candidate_id, [])
             outfits.append(
                 OutfitCard(

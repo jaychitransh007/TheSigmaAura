@@ -2,7 +2,7 @@ from threading import Thread
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
 
-from conversation_platform.supabase_rest import SupabaseError
+from platform_core.supabase_rest import SupabaseError
 
 from .schemas import (
     AnalysisAgentRerunRequest,

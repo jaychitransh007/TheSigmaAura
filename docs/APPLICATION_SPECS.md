@@ -16,14 +16,16 @@ Implemented now:
 - direction-aware retrieval for complete outfits and top/bottom pairing
 - deterministic assembly and LLM evaluation with graceful fallback
 - persisted turn artifacts: live context, memory, plan, applied filters, retrieved IDs, assembled candidates, final recommendations
-- response formatting for `outfits` plus compatibility fallback for older `recommendations`
-- runtime URL synthesis from `store + handle` when canonical absolute product URLs are absent in catalog rows
+- response formatting for `outfits`
+- canonical product URL persistence during catalog ingestion, with runtime product links resolved from persisted canonical URLs
+- catalog admin and ops support URL backfill for older `catalog_enriched` rows that still lack canonical product URLs
 
 Still incomplete:
-- evaluator is not explicitly conditioned on persisted conversation memory beyond merged live context
-- follow-up refinement for `change_color` and `similar_to_previous` is still heuristic, not full constraint editing
+- evaluator still needs stronger prompt/server-side validation beyond the current persisted-memory and delta payloads
+- follow-up refinement for `change_color` and `similar_to_previous` now uses persisted recommendation attributes, with remaining work focused on deeper rule expansion rather than missing execution
 - retry logic only relaxes `occasion_fit`, then `formality_level`
-- application imports still cross legacy module boundaries in some places
+- application boundaries are cleaner now, but `onboarding` and `catalog_retrieval` are still mediated through gateway modules rather than fully consolidated domain ownership
+- evaluator fallback behavior is not yet perfectly aligned with the documented degradation contract
 
 ## Overview
 
@@ -437,6 +439,10 @@ At minimum:
 - compatible `PatternType / PatternScale`
 - avoid extreme volume conflict
 
+Current implementation note:
+- `FormalityLevel`, `ColorTemperature`, pattern, and volume are enforced today
+- `OccasionFit` compatibility still needs to be added at assembly time
+
 ### Output
 
 ```python
@@ -559,7 +565,8 @@ Supported intents in v1:
 Current implementation note:
 - these intents are detected and persisted today
 - `increase_boldness`, `decrease_formality`, `increase_formality`, `full_alternative`, and `more_options` have meaningful runtime effect
-- `change_color` and `similar_to_previous` are only partially expressed through current heuristics
+- `change_color` and `similar_to_previous` now affect planner fallback, evaluator fallback, and LLM evaluation payloads through persisted recommendation summaries
+- persisted recommendation summaries are now used to preserve prior color, occasion, plan shape, and silhouette-level signals during follow-up refinement
 
 ## Runtime Testing
 
@@ -585,7 +592,7 @@ Focused suites used for the application layer:
 
 ```bash
 python3 -m unittest tests.test_agentic_application -v
-python3 -m unittest tests.test_conversation_api_ui -v
+python3 -m unittest tests.test_agentic_application_api_ui -v
 ```
 
 ### Follow-up rule
@@ -607,7 +614,11 @@ Follow-up requests should operate on persisted prior recommendations, not only o
 ### Graceful degradation
 
 If evaluator fails:
-- return top retrieved candidates with simpler explanations
+- return a simpler deterministic ranking and explanation path
+
+Current implementation note:
+- the active fallback ranks assembled candidates by `assembly_score`
+- if this behavior is kept, the spec wording should continue to describe assembly-score fallback rather than "top retrieved candidates"
 
 If no results:
 - relax only safe filters
@@ -706,7 +717,7 @@ Build:
 Integrate into:
 - `agentic_application`
 
-Then reduce `conversation_platform` to compatibility wrappers.
+Then remove any remaining migration wrappers and keep shared runtime infrastructure in `platform_core`.
 
 ## 16. Final v1 Definition of Done
 
@@ -722,4 +733,9 @@ The Application Layer is considered complete for v1 when:
 - formatter returns 3-5 outfit recommendations
 - follow-up requests refine prior recommendations
 - runtime is owned by `modules/agentic_application`
-- `conversation_platform` is no longer the canonical application module
+- `platform_core` holds shared runtime infrastructure; `agentic_application` is the canonical application module
+
+The following still block full completion:
+- evaluator/spec fallback wording still needs to remain synchronized if the degradation contract changes again
+- direct `agentic_application` imports from `onboarding.*` and `catalog_retrieval.*` still need boundary cleanup
+- canonical product URL ingestion still needs to replace runtime URL synthesis

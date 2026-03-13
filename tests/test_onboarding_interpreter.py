@@ -6,7 +6,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 for p in (
     ROOT,
-    ROOT / "modules" / "conversation_platform" / "src",
+    ROOT / "modules" / "platform_core" / "src",
     ROOT / "modules" / "onboarding" / "src",
 ):
     sp = str(p)

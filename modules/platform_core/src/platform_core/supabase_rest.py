@@ -1,8 +1,8 @@
 import json
 from typing import Any, Dict, List, Optional
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from urllib.error import HTTPError
 
 
 class SupabaseError(RuntimeError):
@@ -124,3 +124,4 @@ class SupabaseRestClient:
 
     def rpc(self, function_name: str, payload: Dict[str, Any]) -> Any:
         return self._request("POST", f"rpc/{function_name}", body=payload)
+

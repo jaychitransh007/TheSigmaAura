@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from conversation_platform.supabase_rest import SupabaseError
+from platform_core.supabase_rest import SupabaseError
 from .admin_service import CatalogAdminService
 from .schemas import (
     CatalogAdminStatusResponse,
@@ -41,6 +41,14 @@ def create_catalog_admin_router(service: CatalogAdminService | None = None) -> A
                 input_csv_path=payload.input_csv_path,
                 max_rows=payload.max_rows,
             )
+            return CatalogSyncResponse(**result)
+        except SupabaseError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.post("/items/backfill-urls", response_model=CatalogSyncResponse)
+    def backfill_catalog_urls(payload: CatalogSyncRequest) -> CatalogSyncResponse:
+        try:
+            result = get_service().backfill_catalog_urls(max_rows=payload.max_rows)
             return CatalogSyncResponse(**result)
         except SupabaseError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc

@@ -837,7 +837,7 @@ def get_onboarding_html() -> str:
               <h2 class="step-title">Onboarding complete.</h2>
               <p class="step-desc">Your profile record and image metadata are saved locally. You can now enter the conversational platform.</p>
             </div>
-            <button class="btn primary" id="goToPlatformBtn">Open Conversation Platform</button>
+            <button class="btn primary" id="goToPlatformBtn">Open Aura</button>
             <div class="fineprint">Images are stored with encrypted titles derived from user id, image type, and timestamp.</div>
           </div>
         </div>
@@ -2070,7 +2070,7 @@ def get_processing_html(user_id: str = "") -> str:
           <button class="secondary hidden" id="retryBtn">Retry Analysis</button>
           <button class="secondary hidden" id="rerunBtn">Re-Run Analysis</button>
           <button class="secondary" id="logoutBtn">Logout</button>
-          <button class="primary hidden" id="openPlatformBtn">Open Conversation Platform</button>
+          <button class="primary hidden" id="openPlatformBtn">Open Aura</button>
         </div>
       </section>
 
