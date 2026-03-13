@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional
 
 from platform_core.config import AuraRuntimeConfig
@@ -16,7 +18,10 @@ from .context.user_context_builder import build_user_context, validate_minimum_p
 from .filters import build_global_hard_filters, normalize_filter_value
 from .services.catalog_retrieval_gateway import ApplicationCatalogRetrievalGateway
 from .services.onboarding_gateway import ApplicationOnboardingGateway
-from .schemas import CombinedContext
+from .services.tryon_service import TryonService
+from .schemas import CombinedContext, OutfitCard
+
+_log = logging.getLogger(__name__)
 
 
 class AgenticOrchestrator:
@@ -28,10 +33,12 @@ class AgenticOrchestrator:
         repo: ConversationRepository,
         onboarding_gateway: ApplicationOnboardingGateway,
         config: AuraRuntimeConfig,
+        tryon_service: Optional[TryonService] = None,
     ) -> None:
         self.repo = repo
         self.onboarding_gateway = onboarding_gateway
         self.config = config
+        self.tryon_service = tryon_service or TryonService()
 
         retrieval_gateway = ApplicationCatalogRetrievalGateway(repo.client)
 
@@ -218,6 +225,11 @@ class AgenticOrchestrator:
         response = self.response_formatter.format(evaluated, combined_context, plan, candidates)
         emit("response_formatting", "completed")
 
+        # --- 8. Virtual Try-On ---
+        emit("virtual_tryon", "started")
+        self._attach_tryon_images(response.outfits, external_user_id)
+        emit("virtual_tryon", "completed")
+
         # --- Persist ---
         self.repo.finalize_turn(
             turn_id=turn_id,
@@ -269,6 +281,47 @@ class AgenticOrchestrator:
             "follow_up_suggestions": response.follow_up_suggestions,
             "metadata": response.metadata,
         }
+
+    # ------------------------------------------------------------------
+    # Virtual try-on
+    # ------------------------------------------------------------------
+
+    def _attach_tryon_images(
+        self,
+        outfits: List[OutfitCard],
+        external_user_id: str,
+    ) -> None:
+        """Generate virtual try-on images for each outfit in parallel."""
+        person_path = self.onboarding_gateway.get_person_image_path(external_user_id)
+        if not person_path:
+            return
+
+        def _generate_for_outfit(outfit: OutfitCard) -> tuple[OutfitCard, str]:
+            product_url = ""
+            for item in outfit.items:
+                url = str(item.get("image_url") or "").strip()
+                if url:
+                    product_url = url
+                    break
+            if not product_url:
+                return outfit, ""
+            try:
+                result = self.tryon_service.generate_tryon(
+                    person_image_path=person_path,
+                    product_image_url=product_url,
+                )
+                if result.get("success"):
+                    return outfit, result["data_url"]
+            except Exception:
+                _log.warning("Try-on generation failed for outfit #%s", outfit.rank, exc_info=True)
+            return outfit, ""
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {pool.submit(_generate_for_outfit, o): o for o in outfits}
+            for future in as_completed(futures):
+                outfit, data_url = future.result()
+                if data_url:
+                    outfit.tryon_image = data_url
 
     # ------------------------------------------------------------------
     # Filter relaxation

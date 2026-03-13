@@ -946,9 +946,9 @@ class AgenticApplicationTests(unittest.TestCase):
 
         response = formatter.format(evaluated, context, plan, candidates)
 
-        self.assertEqual(5, len(response.outfits))
-        self.assertEqual(5, response.metadata["outfit_count"])
-        self.assertEqual([1, 2, 3, 4, 5], [outfit.rank for outfit in response.outfits])
+        self.assertEqual(3, len(response.outfits))
+        self.assertEqual(3, response.metadata["outfit_count"])
+        self.assertEqual([1, 2, 3], [outfit.rank for outfit in response.outfits])
 
     def test_resolve_product_url_returns_empty_when_no_canonical_url_exists(self) -> None:
         result = resolve_product_url(

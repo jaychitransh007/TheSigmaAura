@@ -22,8 +22,11 @@ from platform_core.repositories import ConversationRepository
 from platform_core.supabase_rest import SupabaseError, SupabaseRestClient
 from platform_core.ui import get_web_ui_html
 
+from pydantic import BaseModel
+
 from .orchestrator import AgenticOrchestrator
 from .services.onboarding_gateway import ApplicationOnboardingGateway
+from .services.tryon_service import TryonService
 
 
 def _now_iso() -> str:
@@ -44,6 +47,8 @@ def create_app() -> FastAPI:
     repo = ConversationRepository(client)
     onboarding_gateway = ApplicationOnboardingGateway(client)
     orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=cfg)
+
+    tryon_service = TryonService()
 
     app = FastAPI(title="Sigma Aura Agentic Application", version="3.0.0")
 
@@ -209,5 +214,23 @@ def create_app() -> FastAPI:
             error=str(job.get("error") or ""),
             result=job.get("result"),
         )
+
+    class TryonRequest(BaseModel):
+        user_id: str
+        product_image_url: str
+
+    @app.post("/v1/tryon")
+    def virtual_tryon(payload: TryonRequest) -> dict:
+        try:
+            person_image_path = onboarding_gateway.get_person_image_path(payload.user_id)
+            if not person_image_path:
+                raise ValueError("No full-body onboarding image found for this user.")
+            result = tryon_service.generate_tryon(
+                person_image_path=person_image_path,
+                product_image_url=payload.product_image_url,
+            )
+            return result
+        except (ValueError, FileNotFoundError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return app

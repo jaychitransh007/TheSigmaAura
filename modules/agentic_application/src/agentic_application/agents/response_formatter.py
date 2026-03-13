@@ -11,7 +11,7 @@ from ..schemas import (
     RecommendationResponse,
 )
 
-MAX_FORMATTED_OUTFITS = 5
+MAX_FORMATTED_OUTFITS = 3
 
 
 def _build_item_card(item: Dict[str, Any]) -> Dict[str, Any]:

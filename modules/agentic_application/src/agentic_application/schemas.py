@@ -151,6 +151,7 @@ class OutfitCard(BaseModel):
     style_note: str = ""
     occasion_note: str = ""
     items: List[Dict[str, Any]] = Field(default_factory=list)
+    tryon_image: Optional[str] = None  # data URL of virtual try-on image
 
 
 class RecommendationResponse(BaseModel):

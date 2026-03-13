@@ -94,6 +94,29 @@ def get_web_ui_html(user_id: str = "") -> str:
       font-weight: 600;
     }
     .card .body a:hover { text-decoration: underline; }
+    .tryon-section {
+      margin-bottom: 12px;
+      border: 1px solid #d4c9b8;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fffcf6;
+    }
+    .tryon-section img {
+      width: 100%;
+      max-height: 400px;
+      object-fit: contain;
+      display: block;
+      background: #f5efe6;
+    }
+    .tryon-label {
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      background: #f0ebe3;
+    }
     .chip {
       display:inline-block;
       margin: 0 6px 6px 0;
@@ -230,6 +253,20 @@ def get_web_ui_html(user_id: str = "") -> str:
     function renderOutfits(outfits) {
       if (!outfits || !outfits.length) return;
       for (const outfit of outfits) {
+        if (outfit.tryon_image) {
+          const tryonWrap = document.createElement("div");
+          tryonWrap.className = "tryon-section";
+          const label = document.createElement("div");
+          label.className = "tryon-label";
+          label.textContent = `#${outfit.rank || ""} Virtual Try-On — ${outfit.title || ""}`;
+          const tryonImg = document.createElement("img");
+          tryonImg.src = outfit.tryon_image;
+          tryonImg.alt = "Virtual try-on: " + (outfit.title || "");
+          tryonImg.loading = "lazy";
+          tryonWrap.appendChild(label);
+          tryonWrap.appendChild(tryonImg);
+          feed.appendChild(tryonWrap);
+        }
         const meta = document.createElement("div");
         meta.className = "meta";
         const bits = [];

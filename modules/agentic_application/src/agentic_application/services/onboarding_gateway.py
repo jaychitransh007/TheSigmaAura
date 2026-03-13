@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter
 
 from onboarding.analysis import UserAnalysisService
@@ -24,6 +26,13 @@ class ApplicationOnboardingGateway:
 
     def get_onboarding_status(self, user_id: str) -> dict:
         return dict(self._service.get_status(user_id) or {})
+
+    def get_person_image_path(self, user_id: str) -> Optional[str]:
+        images = self._repo.get_images(user_id)
+        for img in images:
+            if img.get("category") == "full_body":
+                return img.get("file_path") or ""
+        return None
 
     def create_router(self) -> APIRouter:
         return create_onboarding_router(self._service, self._analysis)
