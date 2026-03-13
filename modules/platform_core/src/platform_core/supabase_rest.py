@@ -10,7 +10,7 @@ class SupabaseError(RuntimeError):
 
 
 class SupabaseRestClient:
-    def __init__(self, rest_url: str, service_role_key: str, timeout_seconds: int = 30):
+    def __init__(self, rest_url: str, service_role_key: str, timeout_seconds: int = 60):
         self.rest_url = rest_url.rstrip("/")
         self.service_role_key = service_role_key
         self.timeout_seconds = timeout_seconds

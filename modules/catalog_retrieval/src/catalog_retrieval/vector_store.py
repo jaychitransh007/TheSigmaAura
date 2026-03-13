@@ -1,7 +1,12 @@
+import logging
 import os
 from typing import Any, Dict, Iterable, List
 
 from platform_core.supabase_rest import SupabaseRestClient
+
+logger = logging.getLogger(__name__)
+
+UPSERT_BATCH_SIZE = 50
 
 from .schemas import CatalogEmbeddingRecord
 
@@ -84,7 +89,12 @@ class SupabaseVectorStore:
         ]
         if not payload:
             return []
-        return self._client.upsert_many("catalog_enriched", payload, on_conflict="product_id")
+        saved: List[Dict[str, Any]] = []
+        for i in range(0, len(payload), UPSERT_BATCH_SIZE):
+            batch = payload[i : i + UPSERT_BATCH_SIZE]
+            logger.info("Upserting catalog_enriched batch %d–%d of %d", i + 1, i + len(batch), len(payload))
+            saved.extend(self._client.upsert_many("catalog_enriched", batch, on_conflict="product_id"))
+        return saved
 
     def catalog_status(self) -> Dict[str, Any]:
         rows = self._client.rpc("catalog_admin_status", {})
@@ -134,11 +144,18 @@ class SupabaseVectorStore:
         ]
         if not rows:
             return []
-        return self._client.upsert_many(
-            "catalog_item_embeddings",
-            rows,
-            on_conflict="product_id,embedding_model,embedding_dimensions",
-        )
+        saved: List[Dict[str, Any]] = []
+        for i in range(0, len(rows), UPSERT_BATCH_SIZE):
+            batch = rows[i : i + UPSERT_BATCH_SIZE]
+            logger.info("Upserting embeddings batch %d–%d of %d", i + 1, i + len(batch), len(rows))
+            saved.extend(
+                self._client.upsert_many(
+                    "catalog_item_embeddings",
+                    batch,
+                    on_conflict="product_id,embedding_model,embedding_dimensions",
+                )
+            )
+        return saved
 
     def similarity_search(self, *, query_embedding: List[float], match_count: int, filters: Dict[str, Any]) -> Any:
         return self._client.rpc(

@@ -1,3 +1,4 @@
+import logging
 from typing import Iterable, List
 
 from openai import OpenAI
@@ -6,6 +7,10 @@ from user_profiler.config import get_api_key
 
 from .config import CatalogEmbeddingConfig
 from .schemas import CatalogDocument, CatalogEmbeddingRecord
+
+logger = logging.getLogger(__name__)
+
+EMBED_BATCH_SIZE = 50
 
 
 class CatalogEmbedder:
@@ -17,27 +22,34 @@ class CatalogEmbedder:
         docs = list(documents)
         if not docs:
             return []
-        response = self._embedding_response([doc.document_text for doc in docs])
         records: List[CatalogEmbeddingRecord] = []
-        for doc, item in zip(docs, response.data):
-            records.append(
-                CatalogEmbeddingRecord(
-                    row_id=doc.row_id,
-                    product_id=doc.product_id,
-                    model=self._config.embedding_model,
-                    dimensions=self._config.embedding_dimensions,
-                    metadata=doc.metadata,
-                    document_text=doc.document_text,
-                    embedding=list(item.embedding),
+        for i in range(0, len(docs), EMBED_BATCH_SIZE):
+            batch = docs[i : i + EMBED_BATCH_SIZE]
+            logger.info("Embedding batch %d–%d of %d", i + 1, i + len(batch), len(docs))
+            response = self._embedding_response([doc.document_text for doc in batch])
+            for doc, item in zip(batch, response.data):
+                records.append(
+                    CatalogEmbeddingRecord(
+                        row_id=doc.row_id,
+                        product_id=doc.product_id,
+                        model=self._config.embedding_model,
+                        dimensions=self._config.embedding_dimensions,
+                        metadata=doc.metadata,
+                        document_text=doc.document_text,
+                        embedding=list(item.embedding),
+                    )
                 )
-            )
         return records
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
-        response = self._embedding_response(texts)
-        return [list(item.embedding) for item in response.data]
+        all_embeddings: List[List[float]] = []
+        for i in range(0, len(texts), EMBED_BATCH_SIZE):
+            batch = texts[i : i + EMBED_BATCH_SIZE]
+            response = self._embedding_response(batch)
+            all_embeddings.extend(list(item.embedding) for item in response.data)
+        return all_embeddings
 
     def _embedding_response(self, texts: List[str]):
         return self._client.embeddings.create(

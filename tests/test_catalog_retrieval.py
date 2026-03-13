@@ -177,6 +177,7 @@ class CatalogRetrievalTests(unittest.TestCase):
 
     def test_vector_store_uses_upsert_for_catalog_items_and_embeddings(self) -> None:
         client = Mock()
+        client.upsert_many.return_value = []
         store = SupabaseVectorStore(client)
         store.upsert_catalog_enriched([{"product_id": "sku_1"}])
         client.upsert_many.assert_called_once_with("catalog_enriched", [{"product_id": "sku_1"}], on_conflict="product_id")

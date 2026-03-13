@@ -44,6 +44,8 @@ def create_catalog_admin_router(service: CatalogAdminService | None = None) -> A
             return CatalogSyncResponse(**result)
         except SupabaseError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Catalog sync failed: {exc}") from exc
 
     @router.post("/items/backfill-urls", response_model=CatalogSyncResponse)
     def backfill_catalog_urls(payload: CatalogSyncRequest) -> CatalogSyncResponse:
@@ -64,5 +66,7 @@ def create_catalog_admin_router(service: CatalogAdminService | None = None) -> A
             return CatalogSyncResponse(**result)
         except SupabaseError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Embedding sync failed: {exc}") from exc
 
     return router

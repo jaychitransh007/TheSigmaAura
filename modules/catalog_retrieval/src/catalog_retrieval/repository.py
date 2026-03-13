@@ -147,7 +147,14 @@ def build_catalog_enriched_rows(rows: Iterable[Dict[str, str]]) -> List[Dict[str
         for key, value in row.items():
             if _is_ignored_catalog_key(key, ignored):
                 continue
-            record[key] = value
+            clean = str(value).strip() if value is not None else ""
+            if key.endswith("_confidence") or key.endswith("_score"):
+                try:
+                    record[key] = float(clean) if clean else None
+                except ValueError:
+                    record[key] = None
+            else:
+                record[key] = clean if clean else None
         output.append(record)
     return output
 
