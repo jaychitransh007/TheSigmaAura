@@ -1,6 +1,6 @@
 # Application Layer — Implementation Specification
 
-Last updated: March 12, 2026
+Last updated: March 13, 2026
 
 ## Current Implementation Status
 
@@ -61,6 +61,19 @@ Not supported in v1:
 - Retrieve from `catalog_item_embeddings` and hydrate product rows from `catalog_enriched`.
 - Support both complete outfits and pairing in v1.
 
+## LLM and Model Configuration
+
+Active models used by application agents:
+
+| Agent | Model | Output Mode |
+|---|---|---|
+| Outfit Architect | `gpt-5-mini` | JSON schema (strict) |
+| Outfit Evaluator | `gpt-5-mini` | JSON schema (strict) |
+| User Analysis (onboarding) | `gpt-5.4` | JSON schema (strict), reasoning effort: high |
+| Query Embedding | `text-embedding-3-small` | 1536-dimensional vector |
+
+Both architect and evaluator use OpenAI's `json_schema` response format with strict validation. Deterministic fallback paths exist for both in case of LLM failure.
+
 ## Active Catalog Reality
 
 The current catalog search stack is:
@@ -78,33 +91,35 @@ Any application implementation must match that reality.
 User Message
     |
     v
-Orchestrator
+Orchestrator (agentic_application/orchestrator.py)
     |
-    +--> User Context Builder ----> User Profile Store
+    +--> 1. User Context Builder ----> Onboarding Gateway ----> onboarding_profiles, user_derived_interpretations, user_style_preference
     |
-    +--> Occasion Resolver
+    +--> 2. Occasion Resolver (rule-based, no LLM)
     |
-    v
-Outfit Architect (LLM)
-    |
-    v
-Catalog Search Agent
-    |
-    +--> Embedding API
-    +--> catalog_item_embeddings
-    +--> catalog_enriched
+    +--> 3. Conversation Memory (build + apply from session_context_json)
     |
     v
-Outfit Assembler
+4. Outfit Architect (gpt-5-mini, JSON schema)
     |
     v
-Outfit Evaluator (LLM)
+5. Catalog Search Agent
+    |    +--> text-embedding-3-small (1536 dim)
+    |    +--> catalog_item_embeddings (pgvector cosine)
+    |    +--> catalog_enriched (hydration)
+    |    +--> Filter relaxation: [] → [occasion_fit] → [occasion_fit, formality_level]
     |
     v
-Response Formatter
+6. Outfit Assembler (deterministic compatibility pruning)
     |
     v
-User Response
+7. Outfit Evaluator (gpt-5-mini, JSON schema, fallback: assembly_score ranking)
+    |
+    v
+8. Response Formatter (max 5 outfits)
+    |
+    v
+User Response + Turn Persistence + Conversation Memory Update
 ```
 
 ## 1. Request Contract
@@ -201,17 +216,54 @@ Phrase ordering must prefer:
 - `professional` -> `authority`
 - `approachable` -> `approachability`
 
-## 4. Combined Context
+## 4. Conversation Memory
 
-The orchestrator merges saved user context and live context into one payload.
+### Purpose
+
+Preserve cross-turn state so follow-up requests carry forward prior context.
+
+### Schema
+
+```python
+class ConversationMemory:
+    occasion_signal: str | None
+    formality_hint: str | None
+    time_hint: str | None
+    specific_needs: list[str]
+    plan_type: str | None
+    followup_count: int
+    last_recommendation_ids: list[str]
+```
+
+### Build and Apply
+
+- `build_conversation_memory()` reads `session_context_json` from the conversation row and constructs the memory state.
+- `apply_conversation_memory()` merges the memory into the current `LiveContext`, carrying forward occasion, formality, time, and specific needs from prior turns when the current message omits them.
+- For `increase_formality` / `decrease_formality` intents, formality shifting is applied deterministically.
+- Deduplication and order preservation are enforced on specific needs.
+
+### Conversation-level state persisted on `session_context_json`
+
+After each turn, the orchestrator writes:
+- `memory` — serialized `ConversationMemory`
+- `last_plan_type` — `complete_only` / `paired_only` / `mixed`
+- `last_recommendations` — enriched recommendation summaries (colors, garment categories, subtypes, roles, occasion fits, formality levels, pattern types, volume profiles, fit types, silhouette types)
+- `last_occasion` — resolved occasion signal
+- `last_live_context` — full live context snapshot
+- `last_filters_relaxed` — which filter keys were relaxed
+- `last_response_metadata` — response metadata dict
+
+## 5. Combined Context
+
+The orchestrator merges saved user context, live context, and conversation memory into one payload.
 
 ```python
 class CombinedContext:
     user: UserContext
     live: LiveContext
-    conversation_memory: dict | None
     hard_filters: dict
     previous_recommendations: list[dict] | None
+    conversation_memory: ConversationMemory | None
 ```
 
 ### Hard filters
@@ -235,7 +287,7 @@ Important:
 - for v1, do not globally force complete outfits
 - pairing must be supported in v1
 
-## 5. Orchestrator
+## 6. Orchestrator
 
 ### Purpose
 
@@ -278,7 +330,7 @@ async def handle_recommendation_request(request: RecommendationRequest) -> dict:
 - `GenderExpression` is never relaxed.
 - Planner and evaluator both have deterministic fallbacks so the request can still complete if an LLM step fails.
 
-## 6. Outfit Architect
+## 7. Outfit Architect
 
 ### Purpose
 
@@ -293,8 +345,9 @@ The architect should not output freeform prose only. It should return JSON plus 
 ```python
 class RecommendationPlan:
     plan_type: str                 # complete_only | paired_only | mixed
-    retrieval_count: int           # 10-20 per query
+    retrieval_count: int           # default 12 per query
     directions: list[DirectionSpec]
+    plan_source: str               # "llm" | "fallback"
 
 
 class DirectionSpec:
@@ -336,13 +389,27 @@ Required sections:
 - `PATTERN_AND_COLOR`
 - `OCCASION_AND_SIGNAL`
 
+### Follow-up intent handling in planner
+
+The architect receives enriched prior recommendation context via `combined_context.previous_recommendations`, which includes:
+- `primary_colors`, `garment_categories`, `garment_subtypes`, `roles`
+- `occasion_fits`, `formality_levels`, `pattern_types`, `volume_profiles`, `fit_types`, `silhouette_types`
+
+Follow-up intent effects on planning:
+- `increase_boldness` — shifts query vocabulary toward bolder choices
+- `decrease_formality` / `increase_formality` — adjusts target formality
+- `change_color` — rewrites styling goal away from persisted prior colors
+- `full_alternative` — requests entirely different direction
+- `more_options` — requests additional candidates in same direction
+- `similar_to_previous` — reuses prior color, occasion, plan shape, and silhouette signals
+
 ### Output format
 
 Return strict JSON.
 
 Do not parse marker-delimited text.
 
-## 7. Catalog Search Agent
+## 8. Catalog Search Agent
 
 ### Purpose
 
@@ -400,7 +467,7 @@ class RetrievedSet:
     products: list[dict]
 ```
 
-## 8. Outfit Assembler
+## 9. Outfit Assembler
 
 ### Purpose
 
@@ -431,17 +498,34 @@ For `paired` directions:
 
 ### Deterministic pairing rules
 
-At minimum:
-- same `GenderExpression`
-- same or compatible `FormalityLevel`
-- same or compatible `OccasionFit`
-- compatible `ColorTemperature`
-- compatible `PatternType / PatternScale`
-- avoid extreme volume conflict
+All compatibility checks are implemented and enforced:
 
-Current implementation note:
-- `FormalityLevel`, `ColorTemperature`, pattern, and volume are enforced today
-- `OccasionFit` compatibility still needs to be added at assembly time
+**Formality compatibility matrix** (rejects if not compatible):
+
+| Level | Compatible with |
+|---|---|
+| `casual` | casual, smart_casual |
+| `smart_casual` | casual, smart_casual, business_casual |
+| `business_casual` | smart_casual, business_casual, semi_formal |
+| `semi_formal` | business_casual, semi_formal, formal |
+| `formal` | semi_formal, formal, ultra_formal |
+| `ultra_formal` | formal, ultra_formal |
+
+**Color temperature compatibility** (penalty if incompatible, not hard reject):
+
+| Temperature | Compatible with |
+|---|---|
+| `warm` | warm, neutral |
+| `cool` | cool, neutral |
+| `neutral` | warm, cool, neutral |
+
+**Occasion compatibility**: requires exact match when both values present; rejects on mismatch.
+
+**Pattern compatibility**: both patterned items incur a small penalty (0.05) but are not rejected. Solid + any pattern always passes.
+
+**Volume compatibility**: rejects if both items are `oversized` (extreme volume conflict).
+
+Pair score = average of top and bottom similarity scores, minus accumulated penalties. Score of 0.0 means rejection.
 
 ### Output
 
@@ -450,7 +534,7 @@ class OutfitCandidate:
     candidate_id: str
     direction_id: str
     candidate_type: str          # complete | paired
-    items: list[dict]
+    items: list[dict]            # each item carries: product_id, similarity, title, image_url, price, product_url, garment_category, garment_subtype, styling_completeness, primary_color, formality_level, occasion_fit, pattern_type, volume_profile, fit_type, silhouette_type, role (for paired)
     assembly_score: float
     assembly_notes: list[str]
 ```
@@ -459,12 +543,13 @@ class OutfitCandidate:
 
 Limit paired combinations aggressively before evaluation.
 
-Recommended:
-- retrieve 10-15 per query
-- prune to top 12 per role
-- keep top 20-30 assembled pairs max
+Current implementation:
+- retrieve per query (configurable, default `retrieval_count=12`)
+- cap tops and bottoms each to 15 before cross-product
+- keep top 30 assembled pairs max (`MAX_PAIRED_CANDIDATES = 30`)
+- turn artifacts cap candidate summaries to 20 for persistence
 
-## 9. Outfit Evaluator
+## 10. Outfit Evaluator
 
 ### Purpose
 
@@ -511,7 +596,19 @@ Rank by actual fit for this user, not by vector similarity score.
 
 Similarity is retrieval input, not recommendation truth.
 
-## 10. Response Formatter
+### Fallback behavior
+
+If the LLM evaluator fails, the fallback ranks candidates by `assembly_score` (average similarity minus compatibility penalties). The fallback also generates synthetic reasoning notes. For follow-up intents, the fallback uses candidate-by-candidate deltas against the previous recommendation to explain color/silhouette shifts.
+
+### Output normalization
+
+Sparse LLM outputs are backfilled: if the evaluator returns fewer notes than expected for follow-up turns, the system normalizes them using follow-up deltas computed from the persisted previous recommendation summaries.
+
+### Hard output cap
+
+The evaluator returns a maximum of 5 evaluated recommendations, regardless of candidate pool size.
+
+## 11. Response Formatter
 
 ### Purpose
 
@@ -539,7 +636,7 @@ Each outfit card should contain:
 - occasion note
 - one or more product cards
 
-## 11. Conversation State
+## 12. Conversation State
 
 ### Persist per turn
 
@@ -599,7 +696,7 @@ python3 -m unittest tests.test_agentic_application_api_ui -v
 
 Follow-up requests should operate on persisted prior recommendations, not only on text history.
 
-## 12. Error Handling
+## 13. Error Handling
 
 ### Error categories
 
@@ -635,7 +732,7 @@ Relax in this order:
 Only relax `StylingCompleteness` if the product decision changes later.
 For current v1 pairing support, `StylingCompleteness` is direction-defining and should remain stable.
 
-## 13. Profile Validation
+## 14. Profile Validation
 
 Minimum required profile for recommendation:
 - `gender`
@@ -644,7 +741,7 @@ Minimum required profile for recommendation:
 
 The system should degrade gracefully with partial body or detail attributes.
 
-## 14. Performance Targets
+## 15. Performance Targets
 
 Target latency:
 
@@ -661,7 +758,7 @@ Formatting                < 10ms
 Target total              < 9000ms
 ```
 
-## 15. Implementation Sequence
+## 16. Implementation Sequence
 
 ### Step 1
 
@@ -719,7 +816,75 @@ Integrate into:
 
 Then remove any remaining migration wrappers and keep shared runtime infrastructure in `platform_core`.
 
-## 16. Final v1 Definition of Done
+## 17. Async Turn Processing
+
+The API supports two modes of turn processing:
+
+### Synchronous
+
+`POST /v1/conversations/{id}/turns` — blocks until the full pipeline completes, returns the result inline.
+
+### Asynchronous (job-based)
+
+`POST /v1/conversations/{id}/turns/start` — returns a `job_id` immediately, runs the pipeline in a background thread.
+
+`GET /v1/conversations/{id}/turns/{job_id}/status` — polls for job completion with stage-by-stage progress events.
+
+Stages emitted during async processing:
+1. `validate_request`
+2. `user_context`
+3. `occasion_resolver`
+4. `outfit_architect`
+5. `catalog_search`
+6. `outfit_assembly`
+7. `outfit_evaluation`
+8. `response_formatting`
+
+Each stage emits `started` and `completed` (or `failed`) events with timestamps.
+
+## 18. API Endpoint Inventory
+
+### Application endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | Smart home — routes to onboarding, processing, or chat UI based on user state |
+| GET | `/onboard` | Onboarding wizard UI |
+| GET | `/onboard/processing` | Analysis processing UI |
+| GET | `/admin/catalog` | Catalog admin UI |
+| GET | `/healthz` | Health check |
+| POST | `/v1/conversations` | Create a new conversation |
+| GET | `/v1/conversations/{id}` | Get conversation state |
+| POST | `/v1/conversations/{id}/turns` | Synchronous turn processing |
+| POST | `/v1/conversations/{id}/turns/start` | Async turn job start |
+| GET | `/v1/conversations/{id}/turns/{job_id}/status` | Async turn job status |
+
+### Onboarding endpoints (mounted via onboarding gateway)
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/v1/onboarding/send-otp` | Send OTP to mobile |
+| POST | `/v1/onboarding/verify-otp` | Verify OTP, create user if new |
+| POST | `/v1/onboarding/profile` | Save profile (name, DOB, gender, height, waist, profession) |
+| POST | `/v1/onboarding/images/normalize` | Normalize image for 3:2 crop |
+| POST | `/v1/onboarding/images/{category}` | Upload image (full_body, headshot, veins) |
+| GET | `/v1/onboarding/style-archetype-session` | Load style archetype selection UI |
+| POST | `/v1/onboarding/style-preference-complete` | Save style preference |
+| POST | `/v1/onboarding/analysis/start` | Launch 4-agent analysis |
+| POST | `/v1/onboarding/analysis/status` | Check analysis completion |
+| POST | `/v1/onboarding/analysis/rerun` | Rerun specific analysis agent |
+
+### Catalog admin endpoints (mounted via catalog admin router)
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/v1/admin/catalog/upload` | Upload CSV file |
+| GET | `/v1/admin/catalog/status` | Catalog sync status |
+| POST | `/v1/admin/catalog/items/sync` | Sync enriched catalog rows |
+| POST | `/v1/admin/catalog/items/backfill-urls` | Backfill missing product URLs |
+| POST | `/v1/admin/catalog/embeddings/sync` | Generate and sync embeddings |
+
+## 19. Final v1 Definition of Done
 
 The Application Layer is considered complete for v1 when:
 

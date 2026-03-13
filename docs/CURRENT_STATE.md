@@ -44,13 +44,24 @@ Status:
 - functionally usable
 
 Implemented:
-- OTP-based onboarding flow
-- onboarding profile persistence
-- image upload and crop flow
-- 4-agent analysis pipeline
-- deterministic interpretation pipeline
-- style preference selection and persistence
-- profile status / rerun support
+- OTP-based onboarding flow (fixed OTP: `123456`)
+- onboarding profile persistence (name, DOB, gender, height_cm, waist_cm, profession)
+- image upload with SHA256-encrypted filenames (user_id + category + timestamp), enforced 3:2 aspect ratio on frontend
+- image categories: `full_body`, `headshot`, `veins`
+- 4-agent analysis pipeline (model: `gpt-5.4`, reasoning effort: high, runs in parallel via ThreadPoolExecutor):
+  1. `body_type_analysis` — uses full_body image → ShoulderToHipRatio, TorsoToLegRatio, BodyShape, VisualWeight, VerticalProportion, ArmVolume, MidsectionState, BustVolume
+  2. `color_analysis_headshot` — uses headshot → SkinSurfaceColor, HairColor, HairColorTemperature, EyeColor, EyeClarity
+  3. `color_analysis_veins` — uses veins image (+ enhanced version) → SkinUndertone
+  4. `other_details_analysis` — uses headshot + full_body → FaceShape, NeckLength, HairLength, JawlineDefinition, ShoulderSlope
+- Each agent returns JSON with `{value, confidence, evidence_note}` per attribute
+- Deterministic interpretation pipeline (`interpreter.py`) derives:
+  - `SeasonalColorGroup` — 12-season color analysis from undertone, surface color, hair, eye inputs
+  - `HeightCategory` — Petite (<160cm) / Average (160-175cm) / Tall (>175cm)
+  - `WaistSizeBand` — Very Small / Small / Medium / Large / Very Large
+  - `ContrastLevel` — Low / Medium-Low / Medium / Medium-High / High (from depth spread across skin, hair, eyes)
+  - `FrameStructure` — Light and Narrow / Light and Broad / Medium and Balanced / Solid and Narrow / Solid and Broad
+- Style archetype preference: user selects 3-5 archetypes across 3 layers → produces primaryArchetype, secondaryArchetype, blending ratios, risk tolerance, formality lean, pattern type, comfort boundaries
+- Profile status / rerun support (single-agent targeted reruns with baseline preservation)
 
 Current ownership reality:
 - active runtime behavior still lives mostly under `modules/onboarding`
@@ -66,13 +77,30 @@ Status:
 - functionally usable
 
 Implemented:
-- admin upload screen
-- CSV upload flow
-- enrichment pipeline
-- sync into `catalog_enriched`
-- embedding generation into `catalog_item_embeddings`
+- admin upload screen (`/admin/catalog`)
+- CSV upload flow (saves to `data/catalog/uploads/`)
+- enrichment pipeline (50+ attributes organized in 8 sections)
+- sync into `catalog_enriched` (upsert on `product_id`)
+- embedding generation into `catalog_item_embeddings` (text-embedding-3-small, 1536 dimensions)
 - partial run support via `max_rows`
 - local/staging sync paths
+- canonical product URL persistence during ingestion (with backfill for older rows)
+- only rows with `row_status` in `{ok, complete}` are embeddable
+
+Catalog embedding document structure (8 labeled sections):
+1. `GARMENT_IDENTITY` — GarmentCategory, GarmentSubtype, GarmentLength, StylingCompleteness, GenderExpression
+2. `SILHOUETTE_AND_FIT` — SilhouetteContour, SilhouetteType, VolumeProfile, FitEase, FitType, ShoulderStructure, WaistDefinition, HipDefinition
+3. `NECKLINE_SLEEVE_EXPOSURE` — NecklineType, NecklineDepth, SleeveLength, SkinExposureLevel
+4. `FABRIC_AND_BUILD` — FabricDrape, FabricWeight, FabricTexture, StretchLevel, EdgeSharpness, ConstructionDetail
+5. `EMBELLISHMENT` — EmbellishmentLevel, EmbellishmentType, EmbellishmentZone
+6. `VISUAL_DIRECTION` — VerticalWeightBias, VisualWeightPlacement, StructuralFocus, BodyFocusZone, LineDirection
+7. `PATTERN_AND_COLOR` — PatternType, PatternScale, PatternOrientation, ContrastLevel, ColorTemperature, ColorSaturation, ColorValue, ColorCount, PrimaryColor, SecondaryColor
+8. `OCCASION_AND_SIGNAL` — FormalitySignalStrength, FormalityLevel, OccasionFit, OccasionSignal, TimeOfDay
+
+Each attribute is stored with a confidence score and included in the embedding document as `- AttributeName: value [confidence=X.XX]`.
+
+Embedding metadata (stored in `catalog_item_embeddings.metadata_json` for filtering):
+- garment_category, garment_subtype, styling_completeness, gender_expression, formality_level, occasion_fit, time_of_day, primary_color, price
 
 Current ownership reality:
 - active ingestion and retrieval behavior still spans `modules/catalog_enrichment` and `modules/catalog_retrieval`
@@ -82,7 +110,6 @@ Main remaining gaps:
 - job tables
 - clearer rerun support
 - stronger admin observability
-- canonical product URL persistence during ingestion
 
 ### Application
 
@@ -279,6 +306,92 @@ This means:
 - the system works
 - the architecture is directionally correct
 - the repo still needs consolidation to match that architecture cleanly
+
+## Database Table Inventory
+
+Supabase tables (19 migrations in `supabase/migrations/`):
+
+### Core platform tables
+- `users` — id, external_user_id, profile_json, profile_updated_at
+- `conversations` — id, user_id, status, session_context_json
+- `conversation_turns` — id, conversation_id, user_message, assistant_message, resolved_context_json
+- `model_calls` — logging for LLM calls (service, call_type, model, request/response JSON)
+- `tool_traces` — logging for tool executions (tool_name, input/output JSON)
+- `recommendation_events` — logging for recommendation pipeline events
+- `feedback_events` — user feedback tracking
+
+### Onboarding tables
+- `onboarding_profiles` — user_id (unique), mobile (unique), otp fields, name, date_of_birth, gender, height_cm, waist_cm, profession, profile_complete, onboarding_complete
+- `onboarding_images` — user_id, category (full_body/headshot/veins), encrypted_filename, file_path, mime_type, file_size_bytes; unique on (user_id, category)
+- `user_analysis_runs` — tracks analysis snapshots per user (status, model_name, body_type_output, color_headshot_output, color_veins_output, other_details_output, collated_output)
+- `user_derived_interpretations` — stores deterministic interpretations (SeasonalColorGroup, HeightCategory, WaistSizeBand, ContrastLevel, FrameStructure) with value/confidence/evidence_note
+- `user_style_preference` — primary_archetype, secondary_archetype, risk_tolerance, formality_lean, pattern_type, selected_images
+
+### Catalog tables
+- `catalog_enriched` — product_id (unique), title, description, price, url, image_urls, row_status, raw_row_json, error_reason + 50+ enrichment attribute columns with confidence scores
+- `catalog_item_embeddings` — product_id, embedding (pgvector 1536), metadata_json; indexed on product_id
+
+## Module File Layout
+
+```text
+modules/
+├── agentic_application/src/agentic_application/
+│   ├── api.py                    # FastAPI app factory, routes
+│   ├── orchestrator.py           # 7-stage pipeline
+│   ├── schemas.py                # Pydantic models
+│   ├── filters.py                # Hard filter construction and relaxation
+│   ├── product_links.py          # Canonical URL resolution
+│   ├── agents/
+│   │   ├── outfit_architect.py   # LLM planning (gpt-5-mini)
+│   │   ├── catalog_search_agent.py # Embedding search + hydration
+│   │   ├── outfit_assembler.py   # Compatibility pruning
+│   │   ├── outfit_evaluator.py   # LLM ranking (gpt-5-mini)
+│   │   └── response_formatter.py # UI output generation
+│   ├── context/
+│   │   ├── user_context_builder.py  # Profile loading + richness scoring
+│   │   ├── occasion_resolver.py     # Rule-based live context extraction
+│   │   └── conversation_memory.py   # Cross-turn state
+│   └── services/
+│       ├── onboarding_gateway.py    # App-facing onboarding interface
+│       └── catalog_retrieval_gateway.py # App-facing retrieval interface
+├── onboarding/src/onboarding/
+│   ├── api.py                    # Onboarding REST endpoints
+│   ├── service.py                # OTP, profile, image handling
+│   ├── analysis.py               # 4-agent analysis pipeline
+│   ├── interpreter.py            # Deterministic interpretation derivation
+│   ├── style_archetype.py        # Style preference selection
+│   ├── repository.py             # Supabase CRUD for onboarding tables
+│   └── schemas.py                # Request/response models
+├── catalog/src/catalog/
+│   ├── admin_api.py              # Catalog admin REST endpoints
+│   ├── admin_service.py          # CSV processing, enrichment sync, embedding sync
+│   └── ui.py                     # Admin UI HTML
+├── catalog_enrichment/src/catalog_enrichment/
+│   └── ...                       # Enrichment pipeline internals
+├── catalog_retrieval/src/catalog_retrieval/
+│   ├── vector_store.py           # pgvector similarity search
+│   ├── document_builder.py       # Embedding document construction
+│   ├── embedder.py               # text-embedding-3-small batch embedding
+│   └── ...
+├── platform_core/src/platform_core/
+│   ├── config.py                 # AuraRuntimeConfig, env file resolution
+│   ├── repositories.py           # ConversationRepository (users, conversations, turns, logging)
+│   ├── supabase_rest.py          # SupabaseRestClient (REST-based, no SDK)
+│   ├── api_schemas.py            # Shared REST API schemas
+│   └── ui.py                     # Chat UI HTML
+└── user_profiler/src/user_profiler/
+    └── ...                       # User profiling utilities
+```
+
+## Ops Scripts
+
+| Script | Purpose |
+|---|---|
+| `ops/scripts/run_agentic_eval.py` | Focused eval harness for agentic pipeline |
+| `ops/scripts/check_supabase_sync.py` | Verify migration sync between local and staging |
+| `ops/scripts/bootstrap_env_files.py` | Create .env.local and .env.staging from .env.example |
+| `ops/scripts/backfill_catalog_urls.py` | Backfill missing canonical product URLs |
+| `ops/scripts/schema_audit.py` | Audit database schema |
 
 ## How To Run
 
