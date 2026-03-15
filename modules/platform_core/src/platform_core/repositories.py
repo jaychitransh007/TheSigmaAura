@@ -94,10 +94,11 @@ class ConversationRepository:
         request_json: Dict[str, Any],
         response_json: Dict[str, Any],
         reasoning_notes: List[str],
+        latency_ms: Optional[int] = None,
         status: str = "ok",
         error_message: str = "",
     ) -> Dict[str, Any]:
-        payload = {
+        payload: Dict[str, Any] = {
             "conversation_id": conversation_id,
             "turn_id": turn_id,
             "service": service,
@@ -110,6 +111,8 @@ class ConversationRepository:
             "error_message": error_message,
             "created_at": _now_iso(),
         }
+        if latency_ms is not None:
+            payload["latency_ms"] = latency_ms
         return self.client.insert_one("model_call_logs", payload)
 
     def log_tool_trace(
@@ -120,10 +123,11 @@ class ConversationRepository:
         tool_name: str,
         input_json: Dict[str, Any],
         output_json: Dict[str, Any],
+        latency_ms: Optional[int] = None,
         status: str = "ok",
         error_message: str = "",
     ) -> Dict[str, Any]:
-        payload = {
+        payload: Dict[str, Any] = {
             "conversation_id": conversation_id,
             "turn_id": turn_id,
             "tool_name": tool_name,
@@ -133,5 +137,7 @@ class ConversationRepository:
             "error_message": error_message,
             "created_at": _now_iso(),
         }
+        if latency_ms is not None:
+            payload["latency_ms"] = latency_ms
         return self.client.insert_one("tool_traces", payload)
 

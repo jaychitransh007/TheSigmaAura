@@ -10,9 +10,6 @@ _QUERY_FILTER_MAPPING = {
     "GarmentCategory": "garment_category",
     "GarmentSubtype": "garment_subtype",
     "StylingCompleteness": "styling_completeness",
-    "FormalityLevel": "formality_level",
-    "OccasionFit": "occasion_fit",
-    "TimeOfDay": "time_of_day",
 }
 
 
@@ -22,7 +19,7 @@ def normalize_filter_value(value: str) -> str:
     if not raw:
         return ""
     lowered = raw.lower()
-    if lowered in {"unknown", "unspecified", "n/a", "none"}:
+    if lowered in {"unknown", "unspecified", "n/a", "none", "null"}:
         return ""
     lowered = lowered.split(",")[0].strip()
     lowered = re.sub(r"[^a-z0-9]+", "_", lowered).strip("_")
@@ -71,8 +68,12 @@ def extract_query_document_filters(document: str) -> Dict[str, str]:
 def build_directional_filters(direction_type: str, role: str) -> Dict[str, str]:
     if direction_type == "complete" or role == "complete":
         return {"styling_completeness": "complete"}
-    if direction_type == "paired" or role in {"top", "bottom"}:
-        return {"styling_completeness": "needs_pairing"}
+    if role == "top":
+        return {"styling_completeness": "needs_bottomwear"}
+    if role == "bottom":
+        return {"styling_completeness": "needs_topwear"}
+    if direction_type == "paired":
+        return {}
     return {}
 
 

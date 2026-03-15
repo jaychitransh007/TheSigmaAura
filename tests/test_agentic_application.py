@@ -44,6 +44,7 @@ from agentic_application.schemas import (
     QuerySpec,
     RecommendationPlan,
     RecommendationResponse,
+    ResolvedContextBlock,
     RetrievedProduct,
     RetrievedSet,
     UserContext,
@@ -108,7 +109,7 @@ class AgenticApplicationTests(unittest.TestCase):
                                 "GARMENT_REQUIREMENTS:\n"
                                 "- GarmentCategory: top\n"
                                 "- GarmentSubtype: blouse\n"
-                                "- StylingCompleteness: needs_pairing\n"
+                                "- StylingCompleteness: needs_bottomwear\n"
                                 "OCCASION_AND_SIGNAL:\n"
                                 "- FormalityLevel: Smart Casual\n"
                                 "- OccasionFit: Date Night\n"
@@ -125,33 +126,27 @@ class AgenticApplicationTests(unittest.TestCase):
             hard_filters={"gender_expression": "feminine"},
         )
 
-        agent.search(plan, context, relaxed_filter_keys=["occasion_fit"])
+        agent.search(plan, context)
 
         filters = retrieval_gateway.similarity_search.call_args.kwargs["filters"]
         self.assertEqual("feminine", filters["gender_expression"])
-        self.assertEqual("needs_pairing", filters["styling_completeness"])
+        self.assertEqual("needs_bottomwear", filters["styling_completeness"])
         self.assertEqual("top", filters["garment_category"])
         self.assertEqual("blouse", filters["garment_subtype"])
-        self.assertEqual("smart_casual", filters["formality_level"])
-        self.assertEqual("evening", filters["time_of_day"])
+        # time_of_day, occasion_fit, and formality_level are soft signals, not hard filters
+        self.assertNotIn("time_of_day", filters)
         self.assertNotIn("occasion_fit", filters)
+        self.assertNotIn("formality_level", filters)
 
-    def test_outfit_architect_falls_back_to_deterministic_plan(self) -> None:
+    def test_outfit_architect_raises_on_llm_failure(self) -> None:
         context = CombinedContext(
             user=UserContext(
                 user_id="u1",
                 gender="female",
                 derived_interpretations={
                     "SeasonalColorGroup": {"value": "Soft Summer"},
-                    "ContrastLevel": {"value": "Medium"},
-                    "FrameStructure": {"value": "Balanced"},
-                    "HeightCategory": {"value": "Tall"},
-                    "WaistSizeBand": {"value": "Medium"},
                 },
-                style_preference={
-                    "primaryArchetype": "classic",
-                    "patternType": "solid",
-                },
+                style_preference={"primaryArchetype": "classic"},
                 profile_richness="full",
             ),
             live=LiveContext(
@@ -167,143 +162,38 @@ class AgenticApplicationTests(unittest.TestCase):
         ) as openai_cls:
             openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
             architect = OutfitArchitect()
-            plan = architect.plan(context)
+            with self.assertRaises(RuntimeError):
+                architect.plan(context)
 
-        self.assertEqual("fallback", plan.plan_source)
-        self.assertEqual("paired_only", plan.plan_type)
-        self.assertEqual("needs_pairing", plan.directions[0].queries[0].hard_filters["styling_completeness"])
-        self.assertIn("PrimaryColor: blue", plan.directions[0].queries[0].query_document)
-
-    def test_outfit_architect_similar_to_previous_uses_prior_recommendation_color(self) -> None:
+    def test_outfit_architect_raises_on_empty_directions(self) -> None:
         context = CombinedContext(
-            user=UserContext(
-                user_id="u1",
-                gender="female",
-                derived_interpretations={"SeasonalColorGroup": {"value": "Soft Summer"}},
-                style_preference={"primaryArchetype": "classic", "patternType": "solid"},
-                profile_richness="full",
-            ),
-            live=LiveContext(
-                user_need="Show me something similar",
-                is_followup=True,
-                followup_intent="similar_to_previous",
-            ),
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="Show me something"),
             hard_filters={"gender_expression": "feminine"},
-            previous_recommendations=[{"primary_colors": ["burgundy"]}],
         )
+
+        mock_response = Mock()
+        mock_response.output_text = json.dumps({
+            "resolved_context": {
+                "occasion_signal": None,
+                "formality_hint": None,
+                "time_hint": None,
+                "specific_needs": [],
+                "is_followup": False,
+                "followup_intent": None,
+            },
+            "plan_type": "complete_only",
+            "retrieval_count": 12,
+            "directions": [],
+        })
 
         with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
             "agentic_application.agents.outfit_architect.OpenAI"
         ) as openai_cls:
-            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
+            openai_cls.return_value.responses.create.return_value = mock_response
             architect = OutfitArchitect()
-            plan = architect.plan(context)
-
-        self.assertIn("PrimaryColor: burgundy", plan.directions[0].queries[0].query_document)
-
-    def test_outfit_architect_similar_to_previous_preserves_prior_plan_shape(self) -> None:
-        context = CombinedContext(
-            user=UserContext(
-                user_id="u1",
-                gender="female",
-                derived_interpretations={"SeasonalColorGroup": {"value": "Soft Summer"}},
-                style_preference={"primaryArchetype": "classic", "patternType": "solid"},
-                profile_richness="full",
-            ),
-            live=LiveContext(
-                user_need="Show me something similar",
-                is_followup=True,
-                followup_intent="similar_to_previous",
-            ),
-            hard_filters={"gender_expression": "feminine"},
-            previous_recommendations=[
-                {
-                    "candidate_type": "paired",
-                    "primary_colors": ["navy"],
-                    "occasion_fits": ["date_night"],
-                }
-            ],
-        )
-
-        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_architect.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
-            architect = OutfitArchitect()
-            plan = architect.plan(context)
-
-        self.assertEqual("paired_only", plan.plan_type)
-        self.assertIn("OccasionFit: date_night", plan.directions[0].queries[0].query_document)
-        self.assertIn("PrimaryColor: navy", plan.directions[0].queries[0].query_document)
-
-    def test_outfit_architect_similar_to_previous_preserves_prior_silhouette_signals(self) -> None:
-        context = CombinedContext(
-            user=UserContext(
-                user_id="u1",
-                gender="female",
-                derived_interpretations={"SeasonalColorGroup": {"value": "Soft Summer"}},
-                style_preference={"primaryArchetype": "classic", "patternType": "solid"},
-                profile_richness="full",
-            ),
-            live=LiveContext(
-                user_need="Show me something similar",
-                is_followup=True,
-                followup_intent="similar_to_previous",
-            ),
-            hard_filters={"gender_expression": "feminine"},
-            previous_recommendations=[
-                {
-                    "candidate_type": "paired",
-                    "volume_profiles": ["oversized"],
-                    "fit_types": ["relaxed"],
-                    "silhouette_types": ["draped"],
-                    "pattern_types": ["striped"],
-                }
-            ],
-        )
-
-        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_architect.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
-            architect = OutfitArchitect()
-            plan = architect.plan(context)
-
-        query_document = plan.directions[0].queries[0].query_document
-        self.assertIn("VolumeProfile: oversized", query_document)
-        self.assertIn("FitType: relaxed", query_document)
-        self.assertIn("SilhouetteType: draped", query_document)
-        self.assertIn("PatternType: striped", query_document)
-
-    def test_outfit_architect_change_color_mentions_prior_color_shift(self) -> None:
-        context = CombinedContext(
-            user=UserContext(
-                user_id="u1",
-                gender="female",
-                derived_interpretations={"SeasonalColorGroup": {"value": "Soft Summer"}},
-                style_preference={"primaryArchetype": "classic", "patternType": "solid"},
-                profile_richness="full",
-            ),
-            live=LiveContext(
-                user_need="Show me a different color",
-                is_followup=True,
-                followup_intent="change_color",
-            ),
-            hard_filters={"gender_expression": "feminine"},
-            previous_recommendations=[{"primary_colors": ["navy"]}],
-        )
-
-        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_architect.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
-            architect = OutfitArchitect()
-            plan = architect.plan(context)
-
-        self.assertIn(
-            "styling_goal: change color direction away from navy",
-            plan.directions[0].queries[0].query_document,
-        )
+            with self.assertRaises(RuntimeError):
+                architect.plan(context)
 
     def test_outfit_assembler_rejects_paired_candidates_with_mismatched_occasion(self) -> None:
         assembler = OutfitAssembler()
@@ -454,12 +344,12 @@ class AgenticApplicationTests(unittest.TestCase):
                 )
             ],
             follow_up_suggestions=["Show me something bolder"],
-            metadata={"plan_type": "mixed", "plan_source": "fallback"},
+            metadata={"plan_type": "mixed", "plan_source": "llm"},
         )
         plan = RecommendationPlan(
             plan_type="mixed",
             retrieval_count=8,
-            plan_source="fallback",
+            plan_source="llm",
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -475,6 +365,12 @@ class AgenticApplicationTests(unittest.TestCase):
                     ],
                 )
             ],
+            resolved_context=ResolvedContextBlock(
+                occasion_signal="wedding",
+                formality_hint="formal",
+                is_followup=True,
+                followup_intent="increase_boldness",
+            ),
         )
         analysis_payload = {
             "status": "completed",
@@ -524,7 +420,7 @@ class AgenticApplicationTests(unittest.TestCase):
         resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
         session_context = repo.update_conversation_context.call_args.kwargs["session_context"]
 
-        self.assertEqual("fallback", resolved_context["plan"]["plan_source"])
+        self.assertEqual("llm", resolved_context["plan"]["plan_source"])
         self.assertEqual("wedding", resolved_context["conversation_memory"]["occasion_signal"])
         self.assertEqual("complete", resolved_context["retrieval"][0]["applied_filters"]["styling_completeness"])
         self.assertEqual(2, session_context["memory"]["followup_count"])
@@ -963,166 +859,6 @@ class AgenticApplicationTests(unittest.TestCase):
     # ------------------------------------------------------------------
     # Concept-first paired planning tests
     # ------------------------------------------------------------------
-
-    def test_paired_queries_have_different_primary_colors(self) -> None:
-        """Top and bottom queries should have different PrimaryColor values."""
-        context = CombinedContext(
-            user=UserContext(
-                user_id="u1",
-                gender="female",
-                derived_interpretations={"SeasonalColorGroup": {"value": "Cool Winter"}},
-                style_preference={"primaryArchetype": "classic", "patternType": "solid"},
-                profile_richness="full",
-            ),
-            live=LiveContext(user_need="I need office separates"),
-            hard_filters={"gender_expression": "feminine"},
-        )
-
-        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_architect.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
-            architect = OutfitArchitect()
-            plan = architect.plan(context)
-
-        paired_dir = [d for d in plan.directions if d.direction_type == "paired"]
-        self.assertTrue(paired_dir, "Expected at least one paired direction")
-        queries = paired_dir[0].queries
-        self.assertEqual(2, len(queries))
-        top_doc = queries[0].query_document
-        bottom_doc = queries[1].query_document
-
-        # Extract PrimaryColor from each query document
-        top_color = [line for line in top_doc.splitlines() if "PrimaryColor:" in line][0]
-        bottom_color = [line for line in bottom_doc.splitlines() if "PrimaryColor:" in line][0]
-        self.assertNotEqual(top_color, bottom_color,
-                            f"Top and bottom should have different colors but both have: {top_color}")
-
-    def test_paired_queries_have_different_volume_profiles(self) -> None:
-        """Top and bottom queries should have complementary VolumeProfile values."""
-        context = CombinedContext(
-            user=UserContext(
-                user_id="u1",
-                gender="female",
-                derived_interpretations={
-                    "SeasonalColorGroup": {"value": "Warm Autumn"},
-                    "FrameStructure": {"value": "Light and Narrow"},
-                },
-                style_preference={"primaryArchetype": "romantic"},
-                profile_richness="full",
-            ),
-            live=LiveContext(user_need="casual weekend outfit"),
-            hard_filters={"gender_expression": "feminine"},
-        )
-
-        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_architect.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
-            architect = OutfitArchitect()
-            plan = architect.plan(context)
-
-        paired_dir = [d for d in plan.directions if d.direction_type == "paired"]
-        self.assertTrue(paired_dir)
-        queries = paired_dir[0].queries
-        top_doc = queries[0].query_document
-        bottom_doc = queries[1].query_document
-
-        top_vol = [line for line in top_doc.splitlines() if "VolumeProfile:" in line][0]
-        bottom_vol = [line for line in bottom_doc.splitlines() if "VolumeProfile:" in line][0]
-        # Light and Narrow → relaxed top + slim bottom
-        self.assertIn("relaxed", top_vol)
-        self.assertIn("slim", bottom_vol)
-
-    def test_paired_pattern_distributed_to_top_only(self) -> None:
-        """When user has a pattern preference, it should go to top, bottom stays solid."""
-        context = CombinedContext(
-            user=UserContext(
-                user_id="u1",
-                gender="male",
-                derived_interpretations={"SeasonalColorGroup": {"value": "Deep Winter"}},
-                style_preference={"primaryArchetype": "creative", "patternType": "plaid"},
-                profile_richness="full",
-            ),
-            live=LiveContext(user_need="smart casual dinner"),
-            hard_filters={"gender_expression": "masculine"},
-        )
-
-        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_architect.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
-            architect = OutfitArchitect()
-            plan = architect.plan(context)
-
-        paired_dir = [d for d in plan.directions if d.direction_type == "paired"]
-        self.assertTrue(paired_dir)
-        queries = paired_dir[0].queries
-        top_doc = queries[0].query_document
-        bottom_doc = queries[1].query_document
-
-        top_pat = [line for line in top_doc.splitlines() if "PatternType:" in line][0]
-        bottom_pat = [line for line in bottom_doc.splitlines() if "PatternType:" in line][0]
-        self.assertIn("plaid", top_pat)
-        self.assertIn("solid", bottom_pat)
-
-    def test_seasonal_palette_assigns_warm_autumn_colors(self) -> None:
-        """Warm Autumn palette should produce cream top + olive bottom."""
-        context = CombinedContext(
-            user=UserContext(
-                user_id="u1",
-                gender="female",
-                derived_interpretations={"SeasonalColorGroup": {"value": "Warm Autumn"}},
-                style_preference={"primaryArchetype": "classic"},
-                profile_richness="full",
-            ),
-            live=LiveContext(user_need="I need a pairing for work"),
-            hard_filters={"gender_expression": "feminine"},
-        )
-
-        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_architect.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
-            architect = OutfitArchitect()
-            plan = architect.plan(context)
-
-        paired_dir = [d for d in plan.directions if d.direction_type == "paired"]
-        self.assertTrue(paired_dir)
-        queries = paired_dir[0].queries
-        top_doc = queries[0].query_document
-        bottom_doc = queries[1].query_document
-
-        self.assertIn("PrimaryColor: cream", top_doc)
-        self.assertIn("PrimaryColor: olive", bottom_doc)
-
-    def test_complete_outfit_queries_unchanged_by_concept(self) -> None:
-        """Complete outfit directions should NOT be affected by concept logic."""
-        context = CombinedContext(
-            user=UserContext(
-                user_id="u1",
-                gender="female",
-                derived_interpretations={"SeasonalColorGroup": {"value": "Cool Winter"}},
-                style_preference={"primaryArchetype": "classic"},
-                profile_richness="full",
-            ),
-            live=LiveContext(user_need="I need a complete outfit for a wedding"),
-            hard_filters={"gender_expression": "feminine"},
-        )
-
-        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_architect.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
-            architect = OutfitArchitect()
-            plan = architect.plan(context)
-
-        complete_dir = [d for d in plan.directions if d.direction_type == "complete"]
-        self.assertTrue(complete_dir)
-        query_doc = complete_dir[0].queries[0].query_document
-        # Complete outfit should have a single uniform PrimaryColor, not concept-split
-        color_lines = [line for line in query_doc.splitlines() if "PrimaryColor:" in line]
-        self.assertEqual(1, len(color_lines))
 
 
 if __name__ == "__main__":

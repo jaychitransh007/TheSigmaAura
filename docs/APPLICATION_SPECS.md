@@ -1,6 +1,6 @@
 # Application Layer — Implementation Specification
 
-Last updated: March 13, 2026
+Last updated: March 16, 2026
 
 ## Current Implementation Status
 
@@ -11,11 +11,17 @@ Implemented now:
 - saved user-context loading from onboarding/profile-analysis/style-preference persistence
 - rule-based live-context extraction with phrase-priority matching
 - server-side conversation-memory carry-forward across follow-up turns
-- LLM planning with deterministic fallback to `complete_only`, `paired_only`, or `mixed`
-- concept-first paired planning with seasonal palette color assignment, body-shape volume balance, and pattern distribution
+- LLM-only planning via Outfit Architect (gpt-5.4) — no deterministic fallback
+- concept-first paired planning handled entirely by the LLM (color coordination, volume balance, pattern distribution)
+- strict JSON schema with enum-constrained hard filter vocabulary (no free-form filter values)
+- hard filters: `gender_expression`, `styling_completeness`, `garment_category`, `garment_subtype`
+- soft signals via embedding similarity only: `occasion_fit`, `formality_level`, `time_of_day`
+- no filter relaxation — single search pass per query, no retry with dropped filters
 - embedding retrieval from `catalog_item_embeddings` with hydration from `catalog_enriched`
-- direction-aware retrieval for complete outfits and top/bottom pairing
-- deterministic assembly and LLM evaluation with graceful fallback
+- direction-aware retrieval: `needs_bottomwear` for tops, `needs_topwear` for bottoms, `complete` for complete outfits
+- deterministic assembly and LLM evaluation with graceful evaluator fallback
+- architect failure returns error to user (no silent degradation)
+- latency tracking via `time.monotonic()` on architect, search, and evaluator (persisted as `latency_ms`)
 - persisted turn artifacts: live context, memory, plan, applied filters, retrieved IDs, assembled candidates, final recommendations
 - response formatting for `outfits` (max 3 outfits)
 - virtual try-on via Gemini (`gemini-3.1-flash-image-preview`) with parallel image generation, inline UI rendering
@@ -25,7 +31,6 @@ Implemented now:
 Still incomplete:
 - evaluator still needs stronger prompt/server-side validation beyond the current persisted-memory and delta payloads
 - follow-up refinement for `change_color` and `similar_to_previous` now uses persisted recommendation attributes, with remaining work focused on deeper rule expansion rather than missing execution
-- retry logic only relaxes `occasion_fit`, then `formality_level`
 - application boundaries are cleaner now, but `onboarding` and `catalog_retrieval` are still mediated through gateway modules rather than fully consolidated domain ownership
 - evaluator fallback behavior is not yet perfectly aligned with the documented degradation contract
 
@@ -79,7 +84,7 @@ Active models used by application agents:
 | Virtual Try-on | `gemini-3.1-flash-image-preview` | Google | Image generation |
 | Catalog Enrichment | `gpt-5-mini` | OpenAI | JSON schema |
 
-Architect, evaluator, orchestrator, and profiler use OpenAI's `json_schema` response format with strict validation. Deterministic fallback paths exist for architect and evaluator in case of LLM failure. Virtual try-on uses Google Gemini with direct API key authentication (not Vertex AI / service accounts).
+Architect, evaluator, orchestrator, and profiler use OpenAI's `json_schema` response format with strict validation. The architect has no fallback — failure returns an error to the user. The evaluator has a graceful fallback that ranks by assembly_score. Virtual try-on uses Google Gemini with direct API key authentication (not Vertex AI / service accounts).
 
 ## Active Catalog Reality
 
@@ -114,7 +119,8 @@ Orchestrator (agentic_application/orchestrator.py)
     |    +--> text-embedding-3-small (1536 dim)
     |    +--> catalog_item_embeddings (pgvector cosine)
     |    +--> catalog_enriched (hydration)
-    |    +--> Filter relaxation: [] → [occasion_fit] → [occasion_fit, formality_level]
+    |    +--> Hard filters: gender_expression, styling_completeness, garment_category, garment_subtype
+    |    +--> No filter relaxation — single search pass per query
     |
     v
 6. Outfit Assembler (deterministic compatibility pruning)
@@ -263,7 +269,6 @@ After each turn, the orchestrator writes:
 - `last_recommendations` — enriched recommendation summaries (colors, garment categories, subtypes, roles, occasion fits, formality levels, pattern types, volume profiles, fit types, silhouette types)
 - `last_occasion` — resolved occasion signal
 - `last_live_context` — full live context snapshot
-- `last_filters_relaxed` — which filter keys were relaxed
 - `last_response_metadata` — response metadata dict
 
 ## 5. Combined Context
@@ -282,19 +287,32 @@ class CombinedContext:
 ### Hard filters
 
 Global hard filters:
-- `GenderExpression`
+- `gender_expression` (derived from user gender: male → masculine, female → feminine)
 
-Conditional hard filters:
-- `OccasionFit`
-- `FormalityLevel`
+Direction-specific hard filters:
+- complete outfit directions use `styling_completeness = complete`
+- paired top directions use `styling_completeness = needs_bottomwear`
+- paired bottom directions use `styling_completeness = needs_topwear`
 
-Direction-specific filters:
-- complete outfit directions use `StylingCompleteness = complete`
-- pairing directions use `StylingCompleteness = needs_pairing`
+Query-document-extracted hard filters (server-side extraction from architect output):
+- `garment_category`
+- `garment_subtype`
 
-Current runtime also derives query-document filters server-side from architect output and can relax:
+NOT hard filters (soft signals via embedding similarity only):
 - `occasion_fit`
 - `formality_level`
+- `time_of_day`
+
+No filter relaxation — single search pass per query. If a query returns insufficient results, it is not retried with dropped filters.
+
+Valid hard filter vocabulary (enforced in architect JSON schema):
+
+| Filter key | Valid values |
+|---|---|
+| `styling_completeness` | `complete`, `needs_bottomwear`, `needs_topwear`, `needs_innerwear`, `dual_dependency` |
+| `garment_category` | `top`, `bottom`, `set`, `one_piece`, `outerwear` |
+| `garment_subtype` | `shirt`, `tshirt`, `blouse`, `sweater`, `sweatshirt`, `hoodie`, `cardigan`, `tunic`, `kurta_set`, `trouser`, `pants`, `jeans`, `track_pants`, `shorts`, `skirt`, `dress`, `gown`, `saree`, `anarkali`, `kaftan`, `playsuit`, `salwar_set`, `salwar_suit`, `co_ord_set`, `blazer`, `jacket`, `coat`, `shacket` |
+| `gender_expression` | `masculine`, `feminine`, `unisex` |
 
 Important:
 - for v1, do not globally force complete outfits
@@ -339,9 +357,11 @@ async def handle_recommendation_request(request: RecommendationRequest) -> dict:
 
 ### Active runtime notes
 
-- Filter relaxation order is: no relaxation, then drop `occasion_fit`, then drop `occasion_fit` and `formality_level`.
-- `GenderExpression` is never relaxed.
-- Planner and evaluator both have deterministic fallbacks so the request can still complete if an LLM step fails.
+- No filter relaxation — single search pass per query.
+- `gender_expression` is always applied and never relaxed.
+- Architect has no fallback — LLM failure returns an error to the user.
+- Evaluator has a graceful fallback: ranks by `assembly_score` if LLM fails.
+- Latency is tracked per agent via `time.monotonic()` and persisted as `latency_ms` on `model_call_logs` and `tool_traces`.
 
 ## 7. Outfit Architect
 
@@ -360,7 +380,7 @@ class RecommendationPlan:
     plan_type: str                 # complete_only | paired_only | mixed
     retrieval_count: int           # default 12 per query
     directions: list[DirectionSpec]
-    plan_source: str               # "llm" | "fallback"
+    plan_source: str               # always "llm" (no fallback)
 
 
 class DirectionSpec:
@@ -389,25 +409,22 @@ Not allowed in v1:
 
 ### Concept-first paired planning
 
-For paired directions, the architect uses a concept-first approach:
+For paired directions, the architect LLM uses a concept-first approach as instructed by the system prompt:
 
-1. **Build outfit concept**: `_build_outfit_concept()` derives a holistic outfit vision from the user's context — coordinated color scheme, volume balance, pattern distribution, and fabric story.
-2. **Decompose into role-specific queries**: The concept provides differentiated parameters for top and bottom queries instead of identical values.
+1. **Define the outfit vision first**: The LLM decides the overall color scheme, volume balance, pattern distribution, and fabric story as one coherent concept.
+2. **Decompose into role-specific queries**: The top query and bottom query have DIFFERENT, COMPLEMENTARY parameters derived from the concept.
 
-Key concept derivation rules:
+Key concept rules (instructed in `prompt/outfit_architect.md`):
 
-**Color assignment** — Uses seasonal palette data (`_SEASONAL_PALETTES`) mapping each of the 12 seasonal color groups to coordinated (top_accent, bottom_anchor) color pairs. Bottoms anchor with neutrals; tops carry accent/statement colors. Example: Warm Autumn → cream top + olive bottom.
+**Color coordination** — Top and bottom should have contrasting or complementary colors, NOT identical colors. Bottoms typically anchor with neutrals (navy, black, charcoal, olive, khaki). Tops carry the accent or statement color. Uses the user's SeasonalColorGroup palette.
 
-**Volume balance** — Uses `FrameStructure` from body analysis to assign complementary volumes. Example: Light and Narrow → relaxed top + slim bottom. Overrides apply for elongation/slimming needs.
+**Volume balance** — Top and bottom should create visual balance. If one piece is relaxed/oversized, the other should be slim/fitted. Uses the user's FrameStructure to decide which piece gets more volume.
 
-**Pattern distribution** — Pattern goes on ONE piece (top by default), other stays solid. Both solid is safe. Both patterned only for high risk-tolerance + boldness intent.
+**Pattern distribution** — Typically ONE piece carries the pattern and the other is solid. Pattern usually goes on top unless the user requests otherwise. Both patterned only for high risk-tolerance users.
 
 **Fabric coordination** — Formal → both structured. Smart casual → top relaxed, bottom structured. Casual → top relaxed, bottom balanced.
 
-Follow-up intents interact with concepts:
-- `similar_to_previous` — carries forward previous volume/pattern/color into concept
-- `change_color` — rotates to second palette pair
-- explicit color mention — uses stated color as top accent, palette anchor for bottom
+The paired top and bottom queries MUST have different PrimaryColor, VolumeProfile, PatternType, and FabricDrape values reflecting the coordinated outfit concept. This is enforced by the LLM prompt, not by deterministic code.
 
 Complete outfit directions are NOT affected by the concept layer — they use uniform parameters.
 
@@ -484,11 +501,13 @@ For each `QuerySpec`:
 
 ### Filter columns
 
-Use current normalized retrieval filter fields from the embedding table, such as:
-- `garment_category`
-- `garment_subtype`
-- `styling_completeness`
-- `gender_expression`
+Hard filter fields used in WHERE clauses:
+- `gender_expression` — always applied (global)
+- `styling_completeness` — direction-specific (`complete`, `needs_bottomwear`, `needs_topwear`)
+- `garment_category` — extracted from architect query document
+- `garment_subtype` — extracted from architect query document
+
+Soft signal fields (NOT used as hard filters, influence via embedding similarity only):
 - `formality_level`
 - `occasion_fit`
 - `time_of_day`
@@ -742,8 +761,8 @@ Supported intents in v1:
 Current implementation note:
 - these intents are detected and persisted today
 - `increase_boldness`, `decrease_formality`, `increase_formality`, `full_alternative`, and `more_options` have meaningful runtime effect
-- `change_color` and `similar_to_previous` now affect planner fallback, evaluator fallback, and LLM evaluation payloads through persisted recommendation summaries
-- persisted recommendation summaries are now used to preserve prior color, occasion, plan shape, and silhouette-level signals during follow-up refinement
+- `change_color` and `similar_to_previous` affect LLM planning and evaluation payloads through persisted recommendation summaries
+- persisted recommendation summaries are used to preserve prior color, occasion, plan shape, and silhouette-level signals during follow-up refinement
 
 ## Runtime Testing
 
@@ -790,27 +809,25 @@ Follow-up requests should operate on persisted prior recommendations, not only o
 
 ### Graceful degradation
 
-If evaluator fails:
-- return a simpler deterministic ranking and explanation path
+If architect fails:
+- return an error to the user ("I'm having trouble processing your request right now. Please try again.")
+- log the error with `latency_ms` and `status="error"` to `model_call_logs`
+- do NOT silently fall back to a deterministic plan
 
-Current implementation note:
-- the active fallback ranks assembled candidates by `assembly_score`
-- if this behavior is kept, the spec wording should continue to describe assembly-score fallback rather than "top retrieved candidates"
+If evaluator fails:
+- return a simpler deterministic ranking using `assembly_score`
+- generate synthetic reasoning notes from candidate deltas
 
 If no results:
-- relax only safe filters
+- return with empty outfits — no filter relaxation is performed
 
-### Filter relaxation
+### Filter policy
 
-For v1, do not relax:
-- `GenderExpression`
+No filter relaxation in v1. Each query executes a single search pass with the merged hard filters. If a query returns insufficient results, it is not retried.
 
-Relax in this order:
-- `OccasionFit`
-- `FormalityLevel`
-
-Only relax `StylingCompleteness` if the product decision changes later.
-For current v1 pairing support, `StylingCompleteness` is direction-defining and should remain stable.
+Hard rule:
+- never relax `gender_expression`
+- `styling_completeness` is direction-defining and remains stable
 
 ## 14. Profile Validation
 

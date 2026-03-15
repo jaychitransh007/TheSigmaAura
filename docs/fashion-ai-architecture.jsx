@@ -109,7 +109,7 @@ const details = {
     ]
   },
   image_analysis: {
-    title: "4-Agent Analysis Pipeline",
+    title: "4-Agent Analysis Pipeline [AGENTS]",
     desc: "Four specialized vision agents run in parallel via ThreadPoolExecutor. Each uses GPT-5.4 with high reasoning effort and strict JSON schema output. Every attribute returns {value, confidence, evidence_note}. Vein images are also contrast-enhanced before submission.",
     items: [
       "Agent 1 — body_type_analysis (full_body image):",
@@ -167,32 +167,36 @@ const details = {
   },
   orchestrator: {
     title: "Orchestrator (orchestrator.py)",
-    desc: "Central 7-stage pipeline that handles every recommendation request. Loads saved user state via OnboardingGateway, resolves live context, builds and applies conversation memory for follow-ups, then runs Architect → Search → Assembler → Evaluator → Formatter. Persists all turn artifacts and updates conversation-level state. Supports both sync and async (job-based) turn processing.",
+    desc: "Central 9-stage pipeline that handles every recommendation request. Loads saved user state via OnboardingGateway, builds conversation memory, then runs Architect (which also resolves occasion/context) → Search → Assembler → Evaluator → Formatter → Virtual Try-On. The Outfit Architect receives the raw user message and interprets it directly — no rule-based occasion pre-parsing. Hard filters: gender_expression, styling_completeness, garment_category, garment_subtype. Occasion, formality, and time_of_day are soft signals in the embedding space only. No fallback — architect failure returns an error to the user. Latency tracked per agent via time.monotonic().",
     items: [
       "1. User Context Builder — loads profile via OnboardingGateway",
-      "2. Occasion Resolver — rule-based, no LLM",
-      "3. Conversation Memory — build from session_context_json, apply to live context",
-      "4. Outfit Architect — LLM planning (gpt-5-mini)",
-      "5. Catalog Search Agent — embed + filter + pgvector similarity",
-      "6. Outfit Assembler — deterministic compatibility pruning",
-      "7. Outfit Evaluator — LLM ranking (gpt-5-mini)",
-      "8. Response Formatter — max 5 outfit cards",
-      "Filter relaxation: [] → [occasion_fit] → [occasion_fit, formality_level]",
+      "2. Context Prep — conversation memory + occasion resolver (memory bridging)",
+      "3. Outfit Architect [AGENT] — LLM resolves context + plans (gpt-5.4)",
+      "4. Catalog Search Agent [AGENT] — embed + hard filters + pgvector similarity",
+      "5. Outfit Assembler — deterministic compatibility pruning",
+      "6. Outfit Evaluator [AGENT] — LLM ranking (gpt-5.4)",
+      "7. Response Formatter — max 3 outfit cards",
+      "8. Virtual Try-On [AGENT] — Gemini image generation (gemini-3.1-flash-image-preview)",
+      "Hard filters: gender_expression, styling_completeness, garment_category, garment_subtype",
+      "Soft signals (embedding only): occasion, formality, time_of_day",
+      "No filter relaxation — single search pass per query",
+      "Architect failure → error returned to user (no silent fallback)",
+      "Latency: time.monotonic() timing on architect, search, evaluator",
       "Async mode: POST /turns/start → poll /turns/{job_id}/status with stage events",
-      "Persists: live context, memory, plan, filters, candidates, recommendations",
+      "Persists: live context, memory, plan, candidates, recommendations",
     ]
   },
   context_resolver: {
-    title: "Occasion Resolver (rule-based)",
-    desc: "Deterministic live-context extraction with ordered phrase-priority matching (longest match first). Identifies occasion, formality, time-of-day, specific body/style needs, and follow-up intent. Follow-up detection requires prior assistant recommendations to exist in the conversation.",
+    title: "Occasion Resolver (memory bridging)",
+    desc: "Rule-based live-context extraction used for conversation memory bridging. The primary occasion/context resolution is done by the Outfit Architect LLM, which receives the raw user message and interprets it with full nuance. The rule-based resolver provides conversation memory input (carrying forward occasion/formality/needs from prior turns) and initial LiveContext structure for the orchestrator.",
     items: [
-      "Input: raw user message text + has_previous_recommendations flag",
+      "Role: conversation memory bridging + initial LiveContext structure",
       "Phrase priority: 'smart casual' before 'casual', 'work meeting' before 'work'",
       "Extracts: occasion_signal, formality_hint, time_hint",
       "Specific needs: elongation, slimming, comfort_priority, authority, approachability",
-      "Follow-up intents: increase_boldness, decrease_formality, increase_formality,",
-      "  change_color, full_alternative, more_options, similar_to_previous",
-      "Output: LiveContext (Pydantic model)",
+      "Follow-up intents: increase_boldness, decrease_formality, etc.",
+      "Primary context resolution: Outfit Architect LLM (resolved_context in plan output)",
+      "Not used as fallback — architect failure returns error to user",
     ]
   },
   conversation_memory: {
@@ -209,20 +213,26 @@ const details = {
     ]
   },
   outfit_architect_query_docs: {
-    title: "Outfit Architect (gpt-5-mini)",
-    desc: "Planner agent that translates combined user context into a structured recommendation plan. Uses OpenAI gpt-5-mini with strict JSON schema output. Returns one or more retrieval directions with structured query documents that mirror the catalog embedding representation. Deterministic fallback to complete_only, paired_only, or mixed plan if LLM fails.",
+    title: "Outfit Architect [AGENT] (gpt-5.4)",
+    desc: "Planner agent that interprets the raw user message and translates it into a structured recommendation plan. Receives raw message, conversation history, and profile, then produces both resolved_context (occasion, formality, needs, follow-up intent) and the retrieval plan in a single LLM call. Concept-first paired planning for coordinated outfits is handled entirely by the LLM. No deterministic fallback — failure raises an error returned to the user.",
     items: [
-      "Model: gpt-5-mini | Output: strict JSON schema",
-      "Input: UserContext + LiveContext + ConversationMemory + previous_recommendations",
-      "Output: RecommendationPlan (plan_type, retrieval_count=12, directions)",
+      "Model: gpt-5.4 | Output: strict JSON schema",
+      "Dual role: context resolution + retrieval planning in one call",
+      "Input: raw user_message + conversation_history + profile + memory",
+      "Output: resolved_context + RecommendationPlan (plan_type, directions)",
+      "resolved_context: occasion_signal, formality_hint, time_hint,",
+      "  specific_needs, is_followup, followup_intent",
+      "Concept-first planning: LLM handles color coordination, volume balance,",
+      "  pattern distribution, and fabric story for paired directions",
       "Plan types: complete_only | paired_only | mixed",
-      "Direction types: complete (1 query) | paired (top + bottom queries)",
+      "Hard filters in schema: styling_completeness, garment_category,",
+      "  garment_subtype, gender_expression (enum-constrained, nullable)",
+      "Valid filter vocabulary enforced via JSON schema enums",
       "Query document sections (mirror catalog embedding structure):",
       "  USER_NEED, PROFILE_AND_STYLE, GARMENT_REQUIREMENTS,",
       "  FABRIC_AND_BUILD, PATTERN_AND_COLOR, OCCASION_AND_SIGNAL",
-      "Follow-up: change_color rewrites away from prior colors",
-      "Follow-up: similar_to_previous reuses prior silhouette/pattern signals",
-      "Fallback: plan_source='fallback' with conservative direction set",
+      "Follow-up: interprets from conversation history (no rule-based detection)",
+      "No fallback — plan_source always 'llm', failure = error to user",
     ]
   },
   knowledge: {
@@ -248,14 +258,14 @@ const details = {
     ]
   },
   vector_search: {
-    title: "Catalog Search Agent (pgvector)",
-    desc: "Executes embedding search per architect query direction. Embeds the query document, applies merged hard filters (global + directional + query-document-extracted), runs cosine similarity against catalog_item_embeddings, hydrates products from catalog_enriched. Supports filter relaxation when retrieval is too narrow.",
+    title: "Catalog Search Agent [AGENT] (pgvector)",
+    desc: "Executes embedding search per architect query direction. Embeds the query document, applies merged hard filters (global + directional + query-document-extracted), runs cosine similarity against catalog_item_embeddings, hydrates products from catalog_enriched. No filter relaxation — single search pass per query. Occasion, formality, and time_of_day are soft signals handled by embedding similarity only.",
     items: [
-      "Global hard filter: gender_expression (never relaxed)",
-      "Contextual filters: occasion_fit, formality_level",
-      "Direction filters: styling_completeness (complete vs needs_pairing)",
-      "Query-document filters: extracted server-side from architect output",
-      "Relaxation: [] → drop occasion_fit → drop occasion_fit + formality_level",
+      "Hard filters: gender_expression, styling_completeness, garment_category, garment_subtype",
+      "Direction filters: styling_completeness (complete / needs_bottomwear / needs_topwear)",
+      "Query-document filters: garment_category, garment_subtype (extracted server-side)",
+      "Soft signals (via embedding similarity): occasion, formality, time_of_day, color, pattern",
+      "No filter relaxation — single search pass, no retry with dropped filters",
       "Retrieval: default 12 products per query",
       "Hydration: product_id → catalog_enriched row",
       "Output: RetrievedSet per query (direction_id, query_id, role, products, applied_filters)",
@@ -280,14 +290,16 @@ const details = {
     ]
   },
   evaluator: {
-    title: "Outfit Evaluator (gpt-5-mini)",
-    desc: "Active LLM ranking component. Evaluates assembled outfit candidates against body harmony, color suitability, occasion appropriateness, style-archetype fit, risk tolerance, comfort boundaries, and pairing coherence. Returns strict JSON with ranked recommendations. Graceful fallback ranks by assembly_score if LLM fails. Hard output cap of 5 recommendations.",
+    title: "Outfit Evaluator [AGENT] (gpt-5.4)",
+    desc: "LLM-powered ranking agent. Evaluates assembled outfit candidates against body harmony, color suitability, occasion appropriateness, style-archetype fit, risk tolerance, comfort boundaries, and pairing coherence. Computes candidate-by-candidate deltas against previous recommendations for follow-up turns. Returns strict JSON with ranked recommendations. Graceful fallback ranks by assembly_score if LLM fails. Hard output cap of 5 evaluated recommendations.",
     items: [
-      "Model: gpt-5-mini | Output: strict JSON schema",
+      "Model: gpt-5.4 | Output: strict JSON schema",
       "Input: assembled candidates + CombinedContext + RecommendationPlan",
       "Evaluation criteria: body harmony, color suitability, occasion fit,",
       "  style-archetype alignment, risk tolerance, comfort boundaries, pairing coherence",
-      "Follow-up: receives candidate-by-candidate deltas against previous recommendations",
+      "Candidate deltas: computed server-side per candidate vs prior recommendations",
+      "  Compares: colors, categories, volumes, patterns, silhouettes, occasions",
+      "Follow-up: delta comparison fed explicitly into LLM evaluator",
       "Sparse output normalization: backfills notes from follow-up deltas",
       "Graceful fallback: ranks by assembly_score when LLM call fails",
       "Fallback reasoning uses delta summaries for follow-up intents",
@@ -298,15 +310,45 @@ const details = {
   },
   presentation: {
     title: "Response Formatter + UI",
-    desc: "Converts evaluated recommendations into user-facing OutfitCard payloads and renders them in the conversation UI. Generates a contextual message and follow-up suggestions. Maximum 5 outfit cards. UI renders result.outfits with images, titles, prices, reasoning notes, and product links.",
+    desc: "Converts evaluated recommendations into user-facing OutfitCard payloads and renders them in the conversation UI. Generates a contextual message and follow-up suggestions. Maximum 3 outfit cards. UI renders result.outfits with images, titles, prices, reasoning notes, product links, and optional try-on images.",
     items: [
-      "Max 5 outfit cards per response",
+      "Max 3 outfit cards per response",
       "Each card: rank, title, reasoning, body/color/style/occasion notes",
+      "Each card: optional tryon_image (base64 data URL from Virtual Try-On)",
       "Each item: product_id, image_url, title, price, product_url, similarity",
       "Follow-up suggestions generated contextually",
       "Contextual message summarizing recommendations",
-      "UI renders: outfit images, reasoning, product links",
+      "UI renders: outfit images, try-on images, reasoning, product links",
       "Follow-ups: 'show bolder', 'different color', 'more formal' → loop through orchestrator",
+    ]
+  },
+  virtual_tryon: {
+    title: "Virtual Try-On [AGENT] (Gemini)",
+    desc: "Image generation agent that produces virtual try-on previews for each outfit. Uses Google Gemini gemini-3.1-flash-image-preview model with the user's full_body onboarding image. Runs in parallel via ThreadPoolExecutor (max 3 workers). Images resized to max 1024px. Body-preserving prompt ensures immutable geometry. Graceful degradation: outfit returned without try-on if generation fails.",
+    items: [
+      "Model: gemini-3.1-flash-image-preview (Google Gemini API)",
+      "Input: user full_body image + first product image per outfit",
+      "Parallel execution: ThreadPoolExecutor, max 3 workers",
+      "Image preprocessing: resize to max 1024px (Pillow/LANCZOS)",
+      "Prompt: body-preserving — treats person's body as immutable geometry",
+      "  Only replaces clothing, preserves body proportions exactly",
+      "Output: base64 data URL attached to OutfitCard.tryon_image",
+      "Graceful degradation: outfit returned without try-on image on failure",
+    ]
+  },
+  qna_agent: {
+    title: "QnA Transparency Agent (deterministic)",
+    desc: "Template-based narration layer that converts raw pipeline stage names into human-readable, context-aware messages. No LLM calls — uses f-string templates keyed by stage_detail with context dicts passed from the orchestrator. Fallback to empty string for unknown stages; UI falls back to raw stage name when message is empty.",
+    items: [
+      "Module: qna_messages.py — generate_stage_message(stage, detail, ctx)",
+      "18 template keys covering all 9 pipeline stages (started + completed)",
+      "Static templates: validate_request, user_context, catalog_search, etc.",
+      "Dynamic templates: occasion_resolver, outfit_architect, catalog_search,",
+      "  outfit_evaluation — build messages from context dict values",
+      "Context examples: occasion_signal, plan_type, product_count, body data flags",
+      "Graceful degradation: missing context → safe fallback text, no KeyError",
+      "Wired via orchestrator emit() → stage_callback(stage, detail, message)",
+      "UI: stage.message preferred over raw stage name in renderStages()",
     ]
   },
   catalog_upload: {
@@ -399,19 +441,19 @@ export default function Architecture() {
           <h1 style={{ fontSize: 14, fontWeight: 700, margin: 0, letterSpacing: 3, textTransform: "uppercase" }}>Aura — Fashion Styling AI Architecture</h1>
         </div>
         <p style={{ fontSize: 9, color: C.textMuted, margin: "6px 0 10px 17px", letterSpacing: 0.5 }}>
-          3-layer architecture: User Profiling · Application Intelligence · Catalog Pipeline &nbsp;·&nbsp; Click any node for details
+          3-layer architecture: User Profiling · Application Intelligence · Catalog Pipeline &nbsp;·&nbsp; ⚡ = Agent &nbsp;·&nbsp; Click any node for details
         </p>
       </div>
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div style={{ flex: d ? "0 0 62%" : "1", overflow: "auto", padding: "12px", transition: "flex 0.3s ease" }}>
-          <svg viewBox="0 0 1080 970" style={{ width: "100%", height: "auto", minWidth: 700 }}>
+          <svg viewBox="0 0 1080 1060" style={{ width: "100%", height: "auto", minWidth: 700 }}>
             <defs>
               <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
                 <path d="M 30 0 L 0 0 0 30" fill="none" stroke={C.border} strokeWidth="0.15" opacity="0.3" />
               </pattern>
             </defs>
-            <rect width="1080" height="970" fill="url(#grid)" />
+            <rect width="1080" height="1060" fill="url(#grid)" />
 
             {/* === LAYER 1: USER PROFILING === */}
             <LayerBand y={0} h={310} label="LAYER 1 — USER PROFILING (one-time onboarding)" color={C.layer1} />
@@ -419,7 +461,7 @@ export default function Architecture() {
             <Node x={30} y={30} w={190} h={80} title="User Onboarding" icon="●" items={["OTP → Profile → Images", "Gender, DOB, Height, Waist, Profession"]}
               color={C.layer1} dim={C.layer1Dim} onClick={() => setSel("onboarding")} active={sel==="onboarding"} />
 
-            <Node x={260} y={30} w={220} h={95} title="4-Agent Analysis (gpt-5.4)" icon="◐" items={["body_type_analysis (full_body)", "color_analysis_headshot (headshot)", "color_analysis_veins (veins)", "other_details_analysis (headshot+full_body)"]}
+            <Node x={260} y={30} w={220} h={95} title="⚡ 4 Analysis AGENTS (gpt-5.4)" icon="◐" items={["body_type_analysis (full_body)", "color_analysis_headshot (headshot)", "color_analysis_veins (veins)", "other_details_analysis (headshot+full_body)"]}
               color={C.layer1} dim={C.layer1Dim} onClick={() => setSel("image_analysis")} active={sel==="image_analysis"} />
 
             <Node x={520} y={30} w={200} h={80} title="Interpretation Engine" icon="◈" items={["SeasonalColorGroup (12 seasons)", "ContrastLevel, FrameStructure", "HeightCategory, WaistSizeBand"]}
@@ -445,21 +487,27 @@ export default function Architecture() {
             <line x1={30} y1={280} x2={1050} y2={280} stroke={C.layer1} strokeWidth={0.3} opacity={0.2} strokeDasharray="6,3" />
 
             {/* === LAYER 2: APPLICATION === */}
-            <LayerBand y={310} h={410} label="LAYER 2 — APPLICATION LAYER (per-request agentic pipeline)" color={C.layer2} />
+            <LayerBand y={310} h={500} label="LAYER 2 — APPLICATION LAYER (per-request agentic pipeline)" color={C.layer2} />
 
             {/* User message */}
             <Node x={30} y={335} w={200} h={50} title="User Message" icon="▸" items={['"I need outfit for a farewell party"']}
               color={C.layer2} dim={C.layer2Dim} onClick={null} active={false} />
 
             {/* Orchestrator */}
-            <Node x={280} y={330} w={230} h={85} title="Orchestrator (8 stages)" icon="◉" items={["Load profile → Resolve context → Memory", "Architect → Search → Assemble", "Evaluate → Format → Persist turn"]}
+            <Node x={280} y={330} w={230} h={85} title="Orchestrator (9 stages)" icon="◉" items={["Load profile → Resolve context → Memory", "Architect → Search → Assemble", "Evaluate → Format → Try-On → Persist"]}
               color={C.layer2} dim={C.layer2Dim} onClick={() => setSel("orchestrator")} active={sel==="orchestrator"} />
+
+            {/* QnA Transparency Agent */}
+            <Node x={560} y={335} w={180} h={50} title="QnA Narration (templates)" icon="💬" items={["Deterministic stage → message", "Context-aware f-string templates"]}
+              color={C.layer2} dim={C.layer2Dim} onClick={() => setSel("qna_agent")} active={sel==="qna_agent"} />
+
+            <Arrow x1={510} y1={370} x2={560} y2={370} color={C.layer2} label="stage + ctx" />
 
             {/* Profile feed into orchestrator */}
             <CArrow x1={900} y1={155} x2={400} y2={330} cx={900} cy={260} color={C.data} label="load profile" />
 
             {/* Context Resolver */}
-            <Node x={280} y={430} w={230} h={55} title="Occasion Resolver (rule-based)" icon="⊞" items={["occasion: party, formality: smart-casual", "specific_needs: [], follow-up intents"]}
+            <Node x={280} y={430} w={230} h={55} title="Context Prep (memory bridging)" icon="⊞" items={["Carries forward occasion/formality from memory", "Builds initial LiveContext for orchestrator"]}
               color={C.layer2} dim={C.layer2Dim} onClick={() => setSel("context_resolver")} active={sel==="context_resolver"} />
 
             <Arrow x1={130} y1={380} x2={280} y2={370} color={C.layer2} label="user_need" />
@@ -476,7 +524,7 @@ export default function Architecture() {
               items={["M01-M04: Styling principles", "M05: Occasion conventions", "M08-M09: Detail + Fabric", "Reference prompts (not injected in v1)"]} />
 
             {/* Outfit Architect Query Docs */}
-            <Node x={280} y={510} w={230} h={100} title="Outfit Architect (gpt-5-mini)" icon="◆" items={["Strict JSON schema output", "Plan: complete_only | paired_only | mixed", "Query docs mirror catalog embedding structure:", "USER_NEED, GARMENT_REQUIREMENTS,", "FABRIC_AND_BUILD, PATTERN_AND_COLOR", "Deterministic fallback if LLM fails"]}
+            <Node x={280} y={510} w={230} h={100} title="⚡ Outfit Architect AGENT (gpt-5.4)" icon="◆" items={["LLM-driven concept-first paired planning", "Hard filters: enum-constrained vocabulary", "Plan: complete_only | paired_only | mixed", "Query docs mirror catalog embedding structure", "No fallback — failure returns error to user"]}
               color={C.layer2} dim={C.layer2Dim} onClick={() => setSel("outfit_architect_query_docs")} active={sel==="outfit_architect_query_docs"} />
 
             <Arrow x1={395} y1={485} x2={395} y2={510} color={C.layer2} label="combined context" />
@@ -489,13 +537,13 @@ export default function Architecture() {
             <Arrow x1={510} y1={545} x2={560} y2={545} color={C.layer2} label="query text" />
 
             {/* Vector Search */}
-            <Node x={790} y={480} w={220} h={85} title="Catalog Search Agent" icon="⊙" items={["Hard filters: gender, occasion, formality", "Direction: styling_completeness", "Relaxation: occasion → formality", "Returns: hydrated products per query"]}
+            <Node x={790} y={480} w={220} h={85} title="⚡ Catalog Search AGENT" icon="⊙" items={["Hard: gender, completeness, category, subtype", "Direction: needs_bottomwear / needs_topwear", "No relaxation — single search pass", "Returns: hydrated products per query"]}
               color={C.layer2} dim={C.layer2Dim} onClick={() => setSel("vector_search")} active={sel==="vector_search"} />
 
             <Arrow x1={740} y1={540} x2={790} y2={530} color={C.layer2} label="query vector" />
 
             {/* Arrow from catalog DB to vector search */}
-            <CArrow x1={900} y1={860} x2={900} y2={565} cx={1040} cy={720} color={C.layer3} label="catalog vectors" />
+            <CArrow x1={900} y1={950} x2={900} y2={565} cx={1040} cy={760} color={C.layer3} label="catalog vectors" />
 
             {/* Outfit Assembler */}
             <Node x={790} y={585} w={220} h={60} title="Outfit Assembler" icon="⊞" items={["Complete: passthrough (score=similarity)", "Paired: top×bottom compatibility pruning", "Max 30 pairs, 5 compatibility checks"]}
@@ -504,59 +552,68 @@ export default function Architecture() {
             <Arrow x1={900} y1={565} x2={900} y2={585} color={C.layer2} label="retrieved sets" />
 
             {/* Evaluator */}
-            <Node x={560} y={660} w={220} h={80} title="Outfit Evaluator (gpt-5-mini)" icon="◆" items={["Ranks by fit: body, color, occasion, style", "Follow-up: delta reasoning vs prior recs", "Fallback: assembly_score ranking", "Hard cap: max 5 recommendations"]}
+            <Node x={560} y={660} w={220} h={80} title="⚡ Outfit Evaluator AGENT (gpt-5.4)" icon="◆" items={["Ranks by fit: body, color, occasion, style", "Candidate deltas vs prior recommendations", "Fallback: assembly_score ranking", "Hard cap: max 5 evaluated recommendations"]}
               color={C.accent} dim={C.accentDim} onClick={() => setSel("evaluator")} active={sel==="evaluator"} />
 
             <Arrow x1={790} y1={630} x2={780} y2={670} color={C.layer2} label="candidates" />
             <CArrow x1={900} y1={155} x2={580} y2={660} cx={1060} cy={430} color={C.data} label="user profile" />
 
             {/* Presentation */}
-            <Node x={280} y={675} w={230} h={55} title="Response Formatter + UI" icon="▸" items={["Max 5 outfit cards with reasoning notes", "Follow-up → loops back to Orchestrator"]}
+            <Node x={280} y={675} w={230} h={55} title="Response Formatter" icon="▸" items={["Max 3 outfit cards with reasoning notes", "Follow-up → loops back to Orchestrator"]}
               color={C.accent} dim={C.accentDim} onClick={() => setSel("presentation")} active={sel==="presentation"} />
 
             <Arrow x1={560} y1={700} x2={510} y2={700} color={C.accent} label="ranked results" />
 
+            {/* Virtual Try-On */}
+            <Node x={30} y={680} w={200} h={65} title="⚡ Virtual Try-On AGENT" icon="◎" items={["Gemini gemini-3.1-flash-image-preview", "Parallel: 3 workers, max 1024px", "Body-preserving image generation"]}
+              color={C.accent} dim={C.accentDim} onClick={() => setSel("virtual_tryon")} active={sel==="virtual_tryon"} />
+
+            <Arrow x1={280} y1={710} x2={230} y2={710} color={C.accent} label="outfit cards" />
+
+            {/* User image feed into try-on */}
+            <CArrow x1={900} y1={155} x2={130} y2={680} cx={50} cy={400} color={C.data} label="full_body image" />
+
             {/* Follow-up loop */}
-            <CArrow x1={280} y1={695} x2={280} y2={380} cx={180} cy={540} color={C.accent} label="follow-up loop" />
+            <CArrow x1={130} y1={745} x2={280} y2={380} cx={160} cy={540} color={C.accent} label="follow-up loop" />
 
             {/* Divider */}
-            <line x1={30} y1={745} x2={1050} y2={745} stroke={C.layer2} strokeWidth={0.3} opacity={0.2} strokeDasharray="6,3" />
+            <line x1={30} y1={835} x2={1050} y2={835} stroke={C.layer2} strokeWidth={0.3} opacity={0.2} strokeDasharray="6,3" />
 
             {/* === LAYER 3: CATALOG === */}
-            <LayerBand y={750} h={220} label="LAYER 3 — CATALOG PIPELINE (async enrichment)" color={C.layer3} />
+            <LayerBand y={840} h={220} label="LAYER 3 — CATALOG PIPELINE (async enrichment)" color={C.layer3} />
 
             {/* Upload */}
-            <Node x={30} y={780} w={170} h={55} title="Catalog Upload" icon="▲" items={["CSV via /admin/catalog UI", "id, title, desc, price, images, url"]}
+            <Node x={30} y={870} w={170} h={55} title="Catalog Upload" icon="▲" items={["CSV via /admin/catalog UI", "id, title, desc, price, images, url"]}
               color={C.layer3} dim={C.layer3Dim} onClick={() => setSel("catalog_upload")} active={sel==="catalog_upload"} />
 
             {/* Enrichment */}
-            <Node x={240} y={775} w={230} h={75} title="Attribute Enrichment" icon="◈" items={["LLM vision + text analysis per garment", "→ 50+ attributes in 8 labeled sections", "→ Confidence scores per attribute", "→ row_status: ok | complete | error"]}
+            <Node x={240} y={865} w={230} h={75} title="Attribute Enrichment" icon="◈" items={["LLM vision + text analysis per garment", "→ 50+ attributes in 8 labeled sections", "→ Confidence scores per attribute", "→ row_status: ok | complete | error"]}
               color={C.layer3} dim={C.layer3Dim} onClick={() => setSel("enrichment")} active={sel==="enrichment"} />
 
-            <Arrow x1={200} y1={807} x2={240} y2={807} color={C.layer3} />
+            <Arrow x1={200} y1={897} x2={240} y2={897} color={C.layer3} />
 
             {/* Sentence Gen */}
-            <Node x={510} y={775} w={200} h={75} title="Document Generator" icon="≡" items={["Enriched rows → structured docs", "8 sections mirror embedding alignment", "Confidence gating (≥0.6)", "Metadata extracted for filtering"]}
+            <Node x={510} y={865} w={200} h={75} title="Document Generator" icon="≡" items={["Enriched rows → structured docs", "8 sections mirror embedding alignment", "Confidence gating (≥0.6)", "Metadata extracted for filtering"]}
               color={C.layer3} dim={C.layer3Dim} onClick={() => setSel("sentence_gen")} active={sel==="sentence_gen"} />
 
-            <Arrow x1={470} y1={807} x2={510} y2={807} color={C.layer3} label="enriched rows" />
+            <Arrow x1={470} y1={897} x2={510} y2={897} color={C.layer3} label="enriched rows" />
 
             {/* Batch Embed */}
-            <Node x={510} y={875} w={200} h={60} title="Batch Embedding" icon="⊕" items={["text-embedding-3-small (same model)", "1536 dims, dedup on product_id", "~$0.03 for 10K garments"]}
+            <Node x={510} y={965} w={200} h={60} title="Batch Embedding" icon="⊕" items={["text-embedding-3-small (same model)", "1536 dims, dedup on product_id", "~$0.03 for 10K garments"]}
               color={C.layer3} dim={C.layer3Dim} onClick={() => setSel("embedding_batch")} active={sel==="embedding_batch"} />
 
-            <Arrow x1={610} y1={850} x2={610} y2={875} color={C.layer3} label="documents" />
+            <Arrow x1={610} y1={940} x2={610} y2={965} color={C.layer3} label="documents" />
 
             {/* Catalog DB */}
-            <DataStore x={790} y={785} w={250} h={95} label="⬡ Catalog Database (pgvector)" color={C.layer3} dim={C.layer3Dim}
+            <DataStore x={790} y={875} w={250} h={95} label="⬡ Catalog Database (pgvector)" color={C.layer3} dim={C.layer3Dim}
               items={["catalog_enriched: 50+ attrs, product_id unique", "catalog_item_embeddings: VECTOR(1536)", "metadata_json: filterable fields", "HNSW index, cosine similarity"]} />
 
-            <Arrow x1={710} y1={905} x2={790} y2={860} color={C.layer3} label="vectors" />
-            <Arrow x1={710} y1={807} x2={790} y2={807} color={C.layer3} label="enriched data" />
+            <Arrow x1={710} y1={995} x2={790} y2={950} color={C.layer3} label="vectors" />
+            <Arrow x1={710} y1={897} x2={790} y2={897} color={C.layer3} label="enriched data" />
 
             {/* Compatibility callout */}
-            <rect x={510} y={940} width={200} height={22} rx={3} fill={C.warnDim} stroke={C.warn} strokeWidth={0.5} />
-            <text x={610} y={954} fontSize="7" fontWeight="600" fill={C.warn} fontFamily={F} textAnchor="middle">⚠ Same model + dims for catalog & query</text>
+            <rect x={510} y={1030} width={200} height={22} rx={3} fill={C.warnDim} stroke={C.warn} strokeWidth={0.5} />
+            <text x={610} y={1044} fontSize="7" fontWeight="600" fill={C.warn} fontFamily={F} textAnchor="middle">⚠ Same model + dims for catalog & query</text>
 
           </svg>
         </div>

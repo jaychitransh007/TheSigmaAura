@@ -160,8 +160,8 @@ def create_app() -> FastAPI:
                 "created_at": _now_iso(),
             }
 
-        def append_stage(stage: str, detail: str = "") -> None:
-            event = {"timestamp": _now_iso(), "stage": stage, "detail": detail}
+        def append_stage(stage: str, detail: str = "", message: str = "") -> None:
+            event = {"timestamp": _now_iso(), "stage": stage, "detail": detail, "message": message}
             with _TURN_JOB_LOCK:
                 job = _TURN_JOBS.get(job_id)
                 if job is None:

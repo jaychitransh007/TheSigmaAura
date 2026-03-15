@@ -73,6 +73,7 @@ class TurnStageEvent(BaseModel):
     timestamp: str
     stage: str
     detail: str = ""
+    message: str = ""
 
 
 class TurnJobStartResponse(BaseModel):

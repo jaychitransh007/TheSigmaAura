@@ -73,6 +73,27 @@ def get_web_ui_html(user_id: str = "") -> str:
     }
     .user { margin-left:auto; background:#ebf4f2; border-color:#b7d5ce; }
     .assistant { background:#fff8ef; border-color:#eadcc8; }
+    .agent {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 13px;
+      padding: 4px 0;
+      margin: 0 0 2px 0;
+      max-width: 100%;
+      animation: agentFadeIn 0.3s ease-out;
+    }
+    .agent .dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    .agent.done .dot { animation: none; opacity: 0.4; }
+    @keyframes agentFadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes pulse { 0%,100% { opacity:0.3; } 50% { opacity:1; } }
     .meta { font-size:12px; color:var(--muted); margin-bottom:8px; }
     .cards {
       margin-top: 8px;
@@ -137,8 +158,13 @@ def get_web_ui_html(user_id: str = "") -> str:
       overflow: auto;
       font-size: 12px;
     }
-    .stage-item { padding: 6px 4px; border-bottom: 1px dashed #e8e2da; }
+    .stage-item {
+      padding: 6px 4px;
+      border-bottom: 1px dashed #e8e2da;
+      animation: stageFadeIn 0.3s ease-out;
+    }
     .stage-item:last-child { border-bottom:none; }
+    @keyframes stageFadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
     .err { color:#9d1e1e; font-size:13px; margin-top:8px; white-space:pre-wrap; }
     @media (max-width: 900px) {
       .wrap { grid-template-columns: 1fr; }
@@ -195,6 +221,18 @@ def get_web_ui_html(user_id: str = "") -> str:
       const div = document.createElement("div");
       div.className = "bubble " + kind;
       div.textContent = text;
+      feed.appendChild(div);
+      feed.scrollTop = feed.scrollHeight;
+      return div;
+    }
+
+    function addAgentBubble(text) {
+      const div = document.createElement("div");
+      div.className = "bubble agent";
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      div.appendChild(dot);
+      div.appendChild(document.createTextNode(text));
       feed.appendChild(div);
       feed.scrollTop = feed.scrollHeight;
       return div;
@@ -294,7 +332,8 @@ def get_web_ui_html(user_id: str = "") -> str:
       for (const stage of stages || []) {
         const div = document.createElement("div");
         div.className = "stage-item";
-        div.textContent = `${stage.timestamp}  ${stage.stage}${stage.detail ? "  " + stage.detail : ""}`;
+        div.textContent = stage.message
+          || `${stage.stage}${stage.detail ? "  " + stage.detail : ""}`;
         stageBox.appendChild(div);
       }
       stageBox.scrollTop = stageBox.scrollHeight;
@@ -315,12 +354,25 @@ def get_web_ui_html(user_id: str = "") -> str:
     }
 
     async function pollJob(conversationId, jobId) {
+      let renderedCount = 0;
+      const agentBubbles = [];
       while (true) {
         const res = await fetch(`/v1/conversations/${conversationId}/turns/${jobId}/status`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Polling failed");
         renderStages(data.stages || []);
-        if (data.status === "completed") return data.result;
+        const stages = data.stages || [];
+        for (let i = renderedCount; i < stages.length; i++) {
+          const msg = stages[i].message;
+          if (msg) {
+            agentBubbles.push(addAgentBubble(msg));
+          }
+        }
+        renderedCount = stages.length;
+        if (data.status === "completed") {
+          for (const b of agentBubbles) b.classList.add("done");
+          return data.result;
+        }
         if (data.status === "failed") throw new Error(data.error || "Turn failed");
         await new Promise((resolve) => setTimeout(resolve, 800));
       }
@@ -339,6 +391,7 @@ def get_web_ui_html(user_id: str = "") -> str:
         return;
       }
       sendBtn.disabled = true;
+      messageEl.disabled = true;
       try {
         const conversationId = await ensureConversation();
         addBubble(message, "user");
@@ -357,6 +410,8 @@ def get_web_ui_html(user_id: str = "") -> str:
         err.textContent = e.message || String(e);
       } finally {
         sendBtn.disabled = false;
+        messageEl.disabled = false;
+        messageEl.focus();
       }
     }
 

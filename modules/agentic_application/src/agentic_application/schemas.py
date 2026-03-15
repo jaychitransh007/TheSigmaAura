@@ -67,6 +67,7 @@ class CombinedContext(BaseModel):
     hard_filters: Dict[str, str] = Field(default_factory=dict)
     previous_recommendations: Optional[List[Dict[str, Any]]] = None
     conversation_memory: Optional[ConversationMemory] = None
+    conversation_history: Optional[List[Dict[str, str]]] = None
 
 
 # --- Outfit Architect output ---
@@ -86,11 +87,21 @@ class DirectionSpec(BaseModel):
     queries: List[QuerySpec]
 
 
+class ResolvedContextBlock(BaseModel):
+    occasion_signal: Optional[str] = None
+    formality_hint: Optional[str] = None
+    time_hint: Optional[str] = None
+    specific_needs: List[str] = Field(default_factory=list)
+    is_followup: bool = False
+    followup_intent: Optional[str] = None
+
+
 class RecommendationPlan(BaseModel):
     plan_type: str  # complete_only | paired_only | mixed
     retrieval_count: int = 12
     directions: List[DirectionSpec]
     plan_source: str = "llm"
+    resolved_context: Optional[ResolvedContextBlock] = None
 
 
 # --- Retrieval output ---

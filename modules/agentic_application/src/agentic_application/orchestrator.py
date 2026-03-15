@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional
 
@@ -15,11 +16,12 @@ from .agents.response_formatter import ResponseFormatter
 from .context.conversation_memory import apply_conversation_memory, build_conversation_memory
 from .context.occasion_resolver import resolve_occasion
 from .context.user_context_builder import build_user_context, validate_minimum_profile
-from .filters import build_global_hard_filters, normalize_filter_value
+from .filters import build_global_hard_filters
 from .services.catalog_retrieval_gateway import ApplicationCatalogRetrievalGateway
 from .services.onboarding_gateway import ApplicationOnboardingGateway
 from .services.tryon_service import TryonService
-from .schemas import CombinedContext, OutfitCard
+from .qna_messages import generate_stage_message
+from .schemas import CombinedContext, LiveContext, OutfitCard
 
 _log = logging.getLogger(__name__)
 
@@ -98,11 +100,12 @@ class AgenticOrchestrator:
         conversation_id: str,
         external_user_id: str,
         message: str,
-        stage_callback: Optional[Callable[[str, str], None]] = None,
+        stage_callback: Optional[Callable[[str, str, str], None]] = None,
     ) -> Dict[str, Any]:
-        def emit(stage: str, detail: str = "") -> None:
+        def emit(stage: str, detail: str = "", ctx: dict | None = None) -> None:
             if stage_callback is not None:
-                stage_callback(stage, detail)
+                msg = generate_stage_message(stage, detail, ctx)
+                stage_callback(stage, detail, msg)
 
         # --- Validate request ---
         emit("validate_request", "started")
@@ -120,45 +123,99 @@ class AgenticOrchestrator:
             onboarding_gateway=self.onboarding_gateway,
         )
         validate_minimum_profile(user_context)
-        emit("user_context", "completed")
+        emit("user_context", "completed", ctx={"richness": user_context.profile_richness})
 
-        # --- 2. Occasion Resolver ---
+        # --- 2. Build context (occasion resolver is fallback only) ---
         emit("occasion_resolver", "started")
         previous_context = dict(conversation.get("session_context_json") or {})
         has_previous_recs = bool(previous_context.get("last_recommendations"))
-        live_context = resolve_occasion(message, has_previous_recommendations=has_previous_recs)
-        conversation_memory = build_conversation_memory(previous_context, live_context)
-        effective_live_context = apply_conversation_memory(live_context, conversation_memory)
-        emit("occasion_resolver", "completed")
 
-        # --- Build combined context ---
+        # Rule-based resolver provides fallback LiveContext + conversation memory
+        fallback_live_context = resolve_occasion(message, has_previous_recommendations=has_previous_recs)
+        conversation_memory = build_conversation_memory(previous_context, fallback_live_context)
+        fallback_live_context = apply_conversation_memory(fallback_live_context, conversation_memory)
+
+        # Build conversation history for the architect
+        conversation_history = self._build_conversation_history(previous_context, message)
+
+        emit("occasion_resolver", "completed", ctx={"user_need": message})
+
+        # --- Build combined context (gender-only hard filter) ---
         hard_filters = build_global_hard_filters(user_context)
-        # Add conditional hard filters from live context
-        if effective_live_context.occasion_signal:
-            occasion_val = normalize_filter_value(effective_live_context.occasion_signal)
-            if occasion_val:
-                hard_filters["occasion_fit"] = occasion_val
-        if effective_live_context.formality_hint:
-            formality_val = normalize_filter_value(effective_live_context.formality_hint)
-            if formality_val:
-                hard_filters["formality_level"] = formality_val
 
         previous_recs = previous_context.get("last_recommendations")
         combined_context = CombinedContext(
             user=user_context,
-            live=effective_live_context,
+            live=fallback_live_context,
             hard_filters=hard_filters,
             previous_recommendations=previous_recs if isinstance(previous_recs, list) else None,
             conversation_memory=conversation_memory,
+            conversation_history=conversation_history,
         )
 
         # Create turn record
         turn = self.repo.create_turn(conversation_id=conversation_id, user_message=message)
         turn_id = str(turn["id"])
 
-        # --- 3. Outfit Architect ---
+        # --- 3. Outfit Architect (now also resolves occasion/context) ---
         emit("outfit_architect", "started")
-        plan = self.outfit_architect.plan(combined_context)
+        t0 = time.monotonic()
+        try:
+            plan = self.outfit_architect.plan(combined_context)
+        except Exception as exc:
+            architect_ms = int((time.monotonic() - t0) * 1000)
+            _log.error("Outfit architect failed: %s", exc, exc_info=True)
+            self.repo.log_model_call(
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                service="agentic_application",
+                call_type="outfit_architect",
+                model="gpt-5.4",
+                request_json={
+                    "combined_context_summary": {
+                        "gender": user_context.gender,
+                        "message": message,
+                    }
+                },
+                response_json={},
+                reasoning_notes=[],
+                latency_ms=architect_ms,
+                status="error",
+                error_message=str(exc),
+            )
+            emit("outfit_architect", "error")
+            self.repo.finalize_turn(
+                turn_id=turn_id,
+                assistant_message="I'm having trouble processing your request right now. Please try again.",
+                resolved_context={"error": str(exc), "request_summary": message.strip()},
+            )
+            return {
+                "conversation_id": conversation_id,
+                "turn_id": turn_id,
+                "assistant_message": "I'm having trouble processing your request right now. Please try again.",
+                "resolved_context": {"request_summary": message.strip()},
+                "filters_applied": hard_filters,
+                "outfits": [],
+                "follow_up_suggestions": [],
+                "metadata": {"error": True},
+            }
+        architect_ms = int((time.monotonic() - t0) * 1000)
+
+        # Apply the architect's resolved context back to live context
+        resolved = plan.resolved_context
+        if resolved:
+            effective_live_context = LiveContext(
+                user_need=message.strip(),
+                occasion_signal=resolved.occasion_signal,
+                formality_hint=resolved.formality_hint,
+                time_hint=resolved.time_hint,
+                specific_needs=resolved.specific_needs,
+                is_followup=resolved.is_followup,
+                followup_intent=resolved.followup_intent,
+            )
+        else:
+            effective_live_context = fallback_live_context
+
         self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
@@ -175,12 +232,21 @@ class AgenticOrchestrator:
             },
             response_json=plan.model_dump(),
             reasoning_notes=[],
+            latency_ms=architect_ms,
         )
-        emit("outfit_architect", "completed")
+        emit("outfit_architect", "completed", ctx={
+            "plan_type": plan.plan_type,
+            "direction_count": len(plan.directions),
+        })
 
-        # --- 4. Catalog Search Agent ---
+        # Update combined context with effective live context from architect
+        combined_context = combined_context.model_copy(update={"live": effective_live_context})
+
+        # --- 4. Catalog Search Agent (single search, no relaxation) ---
         emit("catalog_search", "started")
-        retrieved_sets, relaxed_filter_keys = self._search_with_relaxation(plan, combined_context)
+        t0 = time.monotonic()
+        retrieved_sets = self.catalog_search_agent.search(plan, combined_context)
+        search_ms = int((time.monotonic() - t0) * 1000)
 
         for rs in retrieved_sets:
             self.repo.log_tool_trace(
@@ -195,19 +261,28 @@ class AgenticOrchestrator:
                 },
                 output_json={
                     "result_count": len(rs.products),
-                    "relaxed_filter_keys": relaxed_filter_keys,
                 },
+                latency_ms=search_ms,
             )
-        emit("catalog_search", "completed")
+        emit("catalog_search", "completed", ctx={
+            "product_count": sum(len(rs.products) for rs in retrieved_sets),
+            "set_count": len(retrieved_sets),
+        })
 
         # --- 5. Outfit Assembler ---
         emit("outfit_assembly", "started")
         candidates = self.outfit_assembler.assemble(retrieved_sets, plan, combined_context)
-        emit("outfit_assembly", "completed")
+        emit("outfit_assembly", "completed", ctx={"candidate_count": len(candidates)})
 
         # --- 6. Outfit Evaluator ---
-        emit("outfit_evaluation", "started")
+        emit("outfit_evaluation", "started", ctx={
+            "has_body_data": bool(user_context.height_cm or user_context.waist_cm),
+            "has_color_season": bool(user_context.derived_interpretations.get("seasonal_color_group")),
+            "has_style_pref": bool(user_context.style_preference),
+        })
+        t0 = time.monotonic()
         evaluated = self.outfit_evaluator.evaluate(candidates, combined_context, plan)
+        evaluator_ms = int((time.monotonic() - t0) * 1000)
         self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
@@ -217,13 +292,14 @@ class AgenticOrchestrator:
             request_json={"candidate_count": len(candidates)},
             response_json={"evaluation_count": len(evaluated)},
             reasoning_notes=[],
+            latency_ms=evaluator_ms,
         )
         emit("outfit_evaluation", "completed")
 
         # --- 7. Response Formatter ---
         emit("response_formatting", "started")
         response = self.response_formatter.format(evaluated, combined_context, plan, candidates)
-        emit("response_formatting", "completed")
+        emit("response_formatting", "completed", ctx={"outfit_count": min(len(evaluated), 3)})
 
         # --- 8. Virtual Try-On ---
         emit("virtual_tryon", "started")
@@ -239,7 +315,6 @@ class AgenticOrchestrator:
                 live_context=effective_live_context,
                 conversation_memory=conversation_memory.model_dump(),
                 plan=plan.model_dump(),
-                relaxed_filter_keys=relaxed_filter_keys,
                 retrieved_sets=retrieved_sets,
                 evaluated=evaluated,
                 candidates=candidates,
@@ -258,8 +333,9 @@ class AgenticOrchestrator:
                 "last_recommendations": rec_summary,
                 "last_occasion": effective_live_context.occasion_signal or "",
                 "last_live_context": effective_live_context.model_dump(),
-                "last_filters_relaxed": relaxed_filter_keys,
                 "last_response_metadata": response.metadata,
+                "last_assistant_message": response.message,
+                "last_user_message": message,
             },
         )
 
@@ -324,29 +400,23 @@ class AgenticOrchestrator:
                     outfit.tryon_image = data_url
 
     # ------------------------------------------------------------------
-    # Filter relaxation
+    # Conversation history
     # ------------------------------------------------------------------
 
-    def _search_with_relaxation(
-        self,
-        plan,
-        combined_context: CombinedContext,
-    ) -> tuple[List[Any], List[str]]:
-        """Relax occasion/formality filters in order when retrieval is empty."""
-        relaxation_steps = [
-            [],
-            ["occasion_fit"],
-            ["occasion_fit", "formality_level"],
-        ]
-        for relaxed_filter_keys in relaxation_steps:
-            results = self.catalog_search_agent.search(
-                plan,
-                combined_context,
-                relaxed_filter_keys=relaxed_filter_keys,
-            )
-            if sum(len(rs.products) for rs in results) > 0:
-                return results, relaxed_filter_keys
-        return [], relaxation_steps[-1]
+    @staticmethod
+    def _build_conversation_history(
+        previous_context: Dict[str, Any],
+        current_message: str,
+    ) -> List[Dict[str, str]]:
+        """Build conversation history from prior turns for the architect."""
+        history: List[Dict[str, str]] = []
+        prev_user = str(previous_context.get("last_user_message") or "").strip()
+        prev_assistant = str(previous_context.get("last_assistant_message") or "").strip()
+        if prev_user:
+            history.append({"role": "user", "content": prev_user})
+        if prev_assistant:
+            history.append({"role": "assistant", "content": prev_assistant})
+        return history
 
     @staticmethod
     def _flatten_applied_filters(retrieved_sets: List[Any]) -> Dict[str, str]:
@@ -363,7 +433,6 @@ class AgenticOrchestrator:
         live_context: Any,
         conversation_memory: Dict[str, Any],
         plan: Dict[str, Any],
-        relaxed_filter_keys: List[str],
         retrieved_sets: List[Any],
         evaluated: List[Any],
         candidates: List[Any],
@@ -399,7 +468,6 @@ class AgenticOrchestrator:
             "live_context": live_context.model_dump(),
             "conversation_memory": conversation_memory,
             "plan": plan,
-            "relaxed_filter_keys": relaxed_filter_keys,
             "retrieval": retrieval,
             "assembled_candidates": candidate_summaries,
             "recommendations": [
