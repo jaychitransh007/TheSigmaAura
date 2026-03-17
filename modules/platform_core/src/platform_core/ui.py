@@ -210,6 +210,39 @@ def get_web_ui_html(user_id: str = "") -> str:
     }
     .outfit-info .outfit-product a:hover { text-decoration: underline; }
     .outfit-info .outfit-chips { margin: 10px 0; }
+    .outfit-criteria { margin: 12px 0 4px; }
+    .criteria-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .criteria-label {
+      width: 110px;
+      flex-shrink: 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .criteria-track {
+      flex: 1;
+      height: 8px;
+      background: #e0e0e0;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .criteria-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    .criteria-pct {
+      width: 36px;
+      text-align: right;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink);
+    }
     .outfit-feedback {
       display: flex;
       gap: 8px;
@@ -451,65 +484,46 @@ def get_web_ui_html(user_id: str = "") -> str:
         info.appendChild(title);
       }
 
-      // Reasoning notes
-      const notes = [];
-      if (outfit.reasoning) notes.push(outfit.reasoning);
-      if (outfit.body_note) notes.push(outfit.body_note);
-      if (outfit.color_note) notes.push(outfit.color_note);
-      if (outfit.style_note) notes.push(outfit.style_note);
-      if (outfit.occasion_note) notes.push(outfit.occasion_note);
-      if (notes.length) {
-        const notesDiv = document.createElement("div");
-        notesDiv.className = "outfit-notes";
-        for (const n of notes) {
-          const p = document.createElement("p");
-          p.textContent = n;
-          notesDiv.appendChild(p);
-        }
-        info.appendChild(notesDiv);
-      }
-
-      // Per-product details
+      // Per-product title + price
       for (const item of items) {
         const prod = document.createElement("div");
         prod.className = "outfit-product";
         const pTitle = item.title || item.product_id || "Untitled";
-        const url = item.product_url || item.url || "";
-        let html = '<div style="font-weight:600; margin-bottom:4px;">' + escapeHtml(pTitle) + '</div>';
+        let html = '<div style="font-weight:600; margin-bottom:2px;">' + escapeHtml(pTitle) + '</div>';
         if (item.price) {
-          html += '<div style="margin-bottom:4px;">' + escapeHtml(item.price) + '</div>';
-        }
-        if (url) {
-          html += '<div><a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer">Open product</a></div>';
+          html += '<div style="margin-bottom:4px; color:#666;">' + escapeHtml(item.price) + '</div>';
         }
         prod.innerHTML = html;
         info.appendChild(prod);
       }
 
-      // Chips
-      const chipFields = [
-        "garment_category", "garment_subtype", "primary_color",
-        "formality_level", "occasion_fit", "pattern_type",
-        "volume_profile", "fit_type", "silhouette_type"
+      // 8 criteria percentage bars
+      const criteria = [
+        { key: "body_harmony_pct", label: "Body Harmony" },
+        { key: "color_suitability_pct", label: "Color Suitability" },
+        { key: "style_fit_pct", label: "Style Fit" },
+        { key: "risk_tolerance_pct", label: "Risk Tolerance" },
+        { key: "occasion_pct", label: "Occasion" },
+        { key: "comfort_boundary_pct", label: "Comfort" },
+        { key: "specific_needs_pct", label: "Specific Needs" },
+        { key: "pairing_coherence_pct", label: "Pairing" },
       ];
-      const chipValues = new Set();
-      for (const item of items) {
-        for (const f of chipFields) {
-          const v = item[f];
-          if (v && v !== "Unknown") chipValues.add(v);
-        }
+      const criteriaDiv = document.createElement("div");
+      criteriaDiv.className = "outfit-criteria";
+      for (const c of criteria) {
+        const pct = outfit[c.key] || 0;
+        const barColor = pct >= 80 ? "#2e7d32" : pct >= 60 ? "#f9a825" : "#c62828";
+        const row = document.createElement("div");
+        row.className = "criteria-row";
+        row.innerHTML =
+          '<span class="criteria-label">' + escapeHtml(c.label) + '</span>' +
+          '<div class="criteria-track">' +
+            '<div class="criteria-fill" style="width:' + pct + '%;background:' + barColor + ';"></div>' +
+          '</div>' +
+          '<span class="criteria-pct">' + pct + '%</span>';
+        criteriaDiv.appendChild(row);
       }
-      if (chipValues.size) {
-        const chipsDiv = document.createElement("div");
-        chipsDiv.className = "outfit-chips";
-        for (const v of chipValues) {
-          const chip = document.createElement("span");
-          chip.className = "chip";
-          chip.textContent = v;
-          chipsDiv.appendChild(chip);
-        }
-        info.appendChild(chipsDiv);
-      }
+      info.appendChild(criteriaDiv);
 
       // Feedback CTAs
       const fbWrap = document.createElement("div");

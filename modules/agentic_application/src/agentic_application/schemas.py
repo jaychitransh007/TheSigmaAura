@@ -148,6 +148,14 @@ class EvaluatedRecommendation(BaseModel):
     color_note: str = ""
     style_note: str = ""
     occasion_note: str = ""
+    body_harmony_pct: int = 0
+    color_suitability_pct: int = 0
+    style_fit_pct: int = 0
+    risk_tolerance_pct: int = 0
+    occasion_pct: int = 0
+    comfort_boundary_pct: int = 0
+    specific_needs_pct: int = 0
+    pairing_coherence_pct: int = 0
     item_ids: List[str] = Field(default_factory=list)
 
 
@@ -162,6 +170,14 @@ class OutfitCard(BaseModel):
     color_note: str = ""
     style_note: str = ""
     occasion_note: str = ""
+    body_harmony_pct: int = 0
+    color_suitability_pct: int = 0
+    style_fit_pct: int = 0
+    risk_tolerance_pct: int = 0
+    occasion_pct: int = 0
+    comfort_boundary_pct: int = 0
+    specific_needs_pct: int = 0
+    pairing_coherence_pct: int = 0
     items: List[Dict[str, Any]] = Field(default_factory=list)
     tryon_image: Optional[str] = None  # data URL of virtual try-on image
 
