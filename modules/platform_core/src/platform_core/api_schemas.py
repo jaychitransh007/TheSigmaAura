@@ -42,6 +42,12 @@ class OutfitItem(BaseModel):
     garment_subtype: str = ""
     primary_color: str = ""
     role: str = ""
+    formality_level: str = ""
+    occasion_fit: str = ""
+    pattern_type: str = ""
+    volume_profile: str = ""
+    fit_type: str = ""
+    silhouette_type: str = ""
 
 
 class OutfitCard(BaseModel):
@@ -52,7 +58,15 @@ class OutfitCard(BaseModel):
     color_note: str = ""
     style_note: str = ""
     occasion_note: str = ""
+    tryon_image: str = ""
     items: List[OutfitItem] = Field(default_factory=list)
+
+
+class FeedbackRequest(BaseModel):
+    outfit_rank: int
+    event_type: str = Field(pattern=r"^(like|dislike)$")
+    notes: str = ""
+    item_ids: List[str] = Field(default_factory=list)
 
 
 class TurnResponse(BaseModel):

@@ -4,17 +4,17 @@ from typing import Optional
 
 from fastapi import APIRouter
 
-from onboarding.analysis import UserAnalysisService
-from onboarding.api import create_onboarding_router
-from onboarding.repository import OnboardingRepository
-from onboarding.service import OnboardingService
-from onboarding.ui import get_onboarding_html, get_processing_html
+from user.analysis import UserAnalysisService
+from user.api import create_onboarding_router
+from user.repository import OnboardingRepository
+from user.service import OnboardingService
+from user.ui import get_onboarding_html, get_processing_html
 
 from platform_core.supabase_rest import SupabaseRestClient
 
 
-class ApplicationOnboardingGateway:
-    """App-facing wrapper around onboarding module dependencies."""
+class ApplicationUserGateway:
+    """App-facing wrapper around user module dependencies."""
 
     def __init__(self, client: SupabaseRestClient) -> None:
         self._repo = OnboardingRepository(client)
@@ -42,3 +42,7 @@ class ApplicationOnboardingGateway:
 
     def render_processing_html(self, *, user_id: str = "") -> str:
         return get_processing_html(user_id=user_id)
+
+
+# Backward compatibility alias
+ApplicationOnboardingGateway = ApplicationUserGateway

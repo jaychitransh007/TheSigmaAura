@@ -6,7 +6,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 for p in (
     ROOT,
-    ROOT / "modules" / "catalog_enrichment" / "src",
+    ROOT / "modules" / "catalog" / "src",
+    ROOT / "modules" / "platform_core" / "src",
+    ROOT / "modules" / "user_profiler" / "src",
     ROOT / "modules" / "style_engine" / "src",
 ):
     sp = str(p)
@@ -14,9 +16,9 @@ for p in (
         sys.path.insert(0, sp)
 
 
-from catalog_enrichment.batch_builder import _normalize_image_url, build_request_body
-from catalog_enrichment.config import PipelineConfig
-from catalog_enrichment.main import (
+from catalog.enrichment.batch_builder import _normalize_image_url, build_request_body
+from catalog.enrichment.config import PipelineConfig
+from catalog.enrichment.main import (
     _extract_batch_error_message,
     _is_billing_hard_limit_error,
     _is_enqueued_token_limit_error,

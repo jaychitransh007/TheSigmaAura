@@ -103,7 +103,7 @@ def get_catalog_admin_html() -> str:
     }
     .summary {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
       gap: 12px;
       margin-bottom: 16px;
     }
@@ -179,6 +179,42 @@ def get_catalog_admin_html() -> str:
       font-size: 12px;
       margin-top: 8px;
     }
+    .jobs-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .jobs-table th, .jobs-table td {
+      padding: 6px 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+    }
+    .jobs-table th {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-running { background: #dbeafe; color: #1e40af; }
+    .badge-completed { background: #d1fae5; color: #065f46; }
+    .badge-failed { background: #fee2e2; color: #991b1b; }
+    .badge-pending { background: #f3f4f6; color: #6b7280; }
+    .badge-type {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .error-cell {
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #991b1b;
+    }
     @media (max-width: 980px) {
       .layout { grid-template-columns: 1fr; }
       .summary { grid-template-columns: 1fr; }
@@ -202,6 +238,14 @@ def get_catalog_admin_html() -> str:
         <div class="field">
           <label>Max Rows</label>
           <input id="maxRows" type="number" min="0" value="5" />
+        </div>
+        <div class="field">
+          <label>Start Row</label>
+          <input id="startRow" type="number" min="0" value="0" />
+        </div>
+        <div class="field">
+          <label>End Row (0 = all)</label>
+          <input id="endRow" type="number" min="0" value="0" />
         </div>
         <div class="field">
           <label>Upload New CSV</label>
@@ -228,6 +272,14 @@ def get_catalog_admin_html() -> str:
           <div class="metric">
             <div class="label">Embedding Rows in Supabase</div>
             <div class="value" id="embeddingRows">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Running Jobs</div>
+            <div class="value" id="runningJobs">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Failed Jobs</div>
+            <div class="value" id="failedJobs">0</div>
           </div>
         </section>
 
@@ -268,6 +320,11 @@ def get_catalog_admin_html() -> str:
             </div>
           </div>
 
+          <div class="step">
+            <h2>Job History</h2>
+            <div id="jobsTable"></div>
+          </div>
+
           <div class="step uploads">
             <h2>Latest Uploads</h2>
             <div id="uploadsList"></div>
@@ -280,12 +337,17 @@ def get_catalog_admin_html() -> str:
   <script>
     const inputPathEl = document.getElementById("inputPath");
     const maxRowsEl = document.getElementById("maxRows");
+    const startRowEl = document.getElementById("startRow");
+    const endRowEl = document.getElementById("endRow");
     const fileInputEl = document.getElementById("fileInput");
     const statusBox = document.getElementById("statusBox");
     const sourceRowsEl = document.getElementById("sourceRows");
     const catalogItemsEl = document.getElementById("catalogItems");
     const embeddingRowsEl = document.getElementById("embeddingRows");
+    const runningJobsEl = document.getElementById("runningJobs");
+    const failedJobsEl = document.getElementById("failedJobs");
     const uploadsListEl = document.getElementById("uploadsList");
+    const jobsTableEl = document.getElementById("jobsTable");
 
     function setStatus(text) {
       statusBox.textContent = text;
@@ -312,6 +374,8 @@ def get_catalog_admin_html() -> str:
       return {
         input_csv_path: inputPathEl.value.trim(),
         max_rows: parseInt(maxRowsEl.value || "0", 10),
+        start_row: parseInt(startRowEl.value || "0", 10),
+        end_row: parseInt(endRowEl.value || "0", 10),
         include_incomplete: false
       };
     }
@@ -333,6 +397,32 @@ def get_catalog_admin_html() -> str:
       }
     }
 
+    function renderJobs(jobs) {
+      if (!jobs || !jobs.length) {
+        jobsTableEl.innerHTML = '<div style="color:var(--muted);font-size:13px;">No jobs recorded yet.</div>';
+        return;
+      }
+      let html = '<table class="jobs-table"><thead><tr>' +
+        '<th>Type</th><th>Status</th><th>Rows</th><th>Saved</th><th>Missing</th><th>Started</th><th>Error</th>' +
+        '</tr></thead><tbody>';
+      for (const j of jobs) {
+        const statusClass = 'badge-' + (j.status || 'pending');
+        const started = j.started_at ? new Date(j.started_at).toLocaleString() : '';
+        const err = j.error_message ? escapeHtml(j.error_message.slice(0, 80)) : '';
+        html += '<tr>' +
+          '<td><span class="badge badge-type">' + escapeHtml(j.job_type) + '</span></td>' +
+          '<td><span class="badge ' + statusClass + '">' + escapeHtml(j.status) + '</span></td>' +
+          '<td>' + (j.processed_rows != null ? j.processed_rows : '-') + '</td>' +
+          '<td>' + (j.saved_rows != null ? j.saved_rows : '-') + '</td>' +
+          '<td>' + (j.missing_url_rows != null ? j.missing_url_rows : '-') + '</td>' +
+          '<td class="mono">' + escapeHtml(started) + '</td>' +
+          '<td class="error-cell" title="' + escapeHtml(j.error_message || '') + '">' + err + '</td>' +
+          '</tr>';
+      }
+      html += '</tbody></table>';
+      jobsTableEl.innerHTML = html;
+    }
+
     function escapeHtml(value) {
       return String(value || "")
         .replaceAll("&", "&amp;")
@@ -349,6 +439,9 @@ def get_catalog_admin_html() -> str:
       sourceRowsEl.textContent = data.source.total_rows;
       catalogItemsEl.textContent = data.catalog_enriched_count;
       embeddingRowsEl.textContent = data.catalog_embeddings_count;
+      runningJobsEl.textContent = data.running_jobs || 0;
+      failedJobsEl.textContent = data.failed_jobs || 0;
+      renderJobs(data.recent_jobs || []);
       renderUploads(data.latest_uploads || []);
       setStatus(
         'Source: ' + data.source.input_csv_path + '\\n' +

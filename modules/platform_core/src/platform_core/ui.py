@@ -95,49 +95,6 @@ def get_web_ui_html(user_id: str = "") -> str:
     @keyframes agentFadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
     @keyframes pulse { 0%,100% { opacity:0.3; } 50% { opacity:1; } }
     .meta { font-size:12px; color:var(--muted); margin-bottom:8px; }
-    .cards {
-      margin-top: 8px;
-      display:grid;
-      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-      gap:10px;
-    }
-    .card {
-      background:#fff;
-      border:1px solid var(--line);
-      border-radius:12px;
-      overflow:hidden;
-    }
-    .card img { width:100%; height:220px; object-fit:cover; display:block; background:#efe9e0; }
-    .card .body { padding:10px; font-size:12px; }
-    .card .body a {
-      color: var(--accent);
-      text-decoration: none;
-      font-weight: 600;
-    }
-    .card .body a:hover { text-decoration: underline; }
-    .tryon-section {
-      margin-bottom: 12px;
-      border: 1px solid #d4c9b8;
-      border-radius: 12px;
-      overflow: hidden;
-      background: #fffcf6;
-    }
-    .tryon-section img {
-      width: 100%;
-      max-height: 400px;
-      object-fit: contain;
-      display: block;
-      background: #f5efe6;
-    }
-    .tryon-label {
-      padding: 6px 12px;
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--accent);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      background: #f0ebe3;
-    }
     .chip {
       display:inline-block;
       margin: 0 6px 6px 0;
@@ -166,9 +123,169 @@ def get_web_ui_html(user_id: str = "") -> str:
     .stage-item:last-child { border-bottom:none; }
     @keyframes stageFadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
     .err { color:#9d1e1e; font-size:13px; margin-top:8px; white-space:pre-wrap; }
+
+    /* --- Outfit card: 3-column PDP layout --- */
+    .outfit-card {
+      display: grid;
+      grid-template-columns: 80px 1fr 40%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      background: #fff;
+      margin-bottom: 14px;
+      min-height: 320px;
+      animation: agentFadeIn 0.3s ease-out;
+    }
+    .outfit-thumbs {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 10px 8px;
+      background: #faf7f2;
+      border-right: 1px solid var(--line);
+      align-items: center;
+      overflow-y: auto;
+    }
+    .outfit-thumbs img {
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      background: #efe9e0;
+      transition: border-color 0.15s;
+    }
+    .outfit-thumbs img:hover { border-color: var(--muted); }
+    .outfit-thumbs img.active { border-color: var(--accent); }
+    .outfit-main-img {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f5efe6;
+      overflow: hidden;
+    }
+    .outfit-main-img img {
+      max-width: 100%;
+      max-height: 480px;
+      object-fit: contain;
+      display: block;
+    }
+    .outfit-info {
+      padding: 16px;
+      overflow-y: auto;
+      font-size: 13px;
+      border-left: 1px solid var(--line);
+    }
+    .outfit-info .outfit-rank {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+    .outfit-info .outfit-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .outfit-info .outfit-notes {
+      margin-bottom: 12px;
+      line-height: 1.5;
+      color: var(--ink);
+    }
+    .outfit-info .outfit-notes p {
+      margin: 0 0 6px 0;
+    }
+    .outfit-info .outfit-product {
+      padding: 8px 0;
+      border-top: 1px solid #eee;
+    }
+    .outfit-info .outfit-product:first-of-type { border-top: none; }
+    .outfit-info .outfit-product a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .outfit-info .outfit-product a:hover { text-decoration: underline; }
+    .outfit-info .outfit-chips { margin: 10px 0; }
+    .outfit-feedback {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .outfit-feedback button {
+      font-size: 12px;
+      padding: 6px 14px;
+      border-radius: 8px;
+    }
+    .outfit-feedback .btn-like {
+      background: var(--accent);
+      color: #fff;
+    }
+    .outfit-feedback .btn-dislike {
+      background: #fff;
+      color: #9d1e1e;
+      border-color: #d4b8b8;
+    }
+    .outfit-feedback .btn-dislike:hover { background: #fdf0f0; }
+    .dislike-form {
+      display: none;
+      margin-top: 10px;
+    }
+    .dislike-form.open { display: block; }
+    .dislike-form textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 12px;
+      resize: vertical;
+      min-height: 50px;
+    }
+    .dislike-form .dislike-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .dislike-form button {
+      font-size: 11px;
+      padding: 5px 10px;
+    }
+    .feedback-status {
+      font-size: 11px;
+      margin-top: 6px;
+      min-height: 16px;
+    }
+    .feedback-status.success { color: var(--accent); }
+    .feedback-status.error { color: #9d1e1e; }
+
     @media (max-width: 900px) {
       .wrap { grid-template-columns: 1fr; }
       .chat { min-height: 70vh; }
+      .outfit-card {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+      }
+      .outfit-thumbs {
+        flex-direction: row;
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+        padding: 8px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        order: 2;
+      }
+      .outfit-main-img { order: 1; min-height: 260px; }
+      .outfit-info {
+        order: 3;
+        border-left: none;
+        border-top: 1px solid var(--line);
+      }
     }
   </style>
 </head>
@@ -246,6 +363,15 @@ def get_web_ui_html(user_id: str = "") -> str:
       feed.scrollTop = feed.scrollHeight;
     }
 
+    function escapeHtml(value) {
+      return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
     function firstImageUrl(item) {
       return (
         item.image_url ||
@@ -256,75 +382,249 @@ def get_web_ui_html(user_id: str = "") -> str:
       );
     }
 
-    function renderRecommendations(items) {
-      if (!items || !items.length) return;
-      const wrap = document.createElement("div");
-      wrap.className = "cards";
+    function buildOutfitCard(outfit, conversationId) {
+      const card = document.createElement("div");
+      card.className = "outfit-card";
+
+      // --- Col 1: Thumbnails ---
+      const thumbs = document.createElement("div");
+      thumbs.className = "outfit-thumbs";
+
+      const images = [];
+      const items = outfit.items || [];
       for (const item of items) {
-        const card = document.createElement("div");
-        card.className = "card";
-        const image = document.createElement("img");
-        image.src = firstImageUrl(item);
-        image.alt = item.title || "Catalog match";
-        image.loading = "lazy";
-        const body = document.createElement("div");
-        body.className = "body";
+        const src = firstImageUrl(item);
+        if (src) {
+          images.push({ src, label: item.title || item.garment_category || "Product" });
+        }
+      }
+      if (outfit.tryon_image) {
+        images.push({ src: outfit.tryon_image, label: "Virtual Try-On" });
+      }
+
+      // Default hero: try-on if present, otherwise first product image
+      const defaultIdx = outfit.tryon_image ? images.length - 1 : 0;
+
+      // --- Col 2: Hero image ---
+      const heroWrap = document.createElement("div");
+      heroWrap.className = "outfit-main-img";
+      const heroImg = document.createElement("img");
+      heroImg.alt = outfit.title || "Outfit";
+      heroImg.loading = "lazy";
+      if (images.length > 0) {
+        heroImg.src = images[defaultIdx].src;
+      }
+      heroWrap.appendChild(heroImg);
+
+      // Build thumbnail elements
+      images.forEach(function(img, idx) {
+        const thumb = document.createElement("img");
+        thumb.src = img.src;
+        thumb.alt = img.label;
+        thumb.loading = "lazy";
+        if (idx === defaultIdx) thumb.className = "active";
+        thumb.addEventListener("click", function() {
+          heroImg.src = img.src;
+          thumbs.querySelectorAll("img").forEach(function(t) { t.classList.remove("active"); });
+          thumb.classList.add("active");
+        });
+        thumbs.appendChild(thumb);
+      });
+
+      // --- Col 3: Info panel ---
+      const info = document.createElement("div");
+      info.className = "outfit-info";
+
+      // Rank
+      if (outfit.rank != null) {
+        const rank = document.createElement("div");
+        rank.className = "outfit-rank";
+        rank.textContent = "#" + outfit.rank + " Recommendation";
+        info.appendChild(rank);
+      }
+
+      // Title
+      if (outfit.title) {
+        const title = document.createElement("div");
+        title.className = "outfit-title";
+        title.textContent = outfit.title;
+        info.appendChild(title);
+      }
+
+      // Reasoning notes
+      const notes = [];
+      if (outfit.reasoning) notes.push(outfit.reasoning);
+      if (outfit.body_note) notes.push(outfit.body_note);
+      if (outfit.color_note) notes.push(outfit.color_note);
+      if (outfit.style_note) notes.push(outfit.style_note);
+      if (outfit.occasion_note) notes.push(outfit.occasion_note);
+      if (notes.length) {
+        const notesDiv = document.createElement("div");
+        notesDiv.className = "outfit-notes";
+        for (const n of notes) {
+          const p = document.createElement("p");
+          p.textContent = n;
+          notesDiv.appendChild(p);
+        }
+        info.appendChild(notesDiv);
+      }
+
+      // Per-product details
+      for (const item of items) {
+        const prod = document.createElement("div");
+        prod.className = "outfit-product";
+        const pTitle = item.title || item.product_id || "Untitled";
         const url = item.product_url || item.url || "";
-        const title = item.title || item.product_id || "Untitled";
-        body.innerHTML = `
-          <div style="font-weight:700; margin-bottom:6px;">${escapeHtml(title)}</div>
-          <div style="margin-bottom:8px;">Similarity ${Number(item.similarity || 0).toFixed(3)}</div>
-          <div class="chip">${escapeHtml(item.garment_category || "Unknown")}</div>
-          <div class="chip">${escapeHtml(item.garment_subtype || "Unknown")}</div>
-          <div class="chip">${escapeHtml(item.primary_color || "Unknown")}</div>
-          <div class="chip">${escapeHtml(item.price || "Unknown")}</div>
-          ${url ? `<div style="margin-top:8px;"><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Open product</a></div>` : ""}
-        `;
-        card.appendChild(image);
-        card.appendChild(body);
-        wrap.appendChild(card);
+        let html = '<div style="font-weight:600; margin-bottom:4px;">' + escapeHtml(pTitle) + '</div>';
+        if (item.price) {
+          html += '<div style="margin-bottom:4px;">' + escapeHtml(item.price) + '</div>';
+        }
+        if (url) {
+          html += '<div><a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer">Open product</a></div>';
+        }
+        prod.innerHTML = html;
+        info.appendChild(prod);
+      }
+
+      // Chips
+      const chipFields = [
+        "garment_category", "garment_subtype", "primary_color",
+        "formality_level", "occasion_fit", "pattern_type",
+        "volume_profile", "fit_type", "silhouette_type"
+      ];
+      const chipValues = new Set();
+      for (const item of items) {
+        for (const f of chipFields) {
+          const v = item[f];
+          if (v && v !== "Unknown") chipValues.add(v);
+        }
+      }
+      if (chipValues.size) {
+        const chipsDiv = document.createElement("div");
+        chipsDiv.className = "outfit-chips";
+        for (const v of chipValues) {
+          const chip = document.createElement("span");
+          chip.className = "chip";
+          chip.textContent = v;
+          chipsDiv.appendChild(chip);
+        }
+        info.appendChild(chipsDiv);
+      }
+
+      // Feedback CTAs
+      const fbWrap = document.createElement("div");
+      fbWrap.className = "outfit-feedback";
+      const likeBtn = document.createElement("button");
+      likeBtn.className = "btn-like";
+      likeBtn.textContent = "Like This";
+      const dislikeBtn = document.createElement("button");
+      dislikeBtn.className = "btn-dislike";
+      dislikeBtn.textContent = "Didn't Like This";
+      fbWrap.appendChild(likeBtn);
+      fbWrap.appendChild(dislikeBtn);
+      info.appendChild(fbWrap);
+
+      // Dislike form
+      const dislikeForm = document.createElement("div");
+      dislikeForm.className = "dislike-form";
+      const ta = document.createElement("textarea");
+      ta.placeholder = "What's missing or what would you prefer?";
+      dislikeForm.appendChild(ta);
+      const dislikeActions = document.createElement("div");
+      dislikeActions.className = "dislike-actions";
+      const submitBtn = document.createElement("button");
+      submitBtn.textContent = "Submit";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "secondary";
+      cancelBtn.textContent = "Cancel";
+      dislikeActions.appendChild(submitBtn);
+      dislikeActions.appendChild(cancelBtn);
+      dislikeForm.appendChild(dislikeActions);
+      info.appendChild(dislikeForm);
+
+      // Feedback status line
+      const fbStatus = document.createElement("div");
+      fbStatus.className = "feedback-status";
+      info.appendChild(fbStatus);
+
+      // Wire feedback handlers
+      const outfitRank = outfit.rank || 0;
+      const itemIds = items.map(function(i) { return i.product_id || ""; }).filter(Boolean);
+
+      likeBtn.addEventListener("click", function() {
+        sendFeedback(conversationId, outfitRank, "like", "", itemIds, fbStatus, fbWrap, dislikeForm);
+      });
+      dislikeBtn.addEventListener("click", function() {
+        dislikeForm.classList.add("open");
+      });
+      cancelBtn.addEventListener("click", function() {
+        dislikeForm.classList.remove("open");
+        ta.value = "";
+      });
+      submitBtn.addEventListener("click", function() {
+        const noteText = ta.value.trim();
+        sendFeedback(conversationId, outfitRank, "dislike", noteText, itemIds, fbStatus, fbWrap, dislikeForm);
+      });
+
+      card.appendChild(thumbs);
+      card.appendChild(heroWrap);
+      card.appendChild(info);
+      return card;
+    }
+
+    async function sendFeedback(conversationId, outfitRank, eventType, notes, itemIds, statusEl, fbWrap, dislikeForm) {
+      statusEl.textContent = "Sending...";
+      statusEl.className = "feedback-status";
+      try {
+        const res = await fetch("/v1/conversations/" + conversationId + "/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            outfit_rank: outfitRank,
+            event_type: eventType,
+            notes: notes,
+            item_ids: itemIds
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Feedback failed");
+        statusEl.textContent = eventType === "like" ? "Thanks for your feedback!" : "Feedback submitted. Thank you!";
+        statusEl.className = "feedback-status success";
+        fbWrap.style.display = "none";
+        dislikeForm.classList.remove("open");
+      } catch (e) {
+        statusEl.textContent = "Error: " + (e.message || String(e));
+        statusEl.className = "feedback-status error";
+      }
+    }
+
+    function renderQuickReplies(suggestions) {
+      if (!suggestions || !suggestions.length) return;
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px 0;";
+      for (const text of suggestions) {
+        const btn = document.createElement("button");
+        btn.className = "secondary";
+        btn.style.cssText = "font-size:13px;padding:6px 14px;border-radius:999px;";
+        btn.textContent = text;
+        btn.addEventListener("click", function() {
+          messageEl.value = text;
+          wrap.remove();
+          send();
+        });
+        wrap.appendChild(btn);
       }
       feed.appendChild(wrap);
       feed.scrollTop = feed.scrollHeight;
     }
 
-    function renderOutfits(outfits) {
+    function renderOutfits(outfits, conversationId) {
       if (!outfits || !outfits.length) return;
       for (const outfit of outfits) {
-        if (outfit.tryon_image) {
-          const tryonWrap = document.createElement("div");
-          tryonWrap.className = "tryon-section";
-          const label = document.createElement("div");
-          label.className = "tryon-label";
-          label.textContent = `#${outfit.rank || ""} Virtual Try-On — ${outfit.title || ""}`;
-          const tryonImg = document.createElement("img");
-          tryonImg.src = outfit.tryon_image;
-          tryonImg.alt = "Virtual try-on: " + (outfit.title || "");
-          tryonImg.loading = "lazy";
-          tryonWrap.appendChild(label);
-          tryonWrap.appendChild(tryonImg);
-          feed.appendChild(tryonWrap);
-        }
-        const meta = document.createElement("div");
-        meta.className = "meta";
-        const bits = [];
-        if (outfit.rank != null) bits.push(`#${outfit.rank}`);
-        if (outfit.title) bits.push(outfit.title);
-        if (outfit.reasoning) bits.push(outfit.reasoning);
-        meta.textContent = bits.join("  ");
-        feed.appendChild(meta);
-        renderRecommendations(outfit.items || []);
+        const card = buildOutfitCard(outfit, conversationId);
+        feed.appendChild(card);
       }
       feed.scrollTop = feed.scrollHeight;
-    }
-
-    function escapeHtml(value) {
-      return String(value || "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
     }
 
     function renderStages(stages) {
@@ -333,7 +633,7 @@ def get_web_ui_html(user_id: str = "") -> str:
         const div = document.createElement("div");
         div.className = "stage-item";
         div.textContent = stage.message
-          || `${stage.stage}${stage.detail ? "  " + stage.detail : ""}`;
+          || (stage.stage + (stage.detail ? "  " + stage.detail : ""));
         stageBox.appendChild(div);
       }
       stageBox.scrollTop = stageBox.scrollHeight;
@@ -357,7 +657,7 @@ def get_web_ui_html(user_id: str = "") -> str:
       let renderedCount = 0;
       const agentBubbles = [];
       while (true) {
-        const res = await fetch(`/v1/conversations/${conversationId}/turns/${jobId}/status`);
+        const res = await fetch("/v1/conversations/" + conversationId + "/turns/" + jobId + "/status");
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Polling failed");
         renderStages(data.stages || []);
@@ -374,7 +674,7 @@ def get_web_ui_html(user_id: str = "") -> str:
           return data.result;
         }
         if (data.status === "failed") throw new Error(data.error || "Turn failed");
-        await new Promise((resolve) => setTimeout(resolve, 800));
+        await new Promise(function(resolve) { setTimeout(resolve, 800); });
       }
     }
 
@@ -396,16 +696,21 @@ def get_web_ui_html(user_id: str = "") -> str:
         const conversationId = await ensureConversation();
         addBubble(message, "user");
         messageEl.value = "";
-        const res = await fetch(`/v1/conversations/${conversationId}/turns/start`, {
+        const res = await fetch("/v1/conversations/" + conversationId + "/turns/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: userId, message }),
+          body: JSON.stringify({ user_id: userId, message: message }),
         });
         const job = await res.json();
         if (!res.ok) throw new Error(job.detail || "Failed to start turn");
         const result = await pollJob(conversationId, job.job_id);
         addBubble(result.assistant_message || "", "assistant");
-        renderOutfits(result.outfits || []);
+        if (result.response_type === "clarification") {
+          renderQuickReplies(result.follow_up_suggestions || []);
+        } else {
+          renderOutfits(result.outfits || [], conversationId);
+          renderQuickReplies(result.follow_up_suggestions || []);
+        }
       } catch (e) {
         err.textContent = e.message || String(e);
       } finally {
@@ -416,15 +721,15 @@ def get_web_ui_html(user_id: str = "") -> str:
     }
 
     document.getElementById("sendBtn").addEventListener("click", send);
-    document.getElementById("newConversationBtn").addEventListener("click", () => {
+    document.getElementById("newConversationBtn").addEventListener("click", function() {
       convIdEl.value = "";
       stageBox.innerHTML = "";
       addMeta("started a new conversation session");
     });
-    logoutBtn.addEventListener("click", () => {
+    logoutBtn.addEventListener("click", function() {
       window.location.href = "/";
     });
-    messageEl.addEventListener("keydown", (event) => {
+    messageEl.addEventListener("keydown", function(event) {
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
         send();
       }

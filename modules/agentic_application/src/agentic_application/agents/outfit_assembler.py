@@ -13,6 +13,113 @@ from ..schemas import (
 from ..product_links import resolve_product_url
 
 
+def _dedupe_lower(values: list) -> list[str]:
+    """Return unique lowercase non-empty strings preserving order."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for v in values:
+        s = str(v or "").strip().lower()
+        if s and s not in seen:
+            seen.add(s)
+            result.append(s)
+    return result
+
+
+def _followup_pair_adjustment(
+    top: RetrievedProduct,
+    bottom: RetrievedProduct,
+    combined_context: CombinedContext,
+) -> tuple[float, list[str]]:
+    """Return (score_adjustment, notes) based on follow-up intent."""
+    intent = (combined_context.live.followup_intent or "").strip()
+    if not intent:
+        return 0.0, []
+
+    previous = (combined_context.previous_recommendations or [None])[0]
+    if not previous or not isinstance(previous, dict):
+        return 0.0, []
+
+    prev_colors = _dedupe_lower(previous.get("primary_colors") or [])
+    prev_occasions = _dedupe_lower(previous.get("occasion_fits") or [])
+
+    pair_colors = _dedupe_lower([
+        _get_attr(top, "primary_color") or _get_attr(top, "PrimaryColor"),
+        _get_attr(bottom, "primary_color") or _get_attr(bottom, "PrimaryColor"),
+    ])
+    pair_occasions = _dedupe_lower([
+        _get_attr(top, "occasion_fit") or _get_attr(top, "OccasionFit"),
+        _get_attr(bottom, "occasion_fit") or _get_attr(bottom, "OccasionFit"),
+    ])
+
+    adj = 0.0
+    notes: list[str] = []
+
+    if intent == "change_color":
+        overlapping = [c for c in pair_colors if c in prev_colors]
+        if overlapping:
+            penalty = 0.10 * len(overlapping)
+            adj += penalty
+            notes.append(f"followup penalty +{penalty:.2f}: color overlap {overlapping} with previous")
+    elif intent == "similar_to_previous":
+        matching_occasions = [o for o in pair_occasions if o in prev_occasions]
+        if matching_occasions:
+            adj -= 0.05
+            notes.append("followup boost -0.05: occasion matches previous")
+        matching_colors = [c for c in pair_colors if c in prev_colors]
+        if matching_colors:
+            boost = 0.03 * len(matching_colors)
+            adj -= boost
+            notes.append(f"followup boost -{boost:.2f}: {len(matching_colors)} shared color(s) with previous")
+
+    return adj, notes
+
+
+def _followup_complete_adjustment(
+    product: RetrievedProduct,
+    combined_context: CombinedContext,
+) -> tuple[float, list[str]]:
+    """Return (score_adjustment, notes) for a complete item based on follow-up intent."""
+    intent = (combined_context.live.followup_intent or "").strip()
+    if not intent:
+        return 0.0, []
+
+    previous = (combined_context.previous_recommendations or [None])[0]
+    if not previous or not isinstance(previous, dict):
+        return 0.0, []
+
+    prev_colors = _dedupe_lower(previous.get("primary_colors") or [])
+    prev_occasions = _dedupe_lower(previous.get("occasion_fits") or [])
+
+    item_colors = _dedupe_lower([
+        _get_attr(product, "primary_color") or _get_attr(product, "PrimaryColor"),
+    ])
+    item_occasions = _dedupe_lower([
+        _get_attr(product, "occasion_fit") or _get_attr(product, "OccasionFit"),
+    ])
+
+    adj = 0.0
+    notes: list[str] = []
+
+    if intent == "change_color":
+        overlapping = [c for c in item_colors if c in prev_colors]
+        if overlapping:
+            penalty = 0.10 * len(overlapping)
+            adj += penalty
+            notes.append(f"followup penalty +{penalty:.2f}: color overlap {overlapping} with previous")
+    elif intent == "similar_to_previous":
+        matching_occasions = [o for o in item_occasions if o in prev_occasions]
+        if matching_occasions:
+            adj -= 0.05
+            notes.append("followup boost -0.05: occasion matches previous")
+        matching_colors = [c for c in item_colors if c in prev_colors]
+        if matching_colors:
+            boost = 0.03 * len(matching_colors)
+            adj -= boost
+            notes.append(f"followup boost -{boost:.2f}: {len(matching_colors)} shared color(s) with previous")
+
+    return adj, notes
+
+
 # Formality compatibility: levels that can pair together.
 _FORMALITY_COMPAT: Dict[str, set] = {
     "casual": {"casual", "smart_casual"},
@@ -106,17 +213,17 @@ class OutfitAssembler:
             direction_sets = sets_by_direction.get(direction.direction_id, [])
             if direction.direction_type == "complete":
                 candidates.extend(
-                    self._assemble_complete(direction.direction_id, direction_sets)
+                    self._assemble_complete(direction.direction_id, direction_sets, combined_context)
                 )
             elif direction.direction_type == "paired":
                 candidates.extend(
-                    self._assemble_paired(direction.direction_id, direction_sets)
+                    self._assemble_paired(direction.direction_id, direction_sets, combined_context)
                 )
 
         return candidates
 
     def _assemble_complete(
-        self, direction_id: str, sets: List[RetrievedSet]
+        self, direction_id: str, sets: List[RetrievedSet], combined_context: CombinedContext | None = None,
     ) -> List[OutfitCandidate]:
         """Each complete product becomes one candidate."""
         candidates: List[OutfitCandidate] = []
@@ -124,20 +231,26 @@ class OutfitAssembler:
             if rs.role != "complete":
                 continue
             for product in rs.products:
+                score = product.similarity
+                notes: List[str] = []
+                if combined_context is not None:
+                    adj, adj_notes = _followup_complete_adjustment(product, combined_context)
+                    score = max(score - adj, 0.01)
+                    notes.extend(adj_notes)
                 candidates.append(
                     OutfitCandidate(
                         candidate_id=str(uuid4())[:8],
                         direction_id=direction_id,
                         candidate_type="complete",
                         items=[self._product_to_item(product)],
-                        assembly_score=product.similarity,
-                        assembly_notes=[],
+                        assembly_score=score,
+                        assembly_notes=notes,
                     )
                 )
         return candidates
 
     def _assemble_paired(
-        self, direction_id: str, sets: List[RetrievedSet]
+        self, direction_id: str, sets: List[RetrievedSet], combined_context: CombinedContext | None = None,
     ) -> List[OutfitCandidate]:
         """Combine top + bottom products with compatibility pruning."""
         tops: List[RetrievedProduct] = []
@@ -158,7 +271,7 @@ class OutfitAssembler:
         scored_pairs: List[Tuple[float, List[str], RetrievedProduct, RetrievedProduct]] = []
         for top in tops:
             for bottom in bottoms:
-                score, notes = self._evaluate_pair(top, bottom)
+                score, notes = self._evaluate_pair(top, bottom, combined_context)
                 if score > 0:
                     scored_pairs.append((score, notes, top, bottom))
 
@@ -184,7 +297,8 @@ class OutfitAssembler:
         return candidates
 
     def _evaluate_pair(
-        self, top: RetrievedProduct, bottom: RetrievedProduct
+        self, top: RetrievedProduct, bottom: RetrievedProduct,
+        combined_context: CombinedContext | None = None,
     ) -> Tuple[float, List[str]]:
         """Score a top+bottom pair. Returns (score, notes). Score 0 means rejected."""
         base_score = (top.similarity + bottom.similarity) / 2.0
@@ -233,6 +347,36 @@ class OutfitAssembler:
         ok, note = _volume_compatible(top_vol, bot_vol)
         if not ok:
             return 0.0, [note]
+
+        # Fit coherence — relaxed bottom with structured/regular top is a mismatch
+        # for anything at or above smart-casual formality.
+        top_fit = _get_attr(top, "fit_type") or _get_attr(top, "FitType")
+        bot_fit = _get_attr(bottom, "fit_type") or _get_attr(bottom, "FitType")
+        if top_fit and bot_fit:
+            structured_top = top_fit in ("regular", "tailored", "slim")
+            relaxed_bottom = bot_fit == "relaxed"
+            if structured_top and relaxed_bottom:
+                semi_formal_or_above = top_form in (
+                    "smart_casual", "business_casual", "semi_formal", "formal", "ultra_formal",
+                )
+                if semi_formal_or_above:
+                    penalty += 0.12
+                    notes.append(f"fit mismatch: {top_fit} top with {bot_fit} bottom at {top_form}")
+
+        # Texture compatibility — mismatched textures weaken outfit cohesion.
+        top_tex = _get_attr(top, "fabric_texture") or _get_attr(top, "FabricTexture")
+        bot_tex = _get_attr(bottom, "fabric_texture") or _get_attr(bottom, "FabricTexture")
+        if top_tex and bot_tex and top_tex != bot_tex:
+            clash = {top_tex, bot_tex}
+            if "textured" in clash and clash & {"smooth", "matte"}:
+                penalty += 0.08
+                notes.append(f"texture clash: {top_tex} top with {bot_tex} bottom")
+
+        # Follow-up intent scoring adjustments
+        if combined_context is not None:
+            fu_adj, fu_notes = _followup_pair_adjustment(top, bottom, combined_context)
+            penalty += fu_adj
+            notes.extend(fu_notes)
 
         return max(base_score - penalty, 0.01), notes
 

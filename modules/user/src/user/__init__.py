@@ -1,6 +1,7 @@
 from .api import create_onboarding_router
 from .repository import OnboardingRepository
-from .service import OnboardingService, UserAnalysisService
+from .service import OnboardingService
+from .analysis import UserAnalysisService
 
 __all__ = [
     "create_onboarding_router",

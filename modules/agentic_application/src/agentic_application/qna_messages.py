@@ -14,8 +14,11 @@ _TEMPLATES: Dict[str, str] = {
     "validate_request_started": "Checking your request...",
     "user_context_started": "Loading your style profile...",
     "user_context_completed": "Profile loaded — {richness} detail available.",
-    "occasion_resolver_started": "Reviewing conversation context...",
-    "occasion_resolver_completed": "Understanding your request...",
+    "context_builder_started": "Reviewing conversation context...",
+    "context_builder_completed": "Context loaded.",
+    "context_gate_started": "Understanding your style needs...",
+    "context_gate_sufficient": "Got enough context — proceeding with recommendations.",
+    "context_gate_insufficient": "Need a bit more information to find the best options for you.",
     "outfit_architect_started": "Planning outfit directions...",
     "outfit_architect_completed": "",  # dynamic
     "catalog_search_started": "Searching the catalog...",

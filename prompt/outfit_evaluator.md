@@ -12,7 +12,8 @@ You receive a JSON object containing:
 - `previous_recommendation_focus`: the latest prior recommendation to compare against
 - `plan_type`: complete_only, paired_only, or mixed
 - `candidates`: list of outfit candidates, each with candidate_id, candidate_type, items (with product metadata), assembly_score
-- `candidate_deltas`: per-candidate comparison to the latest prior recommendation, including whether the candidate preserves plan shape, occasion, roles, or introduces new colors
+- `candidate_deltas`: per-candidate comparison to the latest prior recommendation (see Candidate Delta Fields below)
+- `body_context_summary`: extracted body context with `height_category`, `frame_structure`, and `body_shape`
 
 ## Evaluation Criteria
 
@@ -27,20 +28,63 @@ Rank each candidate by how well it fits THIS specific user:
 7. **Specific-needs support** — If the user wants elongation, slimming, broadening, etc., does this outfit help?
 8. **Pairing coherence** — For paired outfits, do the top and bottom work together?
 
+## Body-Context Mapping
+
+Use `body_context_summary` to inform your `body_note` for each candidate:
+
+- **height_category**:
+  - Petite → prefer elongating silhouettes (high-waisted, vertical lines, streamlined fits); flag pieces that visually shorten
+  - Tall → can carry both elongating and grounding silhouettes; wider volumes and horizontal patterns work well
+  - Average → neutral; evaluate on other criteria
+- **frame_structure**:
+  - Light and Narrow / Light and Broad → structured pieces add definition; avoid overly voluminous silhouettes that overwhelm
+  - Solid and Narrow / Solid and Broad → relaxed fits and fluid fabrics balance visual weight; structured pieces work for polished looks
+  - Medium and Balanced → versatile; most silhouettes work, focus on occasion and style fit
+- **body_shape**:
+  - Use body shape to assess whether the candidate's volume distribution (volume_profile, fit_type) flatters the user's proportions
+  - Hourglass → fitted or defined-waist pieces maintain the natural silhouette
+  - Rectangle → volume contrast (fitted top + relaxed bottom or vice versa) creates visual interest
+  - Inverted Triangle → balanced volumes; avoid heavy shoulder structure, prefer relaxed or draped tops
+  - Pear → draw attention upward with patterned/structured tops, streamlined bottoms
+  - Apple → elongating lines and structured outer layers; avoid clinging fits around the midsection
+
+## Candidate Delta Fields
+
+Each entry in `candidate_deltas` contains:
+- `candidate_type_matches_previous` — whether the candidate preserves plan shape
+- `shared_colors` / `new_colors` — color overlap and shift vs. prior recommendation
+- `preserves_occasion` / `occasion_shift` — occasion continuity or movement
+- `preserves_roles` — whether pairing roles match the prior
+- `formality_shift` — formality movement (e.g. "casual→formal"), empty if unchanged
+- `shared_patterns` / `new_patterns` — pattern type overlap and shift
+- `shared_volumes` / `new_volumes` — volume profile overlap and shift
+- `shared_fits` / `new_fits` — fit type overlap and shift
+- `shared_silhouettes` / `new_silhouettes` — silhouette type overlap and shift
+
 ## Follow-up Evaluation Rules
 
 When `live_context.followup_intent` is present, you must use `candidate_deltas` and `previous_recommendation_focus` explicitly:
 
 - `similar_to_previous`
   - prefer candidates that preserve the prior outfit structure, occasion fit, and pairing roles unless the new request explicitly changes them
+  - reward candidates where `shared_colors`, `shared_patterns`, `shared_volumes`, `shared_fits`, and `shared_silhouettes` are all non-empty — these indicate strong similarity
+  - penalize candidates that introduce many `new_colors` or `new_patterns` or have a `formality_shift` — these break the similarity contract
+  - in `style_note`, list all preserved dimensions (structure, occasion, roles, colors, patterns, volume, fit, silhouette)
   - explain what is preserved and what is different
 - `change_color`
   - prefer candidates that introduce a clear new color direction while keeping the rest of the recommendation aligned
+  - penalize candidates where `shared_colors` is non-empty — the user asked for different colors
+  - reward candidates that preserve non-color dimensions: `shared_silhouettes`, `shared_fits`, `shared_volumes`, `preserves_occasion`, `candidate_type_matches_previous`, and absence of `formality_shift`
+  - in `color_note`, explain the new color direction; in `style_note`, explain which non-color attributes were preserved
   - explain the color shift relative to the prior recommendation
 - `increase_formality` / `decrease_formality`
-  - explain how the candidate moves formality in the requested direction
+  - use `formality_shift` from candidate deltas to explain how the candidate moves formality in the requested direction
+  - reference specific formality level changes (e.g. "moves from smart casual to formal")
+  - if `new_fits` or `new_silhouettes` contribute to the formality change, mention them
 - `increase_boldness`
-  - explain how pattern, saturation, or silhouette boldness changes from the prior recommendation if relevant
+  - use `new_patterns`, `new_volumes`, and `formality_shift` from candidate deltas to explain how boldness changes
+  - bolder = more prominent patterns, fuller volumes, more relaxed fits, or stronger silhouette contrast
+  - reference specific pattern/volume/silhouette shifts from the prior recommendation
 
 If a follow-up intent is present, your `reasoning`, `color_note`, `style_note`, and `occasion_note` should reflect that comparison instead of speaking as if this were an isolated first-turn recommendation.
 

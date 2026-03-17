@@ -1,6 +1,6 @@
 # Application Layer — Implementation Specification
 
-Last updated: March 16, 2026
+Last updated: March 17, 2026
 
 ## Current Implementation Status
 
@@ -19,20 +19,26 @@ Implemented now:
 - no filter relaxation — single search pass per query, no retry with dropped filters
 - embedding retrieval from `catalog_item_embeddings` with hydration from `catalog_enriched`
 - direction-aware retrieval: `needs_bottomwear` for tops, `needs_topwear` for bottoms, `complete` for complete outfits
-- deterministic assembly and LLM evaluation with graceful evaluator fallback
+- deterministic assembly and LLM evaluation with graceful evaluator fallback and server-side output validation (match_score clamping 0.0–1.0, item_id verification against candidate products, note field backfill)
 - architect failure returns error to user (no silent degradation)
 - latency tracking via `time.monotonic()` on architect, search, and evaluator (persisted as `latency_ms`)
 - persisted turn artifacts: live context, memory, plan, applied filters, retrieved IDs, assembled candidates, final recommendations
-- response formatting for `outfits` (max 3 outfits)
-- virtual try-on via Gemini (`gemini-3.1-flash-image-preview`) with parallel image generation, inline UI rendering
+- response formatting for `outfits` (max 3 outfits) with 16-field item cards including 6 enrichment attributes
+- virtual try-on via Gemini (`gemini-3.1-flash-image-preview`) with parallel image generation, rendered as default hero in outfit PDP cards
+- 3-column PDP outfit cards in chat UI: thumbnail rail, hero image viewer, info panel with attribute chips and feedback CTAs
+- per-outfit feedback capture (Like / Didn't Like with optional notes) via `POST /v1/conversations/{id}/feedback`
+- feedback persistence: one `feedback_events` row per garment, correlated via `turn_id` + `outfit_rank` (recommendation_run_id nullable)
+- `response.metadata` includes `turn_id` for feedback correlation
 - canonical product URL persistence during catalog ingestion, with runtime product links resolved from persisted canonical URLs
 - catalog admin and ops support URL backfill for older `catalog_enriched` rows that still lack canonical product URLs
+- context gate between context builder and outfit architect — rule-based signal scoring (<1ms) short-circuits vague requests with a clarifying question instead of running the full pipeline
+- context gate persists accumulated signals via conversation memory so follow-up answers carry forward
+- context gate bypass rules: explicit "surprise me" / "just show me" phrases, follow-up turns, and max 2 consecutive blocks safety cap
+- `response_type` field on response payload: `"recommendation"` | `"clarification"`
+- quick-reply suggestion chips rendered in UI for clarification responses
+- occasion resolver now runs before the context gate (not just for memory bridging) so structured signals are available for gate scoring
 
-Still incomplete:
-- evaluator still needs stronger prompt/server-side validation beyond the current persisted-memory and delta payloads
-- follow-up refinement for `change_color` and `similar_to_previous` now uses persisted recommendation attributes, with remaining work focused on deeper rule expansion rather than missing execution
-- application boundaries are cleaner now, but `onboarding` and `catalog_retrieval` are still mediated through gateway modules rather than fully consolidated domain ownership
-- evaluator fallback behavior is not yet perfectly aligned with the documented degradation contract
+All features implemented and smoke-tested.
 
 ## Overview
 
@@ -107,9 +113,15 @@ Orchestrator (agentic_application/orchestrator.py)
     |
     +--> 1. User Context Builder ----> Onboarding Gateway ----> onboarding_profiles, user_derived_interpretations, user_style_preference
     |
-    +--> 2. Occasion Resolver (rule-based, no LLM)
+    +--> 2. Context Builder (occasion resolver + conversation memory)
+    |         +--> rule-based signal extraction via occasion_resolver
+    |         +--> conversation memory build from session_context_json
     |
-    +--> 3. Conversation Memory (build + apply from session_context_json)
+    +--> 3. Context Gate (rule-based, <1ms)
+    |         +--> signal scoring: occasion (2.0), formality (1.0), category (1.0), season (0.5), style (0.5), follow-up bonus (1.0)
+    |         +--> threshold: 3.0 points
+    |         +--> insufficient: short-circuit with clarifying question + quick-reply chips
+    |         +--> bypass: "surprise me", follow-up turns, max 2 consecutive blocks
     |
     v
 4. Outfit Architect (gpt-5.4, JSON schema)
@@ -270,6 +282,71 @@ After each turn, the orchestrator writes:
 - `last_occasion` — resolved occasion signal
 - `last_live_context` — full live context snapshot
 - `last_response_metadata` — response metadata dict
+- `consecutive_gate_blocks` — number of consecutive turns blocked by context gate (reset to 0 on successful pipeline run)
+
+## 4.5. Context Gate
+
+### Purpose
+
+Fast rule-based check (<1ms) that determines whether the conversation has enough styling context to produce meaningful recommendations. Runs between context building (stage 2) and the outfit architect (stage 4). If context is insufficient, short-circuits the pipeline with a single clarifying question and quick-reply chips.
+
+### Module
+
+`agentic_application/context_gate.py`
+
+### Signal Scoring
+
+| Signal | Points | Source |
+|---|---|---|
+| Occasion identified | 2.0 | `live_context.occasion_signal`, `conversation_memory.occasion_signal`, or keyword match in message + conversation history |
+| Formality level set | 1.0 | `live_context.formality_hint`, `conversation_memory.formality_hint`, or keyword match |
+| Specific need/category stated | 1.0 | `live_context.specific_needs`, `conversation_memory.specific_needs`, or category keyword in message |
+| Time/season context | 0.5 | `live_context.time_hint`, `conversation_memory.time_hint`, or season keyword |
+| Style preference expressed | 0.5 | style keyword in message, or `conversation_memory.specific_needs` |
+| Follow-up turn bonus | 1.0 | `conversation_memory` has occasion_signal, formality_hint, or followup_count > 0 |
+
+**Threshold: 3.0 points.**
+
+Text scanning covers the current user message plus all prior user messages from `conversation_history`, ensuring accumulated context from prior turns is visible to the gate.
+
+### Bypass Rules (Gate Always Passes)
+
+- User explicitly says "just show me" / "surprise me" / "anything works" / "you pick" / etc.
+- Turn is a follow-up refinement (`live_context.is_followup == True`)
+- Max consecutive blocks reached (2) — force-passes to avoid frustrating the user
+- Score ≥ 3.0
+
+### Question Selection
+
+Picks the **single highest-value missing signal** (never stacks multiple questions):
+
+| Priority | Missing Signal | Question |
+|---|---|---|
+| 1 | Occasion | "What's the occasion? (e.g., date night, office meeting, casual weekend)" |
+| 2 | Category/Need | "What kind of piece are you looking for? (e.g., complete outfit, a top to pair with jeans)" |
+| 3 | Formality | "How dressed up do you want to be? (casual, smart casual, formal)" |
+| 4 | Style direction | "Any style direction? (minimalist, bold colors, streetwear, classic)" |
+
+Each question includes 4 quick-reply chips returned as `follow_up_suggestions`.
+
+### Response
+
+When the gate blocks, the orchestrator returns:
+- `response_type: "clarification"` (vs. `"recommendation"` for normal pipeline)
+- `assistant_message`: the clarifying question
+- `follow_up_suggestions`: quick-reply chip labels
+- `outfits: []`
+- `metadata: {"gate_blocked": true}`
+
+### Multi-turn Accumulation
+
+Context accumulates across gate-blocked turns via conversation memory. When the gate asks about occasion and the user replies "date night":
+1. The occasion resolver extracts `occasion_signal="date_night"` from the reply
+2. `build_conversation_memory()` merges it into the memory
+3. The memory is persisted to `session_context_json`
+4. Next turn's gate sees the accumulated signal and scores it
+
+This prevents the gate from re-asking the same question.
 
 ## 5. Combined Context
 
@@ -327,7 +404,8 @@ Entry point for every recommendation request.
 ### Responsibilities
 
 - load user context
-- resolve live message context
+- resolve live message context (rule-based occasion extraction + memory build)
+- evaluate context gate — short-circuit with clarifying question if insufficient context
 - load previous recommendation state from the conversation
 - call the Outfit Architect
 - call the Catalog Search Agent
@@ -357,6 +435,9 @@ async def handle_recommendation_request(request: RecommendationRequest) -> dict:
 
 ### Active runtime notes
 
+- Context gate runs before the architect. If insufficient context, returns a clarification response with quick-reply chips and skips stages 4-9.
+- Context gate tracks consecutive blocks in `session_context_json.consecutive_gate_blocks`; resets to 0 on successful pipeline run.
+- Occasion resolver now runs during context building (before the gate), not just for memory bridging, so structured signals are available for gate scoring and memory persistence.
 - No filter relaxation — single search pass per query.
 - `gender_expression` is always applied and never relaxed.
 - Architect has no fallback — LLM failure returns an error to the user.
@@ -407,6 +488,14 @@ Allowed:
 Not allowed in v1:
 - three-piece directions
 
+### Catalog inventory awareness
+
+The architect receives a `catalog_inventory` snapshot: a list of `{gender_expression, garment_category, garment_subtype, styling_completeness, count}` entries showing what the catalog currently carries. The architect MUST consult this before choosing garment subtypes, preferring subtypes with deeper inventory (more items = better embedding matches) and avoiding subtypes with zero or very low counts (< 5).
+
+### Resolved context output
+
+The architect also outputs a `resolved_context` block (occasion_signal, formality_hint, time_hint, specific_needs, is_followup, followup_intent) that captures its interpretation of the user's request. This resolved context is used downstream for response messaging and follow-up tracking.
+
 ### Concept-first paired planning
 
 For paired directions, the architect LLM uses a concept-first approach as instructed by the system prompt:
@@ -427,6 +516,14 @@ Key concept rules (instructed in `prompt/outfit_architect.md`):
 The paired top and bottom queries MUST have different PrimaryColor, VolumeProfile, PatternType, and FabricDrape values reflecting the coordinated outfit concept. This is enforced by the LLM prompt, not by deterministic code.
 
 Complete outfit directions are NOT affected by the concept layer — they use uniform parameters.
+
+### Style archetype override
+
+The user's saved `style_preference` (primaryArchetype, secondaryArchetype) is the **default starting point**, not a hard constraint. If the user's message or conversation history explicitly mentions a different style archetype or aesthetic direction (e.g., "show me something Creative", "I want a streetwear look"), the architect MUST use the requested style instead of the saved profile preference.
+
+This applies to all style-related signals: archetype, risk tolerance, pattern preference, formality lean. The user's live request always takes priority over their saved profile.
+
+The override is enforced in the architect system prompt (`prompt/outfit_architect.md`) and reflected in the response message via `_extract_plan_archetype()` in the response formatter, which reads the actual `style_archetype_primary` value from the plan's query documents rather than the user profile.
 
 ### Query document format
 
@@ -452,10 +549,10 @@ The architect receives enriched prior recommendation context via `combined_conte
 Follow-up intent effects on planning:
 - `increase_boldness` — shifts query vocabulary toward bolder choices
 - `decrease_formality` / `increase_formality` — adjusts target formality
-- `change_color` — rewrites styling goal away from persisted prior colors
+- `change_color` — chooses different colors from the same seasonal group while preserving occasion, formality, garment subtypes, silhouette, volume, fit, and plan_type
 - `full_alternative` — requests entirely different direction
 - `more_options` — requests additional candidates in same direction
-- `similar_to_previous` — reuses prior color, occasion, plan shape, and silhouette signals
+- `similar_to_previous` — preserves garment subtypes, colors, formality, occasion, volume, fit, silhouette, and plan_type; variation comes from different products, not changed parameters
 
 ### Output format
 
@@ -496,8 +593,12 @@ For each `QuerySpec`:
 - apply hard filters from:
   - query spec
   - combined context
-- search embeddings
+- search embeddings via `match_catalog_item_embeddings` RPC
 - fetch matching `catalog_enriched` rows by `product_id`
+
+### Vector search implementation
+
+The `match_catalog_item_embeddings` function uses a `MATERIALIZED` CTE in plpgsql to pre-filter rows before vector distance calculation. This is critical because pgvector's HNSW index scans approximate nearest neighbors from the entire table first, then applies WHERE filters as a post-filter — which can eliminate all valid matches when the filter selectivity is high. The materialized CTE forces row-level WHERE filters (gender_expression, styling_completeness, garment_category, garment_subtype, etc.) to execute first, then runs exact cosine distance on the filtered subset. This is performant for catalogs under ~50K rows.
 
 ### Filter columns
 
@@ -617,9 +718,30 @@ Rank complete and paired outfit candidates against the user's body, color, style
 - combined context
 - recommendation plan
 
+### Evaluation payload
+
+The evaluator builds a JSON payload for the LLM containing:
+- `user_profile`: gender, height, waist, analysis_attributes, derived_interpretations, style_preference
+- `live_context`: occasion, formality, specific_needs, followup_intent
+- `conversation_memory`: persisted prior occasion, formality, plan_type, follow-up count
+- `previous_recommendations`: persisted summaries of prior recommendation candidates
+- `previous_recommendation_focus`: the latest prior recommendation to compare against
+- `plan_type`: complete_only, paired_only, or mixed
+- `candidates`: list of outfit candidates with full item metadata
+- `candidate_deltas`: per-candidate comparison to the latest prior recommendation across 8 signals:
+  - colors: `shared_colors`, `new_colors`
+  - occasions: `preserves_occasion`, `occasion_shift`
+  - roles: `preserves_roles`
+  - formality: `formality_shift` (e.g. "casual→formal")
+  - patterns: `shared_patterns`, `new_patterns`
+  - volumes: `shared_volumes`, `new_volumes`
+  - fits: `shared_fits`, `new_fits`
+  - silhouettes: `shared_silhouettes`, `new_silhouettes`
+- `body_context_summary`: extracted `height_category`, `frame_structure`, and `body_shape` for body-aware ranking
+
 ### Evaluation criteria
 
-- body harmony
+- body harmony (informed by `body_context_summary`)
 - color suitability
 - occasion appropriateness
 - style-archetype fit
@@ -656,9 +778,15 @@ Similarity is retrieval input, not recommendation truth.
 
 If the LLM evaluator fails, the fallback ranks candidates by `assembly_score` (average similarity minus compatibility penalties). The fallback also generates synthetic reasoning notes. For follow-up intents, the fallback uses candidate-by-candidate deltas against the previous recommendation to explain color/silhouette shifts.
 
-### Output normalization
+### Output normalization and validation
 
-Sparse LLM outputs are backfilled: if the evaluator returns fewer notes than expected for follow-up turns, the system normalizes them using follow-up deltas computed from the persisted previous recommendation summaries.
+Server-side validation in `_normalize_evaluations()`:
+- `match_score` is clamped to `[0.0, 1.0]`
+- `item_ids` are validated against the actual product IDs in the candidate; invalid IDs are dropped, and if all are invalid the full candidate item set is substituted
+- `rank` is re-assigned sequentially (1, 2, 3, ...) regardless of LLM output ordering
+- Duplicate `candidate_id` entries are deduplicated (first occurrence wins)
+- Invalid `candidate_id` values (not in the original candidate set) are silently dropped
+- Empty note fields (`body_note`, `color_note`, `style_note`, `occasion_note`) are backfilled with generic defaults or, for follow-up turns, with contextual reasoning derived from candidate deltas against the previous recommendation
 
 ### Hard output cap
 
@@ -676,6 +804,7 @@ Convert evaluated results into user-facing response structure.
 class RecommendationResponse:
     success: bool
     message: str
+    response_type: str   # "recommendation" | "clarification"
     outfits: list[OutfitCard]
     follow_up_suggestions: list[str]
     metadata: dict
@@ -697,6 +826,71 @@ Each outfit card should contain:
 - one or more product cards
 - virtual try-on image (optional, generated by the try-on stage)
 
+### Chat UI: unified outfit PDP card (3-column layout)
+
+This section describes the current chat UI outfit rendering, implemented in `modules/platform_core/src/platform_core/ui.py`.
+
+#### Layout
+
+Desktop — 3-column grid per outfit card (`grid-template-columns: 80px 1fr 40%`):
+
+| Column | Content | Behavior |
+|---|---|---|
+| **Thumbnail rail** (80px) | Vertical stack of 72×72 clickable thumbnails | Click swaps Col 2 hero; active thumb gets accent border |
+| **Hero image** (flex) | Full-height display of selected thumbnail | Default: virtual try-on when present, else first garment |
+| **Info panel** (~40%) | PDP-style product detail + feedback CTAs | Scrollable if content overflows |
+
+Mobile (`max-width: 900px`) — single column: hero image → horizontal thumbnail strip → info panel.
+
+#### Thumbnail ordering
+
+- Paired outfit: topwear image, bottomwear image, virtual try-on
+- Single-piece direction (e.g. Direction A complete): garment image, virtual try-on
+- If no try-on image exists, thumbnails are garment images only and the first one is the default hero
+
+#### Info panel content
+
+- Rank label (`#1`, `#2`, `#3`) and outfit title
+- Combined recommendation reasoning: body note, color note, style note, occasion note
+- Per-product block: title, price, "Open product" link
+- Attribute chips from item data:
+  - garment_category, garment_subtype, primary_color
+  - formality_level, occasion_fit, pattern_type
+  - volume_profile, fit_type, silhouette_type
+- Feedback CTAs: `Like This` and `Didn't Like This`
+
+#### Feedback behavior
+
+- `Like This` — sends `event_type: "like"` immediately
+- `Didn't Like This` — expands a textarea + Submit; sends `event_type: "dislike"` with freeform `notes`
+- Cancel closes the textarea without sending
+- Loading spinner and error state on submission
+
+#### Feedback persistence strategy
+
+- UI action is outfit-level (one click per card)
+- Backend fans out to one `feedback_events` row per garment in the outfit
+- `recommendation_run_id` is nullable (agentic pipeline does not generate run IDs)
+- Correlation via `conversation_id` + `turn_id` + `outfit_rank`
+- `turn_id` and `outfit_rank` columns added to `feedback_events` via migration
+
+#### Shared response contract (implemented)
+
+- `platform_core.api_schemas.OutfitCard.tryon_image: str = ""`
+- `platform_core.api_schemas.OutfitItem.formality_level: str = ""`
+- `platform_core.api_schemas.OutfitItem.occasion_fit: str = ""`
+- `platform_core.api_schemas.OutfitItem.pattern_type: str = ""`
+- `platform_core.api_schemas.OutfitItem.volume_profile: str = ""`
+- `platform_core.api_schemas.OutfitItem.fit_type: str = ""`
+- `platform_core.api_schemas.OutfitItem.silhouette_type: str = ""`
+- `platform_core.api_schemas.FeedbackRequest` — `outfit_rank: int`, `event_type: str` (regex `^(like|dislike)$`), `notes: str = ""`, `item_ids: List[str] = []`
+
+#### Response formatter (implemented)
+
+- `_build_item_card()` passes through all 16 fields including the 6 enrichment attributes
+- `response.metadata["turn_id"]` is injected by the orchestrator after formatting
+- `_build_message()` reads the style archetype from the plan's query documents via `_extract_plan_archetype()` (regex on `style_archetype_primary`), falling back to the user profile's `primaryArchetype` only if the plan does not specify one — this ensures the response message reflects the actual style used in the plan, not the saved profile default
+
 ## 11.5. Virtual Try-on
 
 ### Purpose
@@ -713,7 +907,7 @@ Generate photorealistic virtual try-on images showing the user wearing recommend
 2. For each outfit (max 3), extract the first product image URL
 3. Send both images with a structured prompt to Gemini (parallel execution via `ThreadPoolExecutor`, max 3 workers)
 4. Attach returned try-on image as base64 `data_url` on the `OutfitCard.tryon_image` field
-5. UI renders try-on images inline above each outfit's product cards
+5. UI renders try-on image as the default hero in the 3-column outfit PDP card
 
 ### Prompt
 
@@ -728,6 +922,10 @@ The try-on prompt is maintained in `prompt/virtual_tryon.md`. Key principles:
 - Images are resized to max 1024px on longest side before sending (Pillow/LANCZOS)
 - Each image is explicitly labeled in the content array ("This is the PERSON photo" / "This is the TARGET GARMENT")
 - Response modalities are set to `["IMAGE"]` only (no text fallback)
+
+### Current presentation
+
+The UI uses `OutfitCard.tryon_image` as the default hero image inside the unified 3-column outfit PDP card. It is the last thumbnail in the rail and selected by default when present. Clicking any thumbnail swaps the hero image without re-rendering the conversation.
 
 ### Configuration
 
@@ -759,10 +957,10 @@ Supported intents in v1:
 - `similar_to_previous`
 
 Current implementation note:
-- these intents are detected and persisted today
-- `increase_boldness`, `decrease_formality`, `increase_formality`, `full_alternative`, and `more_options` have meaningful runtime effect
-- `change_color` and `similar_to_previous` affect LLM planning and evaluation payloads through persisted recommendation summaries
-- persisted recommendation summaries are used to preserve prior color, occasion, plan shape, and silhouette-level signals during follow-up refinement
+- all intents are detected, persisted, and have structured runtime effect across architect, assembler, evaluator, and response formatter
+- `change_color` preserves non-color dimensions (occasion, formality, garment subtypes, silhouette, volume, fit) while shifting colors; assembler penalizes color overlap with previous recommendation; evaluator and formatter provide intent-specific notes and messaging
+- `similar_to_previous` preserves all dimensions from previous recommendation; assembler boosts occasion and color matches; evaluator reports all shared dimensions; formatter provides similarity-aware messaging
+- persisted recommendation summaries carry all 8 signal dimensions for follow-up delta computation
 
 ## Runtime Testing
 
@@ -845,6 +1043,7 @@ Target latency:
 ```text
 Profile load              < 50ms
 Context resolution        < 10ms
+Context gate              < 1ms   (rule-based, no LLM)
 Outfit Architect          < 3000ms
 Query embedding           < 200ms
 Vector retrieval          < 150ms
@@ -932,15 +1131,16 @@ The API supports two modes of turn processing:
 Stages emitted during async processing:
 1. `validate_request`
 2. `user_context`
-3. `occasion_resolver`
-4. `outfit_architect`
-5. `catalog_search`
-6. `outfit_assembly`
-7. `outfit_evaluation`
-8. `response_formatting`
-9. `virtual_tryon`
+3. `context_builder`
+4. `context_gate` — may short-circuit here with `insufficient` (returns clarification response)
+5. `outfit_architect`
+6. `catalog_search`
+7. `outfit_assembly`
+8. `outfit_evaluation`
+9. `response_formatting`
+10. `virtual_tryon`
 
-Each stage emits `started` and `completed` (or `failed`) events with timestamps.
+Each stage emits `started` and `completed` (or `failed` / `insufficient` / `sufficient`) events with timestamps.
 
 ## 18. API Endpoint Inventory
 
@@ -959,6 +1159,17 @@ Each stage emits `started` and `completed` (or `failed`) events with timestamps.
 | POST | `/v1/conversations/{id}/turns/start` | Async turn job start |
 | GET | `/v1/conversations/{id}/turns/{job_id}/status` | Async turn job status |
 | POST | `/v1/tryon` | Standalone virtual try-on (fallback endpoint) |
+| POST | `/v1/conversations/{id}/feedback` | Outfit feedback (like/dislike with optional notes) |
+
+#### Feedback endpoint detail
+
+`POST /v1/conversations/{id}/feedback`
+- accepts `FeedbackRequest`: `outfit_rank: int`, `event_type: str` (like/dislike, regex-validated), `notes: str = ""`, `item_ids: List[str] = []`
+- looks up latest turn for the conversation to resolve `turn_id` and `user_id`
+- if `item_ids` not provided, resolves garment IDs from the outfit at the given rank in the turn's `final_recommendations`
+- inserts one `feedback_events` row per garment (same event_type/notes for all, reward +1 for like, -1 for dislike)
+- `recommendation_run_id` is NULL (agentic pipeline doesn't use run IDs)
+- returns `{ "ok": true, "count": N }`
 
 ### Onboarding endpoints (mounted via onboarding gateway)
 
@@ -980,10 +1191,12 @@ Each stage emits `started` and `completed` (or `failed`) events with timestamps.
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/v1/admin/catalog/upload` | Upload CSV file |
-| GET | `/v1/admin/catalog/status` | Catalog sync status |
-| POST | `/v1/admin/catalog/items/sync` | Sync enriched catalog rows |
+| GET | `/v1/admin/catalog/status` | Catalog sync status + job counts + recent job history |
+| POST | `/v1/admin/catalog/items/sync` | Sync enriched catalog rows (supports `start_row`/`end_row` for selective rerun) |
 | POST | `/v1/admin/catalog/items/backfill-urls` | Backfill missing product URLs |
-| POST | `/v1/admin/catalog/embeddings/sync` | Generate and sync embeddings |
+| POST | `/v1/admin/catalog/embeddings/sync` | Generate and sync embeddings (supports `start_row`/`end_row` for selective rerun) |
+
+All sync operations (`items/sync`, `backfill-urls`, `embeddings/sync`) create a `catalog_jobs` row with lifecycle tracking (running → completed/failed). The `/status` endpoint returns `total_jobs`, `running_jobs`, `failed_jobs` counts and a `recent_jobs` list. The admin UI renders a job history table with status pills, params, row counts, and truncated error messages.
 
 ## 19. Final v1 Definition of Done
 
@@ -1002,7 +1215,4 @@ The Application Layer is considered complete for v1 when:
 - runtime is owned by `modules/agentic_application`
 - `platform_core` holds shared runtime infrastructure; `agentic_application` is the canonical application module
 
-The following still block full completion:
-- evaluator/spec fallback wording still needs to remain synchronized if the degradation contract changes again
-- direct `agentic_application` imports from `onboarding.*` and `catalog_retrieval.*` still need boundary cleanup
-- canonical product URL ingestion still needs to replace runtime URL synthesis
+All features complete — no outstanding blockers.

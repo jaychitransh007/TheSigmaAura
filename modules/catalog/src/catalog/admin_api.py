@@ -40,6 +40,8 @@ def create_catalog_admin_router(service: CatalogAdminService | None = None) -> A
             result = get_service().sync_catalog_items(
                 input_csv_path=payload.input_csv_path,
                 max_rows=payload.max_rows,
+                start_row=payload.start_row,
+                end_row=payload.end_row,
             )
             return CatalogSyncResponse(**result)
         except SupabaseError as exc:
@@ -61,6 +63,8 @@ def create_catalog_admin_router(service: CatalogAdminService | None = None) -> A
             result = get_service().sync_catalog_embeddings(
                 input_csv_path=payload.input_csv_path,
                 max_rows=payload.max_rows,
+                start_row=payload.start_row,
+                end_row=payload.end_row,
                 include_incomplete=payload.include_incomplete,
             )
             return CatalogSyncResponse(**result)

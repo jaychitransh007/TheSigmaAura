@@ -13,13 +13,14 @@ from .agents.outfit_architect import OutfitArchitect
 from .agents.outfit_assembler import OutfitAssembler
 from .agents.outfit_evaluator import OutfitEvaluator
 from .agents.response_formatter import ResponseFormatter
-from .context.conversation_memory import apply_conversation_memory, build_conversation_memory
+from .context.conversation_memory import build_conversation_memory
 from .context.occasion_resolver import resolve_occasion
 from .context.user_context_builder import build_user_context, validate_minimum_profile
 from .filters import build_global_hard_filters
 from .services.catalog_retrieval_gateway import ApplicationCatalogRetrievalGateway
-from .services.onboarding_gateway import ApplicationOnboardingGateway
+from .services.onboarding_gateway import ApplicationUserGateway
 from .services.tryon_service import TryonService
+from .context_gate import evaluate as evaluate_context_gate
 from .qna_messages import generate_stage_message
 from .schemas import CombinedContext, LiveContext, OutfitCard
 
@@ -33,7 +34,7 @@ class AgenticOrchestrator:
         self,
         *,
         repo: ConversationRepository,
-        onboarding_gateway: ApplicationOnboardingGateway,
+        onboarding_gateway: ApplicationUserGateway,
         config: AuraRuntimeConfig,
         tryon_service: Optional[TryonService] = None,
     ) -> None:
@@ -42,11 +43,12 @@ class AgenticOrchestrator:
         self.config = config
         self.tryon_service = tryon_service or TryonService()
 
-        retrieval_gateway = ApplicationCatalogRetrievalGateway(repo.client)
+        self._retrieval_gateway = ApplicationCatalogRetrievalGateway(repo.client)
+        self._catalog_inventory: Optional[list] = None
 
         self.outfit_architect = OutfitArchitect()
         self.catalog_search_agent = CatalogSearchAgent(
-            retrieval_gateway=retrieval_gateway,
+            retrieval_gateway=self._retrieval_gateway,
             client=repo.client,
         )
         self.outfit_assembler = OutfitAssembler()
@@ -125,37 +127,101 @@ class AgenticOrchestrator:
         validate_minimum_profile(user_context)
         emit("user_context", "completed", ctx={"richness": user_context.profile_richness})
 
-        # --- 2. Build context (occasion resolver is fallback only) ---
-        emit("occasion_resolver", "started")
+        # --- 2. Build context for the architect ---
+        emit("context_builder", "started")
         previous_context = dict(conversation.get("session_context_json") or {})
-        has_previous_recs = bool(previous_context.get("last_recommendations"))
 
-        # Rule-based resolver provides fallback LiveContext + conversation memory
-        fallback_live_context = resolve_occasion(message, has_previous_recommendations=has_previous_recs)
-        conversation_memory = build_conversation_memory(previous_context, fallback_live_context)
-        fallback_live_context = apply_conversation_memory(fallback_live_context, conversation_memory)
+        # Quick rule-based signal extraction so the context gate and
+        # conversation memory see structured signals (occasion, formality, …)
+        # before the expensive Architect LLM call.
+        has_previous_recs = bool(previous_context.get("last_recommendations"))
+        pre_resolved = resolve_occasion(message.strip(), has_previous_recommendations=has_previous_recs)
+
+        initial_live_context = pre_resolved
+        conversation_memory = build_conversation_memory(previous_context, initial_live_context)
 
         # Build conversation history for the architect
         conversation_history = self._build_conversation_history(previous_context, message)
 
-        emit("occasion_resolver", "completed", ctx={"user_need": message})
+        emit("context_builder", "completed", ctx={"user_need": message})
 
         # --- Build combined context (gender-only hard filter) ---
         hard_filters = build_global_hard_filters(user_context)
 
+        # Load catalog inventory (cached for the lifetime of this orchestrator)
+        if self._catalog_inventory is None:
+            try:
+                self._catalog_inventory = self._retrieval_gateway.get_catalog_inventory()
+            except Exception:
+                _log.warning("Failed to load catalog inventory", exc_info=True)
+                self._catalog_inventory = []
+
         previous_recs = previous_context.get("last_recommendations")
         combined_context = CombinedContext(
             user=user_context,
-            live=fallback_live_context,
+            live=initial_live_context,
             hard_filters=hard_filters,
             previous_recommendations=previous_recs if isinstance(previous_recs, list) else None,
             conversation_memory=conversation_memory,
             conversation_history=conversation_history,
+            catalog_inventory=self._catalog_inventory or None,
         )
 
         # Create turn record
         turn = self.repo.create_turn(conversation_id=conversation_id, user_message=message)
         turn_id = str(turn["id"])
+
+        # --- 3.5 Context Gate ---
+        emit("context_gate", "started")
+        consecutive_blocks = int(previous_context.get("consecutive_gate_blocks", 0))
+        gate_result = evaluate_context_gate(combined_context, consecutive_blocks)
+
+        if not gate_result.sufficient:
+            emit("context_gate", "insufficient")
+            _log.info(
+                "Context gate blocked (score=%.1f, missing=%s, consecutive=%d)",
+                gate_result.score, gate_result.missing_signal, consecutive_blocks,
+            )
+            self.repo.finalize_turn(
+                turn_id=turn_id,
+                assistant_message=gate_result.question,
+                resolved_context={
+                    "request_summary": message.strip(),
+                    "gate_blocked": True,
+                    "gate_score": gate_result.score,
+                    "gate_missing_signal": gate_result.missing_signal,
+                },
+            )
+            self.repo.update_conversation_context(
+                conversation_id=conversation_id,
+                session_context={
+                    **previous_context,
+                    "memory": conversation_memory.model_dump(),
+                    "consecutive_gate_blocks": consecutive_blocks + 1,
+                    "last_user_message": message,
+                    "last_assistant_message": gate_result.question,
+                },
+            )
+            return {
+                "conversation_id": conversation_id,
+                "turn_id": turn_id,
+                "assistant_message": gate_result.question,
+                "response_type": "clarification",
+                "resolved_context": {
+                    "request_summary": message.strip(),
+                    "gate_score": gate_result.score,
+                    "gate_missing_signal": gate_result.missing_signal,
+                },
+                "filters_applied": {},
+                "outfits": [],
+                "follow_up_suggestions": gate_result.quick_replies,
+                "metadata": {"gate_blocked": True},
+            }
+
+        # Gate passed — reset consecutive counter
+        emit("context_gate", "sufficient")
+        if gate_result.bypass_reason:
+            _log.info("Context gate bypassed: %s", gate_result.bypass_reason)
 
         # --- 3. Outfit Architect (now also resolves occasion/context) ---
         emit("outfit_architect", "started")
@@ -214,7 +280,7 @@ class AgenticOrchestrator:
                 followup_intent=resolved.followup_intent,
             )
         else:
-            effective_live_context = fallback_live_context
+            effective_live_context = initial_live_context
 
         self.repo.log_model_call(
             conversation_id=conversation_id,
@@ -239,8 +305,15 @@ class AgenticOrchestrator:
             "direction_count": len(plan.directions),
         })
 
+        # Rebuild conversation memory now that the Architect has resolved context
+        # (follow-up detection and formality shifts depend on the resolved live context)
+        conversation_memory = build_conversation_memory(previous_context, effective_live_context)
+
         # Update combined context with effective live context from architect
-        combined_context = combined_context.model_copy(update={"live": effective_live_context})
+        combined_context = combined_context.model_copy(update={
+            "live": effective_live_context,
+            "conversation_memory": conversation_memory,
+        })
 
         # --- 4. Catalog Search Agent (single search, no relaxation) ---
         emit("catalog_search", "started")
@@ -299,6 +372,7 @@ class AgenticOrchestrator:
         # --- 7. Response Formatter ---
         emit("response_formatting", "started")
         response = self.response_formatter.format(evaluated, combined_context, plan, candidates)
+        response.metadata["turn_id"] = turn_id
         emit("response_formatting", "completed", ctx={"outfit_count": min(len(evaluated), 3)})
 
         # --- 8. Virtual Try-On ---
@@ -336,6 +410,7 @@ class AgenticOrchestrator:
                 "last_response_metadata": response.metadata,
                 "last_assistant_message": response.message,
                 "last_user_message": message,
+                "consecutive_gate_blocks": 0,
             },
         )
 
@@ -343,6 +418,7 @@ class AgenticOrchestrator:
             "conversation_id": conversation_id,
             "turn_id": turn_id,
             "assistant_message": response.message,
+            "response_type": "recommendation",
             "resolved_context": {
                 "request_summary": message.strip(),
                 "occasion": effective_live_context.occasion_signal or "",
@@ -373,18 +449,19 @@ class AgenticOrchestrator:
             return
 
         def _generate_for_outfit(outfit: OutfitCard) -> tuple[OutfitCard, str]:
-            product_url = ""
+            garment_urls: list[tuple[str, str]] = []
             for item in outfit.items:
                 url = str(item.get("image_url") or "").strip()
-                if url:
-                    product_url = url
-                    break
-            if not product_url:
+                if not url:
+                    continue
+                role = str(item.get("role") or "").strip()
+                garment_urls.append((role or "garment", url))
+            if not garment_urls:
                 return outfit, ""
             try:
-                result = self.tryon_service.generate_tryon(
+                result = self.tryon_service.generate_tryon_outfit(
                     person_image_path=person_path,
-                    product_image_url=product_url,
+                    garment_urls=garment_urls,
                 )
                 if result.get("success"):
                     return outfit, result["data_url"]

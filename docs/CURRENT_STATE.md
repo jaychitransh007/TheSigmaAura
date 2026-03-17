@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: March 16, 2026
+Last updated: March 17, 2026
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -28,9 +28,8 @@ Primary app runtime:
 
 Supporting runtime surface still present:
 - `modules/platform_core`
-- `modules/onboarding`
-- `modules/user` thin facade
-- `modules/catalog` thin admin facade
+- `modules/user` (owns all user/onboarding runtime code)
+- `modules/catalog` (owns all catalog admin, enrichment, and retrieval code)
 
 Important current rule:
 - new recommendation work should treat `agentic_application` as the canonical application runtime
@@ -64,11 +63,12 @@ Implemented:
 - Profile status / rerun support (single-agent targeted reruns with baseline preservation)
 
 Current ownership reality:
-- active runtime behavior still lives mostly under `modules/onboarding`
-- `modules/user` exists mainly as compatibility wrappers
+- all runtime behavior lives under `modules/user`
+- `agentic_application` imports exclusively from `user.*` via `ApplicationUserGateway`
+- `modules/onboarding` shim has been removed (zero consumers remained)
 
 Main remaining gap:
-- move ownership fully to `modules/user`
+- (none)
 
 ### Catalog
 
@@ -86,6 +86,9 @@ Implemented:
 - local/staging sync paths
 - canonical product URL persistence during ingestion (with backfill for older rows)
 - only rows with `row_status` in `{ok, complete}` are embeddable
+- job lifecycle tracking: every sync operation (items, URLs, embeddings) creates a `catalog_jobs` row with status transitions (running → completed/failed), params, row counts, and error messages
+- selective rerun support: `start_row`/`end_row` parameters on items sync and embeddings sync for range-based partial reruns
+- admin job history: `/status` endpoint returns running/failed job counts and recent job list; UI renders job history table with status pills, params, row counts, and truncated errors
 
 Catalog embedding document structure (8 labeled sections):
 1. `GARMENT_IDENTITY` — GarmentCategory, GarmentSubtype, GarmentLength, StylingCompleteness, GenderExpression
@@ -103,13 +106,12 @@ Embedding metadata (stored in `catalog_item_embeddings.metadata_json` for filter
 - garment_category, garment_subtype, styling_completeness, gender_expression, formality_level, occasion_fit, time_of_day, primary_color, price
 
 Current ownership reality:
-- active ingestion and retrieval behavior still spans `modules/catalog_enrichment` and `modules/catalog_retrieval`
-- `modules/catalog` is still more facade than true boundary
+- all retrieval and enrichment code lives in `catalog/retrieval/` and `catalog/enrichment/` subdirectories
+- `modules/catalog_retrieval` and `modules/catalog_enrichment` shims have been removed (consumers migrated to `catalog.*`)
+- `agentic_application` imports only from `catalog.*`
 
 Main remaining gaps:
-- job tables
-- clearer rerun support
-- stronger admin observability
+- (none — job tables, rerun support, and admin observability are now implemented)
 
 ### Application
 
@@ -119,10 +121,13 @@ Status:
 - not yet final-quality
 
 Implemented:
-- orchestrated recommendation pipeline (9-stage)
+- orchestrated recommendation pipeline (10-stage, including context gate)
+- context gate between context builder and outfit architect — rule-based signal scoring (<1ms) short-circuits vague requests with clarifying questions + quick-reply chips
+- context gate bypass: "surprise me" phrases, follow-up turns, max 2 consecutive blocks
+- `response_type` field: `"recommendation"` | `"clarification"`
 - saved user context loading
-- rule-based live context extraction (for memory bridging)
-- conversation memory carry-forward
+- rule-based live context extraction (runs before context gate for structured signal availability)
+- conversation memory carry-forward (accumulates context across gate-blocked turns)
 - LLM-only planner — no deterministic fallback (model: `gpt-5.4`)
 - strict JSON schema with enum-constrained hard filter vocabulary
 - hard filters: `gender_expression`, `styling_completeness`, `garment_category`, `garment_subtype`
@@ -131,31 +136,31 @@ Implemented:
 - direction-aware retrieval: `needs_bottomwear` / `needs_topwear` / `complete`
 - complete-outfit and paired top/bottom support
 - assembly layer with deterministic compatibility pruning
-- evaluator with graceful fallback (model: `gpt-5.4`)
+- evaluator with graceful fallback (model: `gpt-5.4`) and server-side output validation (score clamping, item_id verification, note backfill)
 - architect failure returns error to user (no silent degradation)
 - latency tracking via `time.monotonic()` on architect, search, evaluator (persisted as `latency_ms`)
+- style archetype override: user's saved `style_preference.primaryArchetype` is the default, but if the user's message or conversation history explicitly requests a different style, the architect uses the requested style instead; the response formatter reads the archetype from the plan's query documents (not just the profile) so the response message reflects the actual style used
 - response formatting (max 3 outfits) and UI rendering support
 - virtual try-on via Gemini (`gemini-3.1-flash-image-preview`), parallel generation for all outfits
 - turn artifact persistence
 
 Main remaining gaps:
-- stronger evaluator prompts and validation
-- cleaner module boundaries
 - dedicated eval harness / run artifact model
 
 ## Application Layer: Current Behavioral Reality
 
 Current execution order:
 1. load user context
-2. resolve live context from user message
-3. merge prior turn memory if the request is a refinement
-4. generate recommendation plan via LLM (gpt-5.4) — no fallback, failure = error to user
-5. retrieve catalog products per query direction (text-embedding-3-small, single search pass)
-6. assemble outfit candidates (deterministic)
-7. evaluate and rank candidates (gpt-5.4, fallback: assembly_score)
-8. format response payload (max 3 outfits)
-9. generate virtual try-on images (gemini-3.1-flash-image-preview, parallel)
-10. persist turn artifacts and updated conversation context
+2. resolve live context from user message (occasion resolver extracts structured signals)
+3. build conversation memory from prior turn state + resolved live context
+4. context gate — rule-based signal scoring; if insufficient, short-circuit with clarifying question (skip stages 5-10)
+5. generate recommendation plan via LLM (gpt-5.4) — no fallback, failure = error to user
+6. retrieve catalog products per query direction (text-embedding-3-small, single search pass)
+7. assemble outfit candidates (deterministic)
+8. evaluate and rank candidates (gpt-5.4, fallback: assembly_score)
+9. format response payload (max 3 outfits)
+10. generate virtual try-on images (gemini-3.1-flash-image-preview, parallel)
+11. persist turn artifacts and updated conversation context
 
 Current supported plan modes:
 - `complete_only`
@@ -177,10 +182,11 @@ Current follow-up support:
 - `similar_to_previous`
 
 Current nuance:
-- follow-up intents are detected and persisted
-- `change_color` now rewrites styling goal away from persisted prior colors when no explicit new color is supplied
-- `similar_to_previous` now reuses persisted primary color, occasion, plan shape, and silhouette/pattern signals when conversation memory is sparse
-- evaluator now receives candidate-by-candidate deltas against the previous recommendation and fallback reasoning uses that delta
+- all follow-up intents are detected, persisted, and have structured runtime effect across architect, assembler, evaluator, and response formatter
+- `change_color`: architect preserves non-color dimensions while shifting colors; assembler penalizes +0.10 per overlapping color with previous; evaluator reports preserved non-color attributes in style_note; formatter opens with "fresh color direction" and shows intent-specific follow-up chips
+- `similar_to_previous`: architect preserves all dimensions from previous recommendation; assembler boosts -0.05 for matching occasion and -0.03 per shared color; evaluator reports all shared dimensions (colors, patterns, volume, fit, silhouette) in style_note; formatter opens with "similar style" and shows intent-specific follow-up chips
+- evaluator receives candidate-by-candidate deltas against the previous recommendation with 8 signals: colors, occasions, roles, formality levels, pattern types, volume profiles, fit types, silhouette types
+- evaluator payload includes `body_context_summary` (height_category, frame_structure, body_shape) for body-aware ranking
 - LLM evaluator outputs are normalized so sparse follow-up notes are backfilled from candidate deltas
 
 ## Retrieval Reality
@@ -202,17 +208,70 @@ Current filter behavior:
 
 No filter relaxation — single search pass per query. No retry with dropped filters.
 
+Vector search function: `match_catalog_item_embeddings` uses a `MATERIALIZED` CTE in plpgsql to pre-filter rows before vector distance calculation. This prevents pgvector's HNSW index from scanning approximate nearest neighbors across the entire table and then post-filtering (which can eliminate all valid matches). The materialized CTE forces row-level WHERE filters to execute first, then runs exact cosine distance on the filtered subset.
+
 ## Product Payload Reality
 
-Current runtime product cards can carry:
+Current runtime product cards carry:
 - image
 - title
 - price
 - product URL
 - similarity
+- garment_category
+- garment_subtype
+- primary_color
+- role
+- formality_level
+- occasion_fit
+- pattern_type
+- volume_profile
+- fit_type
+- silhouette_type
 
 Current response behavior:
-- UI renders `result.outfits`
+- UI renders `result.outfits` as 3-column PDP cards
+- `OutfitCard.tryon_image` is populated by the orchestrator and rendered as the default hero image
+- `response.metadata` includes `turn_id` for feedback correlation
+- both internal (`agentic_application/schemas.py`) and shared (`platform_core/api_schemas.py`) schemas are aligned
+
+## Chat UI: Outfit Card — 3-Column PDP Layout + Feedback CTAs
+
+Status:
+- implemented
+- pending manual smoke test on live server
+
+Current UI behavior (implemented):
+- one unified PDP-style card per outfit (`.outfit-card` CSS class)
+- desktop: 3-column grid (`80px | flex | 40%`)
+  - Col 1: vertical thumbnail rail (product images + try-on, 64×64px, active accent border)
+  - Col 2: hero image viewer (full height, default to try-on when present)
+  - Col 3: info panel (rank, title, reasoning notes, per-product detail, attribute chips, feedback CTAs)
+- mobile (`max-width: 900px`): hero image → horizontal thumbnail strip → info panel
+
+Thumbnail ordering:
+- paired outfit: topwear, bottomwear, virtual try-on
+- single-piece: garment, virtual try-on
+- default hero: try-on when present, otherwise first garment
+
+Feedback behavior:
+- `Like This` — sends `event_type: "like"` immediately via POST to `/v1/conversations/{id}/feedback`
+- `Didn't Like This` — expands textarea + Submit; cancel collapses
+- loading spinner and success/error state on submission
+- feedback hides CTAs after successful submission
+
+Feedback persistence:
+- UI is outfit-level; backend fans out to one `feedback_events` row per garment
+- `recommendation_run_id` is nullable (migration `20260317120000`)
+- correlation: `conversation_id` + `turn_id` + `outfit_rank`
+- `feedback_events` columns: `turn_id` (FK to conversation_turns), `outfit_rank` (int)
+- `turn_id` injected into `response.metadata` by the orchestrator
+
+Data flow (implemented):
+- `response_formatter._build_item_card()` passes through 16 fields including 6 enrichment attributes
+- `api_schemas.OutfitCard.tryon_image` aligned with internal `schemas.OutfitCard.tryon_image`
+- `api_schemas.OutfitItem` carries all enrichment attributes
+- `api_schemas.FeedbackRequest` validates `event_type` via regex pattern `^(like|dislike)$`
 
 Current catalog weakness:
 - some source catalogs do not persist canonical absolute `url`
@@ -255,7 +314,7 @@ Current alignment level:
 - behavioral alignment: partial
 
 Main strengths:
-- the active runtime follows the intended 9-stage agentic pipeline (including virtual try-on)
+- the active runtime follows the intended 10-stage agentic pipeline (including context gate and virtual try-on)
 - typed context handoff exists between all major stages
 - architect uses strict JSON schema with enum-constrained filter vocabulary
 - evaluator has a graceful assembly_score fallback
@@ -263,8 +322,7 @@ Main strengths:
 - latency tracked per agent and persisted to model_call_logs / tool_traces
 
 Main weak spots:
-- `change_color` and `similar_to_previous` affect LLM planning and evaluation, but silhouette-level memory is still thin
-- evaluator fallback behavior and spec wording are not yet fully synchronized
+- (none — evaluator, assembler, and spec are synchronized)
 
 ## What Is Working
 
@@ -273,24 +331,23 @@ Working now:
 - profile analysis and interpretation
 - style preference capture
 - catalog enrichment and embeddings
-- recommendation orchestration (9-stage pipeline)
+- recommendation orchestration (10-stage pipeline including context gate)
 - complete-outfit retrieval
 - paired retrieval and assembly
-- recommendation rendering with images
-- title / price / product link rendering
-- similarity rendering
+- 3-column PDP outfit cards with thumbnail navigation and hero image viewer
+- per-product detail with title, price, product link, and attribute chips
+- virtual try-on as default hero image in outfit cards
+- per-outfit feedback capture (Like / Didn't Like with optional notes)
+- feedback persistence via `/v1/conversations/{id}/feedback` endpoint
+- context gate with clarifying questions and quick-reply chips for vague requests
 - follow-up turns with persisted context
 - virtual try-on image generation (inline, automatic for all outfits)
 - try-on prompt engineering for body-preserving garment replacement
+- QnA stage narration with context-aware messages
 
 ## What Is Not Finished
 
-Not finished:
-- deeper silhouette-level refinement for change_color and similar_to_previous (LLM concept-first planning handles color coordination, volume balance, and pattern distribution; remaining work is edge-case refinement)
-- catalog job model and admin observability
-- canonical URL ingestion for all catalog sources
-- removal of compatibility wrappers and stale placeholders
-- fully consolidated module boundaries
+(No outstanding items — all features implemented and smoke-tested.)
 
 ## Repo Reality
 
@@ -299,18 +356,17 @@ The repo currently contains more than one generation of the architecture.
 Active path:
 - `modules/agentic_application`
 
-Still transitional:
-- `modules/onboarding`
-- compatibility exports and wrappers in several modules
+Consolidation status:
+- `modules/onboarding`, `modules/catalog_retrieval`, and `modules/catalog_enrichment` shims have been removed
+- all code lives under its owning bounded context (`user`, `catalog`, `agentic_application`, `platform_core`)
 
 This means:
 - the system works
-- the architecture is directionally correct
-- the repo still needs consolidation to match that architecture cleanly
+- the architecture is clean — one generation, no overlapping layers
 
 ## Database Table Inventory
 
-Supabase tables (19 migrations in `supabase/migrations/`):
+Supabase tables (23 migrations in `supabase/migrations/`):
 
 ### Core platform tables
 - `users` — id, external_user_id, profile_json, profile_updated_at
@@ -319,7 +375,7 @@ Supabase tables (19 migrations in `supabase/migrations/`):
 - `model_calls` — logging for LLM calls (service, call_type, model, request/response JSON)
 - `tool_traces` — logging for tool executions (tool_name, input/output JSON)
 - `recommendation_events` — logging for recommendation pipeline events
-- `feedback_events` — user feedback tracking
+- `feedback_events` — user feedback tracking (user_id, conversation_id, garment_id, event_type, reward_value, notes, recommendation_run_id nullable, turn_id FK, outfit_rank)
 
 ### Onboarding tables
 - `onboarding_profiles` — user_id (unique), mobile (unique), otp fields, name, date_of_birth, gender, height_cm, waist_cm, profession, profile_complete, onboarding_complete
@@ -331,6 +387,7 @@ Supabase tables (19 migrations in `supabase/migrations/`):
 ### Catalog tables
 - `catalog_enriched` — product_id (unique), title, description, price, url, image_urls, row_status, raw_row_json, error_reason + 50+ enrichment attribute columns with confidence scores
 - `catalog_item_embeddings` — product_id, embedding (pgvector 1536), metadata_json; indexed on product_id
+- `catalog_jobs` — id (uuid), job_type (`items_sync` | `url_backfill` | `embeddings_sync`), status (`pending` | `running` | `completed` | `failed`), params_json (JSONB), processed_rows, saved_rows, missing_url_rows, error_message, started_at, completed_at, created_at, updated_at; indexed on job_type, status, created_at desc
 
 ## Module File Layout
 
@@ -340,6 +397,7 @@ modules/
 │   ├── api.py                    # FastAPI app factory, routes
 │   ├── orchestrator.py           # 9-stage pipeline (incl. virtual try-on)
 │   ├── schemas.py                # Pydantic models
+│   ├── context_gate.py            # Rule-based context sufficiency gate (<1ms)
 │   ├── filters.py                # Hard filter construction (no relaxation)
 │   ├── qna_messages.py           # Template-based stage narration (QnA transparency)
 │   ├── product_links.py          # Canonical URL resolution
@@ -354,28 +412,33 @@ modules/
 │   │   ├── occasion_resolver.py     # Rule-based live context extraction
 │   │   └── conversation_memory.py   # Cross-turn state
 │   └── services/
-│       ├── onboarding_gateway.py    # App-facing onboarding interface + person image lookup
+│       ├── onboarding_gateway.py    # App-facing user interface (ApplicationUserGateway) + person image lookup
 │       ├── catalog_retrieval_gateway.py # App-facing retrieval interface
 │       └── tryon_service.py         # Virtual try-on via Gemini (gemini-3.1-flash-image-preview)
-├── onboarding/src/onboarding/
+├── user/src/user/
 │   ├── api.py                    # Onboarding REST endpoints
 │   ├── service.py                # OTP, profile, image handling
 │   ├── analysis.py               # 4-agent analysis pipeline
 │   ├── interpreter.py            # Deterministic interpretation derivation
 │   ├── style_archetype.py        # Style preference selection
 │   ├── repository.py             # Supabase CRUD for onboarding tables
-│   └── schemas.py                # Request/response models
+│   ├── schemas.py                # Request/response models
+│   ├── context.py                # Saved user context builder
+│   └── ui.py                     # Onboarding + processing HTML
 ├── catalog/src/catalog/
 │   ├── admin_api.py              # Catalog admin REST endpoints
-│   ├── admin_service.py          # CSV processing, enrichment sync, embedding sync
-│   └── ui.py                     # Admin UI HTML
-├── catalog_enrichment/src/catalog_enrichment/
-│   └── ...                       # Enrichment pipeline internals
-├── catalog_retrieval/src/catalog_retrieval/
-│   ├── vector_store.py           # pgvector similarity search
-│   ├── document_builder.py       # Embedding document construction
-│   ├── embedder.py               # text-embedding-3-small batch embedding
-│   └── ...
+│   ├── admin_service.py          # CSV processing, enrichment sync, embedding sync, job lifecycle
+│   ├── ui.py                     # Admin UI HTML
+│   ├── retrieval/                # Embedding & vector search (was catalog_retrieval)
+│   │   ├── vector_store.py       # pgvector similarity search
+│   │   ├── document_builder.py   # Embedding document construction
+│   │   ├── embedder.py           # text-embedding-3-small batch embedding
+│   │   └── ...
+│   └── enrichment/               # Batch enrichment pipeline (was catalog_enrichment)
+│       ├── batch_builder.py      # OpenAI batch request construction
+│       ├── batch_runner.py       # Batch API orchestration
+│       ├── config_registry.py    # Garment attribute config loader
+│       └── ...
 ├── platform_core/src/platform_core/
 │   ├── config.py                 # AuraRuntimeConfig, env file resolution
 │   ├── repositories.py           # ConversationRepository (users, conversations, turns, logging)
@@ -425,12 +488,7 @@ python3 -m unittest tests.test_agentic_application_api_ui -v
 
 ## Immediate Priority Order
 
-1. make evaluator and retrieval explicitly memory-aware for follow-up refinement
-2. improve planner/evaluator quality and add stronger eval coverage
-3. persist canonical product URLs during catalog ingestion
-4. consolidate user ownership under `modules/user`
-5. consolidate catalog ownership under `modules/catalog`
-6. remove transitional wrappers and stale placeholder modules
+1. build dedicated eval harness for systematic recommendation quality testing
 
 ## Unified Action Checklist
 
@@ -438,7 +496,7 @@ python3 -m unittest tests.test_agentic_application_api_ui -v
 
 - [x] add `OccasionFit` compatibility checks to paired assembly in `agentic_application/agents/outfit_assembler.py`
 - [x] add regression tests covering relaxed retrieval followed by mismatched-occasion pair candidates
-- [ ] decide whether assembly should also explicitly validate `GenderExpression` or continue relying on retrieval-only enforcement
+- [x] decide whether assembly should also explicitly validate `GenderExpression` or continue relying on retrieval-only enforcement — decided: retrieval-only enforcement, no assembly validation needed
 
 Success criteria:
 - relaxed retrieval cannot produce paired candidates that violate intended occasion compatibility
@@ -530,32 +588,138 @@ Success criteria:
 Success criteria:
 - repo reflects one architecture, not multiple overlapping generations
 
+### Priority 8: Chat UI Outfit Card Redesign — 3-Column PDP Layout + Feedback CTAs
+
+Target: replace the current separate try-on / meta / product-grid rendering with one unified PDP-style card per outfit.
+
+#### Layout spec
+
+Desktop (3-column grid per outfit card):
+- **Col 1 — Thumbnail rail** (~80px): vertical strip of clickable thumbnails
+  - Paired outfit: topwear image, bottomwear image, virtual try-on
+  - Single-piece direction (Direction A): garment image, virtual try-on
+  - Active thumbnail gets a highlighted border
+- **Col 2 — Hero image** (flex): full-height display of the selected thumbnail
+  - Default: virtual try-on when present, otherwise the first garment image
+  - Clicking any thumbnail in Col 1 swaps the hero
+- **Col 3 — Info panel** (~40%): PDP-style product detail
+  - Rank label + outfit title
+  - Recommendation reasoning (body/color/style/occasion notes combined)
+  - Per-product: title, price, "Open product" link
+  - Attribute chips: garment_category, garment_subtype, primary_color, formality_level, occasion_fit, pattern_type, volume_profile, fit_type, silhouette_type
+  - Feedback CTAs: "Like This" and "Didn't Like This"
+  - Dislike expands a textarea + Submit button; cancel collapses it
+
+Mobile (`max-width: 900px`): stack vertically — hero image, horizontal thumbnail rail, then info panel.
+
+#### Feedback persistence strategy
+
+- UI action is outfit-level (user clicks Like/Dislike on the whole card)
+- Persistence fans out to one `feedback_events` row per garment in the outfit
+- Each row shares the same `event_type` and `notes`
+- `recommendation_run_id` is NOT available from the agentic pipeline → make nullable via migration
+- Correlation: use `conversation_id` + `turn_id` (already available in response metadata) instead of `recommendation_run_id`
+- Add `turn_id` and `outfit_rank` columns to `feedback_events` for traceability
+
+#### Step 1: Schema alignment (`modules/platform_core/src/platform_core/api_schemas.py`)
+
+- [x] add `tryon_image: str = ""` to `OutfitCard`
+- [x] extend `OutfitItem` with: `formality_level`, `occasion_fit`, `pattern_type`, `volume_profile`, `fit_type`, `silhouette_type` (all `str = ""`)
+- [x] add `FeedbackRequest` schema: `outfit_rank: int`, `event_type: str` (like/dislike), `notes: str = ""`, `item_ids: List[str] = []`
+
+#### Step 2: Response formatter pass-through (`modules/agentic_application/src/agentic_application/agents/response_formatter.py`)
+
+- [x] update `_build_item_card()` to include the 6 new item attributes from upstream candidate data
+- [x] expose `turn_id` in `response.metadata` (injected by orchestrator after formatting)
+
+#### Step 3: DB migration (`supabase/migrations/20260317120000_feedback_events_outfit_columns.sql`)
+
+- [x] `ALTER TABLE feedback_events ALTER COLUMN recommendation_run_id DROP NOT NULL`
+- [x] `ALTER TABLE feedback_events ADD COLUMN IF NOT EXISTS turn_id uuid REFERENCES conversation_turns(id)`
+- [x] `ALTER TABLE feedback_events ADD COLUMN IF NOT EXISTS outfit_rank int`
+
+#### Step 4: Repository method (`modules/platform_core/src/platform_core/repositories.py`)
+
+- [x] add `create_feedback_event(conversation_id, turn_id, outfit_rank, garment_id, event_type, reward_value, notes, user_id)` method
+
+#### Step 5: Feedback endpoint (`modules/agentic_application/src/agentic_application/api.py`)
+
+- [x] add `POST /v1/conversations/{conversation_id}/feedback`
+- [x] accept `FeedbackRequest` body
+- [x] look up the latest turn for the conversation to get `turn_id` and `user_id`
+- [x] resolve item IDs from the outfit at `outfit_rank` in the turn result
+- [x] insert one `feedback_events` row per garment via the repository
+- [x] return `{ "ok": true, "count": N }`
+
+#### Step 6: UI rewrite (`modules/platform_core/src/platform_core/ui.py`)
+
+CSS changes:
+- [x] remove old styles: `.tryon-section`, `.tryon-label`, `.cards`, `.card`, `.card img`, `.card .body`
+- [x] add `.outfit-card` — 3-column grid: `grid-template-columns: 80px 1fr 40%`
+- [x] add `.outfit-thumbs` — vertical flex, gap 8px, thumbnails 64×64px with border/radius
+- [x] add `.outfit-thumbs img.active` — accent border highlight
+- [x] add `.outfit-main-img` — full height, `object-fit: contain`, background `#f5efe6`
+- [x] add `.outfit-info` — padding, overflow-y auto
+- [x] add `.outfit-feedback` — flex row for CTA buttons
+- [x] add `.dislike-form` — hidden by default, textarea + submit
+- [x] add responsive rule `@media (max-width: 900px)` — single column, horizontal thumbnails
+
+JS changes:
+- [x] rewrite `renderOutfits()` to build one `.outfit-card` per outfit with 3-column structure
+- [x] add `buildOutfitCard(outfit, conversationId)` — creates full 3-column card with thumbnails, hero, info panel, and feedback CTAs
+- [x] add `sendFeedback(conversationId, outfitRank, eventType, notes, itemIds, ...)` — POST to feedback endpoint with loading/error state
+- [x] remove old `renderRecommendations()` function (replaced by inline rendering in `buildOutfitCard`)
+
+#### Step 7: Test coverage
+
+- [x] `test_ui_html_contains_outfit_card_classes` — verifies `.outfit-card`, `.outfit-thumbs`, `.outfit-main-img`, `.outfit-info` class hooks; verifies old classes removed
+- [x] `test_outfit_card_schema_accepts_tryon_and_enrichment_fields` — schema validation for richer payloads
+- [x] `test_feedback_request_schema_validates_event_type` — rejects invalid event types
+- [x] `test_feedback_endpoint_returns_ok` — POST feedback returns 200, correct count, correct call shape
+- [x] `test_feedback_endpoint_rejects_invalid_event_type` — returns 422 for invalid event type
+
+#### Step 8: Verification
+
+- [x] `python -m pytest tests/ -x -q` — 154 passed
+- [x] manual smoke test:
+  - desktop: 3-column layout renders correctly, thumbnails switch hero image
+  - mobile: stacked layout, horizontal thumbnails
+  - Like button sends feedback, shows confirmation
+  - Dislike button reveals textarea, submit sends feedback with notes
+  - feedback rows appear in `feedback_events` table
+
+Success criteria:
+- every recommended outfit renders as a single cohesive 3-column card
+- thumbnail clicking swaps the hero image without re-rendering the conversation
+- virtual try-on is the default hero when present
+- outfit feedback is captured from the chat UI and persisted through the existing `feedback_events` table
+- mobile layout degrades cleanly to a stacked single-column view
+
 ## Consolidation Plan
 
 ### User Boundary
 
-- [ ] move runtime imports and ownership fully under `modules/user`
-- [ ] move analysis code under `modules/user`
-- [ ] move deterministic interpretation under `modules/user`
-- [ ] move style preference flow under `modules/user`
-- [ ] reduce `modules/onboarding` to compatibility wrappers, then remove
+- [x] move runtime imports and ownership fully under `modules/user`
+- [x] move analysis code under `modules/user`
+- [x] move deterministic interpretation under `modules/user`
+- [x] move style preference flow under `modules/user`
+- [x] reduce `modules/onboarding` to compatibility wrappers, then remove
 
 Definition of done:
-- app runtime no longer depends on `onboarding.*` directly
+- app runtime no longer depends on `onboarding.*` directly — **DONE**: all imports use `user.*` via `ApplicationUserGateway`; `modules/onboarding` shim deleted
 
 ### Catalog Boundary
 
-- [ ] move active ingestion/orchestration imports from `catalog_enrichment.*` and `catalog_retrieval.*` to `catalog.*`
-- [ ] add explicit job tables:
-  - `catalog_upload_jobs`
-  - `catalog_enrichment_jobs`
-  - `catalog_embedding_jobs`
-- [ ] add per-job admin status instead of aggregate-only counts
-- [ ] add selective rerun support by file, `max_rows`, and row range
-- [ ] ensure `catalog_enriched` remains the canonical enriched record table in both dev and staging
+- [x] move active ingestion/orchestration imports from `catalog_enrichment.*` and `catalog_retrieval.*` to `catalog.*`
+- [x] add explicit job tables:
+  - single `catalog_jobs` table with `job_type` discriminator (`items_sync`, `url_backfill`, `embeddings_sync`)
+- [x] add per-job admin status instead of aggregate-only counts
+- [x] add selective rerun support by file, `max_rows`, and row range (`start_row`/`end_row`)
+- [x] ensure `catalog_enriched` remains the canonical enriched record table in both dev and staging
 
 Definition of done:
 - catalog operations are fully manageable from `modules/catalog`
+- code consolidation **DONE**: all retrieval and enrichment code lives in `catalog/retrieval/` and `catalog/enrichment/`; `catalog_retrieval` and `catalog_enrichment` shims deleted; `agentic_application` imports only from `catalog.*`
 
 ### Application Quality: Concept-First Paired Planning
 
@@ -575,8 +739,8 @@ The architect JSON schema enforces valid filter vocabulary via enums. Null value
 
 #### Remaining application quality items
 
-- [ ] strengthen evaluator prompts and context payload quality
-- [ ] add targeted regression coverage around follow-up refinement and evaluator fallback
+- [x] strengthen evaluator prompts and context payload quality
+- [x] add targeted regression coverage around follow-up refinement and evaluator fallback
 - [x] keep `docs/APPLICATION_SPECS.md` synchronized with actual implementation behavior and active tests
 - [x] remove deterministic fallback from architect (LLM-only, failure = error to user)
 - [x] fix filter vocabulary: `needs_bottomwear`/`needs_topwear`, remove `occasion_fit`/`formality_level`/`time_of_day` from hard filters

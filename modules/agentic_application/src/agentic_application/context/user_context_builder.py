@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from ..schemas import UserContext
-from ..services.onboarding_gateway import ApplicationOnboardingGateway
+from ..services.onboarding_gateway import ApplicationUserGateway
 
 
 def _compute_profile_richness(
@@ -36,7 +36,7 @@ def _compute_profile_richness(
 def build_user_context(
     user_id: str,
     *,
-    onboarding_gateway: ApplicationOnboardingGateway,
+    onboarding_gateway: ApplicationUserGateway,
 ) -> UserContext:
     """Load all saved user state into a single UserContext object."""
     status = onboarding_gateway.get_analysis_status(user_id)

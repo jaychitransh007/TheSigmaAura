@@ -11,7 +11,25 @@ from ..schemas import (
     RecommendationResponse,
 )
 
+import re
+
 MAX_FORMATTED_OUTFITS = 3
+
+_ARCHETYPE_RE = re.compile(r"style_archetype_primary:\s*(.+)", re.IGNORECASE)
+
+
+def _extract_plan_archetype(plan: RecommendationPlan | None) -> str:
+    """Extract the style archetype actually used in the plan's query documents."""
+    if not plan:
+        return ""
+    for direction in plan.directions:
+        for query in direction.queries:
+            match = _ARCHETYPE_RE.search(query.query_document)
+            if match:
+                value = match.group(1).strip()
+                if value and value.lower() not in {"unknown", "null", "none", ""}:
+                    return value
+    return ""
 
 
 def _build_item_card(item: Dict[str, Any]) -> Dict[str, Any]:
@@ -26,6 +44,12 @@ def _build_item_card(item: Dict[str, Any]) -> Dict[str, Any]:
         "garment_subtype": str(item.get("garment_subtype", "")),
         "primary_color": str(item.get("primary_color", "")),
         "role": str(item.get("role", "")),
+        "formality_level": str(item.get("formality_level", "")),
+        "occasion_fit": str(item.get("occasion_fit", "")),
+        "pattern_type": str(item.get("pattern_type", "")),
+        "volume_profile": str(item.get("volume_profile", "")),
+        "fit_type": str(item.get("fit_type", "")),
+        "silhouette_type": str(item.get("silhouette_type", "")),
     }
 
 
@@ -76,7 +100,7 @@ class ResponseFormatter:
                 )
             )
 
-        message = self._build_message(combined_context, outfits)
+        message = self._build_message(combined_context, outfits, plan)
         suggestions = self._build_follow_up_suggestions(combined_context, plan)
 
         return RecommendationResponse(
@@ -93,15 +117,27 @@ class ResponseFormatter:
         )
 
     def _build_message(
-        self, ctx: CombinedContext, outfits: List[OutfitCard]
+        self,
+        ctx: CombinedContext,
+        outfits: List[OutfitCard],
+        plan: RecommendationPlan | None = None,
     ) -> str:
-        parts: List[str] = [f"Here are {len(outfits)} outfit recommendations"]
+        intent = (ctx.live.followup_intent or "").strip()
+        if intent == "change_color":
+            opening = f"Here are {len(outfits)} outfit recommendations with a fresh color direction"
+        elif intent == "similar_to_previous":
+            opening = f"Here are {len(outfits)} outfit recommendations in a similar style"
+        else:
+            opening = f"Here are {len(outfits)} outfit recommendations"
+        parts: List[str] = [opening]
 
         occasion = ctx.live.occasion_signal
         if occasion:
             parts.append(f"for your {occasion.replace('_', ' ')}")
 
-        primary = str(ctx.user.style_preference.get("primaryArchetype") or "").strip()
+        primary = _extract_plan_archetype(plan) if plan else ""
+        if not primary:
+            primary = str(ctx.user.style_preference.get("primaryArchetype") or "").strip()
         seasonal = ""
         sg = ctx.user.derived_interpretations.get("SeasonalColorGroup")
         if isinstance(sg, dict):
@@ -122,6 +158,26 @@ class ResponseFormatter:
     def _build_follow_up_suggestions(
         self, ctx: CombinedContext, plan: RecommendationPlan
     ) -> List[str]:
+        intent = (ctx.live.followup_intent or "").strip()
+
+        # Intent-specific chips take priority
+        if intent == "change_color":
+            return [
+                "Show me something similar to these",
+                "Try a completely different style",
+                "Show me bolder options",
+                "Show me more options",
+                "Something completely different",
+            ][:5]
+        if intent == "similar_to_previous":
+            return [
+                "Show me a different color direction",
+                "Show me something bolder",
+                "Show me more options",
+                "Something completely different",
+                "Show me top and bottom pairings instead" if plan.plan_type != "paired_only" else "Show me complete outfit alternatives",
+            ][:5]
+
         suggestions: List[str] = []
 
         if ctx.live.formality_hint in {"formal", "semi_formal", "ultra_formal"}:

@@ -157,6 +157,53 @@ class SupabaseVectorStore:
             )
         return saved
 
+    def create_job(self, job_type: str, params: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        return self._client.insert_one(
+            "catalog_jobs",
+            {
+                "job_type": job_type,
+                "status": "running",
+                "params_json": params or {},
+            },
+        )
+
+    def complete_job(
+        self,
+        job_id: str,
+        *,
+        processed_rows: int = 0,
+        saved_rows: int = 0,
+        missing_url_rows: int = 0,
+    ) -> None:
+        self._client.update_one(
+            "catalog_jobs",
+            filters={"id": f"eq.{job_id}"},
+            patch={
+                "status": "completed",
+                "processed_rows": processed_rows,
+                "saved_rows": saved_rows,
+                "missing_url_rows": missing_url_rows,
+            },
+        )
+
+    def fail_job(self, job_id: str, error_message: str) -> None:
+        self._client.update_one(
+            "catalog_jobs",
+            filters={"id": f"eq.{job_id}"},
+            patch={
+                "status": "failed",
+                "error_message": error_message[:2000],
+            },
+        )
+
+    def recent_jobs(self, limit: int = 20) -> List[Dict[str, Any]]:
+        return self._client.select_many(
+            "catalog_jobs",
+            columns="id,job_type,status,params_json,processed_rows,saved_rows,missing_url_rows,error_message,started_at,completed_at,created_at",
+            order="created_at.desc",
+            limit=limit,
+        )
+
     def similarity_search(self, *, query_embedding: List[float], match_count: int, filters: Dict[str, Any]) -> Any:
         return self._client.rpc(
             "match_catalog_item_embeddings",

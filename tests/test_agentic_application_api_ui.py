@@ -13,10 +13,8 @@ for p in (
     ROOT / "modules" / "user" / "src",
     ROOT / "modules" / "agentic_application" / "src",
     ROOT / "modules" / "catalog" / "src",
-    ROOT / "modules" / "catalog_retrieval" / "src",
     ROOT / "modules" / "platform_core" / "src",
     ROOT / "modules" / "user_profiler" / "src",
-    ROOT / "modules" / "onboarding" / "src",
 ):
     sp = str(p)
     if sp not in sys.path:
@@ -32,7 +30,7 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         sb_client = patch("agentic_application.api.SupabaseRestClient")
         repo_cls = patch("agentic_application.api.ConversationRepository")
         orch_cls = patch("agentic_application.api.AgenticOrchestrator")
-        onboarding_gateway_cls = patch("agentic_application.api.ApplicationOnboardingGateway")
+        onboarding_gateway_cls = patch("agentic_application.api.ApplicationUserGateway")
 
         mocked = [
             load_cfg.start(),
@@ -150,7 +148,7 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         ) as repo_cls, patch(
             "agentic_application.api.AgenticOrchestrator"
         ) as orch_cls, patch(
-            "agentic_application.api.ApplicationOnboardingGateway"
+            "agentic_application.api.ApplicationUserGateway"
         ) as onboarding_gateway_cls, patch(
             "agentic_application.api.create_catalog_admin_router"
         ) as catalog_router_factory:
@@ -193,6 +191,142 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         payload = resp.json()
         self.assertEqual(8, payload["saved_rows"])
         self.assertEqual(2, payload["missing_url_rows"])
+
+
+    def test_ui_html_contains_outfit_card_classes(self) -> None:
+        app, _ = self._patched_app("completed")
+        client = TestClient(app)
+        resp = client.get("/?user=user_ready")
+        html = resp.text
+        self.assertIn("outfit-card", html)
+        self.assertIn("outfit-thumbs", html)
+        self.assertIn("outfit-main-img", html)
+        self.assertIn("outfit-info", html)
+        self.assertIn("outfit-feedback", html)
+        self.assertIn("dislike-form", html)
+        self.assertIn("sendFeedback", html)
+        self.assertIn("buildOutfitCard", html)
+        self.assertIn("renderOutfits", html)
+        # Old classes should be gone
+        self.assertNotIn("tryon-section", html)
+        self.assertNotIn("tryon-label", html)
+        self.assertNotIn("renderRecommendations", html)
+
+    def test_outfit_card_schema_accepts_tryon_and_enrichment_fields(self) -> None:
+        from platform_core.api_schemas import OutfitCard, OutfitItem
+        item = OutfitItem(
+            product_id="p1",
+            formality_level="smart_casual",
+            occasion_fit="office",
+            pattern_type="solid",
+            volume_profile="fitted",
+            fit_type="slim",
+            silhouette_type="straight",
+        )
+        card = OutfitCard(
+            rank=1,
+            title="Test Outfit",
+            tryon_image="data:image/png;base64,abc",
+            items=[item],
+        )
+        self.assertEqual("data:image/png;base64,abc", card.tryon_image)
+        self.assertEqual("smart_casual", card.items[0].formality_level)
+        self.assertEqual("office", card.items[0].occasion_fit)
+        self.assertEqual("solid", card.items[0].pattern_type)
+
+    def test_feedback_request_schema_validates_event_type(self) -> None:
+        from platform_core.api_schemas import FeedbackRequest
+        fb = FeedbackRequest(outfit_rank=1, event_type="like")
+        self.assertEqual("like", fb.event_type)
+        fb2 = FeedbackRequest(outfit_rank=2, event_type="dislike", notes="Too bold")
+        self.assertEqual("dislike", fb2.event_type)
+        self.assertEqual("Too bold", fb2.notes)
+        from pydantic import ValidationError
+        with self.assertRaises(ValidationError):
+            FeedbackRequest(outfit_rank=1, event_type="invalid")
+
+    def _patched_feedback_app(self, repo_mock):
+        """Create an app with a controlled repo mock for feedback endpoint tests."""
+        import agentic_application.api as api_mod
+        with patch.object(api_mod, "ConversationRepository") as repo_cls, \
+             patch.object(api_mod, "load_config") as load_cfg, \
+             patch.object(api_mod, "SupabaseRestClient"), \
+             patch.object(api_mod, "AgenticOrchestrator"), \
+             patch.object(api_mod, "ApplicationUserGateway") as gw_cls:
+            load_cfg.return_value = Mock(
+                supabase_rest_url="http://127.0.0.1:55321/rest/v1",
+                supabase_service_role_key="x",
+                request_timeout_seconds=5,
+                catalog_csv_path="data/catalog/enriched_catalog.csv",
+                retrieval_match_count=12,
+            )
+            repo_cls.return_value = repo_mock
+            gw = Mock()
+            gw.create_router.return_value = APIRouter()
+            gw_cls.return_value = gw
+            return create_app()
+
+    def test_feedback_endpoint_returns_ok(self) -> None:
+        repo_mock = Mock()
+        repo_mock.get_conversation.return_value = {"user_id": "uid-1", "id": "c1"}
+        repo_mock.get_latest_turn.return_value = {"id": "t1", "resolved_context_json": {}}
+        repo_mock.create_feedback_event.return_value = {"id": "fb1"}
+
+        app = self._patched_feedback_app(repo_mock)
+        client = TestClient(app)
+        resp = client.post("/v1/conversations/c1/feedback", json={
+            "outfit_rank": 1,
+            "event_type": "like",
+            "item_ids": ["g1", "g2"],
+        })
+        self.assertEqual(200, resp.status_code)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(2, data["count"])
+        self.assertEqual(2, repo_mock.create_feedback_event.call_count)
+        call_kwargs = repo_mock.create_feedback_event.call_args_list[0].kwargs
+        self.assertEqual("like", call_kwargs["event_type"])
+        self.assertEqual("g1", call_kwargs["garment_id"])
+        self.assertEqual("c1", call_kwargs["conversation_id"])
+
+    def test_feedback_endpoint_resolves_items_from_turn(self) -> None:
+        repo_mock = Mock()
+        repo_mock.get_conversation.return_value = {"user_id": "uid-1", "id": "c1"}
+        repo_mock.get_latest_turn.return_value = {
+            "id": "t1",
+            "resolved_context_json": {
+                "final_recommendations": [
+                    {"rank": 1, "item_ids": ["g1", "g2"]},
+                    {"rank": 2, "item_ids": ["g3"]},
+                ]
+            }
+        }
+        repo_mock.create_feedback_event.return_value = {"id": "fb1"}
+
+        app = self._patched_feedback_app(repo_mock)
+        client = TestClient(app)
+        resp = client.post("/v1/conversations/c1/feedback", json={
+            "outfit_rank": 1,
+            "event_type": "dislike",
+            "notes": "Too bold for me",
+        })
+        self.assertEqual(200, resp.status_code)
+        data = resp.json()
+        self.assertEqual(2, data["count"])
+        call_kwargs = repo_mock.create_feedback_event.call_args_list[0].kwargs
+        self.assertEqual("dislike", call_kwargs["event_type"])
+        self.assertEqual("Too bold for me", call_kwargs["notes"])
+        self.assertEqual("g1", call_kwargs["garment_id"])
+
+    def test_feedback_endpoint_rejects_invalid_event_type(self) -> None:
+        repo_mock = Mock()
+        app = self._patched_feedback_app(repo_mock)
+        client = TestClient(app)
+        resp = client.post("/v1/conversations/c1/feedback", json={
+            "outfit_rank": 1,
+            "event_type": "invalid_type",
+        })
+        self.assertEqual(422, resp.status_code)
 
 
 if __name__ == "__main__":

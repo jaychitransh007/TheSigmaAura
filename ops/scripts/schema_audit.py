@@ -15,14 +15,14 @@ def _discover_repo_root() -> Path:
 ROOT = _discover_repo_root()
 for p in (
     ROOT,
-    ROOT / "modules" / "catalog_enrichment" / "src",
+    ROOT / "modules" / "catalog" / "src",
     ROOT / "modules" / "style_engine" / "src",
 ):
     sp = str(p)
     if sp not in sys.path:
         sys.path.insert(0, sp)
 
-from catalog_enrichment.audit import PROMPT_PATH, run_schema_audit, write_audit_report
+from catalog.enrichment.audit import PROMPT_PATH, run_schema_audit, write_audit_report
 
 
 def parse_args() -> argparse.Namespace:

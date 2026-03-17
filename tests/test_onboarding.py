@@ -10,17 +10,17 @@ ROOT = Path(__file__).resolve().parents[1]
 for p in (
     ROOT,
     ROOT / "modules" / "platform_core" / "src",
-    ROOT / "modules" / "onboarding" / "src",
+    ROOT / "modules" / "user" / "src",
     ROOT / "modules" / "user_profiler" / "src",
 ):
     sp = str(p)
     if sp not in sys.path:
         sys.path.insert(0, sp)
 
-from onboarding.service import OnboardingService, _encrypt_filename
-from onboarding.style_archetype import ARCHETYPE_ORDER
-from onboarding.analysis import UserAnalysisService
-from onboarding.ui import get_onboarding_html, get_processing_html
+from user.service import OnboardingService, _encrypt_filename
+from user.style_archetype import ARCHETYPE_ORDER
+from user.analysis import UserAnalysisService
+from user.ui import get_onboarding_html, get_processing_html
 from platform_core.supabase_rest import SupabaseError
 
 
@@ -85,7 +85,7 @@ class OnboardingTests(unittest.TestCase):
                 output_path.write_bytes(b"jpeg-bytes")
                 return Mock()
 
-            with patch("onboarding.service.subprocess.run", side_effect=fake_run) as run_mock:
+            with patch("user.service.subprocess.run", side_effect=fake_run) as run_mock:
                 normalized, mime_type, filename = service.normalize_image_for_crop(
                     file_data=b"heic-bytes",
                     filename="portrait.HEIC",

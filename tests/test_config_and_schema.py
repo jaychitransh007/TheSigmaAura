@@ -6,7 +6,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 for p in (
     ROOT,
-    ROOT / "modules" / "catalog_enrichment" / "src",
+    ROOT / "modules" / "catalog" / "src",
+    ROOT / "modules" / "platform_core" / "src",
+    ROOT / "modules" / "user_profiler" / "src",
     ROOT / "modules" / "style_engine" / "src",
 ):
     sp = str(p)
@@ -14,8 +16,8 @@ for p in (
         sys.path.insert(0, sp)
 
 
-from catalog_enrichment.attributes import ATTRIBUTE_NAMES, ENUM_ATTRIBUTES, TEXT_ATTRIBUTES
-from catalog_enrichment.config_registry import (
+from catalog.enrichment.attributes import ATTRIBUTE_NAMES, ENUM_ATTRIBUTES, TEXT_ATTRIBUTES
+from catalog.enrichment.config_registry import (
     load_body_harmony_attributes,
     load_garment_attributes,
     load_outfit_assembly_rules,
@@ -25,7 +27,7 @@ from catalog_enrichment.config_registry import (
     load_tier2_ranked_attributes,
     load_user_context_attributes,
 )
-from catalog_enrichment.schema_builder import build_schema
+from catalog.enrichment.schema_builder import build_schema
 
 
 class ConfigAndSchemaTests(unittest.TestCase):

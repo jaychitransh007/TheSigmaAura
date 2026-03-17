@@ -7,13 +7,13 @@ ROOT = Path(__file__).resolve().parents[1]
 for p in (
     ROOT,
     ROOT / "modules" / "platform_core" / "src",
-    ROOT / "modules" / "onboarding" / "src",
+    ROOT / "modules" / "user" / "src",
 ):
     sp = str(p)
     if sp not in sys.path:
         sys.path.insert(0, sp)
 
-from onboarding.interpreter import derive_interpretations
+from user.interpreter import derive_interpretations
 
 
 def _attr(value, confidence=0.9, note="visible"):

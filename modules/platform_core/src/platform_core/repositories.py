@@ -115,6 +115,33 @@ class ConversationRepository:
             payload["latency_ms"] = latency_ms
         return self.client.insert_one("model_call_logs", payload)
 
+    def create_feedback_event(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str,
+        turn_id: Optional[str] = None,
+        outfit_rank: Optional[int] = None,
+        garment_id: str,
+        event_type: str,
+        reward_value: int = 0,
+        notes: str = "",
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "user_id": user_id,
+            "conversation_id": conversation_id,
+            "garment_id": garment_id,
+            "event_type": event_type,
+            "reward_value": reward_value,
+            "notes": notes,
+            "created_at": _now_iso(),
+        }
+        if turn_id:
+            payload["turn_id"] = turn_id
+        if outfit_rank is not None:
+            payload["outfit_rank"] = outfit_rank
+        return self.client.insert_one("feedback_events", payload)
+
     def log_tool_trace(
         self,
         *,

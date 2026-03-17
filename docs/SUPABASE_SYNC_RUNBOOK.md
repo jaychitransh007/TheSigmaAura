@@ -60,8 +60,8 @@ APP_ENV=local python3 run_agentic_application.py --host 127.0.0.1 --port 8010
 ## Run Catalog Embeddings Against Staging
 ```bash
 ENV_FILE=.env.staging \
-PYTHONPATH=modules/catalog_retrieval/src:modules/user_profiler/src:modules/platform_core/src \
-python3 -m catalog_retrieval.main \
+PYTHONPATH=modules/catalog/src:modules/user_profiler/src:modules/platform_core/src \
+python3 -m catalog.retrieval.main \
   --input data/catalog/enriched_catalog.csv \
   --documents-output data/catalog/embeddings/catalog_documents_sample.jsonl \
   --embeddings-output data/catalog/embeddings/catalog_embeddings_sample.jsonl \

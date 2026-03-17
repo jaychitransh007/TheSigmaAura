@@ -87,6 +87,11 @@ def _candidate_signature(candidate: OutfitCandidate) -> Dict[str, Any]:
     occasions = _dedupe_strings(item.get("occasion_fit") for item in candidate.items)
     roles = _dedupe_strings(item.get("role") for item in candidate.items)
     categories = _dedupe_strings(item.get("garment_category") for item in candidate.items)
+    formality_levels = _dedupe_strings(item.get("formality_level") for item in candidate.items)
+    pattern_types = _dedupe_strings(item.get("pattern_type") for item in candidate.items)
+    volume_profiles = _dedupe_strings(item.get("volume_profile") for item in candidate.items)
+    fit_types = _dedupe_strings(item.get("fit_type") for item in candidate.items)
+    silhouette_types = _dedupe_strings(item.get("silhouette_type") for item in candidate.items)
     return {
         "candidate_id": candidate.candidate_id,
         "candidate_type": candidate.candidate_type,
@@ -94,6 +99,11 @@ def _candidate_signature(candidate: OutfitCandidate) -> Dict[str, Any]:
         "occasion_fits": occasions,
         "roles": roles,
         "garment_categories": categories,
+        "formality_levels": formality_levels,
+        "pattern_types": pattern_types,
+        "volume_profiles": volume_profiles,
+        "fit_types": fit_types,
+        "silhouette_types": silhouette_types,
     }
 
 
@@ -105,10 +115,24 @@ def _candidate_delta(
     previous_colors = _dedupe_strings(previous.get("primary_colors") or [])
     previous_occasions = _dedupe_strings(previous.get("occasion_fits") or [])
     previous_roles = _dedupe_strings(previous.get("roles") or [])
+    previous_formalities = _dedupe_strings(previous.get("formality_levels") or [])
+    previous_patterns = _dedupe_strings(previous.get("pattern_types") or [])
+    previous_volumes = _dedupe_strings(previous.get("volume_profiles") or [])
+    previous_fits = _dedupe_strings(previous.get("fit_types") or [])
+    previous_silhouettes = _dedupe_strings(previous.get("silhouette_types") or [])
     candidate_sig = _candidate_signature(candidate)
     candidate_colors = candidate_sig["primary_colors"]
     candidate_occasions = candidate_sig["occasion_fits"]
     candidate_roles = candidate_sig["roles"]
+    candidate_formalities = candidate_sig["formality_levels"]
+    candidate_patterns = candidate_sig["pattern_types"]
+    candidate_volumes = candidate_sig["volume_profiles"]
+    candidate_fits = candidate_sig["fit_types"]
+    candidate_silhouettes = candidate_sig["silhouette_types"]
+
+    formality_shift = ""
+    if previous_formalities and candidate_formalities and previous_formalities != candidate_formalities:
+        formality_shift = f"{', '.join(previous_formalities)}\u2192{', '.join(candidate_formalities)}"
 
     return {
         "candidate_id": candidate.candidate_id,
@@ -122,6 +146,15 @@ def _candidate_delta(
         "preserves_occasion": any(occasion in previous_occasions for occasion in candidate_occasions),
         "occasion_shift": [occasion for occasion in candidate_occasions if occasion not in previous_occasions],
         "preserves_roles": bool(candidate_roles) and candidate_roles == previous_roles,
+        "formality_shift": formality_shift,
+        "shared_patterns": [p for p in candidate_patterns if p in previous_patterns],
+        "new_patterns": [p for p in candidate_patterns if p not in previous_patterns],
+        "shared_volumes": [v for v in candidate_volumes if v in previous_volumes],
+        "new_volumes": [v for v in candidate_volumes if v not in previous_volumes],
+        "shared_fits": [f for f in candidate_fits if f in previous_fits],
+        "new_fits": [f for f in candidate_fits if f not in previous_fits],
+        "shared_silhouettes": [s for s in candidate_silhouettes if s in previous_silhouettes],
+        "new_silhouettes": [s for s in candidate_silhouettes if s not in previous_silhouettes],
     }
 
 
@@ -152,6 +185,27 @@ def _followup_reasoning_defaults(
             color_note = f"Shifts the palette toward {', '.join(new_colors)}."
         elif shared_colors:
             color_note = f"Keeps prior colors {', '.join(shared_colors)} because stronger alternatives were limited."
+
+        # Build style_note for preserved non-color attributes
+        style_parts: list[str] = []
+        if delta.get("preserves_occasion"):
+            style_parts.append("occasion fit")
+        if delta.get("candidate_type_matches_previous"):
+            style_parts.append("outfit structure")
+        if not delta.get("formality_shift"):
+            style_parts.append("formality")
+        shared_silhouettes = list(delta.get("shared_silhouettes") or [])
+        if shared_silhouettes:
+            style_parts.append(f"silhouette ({', '.join(shared_silhouettes)})")
+        shared_fits = list(delta.get("shared_fits") or [])
+        if shared_fits:
+            style_parts.append(f"fit ({', '.join(shared_fits)})")
+        shared_volumes = list(delta.get("shared_volumes") or [])
+        if shared_volumes:
+            style_parts.append(f"volume ({', '.join(shared_volumes)})")
+        if style_parts:
+            style_note = f"Preserves {', '.join(style_parts)} while shifting colors."
+
     elif intent == "similar_to_previous":
         preserved = []
         if delta.get("candidate_type_matches_previous"):
@@ -160,6 +214,21 @@ def _followup_reasoning_defaults(
             preserved.append("occasion fit")
         if delta.get("preserves_roles"):
             preserved.append("pairing roles")
+        shared_colors = list(delta.get("shared_colors") or [])
+        if shared_colors:
+            preserved.append(f"colors ({', '.join(shared_colors)})")
+        shared_patterns = list(delta.get("shared_patterns") or [])
+        if shared_patterns:
+            preserved.append(f"patterns ({', '.join(shared_patterns)})")
+        shared_volumes = list(delta.get("shared_volumes") or [])
+        if shared_volumes:
+            preserved.append(f"volume ({', '.join(shared_volumes)})")
+        shared_fits = list(delta.get("shared_fits") or [])
+        if shared_fits:
+            preserved.append(f"fit ({', '.join(shared_fits)})")
+        shared_silhouettes = list(delta.get("shared_silhouettes") or [])
+        if shared_silhouettes:
+            preserved.append(f"silhouette ({', '.join(shared_silhouettes)})")
         reasoning = "Compared against the previous recommendation to preserve its strongest qualities."
         if preserved:
             style_note = f"Preserves {', '.join(preserved)} from the previous recommendation."
@@ -181,6 +250,10 @@ def _normalize_evaluations(
     combined_context: CombinedContext,
 ) -> List[EvaluatedRecommendation]:
     candidate_ids = {candidate.candidate_id for candidate in candidates}
+    candidate_item_ids: Dict[str, set[str]] = {
+        c.candidate_id: {str(item.get("product_id", "")) for item in c.items}
+        for c in candidates
+    }
     deltas = _delta_lookup(candidates, combined_context)
     normalized: List[EvaluatedRecommendation] = []
     seen: set[str] = set()
@@ -191,13 +264,26 @@ def _normalize_evaluations(
         seen.add(entry.candidate_id)
         delta = deltas.get(entry.candidate_id, {})
         defaults = _followup_reasoning_defaults(delta)
+
+        # Clamp match_score to valid range
+        clamped_score = max(0.0, min(1.0, entry.match_score))
+
+        # Validate item_ids against actual candidate items
+        valid_ids = candidate_item_ids.get(entry.candidate_id, set())
+        validated_item_ids = [iid for iid in entry.item_ids if iid in valid_ids]
+        if not validated_item_ids:
+            validated_item_ids = sorted(valid_ids)
+
         normalized.append(
             entry.model_copy(
                 update={
+                    "match_score": clamped_score,
+                    "item_ids": validated_item_ids,
                     "reasoning": entry.reasoning or defaults["reasoning"],
-                    "color_note": entry.color_note or defaults["color_note"],
-                    "style_note": entry.style_note or defaults["style_note"],
-                    "occasion_note": entry.occasion_note or defaults["occasion_note"],
+                    "body_note": entry.body_note or "Considered body proportions.",
+                    "color_note": entry.color_note or defaults["color_note"] or "Considered color harmony.",
+                    "style_note": entry.style_note or defaults["style_note"] or "Considered style fit.",
+                    "occasion_note": entry.occasion_note or defaults["occasion_note"] or "Considered occasion appropriateness.",
                 }
             )
         )
@@ -241,6 +327,11 @@ def _build_eval_payload(
         "plan_type": plan.plan_type,
         "candidates": [c.model_dump() for c in candidates],
         "candidate_deltas": [_candidate_delta(candidate, combined_context) for candidate in candidates],
+        "body_context_summary": {
+            "height_category": interps.get("height_category", "") or interps.get("HeightCategory", ""),
+            "frame_structure": interps.get("frame_structure", "") or interps.get("FrameStructure", ""),
+            "body_shape": attrs.get("body_shape", "") or attrs.get("BodyShape", ""),
+        },
     }
     return json.dumps(payload, indent=2, default=str)
 
@@ -270,6 +361,22 @@ def _fallback_evaluations(
                     "Keeps the prior color story because no stronger alternative survived retrieval."
                 )
             reasoning = "Ranked by retrieval similarity with color-shift comparison to the previous look."
+            # Explain preserved non-color attributes
+            fb_style_parts: list[str] = []
+            if delta["preserves_occasion"]:
+                fb_style_parts.append("occasion fit")
+            if delta["candidate_type_matches_previous"]:
+                fb_style_parts.append("outfit structure")
+            if not delta["formality_shift"]:
+                fb_style_parts.append("formality")
+            if delta["shared_silhouettes"]:
+                fb_style_parts.append(f"silhouette ({', '.join(delta['shared_silhouettes'])})")
+            if delta["shared_fits"]:
+                fb_style_parts.append(f"fit ({', '.join(delta['shared_fits'])})")
+            if delta["shared_volumes"]:
+                fb_style_parts.append(f"volume ({', '.join(delta['shared_volumes'])})")
+            if fb_style_parts:
+                style_note = f"Preserves {', '.join(fb_style_parts)} while shifting colors."
         elif combined_context.live.followup_intent == "similar_to_previous":
             preserved = []
             if delta["candidate_type_matches_previous"]:
@@ -278,6 +385,16 @@ def _fallback_evaluations(
                 preserved.append("same occasion")
             if delta["preserves_roles"]:
                 preserved.append("same pairing roles")
+            if delta["shared_colors"]:
+                preserved.append(f"colors ({', '.join(delta['shared_colors'])})")
+            if delta["shared_patterns"]:
+                preserved.append(f"patterns ({', '.join(delta['shared_patterns'])})")
+            if delta["shared_volumes"]:
+                preserved.append(f"volume ({', '.join(delta['shared_volumes'])})")
+            if delta["shared_fits"]:
+                preserved.append(f"fit ({', '.join(delta['shared_fits'])})")
+            if delta["shared_silhouettes"]:
+                preserved.append(f"silhouette ({', '.join(delta['shared_silhouettes'])})")
             if preserved:
                 style_note = f"Preserves {' and '.join(preserved)} from the previous recommendation."
             reasoning = "Ranked by retrieval similarity with similarity-to-previous comparison."

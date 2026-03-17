@@ -7,7 +7,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 for p in (
     ROOT,
-    ROOT / "modules" / "catalog_enrichment" / "src",
+    ROOT / "modules" / "catalog" / "src",
     ROOT / "modules" / "style_engine" / "src",
     ROOT / "modules" / "user_profiler" / "src",
 ):

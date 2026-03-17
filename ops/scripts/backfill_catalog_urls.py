@@ -11,7 +11,6 @@ ROOT = Path(__file__).resolve().parents[2]
 for p in (
     ROOT,
     ROOT / "modules" / "catalog" / "src",
-    ROOT / "modules" / "catalog_retrieval" / "src",
     ROOT / "modules" / "platform_core" / "src",
     ROOT / "modules" / "user_profiler" / "src",
 ):
@@ -20,7 +19,7 @@ for p in (
         sys.path.insert(0, sp)
 
 from catalog.admin_service import CatalogAdminService
-from catalog_retrieval.vector_store import SupabaseVectorStore
+from catalog.retrieval.vector_store import SupabaseVectorStore
 
 
 def main() -> int:

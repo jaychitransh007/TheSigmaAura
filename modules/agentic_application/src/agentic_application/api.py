@@ -13,6 +13,7 @@ from platform_core.api_schemas import (
     ConversationStateResponse,
     CreateConversationRequest,
     CreateTurnRequest,
+    FeedbackRequest,
     TurnJobStartResponse,
     TurnJobStatusResponse,
     TurnResponse,
@@ -25,7 +26,7 @@ from platform_core.ui import get_web_ui_html
 from pydantic import BaseModel
 
 from .orchestrator import AgenticOrchestrator
-from .services.onboarding_gateway import ApplicationOnboardingGateway
+from .services.onboarding_gateway import ApplicationUserGateway
 from .services.tryon_service import TryonService
 
 
@@ -45,7 +46,7 @@ def create_app() -> FastAPI:
         timeout_seconds=cfg.request_timeout_seconds,
     )
     repo = ConversationRepository(client)
-    onboarding_gateway = ApplicationOnboardingGateway(client)
+    onboarding_gateway = ApplicationUserGateway(client)
     orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=cfg)
 
     tryon_service = TryonService()
@@ -231,6 +232,50 @@ def create_app() -> FastAPI:
             )
             return result
         except (ValueError, FileNotFoundError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/v1/conversations/{conversation_id}/feedback")
+    def submit_feedback(conversation_id: str, payload: FeedbackRequest) -> dict:
+        try:
+            conv = repo.get_conversation(conversation_id)
+            if not conv:
+                raise HTTPException(status_code=404, detail="Conversation not found.")
+            user_id = conv["user_id"]
+
+            latest_turn = repo.get_latest_turn(conversation_id)
+            turn_id = latest_turn["id"] if latest_turn else None
+
+            # Resolve garment IDs from the outfit at the given rank
+            item_ids = list(payload.item_ids) if payload.item_ids else []
+            if not item_ids and latest_turn:
+                resolved = latest_turn.get("resolved_context_json") or {}
+                final_recs = resolved.get("final_recommendations") or []
+                for rec in final_recs:
+                    if rec.get("rank") == payload.outfit_rank:
+                        item_ids = [str(pid) for pid in (rec.get("item_ids") or [])]
+                        break
+
+            if not item_ids:
+                item_ids = ["unknown"]
+
+            reward = 1 if payload.event_type == "like" else -1
+            count = 0
+            for gid in item_ids:
+                repo.create_feedback_event(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    outfit_rank=payload.outfit_rank,
+                    garment_id=gid,
+                    event_type=payload.event_type,
+                    reward_value=reward,
+                    notes=payload.notes,
+                )
+                count += 1
+            return {"ok": True, "count": count}
+        except HTTPException:
+            raise
+        except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return app

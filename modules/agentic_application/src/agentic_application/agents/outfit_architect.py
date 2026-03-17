@@ -156,6 +156,7 @@ def _build_user_payload(ctx: CombinedContext) -> str:
         "conversation_memory": (
             ctx.conversation_memory.model_dump() if ctx.conversation_memory else None
         ),
+        "catalog_inventory": ctx.catalog_inventory,
     }
     return json.dumps(payload, indent=2, default=str)
 

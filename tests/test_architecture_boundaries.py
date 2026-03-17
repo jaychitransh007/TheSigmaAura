@@ -13,10 +13,8 @@ for p in (
     ROOT / "modules" / "user" / "src",
     ROOT / "modules" / "agentic_application" / "src",
     ROOT / "modules" / "catalog" / "src",
-    ROOT / "modules" / "catalog_retrieval" / "src",
     ROOT / "modules" / "platform_core" / "src",
     ROOT / "modules" / "user_profiler" / "src",
-    ROOT / "modules" / "onboarding" / "src",
 ):
     sp = str(p)
     if sp not in sys.path:

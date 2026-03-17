@@ -13,7 +13,7 @@ class TestStaticTemplates:
         [
             ("validate_request", "started"),
             ("user_context", "started"),
-            ("occasion_resolver", "started"),
+            ("context_builder", "started"),
             ("outfit_architect", "started"),
             ("catalog_search", "started"),
             ("outfit_assembly", "started"),
@@ -46,9 +46,9 @@ class TestUserContextCompleted:
         assert msg  # should not crash
 
 
-class TestOccasionResolverCompleted:
+class TestContextBuilderCompleted:
     def test_returns_static_message(self):
-        msg = generate_stage_message("occasion_resolver", "completed")
+        msg = generate_stage_message("context_builder", "completed")
         assert msg
         assert isinstance(msg, str)
 

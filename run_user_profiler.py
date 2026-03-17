@@ -14,7 +14,7 @@ def _discover_repo_root() -> Path:
 ROOT = _discover_repo_root()
 for p in (
     ROOT,
-    ROOT / "modules" / "catalog_enrichment" / "src",
+    ROOT / "modules" / "catalog" / "src",
     ROOT / "modules" / "style_engine" / "src",
     ROOT / "modules" / "user_profiler" / "src",
 ):

@@ -8,7 +8,6 @@ ROOT = Path(__file__).resolve().parents[1]
 for p in (
     ROOT,
     ROOT / "modules" / "catalog" / "src",
-    ROOT / "modules" / "catalog_retrieval" / "src",
     ROOT / "modules" / "platform_core" / "src",
     ROOT / "modules" / "user_profiler" / "src",
 ):
@@ -16,11 +15,11 @@ for p in (
     if sp not in sys.path:
         sys.path.insert(0, sp)
 
-from catalog_retrieval.config import CatalogEmbeddingConfig
-from catalog_retrieval.document_builder import build_catalog_document, iter_catalog_documents
-from catalog_retrieval.repository import build_catalog_enriched_rows, build_catalog_item_rows
-from catalog_retrieval.schemas import CatalogEmbeddingRecord
-from catalog_retrieval.vector_store import SupabaseVectorStore
+from catalog.retrieval.config import CatalogEmbeddingConfig
+from catalog.retrieval.document_builder import build_catalog_document, iter_catalog_documents
+from catalog.retrieval.repository import build_catalog_enriched_rows, build_catalog_item_rows
+from catalog.retrieval.schemas import CatalogEmbeddingRecord
+from catalog.retrieval.vector_store import SupabaseVectorStore
 from catalog.admin_service import CatalogAdminService
 
 
@@ -315,6 +314,7 @@ class CatalogRetrievalTests(unittest.TestCase):
                 encoding="utf-8",
             )
             vector_store = Mock()
+            vector_store.create_job.return_value = {"id": "job-1"}
             vector_store.upsert_catalog_enriched.return_value = [{"product_id": "sku_1"}, {"product_id": "sku_2"}]
             service = CatalogAdminService(vector_store=vector_store)
 
@@ -323,9 +323,12 @@ class CatalogRetrievalTests(unittest.TestCase):
         self.assertEqual(2, result["processed_rows"])
         self.assertEqual(2, result["saved_rows"])
         self.assertEqual(1, result["missing_url_rows"])
+        self.assertEqual("job-1", result["job_id"])
+        vector_store.complete_job.assert_called_once()
 
     def test_catalog_admin_backfills_canonical_urls_for_existing_rows(self) -> None:
         vector_store = Mock()
+        vector_store.create_job.return_value = {"id": "job-bf-1"}
         vector_store.client.select_many.return_value = [
             {
                 "product_id": "sku_1",
@@ -357,11 +360,78 @@ class CatalogRetrievalTests(unittest.TestCase):
         self.assertEqual(2, result["processed_rows"])
         self.assertEqual(1, result["saved_rows"])
         self.assertEqual(1, result["missing_url_rows"])
+        self.assertEqual("job-bf-1", result["job_id"])
+        vector_store.complete_job.assert_called_once()
         saved_rows = vector_store.upsert_catalog_enriched.call_args.args[0]
         self.assertEqual(
             "https://www.andamen.com/products/palm-green-cotton-resort-shirt",
             saved_rows[0]["url"],
         )
+
+    def test_catalog_admin_sync_with_start_end_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            csv_path = Path(tmp_dir) / "catalog.csv"
+            csv_path.write_text(
+                "product_id,title\n"
+                "sku_1,Item 1\n"
+                "sku_2,Item 2\n"
+                "sku_3,Item 3\n"
+                "sku_4,Item 4\n",
+                encoding="utf-8",
+            )
+            vector_store = Mock()
+            vector_store.create_job.return_value = {"id": "job-slice"}
+            vector_store.upsert_catalog_enriched.return_value = [{"product_id": "sku_2"}, {"product_id": "sku_3"}]
+            service = CatalogAdminService(vector_store=vector_store)
+
+            result = service.sync_catalog_items(input_csv_path=str(csv_path), start_row=1, end_row=3)
+
+        self.assertEqual(2, result["processed_rows"])
+        upserted = vector_store.upsert_catalog_enriched.call_args.args[0]
+        product_ids = [row["product_id"] for row in upserted]
+        self.assertIn("sku_2", product_ids)
+        self.assertIn("sku_3", product_ids)
+        self.assertNotIn("sku_1", product_ids)
+        self.assertNotIn("sku_4", product_ids)
+
+    def test_catalog_admin_sync_marks_job_failed_on_error(self) -> None:
+        vector_store = Mock()
+        vector_store.create_job.return_value = {"id": "job-fail"}
+        vector_store.upsert_catalog_enriched.side_effect = RuntimeError("DB down")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            csv_path = Path(tmp_dir) / "catalog.csv"
+            csv_path.write_text("product_id,title\nsku_1,Item 1\n", encoding="utf-8")
+            service = CatalogAdminService(vector_store=vector_store)
+            with self.assertRaises(RuntimeError):
+                service.sync_catalog_items(input_csv_path=str(csv_path))
+        vector_store.fail_job.assert_called_once()
+        self.assertEqual("job-fail", vector_store.fail_job.call_args.args[0])
+
+    def test_get_status_includes_job_counts_and_recent_jobs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            csv_path = Path(tmp_dir) / "catalog.csv"
+            csv_path.write_text("product_id,title\nsku_1,Item 1\n", encoding="utf-8")
+            vector_store = Mock()
+            vector_store.catalog_status.return_value = {
+                "catalog_enriched_count": 10,
+                "catalog_embeddings_count": 5,
+                "embedded_product_count": 5,
+                "total_jobs": 3,
+                "running_jobs": 1,
+                "failed_jobs": 0,
+            }
+            vector_store.recent_jobs.return_value = [
+                {"id": "j1", "job_type": "items_sync", "status": "completed"},
+            ]
+            service = CatalogAdminService(vector_store=vector_store)
+
+            result = service.get_status(input_csv_path=str(csv_path))
+
+        self.assertEqual(3, result["total_jobs"])
+        self.assertEqual(1, result["running_jobs"])
+        self.assertEqual(0, result["failed_jobs"])
+        self.assertEqual(1, len(result["recent_jobs"]))
+        self.assertEqual("items_sync", result["recent_jobs"][0]["job_type"])
 
 
 if __name__ == "__main__":

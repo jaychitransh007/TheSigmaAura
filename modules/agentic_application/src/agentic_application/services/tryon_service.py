@@ -5,7 +5,7 @@ import logging
 import os
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.request import urlopen, Request
 
 from google import genai
@@ -15,8 +15,7 @@ _log = logging.getLogger(__name__)
 
 MAX_IMAGE_DIMENSION = 1024
 
-TRYON_PROMPT = (
-    "Virtual try-on: replace only the clothing on the person with the target garment.\n\n"
+_BODY_PRESERVATION_RULES = (
     "The person in the image must remain exactly the same. "
     "Preserve the original identity, pose, body shape, body proportions, and body silhouette.\n\n"
     "The body geometry is fixed and must not change.\n\n"
@@ -34,17 +33,34 @@ TRYON_PROMPT = (
     "Do not modify the body outline, including the waist, hips, torso, shoulders, arms, or legs.\n\n"
     "The garment must adapt to the existing body shape. The body must NOT change to fit the garment.\n\n"
     "Important rule: treat the person's body as immutable geometry.\n\n"
-    "Only replace the clothing with the target garment while keeping the same body silhouette.\n\n"
     "Preserve:\n"
     "- original pose and posture\n"
     "- camera perspective\n"
     "- background structure\n"
     "- scene lighting\n\n"
-    "The output must look like the same person wearing the new garment while maintaining "
+    "The output must look like the same person wearing the new garment(s) while maintaining "
     "the exact same body shape and silhouette as the original image. "
-    "The garment must drape naturally over the body and must not pull inward at the waist or torso. "
+    "The garment(s) must drape naturally over the body and must not pull inward at the waist or torso. "
     "Maintain the same waist-to-hip ratio and torso proportions as in the original image."
 )
+
+TRYON_PROMPT_SINGLE = (
+    "Virtual try-on: replace only the clothing on the person with the target garment.\n\n"
+    + _BODY_PRESERVATION_RULES
+    + "\n\nOnly replace the clothing with the target garment while keeping the same body silhouette."
+)
+
+TRYON_PROMPT_PAIRED = (
+    "Virtual try-on: dress the person in the complete outfit shown below. "
+    "Replace the top (shirt/t-shirt/blouse) with the TARGET TOP garment AND "
+    "replace the bottom (trousers/pants/skirt) with the TARGET BOTTOM garment.\n\n"
+    "Both garments must appear together as one coordinated outfit on the person.\n\n"
+    + _BODY_PRESERVATION_RULES
+    + "\n\nReplace BOTH the top and bottom clothing simultaneously to show the full outfit."
+)
+
+# Keep backward-compatible alias
+TRYON_PROMPT = TRYON_PROMPT_SINGLE
 
 
 class TryonService:
@@ -68,28 +84,68 @@ class TryonService:
         person_image_path: str,
         product_image_url: str,
     ) -> Dict[str, Any]:
-        person_bytes, person_mime = self._load_local_image(person_image_path)
-        product_bytes, product_mime = self._download_image(product_image_url)
+        """Single-garment try-on (backward compatible)."""
+        return self.generate_tryon_outfit(
+            person_image_path=person_image_path,
+            garment_urls=[("garment", product_image_url)],
+        )
 
-        # Resize to constrain dimensions — improves model quality and speed
+    def generate_tryon_outfit(
+        self,
+        person_image_path: str,
+        garment_urls: List[Tuple[str, str]],
+    ) -> Dict[str, Any]:
+        """Try-on supporting one or more garments.
+
+        Args:
+            person_image_path: local path to the person's full-body photo.
+            garment_urls: list of (role, url) tuples.
+                For single garments: [("garment", url)]
+                For paired outfits:  [("top", url), ("bottom", url)]
+        """
+        person_bytes, person_mime = self._load_local_image(person_image_path)
         person_bytes, person_mime = self._maybe_resize(person_bytes, person_mime)
-        product_bytes, product_mime = self._maybe_resize(product_bytes, product_mime)
+
+        garments: List[Tuple[str, bytes, str]] = []
+        for role, url in garment_urls:
+            img_bytes, img_mime = self._download_image(url)
+            img_bytes, img_mime = self._maybe_resize(img_bytes, img_mime)
+            garments.append((role, img_bytes, img_mime))
+
+        is_paired = len(garments) >= 2
+        contents: list[Any] = []
+
+        if is_paired:
+            contents.append(TRYON_PROMPT_PAIRED)
+        else:
+            contents.append(TRYON_PROMPT_SINGLE)
+
+        contents.append("This is the PERSON photo. Dress THIS person in the outfit:")
+        contents.append(types.Part.from_bytes(data=person_bytes, mime_type=person_mime))
+
+        if is_paired:
+            for role, img_bytes, img_mime in garments:
+                label = role.upper()
+                contents.append(f"This is the TARGET {label} garment:")
+                contents.append(types.Part.from_bytes(data=img_bytes, mime_type=img_mime))
+        else:
+            _role, img_bytes, img_mime = garments[0]
+            contents.append("This is the TARGET GARMENT to dress the person in:")
+            contents.append(types.Part.from_bytes(data=img_bytes, mime_type=img_mime))
 
         client = self._get_client()
         response = client.models.generate_content(
             model=self._model,
-            contents=[
-                TRYON_PROMPT,
-                "This is the PERSON photo. Put the target garment on THIS person:",
-                types.Part.from_bytes(data=person_bytes, mime_type=person_mime),
-                "This is the TARGET GARMENT to dress the person in:",
-                types.Part.from_bytes(data=product_bytes, mime_type=product_mime),
-            ],
+            contents=contents,
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE"],
             ),
         )
 
+        return self._extract_image_result(response)
+
+    @staticmethod
+    def _extract_image_result(response: Any) -> Dict[str, Any]:
         for part in response.candidates[0].content.parts:
             if part.inline_data is not None:
                 image_data = part.inline_data.data
@@ -101,7 +157,6 @@ class TryonService:
                     "mime_type": image_mime,
                     "data_url": f"data:{image_mime};base64,{b64}",
                 }
-
         text_parts = [
             part.text for part in response.candidates[0].content.parts
             if hasattr(part, "text") and part.text

@@ -68,6 +68,7 @@ class CombinedContext(BaseModel):
     previous_recommendations: Optional[List[Dict[str, Any]]] = None
     conversation_memory: Optional[ConversationMemory] = None
     conversation_history: Optional[List[Dict[str, str]]] = None
+    catalog_inventory: Optional[List[Dict[str, Any]]] = None
 
 
 # --- Outfit Architect output ---
@@ -168,6 +169,7 @@ class OutfitCard(BaseModel):
 class RecommendationResponse(BaseModel):
     success: bool = True
     message: str = ""
+    response_type: str = "recommendation"  # "recommendation" | "clarification"
     outfits: List[OutfitCard] = Field(default_factory=list)
     follow_up_suggestions: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
