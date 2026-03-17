@@ -1,6 +1,6 @@
 # Application Layer — Implementation Specification
 
-Last updated: March 17, 2026
+Last updated: March 18, 2026
 
 ## Current Implementation Status
 
@@ -37,6 +37,9 @@ Implemented now:
 - `response_type` field on response payload: `"recommendation"` | `"clarification"`
 - quick-reply suggestion chips rendered in UI for clarification responses
 - occasion resolver now runs before the context gate (not just for memory bridging) so structured signals are available for gate scoring
+- digital draping integration: effective seasonal groups from `user_effective_seasonal_groups` overlaid onto user context before recommendation pipeline
+- comfort learning: behavioral seasonal palette refinement triggered by outfit likes, integrated into feedback endpoint
+- multi-group seasonal color support: architect and evaluator receive `SeasonalColorGroup_additional` when user has multiple seasonal groups
 
 All features implemented and smoke-tested.
 
@@ -86,6 +89,7 @@ Active models used by application agents:
 | User Profiler (visual) | `gpt-5.4` | OpenAI | JSON schema (strict), reasoning effort: high |
 | User Profiler (textual) | `gpt-5.4` | OpenAI | JSON schema (strict) |
 | User Analysis (onboarding) | `gpt-5.4` | OpenAI | JSON schema (strict), reasoning effort: high |
+| Digital Draping | `gpt-5.4` | OpenAI | JSON schema (strict), 3-round vision chain |
 | Query Embedding | `text-embedding-3-small` | OpenAI | 1536-dimensional vector |
 | Virtual Try-on | `gemini-3.1-flash-image-preview` | Google | Image generation |
 | Catalog Enrichment | `gpt-5-mini` | OpenAI | JSON schema |
@@ -206,6 +210,8 @@ class UserContext:
 - `HeightCategory` and `WaistSizeBand` should come from deterministic interpretations.
 - Style preference should be loaded exactly as stored, including blend ratio, risk tolerance, formality lean, pattern type, and comfort boundaries.
 - Current runtime enforces a minimum usable profile before recommendations: `gender`, `SeasonalColorGroup`, and primary archetype/style preference signal.
+- `SeasonalColorGroup` is derived from digital draping (LLM-based, 4-season: Spring/Summer/Autumn/Winter) when headshot available, with deterministic interpretation as fallback.
+- When multiple seasonal groups exist (from draping or comfort learning), `additional_groups` is surfaced in the user context.
 
 ## 3. Occasion Resolver
 
@@ -505,7 +511,7 @@ For paired directions, the architect LLM uses a concept-first approach as instru
 
 Key concept rules (instructed in `prompt/outfit_architect.md`):
 
-**Color coordination** — Top and bottom should have contrasting or complementary colors, NOT identical colors. Bottoms typically anchor with neutrals (navy, black, charcoal, olive, khaki). Tops carry the accent or statement color. Uses the user's SeasonalColorGroup palette.
+**Color coordination** — Top and bottom should have contrasting or complementary colors, NOT identical colors. Bottoms typically anchor with neutrals (navy, black, charcoal, olive, khaki). Tops carry the accent or statement color. Uses the user's SeasonalColorGroup palette(s) — when multiple seasonal groups are present, prefers colors from the intersection of palettes for safe choices, or from any single group for bolder options.
 
 **Volume balance** — Top and bottom should create visual balance. If one piece is relaxed/oversized, the other should be slim/fitted. Uses the user's FrameStructure to decide which piece gets more volume.
 
@@ -549,7 +555,7 @@ The architect receives enriched prior recommendation context via `combined_conte
 Follow-up intent effects on planning:
 - `increase_boldness` — shifts query vocabulary toward bolder choices
 - `decrease_formality` / `increase_formality` — adjusts target formality
-- `change_color` — chooses different colors from the same seasonal group while preserving occasion, formality, garment subtypes, silhouette, volume, fit, and plan_type
+- `change_color` — chooses different colors from the same seasonal group(s) while preserving occasion, formality, garment subtypes, silhouette, volume, fit, and plan_type
 - `full_alternative` — requests entirely different direction
 - `more_options` — requests additional candidates in same direction
 - `similar_to_previous` — preserves garment subtypes, colors, formality, occasion, volume, fit, silhouette, and plan_type; variation comes from different products, not changed parameters
@@ -979,14 +985,14 @@ USER_ID=your_completed_user_id bash ops/scripts/smoke_test_agentic_application.s
 Run automated tests:
 
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py' -v
+python3 -m pytest tests/ -v
 ```
 
 Focused suites used for the application layer:
 
 ```bash
-python3 -m unittest tests.test_agentic_application -v
-python3 -m unittest tests.test_agentic_application_api_ui -v
+python3 -m pytest tests/test_agentic_application.py -v
+python3 -m pytest tests/test_agentic_application_api_ui.py -v
 ```
 
 ### Follow-up rule
@@ -1032,6 +1038,7 @@ Hard rule:
 Minimum required profile for recommendation:
 - `gender`
 - `SeasonalColorGroup`
+- `SeasonalColorGroup` may include `additional_groups` from digital draping or comfort learning (max 2 groups total)
 - `style_preference.primaryArchetype`
 
 The system should degrade gracefully with partial body or detail attributes.
@@ -1179,10 +1186,10 @@ Each stage emits `started` and `completed` (or `failed` / `insufficient` / `suff
 | POST | `/v1/onboarding/verify-otp` | Verify OTP, create user if new |
 | POST | `/v1/onboarding/profile` | Save profile (name, DOB, gender, height, waist, profession) |
 | POST | `/v1/onboarding/images/normalize` | Normalize image for 3:2 crop |
-| POST | `/v1/onboarding/images/{category}` | Upload image (full_body, headshot, veins) |
+| POST | `/v1/onboarding/images/{category}` | Upload image (full_body, headshot) |
 | GET | `/v1/onboarding/style-archetype-session` | Load style archetype selection UI |
 | POST | `/v1/onboarding/style-preference-complete` | Save style preference |
-| POST | `/v1/onboarding/analysis/start` | Launch 4-agent analysis |
+| POST | `/v1/onboarding/analysis/start` | Launch 3-agent analysis + digital draping |
 | POST | `/v1/onboarding/analysis/status` | Check analysis completion |
 | POST | `/v1/onboarding/analysis/rerun` | Rerun specific analysis agent |
 

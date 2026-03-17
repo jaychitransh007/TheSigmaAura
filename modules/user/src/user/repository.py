@@ -18,7 +18,6 @@ ANALYSIS_ATTRIBUTE_COLUMN_PREFIXES = {
     "HairColorTemperature": "hair_color_temperature",
     "EyeColor": "eye_color",
     "EyeClarity": "eye_clarity",
-    "SkinUndertone": "skin_undertone",
     "FaceShape": "face_shape",
     "NeckLength": "neck_length",
     "HairLength": "hair_length",
@@ -153,10 +152,8 @@ class OnboardingRepository:
             "style_preference_complete": bool(profile.get("style_preference_complete")),
             "has_full_body_image": "full_body" in images,
             "has_headshot_image": "headshot" in images,
-            "has_veins_image": "veins" in images,
             "full_body_encrypted_filename": (images.get("full_body") or {}).get("encrypted_filename") or "",
             "headshot_encrypted_filename": (images.get("headshot") or {}).get("encrypted_filename") or "",
-            "veins_encrypted_filename": (images.get("veins") or {}).get("encrypted_filename") or "",
             "snapshot_reason": snapshot_reason,
             "created_at": _now_iso(),
         })
@@ -355,4 +352,36 @@ class OnboardingRepository:
         return self.client.select_one(
             "user_interpretation_snapshots",
             filters={"analysis_snapshot_id": f"eq.{analysis_snapshot_id}"},
+        )
+
+    # -- user_effective_seasonal_groups ----------------------------------------
+
+    def insert_effective_seasonal_groups(
+        self,
+        *,
+        user_id: str,
+        seasonal_groups: List[Dict[str, Any]],
+        source: str,
+    ) -> Dict[str, Any]:
+        return self.client.insert_one("user_effective_seasonal_groups", {
+            "user_id": user_id,
+            "seasonal_groups": seasonal_groups,
+            "source": source,
+            "created_at": _now_iso(),
+        })
+
+    def get_effective_seasonal_groups(self, user_id: str) -> Optional[Dict[str, Any]]:
+        rows = self.client.select_many(
+            "user_effective_seasonal_groups",
+            filters={"user_id": f"eq.{user_id}", "superseded_at": "is.null"},
+            order="created_at.desc",
+            limit=1,
+        )
+        return rows[0] if rows else None
+
+    def supersede_effective_seasonal_groups(self, row_id: str) -> Optional[Dict[str, Any]]:
+        return self.client.update_one(
+            "user_effective_seasonal_groups",
+            filters={"id": f"eq.{row_id}"},
+            patch={"superseded_at": _now_iso()},
         )

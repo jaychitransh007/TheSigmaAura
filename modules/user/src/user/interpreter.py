@@ -20,7 +20,6 @@ def derive_interpretations(
 
 
 def _derive_seasonal_color_group(attributes: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
-    skin_undertone = _value(attributes, "SkinUndertone")
     skin_surface = _value(attributes, "SkinSurfaceColor")
     hair_color = _value(attributes, "HairColor")
     hair_temp = _value(attributes, "HairColorTemperature")
@@ -28,7 +27,6 @@ def _derive_seasonal_color_group(attributes: Dict[str, Dict[str, Any]]) -> Dict[
     eye_clarity = _value(attributes, "EyeClarity")
 
     missing = [name for name, value in {
-        "SkinUndertone": skin_undertone,
         "SkinSurfaceColor": skin_surface,
         "HairColor": hair_color,
         "HairColorTemperature": hair_temp,
@@ -43,7 +41,6 @@ def _derive_seasonal_color_group(attributes: Dict[str, Dict[str, Any]]) -> Dict[
         }
 
     warmth_score = 0
-    warmth_score += {"Warm": 2, "Neutral": 0, "Cool": -2}.get(skin_undertone, 0)
     warmth_score += {"Warm": 2, "Neutral": 0, "Cool": -2}.get(hair_temp, 0)
     branch = "warm" if warmth_score > 0 else "cool"
 
@@ -75,44 +72,21 @@ def _derive_seasonal_color_group(attributes: Dict[str, Dict[str, Any]]) -> Dict[
     }.get(eye_clarity, 0.55)
 
     if branch == "warm":
-        if depth_band == "light":
-            season = "Light Spring" if clarity_score >= 0.75 else "Warm Spring"
-        elif depth_band == "deep":
-            season = "Deep Autumn"
+        if depth_band == "deep" or (depth_band == "medium" and depth_score >= 5.6):
+            season = "Autumn"
         else:
-            if clarity_score >= 0.82:
-                season = "Clear Spring"
-            elif clarity_score <= 0.28:
-                season = "Soft Autumn"
-            elif depth_score >= 5.6:
-                season = "Warm Autumn"
-            else:
-                season = "Warm Spring"
+            season = "Spring"
     else:
-        if depth_band == "light":
-            season = "Light Summer" if clarity_score <= 0.65 else "Cool Summer"
-        elif depth_band == "deep":
-            if clarity_score >= 0.88:
-                season = "Clear Winter"
-            elif depth_score >= 8.0:
-                season = "Deep Winter"
-            else:
-                season = "Cool Winter"
+        if depth_band == "deep" or (depth_band == "medium" and depth_score >= 5.8):
+            season = "Winter"
         else:
-            if clarity_score >= 0.85 and contrast_spread >= 6:
-                season = "Clear Winter"
-            elif clarity_score <= 0.24:
-                season = "Soft Summer"
-            elif depth_score >= 5.8 and clarity_score >= 0.68:
-                season = "Cool Winter"
-            else:
-                season = "Cool Summer"
+            season = "Summer"
 
     confidence = _aggregate_confidence(
         attributes,
-        ["SkinUndertone", "SkinSurfaceColor", "HairColor", "HairColorTemperature", "EyeColor", "EyeClarity"],
+        ["SkinSurfaceColor", "HairColor", "HairColorTemperature", "EyeColor", "EyeClarity"],
     )
-    if skin_undertone == "Neutral" or hair_temp == "Neutral":
+    if hair_temp == "Neutral":
         confidence -= 0.08
     if depth_band == "medium":
         confidence -= 0.04
@@ -121,7 +95,7 @@ def _derive_seasonal_color_group(attributes: Dict[str, Dict[str, Any]]) -> Dict[
     return {
         "value": season,
         "confidence": confidence,
-        "evidence_note": f"{skin_undertone} undertone, {hair_temp.lower()} hair temperature, {depth_band} overall depth, and {eye_clarity.lower()} clarity place the palette in {season}.",
+        "evidence_note": f"{hair_temp} hair temperature, {skin_surface.lower()} skin surface, {depth_band} overall depth, and {eye_clarity.lower()} clarity place the palette in {season}.",
     }
 
 

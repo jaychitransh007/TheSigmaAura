@@ -74,7 +74,6 @@ class ConfigAndSchemaTests(unittest.TestCase):
             "MidsectionState",
             "WaistVisibility",
             "BustVolume",
-            "SkinUndertone",
             "SkinSurfaceColor",
             "SkinContrast",
             "FaceShape",

@@ -59,6 +59,7 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         onboarding_gateway.render_onboarding_html.return_value = "<html>Onboarding</html>"
         onboarding_gateway.render_processing_html.return_value = "<html>Profile processing in progress.</html>"
         onboarding_gateway.get_onboarding_status.return_value = {"onboarding_complete": True}
+        onboarding_gateway.get_effective_seasonal_groups.return_value = None
         onboarding_gateway.get_analysis_status.return_value = {
             "status": analysis_status,
             "profile": {},
@@ -167,6 +168,7 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
             onboarding_gateway.render_onboarding_html.return_value = "<html>Onboarding</html>"
             onboarding_gateway.render_processing_html.return_value = "<html>Processing</html>"
             onboarding_gateway.get_onboarding_status.return_value = {"onboarding_complete": True}
+            onboarding_gateway.get_effective_seasonal_groups.return_value = None
             onboarding_gateway.get_analysis_status.return_value = {"status": "completed"}
             onboarding_gateway_cls.return_value = onboarding_gateway
 

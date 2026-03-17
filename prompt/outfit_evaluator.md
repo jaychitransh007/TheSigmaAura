@@ -20,7 +20,7 @@ You receive a JSON object containing:
 Rank each candidate by how well it fits THIS specific user:
 
 1. **Body harmony** — Does the silhouette, fit, and proportion suit the user's body shape, height category, waist size band, and frame structure?
-2. **Color suitability** — Does the color temperature and palette work with the user's seasonal color group and contrast level?
+2. **Color suitability** — Does the color temperature and palette work with the user's seasonal color group(s) and contrast level? When multiple seasonal groups are listed, a color that fits ANY of the groups is acceptable.
 3. **Style-archetype fit** — Does the outfit match the user's primary and secondary style archetypes?
 4. **Risk-tolerance alignment** — Is the boldness level appropriate for the user's risk tolerance?
 5. **Occasion appropriateness** — Does formality and occasion signal match the request?

@@ -121,23 +121,21 @@ const details = {
       "Mobile number (unique identifier, OTP-verified)",
       "Name, Date of Birth, Gender",
       "Height (cm), Waist (cm), Profession",
-      "Images: full_body, headshot, veins (3:2 aspect ratio)",
+      "Images: full_body, headshot (3:2 aspect ratio)",
       "Images stored with SHA256-encrypted filenames",
       "Stored in: onboarding_profiles + onboarding_images",
     ]
   },
   image_analysis: {
-    title: "4-Agent Analysis Pipeline [AGENT]",
-    desc: "Four specialized vision agents run in parallel via ThreadPoolExecutor. Each uses GPT-5.4 with high reasoning effort and strict JSON schema output. Every attribute returns {value, confidence, evidence_note}. Vein images are also contrast-enhanced before submission.",
+    title: "3-Agent Analysis Pipeline [AGENT]",
+    desc: "Three specialized vision agents run in parallel via ThreadPoolExecutor. Each uses GPT-5.4 with high reasoning effort and strict JSON schema output. Every attribute returns {value, confidence, evidence_note}. Followed by digital draping for seasonal color analysis.",
     items: [
       "Agent 1 — body_type_analysis (full_body image):",
       "  ShoulderToHipRatio, TorsoToLegRatio, BodyShape, VisualWeight,",
       "  VerticalProportion, ArmVolume, MidsectionState, BustVolume",
       "Agent 2 — color_analysis_headshot (headshot):",
       "  SkinSurfaceColor, HairColor, HairColorTemperature, EyeColor, EyeClarity",
-      "Agent 3 — color_analysis_veins (veins + enhanced veins):",
-      "  SkinUndertone",
-      "Agent 4 — other_details_analysis (headshot + full_body):",
+      "Agent 3 — other_details_analysis (headshot + full_body):",
       "  FaceShape, NeckLength, HairLength, JawlineDefinition, ShoulderSlope",
       "Model: gpt-5.4 | Reasoning: high | Output: strict JSON schema",
       "Stored in: user_analysis_runs (snapshot per run)",
@@ -145,10 +143,12 @@ const details = {
   },
   interpretation: {
     title: "Deterministic Interpretation Engine [TOOL]",
-    desc: "Pure Python rule-based derivation — no LLM calls. Converts raw analysis attributes into 5 actionable interpretations. SeasonalColorGroup uses a 12-season model derived from warmth scoring, depth scoring, and clarity scoring across skin, hair, and eye attributes.",
+    desc: "Pure Python rule-based derivation — no LLM calls. Converts raw analysis attributes into 5 actionable interpretations. SeasonalColorGroup uses a 4-season model (Spring, Summer, Autumn, Winter) derived from warmth and depth scoring. Serves as fallback when digital draping is unavailable.",
     items: [
-      "SeasonalColorGroup — 12 seasons (e.g. Light Spring, Deep Autumn, Clear Winter)",
-      "  From: SkinUndertone, SkinSurfaceColor, HairColor, HairColorTemperature, EyeColor, EyeClarity",
+      "SeasonalColorGroup — 4 seasons (Spring, Summer, Autumn, Winter)",
+      "  Warm+Light→Spring, Warm+Deep→Autumn, Cool+Light→Summer, Cool+Deep→Winter",
+      "  From: SkinSurfaceColor, HairColor, HairColorTemperature, EyeColor, EyeClarity",
+      "  Overridden by digital draping when headshot available",
       "ContrastLevel — Low / Medium-Low / Medium / Medium-High / High",
       "  From: depth spread across skin, hair, eye values",
       "FrameStructure — Light+Narrow / Light+Broad / Medium+Balanced / Solid+Narrow / Solid+Broad",
@@ -169,6 +169,36 @@ const details = {
       "Output: riskTolerance, formalityLean, patternType",
       "Output: blending ratios, comfort boundaries",
       "Stored in: user_style_preference + selected_images",
+    ]
+  },
+  digital_draping: {
+    title: "Digital Draping [AGENT] (gpt-5.4)",
+    desc: "LLM-based seasonal color analysis via relative comparison. Uses 3-round vision chain on headshot overlays to determine the user's seasonal color group(s). Overrides the deterministic interpreter when headshot is available. Results stored in user_effective_seasonal_groups.",
+    items: [
+      "Round 1: Warm vs Cool (gold vs silver overlay on headshot)",
+      "Round 2: Within-branch (Spring vs Autumn, or Summer vs Winter)",
+      "Round 3: Confirmation (winner vs cross-temperature neighbor)",
+      "Overlay: bottom 45% of image, RGBA alpha=0.35",
+      "Probability distribution over 4 seasons (sums to 1.0)",
+      "Selection: clear winner (>0.50 or gap>0.20) → 1 group",
+      "  Top-2 clash → 2 groups",
+      "  3+ clash → prefer Autumn then Winter (tiebreak priority)",
+      "Max 2 groups per user",
+      "Model: gpt-5.4 | Output: strict JSON {choice, confidence, reasoning}",
+      "Stored in: user_effective_seasonal_groups + user_analysis_snapshots.draping_output",
+    ]
+  },
+  comfort_learning: {
+    title: "Comfort Learning [TOOL]",
+    desc: "Behavioral signal system that refines the user's seasonal palette over time based on outfit interactions. High-intent signals (outfit likes) trigger updates after reaching a threshold. Low-intent signals (color keyword requests) are recorded but don't trigger updates. Integrated into the feedback endpoint.",
+    items: [
+      "High-intent: outfit like for garment outside current seasonal groups",
+      "Low-intent: explicit color keyword request (e.g. 'navy', 'coral')",
+      "Threshold: 5 high-intent signals → triggers seasonal group update",
+      "Max 2 groups per user (replaces lowest-probability group if at max)",
+      "Season-to-color mapping: 4 seasons with warm/cool temperature",
+      "Triggered from: POST /v1/conversations/{id}/feedback (like events)",
+      "Stored in: user_comfort_learning + user_effective_seasonal_groups",
     ]
   },
   orchestrator: {
@@ -484,28 +514,39 @@ export default function Architecture() {
             <Node x={30} y={30} w={240} h={75} title="User Onboarding" items={["OTP → Profile → Images", "Gender, DOB, Height, Waist, Profession"]}
               color={C.layer1} dim={C.layer1Dim} onClick={() => setSel("onboarding")} active={sel === "onboarding"} />
 
-            <Node x={300} y={30} w={260} h={100} title="4-Agent Analysis Pipeline" items={["body_type_analysis (full_body)", "color_analysis_headshot + veins", "other_details_analysis (headshot+full_body)", "Model: gpt-5.4 | Parallel execution"]}
+            <Node x={300} y={30} w={260} h={100} title="3-Agent Analysis Pipeline" items={["body_type_analysis (full_body)", "color_analysis_headshot (headshot)", "other_details_analysis (headshot+full_body)", "Model: gpt-5.4 | Parallel execution"]}
               color={C.layer1} dim={C.layer1Dim} onClick={() => setSel("image_analysis")} active={sel === "image_analysis"} badge="AGENT" />
 
-            <Node x={590} y={30} w={240} h={85} title="Interpretation Engine" items={["SeasonalColorGroup (12 seasons)", "ContrastLevel, FrameStructure", "HeightCategory, WaistSizeBand"]}
+            <Node x={590} y={30} w={240} h={85} title="Interpretation Engine" items={["SeasonalColorGroup (4 seasons)", "ContrastLevel, FrameStructure", "HeightCategory, WaistSizeBand"]}
               color={C.layer1} dim={C.layer1Dim} onClick={() => setSel("interpretation")} active={sel === "interpretation"} badge="TOOL" />
 
-            {/* Row 2: Style Preference */}
+            {/* Row 2: Style Preference + Digital Draping + Comfort Learning */}
             <Node x={30} y={150} w={260} h={95} title="Style Preference" items={["104 flat-lay image pool (52M + 52F)", "L1: 8 archetypes → L2: 4 diagnostic → L3: 4 refined", "→ primaryArchetype, riskTolerance, boundaries"]}
               color={C.layer1} dim={C.layer1Dim} onClick={() => setSel("style_pref")} active={sel === "style_pref"} badge="TOOL" />
+
+            <Node x={320} y={150} w={240} h={80} title="Digital Draping" items={["3-round LLM vision chain (headshot)", "R1: Warm/Cool → R2: Branch → R3: Confirm", "→ 4-season probability distribution", "→ 1-2 effective seasonal groups"]}
+              color={C.layer1} dim={C.layer1Dim} onClick={() => setSel("digital_draping")} active={sel === "digital_draping"} badge="AGENT" />
+
+            <Node x={590} y={150} w={240} h={65} title="Comfort Learning" items={["Behavioral palette refinement", "High-intent: 5 outfit likes → update", "Max 2 groups per user"]}
+              color={C.layer1} dim={C.layer1Dim} onClick={() => setSel("comfort_learning")} active={sel === "comfort_learning"} badge="TOOL" />
+
+            {/* Interpretation → Digital Draping arrow */}
+            <Arrow x1={710} y1={115} x2={440} y2={150} color={C.layer1} label="fallback" dashed />
 
             {/* Arrows in Layer 1 */}
             <Arrow x1={270} y1={68} x2={300} y2={68} color={C.layer1} />
             <Arrow x1={560} y1={68} x2={590} y2={68} color={C.layer1} />
 
             {/* User Profile Store — right side */}
-            <DataStore x={860} y={30} w={300} h={130} label="User Profile Store (Supabase)" color={C.data} dim={C.dataDim}
-              items={["onboarding_profiles: gender, DOB, height, waist, profession", "onboarding_images: full_body, headshot, veins", "user_analysis_runs: 4-agent outputs + collated", "user_derived_interpretations: 5 derived attributes", "user_style_preference: archetype, risk, formality, pattern"]} />
+            <DataStore x={860} y={30} w={300} h={160} label="User Profile Store (Supabase)" color={C.data} dim={C.dataDim}
+              items={["onboarding_profiles: gender, DOB, height, waist, profession", "onboarding_images: full_body, headshot", "user_analysis_runs: 3-agent outputs + collated", "user_derived_interpretations: 5 derived attributes", "user_style_preference: archetype, risk, formality, pattern", "user_effective_seasonal_groups: draping/comfort source", "user_comfort_learning: behavioral signals"]} />
 
             {/* Save arrows to profile store */}
             <Arrow x1={150} y1={105} x2={860} y2={55} color={C.data} label="save" dashed />
             <Arrow x1={830} y1={68} x2={860} y2={68} color={C.data} label="save" dashed />
-            <Arrow x1={290} y1={240} x2={860} y2={140} color={C.data} label="save" dashed />
+            <Arrow x1={290} y1={240} x2={860} y2={150} color={C.data} label="save" dashed />
+            <Arrow x1={560} y1={190} x2={860} y2={160} color={C.data} label="save" dashed />
+            <Arrow x1={830} y1={182} x2={860} y2={175} color={C.data} label="save" dashed />
 
             {/* Layer 1–2 divider */}
             <line x1={30} y1={320} x2={1160} y2={320} stroke={C.layer1} strokeWidth={0.3} opacity={0.2} strokeDasharray="6,3" />
@@ -529,7 +570,7 @@ export default function Architecture() {
             <Arrow x1={560} y1={410} x2={590} y2={410} color={C.layer2} label="stage + ctx" />
 
             {/* Profile feed into orchestrator */}
-            <CArrow x1={1010} y1={160} x2={430} y2={375} cx={1010} cy={290} color={C.data} label="load profile" />
+            <CArrow x1={1010} y1={190} x2={430} y2={375} cx={1010} cy={290} color={C.data} label="load profile" />
 
             {/* Row 2: Context Prep + Memory + Context Gate */}
             <Node x={30} y={475} w={240} h={55} title="Conversation Memory" items={["Server-side cross-turn state", "Carries: occasion, formality, plan_type, 8 signals"]}
@@ -583,7 +624,7 @@ export default function Architecture() {
             <Arrow x1={860} y1={700} x2={850} y2={740} color={C.layer2} label="candidates" />
 
             {/* User profile into evaluator */}
-            <CArrow x1={1010} y1={160} x2={620} y2={720} cx={1180} cy={460} color={C.data} label="user profile" />
+            <CArrow x1={1010} y1={190} x2={620} y2={720} cx={1180} cy={460} color={C.data} label="user profile" />
 
             <Node x={300} y={730} w={260} h={70} title="Response Formatter + PDP UI" items={["Max 3 outfit cards, intent-aware messaging", "change_color → 'fresh color direction'", "similar_to_previous → 'similar style'", "Intent-specific follow-up suggestion chips"]}
               color={C.accent} dim={C.accentDim} onClick={() => setSel("presentation")} active={sel === "presentation"} badge="TOOL" />
@@ -596,10 +637,10 @@ export default function Architecture() {
             <Arrow x1={300} y1={775} x2={270} y2={775} color={C.accent} label="outfit cards" />
 
             {/* User image feed into try-on */}
-            <CArrow x1={1010} y1={160} x2={150} y2={745} cx={50} cy={440} color={C.data} label="full_body image" />
+            <CArrow x1={1010} y1={190} x2={150} y2={745} cx={50} cy={440} color={C.data} label="full_body image" />
 
             {/* Feedback arrow to data store */}
-            <CArrow x1={430} y1={800} x2={860} y2={160} cx={1180} cy={520} color={C.data} label="feedback_events" />
+            <CArrow x1={430} y1={800} x2={860} y2={190} cx={1180} cy={520} color={C.data} label="feedback_events" />
 
             {/* Follow-up loop */}
             <CArrow x1={150} y1={805} x2={300} y2={420} cx={180} cy={600} color={C.accent} label="follow-up loop" />

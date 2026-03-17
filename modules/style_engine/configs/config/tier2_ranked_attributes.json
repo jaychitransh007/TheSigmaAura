@@ -12,7 +12,6 @@
       "MidsectionState",
       "WaistVisibility",
       "BustVolume",
-      "SkinUndertone",
       "SkinSurfaceColor",
       "SkinContrast",
       "FaceShape",
@@ -108,10 +107,6 @@
       "EmbellishmentZone",
       "FabricWeight",
       "FabricTexture"
-    ],
-    "SkinUndertone": [
-      "ColorTemperature",
-      "ColorSaturation"
     ],
     "SkinSurfaceColor": [
       "ColorTemperature",
@@ -284,12 +279,10 @@
       "HairColor"
     ],
     "ColorTemperature": [
-      "SkinUndertone",
       "SkinSurfaceColor",
       "HairColor"
     ],
     "ColorSaturation": [
-      "SkinUndertone",
       "SkinSurfaceColor",
       "SkinContrast"
     ],

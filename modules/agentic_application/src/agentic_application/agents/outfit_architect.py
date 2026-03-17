@@ -144,6 +144,13 @@ def _build_user_payload(ctx: CombinedContext) -> str:
         for key in user.derived_interpretations
     }
 
+    # Surface additional seasonal groups for multi-group color guidance
+    seasonal_raw = user.derived_interpretations.get("SeasonalColorGroup")
+    if isinstance(seasonal_raw, dict) and seasonal_raw.get("additional_groups"):
+        interps["SeasonalColorGroup_additional"] = [
+            g["value"] for g in seasonal_raw["additional_groups"]
+        ]
+
     payload = {
         "profile": profile_block,
         "analysis_attributes": attrs,

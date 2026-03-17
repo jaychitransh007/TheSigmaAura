@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: March 17, 2026
+Last updated: March 18, 2026
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -46,19 +46,30 @@ Implemented:
 - OTP-based onboarding flow (fixed OTP: `123456`)
 - onboarding profile persistence (name, DOB, gender, height_cm, waist_cm, profession)
 - image upload with SHA256-encrypted filenames (user_id + category + timestamp), enforced 3:2 aspect ratio on frontend
-- image categories: `full_body`, `headshot`, `veins`
-- 4-agent analysis pipeline (model: `gpt-5.4`, reasoning effort: high, runs in parallel via `ThreadPoolExecutor`):
+- image categories: `full_body`, `headshot`
+- 3-agent analysis pipeline (model: `gpt-5.4`, reasoning effort: high, runs in parallel via `ThreadPoolExecutor`):
   1. `body_type_analysis` — uses full_body image → ShoulderToHipRatio, TorsoToLegRatio, BodyShape, VisualWeight, VerticalProportion, ArmVolume, MidsectionState, BustVolume
   2. `color_analysis_headshot` — uses headshot → SkinSurfaceColor, HairColor, HairColorTemperature, EyeColor, EyeClarity
-  3. `color_analysis_veins` — uses veins image (+ enhanced version) → SkinUndertone
-  4. `other_details_analysis` — uses headshot + full_body → FaceShape, NeckLength, HairLength, JawlineDefinition, ShoulderSlope
+  3. `other_details_analysis` — uses headshot + full_body → FaceShape, NeckLength, HairLength, JawlineDefinition, ShoulderSlope
 - Each agent returns JSON with `{value, confidence, evidence_note}` per attribute
 - Deterministic interpretation pipeline (`interpreter.py`) derives:
-  - `SeasonalColorGroup` — 12-season color analysis from undertone, surface color, hair, eye inputs
+  - `SeasonalColorGroup` — 4-season color analysis (Spring, Summer, Autumn, Winter) — deterministic fallback from surface color, hair, eye inputs. Overridden by digital draping when headshot available.
   - `HeightCategory` — Petite (<160cm) / Average (160-175cm) / Tall (>175cm)
   - `WaistSizeBand` — Very Small / Small / Medium / Large / Very Large
   - `ContrastLevel` — Low / Medium-Low / Medium / Medium-High / High (from depth spread across skin, hair, eyes)
   - `FrameStructure` — Light and Narrow / Light and Broad / Medium and Balanced / Solid and Narrow / Solid and Broad
+- **Digital draping** (`user/draping.py`) — LLM-based 3-round vision chain using headshot overlays:
+  - R1: Warm vs Cool (gold vs silver overlay)
+  - R2: Within-branch (Spring vs Autumn, or Summer vs Winter)
+  - R3: Confirmation (winner vs cross-temperature neighbor)
+  - Produces probability distribution over 4 seasons; selects 1-2 groups
+  - Overrides deterministic SeasonalColorGroup when available
+  - Results stored in `user_effective_seasonal_groups` table
+- **Comfort learning** (`agentic_application/services/comfort_learning.py`) — behavioral signal system:
+  - High-intent signals: outfit likes for garments outside current seasonal groups
+  - Low-intent signals: explicit color keyword requests
+  - Threshold: 5 high-intent signals triggers seasonal group update
+  - Max 2 groups per user
 - Style archetype preference: user selects 3-5 archetypes across 3 layers → produces primaryArchetype, secondaryArchetype, blending ratios, risk tolerance, formality lean, pattern type, comfort boundaries
 - Profile status / rerun support (single-agent targeted reruns with baseline preservation)
 
@@ -344,6 +355,9 @@ Working now:
 - virtual try-on image generation (inline, automatic for all outfits)
 - try-on prompt engineering for body-preserving garment replacement
 - QnA stage narration with context-aware messages
+- digital draping (LLM-based 4-season color analysis via headshot overlays)
+- comfort learning (behavioral seasonal palette refinement from outfit likes)
+- effective seasonal groups pipeline (draping → comfort learning → per-request context)
 
 ## What Is Not Finished
 
@@ -366,7 +380,7 @@ This means:
 
 ## Database Table Inventory
 
-Supabase tables (23 migrations in `supabase/migrations/`):
+Supabase tables (25 migrations in `supabase/migrations/`):
 
 ### Core platform tables
 - `users` — id, external_user_id, profile_json, profile_updated_at
@@ -379,10 +393,14 @@ Supabase tables (23 migrations in `supabase/migrations/`):
 
 ### Onboarding tables
 - `onboarding_profiles` — user_id (unique), mobile (unique), otp fields, name, date_of_birth, gender, height_cm, waist_cm, profession, profile_complete, onboarding_complete
-- `onboarding_images` — user_id, category (full_body/headshot/veins), encrypted_filename, file_path, mime_type, file_size_bytes; unique on (user_id, category)
-- `user_analysis_runs` — tracks analysis snapshots per user (status, model_name, body_type_output, color_headshot_output, color_veins_output, other_details_output, collated_output)
+- `onboarding_images` — user_id, category (full_body/headshot), encrypted_filename, file_path, mime_type, file_size_bytes; unique on (user_id, category)
+- `user_analysis_runs` — tracks analysis snapshots per user (status, model_name, body_type_output, color_headshot_output, other_details_output, collated_output)
 - `user_derived_interpretations` — stores deterministic interpretations (SeasonalColorGroup, HeightCategory, WaistSizeBand, ContrastLevel, FrameStructure) with value/confidence/evidence_note
 - `user_style_preference` — primary_archetype, secondary_archetype, risk_tolerance, formality_lean, pattern_type, selected_images
+- `user_analysis_snapshots` — now includes `draping_output` (jsonb) column for digital draping chain results
+- `user_interpretation_snapshots` — now includes `seasonal_color_distribution`, `seasonal_color_groups_json`, `seasonal_color_source`, `draping_chain_log` columns
+- `user_effective_seasonal_groups` — source of truth for per-request seasonal color groups (user_id, seasonal_groups jsonb, source, superseded_at)
+- `user_comfort_learning` — behavioral comfort learning signals (user_id, signal_type, signal_source, detected_seasonal_direction, garment_id)
 
 ### Catalog tables
 - `catalog_enriched` — product_id (unique), title, description, price, url, image_urls, row_status, raw_row_json, error_reason + 50+ enrichment attribute columns with confidence scores
@@ -395,7 +413,7 @@ Supabase tables (23 migrations in `supabase/migrations/`):
 modules/
 ├── agentic_application/src/agentic_application/
 │   ├── api.py                    # FastAPI app factory, routes
-│   ├── orchestrator.py           # 9-stage pipeline (incl. virtual try-on)
+│   ├── orchestrator.py           # 10-stage pipeline (incl. context gate + virtual try-on)
 │   ├── schemas.py                # Pydantic models
 │   ├── context_gate.py            # Rule-based context sufficiency gate (<1ms)
 │   ├── filters.py                # Hard filter construction (no relaxation)
@@ -414,12 +432,14 @@ modules/
 │   └── services/
 │       ├── onboarding_gateway.py    # App-facing user interface (ApplicationUserGateway) + person image lookup
 │       ├── catalog_retrieval_gateway.py # App-facing retrieval interface
-│       └── tryon_service.py         # Virtual try-on via Gemini (gemini-3.1-flash-image-preview)
+│       ├── tryon_service.py         # Virtual try-on via Gemini (gemini-3.1-flash-image-preview)
+│       └── comfort_learning.py      # Behavioral seasonal palette refinement
 ├── user/src/user/
 │   ├── api.py                    # Onboarding REST endpoints
 │   ├── service.py                # OTP, profile, image handling
-│   ├── analysis.py               # 4-agent analysis pipeline
+│   ├── analysis.py               # 3-agent analysis pipeline
 │   ├── interpreter.py            # Deterministic interpretation derivation
+│   ├── draping.py               # Digital draping — LLM-based seasonal color analysis
 │   ├── style_archetype.py        # Style preference selection
 │   ├── repository.py             # Supabase CRUD for onboarding tables
 │   ├── schemas.py                # Request/response models
@@ -476,14 +496,91 @@ USER_ID=your_completed_user_id bash ops/scripts/smoke_test_agentic_application.s
 Run tests:
 
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py' -v
+python3 -m pytest tests/ -v
 ```
+
+200 tests across 14 files.
 
 Focused application suites:
 
 ```bash
-python3 -m unittest tests.test_agentic_application -v
-python3 -m unittest tests.test_agentic_application_api_ui -v
+python3 -m pytest tests/test_agentic_application.py -v
+python3 -m pytest tests/test_agentic_application_api_ui.py -v
+```
+
+### Test File Inventory
+
+| File | Coverage Area |
+|---|---|
+| `tests/test_agentic_application.py` | Core pipeline: orchestrator, planner, evaluator, assembler, formatter, context builders, filters, conversation memory, follow-up intents, recommendation summaries |
+| `tests/test_agentic_application_api_ui.py` | API routes, async turn jobs, UI rendering, conversation lifecycle, error handling |
+| `tests/test_onboarding.py` | OTP flow, profile persistence, image upload, analysis pipeline, style preference, rerun support |
+| `tests/test_onboarding_interpreter.py` | Deterministic interpretation derivation: 4 seasonal color groups, height categories, waist bands, contrast levels, frame structures |
+| `tests/test_catalog_retrieval.py` | Embedding document builder, vector store operations, similarity search, filter application, confidence policy |
+| `tests/test_batch_builder.py` | Catalog enrichment batch processing |
+| `tests/test_platform_core.py` | SupabaseRestClient, ConversationRepository, config loading |
+| `tests/test_user_profiler.py` | User profiler utilities |
+| `tests/test_config_and_schema.py` | Configuration validation, schema consistency |
+| `tests/test_architecture_boundaries.py` | Module boundary enforcement, import validation |
+| `tests/test_digital_draping.py` | Digital draping: hex conversion, 4-season distribution computation, top-N group selection, tiebreak priority, DrapingResult serialization |
+| `tests/test_comfort_learning.py` | Comfort learning: 4-season color mapping, high/low-intent signal detection, evaluate-and-update threshold logic, max 2 groups, supersede old rows |
+| `tests/test_context_gate.py` | Context gate: signal scoring, bypass rules, consecutive block cap, clarification response |
+| `tests/test_qna_messages.py` | QnA narration: stage message templates, context-aware narration |
+
+### Key Test Coverage Areas
+
+**Application pipeline:** LLM-only planning (no deterministic fallback), evaluator fallback to assembly_score, evaluator hard output cap (max 5), follow-up intents (7 types), assembly compatibility checks, response formatter bounds (max 3 outfits), concept-first paired planning, model configuration validation, conversation memory build/apply, context gate signal scoring/bypass, QnA stage narration.
+
+**Onboarding:** 3-agent analysis with mock LLM responses, interpretation derivation across 4 seasonal color groups (Spring, Summer, Autumn, Winter), style archetype selection, single-agent rerun with baseline preservation.
+
+**Digital draping:** Hex-to-RGBA conversion, 4-season probability distribution (sums to 1.0), high/low confidence behavior, confirmation round cross-temperature shifts, top-N group selection (clear winner / top-2 clash / 3+ clash with Autumn/Winter preference), tiebreak priority.
+
+**Comfort learning:** Season-to-color mapping (4 seasons, warm/cool), high-intent signal detection (outside current groups), low-intent signal detection (color keywords), evaluate-and-update threshold (5 high-intent), max 2 groups, supersede old effective rows, no duplicate direction.
+
+**Catalog:** Embedding document structure (8 sections), confidence-aware rendering, row status filtering, filter column normalization.
+
+**Architecture:** No direct cross-boundary imports, gateway pattern enforcement.
+
+## Supabase Sync
+
+### Env Convention
+
+- Local: `.env.local` / `APP_ENV=local`
+- Staging: `.env.staging` / `APP_ENV=staging`
+- Or explicit: `ENV_FILE=/path/to/file`
+
+Bootstrap missing env files:
+```bash
+python3 ops/scripts/bootstrap_env_files.py
+```
+
+Required staging keys: `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`
+
+### Link and Push
+
+```bash
+supabase link --project-ref zfbqkkegrfhdzqvjoytz --password '<db-password>' --yes
+supabase db push --yes
+python3 ops/scripts/check_supabase_sync.py --strict
+```
+
+### Key Table Relationships
+
+```text
+users
+  └── conversations (user_id)
+        └── conversation_turns (conversation_id)
+
+onboarding_profiles (user_id → users)
+  ├── onboarding_images (user_id, category unique)
+  ├── user_analysis_runs (user_id)
+  │     └── user_derived_interpretations (analysis_snapshot_id)
+  ├── user_style_preference (user_id)
+  ├── user_effective_seasonal_groups (user_id)
+  └── user_comfort_learning (user_id)
+
+catalog_enriched (product_id unique)
+  └── catalog_item_embeddings (product_id)
 ```
 
 ## Immediate Priority Order
@@ -680,7 +777,7 @@ JS changes:
 
 #### Step 8: Verification
 
-- [x] `python -m pytest tests/ -x -q` — 154 passed
+- [x] `python -m pytest tests/ -x -q` — 200 passed
 - [x] manual smoke test:
   - desktop: 3-column layout renders correctly, thumbnails switch hero image
   - mobile: stacked layout, horizontal thumbnails

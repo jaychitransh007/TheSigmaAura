@@ -142,6 +142,42 @@ class ConversationRepository:
             payload["outfit_rank"] = outfit_rank
         return self.client.insert_one("feedback_events", payload)
 
+    # -- user_comfort_learning ------------------------------------------------
+
+    def insert_comfort_learning_signal(self, **kwargs: Any) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "user_id": kwargs["user_id"],
+            "signal_type": kwargs["signal_type"],
+            "signal_source": kwargs["signal_source"],
+            "detected_seasonal_direction": kwargs["detected_seasonal_direction"],
+            "created_at": _now_iso(),
+        }
+        for optional_key in ("garment_id", "conversation_id", "turn_id", "feedback_event_id"):
+            if kwargs.get(optional_key):
+                payload[optional_key] = kwargs[optional_key]
+        return self.client.insert_one("user_comfort_learning", payload)
+
+    def count_comfort_signals(self, user_id: str, signal_type: str, detected_seasonal_direction: str) -> int:
+        rows = self.client.select_many(
+            "user_comfort_learning",
+            filters={
+                "user_id": f"eq.{user_id}",
+                "signal_type": f"eq.{signal_type}",
+                "detected_seasonal_direction": f"eq.{detected_seasonal_direction}",
+            },
+        )
+        return len(rows)
+
+    def get_comfort_signals(self, user_id: str, signal_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        filters: Dict[str, str] = {"user_id": f"eq.{user_id}"}
+        if signal_type:
+            filters["signal_type"] = f"eq.{signal_type}"
+        return self.client.select_many(
+            "user_comfort_learning",
+            filters=filters,
+            order="created_at.desc",
+        )
+
     def log_tool_trace(
         self,
         *,

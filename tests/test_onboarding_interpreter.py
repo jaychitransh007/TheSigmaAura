@@ -23,7 +23,6 @@ def _attr(value, confidence=0.9, note="visible"):
 class OnboardingInterpreterTests(unittest.TestCase):
     def test_derives_warm_clear_medium_palette(self) -> None:
         attributes = {
-            "SkinUndertone": _attr("Warm"),
             "SkinSurfaceColor": _attr("Medium"),
             "HairColor": _attr("Dark Brown"),
             "HairColorTemperature": _attr("Warm"),
@@ -35,14 +34,13 @@ class OnboardingInterpreterTests(unittest.TestCase):
         }
         out = derive_interpretations(attributes, height_cm=172, waist_cm=82)
         self.assertEqual("Average", out["HeightCategory"]["value"])
-        self.assertEqual("Clear Spring", out["SeasonalColorGroup"]["value"])
+        self.assertEqual("Autumn", out["SeasonalColorGroup"]["value"])
         self.assertEqual("Medium", out["ContrastLevel"]["value"])
         self.assertEqual("Medium and Balanced", out["FrameStructure"]["value"])
         self.assertEqual("Medium", out["WaistSizeBand"]["value"])
 
     def test_derives_cool_deep_high_contrast_palette(self) -> None:
         attributes = {
-            "SkinUndertone": _attr("Cool"),
             "SkinSurfaceColor": _attr("Fair"),
             "HairColor": _attr("Black"),
             "HairColorTemperature": _attr("Cool"),
@@ -54,7 +52,7 @@ class OnboardingInterpreterTests(unittest.TestCase):
         }
         out = derive_interpretations(attributes, height_cm=184, waist_cm=112)
         self.assertEqual("Tall", out["HeightCategory"]["value"])
-        self.assertEqual("Clear Winter", out["SeasonalColorGroup"]["value"])
+        self.assertEqual("Winter", out["SeasonalColorGroup"]["value"])
         self.assertEqual("High", out["ContrastLevel"]["value"])
         self.assertEqual("Solid and Broad", out["FrameStructure"]["value"])
         self.assertEqual("Very Large", out["WaistSizeBand"]["value"])

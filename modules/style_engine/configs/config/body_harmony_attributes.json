@@ -52,12 +52,6 @@
       "MEDIUM",
       "FULL"
     ],
-    "SkinUndertone": [
-      "COOL",
-      "WARM",
-      "NEUTRAL",
-      "OLIVE"
-    ],
     "SkinSurfaceColor": [
       "FAIR",
       "WHEATISH_LIGHT",
@@ -111,7 +105,6 @@
     "MidsectionState",
     "WaistVisibility",
     "BustVolume",
-    "SkinUndertone",
     "SkinSurfaceColor",
     "SkinContrast",
     "FaceShape",

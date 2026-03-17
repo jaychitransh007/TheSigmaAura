@@ -307,6 +307,13 @@ def _build_eval_payload(
     for k, v in user.derived_interpretations.items():
         interps[k] = v.get("value", "") if isinstance(v, dict) else v
 
+    # Surface additional seasonal groups for multi-group evaluation
+    seasonal_raw = user.derived_interpretations.get("SeasonalColorGroup")
+    if isinstance(seasonal_raw, dict) and seasonal_raw.get("additional_groups"):
+        interps["SeasonalColorGroup_additional"] = [
+            g["value"] for g in seasonal_raw["additional_groups"]
+        ]
+
     payload = {
         "user_profile": {
             "gender": user.gender,

@@ -586,14 +586,14 @@ def get_onboarding_html() -> str:
         <div class="checklist-item"><span class="check-icon">1</span><span>Mobile and OTP verification</span></div>
         <div class="checklist-item"><span class="check-icon">2</span><span>Name, birth date, gender, height and waist</span></div>
         <div class="checklist-item"><span class="check-icon">3</span><span>Profession from a fixed set of values</span></div>
-        <div class="checklist-item"><span class="check-icon">4</span><span>Full body, headshot, and vein reference photos</span></div>
+        <div class="checklist-item"><span class="check-icon">4</span><span>Full body and headshot photos</span></div>
         <div class="checklist-item"><span class="check-icon">5</span><span>Progressive 8-archetype style preference selection</span></div>
       </div>
     </aside>
 
     <main class="main">
       <div class="topline">
-        <div class="step-meta" id="stepMeta">Step 1 of 11</div>
+        <div class="step-meta" id="stepMeta">Step 1 of 10</div>
         <div class="progress" id="progressBar"></div>
       </div>
 
@@ -770,42 +770,6 @@ def get_onboarding_html() -> str:
           </div>
         </div>
 
-        <div class="step" id="step-img-veins">
-          <h2 class="step-title">Upload the vein reference image.</h2>
-          <p class="step-desc">Use a clear veins image, typically from the inner wrist or similar visible vein area, then adjust it in the same frame.</p>
-          <div class="image-card">
-            <div class="uploader">
-              <div class="dropzone" id="dropzone-veins">
-                <div>
-                  <strong>Select vein reference image</strong>
-                  <div class="caption">Natural light helps. Keep the vein area sharp and centered.</div>
-                </div>
-              </div>
-              <input id="input-veins" type="file" accept="image/*" hidden />
-              <div class="crop-shell" id="crop-shell-veins">
-                <div class="crop-stage">
-                  <canvas class="crop-canvas" id="canvas-veins" width="800" height="1200"></canvas>
-                  <div class="crop-overlay"></div>
-                  <div class="ratio-badge">2:3 frame</div>
-                </div>
-                <div class="crop-controls">
-                  <div class="zoom-row">
-                    <span>Zoom</span>
-                    <input id="zoom-veins" type="range" min="1" max="4" step="0.01" value="1" />
-                    <button class="btn ghost" type="button" id="change-veins">Change Photo</button>
-                  </div>
-                  <div class="caption">The uploaded image will be the cropped 2:3 output shown in the frame.</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="error" id="veinsErr"></div>
-          <div class="actions">
-            <button class="btn secondary" data-back="8">Back</button>
-            <button class="btn primary" id="uploadVeinsBtn">Upload and Continue</button>
-          </div>
-        </div>
-
         <div class="step" id="step-style">
           <h2 class="step-title">Select the outfits that feel like you.</h2>
           <p class="step-desc">Choose between 3 and 5 images. More options will appear progressively as soon as your first and second choices sharpen the direction.</p>
@@ -825,7 +789,7 @@ def get_onboarding_html() -> str:
           </div>
           <div class="error" id="styleErr"></div>
           <div class="actions">
-            <button class="btn secondary" data-back="9">Back</button>
+            <button class="btn secondary" data-back="8">Back</button>
             <button class="btn primary" id="saveStyleBtn" disabled>Continue to Profile Processing</button>
           </div>
         </div>
@@ -856,7 +820,6 @@ def get_onboarding_html() -> str:
       "profession",
       "img-fullbody",
       "img-headshot",
-      "img-veins",
       "style",
       "done"
     ];
@@ -894,22 +857,16 @@ def get_onboarding_html() -> str:
         category: "headshot",
         errorId: "headshotErr",
         nextStep: 9
-      },
-      veins: {
-        category: "veins",
-        errorId: "veinsErr",
-        nextStep: 10
       }
     };
-    const REQUIRED_IMAGE_CATEGORIES = ["full_body", "headshot", "veins"];
+    const REQUIRED_IMAGE_CATEGORIES = ["full_body", "headshot"];
 
     const state = {
       currentStep: 0,
       userId: "",
       cropper: {
         fullbody: createCropState("fullbody"),
-        headshot: createCropState("headshot"),
-        veins: createCropState("veins")
+        headshot: createCropState("headshot")
       },
       style: {
         gender: "male",
@@ -1314,8 +1271,7 @@ def get_onboarding_html() -> str:
       if (status.profile_complete) {
         if (!uploaded.includes("full_body")) return { type: "step", index: 7 };
         if (!uploaded.includes("headshot")) return { type: "step", index: 8 };
-        if (!uploaded.includes("veins")) return { type: "step", index: 9 };
-        if (!status.style_preference_complete) return { type: "step", index: 10 };
+        if (!status.style_preference_complete) return { type: "step", index: 9 };
         return { type: "processing" };
       }
       return { type: "step", index: 2 };
@@ -1515,11 +1471,6 @@ def get_onboarding_html() -> str:
         if (!response.ok) {
           throw new Error(extractError(data, "Image upload failed"));
         }
-        if (key === "veins") {
-          state.style.loaded = false;
-          setStep(details.nextStep);
-          return;
-        }
         setStep(details.nextStep);
       } catch (error) {
         showError(errorId, String(error.message || error));
@@ -1670,10 +1621,6 @@ def get_onboarding_html() -> str:
       document.getElementById("uploadHeadshotBtn").addEventListener("click", () => {
         uploadImage("headshot", "uploadHeadshotBtn", "Upload and Continue");
       });
-      document.getElementById("uploadVeinsBtn").addEventListener("click", () => {
-        uploadImage("veins", "uploadVeinsBtn", "Upload and Continue");
-      });
-
       document.getElementById("saveStyleBtn").addEventListener("click", async () => {
         hideError("styleErr");
         const button = document.getElementById("saveStyleBtn");
@@ -2045,12 +1992,12 @@ def get_processing_html(user_id: str = "") -> str:
         <div class="eyebrow">Sigma Aura</div>
         <h1>Profile processing in progress.</h1>
       </div>
-      <p>Four independent analysis sub-agents are running on the onboarding inputs. Results will be stored locally and rendered here as soon as all agents complete.</p>
+      <p>Three independent analysis sub-agents are running on the onboarding inputs. Results will be stored locally and rendered here as soon as all agents complete.</p>
       <div class="pill" id="userPill">User __USER_ID__</div>
       <div class="steps">
         <div class="step-item"><strong>Body type analysis</strong><br />Gender, age, height, waist and full body image.</div>
         <div class="step-item"><strong>Color analysis 1</strong><br />Skin surface color, hair, eyes from headshot.</div>
-        <div class="step-item"><strong>Color analysis 2</strong><br />Skin undertone from vein reference image.</div>
+
         <div class="step-item"><strong>Other details</strong><br />Face shape, neck, hair, jawline and shoulder slope.</div>
       </div>
     </aside>
@@ -2092,10 +2039,6 @@ def get_processing_html(user_id: str = "") -> str:
             <p id="agent-color_analysis_headshot">Waiting to start.</p>
           </div>
           <div class="agent-card">
-            <div class="agent-head"><h3>Color Analysis 2</h3><button class="secondary hidden agent-rerun-btn" data-agent="color_analysis_veins">Re-Run This Section</button></div>
-            <p id="agent-color_analysis_veins">Waiting to start.</p>
-          </div>
-          <div class="agent-card">
             <div class="agent-head"><h3>Other Details</h3><button class="secondary hidden agent-rerun-btn" data-agent="other_details_analysis">Re-Run This Section</button></div>
             <p id="agent-other_details_analysis">Waiting to start.</p>
           </div>
@@ -2127,7 +2070,6 @@ def get_processing_html(user_id: str = "") -> str:
     const AGENT_LABELS = {
       body_type_analysis: "Body type analysis",
       color_analysis_headshot: "Color analysis 1",
-      color_analysis_veins: "Color analysis 2",
       other_details_analysis: "Other details"
     };
 

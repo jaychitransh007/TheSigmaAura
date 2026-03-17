@@ -27,6 +27,12 @@ class ApplicationUserGateway:
     def get_onboarding_status(self, user_id: str) -> dict:
         return dict(self._service.get_status(user_id) or {})
 
+    def get_effective_seasonal_groups(self, user_id: str) -> list:
+        row = self._repo.get_effective_seasonal_groups(user_id)
+        if row:
+            return list(row.get("seasonal_groups") or [])
+        return []
+
     def get_person_image_path(self, user_id: str) -> Optional[str]:
         images = self._repo.get_images(user_id)
         for img in images:

@@ -14,11 +14,10 @@ from .schemas import FIXED_OTP, ImageCategory
 from .style_archetype import interpret_style_preference, selection_session
 
 
-REQUIRED_IMAGE_CATEGORIES = frozenset(("full_body", "headshot", "veins"))
+REQUIRED_IMAGE_CATEGORIES = frozenset(("full_body", "headshot"))
 IMAGE_STORAGE_TYPES = {
     "full_body": "fullshot",
     "headshot": "headshot",
-    "veins": "veinshot",
 }
 
 

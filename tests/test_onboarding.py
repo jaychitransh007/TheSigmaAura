@@ -112,11 +112,11 @@ class OnboardingTests(unittest.TestCase):
 
     def test_onboarding_html_contains_modular_step_flow_and_crop_frame(self) -> None:
         html = get_onboarding_html()
-        self.assertIn("Step 1 of 11", html)
+        self.assertIn("Step 1 of 10", html)
         self.assertIn("OTP for local testing", html)
         self.assertIn("2:3 frame", html)
         self.assertIn("Profession", html)
-        self.assertIn("uploadVeinsBtn", html)
+        self.assertIn("uploadHeadshotBtn", html)
         self.assertIn("/v1/onboarding/images/normalize", html)
         self.assertIn("determineResumeDestination", html)
         self.assertIn("/onboard/processing?user=", html)
@@ -173,7 +173,7 @@ class OnboardingTests(unittest.TestCase):
             "style_preference_complete": True,
             "onboarding_complete": False,
         }
-        repo.get_image_categories.return_value = ["full_body", "headshot", "veins"]
+        repo.get_image_categories.return_value = ["full_body", "headshot"]
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = OnboardingService(repo=repo, image_dir=tmp_dir)
@@ -182,7 +182,7 @@ class OnboardingTests(unittest.TestCase):
         self.assertTrue(status["profile_complete"])
         self.assertTrue(status["style_preference_complete"])
         self.assertFalse(status["onboarding_complete"])
-        self.assertEqual(["full_body", "headshot", "veins"], status["images_uploaded"])
+        self.assertEqual(["full_body", "headshot"], status["images_uploaded"])
 
     def test_save_style_preference_persists_selected_images_map_and_count(self) -> None:
         repo = Mock()
@@ -192,7 +192,7 @@ class OnboardingTests(unittest.TestCase):
             "profile_complete": True,
             "style_preference_complete": False,
         }
-        repo.get_image_categories.return_value = ["full_body", "headshot", "veins"]
+        repo.get_image_categories.return_value = ["full_body", "headshot"]
         shown_images = [
             {"id": "P001", "primaryArchetype": "classic", "secondaryArchetype": None, "intensity": "moderate", "context": "neutral"},
             {"id": "P002", "primaryArchetype": "dramatic", "secondaryArchetype": None, "intensity": "moderate", "context": "neutral"},

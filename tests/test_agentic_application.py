@@ -248,6 +248,7 @@ class AgenticApplicationTests(unittest.TestCase):
     def test_orchestrator_persists_memory_and_turn_artifacts(self) -> None:
         repo = Mock()
         onboarding_gateway = Mock()
+        onboarding_gateway.get_effective_seasonal_groups.return_value = None
         repo.client = Mock()
         repo.get_or_create_user.return_value = {"id": "db-user"}
         repo.get_conversation.return_value = {

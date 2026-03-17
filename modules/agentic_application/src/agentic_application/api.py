@@ -26,6 +26,7 @@ from platform_core.ui import get_web_ui_html
 from pydantic import BaseModel
 
 from .orchestrator import AgenticOrchestrator
+from .services.comfort_learning import ComfortLearningService
 from .services.onboarding_gateway import ApplicationUserGateway
 from .services.tryon_service import TryonService
 
@@ -272,6 +273,22 @@ def create_app() -> FastAPI:
                     notes=payload.notes,
                 )
                 count += 1
+
+            # Comfort learning: detect high-intent signals from likes
+            if payload.event_type == "like":
+                user_row = repo.get_user_by_id(str(conv["user_id"]))
+                external_uid = (user_row or {}).get("external_user_id", "")
+                if external_uid:
+                    comfort = ComfortLearningService(client)
+                    for gid in item_ids:
+                        if gid and gid != "unknown":
+                            comfort.detect_high_intent_signal(
+                                user_id=external_uid,
+                                garment_id=gid,
+                                conversation_id=conversation_id,
+                                turn_id=turn_id,
+                            )
+
             return {"ok": True, "count": count}
         except HTTPException:
             raise

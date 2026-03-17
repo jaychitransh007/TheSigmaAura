@@ -4,15 +4,13 @@ import mimetypes
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
-from PIL import Image, ImageEnhance, ImageOps
-
 from user_profiler.config import get_api_key
 
+from .draping import DigitalDrapingService
 from .interpreter import derive_interpretations
 from .repository import (
     ANALYSIS_ATTRIBUTE_COLUMN_PREFIXES,
@@ -82,14 +80,6 @@ COLOR_HEADSHOT_SPEC = AgentSpec(
     image_categories=["headshot"],
 )
 
-COLOR_VEINS_SPEC = AgentSpec(
-    agent_name="color_analysis_veins",
-    prompt_filename="color_analysis_veins.md",
-    attribute_enums={"SkinUndertone": ["Cool", "Neutral", "Warm"]},
-    required_profile_fields=["gender", "date_of_birth"],
-    image_categories=["veins"],
-)
-
 OTHER_DETAILS_SPEC = AgentSpec(
     agent_name="other_details_analysis",
     prompt_filename="other_details_analysis.md",
@@ -107,7 +97,6 @@ OTHER_DETAILS_SPEC = AgentSpec(
 ALL_AGENT_SPECS = [
     BODY_TYPE_SPEC,
     COLOR_HEADSHOT_SPEC,
-    COLOR_VEINS_SPEC,
     OTHER_DETAILS_SPEC,
 ]
 AGENT_SPEC_BY_NAME = {spec.agent_name: spec for spec in ALL_AGENT_SPECS}
@@ -156,7 +145,7 @@ class UserAnalysisService:
                 str(run["id"]),
                 body_type_output=baseline.get("body_type_output") or {},
                 color_headshot_output=baseline.get("color_headshot_output") or {},
-                color_veins_output=baseline.get("color_veins_output") or {},
+                color_veins_output={},
                 other_details_output=baseline.get("other_details_output") or {},
                 collated_output=baseline.get("collated_output") or {},
             )
@@ -169,10 +158,13 @@ class UserAnalysisService:
 
         profile, images, api_key, prompt_context = self._analysis_inputs(user_id)
 
+        # Run required agents in parallel
+        specs_to_run = list(ALL_AGENT_SPECS)
+
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {
                 spec.agent_name: executor.submit(self._run_agent, api_key, spec, prompt_context, images)
-                for spec in ALL_AGENT_SPECS
+                for spec in specs_to_run
             }
             agent_outputs = {name: future.result() for name, future in futures.items()}
 
@@ -182,6 +174,22 @@ class UserAnalysisService:
             height_cm=float(profile.get("height_cm") or 0.0),
             waist_cm=float(profile.get("waist_cm") or 0.0),
         )
+
+        # Digital draping — runs after deterministic interpretation
+        draping_service = DigitalDrapingService(self._repo, model=self._model)
+        draping_result = draping_service.run_draping(
+            user_id, images["headshot"]["file_path"], collated["attributes"]
+        )
+        if draping_result.selected_groups:
+            derived["SeasonalColorGroup"] = {
+                "value": draping_result.selected_groups[0]["value"],
+                "confidence": draping_result.selected_groups[0]["probability"],
+                "evidence_note": f"Digital draping: {', '.join(g['value'] for g in draping_result.selected_groups)}",
+                "source_agent": "digital_draping",
+                "additional_groups": draping_result.selected_groups[1:],
+                "distribution": draping_result.distribution,
+            }
+
         self._repo.update_analysis_snapshot(
             run_id,
             status="completed",
@@ -189,14 +197,21 @@ class UserAnalysisService:
             error_message="",
             body_type_output=agent_outputs["body_type_analysis"],
             color_headshot_output=agent_outputs["color_analysis_headshot"],
-            color_veins_output=agent_outputs["color_analysis_veins"],
+            color_veins_output={},
             other_details_output=agent_outputs["other_details_analysis"],
             collated_output={**collated, "derived_interpretations": derived},
+            draping_output=draping_result.to_dict(),
         )
         self._repo.insert_interpretation_snapshot(
             user_id=user_id,
             analysis_snapshot_id=run_id,
             interpretations=derived,
+        )
+        # Persist effective seasonal groups
+        self._repo.insert_effective_seasonal_groups(
+            user_id=user_id,
+            seasonal_groups=draping_result.selected_groups,
+            source="draping" if draping_result.selected_groups else "deterministic",
         )
         return self.get_analysis_status(user_id)
 
@@ -211,7 +226,6 @@ class UserAnalysisService:
         agent_outputs = {
             "body_type_analysis": baseline.get("body_type_output") or {},
             "color_analysis_headshot": baseline.get("color_headshot_output") or {},
-            "color_analysis_veins": baseline.get("color_veins_output") or {},
             "other_details_analysis": baseline.get("other_details_output") or {},
         }
         agent_outputs[agent_name] = self._run_agent(api_key, spec, prompt_context, images)
@@ -229,7 +243,7 @@ class UserAnalysisService:
             error_message="",
             body_type_output=agent_outputs["body_type_analysis"],
             color_headshot_output=agent_outputs["color_analysis_headshot"],
-            color_veins_output=agent_outputs["color_analysis_veins"],
+            color_veins_output={},
             other_details_output=agent_outputs["other_details_analysis"],
             collated_output={**collated, "derived_interpretations": derived},
         )
@@ -256,7 +270,7 @@ class UserAnalysisService:
         if not profile:
             raise ValueError("User not found.")
         images = {row["category"]: row for row in self._repo.get_images(user_id)}
-        missing_categories = [category for category in ("full_body", "headshot", "veins") if category not in images]
+        missing_categories = [category for category in ("full_body", "headshot") if category not in images]
         if missing_categories:
             raise ValueError(f"Missing required onboarding images: {', '.join(missing_categories)}")
         api_key = get_api_key()
@@ -294,7 +308,6 @@ class UserAnalysisService:
         agent_outputs = {
             "body_type_analysis": latest.get("body_type_output") or {},
             "color_analysis_headshot": latest.get("color_headshot_output") or {},
-            "color_analysis_veins": latest.get("color_veins_output") or {},
             "other_details_analysis": latest.get("other_details_output") or {},
         }
         collated = (latest_analysis_snapshot or {}).get("collated_output") or latest.get("collated_output") or {}
@@ -382,10 +395,6 @@ class UserAnalysisService:
         urls: List[str] = []
         for category in spec.image_categories:
             urls.append(self._image_to_input_url(images[category]["file_path"]))
-            if spec.agent_name == "color_analysis_veins" and category == "veins":
-                enhanced = self._enhanced_vein_image_url(images[category]["file_path"])
-                if enhanced:
-                    urls.append(enhanced)
         return urls
 
     def _extract_response_json(self, response: Any) -> Dict[str, Any]:
@@ -422,7 +431,6 @@ class UserAnalysisService:
         agent_outputs = {
             "body_type_analysis": row.get("body_type_output") or {},
             "color_analysis_headshot": row.get("color_headshot_output") or {},
-            "color_analysis_veins": row.get("color_veins_output") or {},
             "other_details_analysis": row.get("other_details_output") or {},
         }
         flattened: Dict[str, Dict[str, Any]] = {}
@@ -462,7 +470,6 @@ class UserAnalysisService:
         grouped: Dict[str, Dict[str, Dict[str, Any]]] = {
             "body_type_analysis": {},
             "color_analysis_headshot": {},
-            "color_analysis_veins": {},
             "other_details_analysis": {},
         }
         for attribute_name, payload in flattened_attributes.items():
@@ -526,17 +533,3 @@ class UserAnalysisService:
         data = base64.b64encode(path.read_bytes()).decode("ascii")
         return f"data:{mime};base64,{data}"
 
-    def _enhanced_vein_image_url(self, image_ref: str) -> str:
-        path = Path(image_ref).expanduser().resolve()
-        if not path.exists() or not path.is_file():
-            return ""
-        with Image.open(path) as img:
-            normalized = ImageOps.exif_transpose(img).convert("RGB")
-            normalized = ImageOps.autocontrast(normalized, cutoff=2)
-            normalized = ImageEnhance.Contrast(normalized).enhance(1.6)
-            normalized = ImageEnhance.Color(normalized).enhance(1.15)
-            normalized = ImageEnhance.Sharpness(normalized).enhance(1.25)
-            buf = BytesIO()
-            normalized.save(buf, format="JPEG", quality=92)
-        data = base64.b64encode(buf.getvalue()).decode("ascii")
-        return f"data:image/jpeg;base64,{data}"

@@ -50,6 +50,22 @@ def build_user_context(
     derived = status.get("derived_interpretations") or {}
     style_pref = profile.get("style_preference") or {}
 
+    # Overlay effective seasonal groups from draping / comfort learning
+    effective = onboarding_gateway.get_effective_seasonal_groups(user_id)
+    if effective:
+        seasonal = derived.get("SeasonalColorGroup")
+        if isinstance(seasonal, dict):
+            seasonal["value"] = effective[0].get("value", seasonal.get("value", ""))
+            seasonal["additional_groups"] = effective[1:]
+        else:
+            derived["SeasonalColorGroup"] = {
+                "value": effective[0].get("value", ""),
+                "confidence": effective[0].get("probability", 0.0),
+                "evidence_note": "From effective seasonal groups",
+                "source_agent": effective[0].get("source", "draping"),
+                "additional_groups": effective[1:],
+            }
+
     gender = str(profile.get("gender") or "")
     richness = _compute_profile_richness(gender, attributes, derived, style_pref)
 

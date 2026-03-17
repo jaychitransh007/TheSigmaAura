@@ -22,13 +22,12 @@ Profession = Literal[
     "other",
 ]
 
-ImageCategory = Literal["full_body", "headshot", "veins"]
+ImageCategory = Literal["full_body", "headshot"]
 
 FIXED_OTP = "123456"
 AnalysisAgentName = Literal[
     "body_type_analysis",
     "color_analysis_headshot",
-    "color_analysis_veins",
     "other_details_analysis",
 ]
 
