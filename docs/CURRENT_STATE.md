@@ -198,8 +198,10 @@ Current nuance:
 - `similar_to_previous`: architect preserves all dimensions from previous recommendation; assembler boosts -0.05 for matching occasion and -0.03 per shared color; evaluator reports all shared dimensions (colors, patterns, volume, fit, silhouette) in style_note; formatter opens with "similar style" and shows intent-specific follow-up chips
 - evaluator receives candidate-by-candidate deltas against the previous recommendation with 8 signals: colors, occasions, roles, formality levels, pattern types, volume profiles, fit types, silhouette types
 - evaluator payload includes `body_context_summary` (height_category, frame_structure, body_shape) for body-aware ranking
-- evaluator returns 8 style archetype percentage scores (classic_pct, dramatic_pct, romantic_pct, natural_pct, minimalist_pct, creative_pct, sporty_pct, edgy_pct) — integers 0–100, clamped server-side
-- archetype scores describe the outfit's aesthetic profile, not the user's preference; used for radar chart visualization
+- evaluator returns 16 percentage scores (all integers 0–100, clamped server-side):
+  - 8 evaluation criteria: body_harmony_pct, color_suitability_pct, style_fit_pct, risk_tolerance_pct, occasion_pct, comfort_boundary_pct, specific_needs_pct, pairing_coherence_pct — how well the outfit fits this user; fallback derives from assembly_score * 100
+  - 8 style archetype: classic_pct, dramatic_pct, romantic_pct, natural_pct, minimalist_pct, creative_pct, sporty_pct, edgy_pct — outfit's aesthetic profile, not user preference
+- full evaluation output (all notes, all 16 _pct fields) is persisted in turn artifacts
 - LLM evaluator outputs are normalized so sparse follow-up notes are backfilled from candidate deltas
 
 ## Retrieval Reality
@@ -245,7 +247,7 @@ Current runtime product cards carry:
 Current response behavior:
 - UI renders `result.outfits` as 3-column PDP cards
 - `OutfitCard.tryon_image` is populated by the orchestrator and rendered as the default hero image
-- `OutfitCard` carries 8 archetype `_pct` fields (classic, dramatic, romantic, natural, minimalist, creative, sporty, edgy) rendered as a radar chart in the UI
+- `OutfitCard` carries 16 `_pct` fields: 8 evaluation criteria (rendered as progress bars) + 8 style archetypes (rendered as radar chart)
 - `response.metadata` includes `turn_id` for feedback correlation
 - both internal (`agentic_application/schemas.py`) and shared (`platform_core/api_schemas.py`) schemas are aligned
 
@@ -260,7 +262,7 @@ Current UI behavior (implemented):
 - desktop: 3-column grid (`80px | flex | 40%`)
   - Col 1: vertical thumbnail rail (product images + try-on, 64×64px, active accent border)
   - Col 2: hero image viewer (full height, default to try-on when present)
-  - Col 3: info panel (rank, title, per-product title + price, style archetype radar chart, feedback CTAs)
+  - Col 3: info panel (rank, title, per-product title + price + Buy Now button, style archetype radar chart, 8 criteria progress bars, feedback CTAs)
 - mobile (`max-width: 900px`): hero image → horizontal thumbnail strip → info panel
 
 Thumbnail ordering:
@@ -283,9 +285,9 @@ Feedback persistence:
 
 Data flow (implemented):
 - `response_formatter._build_item_card()` passes through 16 fields including 6 enrichment attributes
-- `response_formatter` passes through 8 archetype `_pct` fields from `EvaluatedRecommendation` to `OutfitCard`
+- `response_formatter` passes through all 16 `_pct` fields (8 criteria + 8 archetype) from `EvaluatedRecommendation` to `OutfitCard`
 - `api_schemas.OutfitCard.tryon_image` aligned with internal `schemas.OutfitCard.tryon_image`
-- `api_schemas.OutfitCard` carries 8 archetype `_pct` fields aligned with internal schema
+- `api_schemas.OutfitCard` carries all 16 `_pct` fields aligned with internal schema
 - `api_schemas.OutfitItem` carries all enrichment attributes
 - `api_schemas.FeedbackRequest` validates `event_type` via regex pattern `^(like|dislike)$`
 
@@ -352,7 +354,9 @@ Working now:
 - paired retrieval and assembly
 - 3-column PDP outfit cards with thumbnail navigation and hero image viewer
 - per-product detail with title and price
+- per-product "Buy Now" button linking to product URL
 - style archetype radar chart per outfit card (8 axes: classic, dramatic, romantic, natural, minimalist, creative, sporty, edgy)
+- 8 evaluation criteria progress bars per outfit card (color-coded: green ≥80%, yellow ≥60%, red <60%)
 - virtual try-on as default hero image in outfit cards
 - per-outfit feedback capture (Like / Didn't Like with optional notes)
 - feedback persistence via `/v1/conversations/{id}/feedback` endpoint
