@@ -43,6 +43,10 @@ _EVAL_JSON_SCHEMA: Dict[str, Any] = {
                         "candidate_id", "rank", "match_score", "title",
                         "reasoning", "body_note", "color_note",
                         "style_note", "occasion_note",
+                        "body_harmony_pct", "color_suitability_pct",
+                        "style_fit_pct", "risk_tolerance_pct",
+                        "occasion_pct", "comfort_boundary_pct",
+                        "specific_needs_pct", "pairing_coherence_pct",
                         "classic_pct", "dramatic_pct", "romantic_pct",
                         "natural_pct", "minimalist_pct", "creative_pct",
                         "sporty_pct", "edgy_pct",
@@ -58,6 +62,14 @@ _EVAL_JSON_SCHEMA: Dict[str, Any] = {
                         "color_note": {"type": "string"},
                         "style_note": {"type": "string"},
                         "occasion_note": {"type": "string"},
+                        "body_harmony_pct": {"type": "integer"},
+                        "color_suitability_pct": {"type": "integer"},
+                        "style_fit_pct": {"type": "integer"},
+                        "risk_tolerance_pct": {"type": "integer"},
+                        "occasion_pct": {"type": "integer"},
+                        "comfort_boundary_pct": {"type": "integer"},
+                        "specific_needs_pct": {"type": "integer"},
+                        "pairing_coherence_pct": {"type": "integer"},
                         "classic_pct": {"type": "integer"},
                         "dramatic_pct": {"type": "integer"},
                         "romantic_pct": {"type": "integer"},
@@ -419,6 +431,7 @@ def _fallback_evaluations(
             reasoning = "Ranked by retrieval similarity with similarity-to-previous comparison."
             if delta["occasion_shift"]:
                 occasion_note = f"Shifts occasion emphasis toward {', '.join(delta['occasion_shift'])}."
+        fallback_pct = max(0, min(100, int(candidate.assembly_score * 100)))
         results.append(
             EvaluatedRecommendation(
                 candidate_id=candidate.candidate_id,
@@ -430,6 +443,14 @@ def _fallback_evaluations(
                 color_note=color_note,
                 style_note=style_note,
                 occasion_note=occasion_note,
+                body_harmony_pct=fallback_pct,
+                color_suitability_pct=fallback_pct,
+                style_fit_pct=fallback_pct,
+                risk_tolerance_pct=fallback_pct,
+                occasion_pct=fallback_pct,
+                comfort_boundary_pct=fallback_pct,
+                specific_needs_pct=fallback_pct,
+                pairing_coherence_pct=fallback_pct,
                 item_ids=item_ids,
             )
         )
@@ -496,6 +517,14 @@ class OutfitEvaluator:
                     color_note=str(entry.get("color_note", "")),
                     style_note=str(entry.get("style_note", "")),
                     occasion_note=str(entry.get("occasion_note", "")),
+                    body_harmony_pct=max(0, min(100, int(entry.get("body_harmony_pct", 0)))),
+                    color_suitability_pct=max(0, min(100, int(entry.get("color_suitability_pct", 0)))),
+                    style_fit_pct=max(0, min(100, int(entry.get("style_fit_pct", 0)))),
+                    risk_tolerance_pct=max(0, min(100, int(entry.get("risk_tolerance_pct", 0)))),
+                    occasion_pct=max(0, min(100, int(entry.get("occasion_pct", 0)))),
+                    comfort_boundary_pct=max(0, min(100, int(entry.get("comfort_boundary_pct", 0)))),
+                    specific_needs_pct=max(0, min(100, int(entry.get("specific_needs_pct", 0)))),
+                    pairing_coherence_pct=max(0, min(100, int(entry.get("pairing_coherence_pct", 0)))),
                     classic_pct=max(0, min(100, int(entry.get("classic_pct", 0)))),
                     dramatic_pct=max(0, min(100, int(entry.get("dramatic_pct", 0)))),
                     romantic_pct=max(0, min(100, int(entry.get("romantic_pct", 0)))),

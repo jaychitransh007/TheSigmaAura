@@ -211,6 +211,39 @@ def get_web_ui_html(user_id: str = "") -> str:
     .outfit-info .outfit-product a:hover { text-decoration: underline; }
     .outfit-info .outfit-chips { margin: 10px 0; }
     .outfit-radar { margin: 12px 0 4px; text-align: center; }
+    .outfit-criteria { margin: 12px 0 4px; }
+    .criteria-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .criteria-label {
+      width: 110px;
+      flex-shrink: 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .criteria-track {
+      flex: 1;
+      height: 8px;
+      background: #e0e0e0;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .criteria-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    .criteria-pct {
+      width: 36px;
+      text-align: right;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink);
+    }
     .outfit-feedback {
       display: flex;
       gap: 8px;
@@ -557,6 +590,34 @@ def get_web_ui_html(user_id: str = "") -> str:
         var lp = pointAt(li, maxR + 16);
         ctx.fillText(archetypes[li].label, lp.x, lp.y);
       }
+
+      // 8 evaluation criteria percentage bars
+      const criteria = [
+        { key: "body_harmony_pct", label: "Body Harmony" },
+        { key: "color_suitability_pct", label: "Color Suitability" },
+        { key: "style_fit_pct", label: "Style Fit" },
+        { key: "risk_tolerance_pct", label: "Risk Tolerance" },
+        { key: "occasion_pct", label: "Occasion" },
+        { key: "comfort_boundary_pct", label: "Comfort" },
+        { key: "specific_needs_pct", label: "Specific Needs" },
+        { key: "pairing_coherence_pct", label: "Pairing" },
+      ];
+      const criteriaDiv = document.createElement("div");
+      criteriaDiv.className = "outfit-criteria";
+      for (const c of criteria) {
+        const pct = outfit[c.key] || 0;
+        const barColor = pct >= 80 ? "#2e7d32" : pct >= 60 ? "#f9a825" : "#c62828";
+        const row = document.createElement("div");
+        row.className = "criteria-row";
+        row.innerHTML =
+          '<span class="criteria-label">' + escapeHtml(c.label) + '</span>' +
+          '<div class="criteria-track">' +
+            '<div class="criteria-fill" style="width:' + pct + '%;background:' + barColor + ';"></div>' +
+          '</div>' +
+          '<span class="criteria-pct">' + pct + '%</span>';
+        criteriaDiv.appendChild(row);
+      }
+      info.appendChild(criteriaDiv);
 
       // Feedback CTAs
       const fbWrap = document.createElement("div");
