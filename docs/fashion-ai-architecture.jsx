@@ -326,22 +326,24 @@ const details = {
   },
   evaluator: {
     title: "Outfit Evaluator [AGENT] (gpt-5.4)",
-    desc: "LLM-powered ranking agent. Evaluates outfit candidates against body harmony, color suitability, occasion, style-archetype fit, risk tolerance, comfort boundaries, and pairing coherence. Candidate-by-candidate deltas with 8 signal dimensions. Scoring guidance: change_color penalizes shared colors and rewards preserved non-color dimensions; similar_to_previous rewards non-empty shared dimensions.",
+    desc: "LLM-powered ranking agent with dual scoring. Outputs 16 integer percentage fields per outfit: 8 evaluation criteria (body harmony, color suitability, style fit, risk tolerance, occasion, comfort boundary, specific needs, pairing coherence) measuring fit for this user, plus 8 style archetype scores (classic, dramatic, romantic, natural, minimalist, creative, sporty, edgy) describing the outfit's aesthetic. Candidate-by-candidate deltas with 8 signal dimensions. Full evaluation output (notes + all 16 _pct fields) is persisted in turn artifacts.",
     items: [
-      "Model: gpt-5.4 | Output: strict JSON schema",
-      "Evaluation: body, color, style, occasion, risk, comfort, pairing",
+      "Model: gpt-5.4 | Output: strict JSON schema (16 _pct fields)",
+      "8 evaluation criteria: body, color, style, risk, occasion, comfort, needs, pairing",
+      "8 style archetype scores: classic, dramatic, romantic, natural, minimalist, creative, sporty, edgy",
+      "Archetype scores describe outfit aesthetic, not user preference",
       "Candidate deltas: 8 signals vs prior recommendation",
       "change_color: penalize shared_colors, reward preserved non-color dims",
       "similar_to_previous: reward all non-empty shared dimensions",
       "Sparse output normalization: backfills from deltas",
-      "  style_note lists all preserved dimensions for follow-ups",
-      "Graceful fallback: ranks by assembly_score when LLM fails",
+      "Graceful fallback: criteria from assembly_score, archetypes default 0",
+      "Full evaluation persisted in turn artifacts (notes + 16 _pct fields)",
       "Hard cap: maximum 5 evaluated recommendations",
     ]
   },
   presentation: {
     title: "Response Formatter [TOOL] + 3-Column PDP UI",
-    desc: "Intent-aware messaging and suggestion chips. change_color opens with 'fresh color direction'; similar_to_previous opens with 'similar style'. Each intent gets tailored follow-up suggestion chips. Renders 3-column PDP cards with thumbnail rail, hero image (try-on default), and info panel with feedback CTAs.",
+    desc: "Intent-aware messaging and suggestion chips. change_color opens with 'fresh color direction'; similar_to_previous opens with 'similar style'. Each intent gets tailored follow-up suggestion chips. Renders 3-column PDP cards with thumbnail rail, hero image (try-on default), and info panel showing rank, title, per-product title + price + Buy Now button, Canvas-rendered radar chart (8 style archetype axes, purple fill), 8 color-coded evaluation criteria progress bars, and feedback CTAs.",
     items: [
       "Max 3 outfit cards per response",
       "Intent-aware opening messages:",
@@ -352,7 +354,10 @@ const details = {
       "  After similar_to_previous: 'different color', 'something bolder'",
       "3-column PDP: thumbnails (80px) | hero (flex) | info (40%)",
       "Default hero: virtual try-on when present",
-      "Feedback: Like (immediate) / Dislike (textarea + submit)",
+      "Info panel: rank → title → products (title + price + Buy Now) →",
+      "  radar chart (Canvas, 8 axes, purple fill) → 8 criteria bars →",
+      "  feedback CTAs (Like immediate / Dislike textarea)",
+      "Criteria bars: color-coded (green ≥80%, yellow ≥60%, red <60%)",
       "POST /v1/conversations/{id}/feedback → one row per garment",
     ]
   },
@@ -618,7 +623,7 @@ export default function Architecture() {
             <CArrow x1={1010} y1={1045} x2={1010} y2={610} cx={1180} cy={830} color={C.layer3} label="catalog vectors" />
 
             {/* Row 5: Evaluator + Formatter + Try-On */}
-            <Node x={590} y={720} w={260} h={80} title="Outfit Evaluator (gpt-5.4)" items={["Ranks by fit: body, color, occasion, style", "8-signal deltas vs prior recommendations", "change_color / similar_to_previous scoring", "Fallback: assembly_score | Max 5 evaluations"]}
+            <Node x={590} y={720} w={260} h={80} title="Outfit Evaluator (gpt-5.4)" items={["Dual scoring: 8 criteria + 8 archetype _pct fields", "8-signal deltas vs prior recommendations", "Full evaluation persisted in turn artifacts", "Fallback: assembly_score | Max 5 evaluations"]}
               color={C.accent} dim={C.accentDim} onClick={() => setSel("evaluator")} active={sel === "evaluator"} badge="AGENT" />
 
             <Arrow x1={860} y1={700} x2={850} y2={740} color={C.layer2} label="candidates" />
@@ -626,7 +631,7 @@ export default function Architecture() {
             {/* User profile into evaluator */}
             <CArrow x1={1010} y1={190} x2={620} y2={720} cx={1180} cy={460} color={C.data} label="user profile" />
 
-            <Node x={300} y={730} w={260} h={70} title="Response Formatter + PDP UI" items={["Max 3 outfit cards, intent-aware messaging", "change_color → 'fresh color direction'", "similar_to_previous → 'similar style'", "Intent-specific follow-up suggestion chips"]}
+            <Node x={300} y={730} w={260} h={70} title="Response Formatter + PDP UI" items={["Max 3 cards: Buy Now + radar chart + criteria bars", "Radar: 8 archetype axes, Canvas-rendered, purple fill", "Criteria: 8 progress bars, color-coded by threshold", "Intent-aware messaging + follow-up chips"]}
               color={C.accent} dim={C.accentDim} onClick={() => setSel("presentation")} active={sel === "presentation"} badge="TOOL" />
 
             <Arrow x1={590} y1={760} x2={560} y2={760} color={C.accent} label="ranked results" />
