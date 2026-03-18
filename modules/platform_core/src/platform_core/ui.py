@@ -203,12 +203,28 @@ def get_web_ui_html(user_id: str = "") -> str:
       border-top: 1px solid #eee;
     }
     .outfit-info .outfit-product:first-of-type { border-top: none; }
-    .outfit-info .outfit-product a {
-      color: var(--accent);
-      text-decoration: none;
-      font-weight: 600;
+    .outfit-info .outfit-product .product-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 2px;
     }
-    .outfit-info .outfit-product a:hover { text-decoration: underline; }
+    .outfit-info .outfit-product .btn-buy {
+      display: inline-block;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      background: var(--accent, #6d28d9);
+      border-radius: 4px;
+      text-decoration: none;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .outfit-info .outfit-product .btn-buy:hover {
+      opacity: 0.85;
+      text-decoration: none;
+    }
     .outfit-info .outfit-chips { margin: 10px 0; }
     .outfit-radar { margin: 12px 0 4px; text-align: center; }
     .outfit-criteria { margin: 12px 0 4px; }
@@ -485,12 +501,18 @@ def get_web_ui_html(user_id: str = "") -> str:
         info.appendChild(title);
       }
 
-      // Per-product title + price
+      // Per-product title + price + buy now
       for (const item of items) {
         const prod = document.createElement("div");
         prod.className = "outfit-product";
         const pTitle = item.title || item.product_id || "Untitled";
-        let html = '<div style="font-weight:600; margin-bottom:2px;">' + escapeHtml(pTitle) + '</div>';
+        const url = item.product_url || item.url || "";
+        let html = '<div class="product-header">' +
+          '<span style="font-weight:600;">' + escapeHtml(pTitle) + '</span>';
+        if (url) {
+          html += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer" class="btn-buy">Buy Now</a>';
+        }
+        html += '</div>';
         if (item.price) {
           html += '<div style="margin-bottom:4px; color:#666;">' + escapeHtml(item.price) + '</div>';
         }
