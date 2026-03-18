@@ -147,7 +147,7 @@ Implemented:
 - direction-aware retrieval: `needs_bottomwear` / `needs_topwear` / `complete`
 - complete-outfit and paired top/bottom support
 - assembly layer with deterministic compatibility pruning
-- evaluator with graceful fallback (model: `gpt-5.4`) and server-side output validation (score clamping, item_id verification, note backfill)
+- evaluator with graceful fallback (model: `gpt-5.4`), 8 style archetype percentage scoring (0–100 per archetype), and server-side output validation (score clamping, item_id verification, note backfill)
 - architect failure returns error to user (no silent degradation)
 - latency tracking via `time.monotonic()` on architect, search, evaluator (persisted as `latency_ms`)
 - style archetype override: user's saved `style_preference.primaryArchetype` is the default, but if the user's message or conversation history explicitly requests a different style, the architect uses the requested style instead; the response formatter reads the archetype from the plan's query documents (not just the profile) so the response message reflects the actual style used
@@ -198,6 +198,8 @@ Current nuance:
 - `similar_to_previous`: architect preserves all dimensions from previous recommendation; assembler boosts -0.05 for matching occasion and -0.03 per shared color; evaluator reports all shared dimensions (colors, patterns, volume, fit, silhouette) in style_note; formatter opens with "similar style" and shows intent-specific follow-up chips
 - evaluator receives candidate-by-candidate deltas against the previous recommendation with 8 signals: colors, occasions, roles, formality levels, pattern types, volume profiles, fit types, silhouette types
 - evaluator payload includes `body_context_summary` (height_category, frame_structure, body_shape) for body-aware ranking
+- evaluator returns 8 style archetype percentage scores (classic_pct, dramatic_pct, romantic_pct, natural_pct, minimalist_pct, creative_pct, sporty_pct, edgy_pct) — integers 0–100, clamped server-side
+- archetype scores describe the outfit's aesthetic profile, not the user's preference; used for radar chart visualization
 - LLM evaluator outputs are normalized so sparse follow-up notes are backfilled from candidate deltas
 
 ## Retrieval Reality
@@ -243,6 +245,7 @@ Current runtime product cards carry:
 Current response behavior:
 - UI renders `result.outfits` as 3-column PDP cards
 - `OutfitCard.tryon_image` is populated by the orchestrator and rendered as the default hero image
+- `OutfitCard` carries 8 archetype `_pct` fields (classic, dramatic, romantic, natural, minimalist, creative, sporty, edgy) rendered as a radar chart in the UI
 - `response.metadata` includes `turn_id` for feedback correlation
 - both internal (`agentic_application/schemas.py`) and shared (`platform_core/api_schemas.py`) schemas are aligned
 
@@ -257,7 +260,7 @@ Current UI behavior (implemented):
 - desktop: 3-column grid (`80px | flex | 40%`)
   - Col 1: vertical thumbnail rail (product images + try-on, 64×64px, active accent border)
   - Col 2: hero image viewer (full height, default to try-on when present)
-  - Col 3: info panel (rank, title, reasoning notes, per-product detail, attribute chips, feedback CTAs)
+  - Col 3: info panel (rank, title, per-product title + price, style archetype radar chart, feedback CTAs)
 - mobile (`max-width: 900px`): hero image → horizontal thumbnail strip → info panel
 
 Thumbnail ordering:
@@ -280,7 +283,9 @@ Feedback persistence:
 
 Data flow (implemented):
 - `response_formatter._build_item_card()` passes through 16 fields including 6 enrichment attributes
+- `response_formatter` passes through 8 archetype `_pct` fields from `EvaluatedRecommendation` to `OutfitCard`
 - `api_schemas.OutfitCard.tryon_image` aligned with internal `schemas.OutfitCard.tryon_image`
+- `api_schemas.OutfitCard` carries 8 archetype `_pct` fields aligned with internal schema
 - `api_schemas.OutfitItem` carries all enrichment attributes
 - `api_schemas.FeedbackRequest` validates `event_type` via regex pattern `^(like|dislike)$`
 
@@ -346,7 +351,8 @@ Working now:
 - complete-outfit retrieval
 - paired retrieval and assembly
 - 3-column PDP outfit cards with thumbnail navigation and hero image viewer
-- per-product detail with title, price, product link, and attribute chips
+- per-product detail with title and price
+- style archetype radar chart per outfit card (8 axes: classic, dramatic, romantic, natural, minimalist, creative, sporty, edgy)
 - virtual try-on as default hero image in outfit cards
 - per-outfit feedback capture (Like / Didn't Like with optional notes)
 - feedback persistence via `/v1/conversations/{id}/feedback` endpoint

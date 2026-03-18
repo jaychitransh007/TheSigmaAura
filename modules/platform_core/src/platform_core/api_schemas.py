@@ -58,14 +58,14 @@ class OutfitCard(BaseModel):
     color_note: str = ""
     style_note: str = ""
     occasion_note: str = ""
-    body_harmony_pct: int = 0
-    color_suitability_pct: int = 0
-    style_fit_pct: int = 0
-    risk_tolerance_pct: int = 0
-    occasion_pct: int = 0
-    comfort_boundary_pct: int = 0
-    specific_needs_pct: int = 0
-    pairing_coherence_pct: int = 0
+    classic_pct: int = 0
+    dramatic_pct: int = 0
+    romantic_pct: int = 0
+    natural_pct: int = 0
+    minimalist_pct: int = 0
+    creative_pct: int = 0
+    sporty_pct: int = 0
+    edgy_pct: int = 0
     tryon_image: str = ""
     items: List[OutfitItem] = Field(default_factory=list)
 

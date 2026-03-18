@@ -210,39 +210,7 @@ def get_web_ui_html(user_id: str = "") -> str:
     }
     .outfit-info .outfit-product a:hover { text-decoration: underline; }
     .outfit-info .outfit-chips { margin: 10px 0; }
-    .outfit-criteria { margin: 12px 0 4px; }
-    .criteria-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-    .criteria-label {
-      width: 110px;
-      flex-shrink: 0;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--ink);
-    }
-    .criteria-track {
-      flex: 1;
-      height: 8px;
-      background: #e0e0e0;
-      border-radius: 4px;
-      overflow: hidden;
-    }
-    .criteria-fill {
-      height: 100%;
-      border-radius: 4px;
-      transition: width 0.3s ease;
-    }
-    .criteria-pct {
-      width: 36px;
-      text-align: right;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--ink);
-    }
+    .outfit-radar { margin: 12px 0 4px; text-align: center; }
     .outfit-feedback {
       display: flex;
       gap: 8px;
@@ -497,33 +465,98 @@ def get_web_ui_html(user_id: str = "") -> str:
         info.appendChild(prod);
       }
 
-      // 8 criteria percentage bars
-      const criteria = [
-        { key: "body_harmony_pct", label: "Body Harmony" },
-        { key: "color_suitability_pct", label: "Color Suitability" },
-        { key: "style_fit_pct", label: "Style Fit" },
-        { key: "risk_tolerance_pct", label: "Risk Tolerance" },
-        { key: "occasion_pct", label: "Occasion" },
-        { key: "comfort_boundary_pct", label: "Comfort" },
-        { key: "specific_needs_pct", label: "Specific Needs" },
-        { key: "pairing_coherence_pct", label: "Pairing" },
+      // Style archetype radar chart
+      const archetypes = [
+        { key: "classic_pct", label: "Classic" },
+        { key: "dramatic_pct", label: "Dramatic" },
+        { key: "romantic_pct", label: "Romantic" },
+        { key: "natural_pct", label: "Natural" },
+        { key: "minimalist_pct", label: "Minimalist" },
+        { key: "creative_pct", label: "Creative" },
+        { key: "sporty_pct", label: "Sporty" },
+        { key: "edgy_pct", label: "Edgy" },
       ];
-      const criteriaDiv = document.createElement("div");
-      criteriaDiv.className = "outfit-criteria";
-      for (const c of criteria) {
-        const pct = outfit[c.key] || 0;
-        const barColor = pct >= 80 ? "#2e7d32" : pct >= 60 ? "#f9a825" : "#c62828";
-        const row = document.createElement("div");
-        row.className = "criteria-row";
-        row.innerHTML =
-          '<span class="criteria-label">' + escapeHtml(c.label) + '</span>' +
-          '<div class="criteria-track">' +
-            '<div class="criteria-fill" style="width:' + pct + '%;background:' + barColor + ';"></div>' +
-          '</div>' +
-          '<span class="criteria-pct">' + pct + '%</span>';
-        criteriaDiv.appendChild(row);
+      const radarDiv = document.createElement("div");
+      radarDiv.className = "outfit-radar";
+      const canvas = document.createElement("canvas");
+      const size = 240;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = size * dpr;
+      canvas.height = size * dpr;
+      canvas.style.width = size + "px";
+      canvas.style.height = size + "px";
+      radarDiv.appendChild(canvas);
+      info.appendChild(radarDiv);
+
+      const ctx = canvas.getContext("2d");
+      ctx.scale(dpr, dpr);
+      const cx = size / 2;
+      const cy = size / 2;
+      const maxR = size / 2 - 30;
+      const n = archetypes.length;
+      const step = (2 * Math.PI) / n;
+      const startAngle = -Math.PI / 2;
+
+      function pointAt(i, r) {
+        var a = startAngle + i * step;
+        return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
       }
-      info.appendChild(criteriaDiv);
+
+      // Grid rings at 25%, 50%, 75%, 100%
+      ctx.strokeStyle = "#ddd";
+      ctx.lineWidth = 0.5;
+      for (var ring = 1; ring <= 4; ring++) {
+        ctx.beginPath();
+        var rr = maxR * ring / 4;
+        for (var gi = 0; gi < n; gi++) {
+          var gp = pointAt(gi, rr);
+          if (gi === 0) ctx.moveTo(gp.x, gp.y); else ctx.lineTo(gp.x, gp.y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      // Axis lines
+      for (var ai = 0; ai < n; ai++) {
+        var ap = pointAt(ai, maxR);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(ap.x, ap.y);
+        ctx.stroke();
+      }
+
+      // Data polygon
+      var values = archetypes.map(function(a) { return outfit[a.key] || 0; });
+      ctx.beginPath();
+      ctx.fillStyle = "rgba(139, 92, 246, 0.25)";
+      ctx.strokeStyle = "rgba(139, 92, 246, 0.85)";
+      ctx.lineWidth = 2;
+      for (var di = 0; di < n; di++) {
+        var dp = pointAt(di, maxR * values[di] / 100);
+        if (di === 0) ctx.moveTo(dp.x, dp.y); else ctx.lineTo(dp.x, dp.y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Data points
+      ctx.fillStyle = "rgba(139, 92, 246, 1)";
+      for (var pi = 0; pi < n; pi++) {
+        var pp = pointAt(pi, maxR * values[pi] / 100);
+        ctx.beginPath();
+        ctx.arc(pp.x, pp.y, 3, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+
+      // Labels
+      ctx.fillStyle = "var(--ink, #222)";
+      ctx.font = "600 11px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (var li = 0; li < n; li++) {
+        var lp = pointAt(li, maxR + 16);
+        ctx.fillText(archetypes[li].label, lp.x, lp.y);
+      }
 
       // Feedback CTAs
       const fbWrap = document.createElement("div");

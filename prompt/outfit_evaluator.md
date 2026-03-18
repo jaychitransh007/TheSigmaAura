@@ -28,6 +28,21 @@ Rank each candidate by how well it fits THIS specific user:
 7. **Specific-needs support** — If the user wants elongation, slimming, broadening, etc., does this outfit help?
 8. **Pairing coherence** — For paired outfits, do the top and bottom work together?
 
+## Style Archetype Scoring
+
+In addition to ranking, score each outfit candidate across all 8 style archetypes as integer percentages (0–100). This measures how strongly the outfit expresses each archetype's aesthetic, regardless of the user's preference:
+
+- `classic_pct` — Traditional, timeless, structured. Tailored silhouettes, neutral palettes, refined fabrics.
+- `dramatic_pct` — Bold, statement-making, high-impact. Sharp lines, strong shoulders, striking colors or contrasts.
+- `romantic_pct` — Soft, feminine, ornate. Flowing fabrics, curves, florals, lace, delicate details.
+- `natural_pct` — Relaxed, organic, effortless. Earthy tones, loose fits, natural textures, layered comfort.
+- `minimalist_pct` — Clean, understated, precise. Monochrome or muted palettes, simple lines, no embellishment.
+- `creative_pct` — Artistic, eclectic, unconventional. Mixed prints, unexpected pairings, color play, asymmetry.
+- `sporty_pct` — Athletic, functional, casual. Performance fabrics, relaxed fits, activewear-inspired details.
+- `edgy_pct` — Rebellious, dark, subversive. Leather, hardware, dark palettes, deconstructed or punk-inspired elements.
+
+Score based on the outfit's actual garment characteristics — fabric, silhouette, color, pattern, embellishment, fit — not the user's preference. The user's archetype preference is used for ranking; the archetype scores describe the outfit itself.
+
 ## Body-Context Mapping
 
 Use `body_context_summary` to inform your `body_note` for each candidate:
@@ -94,16 +109,7 @@ Rank by actual fit for this user, not by vector similarity score. Similarity is 
 
 ## Output
 
-Return strict JSON. For each candidate, score every criterion as an integer percentage (0–100):
-
-- `body_harmony_pct` — body harmony score
-- `color_suitability_pct` — color suitability score
-- `style_fit_pct` — style-archetype fit score
-- `risk_tolerance_pct` — risk-tolerance alignment score
-- `occasion_pct` — occasion appropriateness score
-- `comfort_boundary_pct` — comfort-boundary compliance score
-- `specific_needs_pct` — specific-needs support score
-- `pairing_coherence_pct` — pairing coherence score
+Return strict JSON. For each candidate, include the 8 style archetype scores as integer percentages (0–100):
 
 ```json
 {
@@ -118,14 +124,14 @@ Return strict JSON. For each candidate, score every criterion as an integer perc
       "color_note": "How it works with the user's coloring",
       "style_note": "How it aligns with the user's style",
       "occasion_note": "How it fits the requested occasion",
-      "body_harmony_pct": 85,
-      "color_suitability_pct": 90,
-      "style_fit_pct": 78,
-      "risk_tolerance_pct": 80,
-      "occasion_pct": 95,
-      "comfort_boundary_pct": 88,
-      "specific_needs_pct": 70,
-      "pairing_coherence_pct": 82,
+      "classic_pct": 75,
+      "dramatic_pct": 20,
+      "romantic_pct": 10,
+      "natural_pct": 30,
+      "minimalist_pct": 60,
+      "creative_pct": 15,
+      "sporty_pct": 5,
+      "edgy_pct": 10,
       "item_ids": ["product_id_1", "product_id_2"]
     }
   ]
