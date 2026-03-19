@@ -323,6 +323,7 @@ def create_app() -> FastAPI:
                 external_user_id=payload.user_id,
                 message=payload.message,
                 channel=payload.channel,
+                image_data=payload.image_data or "",
             )
             return TurnResponse(**out)
         except (ValueError, SupabaseError, RuntimeError) as exc:
@@ -584,6 +585,7 @@ def create_app() -> FastAPI:
                     external_user_id=payload.user_id,
                     message=payload.message,
                     channel=payload.channel,
+                    image_data=payload.image_data or "",
                     stage_callback=append_stage,
                 )
                 append_stage("turn_execution", "completed")

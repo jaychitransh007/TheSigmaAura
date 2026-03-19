@@ -12,27 +12,14 @@ from platform_core.restricted_categories import detect_restricted_record
 from platform_core.repositories import ConversationRepository
 
 from .agents.catalog_search_agent import CatalogSearchAgent
+from .agents.copilot_planner import CopilotPlanner, build_planner_input
 from .agents.outfit_architect import OutfitArchitect
 from .agents.outfit_assembler import OutfitAssembler
 from .agents.outfit_evaluator import OutfitEvaluator
 from .agents.response_formatter import ResponseFormatter
 from .context.conversation_memory import build_conversation_memory
-from .context.occasion_resolver import resolve_occasion
 from .context.user_context_builder import build_user_context, validate_minimum_profile
 from .filters import build_global_hard_filters
-from .intent_handlers import (
-    build_capsule_or_trip_planning_response,
-    build_explanation_response,
-    build_feedback_submission_response,
-    build_garment_on_me_response,
-    build_outfit_check_response,
-    build_pairing_request_response,
-    build_shopping_decision_response,
-    build_style_discovery_response,
-    build_virtual_tryon_response,
-    build_wardrobe_ingestion_response,
-)
-from .intent_router import classify as classify_intent
 from .onboarding_gate import evaluate as evaluate_onboarding_gate
 from .recommendation_confidence import evaluate_recommendation_confidence
 from .services.catalog_retrieval_gateway import ApplicationCatalogRetrievalGateway
@@ -40,9 +27,16 @@ from .services.onboarding_gateway import ApplicationUserGateway
 from .services.tryon_quality_gate import TryonQualityGate
 from .services.tryon_service import TryonService
 from .sentiment import extract_sentiment
-from .context_gate import evaluate as evaluate_context_gate
 from .qna_messages import generate_stage_message
-from .schemas import CombinedContext, IntentClassification, LiveContext, OutfitCard, ProfileConfidence, RecommendationConfidence
+from .schemas import (
+    CombinedContext,
+    CopilotPlanResult,
+    IntentClassification,
+    LiveContext,
+    OutfitCard,
+    ProfileConfidence,
+    RecommendationConfidence,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -76,6 +70,8 @@ class AgenticOrchestrator:
         self.outfit_assembler = OutfitAssembler()
         self.outfit_evaluator = OutfitEvaluator()
         self.response_formatter = ResponseFormatter()
+
+        self._copilot_planner = CopilotPlanner()
 
     # ------------------------------------------------------------------
     # Conversation lifecycle
@@ -210,6 +206,7 @@ class AgenticOrchestrator:
         external_user_id: str,
         message: str,
         channel: str = "web",
+        image_data: str = "",
         stage_callback: Optional[Callable[[str, str, str], None]] = None,
     ) -> Dict[str, Any]:
         def emit(stage: str, detail: str = "", ctx: dict | None = None) -> None:
@@ -328,401 +325,10 @@ class AgenticOrchestrator:
             }
         emit("onboarding_gate", "completed")
 
-        # --- 0.75 Intent Router ---
-        emit("intent_router", "started")
-        intent = classify_intent(message, previous_context=previous_context)
-        emit("intent_router", "completed", ctx={"primary_intent": intent.primary_intent})
+        # --- Copilot Planner path ---
         profile_confidence = onboarding_gate.profile_confidence
-        self._persist_profile_confidence(
-            external_user_id=external_user_id,
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            channel=channel,
-            profile_confidence=profile_confidence,
-            primary_intent=intent.primary_intent,
-            status=onboarding_gate.status,
-        )
 
-        if intent.primary_intent in {
-            "style_discovery",
-            "explanation_request",
-            "shopping_decision",
-            "pairing_request",
-            "outfit_check",
-            "garment_on_me_request",
-            "capsule_or_trip_planning",
-            "wardrobe_ingestion",
-            "feedback_submission",
-            "virtual_tryon_request",
-        }:
-            emit("user_context", "started")
-            user_context = build_user_context(
-                external_user_id,
-                onboarding_gateway=self.onboarding_gateway,
-            )
-            validate_minimum_profile(user_context)
-            emit("user_context", "completed", ctx={"richness": user_context.profile_richness})
-
-            if intent.primary_intent == "style_discovery":
-                assistant_message, suggestions = build_style_discovery_response(
-                    user_context=user_context,
-                    profile_confidence=profile_confidence,
-                )
-                style_goal = str((user_context.style_preference or {}).get("primaryArchetype") or "").strip()
-                handler_payload: Dict[str, Any] = {}
-            elif intent.primary_intent == "shopping_decision":
-                assistant_message, suggestions, handler_payload = build_shopping_decision_response(
-                    message=message,
-                    user_context=user_context,
-                    previous_context=previous_context,
-                    profile_confidence=profile_confidence,
-                )
-                style_goal = "buy_or_skip"
-            elif intent.primary_intent == "pairing_request":
-                assistant_message, suggestions, handler_payload = build_pairing_request_response(
-                    message=message,
-                    user_context=user_context,
-                    previous_context=previous_context,
-                    profile_confidence=profile_confidence,
-                )
-                style_goal = "pairing"
-            elif intent.primary_intent == "outfit_check":
-                assistant_message, suggestions, handler_payload = build_outfit_check_response(
-                    message=message,
-                    user_context=user_context,
-                    previous_context=previous_context,
-                    profile_confidence=profile_confidence,
-                )
-                style_goal = "outfit_check"
-            elif intent.primary_intent == "garment_on_me_request":
-                assistant_message, suggestions, handler_payload = build_garment_on_me_response(
-                    message=message,
-                    user_context=user_context,
-                    previous_context=previous_context,
-                    profile_confidence=profile_confidence,
-                )
-                style_goal = "garment_on_me"
-            elif intent.primary_intent == "capsule_or_trip_planning":
-                assistant_message, suggestions, handler_payload = build_capsule_or_trip_planning_response(
-                    message=message,
-                    user_context=user_context,
-                    previous_context=previous_context,
-                    profile_confidence=profile_confidence,
-                )
-                wardrobe_plan_cards = self._build_wardrobe_first_capsule_plan(
-                    message=message,
-                    wardrobe_items=list(user_context.wardrobe_items or []),
-                )
-                if wardrobe_plan_cards:
-                    style_goal = "capsule_or_trip"
-                    catalog_upsell = self._build_catalog_upsell(
-                        rationale="Your saved wardrobe can cover the first pass, but I can also show stronger catalog options to fill gaps or elevate the plan.",
-                        entry_intent="capsule_or_trip_planning",
-                    )
-                    answer_components = self._summarize_answer_components(wardrobe_plan_cards)
-                    recommendation_confidence = evaluate_recommendation_confidence(
-                        answer_mode="wardrobe_first",
-                        profile_confidence_score_pct=profile_confidence.score_pct,
-                        intent_confidence=float(intent.confidence),
-                        top_match_score=0.88,
-                        second_match_score=0.82 if len(wardrobe_plan_cards) > 1 else 0.0,
-                        retrieved_product_count=0,
-                        candidate_count=len(wardrobe_plan_cards),
-                        response_outfit_count=len(wardrobe_plan_cards),
-                        wardrobe_items_used=sum(len(card.items) for card in wardrobe_plan_cards),
-                        restricted_item_exclusion_count=0,
-                    )
-                    routing_metadata = self._build_intent_routing_metadata(
-                        intent=intent,
-                        handler_payload=handler_payload,
-                    )
-                    handler_payload = {
-                        **handler_payload,
-                        "answer_source": "wardrobe_first",
-                        "wardrobe_plan_count": len(wardrobe_plan_cards),
-                        "answer_components": answer_components,
-                        "catalog_upsell": catalog_upsell,
-                        "recommendation_confidence": recommendation_confidence.model_dump(),
-                        "routing_metadata": routing_metadata,
-                    }
-                    metadata = self._build_response_metadata(
-                        channel=channel,
-                        intent=intent,
-                        profile_confidence=profile_confidence,
-                        extra={
-                            "routing_metadata": routing_metadata,
-                            "answer_source": "wardrobe_first",
-                            "answer_components": answer_components,
-                            "catalog_upsell": catalog_upsell,
-                            "recommendation_confidence": recommendation_confidence.model_dump(),
-                        },
-                    )
-                    resolved_context = {
-                        "request_summary": message.strip(),
-                        "intent_classification": intent.model_dump(),
-                        "profile_confidence": profile_confidence.model_dump(),
-                        "sentiment_trace": sentiment_trace,
-                        "handler": intent.primary_intent,
-                        "handler_payload": handler_payload,
-                        "routing_metadata": routing_metadata,
-                        "channel": channel,
-                        "recommendations": [
-                            {
-                                "candidate_id": f"wardrobe-plan-{card.rank}",
-                                "rank": card.rank,
-                                "title": card.title,
-                                "item_ids": [str(item.get("product_id") or "") for item in card.items],
-                                "match_score": 0.88,
-                                "reasoning": card.reasoning,
-                            }
-                            for card in wardrobe_plan_cards
-                        ],
-                    }
-                    self.repo.finalize_turn(
-                        turn_id=turn_id,
-                        assistant_message=assistant_message,
-                        resolved_context=resolved_context,
-                    )
-                    self._persist_recommendation_confidence(
-                        external_user_id=external_user_id,
-                        conversation_id=conversation_id,
-                        turn_id=turn_id,
-                        channel=channel,
-                        primary_intent=intent.primary_intent,
-                        recommendation_confidence=recommendation_confidence,
-                        metadata_json={"answer_mode": "wardrobe_first"},
-                    )
-                    self.repo.update_conversation_context(
-                        conversation_id=conversation_id,
-                        session_context={
-                            **previous_context,
-                            "last_user_message": message,
-                            "last_assistant_message": assistant_message,
-                            "last_channel": channel,
-                            "last_intent": intent.primary_intent,
-                            "last_sentiment_trace": sentiment_trace,
-                            "last_response_metadata": metadata,
-                            "last_recommendations": [
-                                {
-                                    "candidate_id": f"wardrobe-plan-{card.rank}",
-                                    "rank": card.rank,
-                                    "title": card.title,
-                                    "item_ids": [str(item.get("product_id") or "") for item in card.items],
-                                    "candidate_type": "wardrobe",
-                                    "direction_id": "wardrobe_plan",
-                                    "primary_colors": [str(item.get("primary_color") or "") for item in card.items if str(item.get("primary_color") or "").strip()],
-                                    "garment_categories": [str(item.get("garment_category") or "") for item in card.items if str(item.get("garment_category") or "").strip()],
-                                    "garment_subtypes": [str(item.get("garment_subtype") or "") for item in card.items if str(item.get("garment_subtype") or "").strip()],
-                                    "roles": [str(item.get("role") or "") for item in card.items if str(item.get("role") or "").strip()],
-                                    "occasion_fits": [],
-                                    "formality_levels": [str(item.get("formality_level") or "") for item in card.items if str(item.get("formality_level") or "").strip()],
-                                    "pattern_types": [],
-                                    "volume_profiles": [],
-                                    "fit_types": [],
-                                    "silhouette_types": [],
-                                }
-                                for card in wardrobe_plan_cards
-                            ],
-                        },
-                    )
-                    self._persist_dependency_turn_event(
-                        external_user_id=external_user_id,
-                        conversation_id=conversation_id,
-                        turn_id=turn_id,
-                        channel=channel,
-                        primary_intent=intent.primary_intent,
-                        response_type="recommendation",
-                        metadata_json={
-                            "answer_source": "wardrobe_first",
-                            "memory_sources_read": list(routing_metadata.get("memory_sources_read") or []),
-                            "memory_sources_written": list(routing_metadata.get("memory_sources_written") or []),
-                            "recommendation_confidence_score_pct": recommendation_confidence.score_pct,
-                            "outfit_count": len(wardrobe_plan_cards),
-                        },
-                    )
-                    return {
-                        "conversation_id": conversation_id,
-                        "turn_id": turn_id,
-                        "assistant_message": assistant_message + " If you want, I can also show better catalog options for the same plan.",
-                        "response_type": "recommendation",
-                        "resolved_context": {
-                            "request_summary": message.strip(),
-                            "occasion": str(previous_context.get("last_occasion") or ""),
-                            "style_goal": "capsule_or_trip",
-                        },
-                        "filters_applied": {},
-                        "outfits": [card.model_dump() for card in wardrobe_plan_cards],
-                        "follow_up_suggestions": suggestions + [str(catalog_upsell["cta"])],
-                        "metadata": metadata,
-                    }
-                style_goal = "capsule_or_trip"
-            elif intent.primary_intent == "wardrobe_ingestion":
-                saved_item = self._save_chat_wardrobe_item(
-                    external_user_id=external_user_id,
-                    message=message,
-                )
-                assistant_message, suggestions, handler_payload = build_wardrobe_ingestion_response(
-                    message=message,
-                    user_context=user_context,
-                    profile_confidence=profile_confidence,
-                    saved_item=saved_item,
-                )
-                style_goal = "wardrobe_ingestion"
-            elif intent.primary_intent == "feedback_submission":
-                assistant_message, suggestions, handler_payload = build_feedback_submission_response(
-                    message=message,
-                    previous_context=previous_context,
-                )
-                self._persist_chat_feedback(
-                    external_user_id=external_user_id,
-                    conversation_id=conversation_id,
-                    handler_payload=handler_payload,
-                    notes=message.strip(),
-                )
-                handler_payload["feedback_summary"] = self._build_feedback_summary(
-                    event_type=str(handler_payload.get("event_type") or "dislike"),
-                    item_ids=list(handler_payload.get("item_ids") or []),
-                    outfit_rank=int(handler_payload.get("outfit_rank") or 1),
-                    turn_id=str(handler_payload.get("target_turn_id") or ""),
-                )
-                style_goal = "feedback_submission"
-            elif intent.primary_intent == "virtual_tryon_request":
-                tryon_result = self._run_virtual_tryon_request(
-                    external_user_id=external_user_id,
-                    message=message,
-                )
-                assistant_message, suggestions, handler_payload = build_virtual_tryon_response(
-                    message=message,
-                    success=bool(tryon_result.get("success")),
-                    product_url=str(tryon_result.get("product_url") or ""),
-                    error_message=str(tryon_result.get("error") or ""),
-                )
-                if tryon_result.get("quality_gate"):
-                    handler_payload["quality_gate"] = dict(tryon_result.get("quality_gate") or {})
-                if tryon_result.get("success") and tryon_result.get("data_url"):
-                    handler_payload["tryon_image"] = str(tryon_result.get("data_url") or "")
-                    self._persist_policy_event(
-                        external_user_id=external_user_id,
-                        conversation_id=conversation_id,
-                        turn_id=turn_id,
-                        channel=channel,
-                        policy_event_type="virtual_tryon_guardrail",
-                        input_class="virtual_tryon_request",
-                        reason_code="quality_gate_passed",
-                        decision="allowed",
-                        metadata_json={
-                            "quality_gate": dict(tryon_result.get("quality_gate") or {}),
-                            "product_url": str(tryon_result.get("product_url") or ""),
-                        },
-                    )
-                elif tryon_result.get("quality_gate") and not tryon_result["quality_gate"].get("passed"):
-                    self._persist_policy_event(
-                        external_user_id=external_user_id,
-                        conversation_id=conversation_id,
-                        turn_id=turn_id,
-                        channel=channel,
-                        policy_event_type="virtual_tryon_guardrail",
-                        input_class="virtual_tryon_request",
-                        reason_code=str(tryon_result["quality_gate"].get("reason_code") or "quality_gate_failed"),
-                        metadata_json={
-                            "quality_gate": dict(tryon_result.get("quality_gate") or {}),
-                            "product_url": str(tryon_result.get("product_url") or ""),
-                        },
-                    )
-                style_goal = "virtual_tryon"
-            else:
-                assistant_message, suggestions = build_explanation_response(
-                    user_context=user_context,
-                    previous_context=previous_context,
-                    profile_confidence=profile_confidence,
-                )
-                style_goal = "explanation"
-                handler_payload = {}
-
-            routing_metadata = self._build_intent_routing_metadata(
-                intent=intent,
-                handler_payload=handler_payload,
-            )
-            handler_payload = {
-                **handler_payload,
-                "routing_metadata": routing_metadata,
-            }
-
-            metadata = self._build_response_metadata(
-                channel=channel,
-                intent=intent,
-                profile_confidence=profile_confidence,
-                extra={
-                    "routing_metadata": routing_metadata,
-                    **(
-                        {"catalog_upsell": handler_payload.get("catalog_upsell")}
-                        if handler_payload.get("catalog_upsell")
-                        else {}
-                    ),
-                },
-            )
-            self.repo.finalize_turn(
-                turn_id=turn_id,
-                assistant_message=assistant_message,
-                resolved_context={
-                    "request_summary": message.strip(),
-                    "intent_classification": intent.model_dump(),
-                    "profile_confidence": profile_confidence.model_dump(),
-                    "sentiment_trace": sentiment_trace,
-                    "handler": intent.primary_intent,
-                    "handler_payload": handler_payload,
-                    "routing_metadata": routing_metadata,
-                    "channel": channel,
-                },
-            )
-            self.repo.update_conversation_context(
-                conversation_id=conversation_id,
-                session_context={
-                    **previous_context,
-                    "last_user_message": message,
-                    "last_assistant_message": assistant_message,
-                    "last_channel": channel,
-                    "last_intent": intent.primary_intent,
-                    "last_sentiment_trace": sentiment_trace,
-                    "last_response_metadata": metadata,
-                    **(
-                        {"last_feedback_summary": handler_payload.get("feedback_summary")}
-                        if handler_payload.get("feedback_summary")
-                        else {}
-                    ),
-                },
-            )
-            self._persist_dependency_turn_event(
-                external_user_id=external_user_id,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                channel=channel,
-                primary_intent=intent.primary_intent,
-                response_type="recommendation",
-                metadata_json={
-                    "answer_source": str(handler_payload.get("answer_source") or "intent_handler"),
-                    "memory_sources_read": list(routing_metadata.get("memory_sources_read") or []),
-                    "memory_sources_written": list(routing_metadata.get("memory_sources_written") or []),
-                    "catalog_upsell_available": bool(handler_payload.get("catalog_upsell")),
-                },
-            )
-            return {
-                "conversation_id": conversation_id,
-                "turn_id": turn_id,
-                "assistant_message": assistant_message,
-                "response_type": "recommendation",
-                "resolved_context": {
-                    "request_summary": message.strip(),
-                    "occasion": str(previous_context.get("last_occasion") or ""),
-                    "style_goal": style_goal,
-                },
-                "filters_applied": {},
-                "outfits": [],
-                "follow_up_suggestions": suggestions,
-                "metadata": metadata,
-            }
-
-        # --- 1. User Context Builder ---
+        # Build user context
         emit("user_context", "started")
         user_context = build_user_context(
             external_user_id,
@@ -731,447 +337,196 @@ class AgenticOrchestrator:
         validate_minimum_profile(user_context)
         emit("user_context", "completed", ctx={"richness": user_context.profile_richness})
 
-        # --- 2. Build context for the architect ---
-        emit("context_builder", "started")
-
-        # Quick rule-based signal extraction so the context gate and
-        # conversation memory see structured signals (occasion, formality, …)
-        # before the expensive Architect LLM call.
-        has_previous_recs = bool(previous_context.get("last_recommendations"))
-        pre_resolved = resolve_occasion(message.strip(), has_previous_recommendations=has_previous_recs)
-
-        initial_live_context = pre_resolved
-        conversation_memory = build_conversation_memory(
-            previous_context,
-            initial_live_context,
-            current_intent=intent.primary_intent,
-            channel=channel,
-            sentiment_trace=sentiment_trace,
-            wardrobe_item_count=len(user_context.wardrobe_items),
-        )
-
-        # Build conversation history for the architect
+        # Build conversation history
         conversation_history = self._build_conversation_history(previous_context, message)
 
-        emit("context_builder", "completed", ctx={"user_need": message})
+        # Check for person image
+        has_person_image = bool(self.onboarding_gateway.get_person_image_path(external_user_id))
 
-        # --- Build combined context (gender-only hard filter) ---
-        hard_filters = build_global_hard_filters(user_context)
-
-        # Load catalog inventory (cached for the lifetime of this orchestrator)
-        if self._catalog_inventory is None:
-            try:
-                self._catalog_inventory = self._retrieval_gateway.get_catalog_inventory()
-            except Exception:
-                _log.warning("Failed to load catalog inventory", exc_info=True)
-                self._catalog_inventory = []
-
-        previous_recs = previous_context.get("last_recommendations")
-        combined_context = CombinedContext(
-            user=user_context,
-            live=initial_live_context,
-            hard_filters=hard_filters,
-            previous_recommendations=previous_recs if isinstance(previous_recs, list) else None,
-            conversation_memory=conversation_memory,
-            conversation_history=conversation_history,
-            catalog_inventory=self._catalog_inventory or None,
-        )
-
-        # --- 3.5 Context Gate ---
-        emit("context_gate", "started")
-        consecutive_blocks = int(previous_context.get("consecutive_gate_blocks", 0))
-        gate_result = evaluate_context_gate(combined_context, consecutive_blocks)
-
-        if not gate_result.sufficient:
-            emit("context_gate", "insufficient")
-            _log.info(
-                "Context gate blocked (score=%.1f, missing=%s, consecutive=%d)",
-                gate_result.score, gate_result.missing_signal, consecutive_blocks,
-            )
-            self.repo.finalize_turn(
-                turn_id=turn_id,
-                assistant_message=gate_result.question,
-                resolved_context={
-                    "request_summary": message.strip(),
-                    "gate_blocked": True,
-                    "gate_score": gate_result.score,
-                    "gate_missing_signal": gate_result.missing_signal,
-                    "intent_classification": intent.model_dump(),
-                    "profile_confidence": profile_confidence.model_dump(),
-                    "sentiment_trace": sentiment_trace,
-                    "channel": channel,
-                },
-            )
-            self.repo.update_conversation_context(
-                conversation_id=conversation_id,
-                session_context={
-                    **previous_context,
-                    "memory": conversation_memory.model_dump(),
-                    "consecutive_gate_blocks": consecutive_blocks + 1,
-                    "last_user_message": message,
-                    "last_assistant_message": gate_result.question,
-                    "last_channel": channel,
-                    "last_intent": intent.primary_intent,
-                    "last_sentiment_trace": sentiment_trace,
-                },
-            )
-            self._persist_dependency_turn_event(
-                external_user_id=external_user_id,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                channel=channel,
-                primary_intent=intent.primary_intent,
-                response_type="clarification",
-                metadata_json={
-                    "gate_blocked": True,
-                    "gate_score": gate_result.score,
-                    "gate_missing_signal": gate_result.missing_signal,
-                    "memory_sources_read": ["conversation_memory", "user_profile"],
-                    "memory_sources_written": ["conversation_memory"],
-                },
-            )
-            return {
-                "conversation_id": conversation_id,
-                "turn_id": turn_id,
-                "assistant_message": gate_result.question,
-                "response_type": "clarification",
-                "resolved_context": {
-                    "request_summary": message.strip(),
-                    "gate_score": gate_result.score,
-                    "gate_missing_signal": gate_result.missing_signal,
-                },
-                "filters_applied": {},
-                "outfits": [],
-                "follow_up_suggestions": gate_result.quick_replies,
-                "metadata": self._build_response_metadata(
-                    channel=channel,
-                    intent=intent,
-                    profile_confidence=profile_confidence,
-                    extra={"gate_blocked": True},
-                ),
-            }
-
-        # Gate passed — reset consecutive counter
-        emit("context_gate", "sufficient")
-        if gate_result.bypass_reason:
-            _log.info("Context gate bypassed: %s", gate_result.bypass_reason)
-
-        wardrobe_first_response = self._build_wardrobe_first_occasion_response(
-            external_user_id=external_user_id,
+        # Build planner input
+        planner_input = build_planner_input(
             message=message,
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            channel=channel,
-            intent=intent,
-            previous_context=previous_context,
             user_context=user_context,
-            live_context=initial_live_context,
-            conversation_memory=conversation_memory.model_dump(),
-            profile_confidence=profile_confidence,
-            sentiment_trace=sentiment_trace,
+            conversation_history=conversation_history,
+            previous_context=previous_context,
+            profile_confidence_pct=profile_confidence.score_pct,
+            has_person_image=has_person_image,
+            has_attached_image=bool(image_data),
         )
-        if wardrobe_first_response is not None:
-            return wardrobe_first_response
 
-        # --- 3. Outfit Architect (now also resolves occasion/context) ---
-        emit("outfit_architect", "started")
+        # Run Copilot Planner
+        emit("copilot_planner", "started")
         t0 = time.monotonic()
         try:
-            plan = self.outfit_architect.plan(combined_context)
+            plan_result = self._copilot_planner.plan(planner_input)
         except Exception as exc:
-            architect_ms = int((time.monotonic() - t0) * 1000)
-            _log.error("Outfit architect failed: %s", exc, exc_info=True)
+            planner_ms = int((time.monotonic() - t0) * 1000)
+            _log.error("Copilot planner failed: %s", exc, exc_info=True)
             self.repo.log_model_call(
                 conversation_id=conversation_id,
                 turn_id=turn_id,
                 service="agentic_application",
-                call_type="outfit_architect",
+                call_type="copilot_planner",
                 model="gpt-5.4",
-                request_json={
-                    "combined_context_summary": {
-                        "gender": user_context.gender,
-                        "message": message,
-                    }
-                },
+                request_json={"message": message},
                 response_json={},
                 reasoning_notes=[],
-                latency_ms=architect_ms,
+                latency_ms=planner_ms,
                 status="error",
                 error_message=str(exc),
             )
-            emit("outfit_architect", "error")
+            emit("copilot_planner", "error")
+            fallback_message = "I'm having trouble processing your request right now. Please try again."
             self.repo.finalize_turn(
                 turn_id=turn_id,
-                assistant_message="I'm having trouble processing your request right now. Please try again.",
+                assistant_message=fallback_message,
                 resolved_context={"error": str(exc), "request_summary": message.strip()},
-            )
-            self._persist_dependency_turn_event(
-                external_user_id=external_user_id,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                channel=channel,
-                primary_intent=intent.primary_intent,
-                response_type="error",
-                metadata_json={
-                    "error": True,
-                    "error_stage": "outfit_architect",
-                },
             )
             return {
                 "conversation_id": conversation_id,
                 "turn_id": turn_id,
-                "assistant_message": "I'm having trouble processing your request right now. Please try again.",
+                "assistant_message": fallback_message,
+                "response_type": "error",
                 "resolved_context": {"request_summary": message.strip()},
-                "filters_applied": hard_filters,
+                "filters_applied": {},
                 "outfits": [],
                 "follow_up_suggestions": [],
                 "metadata": {"error": True},
             }
-        architect_ms = int((time.monotonic() - t0) * 1000)
-
-        # Apply the architect's resolved context back to live context
-        resolved = plan.resolved_context
-        if resolved:
-            effective_live_context = LiveContext(
-                user_need=message.strip(),
-                occasion_signal=resolved.occasion_signal,
-                formality_hint=resolved.formality_hint,
-                time_hint=resolved.time_hint,
-                specific_needs=resolved.specific_needs,
-                is_followup=resolved.is_followup,
-                followup_intent=resolved.followup_intent,
-            )
-        else:
-            effective_live_context = initial_live_context
-
+        planner_ms = int((time.monotonic() - t0) * 1000)
         self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
-            call_type="outfit_architect",
+            call_type="copilot_planner",
             model="gpt-5.4",
-            request_json={
-                "combined_context_summary": {
-                    "gender": user_context.gender,
-                    "occasion": effective_live_context.occasion_signal,
-                    "message": message,
-                    "is_followup": effective_live_context.is_followup,
-                }
+            request_json={"message": message, "intent": plan_result.intent},
+            response_json={
+                "intent": plan_result.intent,
+                "action": plan_result.action,
+                "intent_confidence": plan_result.intent_confidence,
             },
-            response_json=plan.model_dump(),
             reasoning_notes=[],
-            latency_ms=architect_ms,
+            latency_ms=planner_ms,
         )
-        emit("outfit_architect", "completed", ctx={
-            "plan_type": plan.plan_type,
-            "direction_count": len(plan.directions),
+        emit("copilot_planner", "completed", ctx={
+            "intent": plan_result.intent,
+            "action": plan_result.action,
         })
 
-        # Rebuild conversation memory now that the Architect has resolved context
-        # (follow-up detection and formality shifts depend on the resolved live context)
-        conversation_memory = build_conversation_memory(
-            previous_context,
-            effective_live_context,
-            current_intent=intent.primary_intent,
+        # Build intent classification for metadata compatibility
+        intent = IntentClassification(
+            primary_intent=plan_result.intent,
+            confidence=plan_result.intent_confidence,
+            reason_codes=["copilot_planner"],
+        )
+        self._persist_profile_confidence(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
             channel=channel,
-            sentiment_trace=sentiment_trace,
-            wardrobe_item_count=len(user_context.wardrobe_items),
+            profile_confidence=profile_confidence,
+            primary_intent=plan_result.intent,
+            status=onboarding_gate.status,
         )
 
-        # Update combined context with effective live context from architect
-        combined_context = combined_context.model_copy(update={
-            "live": effective_live_context,
-            "conversation_memory": conversation_memory,
-        })
-
-        # --- 4. Catalog Search Agent (single search, no relaxation) ---
-        emit("catalog_search", "started")
-        t0 = time.monotonic()
-        retrieved_sets = self.catalog_search_agent.search(plan, combined_context)
-        search_ms = int((time.monotonic() - t0) * 1000)
-
-        for rs in retrieved_sets:
-            self.repo.log_tool_trace(
+        # Dispatch on action
+        if plan_result.action == "respond_directly":
+            return self._handle_direct_response(
+                plan_result=plan_result,
+                intent=intent,
                 conversation_id=conversation_id,
                 turn_id=turn_id,
-                tool_name="catalog_search_agent",
-                input_json={
-                    "direction_id": rs.direction_id,
-                    "query_id": rs.query_id,
-                    "role": rs.role,
-                    "applied_filters": rs.applied_filters,
-                },
-                output_json={
-                    "result_count": len(rs.products),
-                },
-                latency_ms=search_ms,
-            )
-        emit("catalog_search", "completed", ctx={
-            "product_count": sum(len(rs.products) for rs in retrieved_sets),
-            "set_count": len(retrieved_sets),
-        })
-
-        # --- 5. Outfit Assembler ---
-        emit("outfit_assembly", "started")
-        candidates = self.outfit_assembler.assemble(retrieved_sets, plan, combined_context)
-        emit("outfit_assembly", "completed", ctx={"candidate_count": len(candidates)})
-
-        # --- 6. Outfit Evaluator ---
-        emit("outfit_evaluation", "started", ctx={
-            "has_body_data": bool(user_context.height_cm or user_context.waist_cm),
-            "has_color_season": bool(user_context.derived_interpretations.get("seasonal_color_group")),
-            "has_style_pref": bool(user_context.style_preference),
-        })
-        t0 = time.monotonic()
-        evaluated = self.outfit_evaluator.evaluate(candidates, combined_context, plan)
-        evaluator_ms = int((time.monotonic() - t0) * 1000)
-        self.repo.log_model_call(
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            service="agentic_application",
-            call_type="outfit_evaluator",
-            model="gpt-5.4",
-            request_json={"candidate_count": len(candidates)},
-            response_json={"evaluation_count": len(evaluated)},
-            reasoning_notes=[],
-            latency_ms=evaluator_ms,
-        )
-        emit("outfit_evaluation", "completed")
-
-        # --- 7. Response Formatter ---
-        emit("response_formatting", "started")
-        response = self.response_formatter.format(evaluated, combined_context, plan, candidates)
-        restricted_item_exclusion_count = int(response.metadata.get("restricted_item_exclusion_count") or 0)
-        recommendation_confidence = self._build_recommendation_confidence(
-            answer_mode="catalog_pipeline",
-            profile_confidence=profile_confidence,
-            intent=intent,
-            evaluated=evaluated,
-            retrieved_sets=retrieved_sets,
-            candidate_count=len(candidates),
-            response_outfit_count=len(response.outfits),
-            restricted_item_exclusion_count=restricted_item_exclusion_count,
-            wardrobe_items_used=0,
-        )
-        response.metadata.update(
-            self._build_response_metadata(
                 channel=channel,
-                intent=intent,
-                profile_confidence=profile_confidence,
-                extra={
-                    "recommendation_confidence": recommendation_confidence.model_dump(),
-                },
-            )
-        )
-        response.metadata["turn_id"] = turn_id
-        emit("response_formatting", "completed", ctx={"outfit_count": min(len(evaluated), 3)})
-
-        # --- 8. Virtual Try-On ---
-        emit("virtual_tryon", "started")
-        self._attach_tryon_images(response.outfits, external_user_id)
-        emit("virtual_tryon", "completed")
-
-        self._persist_catalog_interactions(
-            external_user_id=external_user_id,
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            channel=channel,
-            primary_intent=intent.primary_intent,
-            outfits=response.outfits,
-        )
-        self._persist_recommendation_confidence(
-            external_user_id=external_user_id,
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            channel=channel,
-            primary_intent=intent.primary_intent,
-            recommendation_confidence=recommendation_confidence,
-            metadata_json={"answer_mode": "catalog_pipeline"},
-        )
-
-        # --- Persist ---
-        self.repo.finalize_turn(
-            turn_id=turn_id,
-            assistant_message=response.message,
-            resolved_context=self._build_turn_artifacts(
+                external_user_id=external_user_id,
                 message=message,
-                live_context=effective_live_context,
-                conversation_memory=conversation_memory.model_dump(),
-                plan=plan.model_dump(),
-                retrieved_sets=retrieved_sets,
-                evaluated=evaluated,
-                candidates=candidates,
-                response_metadata=response.metadata,
-                intent_classification=intent.model_dump(),
-                profile_confidence=profile_confidence.model_dump(),
+                previous_context=previous_context,
+                profile_confidence=profile_confidence,
                 sentiment_trace=sentiment_trace,
+            )
+        elif plan_result.action == "ask_clarification":
+            return self._handle_clarification(
+                plan_result=plan_result,
+                intent=intent,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
                 channel=channel,
-            ),
-        )
-
-        # Store plan + recommendations for follow-up turns
-        rec_summary = self._build_recommendation_summaries(evaluated, candidates)
-        self.repo.update_conversation_context(
-            conversation_id=conversation_id,
-            session_context={
-                **previous_context,
-                "memory": conversation_memory.model_dump(),
-                "last_plan_type": plan.plan_type,
-                "last_recommendations": rec_summary,
-                "last_occasion": effective_live_context.occasion_signal or "",
-                "last_live_context": effective_live_context.model_dump(),
-                "last_response_metadata": response.metadata,
-                "last_assistant_message": response.message,
-                "last_user_message": message,
-                "last_channel": channel,
-                "last_intent": intent.primary_intent,
-                "last_sentiment_trace": sentiment_trace,
-                "consecutive_gate_blocks": 0,
-            },
-        )
-        self._persist_dependency_turn_event(
-            external_user_id=external_user_id,
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            channel=channel,
-            primary_intent=intent.primary_intent,
-            response_type="recommendation",
-            metadata_json={
-                "answer_source": "catalog_pipeline",
-                "outfit_count": len(response.outfits),
-                "memory_sources_read": list(
-                    ((response.metadata.get("routing_metadata") or {}).get("memory_sources_read") or [])
-                ),
-                "memory_sources_written": [
-                    "conversation_memory",
-                    "catalog_interaction_history",
-                    "confidence_history",
-                    "sentiment_history",
-                ],
-                "recommendation_confidence_score_pct": recommendation_confidence.score_pct,
-                "restricted_item_exclusion_count": restricted_item_exclusion_count,
-            },
-        )
-
-        return {
-            "conversation_id": conversation_id,
-            "turn_id": turn_id,
-            "assistant_message": response.message,
-            "response_type": "recommendation",
-            "resolved_context": {
-                "request_summary": message.strip(),
-                "occasion": effective_live_context.occasion_signal or "",
-                "style_goal": (
-                    " ".join(effective_live_context.specific_needs)
-                    if effective_live_context.specific_needs
-                    else ""
-                ),
-            },
-            "filters_applied": self._flatten_applied_filters(retrieved_sets) or hard_filters,
-            "outfits": [card.model_dump() for card in response.outfits],
-            "follow_up_suggestions": response.follow_up_suggestions,
-            "metadata": response.metadata,
-        }
+                external_user_id=external_user_id,
+                message=message,
+                previous_context=previous_context,
+                profile_confidence=profile_confidence,
+                sentiment_trace=sentiment_trace,
+            )
+        elif plan_result.action == "run_recommendation_pipeline":
+            return self._handle_planner_pipeline(
+                plan_result=plan_result,
+                intent=intent,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                channel=channel,
+                external_user_id=external_user_id,
+                message=message,
+                previous_context=previous_context,
+                user_context=user_context,
+                conversation_history=conversation_history,
+                profile_confidence=profile_confidence,
+                sentiment_trace=sentiment_trace,
+                emit=emit,
+            )
+        elif plan_result.action == "run_virtual_tryon":
+            return self._handle_planner_virtual_tryon(
+                plan_result=plan_result,
+                intent=intent,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                channel=channel,
+                external_user_id=external_user_id,
+                message=message,
+                previous_context=previous_context,
+                profile_confidence=profile_confidence,
+                sentiment_trace=sentiment_trace,
+            )
+        elif plan_result.action == "save_wardrobe_item":
+            return self._handle_planner_wardrobe_save(
+                plan_result=plan_result,
+                intent=intent,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                channel=channel,
+                external_user_id=external_user_id,
+                message=message,
+                previous_context=previous_context,
+                profile_confidence=profile_confidence,
+                sentiment_trace=sentiment_trace,
+            )
+        elif plan_result.action == "save_feedback":
+            return self._handle_planner_feedback(
+                plan_result=plan_result,
+                intent=intent,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                channel=channel,
+                external_user_id=external_user_id,
+                message=message,
+                previous_context=previous_context,
+                profile_confidence=profile_confidence,
+                sentiment_trace=sentiment_trace,
+            )
+        else:
+            # Unknown action — fall back to direct response
+            _log.warning("Unknown planner action: %s, falling back to direct response", plan_result.action)
+            return self._handle_direct_response(
+                plan_result=plan_result,
+                intent=intent,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                channel=channel,
+                external_user_id=external_user_id,
+                message=message,
+                previous_context=previous_context,
+                profile_confidence=profile_confidence,
+                sentiment_trace=sentiment_trace,
+            )
 
     # ------------------------------------------------------------------
     # Virtual try-on
@@ -1801,95 +1156,6 @@ class AgenticOrchestrator:
             "source": "wardrobe",
         }
 
-    def _build_wardrobe_first_capsule_plan(
-        self,
-        *,
-        message: str,
-        wardrobe_items: List[Dict[str, Any]],
-    ) -> List[OutfitCard]:
-        if not wardrobe_items:
-            return []
-
-        planning_type = "trip" if any(token in str(message or "").lower() for token in ("trip", "travel", "vacation", "pack")) else "capsule"
-        look_note = "Wardrobe-first trip look." if planning_type == "trip" else "Wardrobe-first capsule look."
-        ranked = sorted(
-            [dict(item, _role=self._capsule_role(item)) for item in wardrobe_items],
-            key=lambda item: str(item.get("title") or "").lower(),
-        )
-        one_pieces = [item for item in ranked if item.get("_role") == "one_piece"]
-        tops = [item for item in ranked if item.get("_role") == "top"]
-        bottoms = [item for item in ranked if item.get("_role") == "bottom"]
-
-        cards: List[OutfitCard] = []
-        rank = 1
-        if one_pieces:
-            for item in one_pieces[:2]:
-                cards.append(
-                    OutfitCard(
-                        rank=rank,
-                        title=f"Wardrobe Plan {rank}",
-                        reasoning="Built from a saved one-piece anchor in your wardrobe.",
-                        occasion_note=look_note,
-                        items=[self._wardrobe_item_to_outfit_item(dict(item, _role="one_piece"))],
-                    )
-                )
-                rank += 1
-
-        for top in tops[:2]:
-            if not bottoms:
-                break
-            bottom = next((candidate for candidate in bottoms if candidate.get("id") != top.get("id")), None)
-            if bottom is None:
-                continue
-            cards.append(
-                OutfitCard(
-                    rank=rank,
-                    title=f"Wardrobe Plan {rank}",
-                    reasoning="Built from saved top and bottom anchors in your wardrobe.",
-                    occasion_note=look_note,
-                    items=[
-                        self._wardrobe_item_to_outfit_item(dict(top, _role="top")),
-                        self._wardrobe_item_to_outfit_item(dict(bottom, _role="bottom")),
-                    ],
-                )
-            )
-            rank += 1
-            if rank > 3:
-                break
-
-        if not cards and ranked:
-            cards.append(
-                OutfitCard(
-                    rank=1,
-                    title="Wardrobe Plan 1",
-                    reasoning="Built from the strongest saved wardrobe anchor available.",
-                    occasion_note=look_note,
-                    items=[self._wardrobe_item_to_outfit_item(dict(ranked[0], _role=ranked[0].get("_role") or "other"))],
-                )
-            )
-        sanitized_cards: List[OutfitCard] = []
-        for card in cards[:3]:
-            allowed_items, _blocked_terms = self._filter_restricted_recommendation_items(list(card.items))
-            if not allowed_items:
-                continue
-            card.items = allowed_items
-            card.rank = len(sanitized_cards) + 1
-            sanitized_cards.append(card)
-        return sanitized_cards
-
-    @staticmethod
-    def _capsule_role(item: Dict[str, Any]) -> str:
-        category = str(item.get("garment_category") or item.get("garment_subtype") or "").strip().lower()
-        title = str(item.get("title") or "").strip().lower()
-        corpus = f"{category} {title}".strip()
-        if any(token in corpus for token in ("dress", "jumpsuit", "suit")):
-            return "one_piece"
-        if any(token in corpus for token in ("top", "shirt", "blouse", "blazer", "jacket", "coat", "cardigan", "outerwear", "tee", "sweater")):
-            return "top"
-        if any(token in corpus for token in ("bottom", "trousers", "pants", "jeans", "skirt", "shorts")):
-            return "bottom"
-        return "other"
-
     def _run_virtual_tryon_request(
         self,
         *,
@@ -2074,44 +1340,752 @@ class AgenticOrchestrator:
             payload.update(extra)
         return payload
 
-    @staticmethod
-    def _build_intent_routing_metadata(
+    # ------------------------------------------------------------------
+    # Copilot Planner action handlers
+    # ------------------------------------------------------------------
+
+    def _handle_direct_response(
+        self,
         *,
+        plan_result: CopilotPlanResult,
         intent: IntentClassification,
-        handler_payload: Dict[str, Any] | None = None,
+        conversation_id: str,
+        turn_id: str,
+        channel: str,
+        external_user_id: str,
+        message: str,
+        previous_context: Dict[str, Any],
+        profile_confidence: ProfileConfidence,
+        sentiment_trace: Dict[str, object],
     ) -> Dict[str, Any]:
-        payload = dict(handler_payload or {})
-        default_read_map = {
-            "style_discovery": ["user_profile", "style_preference", "derived_interpretations"],
-            "explanation_request": ["recommendation_history", "conversation_memory", "profile_confidence"],
-        }
-        default_write_map = {
-            "style_discovery": ["conversation_memory", "confidence_history"],
-            "explanation_request": ["conversation_memory"],
-        }
-        memory_sources_read = [
-            str(value).strip()
-            for value in (
-                list(payload.get("memory_sources_read") or [])
-                or default_read_map.get(intent.primary_intent, [])
-            )
-            if str(value).strip()
-        ]
-        memory_sources_written = [
-            str(value).strip()
-            for value in (
-                list(payload.get("memory_sources_written") or [])
-                or default_write_map.get(intent.primary_intent, [])
-            )
-            if str(value).strip()
-        ]
+        metadata = self._build_response_metadata(
+            channel=channel,
+            intent=intent,
+            profile_confidence=profile_confidence,
+            extra={"answer_source": "copilot_planner"},
+        )
+        self.repo.finalize_turn(
+            turn_id=turn_id,
+            assistant_message=plan_result.assistant_message,
+            resolved_context={
+                "request_summary": message.strip(),
+                "intent_classification": intent.model_dump(),
+                "profile_confidence": profile_confidence.model_dump(),
+                "sentiment_trace": sentiment_trace,
+                "handler": "copilot_planner_direct",
+                "channel": channel,
+            },
+        )
+        self.repo.update_conversation_context(
+            conversation_id=conversation_id,
+            session_context={
+                **previous_context,
+                "last_user_message": message,
+                "last_assistant_message": plan_result.assistant_message,
+                "last_channel": channel,
+                "last_intent": plan_result.intent,
+                "last_sentiment_trace": sentiment_trace,
+                "last_response_metadata": metadata,
+            },
+        )
+        self._persist_dependency_turn_event(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            channel=channel,
+            primary_intent=plan_result.intent,
+            response_type="recommendation",
+            metadata_json={"answer_source": "copilot_planner"},
+        )
         return {
-            "primary_intent": intent.primary_intent,
-            "intent_confidence": intent.confidence,
-            "secondary_intents": list(intent.secondary_intents or []),
-            "reason_codes": list(intent.reason_codes or []),
-            "memory_sources_read": memory_sources_read,
-            "memory_sources_written": memory_sources_written,
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "assistant_message": plan_result.assistant_message,
+            "response_type": "recommendation",
+            "resolved_context": {
+                "request_summary": message.strip(),
+                "occasion": str(plan_result.resolved_context.occasion_signal or ""),
+                "style_goal": plan_result.resolved_context.style_goal,
+            },
+            "filters_applied": {},
+            "outfits": [],
+            "follow_up_suggestions": plan_result.follow_up_suggestions[:5],
+            "metadata": metadata,
+        }
+
+    def _handle_clarification(
+        self,
+        *,
+        plan_result: CopilotPlanResult,
+        intent: IntentClassification,
+        conversation_id: str,
+        turn_id: str,
+        channel: str,
+        external_user_id: str,
+        message: str,
+        previous_context: Dict[str, Any],
+        profile_confidence: ProfileConfidence,
+        sentiment_trace: Dict[str, object],
+    ) -> Dict[str, Any]:
+        consecutive_blocks = int(previous_context.get("consecutive_gate_blocks", 0))
+        metadata = self._build_response_metadata(
+            channel=channel,
+            intent=intent,
+            profile_confidence=profile_confidence,
+            extra={"gate_blocked": True, "answer_source": "copilot_planner"},
+        )
+        self.repo.finalize_turn(
+            turn_id=turn_id,
+            assistant_message=plan_result.assistant_message,
+            resolved_context={
+                "request_summary": message.strip(),
+                "gate_blocked": True,
+                "intent_classification": intent.model_dump(),
+                "profile_confidence": profile_confidence.model_dump(),
+                "sentiment_trace": sentiment_trace,
+                "channel": channel,
+            },
+        )
+        self.repo.update_conversation_context(
+            conversation_id=conversation_id,
+            session_context={
+                **previous_context,
+                "consecutive_gate_blocks": consecutive_blocks + 1,
+                "last_user_message": message,
+                "last_assistant_message": plan_result.assistant_message,
+                "last_channel": channel,
+                "last_intent": plan_result.intent,
+                "last_sentiment_trace": sentiment_trace,
+            },
+        )
+        self._persist_dependency_turn_event(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            channel=channel,
+            primary_intent=plan_result.intent,
+            response_type="clarification",
+            metadata_json={"gate_blocked": True, "answer_source": "copilot_planner"},
+        )
+        return {
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "assistant_message": plan_result.assistant_message,
+            "response_type": "clarification",
+            "resolved_context": {
+                "request_summary": message.strip(),
+            },
+            "filters_applied": {},
+            "outfits": [],
+            "follow_up_suggestions": plan_result.follow_up_suggestions[:5],
+            "metadata": metadata,
+        }
+
+    def _handle_planner_pipeline(
+        self,
+        *,
+        plan_result: CopilotPlanResult,
+        intent: IntentClassification,
+        conversation_id: str,
+        turn_id: str,
+        channel: str,
+        external_user_id: str,
+        message: str,
+        previous_context: Dict[str, Any],
+        user_context: Any,
+        conversation_history: List[Dict[str, str]],
+        profile_confidence: ProfileConfidence,
+        sentiment_trace: Dict[str, object],
+        emit: Any,
+    ) -> Dict[str, Any]:
+        # Build live context from planner's resolved context
+        rc = plan_result.resolved_context
+        initial_live_context = LiveContext(
+            user_need=message.strip(),
+            occasion_signal=rc.occasion_signal,
+            formality_hint=rc.formality_hint,
+            time_hint=rc.time_hint,
+            specific_needs=rc.specific_needs,
+            is_followup=rc.is_followup,
+            followup_intent=rc.followup_intent,
+        )
+        conversation_memory = build_conversation_memory(
+            previous_context,
+            initial_live_context,
+            current_intent=plan_result.intent,
+            channel=channel,
+            sentiment_trace=sentiment_trace,
+            wardrobe_item_count=len(user_context.wardrobe_items),
+        )
+
+        hard_filters = build_global_hard_filters(user_context)
+
+        # Load catalog inventory
+        if self._catalog_inventory is None:
+            try:
+                self._catalog_inventory = self._retrieval_gateway.get_catalog_inventory()
+            except Exception:
+                _log.warning("Failed to load catalog inventory", exc_info=True)
+                self._catalog_inventory = []
+
+        previous_recs = previous_context.get("last_recommendations")
+        combined_context = CombinedContext(
+            user=user_context,
+            live=initial_live_context,
+            hard_filters=hard_filters,
+            previous_recommendations=previous_recs if isinstance(previous_recs, list) else None,
+            conversation_memory=conversation_memory,
+            conversation_history=conversation_history,
+            catalog_inventory=self._catalog_inventory or None,
+        )
+
+        # Wardrobe-first check
+        wardrobe_first_response = self._build_wardrobe_first_occasion_response(
+            external_user_id=external_user_id,
+            message=message,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            channel=channel,
+            intent=intent,
+            previous_context=previous_context,
+            user_context=user_context,
+            live_context=initial_live_context,
+            conversation_memory=conversation_memory.model_dump(),
+            profile_confidence=profile_confidence,
+            sentiment_trace=sentiment_trace,
+        )
+        if wardrobe_first_response is not None:
+            return wardrobe_first_response
+
+        # Run Outfit Architect
+        emit("outfit_architect", "started")
+        t0 = time.monotonic()
+        try:
+            plan = self.outfit_architect.plan(combined_context)
+        except Exception as exc:
+            architect_ms = int((time.monotonic() - t0) * 1000)
+            _log.error("Outfit architect failed: %s", exc, exc_info=True)
+            self.repo.log_model_call(
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                service="agentic_application",
+                call_type="outfit_architect",
+                model="gpt-5.4",
+                request_json={"combined_context_summary": {"gender": user_context.gender, "message": message}},
+                response_json={},
+                reasoning_notes=[],
+                latency_ms=architect_ms,
+                status="error",
+                error_message=str(exc),
+            )
+            emit("outfit_architect", "error")
+            self.repo.finalize_turn(
+                turn_id=turn_id,
+                assistant_message="I'm having trouble processing your request right now. Please try again.",
+                resolved_context={"error": str(exc), "request_summary": message.strip()},
+            )
+            return {
+                "conversation_id": conversation_id,
+                "turn_id": turn_id,
+                "assistant_message": "I'm having trouble processing your request right now. Please try again.",
+                "resolved_context": {"request_summary": message.strip()},
+                "filters_applied": hard_filters,
+                "outfits": [],
+                "follow_up_suggestions": [],
+                "metadata": {"error": True},
+            }
+        architect_ms = int((time.monotonic() - t0) * 1000)
+
+        resolved = plan.resolved_context
+        if resolved:
+            effective_live_context = LiveContext(
+                user_need=message.strip(),
+                occasion_signal=resolved.occasion_signal,
+                formality_hint=resolved.formality_hint,
+                time_hint=resolved.time_hint,
+                specific_needs=resolved.specific_needs,
+                is_followup=resolved.is_followup,
+                followup_intent=resolved.followup_intent,
+            )
+        else:
+            effective_live_context = initial_live_context
+
+        self.repo.log_model_call(
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            service="agentic_application",
+            call_type="outfit_architect",
+            model="gpt-5.4",
+            request_json={
+                "combined_context_summary": {
+                    "gender": user_context.gender,
+                    "occasion": effective_live_context.occasion_signal,
+                    "message": message,
+                    "is_followup": effective_live_context.is_followup,
+                }
+            },
+            response_json=plan.model_dump(),
+            reasoning_notes=[],
+            latency_ms=architect_ms,
+        )
+        emit("outfit_architect", "completed", ctx={
+            "plan_type": plan.plan_type,
+            "direction_count": len(plan.directions),
+        })
+
+        conversation_memory = build_conversation_memory(
+            previous_context,
+            effective_live_context,
+            current_intent=plan_result.intent,
+            channel=channel,
+            sentiment_trace=sentiment_trace,
+            wardrobe_item_count=len(user_context.wardrobe_items),
+        )
+        combined_context = combined_context.model_copy(update={
+            "live": effective_live_context,
+            "conversation_memory": conversation_memory,
+        })
+
+        # Stages 4-8: Search → Assemble → Evaluate → Format → TryOn
+        emit("catalog_search", "started")
+        t0 = time.monotonic()
+        retrieved_sets = self.catalog_search_agent.search(plan, combined_context)
+        search_ms = int((time.monotonic() - t0) * 1000)
+        for rs in retrieved_sets:
+            self.repo.log_tool_trace(
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                tool_name="catalog_search_agent",
+                input_json={"direction_id": rs.direction_id, "query_id": rs.query_id, "role": rs.role, "applied_filters": rs.applied_filters},
+                output_json={"result_count": len(rs.products)},
+                latency_ms=search_ms,
+            )
+        emit("catalog_search", "completed", ctx={
+            "product_count": sum(len(rs.products) for rs in retrieved_sets),
+            "set_count": len(retrieved_sets),
+        })
+
+        emit("outfit_assembly", "started")
+        candidates = self.outfit_assembler.assemble(retrieved_sets, plan, combined_context)
+        emit("outfit_assembly", "completed", ctx={"candidate_count": len(candidates)})
+
+        emit("outfit_evaluation", "started")
+        t0 = time.monotonic()
+        evaluated = self.outfit_evaluator.evaluate(candidates, combined_context, plan)
+        evaluator_ms = int((time.monotonic() - t0) * 1000)
+        self.repo.log_model_call(
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            service="agentic_application",
+            call_type="outfit_evaluator",
+            model="gpt-5.4",
+            request_json={"candidate_count": len(candidates)},
+            response_json={"evaluation_count": len(evaluated)},
+            reasoning_notes=[],
+            latency_ms=evaluator_ms,
+        )
+        emit("outfit_evaluation", "completed")
+
+        emit("response_formatting", "started")
+        response = self.response_formatter.format(
+            evaluated,
+            combined_context,
+            plan,
+            candidates,
+            planner_message=plan_result.assistant_message or None,
+            planner_suggestions=plan_result.follow_up_suggestions[:5] if plan_result.follow_up_suggestions else None,
+        )
+
+        restricted_item_exclusion_count = int(response.metadata.get("restricted_item_exclusion_count") or 0)
+        recommendation_confidence = self._build_recommendation_confidence(
+            answer_mode="catalog_pipeline",
+            profile_confidence=profile_confidence,
+            intent=intent,
+            evaluated=evaluated,
+            retrieved_sets=retrieved_sets,
+            candidate_count=len(candidates),
+            response_outfit_count=len(response.outfits),
+            restricted_item_exclusion_count=restricted_item_exclusion_count,
+            wardrobe_items_used=0,
+        )
+        response.metadata.update(
+            self._build_response_metadata(
+                channel=channel,
+                intent=intent,
+                profile_confidence=profile_confidence,
+                extra={
+                    "recommendation_confidence": recommendation_confidence.model_dump(),
+                    "answer_source": "copilot_planner_pipeline",
+                },
+            )
+        )
+        response.metadata["turn_id"] = turn_id
+        emit("response_formatting", "completed", ctx={"outfit_count": min(len(evaluated), 3)})
+
+        emit("virtual_tryon", "started")
+        self._attach_tryon_images(response.outfits, external_user_id)
+        emit("virtual_tryon", "completed")
+
+        self._persist_catalog_interactions(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            channel=channel,
+            primary_intent=plan_result.intent,
+            outfits=response.outfits,
+        )
+        self._persist_recommendation_confidence(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            channel=channel,
+            primary_intent=plan_result.intent,
+            recommendation_confidence=recommendation_confidence,
+            metadata_json={"answer_mode": "catalog_pipeline"},
+        )
+
+        self.repo.finalize_turn(
+            turn_id=turn_id,
+            assistant_message=response.message,
+            resolved_context=self._build_turn_artifacts(
+                message=message,
+                live_context=effective_live_context,
+                conversation_memory=conversation_memory.model_dump(),
+                plan=plan.model_dump(),
+                retrieved_sets=retrieved_sets,
+                evaluated=evaluated,
+                candidates=candidates,
+                response_metadata=response.metadata,
+                intent_classification=intent.model_dump(),
+                profile_confidence=profile_confidence.model_dump(),
+                sentiment_trace=sentiment_trace,
+                channel=channel,
+            ),
+        )
+
+        rec_summary = self._build_recommendation_summaries(evaluated, candidates)
+        self.repo.update_conversation_context(
+            conversation_id=conversation_id,
+            session_context={
+                **previous_context,
+                "memory": conversation_memory.model_dump(),
+                "last_plan_type": plan.plan_type,
+                "last_recommendations": rec_summary,
+                "last_occasion": effective_live_context.occasion_signal or "",
+                "last_live_context": effective_live_context.model_dump(),
+                "last_response_metadata": response.metadata,
+                "last_assistant_message": response.message,
+                "last_user_message": message,
+                "last_channel": channel,
+                "last_intent": plan_result.intent,
+                "last_sentiment_trace": sentiment_trace,
+                "consecutive_gate_blocks": 0,
+            },
+        )
+        self._persist_dependency_turn_event(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            channel=channel,
+            primary_intent=plan_result.intent,
+            response_type="recommendation",
+            metadata_json={
+                "answer_source": "copilot_planner_pipeline",
+                "outfit_count": len(response.outfits),
+                "recommendation_confidence_score_pct": recommendation_confidence.score_pct,
+                "restricted_item_exclusion_count": restricted_item_exclusion_count,
+            },
+        )
+
+        return {
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "assistant_message": response.message,
+            "response_type": "recommendation",
+            "resolved_context": {
+                "request_summary": message.strip(),
+                "occasion": effective_live_context.occasion_signal or "",
+                "style_goal": (
+                    " ".join(effective_live_context.specific_needs)
+                    if effective_live_context.specific_needs
+                    else ""
+                ),
+            },
+            "filters_applied": self._flatten_applied_filters(retrieved_sets) or hard_filters,
+            "outfits": [card.model_dump() for card in response.outfits],
+            "follow_up_suggestions": response.follow_up_suggestions,
+            "metadata": response.metadata,
+        }
+
+    def _handle_planner_virtual_tryon(
+        self,
+        *,
+        plan_result: CopilotPlanResult,
+        intent: IntentClassification,
+        conversation_id: str,
+        turn_id: str,
+        channel: str,
+        external_user_id: str,
+        message: str,
+        previous_context: Dict[str, Any],
+        profile_confidence: ProfileConfidence,
+        sentiment_trace: Dict[str, object],
+    ) -> Dict[str, Any]:
+        tryon_result = self._run_virtual_tryon_request(
+            external_user_id=external_user_id,
+            message=message,
+        )
+        assistant_message = plan_result.assistant_message
+        if not tryon_result.get("success"):
+            error_msg = str(tryon_result.get("error") or "")
+            if error_msg:
+                assistant_message = error_msg
+
+        handler_payload: Dict[str, Any] = {
+            "success": tryon_result.get("success"),
+            "product_url": tryon_result.get("product_url", ""),
+        }
+        if tryon_result.get("quality_gate"):
+            handler_payload["quality_gate"] = dict(tryon_result.get("quality_gate") or {})
+        if tryon_result.get("success") and tryon_result.get("data_url"):
+            handler_payload["tryon_image"] = str(tryon_result.get("data_url") or "")
+            self._persist_policy_event(
+                external_user_id=external_user_id,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                channel=channel,
+                policy_event_type="virtual_tryon_guardrail",
+                input_class="virtual_tryon_request",
+                reason_code="quality_gate_passed",
+                decision="allowed",
+                metadata_json={
+                    "quality_gate": dict(tryon_result.get("quality_gate") or {}),
+                    "product_url": str(tryon_result.get("product_url") or ""),
+                },
+            )
+        elif tryon_result.get("quality_gate") and not tryon_result["quality_gate"].get("passed"):
+            self._persist_policy_event(
+                external_user_id=external_user_id,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                channel=channel,
+                policy_event_type="virtual_tryon_guardrail",
+                input_class="virtual_tryon_request",
+                reason_code=str(tryon_result["quality_gate"].get("reason_code") or "quality_gate_failed"),
+                metadata_json={
+                    "quality_gate": dict(tryon_result.get("quality_gate") or {}),
+                    "product_url": str(tryon_result.get("product_url") or ""),
+                },
+            )
+
+        metadata = self._build_response_metadata(
+            channel=channel,
+            intent=intent,
+            profile_confidence=profile_confidence,
+            extra={"answer_source": "copilot_planner"},
+        )
+        self.repo.finalize_turn(
+            turn_id=turn_id,
+            assistant_message=assistant_message,
+            resolved_context={
+                "request_summary": message.strip(),
+                "intent_classification": intent.model_dump(),
+                "handler": "copilot_planner_tryon",
+                "handler_payload": handler_payload,
+                "channel": channel,
+            },
+        )
+        self.repo.update_conversation_context(
+            conversation_id=conversation_id,
+            session_context={
+                **previous_context,
+                "last_user_message": message,
+                "last_assistant_message": assistant_message,
+                "last_channel": channel,
+                "last_intent": plan_result.intent,
+                "last_sentiment_trace": sentiment_trace,
+                "last_response_metadata": metadata,
+            },
+        )
+        self._persist_dependency_turn_event(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            channel=channel,
+            primary_intent=plan_result.intent,
+            response_type="recommendation",
+            metadata_json={"answer_source": "copilot_planner"},
+        )
+        return {
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "assistant_message": assistant_message,
+            "response_type": "recommendation",
+            "resolved_context": {"request_summary": message.strip()},
+            "filters_applied": {},
+            "outfits": [],
+            "follow_up_suggestions": plan_result.follow_up_suggestions[:5],
+            "metadata": metadata,
+        }
+
+    def _handle_planner_wardrobe_save(
+        self,
+        *,
+        plan_result: CopilotPlanResult,
+        intent: IntentClassification,
+        conversation_id: str,
+        turn_id: str,
+        channel: str,
+        external_user_id: str,
+        message: str,
+        previous_context: Dict[str, Any],
+        profile_confidence: ProfileConfidence,
+        sentiment_trace: Dict[str, object],
+    ) -> Dict[str, Any]:
+        saved_item = self._save_chat_wardrobe_item(
+            external_user_id=external_user_id,
+            message=message,
+        )
+        metadata = self._build_response_metadata(
+            channel=channel,
+            intent=intent,
+            profile_confidence=profile_confidence,
+            extra={"answer_source": "copilot_planner"},
+        )
+        self.repo.finalize_turn(
+            turn_id=turn_id,
+            assistant_message=plan_result.assistant_message,
+            resolved_context={
+                "request_summary": message.strip(),
+                "intent_classification": intent.model_dump(),
+                "handler": "copilot_planner_wardrobe_save",
+                "saved_item_id": str((saved_item or {}).get("id") or ""),
+                "channel": channel,
+            },
+        )
+        self.repo.update_conversation_context(
+            conversation_id=conversation_id,
+            session_context={
+                **previous_context,
+                "last_user_message": message,
+                "last_assistant_message": plan_result.assistant_message,
+                "last_channel": channel,
+                "last_intent": plan_result.intent,
+                "last_sentiment_trace": sentiment_trace,
+                "last_response_metadata": metadata,
+            },
+        )
+        self._persist_dependency_turn_event(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            channel=channel,
+            primary_intent=plan_result.intent,
+            response_type="recommendation",
+            metadata_json={"answer_source": "copilot_planner"},
+        )
+        return {
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "assistant_message": plan_result.assistant_message,
+            "response_type": "recommendation",
+            "resolved_context": {"request_summary": message.strip()},
+            "filters_applied": {},
+            "outfits": [],
+            "follow_up_suggestions": plan_result.follow_up_suggestions[:5],
+            "metadata": metadata,
+        }
+
+    def _handle_planner_feedback(
+        self,
+        *,
+        plan_result: CopilotPlanResult,
+        intent: IntentClassification,
+        conversation_id: str,
+        turn_id: str,
+        channel: str,
+        external_user_id: str,
+        message: str,
+        previous_context: Dict[str, Any],
+        profile_confidence: ProfileConfidence,
+        sentiment_trace: Dict[str, object],
+    ) -> Dict[str, Any]:
+        event_type = str(plan_result.action_parameters.feedback_event_type or "dislike")
+        recommendations = list(previous_context.get("last_recommendations") or [])
+        top = recommendations[0] if recommendations else {}
+        item_ids = [str(v) for v in (top.get("item_ids") or []) if str(v).strip()]
+        outfit_rank = int(top.get("rank") or 1) if str(top.get("rank") or "").strip() else 1
+        target_turn_id = str((previous_context.get("last_response_metadata") or {}).get("turn_id") or "")
+
+        handler_payload = {
+            "event_type": event_type,
+            "item_ids": item_ids,
+            "outfit_rank": outfit_rank,
+            "target_turn_id": target_turn_id,
+        }
+        self._persist_chat_feedback(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            handler_payload=handler_payload,
+            notes=message.strip(),
+        )
+        feedback_summary = self._build_feedback_summary(
+            event_type=event_type,
+            item_ids=item_ids,
+            outfit_rank=outfit_rank,
+            turn_id=target_turn_id,
+        )
+
+        metadata = self._build_response_metadata(
+            channel=channel,
+            intent=intent,
+            profile_confidence=profile_confidence,
+            extra={"answer_source": "copilot_planner"},
+        )
+        self.repo.finalize_turn(
+            turn_id=turn_id,
+            assistant_message=plan_result.assistant_message,
+            resolved_context={
+                "request_summary": message.strip(),
+                "intent_classification": intent.model_dump(),
+                "handler": "copilot_planner_feedback",
+                "handler_payload": handler_payload,
+                "feedback_summary": feedback_summary,
+                "channel": channel,
+            },
+        )
+        self.repo.update_conversation_context(
+            conversation_id=conversation_id,
+            session_context={
+                **previous_context,
+                "last_user_message": message,
+                "last_assistant_message": plan_result.assistant_message,
+                "last_channel": channel,
+                "last_intent": plan_result.intent,
+                "last_sentiment_trace": sentiment_trace,
+                "last_response_metadata": metadata,
+                "last_feedback_summary": feedback_summary,
+            },
+        )
+        self._persist_dependency_turn_event(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            channel=channel,
+            primary_intent=plan_result.intent,
+            response_type="recommendation",
+            metadata_json={"answer_source": "copilot_planner"},
+        )
+        return {
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "assistant_message": plan_result.assistant_message,
+            "response_type": "recommendation",
+            "resolved_context": {"request_summary": message.strip()},
+            "filters_applied": {},
+            "outfits": [],
+            "follow_up_suggestions": plan_result.follow_up_suggestions[:5],
+            "metadata": metadata,
         }
 
     @staticmethod

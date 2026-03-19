@@ -36,7 +36,6 @@ from agentic_application.context.conversation_memory import (
     apply_conversation_memory,
     build_conversation_memory,
 )
-from agentic_application.intent_router import classify as classify_intent
 from agentic_application.onboarding_gate import evaluate as evaluate_onboarding_gate
 from agentic_application.orchestrator import AgenticOrchestrator
 from agentic_application.profile_confidence import evaluate_profile_confidence
@@ -48,17 +47,7 @@ from agentic_application.services.whatsapp_deep_links import build_whatsapp_deep
 from agentic_application.services.whatsapp_reengagement import build_whatsapp_reengagement_message
 from agentic_application.services.dependency_reporting import build_dependency_report
 from agentic_application.services.tryon_quality_gate import TryonQualityGate
-from agentic_application.intent_handlers import (
-    build_capsule_or_trip_planning_response,
-    build_explanation_response,
-    build_feedback_submission_response,
-    build_garment_on_me_response,
-    build_outfit_check_response,
-    build_pairing_request_response,
-    build_shopping_decision_response,
-    build_wardrobe_ingestion_response,
-    build_virtual_tryon_response,
-)
+from agentic_application.agents.response_formatter import _build_zero_result_fallback
 from agentic_application.schemas import (
     CombinedContext,
     ConversationMemory,
@@ -275,21 +264,6 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("pairing_request", report["recurring_anchor_intents_by_cohort"]["instagram"][0]["key"])
         wardrobe_lift = next(item for item in report["memory_input_retention_lift"] if item["memory_input"] == "wardrobe_items")
         self.assertGreater(wardrobe_lift["lift_pct_points"], 0)
-
-    def test_capsule_plan_builds_top_bottom_wardrobe_combinations(self) -> None:
-        orchestrator = AgenticOrchestrator(repo=Mock(), onboarding_gateway=Mock(), config=Mock())
-
-        cards = orchestrator._build_wardrobe_first_capsule_plan(
-            message="Plan a workweek capsule for my office trip",
-            wardrobe_items=[
-                {"id": "top-1", "title": "Navy Blazer", "garment_category": "blazer"},
-                {"id": "bottom-1", "title": "Cream Trousers", "garment_category": "trousers"},
-            ],
-        )
-
-        self.assertEqual(1, len(cards))
-        self.assertEqual(2, len(cards[0].items))
-        self.assertEqual({"top-1", "bottom-1"}, {cards[0].items[0]["product_id"], cards[0].items[1]["product_id"]})
 
     def test_orchestrator_resolve_active_conversation_reuses_existing(self) -> None:
         repo = Mock()
@@ -2005,330 +1979,11 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("analysis_pending", gate.status)
         self.assertIn("Wait for profile analysis to complete.", gate.missing_steps)
 
-    def test_intent_router_detects_style_and_explanation_intents(self) -> None:
-        style = classify_intent("What style would look good on me?")
-        self.assertEqual("style_discovery", style.primary_intent)
-
-        explanation = classify_intent(
-            "Why did you recommend this?",
-            previous_context={"last_recommendations": [{"candidate_id": "cand-1"}]},
-        )
-        self.assertEqual("explanation_request", explanation.primary_intent)
-
     def test_extract_sentiment_detects_anxious_language(self) -> None:
         trace = extract_sentiment("I'm nervous and unsure about what to wear for this event.")
         self.assertEqual("anxious", trace["sentiment_label"])
         self.assertLess(trace["sentiment_score"], 0)
         self.assertIn("nervous", trace["cues"])
-
-    def test_shopping_decision_handler_returns_buy_skip_payload(self) -> None:
-        user_context = UserContext(
-            user_id="u1",
-            gender="female",
-            style_preference={"primaryArchetype": "classic", "secondaryArchetype": "romantic"},
-            derived_interpretations={
-                "SeasonalColorGroup": {"value": "Soft Summer"},
-                "FrameStructure": {"value": "Medium and Balanced"},
-            },
-        )
-        profile_confidence = evaluate_profile_confidence(
-            {
-                "profile_complete": True,
-                "style_preference_complete": True,
-                "images_uploaded": ["full_body", "headshot"],
-            },
-            {
-                "status": "completed",
-                "profile": {"style_preference": {"primaryArchetype": "classic"}},
-                "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
-            },
-        )
-
-        message, suggestions, payload = build_shopping_decision_response(
-            message="Should I buy this navy blazer? https://store.example/item",
-            user_context=user_context,
-            previous_context={"last_occasion": "office"},
-            profile_confidence=profile_confidence,
-        )
-
-        self.assertIn("buy / skip verdict", message.lower())
-        self.assertTrue(suggestions)
-        self.assertEqual("buy", payload["verdict"])
-        self.assertEqual(["https://store.example/item"], payload["product_urls"])
-        self.assertIn("user_profile", payload["memory_sources_read"])
-
-    def test_pairing_request_handler_returns_wardrobe_and_catalog_payload(self) -> None:
-        user_context = UserContext(
-            user_id="u1",
-            gender="female",
-            style_preference={"primaryArchetype": "classic"},
-            derived_interpretations={"SeasonalColorGroup": {"value": "Soft Summer"}},
-            wardrobe_items=[
-                {"id": "w1", "title": "Cream Trousers", "garment_category": "bottom", "primary_color": "cream", "occasion_fit": "office"},
-                {"id": "w2", "title": "Navy Skirt", "garment_category": "bottom", "primary_color": "navy", "occasion_fit": "office"},
-                {"id": "w3", "title": "Black Bag", "garment_category": "bag", "primary_color": "black"},
-            ],
-        )
-        profile_confidence = evaluate_profile_confidence(
-            {
-                "profile_complete": True,
-                "style_preference_complete": True,
-                "images_uploaded": ["full_body", "headshot"],
-            },
-            {
-                "status": "completed",
-                "profile": {"style_preference": {"primaryArchetype": "classic"}},
-                "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
-            },
-        )
-
-        message, suggestions, payload = build_pairing_request_response(
-            message="What goes with this navy blazer? https://store.example/item",
-            user_context=user_context,
-            previous_context={"last_occasion": "office"},
-            profile_confidence=profile_confidence,
-        )
-
-        self.assertIn("pairing", message.lower())
-        self.assertTrue(suggestions)
-        self.assertEqual("blazer", payload["target_piece"])
-        self.assertEqual("top", payload["target_role"])
-        self.assertEqual("wardrobe_first", payload["pairing_mode"])
-        self.assertEqual(2, len(payload["wardrobe_pairing_candidates"]))
-        self.assertEqual("Cream Trousers", payload["wardrobe_pairing_candidates"][0]["title"])
-        self.assertIn("complementary role", payload["wardrobe_pairing_candidates"][0]["compatibility_reasons"])
-        self.assertTrue(payload["catalog_pairing_available"])
-        self.assertTrue(payload["catalog_upsell"]["available"])
-        self.assertEqual("Show me better options from the catalog", payload["catalog_upsell"]["cta"])
-        self.assertIn("better catalog options", message.lower())
-        self.assertIn("Show me better options from the catalog", suggestions)
-        self.assertIn("wardrobe_memory", payload["memory_sources_read"])
-
-    def test_outfit_check_handler_returns_assessment_payload(self) -> None:
-        user_context = UserContext(
-            user_id="u1",
-            gender="female",
-            style_preference={"primaryArchetype": "classic", "secondaryArchetype": "romantic"},
-            derived_interpretations={
-                "SeasonalColorGroup": {"value": "Soft Summer"},
-                "FrameStructure": {"value": "Medium and Balanced"},
-                "ContrastLevel": {"value": "Medium"},
-            },
-        )
-        profile_confidence = evaluate_profile_confidence(
-            {
-                "profile_complete": True,
-                "style_preference_complete": True,
-                "images_uploaded": ["full_body", "headshot"],
-            },
-            {
-                "status": "completed",
-                "profile": {"style_preference": {"primaryArchetype": "classic"}},
-                "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
-            },
-        )
-
-        message, suggestions, payload = build_outfit_check_response(
-            message="Outfit check: navy blazer, cream trousers, brown heels",
-            user_context=user_context,
-            previous_context={"last_occasion": "office"},
-            profile_confidence=profile_confidence,
-        )
-
-        self.assertIn("outfit-check", message.lower())
-        self.assertTrue(suggestions)
-        self.assertEqual("strong", payload["assessment"])
-        self.assertIn("blazer", payload["detected_garments"])
-        self.assertTrue(payload["image_required_for_high_confidence"])
-
-    def test_garment_on_me_handler_returns_fit_payload(self) -> None:
-        user_context = UserContext(
-            user_id="u1",
-            gender="female",
-            style_preference={"primaryArchetype": "classic", "secondaryArchetype": "romantic"},
-            analysis_attributes={"BodyShape": {"value": "Hourglass"}},
-            derived_interpretations={
-                "SeasonalColorGroup": {"value": "Soft Summer"},
-                "FrameStructure": {"value": "Medium and Balanced"},
-                "HeightCategory": {"value": "Tall"},
-            },
-        )
-        profile_confidence = evaluate_profile_confidence(
-            {
-                "profile_complete": True,
-                "style_preference_complete": True,
-                "images_uploaded": ["full_body", "headshot"],
-            },
-            {
-                "status": "completed",
-                "profile": {"style_preference": {"primaryArchetype": "classic"}},
-                "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
-            },
-        )
-
-        message, suggestions, payload = build_garment_on_me_response(
-            message="How will this navy blazer look on me? https://store.example/item",
-            user_context=user_context,
-            previous_context={"last_occasion": "office"},
-            profile_confidence=profile_confidence,
-        )
-
-        self.assertIn("look", message.lower())
-        self.assertTrue(suggestions)
-        self.assertEqual("blazer", payload["target_piece"])
-        self.assertEqual("promising", payload["qualitative_fit"])
-        self.assertTrue(payload["tryon_eligible"])
-
-    def test_capsule_or_trip_handler_returns_bounded_plan_payload(self) -> None:
-        user_context = UserContext(
-            user_id="u1",
-            gender="female",
-            style_preference={"primaryArchetype": "classic", "secondaryArchetype": "romantic"},
-            wardrobe_items=[
-                {"id": "w1", "title": "Navy Blazer"},
-                {"id": "w2", "title": "Cream Trousers"},
-                {"id": "w3", "title": "White Shirt"},
-            ],
-            derived_interpretations={"SeasonalColorGroup": {"value": "Soft Summer"}},
-        )
-        profile_confidence = evaluate_profile_confidence(
-            {
-                "profile_complete": True,
-                "style_preference_complete": True,
-                "images_uploaded": ["full_body", "headshot"],
-            },
-            {
-                "status": "completed",
-                "profile": {"style_preference": {"primaryArchetype": "classic"}},
-                "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
-            },
-        )
-
-        message, suggestions, payload = build_capsule_or_trip_planning_response(
-            message="Plan a workweek capsule for my office trip",
-            user_context=user_context,
-            previous_context={"last_occasion": "office"},
-            profile_confidence=profile_confidence,
-        )
-
-        self.assertIn("bounded", message.lower())
-        self.assertTrue(suggestions)
-        self.assertEqual("trip", payload["planning_type"])
-        self.assertEqual("5 looks", payload["target_horizon"])
-        self.assertEqual(3, payload["wardrobe_anchor_count"])
-        self.assertFalse(payload["catalog_gap_fill_needed"])
-
-    def test_wardrobe_ingestion_handler_returns_saved_payload(self) -> None:
-        user_context = UserContext(
-            user_id="u1",
-            gender="female",
-            style_preference={"primaryArchetype": "classic"},
-        )
-        profile_confidence = evaluate_profile_confidence(
-            {
-                "profile_complete": True,
-                "style_preference_complete": True,
-                "images_uploaded": ["full_body", "headshot"],
-            },
-            {
-                "status": "completed",
-                "profile": {"style_preference": {"primaryArchetype": "classic"}},
-                "derived_interpretations": {},
-            },
-        )
-
-        message, suggestions, payload = build_wardrobe_ingestion_response(
-            message="Save this navy blazer to my wardrobe https://store.example/item",
-            user_context=user_context,
-            profile_confidence=profile_confidence,
-            saved_item={"id": "w1"},
-        )
-
-        self.assertIn("saved", message.lower())
-        self.assertTrue(suggestions)
-        self.assertTrue(payload["saved"])
-        self.assertEqual("w1", payload["saved_item_id"])
-        self.assertIn("blazer", payload["detected_garments"])
-
-    def test_feedback_submission_handler_returns_linked_payload(self) -> None:
-        message, suggestions, payload = build_feedback_submission_response(
-            message="I like this one",
-            previous_context={
-                "last_recommendations": [{"rank": 1, "item_ids": ["sku-1", "sku-2"]}],
-                "last_response_metadata": {"turn_id": "t-prev"},
-            },
-        )
-
-        self.assertIn("attached", message.lower())
-        self.assertTrue(suggestions)
-        self.assertEqual("like", payload["event_type"])
-        self.assertTrue(payload["resolved"])
-        self.assertEqual(["sku-1", "sku-2"], payload["item_ids"])
-        self.assertEqual("t-prev", payload["target_turn_id"])
-
-    def test_virtual_tryon_handler_returns_success_payload(self) -> None:
-        message, suggestions, payload = build_virtual_tryon_response(
-            message="Show this on me https://store.example/item.jpg",
-            success=True,
-            product_url="https://store.example/item.jpg",
-        )
-
-        self.assertIn("virtual try-on", message.lower())
-        self.assertTrue(suggestions)
-        self.assertTrue(payload["success"])
-        self.assertEqual("https://store.example/item.jpg", payload["product_url"])
-
-    def test_explanation_response_references_recommendation_confidence(self) -> None:
-        user_context = UserContext(
-            user_id="u1",
-            gender="female",
-            style_preference={"primaryArchetype": "classic"},
-            derived_interpretations={"SeasonalColorGroup": {"value": "Soft Summer"}},
-        )
-        profile_confidence = evaluate_profile_confidence(
-            {
-                "profile_complete": True,
-                "style_preference_complete": True,
-                "images_uploaded": ["full_body", "headshot"],
-            },
-            {
-                "status": "completed",
-                "profile": {"style_preference": {"primaryArchetype": "classic"}},
-                "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
-            },
-        )
-
-        message, _suggestions = build_explanation_response(
-            user_context=user_context,
-            previous_context={
-                "last_recommendations": [{"primary_colors": ["navy"], "garment_categories": ["dress"]}],
-                "memory": {"wardrobe_item_count": 6},
-                "last_feedback_summary": {"event_type": "dislike", "item_ids": ["sku-1"], "item_count": 1},
-                "last_response_metadata": {
-                    "answer_source": "wardrobe_first",
-                    "answer_components": {
-                        "primary_source": "mixed",
-                        "wardrobe_item_count": 2,
-                        "catalog_item_count": 1,
-                    },
-                    "catalog_upsell": {"available": True},
-                    "recommendation_confidence": {
-                        "score_pct": 86,
-                        "confidence_band": "high",
-                        "summary": "High confidence based on retrieval strength.",
-                        "explanation": ["Strongest evidence: Top recommendation match score was 0.94."],
-                    }
-                },
-            },
-            profile_confidence=profile_confidence,
-        )
-
-        self.assertIn("86%", message)
-        self.assertIn("high confidence", message.lower())
-        self.assertIn("strongest evidence", message.lower())
-        self.assertIn("saved wardrobe", message.lower())
-        self.assertIn("catalog fallback", message.lower())
-        self.assertIn("negative feedback", message.lower())
 
     def test_orchestrator_blocks_turn_when_onboarding_is_incomplete(self) -> None:
         repo = Mock()
@@ -2365,382 +2020,6 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("profile", repo.create_confidence_history.call_args.kwargs["confidence_type"])
         repo.create_policy_event.assert_called_once()
         self.assertEqual("onboarding_gate", repo.create_policy_event.call_args.kwargs["policy_event_type"])
-
-    def test_orchestrator_handles_shopping_decision_without_planning_pipeline(self) -> None:
-        repo = Mock()
-        onboarding_gateway = Mock()
-        onboarding_gateway.get_onboarding_status.return_value = {
-            "profile_complete": True,
-            "style_preference_complete": True,
-            "images_uploaded": ["full_body", "headshot"],
-            "onboarding_complete": True,
-        }
-        onboarding_gateway.get_analysis_status.return_value = {
-            "status": "completed",
-            "profile": {
-                "gender": "female",
-                "style_preference": {
-                    "primaryArchetype": "classic",
-                    "secondaryArchetype": "romantic",
-                },
-            },
-            "attributes": {"BodyShape": {"value": "Hourglass"}},
-            "derived_interpretations": {
-                "SeasonalColorGroup": {"value": "Soft Summer"},
-                "FrameStructure": {"value": "Medium and Balanced"},
-            },
-        }
-        repo.client = Mock()
-        repo.get_or_create_user.return_value = {"id": "db-user"}
-        repo.get_conversation.return_value = {
-            "id": "c1",
-            "user_id": "db-user",
-            "session_context_json": {"last_occasion": "office"},
-        }
-        repo.create_turn.return_value = {"id": "t1"}
-
-        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
-            "agentic_application.orchestrator.OutfitArchitect"
-        ) as architect_cls:
-            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=Mock())
-            result = orchestrator.process_turn(
-                conversation_id="c1",
-                external_user_id="user-1",
-                message="Should I buy this navy blazer? https://store.example/item",
-            )
-
-        architect_cls.return_value.plan.assert_not_called()
-        self.assertEqual("shopping_decision", result["metadata"]["primary_intent"])
-        self.assertEqual([], result["outfits"])
-        self.assertIn("buy / skip", result["assistant_message"].lower())
-        resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
-        self.assertEqual("buy", resolved_context["handler_payload"]["verdict"])
-        self.assertEqual("shopping_decision", resolved_context["routing_metadata"]["primary_intent"])
-        self.assertIn("user_profile", resolved_context["routing_metadata"]["memory_sources_read"])
-        self.assertIn("routing_metadata", result["metadata"])
-
-    def test_orchestrator_handles_pairing_request_without_planning_pipeline(self) -> None:
-        repo = Mock()
-        onboarding_gateway = Mock()
-        onboarding_gateway.get_onboarding_status.return_value = {
-            "profile_complete": True,
-            "style_preference_complete": True,
-            "images_uploaded": ["full_body", "headshot"],
-            "onboarding_complete": True,
-        }
-        onboarding_gateway.get_analysis_status.return_value = {
-            "status": "completed",
-            "profile": {
-                "gender": "female",
-                "style_preference": {
-                    "primaryArchetype": "classic",
-                },
-            },
-            "attributes": {"BodyShape": {"value": "Hourglass"}},
-            "derived_interpretations": {
-                "SeasonalColorGroup": {"value": "Soft Summer"},
-            },
-        }
-        onboarding_gateway.get_wardrobe_items.return_value = [
-            {"id": "w1", "title": "Cream Trousers", "garment_category": "bottom"},
-        ]
-        repo.client = Mock()
-        repo.get_or_create_user.return_value = {"id": "db-user"}
-        repo.get_conversation.return_value = {
-            "id": "c1",
-            "user_id": "db-user",
-            "session_context_json": {"last_occasion": "office"},
-        }
-        repo.create_turn.return_value = {"id": "t1"}
-
-        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
-            "agentic_application.orchestrator.OutfitArchitect"
-        ) as architect_cls:
-            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=Mock())
-            result = orchestrator.process_turn(
-                conversation_id="c1",
-                external_user_id="user-1",
-                message="What goes with this blazer? https://store.example/item",
-            )
-
-        architect_cls.return_value.plan.assert_not_called()
-        self.assertEqual("pairing_request", result["metadata"]["primary_intent"])
-        self.assertEqual([], result["outfits"])
-        self.assertIn("pair", result["assistant_message"].lower())
-        resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
-        self.assertEqual("blazer", resolved_context["handler_payload"]["target_piece"])
-
-    def test_orchestrator_handles_outfit_check_without_planning_pipeline(self) -> None:
-        repo = Mock()
-        onboarding_gateway = Mock()
-        onboarding_gateway.get_onboarding_status.return_value = {
-            "profile_complete": True,
-            "style_preference_complete": True,
-            "images_uploaded": ["full_body", "headshot"],
-            "onboarding_complete": True,
-        }
-        onboarding_gateway.get_analysis_status.return_value = {
-            "status": "completed",
-            "profile": {
-                "gender": "female",
-                "style_preference": {
-                    "primaryArchetype": "classic",
-                    "secondaryArchetype": "romantic",
-                },
-            },
-            "attributes": {"BodyShape": {"value": "Hourglass"}},
-            "derived_interpretations": {
-                "SeasonalColorGroup": {"value": "Soft Summer"},
-                "FrameStructure": {"value": "Medium and Balanced"},
-                "ContrastLevel": {"value": "Medium"},
-            },
-        }
-        repo.client = Mock()
-        repo.get_or_create_user.return_value = {"id": "db-user"}
-        repo.get_conversation.return_value = {
-            "id": "c1",
-            "user_id": "db-user",
-            "session_context_json": {"last_occasion": "office"},
-        }
-        repo.create_turn.return_value = {"id": "t1"}
-
-        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
-            "agentic_application.orchestrator.OutfitArchitect"
-        ) as architect_cls:
-            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=Mock())
-            result = orchestrator.process_turn(
-                conversation_id="c1",
-                external_user_id="user-1",
-                message="Outfit check: navy blazer, cream trousers, brown heels",
-            )
-
-        architect_cls.return_value.plan.assert_not_called()
-        self.assertEqual("outfit_check", result["metadata"]["primary_intent"])
-        self.assertEqual([], result["outfits"])
-        self.assertIn("outfit-check", result["assistant_message"].lower())
-        resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
-        self.assertEqual("strong", resolved_context["handler_payload"]["assessment"])
-
-    def test_orchestrator_handles_garment_on_me_without_planning_pipeline(self) -> None:
-        repo = Mock()
-        onboarding_gateway = Mock()
-        onboarding_gateway.get_onboarding_status.return_value = {
-            "profile_complete": True,
-            "style_preference_complete": True,
-            "images_uploaded": ["full_body", "headshot"],
-            "onboarding_complete": True,
-        }
-        onboarding_gateway.get_analysis_status.return_value = {
-            "status": "completed",
-            "profile": {
-                "gender": "female",
-                "style_preference": {
-                    "primaryArchetype": "classic",
-                    "secondaryArchetype": "romantic",
-                },
-            },
-            "attributes": {"BodyShape": {"value": "Hourglass"}},
-            "derived_interpretations": {
-                "SeasonalColorGroup": {"value": "Soft Summer"},
-                "FrameStructure": {"value": "Medium and Balanced"},
-                "HeightCategory": {"value": "Tall"},
-            },
-        }
-        repo.client = Mock()
-        repo.get_or_create_user.return_value = {"id": "db-user"}
-        repo.get_conversation.return_value = {
-            "id": "c1",
-            "user_id": "db-user",
-            "session_context_json": {"last_occasion": "office"},
-        }
-        repo.create_turn.return_value = {"id": "t1"}
-
-        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
-            "agentic_application.orchestrator.OutfitArchitect"
-        ) as architect_cls:
-            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=Mock())
-            result = orchestrator.process_turn(
-                conversation_id="c1",
-                external_user_id="user-1",
-                message="How will this navy blazer look on me? https://store.example/item",
-            )
-
-        architect_cls.return_value.plan.assert_not_called()
-        self.assertEqual("garment_on_me_request", result["metadata"]["primary_intent"])
-        self.assertEqual([], result["outfits"])
-        self.assertIn("look", result["assistant_message"].lower())
-        resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
-        self.assertEqual("promising", resolved_context["handler_payload"]["qualitative_fit"])
-        self.assertTrue(resolved_context["handler_payload"]["tryon_eligible"])
-
-    def test_orchestrator_handles_capsule_or_trip_without_planning_pipeline(self) -> None:
-        repo = Mock()
-        onboarding_gateway = Mock()
-        onboarding_gateway.get_onboarding_status.return_value = {
-            "profile_complete": True,
-            "style_preference_complete": True,
-            "images_uploaded": ["full_body", "headshot"],
-            "onboarding_complete": True,
-        }
-        onboarding_gateway.get_analysis_status.return_value = {
-            "status": "completed",
-            "profile": {
-                "gender": "female",
-                "style_preference": {
-                    "primaryArchetype": "classic",
-                    "secondaryArchetype": "romantic",
-                },
-            },
-            "attributes": {"BodyShape": {"value": "Hourglass"}},
-            "derived_interpretations": {
-                "SeasonalColorGroup": {"value": "Soft Summer"},
-            },
-        }
-        onboarding_gateway.get_wardrobe_items.return_value = [
-            {"id": "w1", "title": "Navy Blazer"},
-            {"id": "w2", "title": "Cream Trousers"},
-        ]
-        repo.client = Mock()
-        repo.get_or_create_user.return_value = {"id": "db-user"}
-        repo.get_conversation.return_value = {
-            "id": "c1",
-            "user_id": "db-user",
-            "session_context_json": {"last_occasion": "office"},
-        }
-        repo.create_turn.return_value = {"id": "t1"}
-
-        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
-            "agentic_application.orchestrator.OutfitArchitect"
-        ) as architect_cls:
-            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=Mock())
-            result = orchestrator.process_turn(
-                conversation_id="c1",
-                external_user_id="user-1",
-                message="Plan a workweek capsule for my office trip",
-            )
-
-        architect_cls.return_value.plan.assert_not_called()
-        self.assertEqual("capsule_or_trip_planning", result["metadata"]["primary_intent"])
-        self.assertEqual("wardrobe_first", result["metadata"]["answer_source"])
-        self.assertEqual("wardrobe", result["metadata"]["answer_components"]["primary_source"])
-        self.assertIn("recommendation_confidence", result["metadata"])
-        self.assertTrue(result["outfits"])
-        self.assertEqual("Wardrobe Plan 1", result["outfits"][0]["title"])
-        self.assertTrue(result["outfits"][0]["items"])
-        self.assertEqual("wardrobe", result["outfits"][0]["items"][0]["source"])
-        self.assertIn("bounded", result["assistant_message"].lower())
-        self.assertIn("better catalog options", result["assistant_message"].lower())
-        self.assertTrue(result["metadata"]["catalog_upsell"]["available"])
-        self.assertIn("Show me better options from the catalog", result["follow_up_suggestions"])
-        resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
-        self.assertEqual("trip", resolved_context["handler_payload"]["planning_type"])
-        self.assertEqual("wardrobe_first", resolved_context["handler_payload"]["answer_source"])
-        self.assertTrue(resolved_context["handler_payload"]["catalog_upsell"]["available"])
-        self.assertGreaterEqual(resolved_context["handler_payload"]["wardrobe_plan_count"], 1)
-
-    def test_orchestrator_handles_wardrobe_ingestion_without_planning_pipeline(self) -> None:
-        repo = Mock()
-        onboarding_gateway = Mock()
-        onboarding_gateway.get_onboarding_status.return_value = {
-            "profile_complete": True,
-            "style_preference_complete": True,
-            "images_uploaded": ["full_body", "headshot"],
-            "onboarding_complete": True,
-        }
-        onboarding_gateway.get_analysis_status.return_value = {
-            "status": "completed",
-            "profile": {
-                "gender": "female",
-                "style_preference": {
-                    "primaryArchetype": "classic",
-                },
-            },
-            "attributes": {"BodyShape": {"value": "Hourglass"}},
-            "derived_interpretations": {
-                "SeasonalColorGroup": {"value": "Soft Summer"},
-            },
-        }
-        onboarding_gateway.save_chat_wardrobe_item.return_value = {"id": "w1"}
-        repo.client = Mock()
-        repo.get_or_create_user.return_value = {"id": "db-user"}
-        repo.get_conversation.return_value = {
-            "id": "c1",
-            "user_id": "db-user",
-            "session_context_json": {},
-        }
-        repo.create_turn.return_value = {"id": "t1"}
-
-        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
-            "agentic_application.orchestrator.OutfitArchitect"
-        ) as architect_cls:
-            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=Mock())
-            result = orchestrator.process_turn(
-                conversation_id="c1",
-                external_user_id="user-1",
-                message="Save this navy blazer to my wardrobe https://store.example/item",
-            )
-
-        architect_cls.return_value.plan.assert_not_called()
-        onboarding_gateway.save_chat_wardrobe_item.assert_called_once()
-        self.assertEqual("wardrobe_ingestion", result["metadata"]["primary_intent"])
-        self.assertEqual([], result["outfits"])
-        self.assertIn("saved", result["assistant_message"].lower())
-        resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
-        self.assertTrue(resolved_context["handler_payload"]["saved"])
-        self.assertEqual("w1", resolved_context["handler_payload"]["saved_item_id"])
-
-    def test_orchestrator_handles_feedback_submission_without_planning_pipeline(self) -> None:
-        repo = Mock()
-        onboarding_gateway = Mock()
-        onboarding_gateway.get_onboarding_status.return_value = {
-            "profile_complete": True,
-            "style_preference_complete": True,
-            "images_uploaded": ["full_body", "headshot"],
-            "onboarding_complete": True,
-        }
-        onboarding_gateway.get_analysis_status.return_value = {
-            "status": "completed",
-            "profile": {
-                "gender": "female",
-                "style_preference": {
-                    "primaryArchetype": "classic",
-                },
-            },
-            "attributes": {"BodyShape": {"value": "Hourglass"}},
-            "derived_interpretations": {
-                "SeasonalColorGroup": {"value": "Soft Summer"},
-            },
-        }
-        repo.client = Mock()
-        repo.get_or_create_user.return_value = {"id": "db-user"}
-        repo.get_conversation.return_value = {
-            "id": "c1",
-            "user_id": "db-user",
-            "session_context_json": {
-                "last_recommendations": [{"rank": 1, "item_ids": ["sku-1", "sku-2"]}],
-                "last_response_metadata": {"turn_id": "t-prev"},
-            },
-        }
-        repo.create_turn.return_value = {"id": "t1"}
-
-        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
-            "agentic_application.orchestrator.OutfitArchitect"
-        ) as architect_cls:
-            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=Mock())
-            result = orchestrator.process_turn(
-                conversation_id="c1",
-                external_user_id="user-1",
-                message="I dislike this one",
-            )
-
-        architect_cls.return_value.plan.assert_not_called()
-        self.assertEqual("feedback_submission", result["metadata"]["primary_intent"])
-        self.assertEqual([], result["outfits"])
-        self.assertIn("feedback", result["assistant_message"].lower())
-        self.assertEqual(2, repo.create_feedback_event.call_count)
-        self.assertEqual(2, repo.create_catalog_interaction.call_count)
-        resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
-        self.assertEqual("dislike", resolved_context["handler_payload"]["event_type"])
 
     def test_orchestrator_handles_virtual_tryon_without_planning_pipeline(self) -> None:
         repo = Mock()
@@ -2970,16 +2249,71 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("wardrobe", resolved_context["handler_payload"]["answer_components"]["primary_source"])
         self.assertTrue(resolved_context["handler_payload"]["catalog_upsell"]["available"])
 
-    def test_orchestrator_handles_style_discovery_without_planning_pipeline(self) -> None:
-        repo = Mock()
-        onboarding_gateway = Mock()
-        onboarding_gateway.get_onboarding_status.return_value = {
+
+
+class TestProfileGuidanceRouting(unittest.TestCase):
+    """Tests for zero-result fallback and profile-grounded responses."""
+
+    # ---- Zero-result fallback: profile-grounded ----
+
+    def _make_user_context(self) -> UserContext:
+        return UserContext(
+            user_id="u1",
+            gender="female",
+            style_preference={"primaryArchetype": "classic", "secondaryArchetype": "romantic"},
+            derived_interpretations={
+                "SeasonalColorGroup": {"value": "Autumn"},
+                "ContrastLevel": {"value": "High"},
+                "FrameStructure": {"value": "Medium and Balanced"},
+                "HeightCategory": {"value": "Average"},
+            },
+        )
+
+    def test_zero_result_fallback_with_profile(self) -> None:
+        ctx = CombinedContext(
+            user=self._make_user_context(),
+            live=LiveContext(user_need="Show me an outfit for a wedding"),
+            hard_filters={"gender_expression": "female"},
+        )
+        message, suggestions = _build_zero_result_fallback(ctx)
+        self.assertIn("profile", message.lower())
+        self.assertIn("Autumn", message)
+        self.assertIn("high contrast", message.lower())
+        self.assertNotIn("broaden your requirements", message.lower())
+
+    def test_zero_result_fallback_without_profile(self) -> None:
+        ctx = CombinedContext(
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="Show me an outfit"),
+            hard_filters={"gender_expression": "female"},
+        )
+        message, suggestions = _build_zero_result_fallback(ctx)
+        self.assertIn("broadening your requirements", message.lower())
+
+
+
+class CopilotPlannerTests(unittest.TestCase):
+    """Tests for the CopilotPlanner-based orchestrator path."""
+
+    @staticmethod
+    def _make_planner_config():
+        """Create a standard config for the planner path."""
+        from platform_core.config import AuraRuntimeConfig
+        return AuraRuntimeConfig(
+            supabase_rest_url="http://localhost/rest/v1",
+            supabase_service_role_key="test-key",
+        )
+
+    @staticmethod
+    def _standard_onboarding_gateway():
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
             "profile_complete": True,
             "style_preference_complete": True,
             "images_uploaded": ["full_body", "headshot"],
             "onboarding_complete": True,
         }
-        onboarding_gateway.get_analysis_status.return_value = {
+        gw.get_analysis_status.return_value = {
             "status": "completed",
             "profile": {
                 "gender": "female",
@@ -2990,12 +2324,19 @@ class AgenticApplicationTests(unittest.TestCase):
             },
             "attributes": {"BodyShape": {"value": "Hourglass"}},
             "derived_interpretations": {
-                "SeasonalColorGroup": {"value": "Soft Summer"},
-                "ContrastLevel": {"value": "Medium"},
+                "SeasonalColorGroup": {"value": "Autumn"},
+                "ContrastLevel": {"value": "High"},
                 "FrameStructure": {"value": "Medium and Balanced"},
                 "HeightCategory": {"value": "Tall"},
             },
         }
+        gw.get_wardrobe_items.return_value = []
+        gw.get_person_image_path.return_value = None
+        return gw
+
+    @staticmethod
+    def _standard_repo():
+        repo = Mock()
         repo.client = Mock()
         repo.get_or_create_user.return_value = {"id": "db-user"}
         repo.get_conversation.return_value = {
@@ -3004,24 +2345,311 @@ class AgenticApplicationTests(unittest.TestCase):
             "session_context_json": {},
         }
         repo.create_turn.return_value = {"id": "t1"}
+        return repo
 
-        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
-            "agentic_application.orchestrator.OutfitArchitect"
-        ) as architect_cls:
-            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=Mock())
+    def _build_orchestrator(self, repo, gw, planner_mock):
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
+             patch("agentic_application.orchestrator.OutfitArchitect"), \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            return AgenticOrchestrator(
+                repo=repo,
+                onboarding_gateway=gw,
+                config=self._make_planner_config(),
+            )
+
+    def test_planner_respond_directly_for_style_discovery(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="style_discovery",
+            intent_confidence=0.95,
+            action="respond_directly",
+            context_sufficient=True,
+            assistant_message="As an Autumn with high contrast, warm earthy tones and bold pairings are your strongest direction.",
+            follow_up_suggestions=["What colors should I avoid?", "Show me outfits for work"],
+            resolved_context=CopilotResolvedContext(style_goal="color_direction"),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="What colors suit me best?",
+        )
+
+        planner_mock.plan.assert_called_once()
+        self.assertEqual("style_discovery", result["metadata"]["primary_intent"])
+        self.assertIn("Autumn", result["assistant_message"])
+        self.assertEqual("recommendation", result["response_type"])
+        self.assertEqual([], result["outfits"])
+        self.assertIn("What colors should I avoid?", result["follow_up_suggestions"])
+
+    def test_planner_ask_clarification(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="occasion_recommendation",
+            intent_confidence=0.6,
+            action="ask_clarification",
+            context_sufficient=False,
+            assistant_message="What's the occasion? That'll help me nail the right direction for you.",
+            follow_up_suggestions=["Date night", "Office meeting", "Casual weekend", "Wedding guest"],
+            resolved_context=CopilotResolvedContext(),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="I need something",
+        )
+
+        self.assertEqual("clarification", result["response_type"])
+        self.assertIn("occasion", result["assistant_message"].lower())
+        self.assertTrue(result["follow_up_suggestions"])
+
+    def test_planner_run_pipeline_calls_architect(self):
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+            RecommendationPlan, DirectionSpec, QuerySpec, ResolvedContextBlock,
+            EvaluatedRecommendation,
+        )
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="occasion_recommendation",
+            intent_confidence=0.95,
+            action="run_recommendation_pipeline",
+            context_sufficient=True,
+            assistant_message="Let me find some wedding options with your Autumn palette in mind.",
+            follow_up_suggestions=["Show me something bolder", "Different color direction"],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="wedding",
+                formality_hint="formal",
+                style_goal="wedding guest outfit",
+            ),
+            action_parameters=CopilotActionParameters(),
+        )
+
+        fake_plan = RecommendationPlan(
+            plan_type="complete_only",
+            retrieval_count=12,
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="complete",
+                    label="Formal Wedding",
+                    queries=[
+                        QuerySpec(
+                            query_id="A1",
+                            role="complete",
+                            hard_filters={},
+                            query_document="formal wedding dress",
+                        )
+                    ],
+                )
+            ],
+            resolved_context=ResolvedContextBlock(
+                occasion_signal="wedding",
+                formality_hint="formal",
+            ),
+        )
+        fake_eval = EvaluatedRecommendation(
+            candidate_id="cand-1",
+            rank=1,
+            match_score=0.88,
+            title="Elegant Wedding Look",
+            reasoning="Great for a formal wedding.",
+            item_ids=["prod-1"],
+        )
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway") as _gateway_cls, \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            architect_cls.return_value.plan.return_value = fake_plan
+            orchestrator = AgenticOrchestrator(
+                repo=repo,
+                onboarding_gateway=gw,
+                config=self._make_planner_config(),
+            )
+            # Mock the remaining pipeline components
+            orchestrator.catalog_search_agent.search = Mock(return_value=[])
+            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+
             result = orchestrator.process_turn(
                 conversation_id="c1",
                 external_user_id="user-1",
-                message="What style would look good on me?",
+                message="Show me something for a wedding",
             )
 
-        architect_cls.return_value.plan.assert_not_called()
-        self.assertEqual("style_discovery", result["metadata"]["primary_intent"])
-        self.assertIn("style direction", result["assistant_message"])
-        resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
-        self.assertEqual("style_discovery", resolved_context["routing_metadata"]["primary_intent"])
-        self.assertIn("derived_interpretations", resolved_context["routing_metadata"]["memory_sources_read"])
-        self.assertIn("confidence_history", resolved_context["routing_metadata"]["memory_sources_written"])
+        planner_mock.plan.assert_called_once()
+        architect_cls.return_value.plan.assert_called_once()
+        self.assertEqual("occasion_recommendation", result["metadata"]["primary_intent"])
+
+    def test_planner_save_feedback(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        repo.get_conversation.return_value = {
+            "id": "c1",
+            "user_id": "db-user",
+            "session_context_json": {
+                "last_recommendations": [
+                    {"rank": 1, "title": "Look 1", "item_ids": ["p1", "p2"]},
+                ],
+                "last_response_metadata": {"turn_id": "t0"},
+            },
+        }
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="feedback_submission",
+            intent_confidence=0.92,
+            action="save_feedback",
+            context_sufficient=True,
+            assistant_message="Got it — I'll steer away from that direction next time.",
+            follow_up_suggestions=["Show me something different", "What should I try next?"],
+            resolved_context=CopilotResolvedContext(),
+            action_parameters=CopilotActionParameters(feedback_event_type="dislike"),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="I don't like this outfit",
+        )
+
+        self.assertEqual("feedback_submission", result["metadata"]["primary_intent"])
+        self.assertIn("steer away", result["assistant_message"])
+        # Verify feedback was persisted
+        repo.create_feedback_event.assert_called()
+
+    def test_planner_save_wardrobe_item(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        gw.save_chat_wardrobe_item.return_value = {"id": "w-new", "title": "Navy Blazer"}
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="wardrobe_ingestion",
+            intent_confidence=0.9,
+            action="save_wardrobe_item",
+            context_sufficient=True,
+            assistant_message="I've saved your navy blazer to your wardrobe.",
+            follow_up_suggestions=["What goes with this piece?", "Save another item"],
+            resolved_context=CopilotResolvedContext(),
+            action_parameters=CopilotActionParameters(
+                wardrobe_item_title="Navy Blazer",
+                detected_garments=["blazer"],
+                detected_colors=["navy"],
+            ),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="Add my navy blazer to wardrobe",
+        )
+
+        self.assertEqual("wardrobe_ingestion", result["metadata"]["primary_intent"])
+        self.assertIn("saved", result["assistant_message"].lower())
+        gw.save_chat_wardrobe_item.assert_called_once()
+
+    def test_planner_virtual_tryon(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        gw.get_person_image_path.return_value = "/fake/person.png"
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="virtual_tryon_request",
+            intent_confidence=0.97,
+            action="run_virtual_tryon",
+            context_sufficient=True,
+            assistant_message="Let me generate a try-on preview for you.",
+            follow_up_suggestions=["Should I buy this?", "What would pair with it?"],
+            resolved_context=CopilotResolvedContext(),
+            action_parameters=CopilotActionParameters(
+                product_urls=["https://store.example/blazer"],
+            ),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        # Mock tryon service to return failure (no real service)
+        orchestrator.tryon_service.generate_tryon = Mock(return_value={"success": False, "error": "Test mode"})
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="Try this on me https://store.example/blazer",
+        )
+
+        self.assertEqual("virtual_tryon_request", result["metadata"]["primary_intent"])
+
+    def test_planner_error_fallback(self):
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.side_effect = RuntimeError("LLM unavailable")
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="What colors suit me?",
+        )
+
+        self.assertIn("trouble", result["assistant_message"].lower())
+        self.assertEqual("error", result["response_type"])
+
+    def test_copilot_plan_result_schema(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        plan = CopilotPlanResult(
+            intent="style_discovery",
+            intent_confidence=0.95,
+            action="respond_directly",
+            context_sufficient=True,
+            assistant_message="Your Autumn palette means warm tones are your best friend.",
+            follow_up_suggestions=["Show me outfits", "What should I avoid?"],
+            resolved_context=CopilotResolvedContext(style_goal="color_direction"),
+            action_parameters=CopilotActionParameters(detected_colors=["navy", "burgundy"]),
+        )
+        dumped = plan.model_dump()
+        self.assertEqual("style_discovery", dumped["intent"])
+        self.assertEqual(["navy", "burgundy"], dumped["action_parameters"]["detected_colors"])
+        self.assertEqual("color_direction", dumped["resolved_context"]["style_goal"])
+
+    def test_build_planner_input_structure(self):
+        from agentic_application.agents.copilot_planner import build_planner_input
+        user_context = UserContext(
+            user_id="u1",
+            gender="female",
+            derived_interpretations={
+                "SeasonalColorGroup": {"value": "Autumn"},
+                "ContrastLevel": {"value": "High"},
+            },
+            style_preference={"primaryArchetype": "classic", "secondaryArchetype": "romantic"},
+            profile_richness="full",
+            wardrobe_items=[{"title": "Navy Blazer", "garment_category": "outerwear", "primary_color": "navy"}],
+        )
+        result = build_planner_input(
+            message="What colors suit me?",
+            user_context=user_context,
+            conversation_history=[],
+            previous_context={"last_intent": "style_discovery"},
+            profile_confidence_pct=85,
+            has_person_image=True,
+        )
+        self.assertEqual("What colors suit me?", result["user_message"])
+        self.assertEqual("female", result["user_profile"]["gender"])
+        self.assertEqual("Autumn", result["user_profile"]["seasonal_color_group"])
+        self.assertEqual("classic", result["user_profile"]["primary_archetype"])
+        self.assertEqual(1, result["wardrobe_summary"]["count"])
+        self.assertEqual(85, result["profile_confidence_pct"])
+        self.assertTrue(result["has_person_image"])
+        self.assertEqual("style_discovery", result["previous_intent"])
 
 
 if __name__ == "__main__":

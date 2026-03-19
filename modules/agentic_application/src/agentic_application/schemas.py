@@ -261,6 +261,37 @@ class OutfitCard(BaseModel):
     tryon_image: Optional[str] = None  # data URL of virtual try-on image
 
 
+class CopilotResolvedContext(BaseModel):
+    occasion_signal: Optional[str] = None
+    formality_hint: Optional[str] = None
+    time_hint: Optional[str] = None
+    specific_needs: List[str] = Field(default_factory=list)
+    is_followup: bool = False
+    followup_intent: Optional[str] = None
+    style_goal: str = ""
+
+
+class CopilotActionParameters(BaseModel):
+    verdict: Optional[str] = None
+    target_piece: Optional[str] = None
+    detected_colors: List[str] = Field(default_factory=list)
+    detected_garments: List[str] = Field(default_factory=list)
+    product_urls: List[str] = Field(default_factory=list)
+    feedback_event_type: Optional[str] = None
+    wardrobe_item_title: Optional[str] = None
+
+
+class CopilotPlanResult(BaseModel):
+    intent: str = "occasion_recommendation"
+    intent_confidence: float = 0.0
+    action: str = "respond_directly"
+    context_sufficient: bool = True
+    assistant_message: str = ""
+    follow_up_suggestions: List[str] = Field(default_factory=list)
+    resolved_context: CopilotResolvedContext = Field(default_factory=CopilotResolvedContext)
+    action_parameters: CopilotActionParameters = Field(default_factory=CopilotActionParameters)
+
+
 class RecommendationResponse(BaseModel):
     success: bool = True
     message: str = ""

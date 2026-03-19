@@ -433,12 +433,18 @@ def get_web_ui_html(user_id: str = "") -> str:
     <main class="panel chat">
       <div class="feed" id="feed"></div>
       <div class="composer">
+        <div id="imagePreview" style="display:none;margin-bottom:8px;position:relative;width:fit-content;">
+          <img id="imagePreviewImg" style="max-height:80px;border-radius:8px;border:1px solid var(--line);" />
+          <button id="imageRemoveBtn" type="button" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#9d1e1e;color:#fff;border:none;font-size:12px;line-height:20px;padding:0;cursor:pointer;">&times;</button>
+        </div>
         <div class="field">
           <label>Your message</label>
-          <textarea id="message" rows="3" placeholder="Need casual office wear and want to look taller."></textarea>
+          <textarea id="message" rows="3" placeholder="Need casual office wear and want to look taller. You can also paste or attach an image of your garment."></textarea>
         </div>
         <div class="btns">
           <button id="sendBtn">Send</button>
+          <button id="attachImgBtn" class="secondary" type="button" title="Attach a garment image">Attach Image</button>
+          <input id="chatImageFile" type="file" accept="image/*" style="display:none;" />
         </div>
       </div>
     </main>
@@ -458,11 +464,59 @@ def get_web_ui_html(user_id: str = "") -> str:
     const garmentColorEl = document.getElementById("garmentColor");
     const garmentStatusEl = document.getElementById("garmentStatus");
     const uploadPairBtn = document.getElementById("uploadPairBtn");
+    const chatImageFileEl = document.getElementById("chatImageFile");
+    const attachImgBtn = document.getElementById("attachImgBtn");
+    const imagePreview = document.getElementById("imagePreview");
+    const imagePreviewImg = document.getElementById("imagePreviewImg");
+    const imageRemoveBtn = document.getElementById("imageRemoveBtn");
+    let pendingImageData = "";
 
-    function addBubble(text, kind) {
+    function setImagePreview(dataUrl) {
+      pendingImageData = dataUrl;
+      imagePreviewImg.src = dataUrl;
+      imagePreview.style.display = "block";
+    }
+    function clearImagePreview() {
+      pendingImageData = "";
+      imagePreviewImg.src = "";
+      imagePreview.style.display = "none";
+      chatImageFileEl.value = "";
+    }
+    attachImgBtn.addEventListener("click", function() { chatImageFileEl.click(); });
+    imageRemoveBtn.addEventListener("click", clearImagePreview);
+    chatImageFileEl.addEventListener("change", function() {
+      var file = chatImageFileEl.files && chatImageFileEl.files[0];
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) { err.textContent = "Image must be under 10 MB."; return; }
+      var reader = new FileReader();
+      reader.onload = function(e) { setImagePreview(e.target.result); };
+      reader.readAsDataURL(file);
+    });
+    messageEl.addEventListener("paste", function(e) {
+      var items = (e.clipboardData || {}).items || [];
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf("image") !== -1) {
+          e.preventDefault();
+          var blob = items[i].getAsFile();
+          if (blob.size > 10 * 1024 * 1024) { err.textContent = "Pasted image must be under 10 MB."; return; }
+          var reader = new FileReader();
+          reader.onload = function(ev) { setImagePreview(ev.target.result); };
+          reader.readAsDataURL(blob);
+          return;
+        }
+      }
+    });
+
+    function addBubble(text, kind, imageDataUrl) {
       const div = document.createElement("div");
       div.className = "bubble " + kind;
-      div.textContent = text;
+      if (imageDataUrl) {
+        const img = document.createElement("img");
+        img.src = imageDataUrl;
+        img.style.cssText = "max-height:120px;border-radius:8px;display:block;margin-bottom:6px;";
+        div.appendChild(img);
+      }
+      div.appendChild(document.createTextNode(text));
       feed.appendChild(div);
       feed.scrollTop = feed.scrollHeight;
       return div;
@@ -886,25 +940,32 @@ def get_web_ui_html(user_id: str = "") -> str:
     async function send() {
       err.textContent = "";
       const userId = userIdEl.value.trim();
-      const message = messageEl.value.trim();
+      let message = messageEl.value.trim();
       if (!userId) {
         err.textContent = "User ID is required.";
         return;
       }
-      if (!message) {
+      if (!message && !pendingImageData) {
         err.textContent = "Message is required.";
         return;
+      }
+      if (!message && pendingImageData) {
+        message = "What goes with this? Show me pairing options.";
       }
       sendBtn.disabled = true;
       messageEl.disabled = true;
       try {
         const conversationId = await ensureConversation();
-        addBubble(message, "user");
+        const attachedImage = pendingImageData;
+        addBubble(message, "user", attachedImage);
         messageEl.value = "";
+        clearImagePreview();
+        const payload = { user_id: userId, message: message };
+        if (attachedImage) payload.image_data = attachedImage;
         const res = await fetch("/v1/conversations/" + conversationId + "/turns/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: userId, message: message }),
+          body: JSON.stringify(payload),
         });
         const job = await res.json();
         if (!res.ok) throw new Error(job.detail || "Failed to start turn");

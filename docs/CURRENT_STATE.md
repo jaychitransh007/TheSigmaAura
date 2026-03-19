@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: March 19, 2026
+Last updated: March 20, 2026
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -198,14 +198,13 @@ Status:
 - not yet final-quality
 
 Implemented:
-- orchestrated recommendation pipeline (10-stage, including context gate)
-- context gate between context builder and outfit architect — rule-based signal scoring (<1ms) short-circuits vague requests with clarifying questions + quick-reply chips
-- context gate bypass: "surprise me" phrases, follow-up turns, max 2 consecutive blocks
+- orchestrated recommendation pipeline with LLM copilot planner front-end
+- copilot planner (gpt-5.4) classifies intent and decides action — replaces legacy keyword router + context gate
+- planner actions: `run_recommendation_pipeline`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`
 - `response_type` field: `"recommendation"` | `"clarification"`
 - saved user context loading
-- rule-based live context extraction (runs before context gate for structured signal availability)
-- conversation memory carry-forward (accumulates context across gate-blocked turns)
-- LLM-only planner — no deterministic fallback (model: `gpt-5.4`)
+- conversation memory carry-forward
+- LLM-only architect planner — no deterministic fallback (model: `gpt-5.4`)
 - strict JSON schema with enum-constrained hard filter vocabulary
 - hard filters: `gender_expression`, `styling_completeness`, `garment_category`, `garment_subtype`
 - soft signals via embedding only: `occasion_fit`, `formality_level`, `time_of_day`
@@ -229,10 +228,10 @@ Main remaining gaps:
 
 Current execution order:
 1. load user context
-2. resolve live context from user message (occasion resolver extracts structured signals)
-3. build conversation memory from prior turn state + resolved live context
-4. context gate — rule-based signal scoring; if insufficient, short-circuit with clarifying question (skip stages 5-10)
-5. generate recommendation plan via LLM (gpt-5.4) — no fallback, failure = error to user
+2. build conversation memory from prior turn state
+3. copilot planner (gpt-5.4) — classifies intent, decides action (`run_recommendation_pipeline`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`), resolves context
+4. action dispatch — if `respond_directly` or `ask_clarification`, return planner response directly (skip stages 5-10)
+5. generate recommendation plan via outfit architect LLM (gpt-5.4) — no fallback, failure = error to user
 6. retrieve catalog products per query direction (text-embedding-3-small, single search pass)
 7. assemble outfit candidates (deterministic)
 8. evaluate and rank candidates (gpt-5.4, fallback: assembly_score)
@@ -490,13 +489,13 @@ Supabase tables (26 migrations in `supabase/migrations/`):
 modules/
 ├── agentic_application/src/agentic_application/
 │   ├── api.py                    # FastAPI app factory, routes
-│   ├── orchestrator.py           # 10-stage pipeline (incl. context gate + virtual try-on)
+│   ├── orchestrator.py           # Copilot planner + 7-stage pipeline + virtual try-on
 │   ├── schemas.py                # Pydantic models
-│   ├── context_gate.py            # Rule-based context sufficiency gate (<1ms)
 │   ├── filters.py                # Hard filter construction (no relaxation)
 │   ├── qna_messages.py           # Template-based stage narration (QnA transparency)
 │   ├── product_links.py          # Canonical URL resolution
 │   ├── agents/
+│   │   ├── copilot_planner.py   # LLM intent classification + action routing (gpt-5.4)
 │   │   ├── outfit_architect.py   # LLM planning (gpt-5.4)
 │   │   ├── catalog_search_agent.py # Embedding search + hydration
 │   │   ├── outfit_assembler.py   # Compatibility pruning
@@ -504,7 +503,6 @@ modules/
 │   │   └── response_formatter.py # UI output generation (max 3 outfits)
 │   ├── context/
 │   │   ├── user_context_builder.py  # Profile loading + richness scoring
-│   │   ├── occasion_resolver.py     # Rule-based live context extraction
 │   │   └── conversation_memory.py   # Cross-turn state
 │   └── services/
 │       ├── onboarding_gateway.py    # App-facing user interface (ApplicationUserGateway) + person image lookup
@@ -577,7 +575,7 @@ Run tests:
 python3 -m pytest tests/ -v
 ```
 
-298 tests across 14 files.
+265 tests across 13 files.
 
 Focused application suites:
 
@@ -602,12 +600,11 @@ python3 -m pytest tests/test_agentic_application_api_ui.py -v
 | `tests/test_architecture_boundaries.py` | Module boundary enforcement, import validation |
 | `tests/test_digital_draping.py` | Digital draping: hex conversion, 4-season distribution computation, top-N group selection, tiebreak priority, DrapingResult serialization |
 | `tests/test_comfort_learning.py` | Comfort learning: 4-season color mapping, high/low-intent signal detection, evaluate-and-update threshold logic, max 2 groups, supersede old rows |
-| `tests/test_context_gate.py` | Context gate: signal scoring, bypass rules, consecutive block cap, clarification response |
 | `tests/test_qna_messages.py` | QnA narration: stage message templates, context-aware narration |
 
 ### Key Test Coverage Areas
 
-**Application pipeline:** LLM-only planning (no deterministic fallback), evaluator fallback to assembly_score, evaluator hard output cap (max 5), follow-up intents (7 types), assembly compatibility checks, response formatter bounds (max 3 outfits), concept-first paired planning, model configuration validation, conversation memory build/apply, context gate signal scoring/bypass, QnA stage narration.
+**Application pipeline:** Copilot planner intent classification and action routing, LLM-only planning (no deterministic fallback), evaluator fallback to assembly_score, evaluator hard output cap (max 5), follow-up intents (7 types), assembly compatibility checks, response formatter bounds (max 3 outfits), concept-first paired planning, model configuration validation, conversation memory build/apply, QnA stage narration, profile-guidance intent routing (color direction, avoidance, suitability), profile-grounded zero-result fallback, style-discovery context continuity across follow-ups.
 
 **Onboarding:** 3-agent analysis with mock LLM responses, interpretation derivation across 4 seasonal color groups (Spring, Summer, Autumn, Winter), style archetype selection, single-agent rerun with baseline preservation.
 
@@ -841,10 +838,10 @@ Success criteria:
 
 ## Immediate Next Item
 
-No incomplete implementation slices remain in the documented next-phase checklist.
+Next incomplete phase: Phase 11 (Recommendation Quality — Staging Conversation Review).
 
 Operating note:
-- keep `docs/CURRENT_STATE.md` aligned to future runtime changes, but the March 19, 2026 checklist is complete
+- keep `docs/CURRENT_STATE.md` aligned to future runtime changes
 
 ## Phase 9: Post-Checklist Hardening
 
@@ -859,9 +856,9 @@ Checklist:
 - [ ] define operational dashboards / queries for the first-50 rollout
 - [ ] add release-readiness criteria for shipping beyond the current dev-complete state
 - [ ] ensure local recommendation environments are blocked or degraded clearly when catalog data / embeddings are not loaded
-- [ ] route profile-guidance prompts such as color-direction questions to profile/style handlers instead of default recommendation gating
-- [ ] add a profile-grounded zero-result fallback for recommendation requests when retrieval returns no candidates
-- [ ] make follow-up profile-guidance questions inherit prior style-discovery context without forcing occasion clarification
+- [x] route profile-guidance prompts such as color-direction questions to profile/style handlers instead of default recommendation gating
+- [x] add a profile-grounded zero-result fallback for recommendation requests when retrieval returns no candidates
+- [x] make follow-up profile-guidance questions inherit prior style-discovery context without forcing occasion clarification
 
 Verification notes:
 - staging was migrated and verified aligned through `20260319140000_drop_zero_row_conversation_platform_tables.sql`
@@ -919,6 +916,101 @@ Doc drift found during cleanup:
 
 Success criteria:
 - the repo no longer carries obvious dead runtime residue, and any destructive schema cleanup is deferred until it is evidenced and reversible
+
+## Phase 11: Recommendation Quality — Staging Conversation Review
+
+Goal:
+- fix the flaws exposed by staging conversation review of `user_2fbe89b7f529` / `7cd728b6-a80d-4a5a-aa50-8f172862dda5` (6 turns, 24 feedback events, March 17–19 2026)
+
+Evidence source:
+- staging conversation: user asked for 10-day Sri Lanka trip outfits across 6 turns
+- 3 of 5 shown outfits in Turn 2 were disliked ("pairing is weird", "styling is wrong")
+- user explicitly asked for "at least 10 different outputs" — system capped at 3
+- same product appeared in 4 of 5 recommendations in Turn 2 and Turn 5
+- disliked products were not suppressed in subsequent turns
+- Turn 6 ("Show me a darker version") returned an empty response — pipeline crashed silently between architect and evaluator
+
+### P0: Silent empty response on pipeline failure
+
+Problem:
+- Turn 6 copilot_planner and outfit_architect both completed successfully (model_call_logs confirm)
+- outfit_evaluator never ran (no log entry) — pipeline crashed between architect and evaluator
+- `assistant_message` is `""`, `resolved_context_json` is `{}` — user sees a blank message
+- the error was swallowed silently instead of surfacing a fallback
+
+Checklist:
+- [ ] audit orchestrator pipeline error handling between architect → search → assembly → evaluator stages
+- [ ] ensure any unhandled exception in mid-pipeline returns a user-facing error message, not an empty response
+- [ ] add a post-pipeline guard: if `assistant_message` is empty after pipeline completes, return a graceful fallback ("I wasn't able to put together recommendations this time — try rephrasing or adjusting your request")
+- [ ] add test coverage for mid-pipeline crash producing a non-empty user-facing response
+
+### P1: Outfit count cap too low for multi-day requests
+
+Problem:
+- user asked for "at least 10 different outputs for different moments"
+- system always returns max 3 outfits per turn (`response_formatter` hard cap)
+- user had to send 5+ follow-up messages to get variety across the trip
+- for capsule / trip planning, 3 outfits is structurally insufficient
+
+Checklist:
+- [ ] make outfit count dynamic based on intent: capsule_or_trip_planning and multi-day requests should allow up to 10 outfits per turn
+- [ ] update `response_formatter` to accept a configurable max outfit count (default 3, up to 10 for trip/capsule)
+- [ ] update `outfit_architect` to plan more directions when the intent is capsule/trip (e.g. morning, afternoon, evening, beach, dinner, travel day)
+- [ ] update evaluator hard cap from 5 to match the higher ceiling for trip intents
+- [ ] add test coverage for >3 outfit output on capsule/trip requests
+
+### P1: Cross-outfit product diversity enforcement
+
+Problem:
+- Turn 2: same white Nicobar shirt (`Nicobar_5196294684806`) in 4 of 5 recommendations
+- Turn 5: same polo (`9258465657045`) in 3 of 5, same trousers (`8559008055449`) in 4 of 5
+- user explicitly complained about lack of diversity in Turn 3
+- assembler does not enforce cross-outfit diversity — same top-scoring items fill every slot
+
+Checklist:
+- [ ] add cross-outfit diversity constraint to assembler: no single product_id should appear in more than 2 of N assembled candidates
+- [ ] when a product has been used in 2 candidates, exclude it from further assembly and promote the next-best retrieval match
+- [ ] add architect-level diversity: for trip/capsule intents, each direction should target different garment subtypes or color families
+- [ ] add test coverage for diversity enforcement (same product_id capped across candidates)
+
+### P1: Disliked products not suppressed in subsequent turns
+
+Problem:
+- user disliked white Nicobar shirt 3 times in Turn 2 with explicit notes ("pairing is weird")
+- same product and similar products kept appearing in later turns
+- 24 feedback events recorded but never consumed by the pipeline
+- feedback signals are stored but not propagated as negative filters to catalog search or evaluator
+
+Checklist:
+- [ ] on pipeline start, load recent disliked product_ids from `feedback_events` for the conversation
+- [ ] pass disliked product_ids as exclusion list to catalog search (exclude from retrieval results)
+- [ ] if a disliked product_id appears in assembled candidates, penalize or exclude it
+- [ ] persist the exclusion list in conversation session_context for cross-turn continuity
+- [ ] add test coverage for disliked-product suppression across turns
+
+### P2: Virtual try-on feedback not actionable
+
+Problem:
+- two user feedback notes explicitly called out try-on quality failures: "Virtual tryon is different from my original pose", "Made the full sleeve kurta a half tshirt"
+- these are stored as free-text notes but never parsed or routed to the try-on quality gate
+- subsequent turns do not adjust try-on behavior based on prior complaints
+
+Checklist:
+- [ ] parse feedback notes for try-on quality keywords ("virtual tryon", "try-on", "wrong pose", "different from original")
+- [ ] when try-on complaints are detected, flag in conversation session_context so subsequent turns can skip or deprioritize try-on for that user
+- [ ] surface try-on quality complaints in dependency reporting so the team can track systemic issues
+
+### Completed work (March 20, 2026)
+
+- [x] copilot planner prompt rewrite (`prompt/copilot_planner.md`): expanded `run_recommendation_pipeline` trigger rules, narrowed `respond_directly` to pure knowledge questions, added default-action-rule bias toward pipeline, tightened `ask_clarification` to max 1 consecutive
+- [x] removed legacy routing code: deleted `intent_router.py`, `intent_handlers.py`, `context_gate.py`, `context/occasion_resolver.py`, `tests/test_context_gate.py`; removed feature flag `use_copilot_planner` from config; inlined planner path into `process_turn`; orchestrator dropped from ~3200 to ~2100 lines
+- [x] per-message image attachment in chat UI: attach button + clipboard paste on message input, base64 preview in user bubble, `image_data` field through API → orchestrator → planner (`has_attached_image` signal); auto-generates pairing request when image sent without text
+
+Success criteria:
+- pipeline failures never produce blank responses
+- trip/capsule requests get 5–10 diverse outfits instead of 3 repeated ones
+- disliked products do not reappear in the same conversation
+- try-on quality complaints are tracked and influence subsequent behavior
 
 ## Historical Completed Priority Work
 

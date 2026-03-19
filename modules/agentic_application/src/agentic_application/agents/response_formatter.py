@@ -107,6 +107,84 @@ def _candidate_items_by_id(
     return {c.candidate_id: c.items for c in candidates}
 
 
+def _build_zero_result_fallback(ctx: CombinedContext) -> tuple[str, List[str]]:
+    """Build a profile-grounded fallback message when retrieval returns no candidates."""
+    derived = dict(ctx.user.derived_interpretations or {})
+    style_pref = dict(ctx.user.style_preference or {})
+
+    seasonal = ""
+    sg = derived.get("SeasonalColorGroup")
+    if isinstance(sg, dict):
+        seasonal = str(sg.get("value") or "").strip()
+    elif isinstance(sg, str):
+        seasonal = sg.strip()
+
+    contrast = ""
+    cl = derived.get("ContrastLevel")
+    if isinstance(cl, dict):
+        contrast = str(cl.get("value") or "").strip()
+    elif isinstance(cl, str):
+        contrast = cl.strip()
+
+    frame = ""
+    fs = derived.get("FrameStructure")
+    if isinstance(fs, dict):
+        frame = str(fs.get("value") or "").strip()
+    elif isinstance(fs, str):
+        frame = fs.strip()
+
+    primary = str(style_pref.get("primaryArchetype") or "").strip()
+    secondary = str(style_pref.get("secondaryArchetype") or "").strip()
+
+    has_profile = any([seasonal, contrast, frame, primary])
+
+    if not has_profile:
+        return (
+            "I couldn't find matching outfits for your request. Try broadening your requirements.",
+            ["Try a different occasion", "Show me something casual"],
+        )
+
+    parts: List[str] = [
+        "I couldn't find exact catalog matches for this request, but here's what I'd recommend based on your profile."
+    ]
+
+    if seasonal:
+        if seasonal in ("Spring", "Autumn"):
+            parts.append(f"As a {seasonal} season, lean toward warm-toned pieces — earthy neutrals, rich warm shades, and gold accents.")
+        else:
+            parts.append(f"As a {seasonal} season, lean toward cool-toned pieces — icy neutrals, crisp cool shades, and silver accents.")
+
+    if contrast:
+        contrast_lower = contrast.lower()
+        if "high" in contrast_lower:
+            parts.append("With your high contrast, look for pieces with strong light-dark pairings or bold prints.")
+        elif "low" in contrast_lower:
+            parts.append("With your low contrast, tonal and blended palettes will look most polished.")
+
+    if frame:
+        frame_lower = frame.lower()
+        if "broad" in frame_lower:
+            parts.append("For your frame, prioritise waist-defining cuts and structured shoulders.")
+        elif "narrow" in frame_lower:
+            parts.append("For your frame, streamlined and fitted pieces will create the cleanest lines.")
+
+    if primary:
+        style_desc = primary
+        if secondary:
+            style_desc += f" + {secondary}"
+        parts.append(f"Stay within your {style_desc} style direction when shopping.")
+
+    parts.append("Try adjusting the occasion or style direction and I'll search again with sharper criteria.")
+
+    suggestions = [
+        "Try a different occasion",
+        "Show me something casual",
+        "What colors suit me best?",
+        "Surprise me",
+    ]
+    return " ".join(parts), suggestions
+
+
 class ResponseFormatter:
     """Converts evaluated recommendations into user-facing response."""
 
@@ -116,17 +194,22 @@ class ResponseFormatter:
         combined_context: CombinedContext,
         plan: RecommendationPlan,
         candidates: List[OutfitCandidate],
+        *,
+        planner_message: str | None = None,
+        planner_suggestions: list[str] | None = None,
     ) -> RecommendationResponse:
         if not evaluated:
+            fallback_message, fallback_suggestions = _build_zero_result_fallback(combined_context)
             return RecommendationResponse(
                 success=True,
-                message="I couldn't find matching outfits for your request. Try broadening your requirements.",
+                message=fallback_message,
                 outfits=[],
-                follow_up_suggestions=["Try a different occasion", "Show me something casual"],
+                follow_up_suggestions=fallback_suggestions,
                 metadata={
                     "plan_type": plan.plan_type,
                     "plan_source": plan.plan_source,
                     "direction_count": len(plan.directions),
+                    "zero_result_fallback": True,
                 },
             )
 
@@ -183,8 +266,8 @@ class ResponseFormatter:
                 },
             )
 
-        message = self._build_message(combined_context, outfits, plan)
-        suggestions = self._build_follow_up_suggestions(combined_context, plan)
+        message = planner_message if planner_message else self._build_message(combined_context, outfits, plan)
+        suggestions = planner_suggestions if planner_suggestions else self._build_follow_up_suggestions(combined_context, plan)
 
         return RecommendationResponse(
             success=True,

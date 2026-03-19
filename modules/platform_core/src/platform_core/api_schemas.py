@@ -38,6 +38,7 @@ class CreateTurnRequest(BaseModel):
     user_id: str = Field(min_length=1)
     message: str = Field(min_length=1, max_length=4000)
     channel: str = Field(default="web", pattern=r"^(web|whatsapp)$")
+    image_data: str = Field(default="", max_length=10_000_000)
 
 
 class WhatsAppInboundRequest(BaseModel):
