@@ -50,6 +50,15 @@ def get_web_ui_html(user_id: str = "") -> str:
       background: #fff;
       font-size: 14px;
     }
+    .field select {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 10px;
+      background: #fff;
+      font-size: 14px;
+    }
     .btns { display:flex; gap:8px; flex-wrap:wrap; }
     button {
       border: 1px solid transparent;
@@ -123,6 +132,29 @@ def get_web_ui_html(user_id: str = "") -> str:
     .stage-item:last-child { border-bottom:none; }
     @keyframes stageFadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
     .err { color:#9d1e1e; font-size:13px; margin-top:8px; white-space:pre-wrap; }
+    .subpanel {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+    .subpanel h2 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+    }
+    .subpanel p {
+      margin: 0 0 10px 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .mini-status {
+      font-size: 12px;
+      margin-top: 8px;
+      min-height: 16px;
+      color: var(--muted);
+    }
+    .mini-status.success { color: var(--accent); }
+    .mini-status.error { color: #9d1e1e; }
 
     /* --- Outfit card: 3-column PDP layout --- */
     .outfit-card {
@@ -360,6 +392,43 @@ def get_web_ui_html(user_id: str = "") -> str:
         <label>Agent Processing Stages</label>
         <div id="stageBox" class="stages"></div>
       </div>
+      <div class="subpanel">
+        <h2>Pair A Garment</h2>
+        <p>Upload one piece from your wardrobe, save it, and I will build pairings around it.</p>
+        <div class="field">
+          <label>Garment image</label>
+          <input id="garmentFile" type="file" accept="image/*" />
+        </div>
+        <div class="field">
+          <label>Garment title</label>
+          <input id="garmentTitle" placeholder="Black blazer" />
+        </div>
+        <div class="field">
+          <label>Category</label>
+          <select id="garmentCategory">
+            <option value="">Select a category</option>
+            <option value="blazer">Blazer</option>
+            <option value="jacket">Jacket</option>
+            <option value="shirt">Shirt</option>
+            <option value="top">Top</option>
+            <option value="dress">Dress</option>
+            <option value="skirt">Skirt</option>
+            <option value="trousers">Trousers</option>
+            <option value="jeans">Jeans</option>
+            <option value="coat">Coat</option>
+            <option value="shoes">Shoes</option>
+            <option value="bag">Bag</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Primary color</label>
+          <input id="garmentColor" placeholder="Black" />
+        </div>
+        <div class="btns">
+          <button id="uploadPairBtn" class="secondary" type="button">Upload And Pair</button>
+        </div>
+        <div id="garmentStatus" class="mini-status"></div>
+      </div>
     </aside>
     <main class="panel chat">
       <div class="feed" id="feed"></div>
@@ -383,6 +452,12 @@ def get_web_ui_html(user_id: str = "") -> str:
     const stageBox = document.getElementById("stageBox");
     const sendBtn = document.getElementById("sendBtn");
     const logoutBtn = document.getElementById("logoutBtn");
+    const garmentFileEl = document.getElementById("garmentFile");
+    const garmentTitleEl = document.getElementById("garmentTitle");
+    const garmentCategoryEl = document.getElementById("garmentCategory");
+    const garmentColorEl = document.getElementById("garmentColor");
+    const garmentStatusEl = document.getElementById("garmentStatus");
+    const uploadPairBtn = document.getElementById("uploadPairBtn");
 
     function addBubble(text, kind) {
       const div = document.createElement("div");
@@ -850,7 +925,55 @@ def get_web_ui_html(user_id: str = "") -> str:
       }
     }
 
+    function setGarmentStatus(text, kind) {
+      garmentStatusEl.textContent = text || "";
+      garmentStatusEl.className = "mini-status" + (kind ? " " + kind : "");
+    }
+
+    async function uploadGarmentAndPair() {
+      err.textContent = "";
+      const userId = userIdEl.value.trim();
+      const file = garmentFileEl.files && garmentFileEl.files[0];
+      const title = garmentTitleEl.value.trim();
+      const category = garmentCategoryEl.value.trim();
+      const color = garmentColorEl.value.trim();
+      if (!userId) {
+        setGarmentStatus("User ID is required before uploading a garment.", "error");
+        return;
+      }
+      if (!file) {
+        setGarmentStatus("Choose a garment image first.", "error");
+        return;
+      }
+      uploadPairBtn.disabled = true;
+      setGarmentStatus("Uploading garment...", "");
+      try {
+        const form = new FormData();
+        form.append("user_id", userId);
+        form.append("title", title);
+        form.append("garment_category", category);
+        form.append("garment_subtype", category);
+        form.append("primary_color", color);
+        form.append("file", file);
+        const res = await fetch("/v1/onboarding/wardrobe/items", {
+          method: "POST",
+          body: form,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Failed to save garment");
+        const garmentName = data.title || title || color || category || "this piece";
+        setGarmentStatus("Saved. Building pairings around it now.", "success");
+        messageEl.value = "What goes with my " + garmentName + "? Use my wardrobe first.";
+        await send();
+      } catch (e) {
+        setGarmentStatus(e.message || String(e), "error");
+      } finally {
+        uploadPairBtn.disabled = false;
+      }
+    }
+
     document.getElementById("sendBtn").addEventListener("click", send);
+    uploadPairBtn.addEventListener("click", uploadGarmentAndPair);
     document.getElementById("newConversationBtn").addEventListener("click", function() {
       convIdEl.value = "";
       stageBox.innerHTML = "";

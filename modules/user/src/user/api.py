@@ -1,6 +1,8 @@
+from pathlib import Path
 from threading import Thread
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
+from fastapi.responses import FileResponse
 
 from platform_core.supabase_rest import SupabaseError
 
@@ -26,10 +28,18 @@ from .schemas import (
 )
 from .service import OnboardingService
 from .analysis import UserAnalysisService
+from .style_archetype import resolve_style_asset_file
 
 
 def create_onboarding_router(service: OnboardingService, analysis_service: UserAnalysisService) -> APIRouter:
     router = APIRouter(prefix="/v1/onboarding", tags=["onboarding"])
+
+    @router.get("/style-assets/choices/{filename}", include_in_schema=False)
+    def get_style_archetype_asset(filename: str) -> FileResponse:
+        asset_path = resolve_style_asset_file(filename)
+        if asset_path is None:
+            raise HTTPException(status_code=404, detail="Style archetype image not found.")
+        return FileResponse(path=Path(asset_path), media_type="image/png")
 
     @router.post("/send-otp", response_model=SendOtpResponse)
     def send_otp(payload: SendOtpRequest) -> SendOtpResponse:

@@ -654,6 +654,16 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertNotIn("tryon-label", html)
         self.assertNotIn("renderRecommendations", html)
 
+    def test_ui_html_exposes_garment_pairing_upload_surface(self) -> None:
+        app, _, _, _, _ = self._patched_app("completed")
+        client = TestClient(app)
+        resp = client.get("/?user=user_ready")
+        html = resp.text
+        self.assertIn("Pair A Garment", html)
+        self.assertIn("uploadPairBtn", html)
+        self.assertIn("/v1/onboarding/wardrobe/items", html)
+        self.assertIn("What goes with my ", html)
+
     def test_outfit_card_schema_accepts_tryon_and_enrichment_fields(self) -> None:
         from platform_core.api_schemas import OutfitCard, OutfitItem
         item = OutfitItem(

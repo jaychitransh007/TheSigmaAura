@@ -136,6 +136,7 @@ Implemented:
   - Threshold: 5 high-intent signals triggers seasonal group update
   - Max 2 groups per user
 - Style archetype preference: user selects 3-5 archetypes across 3 layers → produces primaryArchetype, secondaryArchetype, blending ratios, risk tolerance, formality lean, pattern type, comfort boundaries
+- style archetype session images are served by the onboarding app from repo-backed assets under `archetypes/choices`, so local onboarding no longer depends on Supabase bucket sync
 - Profile status / rerun support (single-agent targeted reruns with baseline preservation)
 
 Current ownership reality:
@@ -857,6 +858,10 @@ Checklist:
 - [ ] review all docs for claims that still rely on unit/integration tests rather than live manual verification
 - [ ] define operational dashboards / queries for the first-50 rollout
 - [ ] add release-readiness criteria for shipping beyond the current dev-complete state
+- [ ] ensure local recommendation environments are blocked or degraded clearly when catalog data / embeddings are not loaded
+- [ ] route profile-guidance prompts such as color-direction questions to profile/style handlers instead of default recommendation gating
+- [ ] add a profile-grounded zero-result fallback for recommendation requests when retrieval returns no candidates
+- [ ] make follow-up profile-guidance questions inherit prior style-discovery context without forcing occasion clarification
 
 Verification notes:
 - staging was migrated and verified aligned through `20260319140000_drop_zero_row_conversation_platform_tables.sql`
@@ -865,6 +870,21 @@ Verification notes:
   - `media_assets` returns `404` via REST
   - `feedback_events.recommendation_run_id` now returns `400` via REST because the column no longer exists
 - replaying migrations from a clean local reset exposed an ordering bug in `20260312153000_catalog_admin_status.sql`; the migration now guards `catalog_enriched` access with `to_regclass(...)` so local rebuilds succeed even before `20260312160000_catalog_enriched.sql` runs
+- local conversation review for `user_37e20c62164b` / `90a76f00-ca7f-4240-8958-47958bc146fd` exposed a real product gap:
+  - the user asked `What sort of colors should I go for?`
+  - the system misclassified it as `occasion_recommendation` and asked for occasion instead of answering from profile/style context
+  - follow-up recommendation turns built valid casual plans, but local retrieval returned zero results for both top and bottom queries
+  - local `catalog_enriched`, `catalog_items`, `catalog_item_embeddings`, and `catalog_jobs` were empty at the time of review
+  - the user therefore received the generic no-match response instead of either actual outfits or a profile-grounded fallback
+
+Hardening priority from that failure:
+- treat missing local catalog readiness as an environment-state problem, not a user-facing “broaden your requirements” problem
+- expand intent coverage for profile-guidance requests:
+  - color direction
+  - flattering colors
+  - what to avoid
+- on zero-result retrieval, return a stylist fallback grounded in style preference + seasonal color + contrast + frame context
+- preserve style-discovery follow-up context across adjacent turns so profile questions do not fall back into generic outfit gating
 
 Success criteria:
 - the system is not only feature-complete on paper and in tests, but also verified as operationally ready in a real environment

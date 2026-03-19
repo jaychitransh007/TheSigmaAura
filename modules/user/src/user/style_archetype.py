@@ -1,5 +1,4 @@
 import csv
-import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -32,7 +31,7 @@ ARCHETYPE_ADJACENCY = {
 
 SELECTION_LIMIT_MIN = 3
 SELECTION_LIMIT_MAX = 5
-STYLE_ARCHETYPE_BUCKET = "style-archetypes"
+STYLE_ARCHETYPE_FILENAME_RE = re.compile(r"^[A-Z]\d+\.png$")
 
 
 @dataclass(frozen=True)
@@ -74,13 +73,18 @@ def _normalize_value(value: str) -> str:
     return raw.lower().replace(" ", "_")
 
 
-def _storage_public_base_url() -> str:
-    base = (
-        os.getenv("SUPABASE_URL", "").strip()
-        or os.getenv("API_URL", "").strip()
-        or "http://127.0.0.1:55321"
-    ).rstrip("/")
-    return f"{base}/storage/v1/object/public/{STYLE_ARCHETYPE_BUCKET}"
+def style_asset_public_path(image_id: str) -> str:
+    return f"/v1/onboarding/style-assets/choices/{image_id}.png"
+
+
+def resolve_style_asset_file(filename: str) -> Optional[Path]:
+    normalized = str(filename or "").strip()
+    if not STYLE_ARCHETYPE_FILENAME_RE.fullmatch(normalized):
+        return None
+    path = _repo_root() / "archetypes" / "choices" / normalized
+    if not path.exists():
+        return None
+    return path
 
 
 @lru_cache(maxsize=1)
@@ -105,7 +109,7 @@ def load_style_archetype_pool() -> List[ArchetypeImage]:
                 image_type=_normalize_value(row.get("Image Type") or ""),
                 intensity=_normalize_value(row.get("Intensity") or ""),
                 context=_normalize_value(row.get("Context") or ""),
-                image_url=f"{_storage_public_base_url()}/choices/{image_id}.png",
+                image_url=style_asset_public_path(image_id),
             )
             if not (images_dir / f"{image_id}.png").exists():
                 continue

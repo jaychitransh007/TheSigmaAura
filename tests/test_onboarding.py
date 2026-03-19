@@ -320,6 +320,31 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(5, session["maxSelections"])
         self.assertEqual(8, len(session["layer1"]))
         self.assertEqual(ARCHETYPE_ORDER, [image["primaryArchetype"] for image in session["layer1"]])
+        self.assertTrue(all(str(image["imageUrl"]).startswith("/v1/onboarding/style-assets/choices/") for image in session["layer1"]))
+
+    def test_style_archetype_asset_route_serves_local_choice_image(self) -> None:
+        service = Mock()
+        analysis_service = Mock()
+        app = FastAPI()
+        app.include_router(create_onboarding_router(service, analysis_service))
+        client = TestClient(app)
+
+        resp = client.get("/v1/onboarding/style-assets/choices/P001.png")
+
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual("image/png", resp.headers["content-type"])
+        self.assertGreater(len(resp.content), 0)
+
+    def test_style_archetype_asset_route_rejects_unknown_file(self) -> None:
+        service = Mock()
+        analysis_service = Mock()
+        app = FastAPI()
+        app.include_router(create_onboarding_router(service, analysis_service))
+        client = TestClient(app)
+
+        resp = client.get("/v1/onboarding/style-assets/choices/not-real.png")
+
+        self.assertEqual(404, resp.status_code)
 
     def test_get_status_exposes_style_preference_completion(self) -> None:
         repo = Mock()
