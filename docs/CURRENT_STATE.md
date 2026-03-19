@@ -851,12 +851,20 @@ Goal:
 - convert the completed build into a production-trustworthy operating baseline
 
 Checklist:
-- [ ] run migration verification against a linked local / staging Supabase environment
+- [x] run migration verification against a linked local / staging Supabase environment
 - [ ] smoke-test onboarding -> analysis -> first chat -> wardrobe -> WhatsApp -> dependency report against real persistence
 - [ ] validate dependency-report outputs with seeded multi-session data across both channels
 - [ ] review all docs for claims that still rely on unit/integration tests rather than live manual verification
 - [ ] define operational dashboards / queries for the first-50 rollout
 - [ ] add release-readiness criteria for shipping beyond the current dev-complete state
+
+Verification notes:
+- staging was migrated and verified aligned through `20260319140000_drop_zero_row_conversation_platform_tables.sql`
+- local Supabase was reset and replayed successfully through the same migration set
+- local verification confirmed the cleanup schema now matches staging:
+  - `media_assets` returns `404` via REST
+  - `feedback_events.recommendation_run_id` now returns `400` via REST because the column no longer exists
+- replaying migrations from a clean local reset exposed an ordering bug in `20260312153000_catalog_admin_status.sql`; the migration now guards `catalog_enriched` access with `to_regclass(...)` so local rebuilds succeed even before `20260312160000_catalog_enriched.sql` runs
 
 Success criteria:
 - the system is not only feature-complete on paper and in tests, but also verified as operationally ready in a real environment
