@@ -12,6 +12,10 @@ class TestStaticTemplates:
         "stage,detail",
         [
             ("validate_request", "started"),
+            ("onboarding_gate", "started"),
+            ("onboarding_gate", "blocked"),
+            ("onboarding_gate", "completed"),
+            ("intent_router", "started"),
             ("user_context", "started"),
             ("context_builder", "started"),
             ("outfit_architect", "started"),
@@ -51,6 +55,14 @@ class TestContextBuilderCompleted:
         msg = generate_stage_message("context_builder", "completed")
         assert msg
         assert isinstance(msg, str)
+
+
+class TestIntentRouterCompleted:
+    def test_returns_primary_intent(self):
+        msg = generate_stage_message("intent_router", "completed", {
+            "primary_intent": "style_discovery",
+        })
+        assert "style discovery" in msg
 
 
 class TestOutfitArchitectCompleted:

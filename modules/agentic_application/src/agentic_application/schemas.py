@@ -28,8 +28,64 @@ class UserContext(BaseModel):
     analysis_attributes: Dict[str, Any] = Field(default_factory=dict)
     derived_interpretations: Dict[str, Any] = Field(default_factory=dict)
     style_preference: Dict[str, Any] = Field(default_factory=dict)
+    wardrobe_items: List[Dict[str, Any]] = Field(default_factory=list)
 
     profile_richness: str = "minimal"  # full | moderate | basic | minimal
+
+
+class ProfileConfidenceFactor(BaseModel):
+    factor: str
+    satisfied: bool = False
+    score: float = 0.0
+    max_score: float = 0.0
+    detail: str = ""
+    improvement_action: str = ""
+
+
+class ProfileConfidence(BaseModel):
+    score_pct: int = 0
+    satisfied_factors: List[str] = Field(default_factory=list)
+    missing_factors: List[str] = Field(default_factory=list)
+    improvement_actions: List[str] = Field(default_factory=list)
+    factors: List[ProfileConfidenceFactor] = Field(default_factory=list)
+
+
+class RecommendationConfidenceFactor(BaseModel):
+    factor: str
+    score: float = 0.0
+    max_score: float = 0.0
+    detail: str = ""
+
+
+class RecommendationConfidence(BaseModel):
+    score_pct: int = 0
+    confidence_band: str = "low"
+    summary: str = ""
+    explanation: List[str] = Field(default_factory=list)
+    factors: List[RecommendationConfidenceFactor] = Field(default_factory=list)
+
+
+class OnboardingGateResult(BaseModel):
+    allowed: bool = False
+    status: str = "onboarding_required"
+    message: str = ""
+    missing_steps: List[str] = Field(default_factory=list)
+    improvement_actions: List[str] = Field(default_factory=list)
+    profile_confidence: ProfileConfidence = Field(default_factory=ProfileConfidence)
+
+
+class IntentClassification(BaseModel):
+    primary_intent: str = "occasion_recommendation"
+    confidence: float = 0.0
+    secondary_intents: List[str] = Field(default_factory=list)
+    reason_codes: List[str] = Field(default_factory=list)
+
+
+class SentimentTrace(BaseModel):
+    sentiment_label: str = "neutral"
+    sentiment_score: float = 0.0
+    intensity: float = 0.0
+    cues: List[str] = Field(default_factory=list)
 
 
 # --- Live Context ---
@@ -56,6 +112,13 @@ class ConversationMemory(BaseModel):
     plan_type: Optional[str] = None
     followup_count: int = 0
     last_recommendation_ids: List[str] = Field(default_factory=list)
+    recent_intents: List[str] = Field(default_factory=list)
+    recent_channels: List[str] = Field(default_factory=list)
+    recent_sentiment_labels: List[str] = Field(default_factory=list)
+    last_sentiment_label: Optional[str] = None
+    last_user_need: Optional[str] = None
+    wardrobe_item_count: int = 0
+    wardrobe_memory_enabled: bool = False
 
 
 # --- Combined Context ---

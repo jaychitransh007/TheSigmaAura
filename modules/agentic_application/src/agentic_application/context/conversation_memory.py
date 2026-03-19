@@ -55,6 +55,11 @@ def _parse_previous_memory(previous_context: Dict[str, Any]) -> ConversationMemo
 def build_conversation_memory(
     previous_context: Dict[str, Any] | None,
     live_context: LiveContext,
+    *,
+    current_intent: str | None = None,
+    channel: str | None = None,
+    sentiment_trace: Dict[str, Any] | None = None,
+    wardrobe_item_count: int = 0,
 ) -> ConversationMemory:
     previous_context = dict(previous_context or {})
     prior = _parse_previous_memory(previous_context)
@@ -85,6 +90,11 @@ def build_conversation_memory(
     elif live_context.followup_intent == "decrease_formality":
         formality_hint = _shift_formality(formality_hint, delta=-1)
 
+    sentiment_label = str((sentiment_trace or {}).get("sentiment_label") or "").strip()
+    recent_intents = _dedupe_preserve_order([*prior.recent_intents, str(current_intent or "").strip()])
+    recent_channels = _dedupe_preserve_order([*prior.recent_channels, str(channel or "").strip()])
+    recent_sentiment_labels = _dedupe_preserve_order([*prior.recent_sentiment_labels, sentiment_label])
+
     return ConversationMemory(
         occasion_signal=occasion_signal,
         formality_hint=formality_hint,
@@ -95,6 +105,13 @@ def build_conversation_memory(
         last_recommendation_ids=_dedupe_preserve_order(
             [*prior.last_recommendation_ids, *recommendation_ids]
         ),
+        recent_intents=recent_intents,
+        recent_channels=recent_channels,
+        recent_sentiment_labels=recent_sentiment_labels,
+        last_sentiment_label=sentiment_label or prior.last_sentiment_label,
+        last_user_need=str(live_context.user_need or "").strip() or prior.last_user_need,
+        wardrobe_item_count=max(int(prior.wardrobe_item_count or 0), int(wardrobe_item_count or 0)),
+        wardrobe_memory_enabled=bool(prior.wardrobe_memory_enabled or wardrobe_item_count > 0),
     )
 
 

@@ -1,23 +1,26 @@
 # Current Project State
 
-Last updated: March 18, 2026
+Last updated: March 19, 2026
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
+- `docs/PRODUCT.md`
 - `docs/APPLICATION_SPECS.md`
 - `docs/fashion-ai-architecture.jsx`
 
 This document is the single merged state-and-checklist document for the project.
 It supersedes the former architecture TODO and standalone cleanup/remediation checklist docs.
 
+For user-facing product framing, personas, journey, and stories, use `docs/PRODUCT.md`.
+
 ## Executive Status
 
 Project status:
 - user layer: implemented and usable
 - catalog layer: implemented and usable
-- application layer: active and usable end-to-end, but still in quality/consolidation phase
+- application layer: active, usable end-to-end, and aligned to the documented March 19, 2026 intent-driven copilot target
 
-The project is no longer in a pure scaffolding state. A real recommendation pipeline is running through `modules/agentic_application`, and the main remaining work is quality, refinement, boundary cleanup, and catalog ingestion hardening.
+The project is no longer in a pure scaffolding state. A real recommendation pipeline is running through `modules/agentic_application`. The next major work is no longer only quality/consolidation; it is the product expansion into a mandatory-onboarding, intent-driven copilot with richer memory, safety, and retention surfaces.
 
 ## Active Runtime
 
@@ -34,6 +37,67 @@ Supporting runtime surface still present:
 Important current rule:
 - new recommendation work should treat `agentic_application` as the canonical application runtime
 
+## Strategic Product Direction
+
+As of March 19, 2026, the product direction is broader than the current recommendation-only chat runtime.
+
+Target operating model:
+- website for onboarding and discovery
+- mandatory onboarding before chat access
+- WhatsApp for retention and repeat usage
+- one intent-driven chat system rather than a menu of separate tools
+- optional wardrobe onboarding for the user, but full wardrobe support in the system
+- confidence visibility for:
+  - profile analysis
+  - recommendation / outfit check responses
+- strict safety guardrails around:
+  - nude image uploads
+  - lingerie / restricted product categories
+  - unsafe virtual try-on output
+
+Target product definition:
+
+> A mandatory-onboarding, memory-backed personal fashion copilot that helps the user make better shopping and dressing decisions over time through intent-routed chat.
+
+## First-50 Validation Goal
+
+The immediate product-validation goal is no longer generic engagement.
+
+The goal is to validate dependency with the first 50 onboarded users:
+- users complete onboarding on web
+- users return through WhatsApp for real clothing decisions
+- the team identifies which intents become recurring habits
+- the system proves that it can combine profile, analysis, optional wardrobe, catalog, feedback, and chat history in one conversational product
+
+Success in this phase means users come back before real decisions such as:
+- should I buy this item
+- what goes with this piece
+- what should I wear for this occasion
+- how do I plan a mini capsule or trip set
+
+## Current Gap Versus Target State
+
+What exists now:
+- strong onboarding / profile-analysis pipeline
+- strong catalog enrichment and retrieval pipeline
+- strong intent-driven copilot runtime across recommendation and non-recommendation flows
+- chat UI and feedback plumbing
+- WhatsApp retention surface with shared identity and memory
+- wardrobe memory, confidence, moderation, and first-50 dependency instrumentation
+
+What now exists as a complete product system baseline:
+- mandatory onboarding gate tied to the next-phase onboarding contract
+- WhatsApp runtime surface connected to the same user and memory model
+- unified intent router for shopping decision, outfit check, pairing, wardrobe ingestion, style discovery, explanation, and try-on
+- wardrobe memory model and wardrobe-first orchestration
+- explicit catalog-interaction history model
+- explicit sentiment-history model
+- confidence engine for profile completeness and recommendation confidence
+- moderation and policy enforcement for nude-image / restricted-garment upload handling
+- retrieval-level exclusion policy for restricted product categories
+- try-on quality gate that fails closed
+- first-50 dependency instrumentation and reporting
+
 ## Bounded Context Status
 
 ### User
@@ -44,6 +108,7 @@ Status:
 
 Implemented:
 - OTP-based onboarding flow (fixed OTP: `123456`)
+- acquisition-source capture on OTP verification (`acquisition_source`, `acquisition_campaign`, `referral_code`, `icp_tag`)
 - onboarding profile persistence (name, DOB, gender, height_cm, waist_cm, profession)
 - image upload with SHA256-encrypted filenames (user_id + category + timestamp), enforced 3:2 aspect ratio on frontend
 - image categories: `full_body`, `headshot`
@@ -78,8 +143,8 @@ Current ownership reality:
 - `agentic_application` imports exclusively from `user.*` via `ApplicationUserGateway`
 - `modules/onboarding` shim has been removed (zero consumers remained)
 
-Main remaining gap:
-- (none)
+Main remaining gaps:
+- none for the documented next-phase checklist
 
 ### Catalog
 
@@ -122,7 +187,7 @@ Current ownership reality:
 - `agentic_application` imports only from `catalog.*`
 
 Main remaining gaps:
-- (none — job tables, rerun support, and admin observability are now implemented)
+- none for the documented next-phase checklist
 
 ### Application
 
@@ -154,9 +219,10 @@ Implemented:
 - response formatting (max 3 outfits) and UI rendering support
 - virtual try-on via Gemini (`gemini-3.1-flash-image-preview`), parallel generation for all outfits
 - turn artifact persistence
+- dependency-validation instrumentation: turn-completion events across web / WhatsApp, referral events, and retention reporting for first/second/third session behavior, cohort anchors, and memory-input lift
 
 Main remaining gaps:
-- dedicated eval harness / run artifact model
+- none for the documented next-phase checklist
 
 ## Application Layer: Current Behavioral Reality
 
@@ -278,7 +344,7 @@ Feedback behavior:
 
 Feedback persistence:
 - UI is outfit-level; backend fans out to one `feedback_events` row per garment
-- `recommendation_run_id` is nullable (migration `20260317120000`)
+- `recommendation_run_id` has been removed from `feedback_events`; turn-level correlation now uses `turn_id` + `outfit_rank`
 - correlation: `conversation_id` + `turn_id` + `outfit_rank`
 - `feedback_events` columns: `turn_id` (FK to conversation_turns), `outfit_rank` (int)
 - `turn_id` injected into `response.metadata` by the orchestrator
@@ -390,7 +456,7 @@ This means:
 
 ## Database Table Inventory
 
-Supabase tables (25 migrations in `supabase/migrations/`):
+Supabase tables (26 migrations in `supabase/migrations/`):
 
 ### Core platform tables
 - `users` — id, external_user_id, profile_json, profile_updated_at
@@ -398,11 +464,11 @@ Supabase tables (25 migrations in `supabase/migrations/`):
 - `conversation_turns` — id, conversation_id, user_message, assistant_message, resolved_context_json
 - `model_calls` — logging for LLM calls (service, call_type, model, request/response JSON)
 - `tool_traces` — logging for tool executions (tool_name, input/output JSON)
-- `recommendation_events` — logging for recommendation pipeline events
-- `feedback_events` — user feedback tracking (user_id, conversation_id, garment_id, event_type, reward_value, notes, recommendation_run_id nullable, turn_id FK, outfit_rank)
+- `feedback_events` — user feedback tracking (user_id, conversation_id, garment_id, event_type, reward_value, notes, turn_id FK, outfit_rank)
+- `dependency_validation_events` — first-50 product-validation instrumentation (event_type, primary_intent, source_channel, metadata_json)
 
 ### Onboarding tables
-- `onboarding_profiles` — user_id (unique), mobile (unique), otp fields, name, date_of_birth, gender, height_cm, waist_cm, profession, profile_complete, onboarding_complete
+- `onboarding_profiles` — user_id (unique), mobile (unique), otp fields, acquisition_source, acquisition_campaign, referral_code, icp_tag, name, date_of_birth, gender, height_cm, waist_cm, profession, profile_complete, onboarding_complete
 - `onboarding_images` — user_id, category (full_body/headshot), encrypted_filename, file_path, mime_type, file_size_bytes; unique on (user_id, category)
 - `user_analysis_runs` — tracks analysis snapshots per user (status, model_name, body_type_output, color_headshot_output, other_details_output, collated_output)
 - `user_derived_interpretations` — stores deterministic interpretations (SeasonalColorGroup, HeightCategory, WaistSizeBand, ContrastLevel, FrameStructure) with value/confidence/evidence_note
@@ -443,7 +509,8 @@ modules/
 │       ├── onboarding_gateway.py    # App-facing user interface (ApplicationUserGateway) + person image lookup
 │       ├── catalog_retrieval_gateway.py # App-facing retrieval interface
 │       ├── tryon_service.py         # Virtual try-on via Gemini (gemini-3.1-flash-image-preview)
-│       └── comfort_learning.py      # Behavioral seasonal palette refinement
+│       ├── comfort_learning.py      # Behavioral seasonal palette refinement
+│       └── dependency_reporting.py  # First-50 retention/dependency reporting
 ├── user/src/user/
 │   ├── api.py                    # Onboarding REST endpoints
 │   ├── service.py                # OTP, profile, image handling
@@ -509,7 +576,7 @@ Run tests:
 python3 -m pytest tests/ -v
 ```
 
-200 tests across 14 files.
+298 tests across 14 files.
 
 Focused application suites:
 
@@ -593,11 +660,245 @@ catalog_enriched (product_id unique)
   └── catalog_item_embeddings (product_id)
 ```
 
-## Immediate Priority Order
+## Copilot Execution Rule
 
-1. build dedicated eval harness for systematic recommendation quality testing
+For the next implementation phase, `docs/CURRENT_STATE.md` is the execution source of truth.
+
+Operating rule:
+- every meaningful implementation change should map to one checklist item below
+- before starting a new major implementation slice, check the next incomplete item in this document
+- after completing a slice, update the checklist state here
+- do not treat ad hoc chat plans as canonical when they diverge from this file
+
+## Next-Phase Build Checklist
+
+### Phase 0: Product Contracts and Architecture
+
+Goal:
+- define the target copilot precisely before expanding implementation
+
+Checklist:
+- [x] define strategic product direction in `docs/APPLICATION_SPECS.md`
+- [x] define first-50 dependency validation goal
+- [x] define mandatory onboarding before chat access
+- [x] define intent taxonomy for the target copilot
+- [x] define profile-confidence and recommendation-confidence contracts
+- [x] define guardrail expectations for uploads, restricted products, and try-on
+- [x] create a dedicated target architecture document
+- [x] document the target architecture diagram in `docs/INTENT_COPILOT_ARCHITECTURE.md`
+
+Success criteria:
+- target system is documented clearly enough that implementation order is obvious
+
+### Phase 1: Copilot Runtime Foundation
+
+Goal:
+- put the new copilot shell around the current recommendation runtime
+
+Checklist:
+- [x] add explicit onboarding gate evaluation before chat
+- [x] block turns when mandatory onboarding or analysis is incomplete
+- [x] add profile-confidence computation
+- [x] surface profile confidence in response metadata
+- [x] add channel-aware turn requests (`web` / future `whatsapp`)
+- [x] add explicit intent classification structure
+- [x] implement rule-based intent router
+- [x] add stage messaging for onboarding gate and intent routing
+- [x] route `style_discovery` without entering the recommendation planner
+- [x] route `explanation_request` without entering the recommendation planner
+- [x] persist intent and channel metadata into turn / conversation artifacts
+- [x] fix feedback resolution so persisted `recommendations` can be used when `final_recommendations` is absent
+
+Success criteria:
+- the current recommendation runtime can behave like the beginning of a broader copilot instead of only an outfit-retrieval engine
+
+### Phase 2: Unified Memory Layer
+
+Goal:
+- turn the system into a real memory-backed copilot
+
+Checklist:
+- [x] design and implement wardrobe data model
+- [x] plumb wardrobe items into app-facing user context
+- [x] design and implement wardrobe item ingestion flow
+- [x] persist wardrobe metadata and source images
+- [x] add catalog interaction history model
+- [x] write catalog interaction events from runtime actions
+- [x] add sentiment-history model
+- [x] persist structured sentiment traces
+- [x] strengthen feedback history linkage and integrity
+- [x] expand conversation memory beyond recommendation follow-ups
+- [x] add confidence-history persistence
+- [x] add policy-event persistence
+
+Success criteria:
+- the system has durable memory beyond the current conversation-only recommendation context
+
+### Phase 3: Intent Handlers
+
+Goal:
+- support the full target intent taxonomy in runtime code
+
+Checklist:
+- [x] implement `shopping_decision` handler
+- [x] implement `pairing_request` handler
+- [x] implement `outfit_check` handler
+- [x] implement `garment_on_me_request` handler
+- [x] implement `capsule_or_trip_planning` handler
+- [x] implement `wardrobe_ingestion` handler
+- [x] implement richer `feedback_submission` handler
+- [x] implement `virtual_tryon_request` handler path
+- [x] implement `style_discovery` handler
+- [x] implement `explanation_request` handler
+- [x] ensure every intent records read/write memory sources and routing metadata
+
+Success criteria:
+- the copilot can respond to all primary user jobs as intent-specific runtime paths
+
+### Phase 4: Wardrobe-First Reasoning
+
+Goal:
+- make the user's owned wardrobe a first-class source of truth
+
+Checklist:
+- [x] implement wardrobe-first retrieval for pairing requests
+- [x] implement wardrobe-first retrieval for occasion recommendations
+- [x] implement wardrobe-first outfit planning for capsule / travel use cases
+- [x] support catalog upsell / better-option nudge after wardrobe-first answers
+- [x] distinguish wardrobe-derived vs catalog-derived answer components in responses
+
+Success criteria:
+- the copilot can answer from the user's wardrobe first, with catalog as augmentation rather than default replacement
+
+### Phase 5: WhatsApp Surface
+
+Goal:
+- add the retention surface that will validate dependency
+
+Checklist:
+- [x] implement WhatsApp inbound adapter
+- [x] implement channel identity resolution from WhatsApp to canonical user
+- [x] implement WhatsApp-safe response formatting
+- [x] support image and link handling from WhatsApp inputs
+- [x] support WhatsApp re-engagement / reminder flow
+- [x] support deep links from WhatsApp back to web for heavy tasks
+- [x] ensure the same user memory graph is shared across website and WhatsApp
+
+Success criteria:
+- onboarded users can use the same copilot through WhatsApp with shared memory and intent routing
+
+### Phase 6: Safety, Moderation, and Trust
+
+Goal:
+- enforce the safety boundaries described in the product contract
+
+Checklist:
+- [x] implement nude-image upload blocking
+- [x] implement minors / unsafe-image blocking policy
+- [x] implement lingerie / restricted-category upload blocking
+- [x] implement retrieval-time exclusion for restricted product categories
+- [x] implement recommendation-time restricted-category checks
+- [x] implement virtual try-on quality gate
+- [x] fail closed when try-on output is distorted or low quality
+- [x] emit structured policy events for all moderation outcomes
+- [x] add user-facing graceful fallback messages for blocked or failed cases
+
+Success criteria:
+- unsafe inputs and unsafe outputs are blocked systematically, not left to best effort
+
+### Phase 7: Recommendation Confidence and Explainability
+
+Goal:
+- make trust visible and grounded
+
+Checklist:
+- [x] implement profile-confidence engine
+- [x] implement recommendation-confidence engine
+- [x] compute recommendation confidence from actual runtime evidence
+- [x] expose recommendation confidence in responses
+- [x] attach explanation payloads for confidence values
+- [x] expand "why" responses to reference wardrobe, catalog, feedback, and confidence state together
+
+Success criteria:
+- users can understand both what the system recommends and how certain it is
+
+### Phase 8: First-50 Dependency Validation
+
+Goal:
+- prove repeated usage on real clothing decisions
+
+Checklist:
+- [x] instrument acquisition source tracking for onboarding users
+- [x] instrument repeat usage across web and WhatsApp
+- [x] instrument referral / advocacy events
+- [x] build reporting for first session, second session, and third session behavior
+- [x] identify recurring-anchor intents by user cohort
+- [x] report which memory inputs improve retention and dependency
+
+Success criteria:
+- we can say with evidence whether users are forming a real pre-buy / pre-dress dependency on the system
+
+## Immediate Next Item
+
+No incomplete implementation slices remain in the documented next-phase checklist.
+
+Operating note:
+- keep `docs/CURRENT_STATE.md` aligned to future runtime changes, but the March 19, 2026 checklist is complete
+
+## Phase 9: Post-Checklist Hardening
+
+Goal:
+- convert the completed build into a production-trustworthy operating baseline
+
+Checklist:
+- [ ] run migration verification against a linked local / staging Supabase environment
+- [ ] smoke-test onboarding -> analysis -> first chat -> wardrobe -> WhatsApp -> dependency report against real persistence
+- [ ] validate dependency-report outputs with seeded multi-session data across both channels
+- [ ] review all docs for claims that still rely on unit/integration tests rather than live manual verification
+- [ ] define operational dashboards / queries for the first-50 rollout
+- [ ] add release-readiness criteria for shipping beyond the current dev-complete state
+
+Success criteria:
+- the system is not only feature-complete on paper and in tests, but also verified as operationally ready in a real environment
+
+## Phase 10: Redundancy Cleanup
+
+Goal:
+- remove dead repo residue and document likely schema leftovers without dropping live data blindly
+
+Checklist:
+- [x] remove generated Python cache directories from the repo
+- [x] remove dead `modules/conversation_platform` residue
+- [x] remove unused `archive/` catalog files if they are not part of an active manual workflow
+- [x] remove dead backward-compat aliases with zero consumers
+- [x] remove stray workstation-generated files from the repo root
+- [x] remove empty package directories that no longer back live imports
+- [x] review docs for statements that claim a cleanup already happened when residue still exists
+- [x] identify likely orphaned database tables from the original `conversation_platform` schema
+- [x] drop zero-row orphaned database tables after confirming they are unused in staging and not needed for historical recovery
+
+Dropped orphaned staging tables:
+- `media_assets`
+- `profile_snapshots`
+- `context_snapshots`
+- `recommendation_runs`
+- `recommendation_items`
+- `checkout_preparations`
+- `checkout_preparation_items`
+
+Doc drift found during cleanup:
+- `recommendation_events` was listed in the database inventory below, but the table did not exist in staging and had no active code references; inventory corrected
+
+Success criteria:
+- the repo no longer carries obvious dead runtime residue, and any destructive schema cleanup is deferred until it is evidenced and reversible
+
+## Historical Completed Priority Work
+
+The checklist below is still useful as the completion record for the current recommendation runtime. It is no longer the forward-looking product plan for the next implementation phase.
 
 ## Unified Action Checklist
+
+### Current runtime work already completed
 
 ### Priority 1: Recommendation Safety
 
@@ -724,8 +1025,8 @@ Mobile (`max-width: 900px`): stack vertically — hero image, horizontal thumbna
 - UI action is outfit-level (user clicks Like/Dislike on the whole card)
 - Persistence fans out to one `feedback_events` row per garment in the outfit
 - Each row shares the same `event_type` and `notes`
-- `recommendation_run_id` is NOT available from the agentic pipeline → make nullable via migration
-- Correlation: use `conversation_id` + `turn_id` (already available in response metadata) instead of `recommendation_run_id`
+- Recommendation runs are no longer part of the active schema
+- Correlation uses `conversation_id` + `turn_id` + `outfit_rank`
 - Add `turn_id` and `outfit_rank` columns to `feedback_events` for traceability
 
 #### Step 1: Schema alignment (`modules/platform_core/src/platform_core/api_schemas.py`)
@@ -742,6 +1043,7 @@ Mobile (`max-width: 900px`): stack vertically — hero image, horizontal thumbna
 #### Step 3: DB migration (`supabase/migrations/20260317120000_feedback_events_outfit_columns.sql`)
 
 - [x] `ALTER TABLE feedback_events ALTER COLUMN recommendation_run_id DROP NOT NULL`
+- [x] later cleanup removed `feedback_events.recommendation_run_id` after confirming zero non-null rows in staging
 - [x] `ALTER TABLE feedback_events ADD COLUMN IF NOT EXISTS turn_id uuid REFERENCES conversation_turns(id)`
 - [x] `ALTER TABLE feedback_events ADD COLUMN IF NOT EXISTS outfit_rank int`
 

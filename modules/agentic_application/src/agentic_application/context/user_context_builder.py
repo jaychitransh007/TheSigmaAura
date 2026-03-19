@@ -49,9 +49,14 @@ def build_user_context(
     attributes = status.get("attributes") or {}
     derived = status.get("derived_interpretations") or {}
     style_pref = profile.get("style_preference") or {}
+    wardrobe_items = onboarding_gateway.get_wardrobe_items(user_id)
+    if not isinstance(wardrobe_items, list):
+        wardrobe_items = []
 
     # Overlay effective seasonal groups from draping / comfort learning
     effective = onboarding_gateway.get_effective_seasonal_groups(user_id)
+    if not isinstance(effective, list):
+        effective = []
     if effective:
         seasonal = derived.get("SeasonalColorGroup")
         if isinstance(seasonal, dict):
@@ -79,6 +84,7 @@ def build_user_context(
         analysis_attributes=attributes,
         derived_interpretations=derived,
         style_preference=style_pref,
+        wardrobe_items=wardrobe_items,
         profile_richness=richness,
     )
 

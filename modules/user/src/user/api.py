@@ -21,6 +21,8 @@ from .schemas import (
     StylePreferenceResponse,
     VerifyOtpRequest,
     VerifyOtpResponse,
+    WardrobeItemListResponse,
+    WardrobeItemResponse,
 )
 from .service import OnboardingService
 from .analysis import UserAnalysisService
@@ -37,7 +39,14 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
     @router.post("/verify-otp", response_model=VerifyOtpResponse)
     def verify_otp(payload: VerifyOtpRequest) -> VerifyOtpResponse:
         try:
-            ok, user_id, msg = service.verify_otp(payload.mobile, payload.otp)
+            ok, user_id, msg = service.verify_otp(
+                payload.mobile,
+                payload.otp,
+                acquisition_source=payload.acquisition_source,
+                acquisition_campaign=payload.acquisition_campaign,
+                referral_code=payload.referral_code,
+                icp_tag=payload.icp_tag,
+            )
         except (SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         if not ok:
@@ -75,7 +84,7 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
                 filename=file.filename or "image.jpg",
                 content_type=file.content_type,
             )
-        except (SupabaseError, RuntimeError) as exc:
+        except (SupabaseError, RuntimeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         headers = {"X-Normalized-Filename": normalized_name}
         return Response(content=normalized_data, media_type=normalized_type, headers=headers)
@@ -97,7 +106,10 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
                 category=category,
                 file_data=data,
                 filename=file.filename or "image.jpg",
+                content_type=file.content_type or "image/jpeg",
             )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         except (SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         if result is None:
@@ -128,6 +140,60 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         if not session:
             raise HTTPException(status_code=404, detail="User not found.")
         return StyleArchetypeSessionResponse(**session)
+
+    @router.get("/wardrobe/{user_id}", response_model=WardrobeItemListResponse)
+    def get_wardrobe_items(user_id: str) -> WardrobeItemListResponse:
+        try:
+            out = service.list_wardrobe_items(user_id)
+        except (SupabaseError, RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return WardrobeItemListResponse(**out)
+
+    @router.post("/wardrobe/items", response_model=WardrobeItemResponse)
+    def save_wardrobe_item(
+        user_id: str = Form(...),
+        title: str = Form(""),
+        description: str = Form(""),
+        garment_category: str = Form(""),
+        garment_subtype: str = Form(""),
+        primary_color: str = Form(""),
+        secondary_color: str = Form(""),
+        pattern_type: str = Form(""),
+        formality_level: str = Form(""),
+        occasion_fit: str = Form(""),
+        brand: str = Form(""),
+        notes: str = Form(""),
+        file: UploadFile = File(...),
+    ) -> WardrobeItemResponse:
+        if not file.content_type or not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        data = file.file.read()
+        if len(data) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Image must be under 10MB")
+        try:
+            out = service.save_wardrobe_item(
+                user_id=user_id,
+                file_data=data,
+                filename=file.filename or "wardrobe.jpg",
+                content_type=file.content_type,
+                source="onboarding",
+                title=title,
+                description=description,
+                garment_category=garment_category,
+                garment_subtype=garment_subtype,
+                primary_color=primary_color,
+                secondary_color=secondary_color,
+                pattern_type=pattern_type,
+                formality_level=formality_level,
+                occasion_fit=occasion_fit,
+                brand=brand,
+                notes=notes,
+            )
+        except (SupabaseError, RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not out:
+            raise HTTPException(status_code=404, detail="User not found.")
+        return WardrobeItemResponse(**out)
 
     @router.post("/style/complete", response_model=StylePreferenceResponse)
     def save_style_preference(payload: StylePreferenceCompleteRequest) -> StylePreferenceResponse:

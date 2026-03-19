@@ -771,15 +771,15 @@ def get_web_ui_html(user_id: str = "") -> str:
 
     async function ensureConversation() {
       if (convIdEl.value.trim()) return convIdEl.value.trim();
-      const res = await fetch("/v1/conversations", {
+      const res = await fetch("/v1/conversations/resolve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userIdEl.value.trim() }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to create conversation");
+      if (!res.ok) throw new Error(data.detail || "Failed to resolve conversation");
       convIdEl.value = data.conversation_id;
-      addMeta("conversation created");
+      addMeta(data.reused_existing ? "conversation resumed" : "conversation created");
       return data.conversation_id;
     }
 

@@ -12,6 +12,7 @@ from ..schemas import (
 )
 
 import re
+from platform_core.restricted_categories import detect_restricted_record
 
 MAX_FORMATTED_OUTFITS = 3
 
@@ -50,6 +51,53 @@ def _build_item_card(item: Dict[str, Any]) -> Dict[str, Any]:
         "volume_profile": str(item.get("volume_profile", "")),
         "fit_type": str(item.get("fit_type", "")),
         "silhouette_type": str(item.get("silhouette_type", "")),
+        "source": str(item.get("source", "catalog") or "catalog"),
+    }
+
+
+def _filter_allowed_items(items: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], List[str]]:
+    allowed: List[Dict[str, Any]] = []
+    blocked_terms: List[str] = []
+    for item in items:
+        blocked_term = detect_restricted_record(item)
+        if blocked_term:
+            blocked_terms.append(blocked_term)
+            continue
+        allowed.append(item)
+    return allowed, blocked_terms
+
+
+def _summarize_answer_components(outfits: List[OutfitCard]) -> Dict[str, Any]:
+    breakdown: List[Dict[str, Any]] = []
+    wardrobe_item_count = 0
+    catalog_item_count = 0
+    for outfit in outfits:
+        item_sources = [str(item.get("source", "catalog") or "catalog") for item in outfit.items]
+        wardrobe_count = sum(1 for source in item_sources if source == "wardrobe")
+        catalog_count = sum(1 for source in item_sources if source == "catalog")
+        wardrobe_item_count += wardrobe_count
+        catalog_item_count += catalog_count
+        source_mix = "mixed" if wardrobe_count and catalog_count else ("wardrobe" if wardrobe_count else "catalog")
+        breakdown.append(
+            {
+                "rank": outfit.rank,
+                "source_mix": source_mix,
+                "wardrobe_item_count": wardrobe_count,
+                "catalog_item_count": catalog_count,
+            }
+        )
+
+    primary_source = "mixed"
+    if wardrobe_item_count and not catalog_item_count:
+        primary_source = "wardrobe"
+    elif catalog_item_count and not wardrobe_item_count:
+        primary_source = "catalog"
+
+    return {
+        "primary_source": primary_source,
+        "wardrobe_item_count": wardrobe_item_count,
+        "catalog_item_count": catalog_item_count,
+        "outfit_breakdown": breakdown,
     }
 
 
@@ -84,12 +132,17 @@ class ResponseFormatter:
 
         items_lookup = _candidate_items_by_id(candidates)
         outfits: List[OutfitCard] = []
+        blocked_item_count = 0
 
         for rec in sorted(evaluated, key=lambda r: r.rank)[:MAX_FORMATTED_OUTFITS]:
-            items = items_lookup.get(rec.candidate_id, [])
+            raw_items = items_lookup.get(rec.candidate_id, [])
+            items, blocked_terms = _filter_allowed_items(raw_items)
+            blocked_item_count += len(blocked_terms)
+            if not items:
+                continue
             outfits.append(
                 OutfitCard(
-                    rank=rec.rank,
+                    rank=len(outfits) + 1,
                     title=rec.title,
                     reasoning=rec.reasoning,
                     body_note=rec.body_note,
@@ -116,6 +169,20 @@ class ResponseFormatter:
                 )
             )
 
+        if not outfits:
+            return RecommendationResponse(
+                success=True,
+                message="I couldn't return safe outfit recommendations for this request. Try a different occasion or style direction.",
+                outfits=[],
+                follow_up_suggestions=["Try a different occasion", "Show me something casual"],
+                metadata={
+                    "plan_type": plan.plan_type,
+                    "plan_source": plan.plan_source,
+                    "direction_count": len(plan.directions),
+                    "restricted_item_exclusion_count": blocked_item_count,
+                },
+            )
+
         message = self._build_message(combined_context, outfits, plan)
         suggestions = self._build_follow_up_suggestions(combined_context, plan)
 
@@ -129,6 +196,8 @@ class ResponseFormatter:
                 "plan_source": plan.plan_source,
                 "direction_count": len(plan.directions),
                 "outfit_count": len(outfits),
+                "restricted_item_exclusion_count": blocked_item_count,
+                "answer_components": _summarize_answer_components(outfits),
             },
         )
 

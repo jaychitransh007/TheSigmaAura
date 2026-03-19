@@ -1,10 +1,14 @@
 # Application Layer — Implementation Specification
 
-Last updated: March 18, 2026
+Last updated: March 19, 2026
 
 ## Current Implementation Status
 
-This document is both the target v1 contract and the current implementation reference for `modules/agentic_application`.
+This document serves two purposes:
+- the current implementation reference for the active recommendation runtime in `modules/agentic_application`
+- the next-phase product contract for the intent-driven personal fashion copilot discussed on March 19, 2026
+
+For the user-facing product summary, personas, journeys, and stories, see `docs/PRODUCT.md`.
 
 Implemented now:
 - active runtime entrypoint in `agentic_application/api.py` with `AgenticOrchestrator`
@@ -42,6 +46,597 @@ Implemented now:
 - multi-group seasonal color support: architect and evaluator receive `SeasonalColorGroup_additional` when user has multiple seasonal groups
 
 All features implemented and smoke-tested.
+
+## March 19, 2026 Strategic Product Direction
+
+This section defines the next major implementation phase.
+
+It does **not** replace the current runtime description below. Instead, it reframes the application layer from a recommendation-only pipeline into a broader memory-backed fashion copilot that:
+- requires onboarding before chat access
+- uses the website for onboarding and discovery
+- uses WhatsApp for repeat usage and retention
+- routes every chat turn by intent instead of exposing separate tools
+- combines user profile, user wardrobe, catalog inventory, and interaction history in one orchestration model
+
+### Product Definition
+
+Target product definition:
+
+> A mandatory-onboarding, intent-driven personal fashion copilot that helps the user make better shopping and dressing decisions over time, using structured profile analysis, optional wardrobe memory, catalog retrieval, and conversational learning.
+
+Core principle:
+- onboarding is required before chat access
+- wardrobe onboarding is optional for the user, but wardrobe support is mandatory in the system
+- chat is the primary operating surface after onboarding
+
+### First-50 Validation Goal
+
+The next implementation phase is not trying to validate generic "AI engagement."
+
+It is trying to validate **dependency** for the first 50 onboarded users.
+
+Dependency means the user returns to the system before or during real clothing decisions such as:
+- whether to buy an item
+- what to pair with an item
+- what to wear for an occasion
+- how to plan a workweek, travel set, or mini capsule
+
+The first-50 validation goal is:
+- acquire 50 fully onboarded users
+- observe repeated use through WhatsApp after onboarding
+- determine which intents become recurring anchors in the user's life
+- learn whether the product becomes a pre-buy / pre-dress habit rather than a one-time novelty
+
+### Operating Surfaces
+
+#### 1. Website — onboarding and discovery
+
+Website responsibilities:
+- capture acquisition source and ICP hypothesis
+- enforce pre-chat onboarding gate
+- collect mandatory profile data
+- collect required images and run analysis
+- collect required saved preferences
+- optionally collect wardrobe items
+- show profile confidence and how to improve it
+- provide the first successful chat session
+
+#### 2. WhatsApp — retention and repeat usage
+
+WhatsApp responsibilities:
+- serve as the lightweight repeat-use surface after onboarding
+- accept new user intents in natural language or images/links
+- support quick conversational loops with low friction
+- drive return usage for shopping, pairing, occasion, and wardrobe-first requests
+- send re-engagement nudges and reminders
+- deep-link back to web only for heavy tasks:
+  - image re-capture
+  - wardrobe management
+  - confidence detail
+  - profile edits
+
+### Mandatory Pre-Chat Onboarding Contract
+
+Chat access is blocked until the user completes required onboarding.
+
+Required before first chat:
+- identity/contact record
+- consent + safety acknowledgement
+- baseline profile:
+  - name
+  - date of birth
+  - gender / gender expression mapping policy
+  - height
+  - waist
+  - profession
+- required images:
+  - full-body
+  - headshot
+- profile analysis run
+- deterministic interpretations
+- saved preferences / style preference completion
+
+Optional during onboarding:
+- wardrobe upload / wardrobe seeding
+
+Rationale:
+- the system depends on profile-aware reasoning
+- confidence reporting must be grounded in actual evidence
+- the user must see why the system is confident or not confident
+- optional wardrobe memory should increase value, but should not block first access if the mandatory onboarding contract is satisfied
+
+### Data Contract for the Copilot
+
+#### Required pre-chat state
+
+The system must have these records before chat unlocks:
+- `user_profile`
+- `onboarding_images`
+- `analysis_attributes`
+- `derived_interpretations`
+- `style_preferences`
+- `profile_confidence_state`
+- `consent_and_guardrail_state`
+
+#### Optional user-supplied state
+
+The user may provide these at onboarding or later:
+- `wardrobe_items`
+- `wardrobe_item_images`
+- `favorite_brands`
+- `budget_bounds`
+- `occasion_preferences`
+
+#### System-generated memory
+
+These are not onboarding inputs for a first-time user, but they are mandatory for the long-term intelligence of the system:
+- `user_queries`
+- `conversation_turns`
+- `feedback_history`
+- `catalog_interaction_history`
+- `wardrobe_usage_history`
+- `sentiment_history`
+- `recommendation_history`
+- `confidence_history`
+- `policy_events`
+
+### Intent Taxonomy
+
+The system should route every incoming message into one primary intent and optional secondary intents.
+
+Primary intent taxonomy:
+
+| Intent ID | User job | Typical inputs | Core data sources | Core outputs |
+|---|---|---|---|---|
+| `shopping_decision` | "Should I buy this?" | product URL, screenshot, description | user profile, past preferences, catalog, chat history | buy / skip, why, pairings, alternatives |
+| `capsule_or_trip_planning` | "Plan my outfits for daily life or travel." | trip plan, date range, workweek brief | user profile, wardrobe, catalog, past chats | bounded set of outfits / packing list / gaps |
+| `outfit_check` | "How does what I'm wearing look?" | current outfit image(s) | profile, analysis, preferences, past feedback | outfit assessment, improvement suggestions, confidence |
+| `garment_on_me_request` | "How will this look on me?" | garment image / link + user image context | profile, body/color interpretation, catalog, try-on capability | qualitative fit assessment, try-on if safe |
+| `pairing_request` | "What goes with this piece?" | wardrobe item image, product link, text | wardrobe, catalog, preferences, history | pairings from wardrobe first, then catalog |
+| `wardrobe_ingestion` | "Save this into my wardrobe." | item image(s), link, text | profile, moderation, memory store | wardrobe item saved + metadata |
+| `occasion_recommendation` | "What should I wear for this occasion?" | occasion, formality, weather/trip/work context | wardrobe, profile, catalog, history | wardrobe-first outfit(s), optional catalog upsell |
+| `style_discovery` | "What style suits me?" | text question, profile, images | analysis, interpretations, preferences | style explanation, archetype rationale, next actions |
+| `explanation_request` | "Why did you recommend this?" | reference to prior answer | prior chats, recommendation history, confidence state | transparent explanation |
+| `feedback_submission` | "I liked / disliked this." | explicit feedback | recommendation history, wardrobe, comfort learning | stored feedback + learning update |
+| `virtual_tryon_request` | "Show this on me." | garment input + user image context | profile, moderation, try-on pipeline | try-on result or safe failure |
+
+Intent routing requirements:
+- each turn must have exactly one primary intent
+- the router may attach secondary intents
+- every routed intent must record:
+  - routing confidence
+  - data sources read
+  - memory written
+  - policies triggered
+
+### Confidence Model
+
+The UI should show confidence, but the confidence must be decomposable and explainable.
+
+#### 1. Profile confidence
+
+Profile confidence answers:
+- how complete is the user's style/body/color profile?
+- how reliable is the personalization basis behind future recommendations?
+
+Profile confidence should be computed from weighted factors:
+- profile completeness
+- image quality
+- image coverage
+- analysis confidence
+- interpretation confidence
+- style preference completion
+- wardrobe coverage, if present
+- consistency of explicit feedback over time
+
+Profile confidence UX contract:
+- show a percentage
+- show the top missing evidence
+- show which onboarding actions improve the score
+
+Example:
+- `Profile confidence: 68%`
+- `Improve to 82% by uploading a clearer full-body photo`
+- `Improve to 89% by saving 5 wardrobe staples`
+
+#### 2. Recommendation confidence
+
+Recommendation confidence answers:
+- how strongly does the system believe this answer fits the user and the request?
+
+Recommendation confidence should consider:
+- clarity of detected intent
+- clarity of occasion/context
+- profile confidence
+- wardrobe coverage for wardrobe-first requests
+- catalog metadata completeness
+- retrieval depth / candidate quality
+- prior positive signals on similar items or styles
+- virtual try-on quality gate status if try-on is involved
+
+The system must never show a recommendation confidence percentage without an internal explanation payload.
+
+### Safety and Guardrail Contract
+
+The next-phase product must enforce the following guardrails:
+
+#### Image upload guardrails
+- reject nude or sexually explicit user images
+- reject images of minors
+- reject lingerie / underwear product uploads if outside allowed scope
+- reject non-garment wardrobe uploads when the user is trying to save wardrobe items
+
+#### Recommendation guardrails
+- exclude lingerie / underwear from:
+  - catalog retrieval
+  - wardrobe pairing
+  - outfit check recommendations
+  - virtual try-on request fulfillment
+- prevent unsafe or distorted outputs from reaching the user
+
+#### Virtual try-on guardrails
+- try-on must fail closed
+- if composition quality is poor, body distortion is visible, or garment fidelity is broken, the result must not be shown
+- the user should receive a safe fallback explanation instead of a bad image
+
+#### Auditability
+
+Every moderation / policy decision should emit a structured event:
+- `policy_event_type`
+- input class
+- reason code
+- blocked / allowed / escalated
+- model or rule source
+
+### Suggested Architecture Diagram
+
+```mermaid
+flowchart TD
+    A[Website Acquisition + Onboarding] --> B[Mandatory Onboarding Gate]
+    B --> C[Profile Store]
+    B --> D[Image Store]
+    D --> E[Profile Analysis + Interpretation]
+    E --> F[Profile Confidence Engine]
+    B --> G[Saved Preferences]
+    B --> H[Optional Wardrobe Seeding]
+
+    I[Web Chat] --> J[Intent Router]
+    K[WhatsApp Chat] --> J
+
+    J --> L[Policy + Moderation Layer]
+    L --> M[Context Compiler]
+
+    C --> M
+    E --> M
+    F --> M
+    G --> M
+    H --> M
+    N[Conversation Memory] --> M
+    O[Feedback History] --> M
+    P[Catalog Interaction History] --> M
+    Q[Sentiment History] --> M
+    R[Catalog Retrieval + Ranking] --> M
+
+    M --> S{Intent Handler}
+    S --> S1[Shopping Decision]
+    S --> S2[Capsule / Trip Planning]
+    S --> S3[Outfit Check]
+    S --> S4[Garment on Me]
+    S --> S5[Pairing Request]
+    S --> S6[Wardrobe Ingestion]
+    S --> S7[Occasion Recommendation]
+    S --> S8[Style Discovery]
+    S --> S9[Explanation]
+    S --> S10[Feedback]
+    S --> S11[Virtual Try-on]
+
+    S1 --> T[Response Composer]
+    S2 --> T
+    S3 --> T
+    S4 --> T
+    S5 --> T
+    S6 --> T
+    S7 --> T
+    S8 --> T
+    S9 --> T
+    S10 --> T
+    S11 --> T
+
+    T --> U[Recommendation Confidence Engine]
+    U --> V[Chat Response]
+
+    V --> W[Memory Writer]
+    W --> N
+    W --> O
+    W --> P
+    W --> Q
+
+    X[Telemetry + Outcome Tracking] --- A
+    X --- I
+    X --- K
+    X --- J
+    X --- T
+    X --- W
+```
+
+### High-Level Implementation Plan
+
+Implementation should proceed in seven phases.
+
+#### Phase 0 — contracts, analytics, and truth model
+
+Deliverables:
+- formal intent taxonomy
+- event schema for every user action and policy action
+- data lineage contract for every confidence percentage
+- success metrics for the first 50 users
+
+Done when:
+- every surface has a named event contract
+- every intent has read/write memory definitions
+- every reported confidence percentage has a documented formula source
+
+#### Phase 1 — onboarding gate and confidence foundation
+
+Deliverables:
+- enforce chat lock until onboarding completion
+- profile confidence engine
+- onboarding completion steps with explicit "how to improve confidence"
+- optional wardrobe onboarding entry point
+
+Done when:
+- user cannot access chat before required onboarding
+- onboarding completion status is deterministic and testable
+- profile confidence updates as required evidence is added
+
+#### Phase 2 — unified memory model
+
+Deliverables:
+- persistent stores for:
+  - user queries
+  - past chats
+  - feedback history
+  - catalog interaction history
+  - wardrobe items
+  - sentiment traces
+- context compiler that reads the right memory per intent
+
+Done when:
+- every response is traceable to its memory inputs
+- wardrobe, feedback, and chat history can all influence later turns
+
+#### Phase 3 — intent router and handler contracts
+
+Deliverables:
+- router for all primary intents
+- handler interfaces for the 11 supported intents
+- common response schema for explanation, confidence, follow-ups, and actions
+
+Done when:
+- every user message resolves to one primary intent
+- unsupported / ambiguous turns trigger clarification, not silent fallback
+
+#### Phase 4 — wardrobe + catalog blend
+
+Deliverables:
+- wardrobe-first retrieval for pairing and occasion flows
+- catalog upsell / better-option nudge
+- wardrobe ingestion from onboarding and chat
+
+Done when:
+- the system can answer from wardrobe only
+- the system can answer from catalog only
+- the system can answer from wardrobe first, then catalog as a secondary suggestion
+
+#### Phase 5 — WhatsApp retention surface
+
+Deliverables:
+- WhatsApp channel adapter
+- channel-safe response formatting
+- re-engagement messages
+- deep links back to website for heavy tasks
+
+Done when:
+- an onboarded user can use the same memory-backed copilot from WhatsApp
+- WhatsApp events are linked to the same user and conversation graph as web events
+
+#### Phase 6 — safety, try-on, and trust layer
+
+Deliverables:
+- nudity / restricted garment moderation
+- restricted-category exclusion in retrieval
+- virtual try-on quality gate
+- explanation payloads for confidence and recommendation reasoning
+
+Done when:
+- blocked content is consistently blocked and audited
+- distorted try-on output never reaches the user
+- "why" answers are grounded in persisted evidence
+
+#### Phase 7 — first-50 dependency validation
+
+Deliverables:
+- first-50 recruitment and instrumentation
+- cohort tracking
+- recurring-intent analysis
+- dependency and referral reporting
+
+Done when:
+- we can identify which intents drive repeat usage
+- we can measure whether users return before real shopping / dressing decisions
+- we can observe which users convert into advocates
+
+### User Stories and Clear Outcome Measures
+
+The implementation should be judged against the following user stories and acceptance outcomes.
+
+#### US-01 — Mandatory onboarding before chat
+
+As a new user, I must complete onboarding before I can access chat so that the system has enough evidence to personalize safely.
+
+Acceptance outcomes:
+- chat is inaccessible until onboarding is complete
+- onboarding explicitly shows what is required vs optional
+- the user sees profile confidence and how to improve it
+
+#### US-02 — Shopping decision
+
+As an onboarded user, I can share a product link, screenshot, or garment image and ask whether I should buy it.
+
+Acceptance outcomes:
+- response includes buy / skip
+- response explains why
+- response includes pairing guidance
+- response stores the request and later outcomes for learning
+
+#### US-03 — Daily-use or travel capsule request
+
+As an onboarded user, I can ask for a set of outfits for daily use or a particular trip.
+
+Acceptance outcomes:
+- response is bounded to the requested context
+- wardrobe is used first if available
+- missing wardrobe / catalog gaps are made explicit
+
+#### US-04 — Outfit check for what I am wearing
+
+As an onboarded user, I can send my current outfit and ask how it looks.
+
+Acceptance outcomes:
+- the system evaluates the look against my profile and request context
+- confidence is shown
+- suggestions improve the current look, not just replace it
+
+#### US-05 — Garment-on-me request
+
+As an onboarded user, I can send a garment and ask how it would look on me.
+
+Acceptance outcomes:
+- the system returns qualitative assessment even if try-on is unavailable
+- if try-on is safe and high-quality, the system may attach it
+- if try-on quality is poor, the system fails safely
+
+#### US-06 — Pairing request
+
+As an onboarded user, I can share one item and ask what pairs well with it.
+
+Acceptance outcomes:
+- system can return pairings from wardrobe
+- system can return pairings from catalog
+- response identifies whether each pairing came from wardrobe or catalog
+
+#### US-07 — Wardrobe ingestion
+
+As an onboarded user, I can add wardrobe items during onboarding or later through chat.
+
+Acceptance outcomes:
+- item is moderated
+- item metadata is captured
+- item becomes available for future wardrobe-first requests
+
+#### US-08 — Occasion recommendation from wardrobe first
+
+As an onboarded user, I can ask what to wear for an occasion and get an answer based on my wardrobe first.
+
+Acceptance outcomes:
+- wardrobe-first outfit recommendation is supported
+- the system can nudge better catalog options without replacing the wardrobe-first answer
+- the answer explains why the wardrobe option works
+
+#### US-09 — Product and outfit feedback
+
+As an onboarded user, I can give feedback on overall product quality and on specific outfits/items.
+
+Acceptance outcomes:
+- explicit feedback is stored with correct linkage to the relevant recommendation or item
+- feedback updates future reasoning
+- negative feedback suppresses repetition of similar bad outcomes
+
+#### US-10 — Style suitability
+
+As an onboarded user, I can ask what style would look good on me.
+
+Acceptance outcomes:
+- the answer references my profile analysis and saved preferences
+- the answer is not generic fashion prose
+- the answer tells me what additional evidence would improve the result
+
+#### US-11 — Explanation request
+
+As an onboarded user, I can ask why the recommendations are what they are.
+
+Acceptance outcomes:
+- the system explains using actual profile, wardrobe, catalog, and past-signal evidence
+- explanation is traceable to stored reasoning inputs
+- confidence rationale is available internally and summarized externally
+
+#### US-12 — Confidence visibility
+
+As an onboarded user, I can see confidence for my profile analysis and for recommendations.
+
+Acceptance outcomes:
+- profile confidence is shown with improvement actions
+- recommendation confidence is shown with an interpretable rationale
+- confidence never appears without a supporting explanation payload
+
+#### US-13 — Upload guardrails
+
+As the system, I must reject unsafe user images and restricted product categories.
+
+Acceptance outcomes:
+- nude images are blocked
+- lingerie / restricted items are blocked according to policy
+- blocked actions create auditable policy events
+
+#### US-14 — Virtual try-on quality fail-safe
+
+As the system, I must refuse to show try-on output when generation quality is poor or distorted.
+
+Acceptance outcomes:
+- bad try-on output is suppressed
+- user receives a graceful fallback message
+- quality-gate decision is logged
+
+### First-50 Success Measures
+
+The first-50 rollout should be evaluated against the following thresholds.
+
+Activation:
+- at least 70% of recruited users complete mandatory onboarding
+- median time from onboarding start to first useful answer is under 15 minutes including required analysis wait
+
+Repeat usage:
+- at least 40% of onboarded users start a second distinct chat session within 14 days
+- at least 25% of onboarded users use the copilot in 3 or more separate sessions within 30 days
+- at least 50% of repeat sessions happen through WhatsApp
+
+Behavioral depth:
+- at least 30% of onboarded users submit at least one wardrobe item
+- at least 40% of onboarded users provide explicit feedback on at least one response
+- at least 30% of onboarded users use more than one intent family:
+  - shopping
+  - dressing
+  - wardrobe
+  - style / explanation
+
+Trust and safety:
+- zero confirmed cases of nude images being accepted
+- zero confirmed cases of lingerie / restricted products being recommended where policy says they must be blocked
+- zero confirmed cases of visibly distorted try-on output being shown to users
+
+Advocacy:
+- at least 10% of onboarded users generate one measurable referral or invitation event
+
+### Definition of Implementation Success
+
+This next phase should be considered successful only if all of the following are true:
+- onboarding is mandatory and explainable
+- intent-driven chat works on web and WhatsApp
+- wardrobe is optional to provide but fully supported by the system
+- every major recommendation can explain itself
+- confidence is visible and grounded
+- policy guardrails are enforced and audited
+- first-50 data tells us which intents drive dependency
 
 ## Overview
 

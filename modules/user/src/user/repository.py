@@ -56,15 +56,54 @@ class OnboardingRepository:
             filters={"user_id": f"eq.{user_id}"},
         )
 
-    def create_profile(self, user_id: str, mobile: str) -> Dict[str, Any]:
+    def create_profile(
+        self,
+        user_id: str,
+        mobile: str,
+        *,
+        acquisition_source: str = "unknown",
+        acquisition_campaign: str = "",
+        referral_code: str = "",
+        icp_tag: str = "",
+    ) -> Dict[str, Any]:
         profile = self.client.insert_one("onboarding_profiles", {
             "user_id": user_id,
             "mobile": mobile,
+            "acquisition_source": acquisition_source or "unknown",
+            "acquisition_campaign": acquisition_campaign or "",
+            "referral_code": referral_code or "",
+            "icp_tag": icp_tag or "",
             "created_at": _now_iso(),
             "updated_at": _now_iso(),
         })
         self.insert_onboarding_profile_snapshot(user_id, snapshot_reason="created")
         return profile
+
+    def update_acquisition_context(
+        self,
+        user_id: str,
+        *,
+        acquisition_source: str = "",
+        acquisition_campaign: str = "",
+        referral_code: str = "",
+        icp_tag: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        patch: Dict[str, Any] = {"updated_at": _now_iso()}
+        if acquisition_source:
+            patch["acquisition_source"] = acquisition_source
+        if acquisition_campaign:
+            patch["acquisition_campaign"] = acquisition_campaign
+        if referral_code:
+            patch["referral_code"] = referral_code
+        if icp_tag:
+            patch["icp_tag"] = icp_tag
+        result = self.client.update_one(
+            "onboarding_profiles",
+            filters={"user_id": f"eq.{user_id}"},
+            patch=patch,
+        )
+        self.insert_onboarding_profile_snapshot(user_id, snapshot_reason="acquisition_updated")
+        return result
 
     def record_otp_verification(
         self,
@@ -139,6 +178,10 @@ class OnboardingRepository:
         return self.client.insert_one("onboarding_profile_snapshots", {
             "user_id": user_id,
             "mobile": profile.get("mobile") or "",
+            "acquisition_source": profile.get("acquisition_source") or "unknown",
+            "acquisition_campaign": profile.get("acquisition_campaign") or "",
+            "referral_code": profile.get("referral_code") or "",
+            "icp_tag": profile.get("icp_tag") or "",
             "otp_last_used_hash": profile.get("otp_last_used_hash") or "",
             "otp_verified_at": profile.get("otp_verified_at"),
             "name": profile.get("name") or "",
@@ -223,6 +266,75 @@ class OnboardingRepository:
     def get_image_categories(self, user_id: str) -> List[str]:
         rows = self.get_images(user_id)
         return [r["category"] for r in rows]
+
+    # -- user_wardrobe_items -------------------------------------------------
+
+    def list_wardrobe_items(self, user_id: str, *, active_only: bool = True) -> List[Dict[str, Any]]:
+        filters: Dict[str, str] = {"user_id": f"eq.{user_id}"}
+        if active_only:
+            filters["is_active"] = "eq.true"
+        return self.client.select_many(
+            "user_wardrobe_items",
+            filters=filters,
+            order="created_at.desc",
+        )
+
+    def count_wardrobe_items(self, user_id: str, *, active_only: bool = True) -> int:
+        return len(self.list_wardrobe_items(user_id, active_only=active_only))
+
+    def insert_wardrobe_item(
+        self,
+        *,
+        user_id: str,
+        source: str,
+        title: str = "",
+        description: str = "",
+        image_url: str = "",
+        image_path: str = "",
+        garment_category: str = "",
+        garment_subtype: str = "",
+        primary_color: str = "",
+        secondary_color: str = "",
+        pattern_type: str = "",
+        formality_level: str = "",
+        occasion_fit: str = "",
+        brand: str = "",
+        notes: str = "",
+        metadata_json: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        return self.client.insert_one("user_wardrobe_items", {
+            "user_id": user_id,
+            "source": source,
+            "title": title,
+            "description": description,
+            "image_url": image_url,
+            "image_path": image_path,
+            "garment_category": garment_category,
+            "garment_subtype": garment_subtype,
+            "primary_color": primary_color,
+            "secondary_color": secondary_color,
+            "pattern_type": pattern_type,
+            "formality_level": formality_level,
+            "occasion_fit": occasion_fit,
+            "brand": brand,
+            "notes": notes,
+            "metadata_json": metadata_json or {},
+            "is_active": True,
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        })
+
+    def update_wardrobe_item(self, wardrobe_item_id: str, **patch: Any) -> Optional[Dict[str, Any]]:
+        next_patch = dict(patch)
+        next_patch["updated_at"] = _now_iso()
+        return self.client.update_one(
+            "user_wardrobe_items",
+            filters={"id": f"eq.{wardrobe_item_id}"},
+            patch=next_patch,
+        )
+
+    def deactivate_wardrobe_item(self, wardrobe_item_id: str) -> Optional[Dict[str, Any]]:
+        return self.update_wardrobe_item(wardrobe_item_id, is_active=False)
 
     # -- user_style_preference_snapshots -------------------------------------
 

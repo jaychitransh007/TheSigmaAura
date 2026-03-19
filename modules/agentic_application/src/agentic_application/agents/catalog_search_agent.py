@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List
 
+from platform_core.restricted_categories import detect_restricted_record
 from platform_core.supabase_rest import SupabaseRestClient
 
 from ..filters import (
@@ -62,7 +63,10 @@ class CatalogSearchAgent:
                         query_id=query.query_id,
                         role=query.role,
                         products=products,
-                        applied_filters=filters,
+                        applied_filters={
+                            **filters,
+                            "restricted_category_policy": "excluded",
+                        },
                     )
                 )
         return results
@@ -83,12 +87,16 @@ class CatalogSearchAgent:
         for match in matches:
             metadata = dict(match.get("metadata_json") or {})
             pid = str(match.get("product_id") or metadata.get("id") or "")
+            enriched = dict(enriched_lookup.get(pid, {}) or {})
+            blocked_term = detect_restricted_record({**metadata, **enriched})
+            if blocked_term:
+                continue
             products.append(
                 RetrievedProduct(
                     product_id=pid,
                     similarity=float(match.get("similarity") or 0.0),
                     metadata=metadata,
-                    enriched_data=enriched_lookup.get(pid, {}),
+                    enriched_data=enriched,
                 )
             )
         return products

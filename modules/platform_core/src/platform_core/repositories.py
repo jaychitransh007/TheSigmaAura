@@ -18,6 +18,9 @@ class ConversationRepository:
             return row
         return self.client.insert_one("users", {"external_user_id": external_user_id})
 
+    def get_user_by_external_user_id(self, external_user_id: str) -> Optional[Dict[str, Any]]:
+        return self.client.select_one("users", filters={"external_user_id": f"eq.{external_user_id}"})
+
     def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
         return self.client.select_one("users", filters={"id": f"eq.{user_id}"})
 
@@ -33,6 +36,65 @@ class ConversationRepository:
 
     def get_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
         return self.client.select_one("conversations", filters={"id": f"eq.{conversation_id}"})
+
+    def get_latest_conversation_for_user(
+        self,
+        user_id: str,
+        *,
+        status: str = "active",
+    ) -> Optional[Dict[str, Any]]:
+        rows = self.client.select_many(
+            "conversations",
+            filters={
+                "user_id": f"eq.{user_id}",
+                "status": f"eq.{status}",
+            },
+            order="updated_at.desc",
+            limit=1,
+        )
+        return rows[0] if rows else None
+
+    def merge_external_user_identity(
+        self,
+        *,
+        canonical_external_user_id: str,
+        alias_external_user_id: str,
+    ) -> Dict[str, Any]:
+        canonical_external = str(canonical_external_user_id or "").strip()
+        alias_external = str(alias_external_user_id or "").strip()
+        if not canonical_external:
+            raise ValueError("canonical_external_user_id is required")
+        if not alias_external or alias_external == canonical_external:
+            return self.get_or_create_user(canonical_external)
+
+        canonical_user = self.get_or_create_user(canonical_external)
+        alias_user = self.get_user_by_external_user_id(alias_external)
+        if not alias_user:
+            return canonical_user
+
+        alias_user_id = str(alias_user.get("id") or "").strip()
+        canonical_user_id = str(canonical_user.get("id") or "").strip()
+        if alias_user_id and canonical_user_id and alias_user_id != canonical_user_id:
+            self.client.update_one(
+                "conversations",
+                filters={"user_id": f"eq.{alias_user_id}"},
+                patch={"user_id": canonical_user_id, "updated_at": _now_iso()},
+            )
+
+        for table in (
+            "catalog_interaction_history",
+            "user_sentiment_history",
+            "confidence_history",
+            "policy_event_log",
+            "dependency_validation_events",
+        ):
+            self.client.update_one(
+                table,
+                filters={"user_id": f"eq.{alias_external}"},
+                patch={"user_id": canonical_external},
+            )
+
+        return canonical_user
 
     def update_conversation_context(self, conversation_id: str, session_context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return self.client.update_one(
@@ -82,6 +144,9 @@ class ConversationRepository:
             limit=1,
         )
         return rows[0] if rows else None
+
+    def get_turn(self, turn_id: str) -> Optional[Dict[str, Any]]:
+        return self.client.select_one("conversation_turns", filters={"id": f"eq.{turn_id}"})
 
     def log_model_call(
         self,
@@ -141,6 +206,250 @@ class ConversationRepository:
         if outfit_rank is not None:
             payload["outfit_rank"] = outfit_rank
         return self.client.insert_one("feedback_events", payload)
+
+    # -- catalog_interaction_history ----------------------------------------
+
+    def create_catalog_interaction(
+        self,
+        *,
+        user_id: str,
+        product_id: str,
+        interaction_type: str,
+        conversation_id: Optional[str] = None,
+        turn_id: Optional[str] = None,
+        source_channel: str = "web",
+        source_surface: str = "chat",
+        metadata_json: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "user_id": user_id,
+            "product_id": product_id,
+            "interaction_type": interaction_type,
+            "source_channel": source_channel,
+            "source_surface": source_surface,
+            "metadata_json": metadata_json or {},
+            "created_at": _now_iso(),
+        }
+        if conversation_id:
+            payload["conversation_id"] = conversation_id
+        if turn_id:
+            payload["turn_id"] = turn_id
+        return self.client.insert_one("catalog_interaction_history", payload)
+
+    def list_catalog_interactions(
+        self,
+        user_id: str,
+        *,
+        interaction_type: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        filters: Dict[str, str] = {"user_id": f"eq.{user_id}"}
+        if interaction_type:
+            filters["interaction_type"] = f"eq.{interaction_type}"
+        return self.client.select_many(
+            "catalog_interaction_history",
+            filters=filters,
+            order="created_at.desc",
+            limit=limit,
+        )
+
+    # -- user_sentiment_history --------------------------------------------
+
+    def create_sentiment_trace(
+        self,
+        *,
+        user_id: str,
+        sentiment_label: str,
+        sentiment_score: float,
+        intensity: float,
+        cues_json: Optional[List[str]] = None,
+        conversation_id: Optional[str] = None,
+        turn_id: Optional[str] = None,
+        source_channel: str = "web",
+        sentiment_source: str = "user_message",
+        metadata_json: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "user_id": user_id,
+            "sentiment_label": sentiment_label,
+            "sentiment_score": sentiment_score,
+            "intensity": intensity,
+            "source_channel": source_channel,
+            "sentiment_source": sentiment_source,
+            "cues_json": list(cues_json or []),
+            "metadata_json": metadata_json or {},
+            "created_at": _now_iso(),
+        }
+        if conversation_id:
+            payload["conversation_id"] = conversation_id
+        if turn_id:
+            payload["turn_id"] = turn_id
+        return self.client.insert_one("user_sentiment_history", payload)
+
+    def list_sentiment_traces(
+        self,
+        user_id: str,
+        *,
+        sentiment_label: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        filters: Dict[str, str] = {"user_id": f"eq.{user_id}"}
+        if sentiment_label:
+            filters["sentiment_label"] = f"eq.{sentiment_label}"
+        return self.client.select_many(
+            "user_sentiment_history",
+            filters=filters,
+            order="created_at.desc",
+            limit=limit,
+        )
+
+    # -- confidence_history --------------------------------------------------
+
+    def create_confidence_history(
+        self,
+        *,
+        user_id: str,
+        confidence_type: str,
+        score_pct: int,
+        factors_json: Optional[List[Dict[str, Any]]] = None,
+        conversation_id: Optional[str] = None,
+        turn_id: Optional[str] = None,
+        source_channel: str = "web",
+        metadata_json: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "user_id": user_id,
+            "confidence_type": confidence_type,
+            "score_pct": score_pct,
+            "source_channel": source_channel,
+            "factors_json": factors_json or [],
+            "metadata_json": metadata_json or {},
+            "created_at": _now_iso(),
+        }
+        if conversation_id:
+            payload["conversation_id"] = conversation_id
+        if turn_id:
+            payload["turn_id"] = turn_id
+        return self.client.insert_one("confidence_history", payload)
+
+    def list_confidence_history(
+        self,
+        user_id: str,
+        *,
+        confidence_type: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        filters: Dict[str, str] = {"user_id": f"eq.{user_id}"}
+        if confidence_type:
+            filters["confidence_type"] = f"eq.{confidence_type}"
+        return self.client.select_many(
+            "confidence_history",
+            filters=filters,
+            order="created_at.desc",
+            limit=limit,
+        )
+
+    # -- policy_event_log ----------------------------------------------------
+
+    def create_policy_event(
+        self,
+        *,
+        policy_event_type: str,
+        input_class: str,
+        reason_code: str,
+        decision: str,
+        rule_source: str = "rule",
+        user_id: Optional[str] = None,
+        conversation_id: Optional[str] = None,
+        turn_id: Optional[str] = None,
+        source_channel: str = "web",
+        metadata_json: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "policy_event_type": policy_event_type,
+            "input_class": input_class,
+            "reason_code": reason_code,
+            "decision": decision,
+            "rule_source": rule_source,
+            "source_channel": source_channel,
+            "metadata_json": metadata_json or {},
+            "created_at": _now_iso(),
+        }
+        if user_id:
+            payload["user_id"] = user_id
+        if conversation_id:
+            payload["conversation_id"] = conversation_id
+        if turn_id:
+            payload["turn_id"] = turn_id
+        return self.client.insert_one("policy_event_log", payload)
+
+    def list_policy_events(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        decision: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        filters: Dict[str, str] = {}
+        if user_id:
+            filters["user_id"] = f"eq.{user_id}"
+        if decision:
+            filters["decision"] = f"eq.{decision}"
+        return self.client.select_many(
+            "policy_event_log",
+            filters=filters or None,
+            order="created_at.desc",
+            limit=limit,
+        )
+
+    # -- dependency_validation_events --------------------------------------
+
+    def create_dependency_event(
+        self,
+        *,
+        user_id: str,
+        event_type: str,
+        source_channel: str = "web",
+        primary_intent: str = "",
+        conversation_id: Optional[str] = None,
+        turn_id: Optional[str] = None,
+        metadata_json: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "user_id": user_id,
+            "event_type": event_type,
+            "source_channel": source_channel,
+            "primary_intent": primary_intent,
+            "metadata_json": metadata_json or {},
+            "created_at": _now_iso(),
+        }
+        if conversation_id:
+            payload["conversation_id"] = conversation_id
+        if turn_id:
+            payload["turn_id"] = turn_id
+        return self.client.insert_one("dependency_validation_events", payload)
+
+    def list_dependency_events(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        event_type: Optional[str] = None,
+        source_channel: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        filters: Dict[str, str] = {}
+        if user_id:
+            filters["user_id"] = f"eq.{user_id}"
+        if event_type:
+            filters["event_type"] = f"eq.{event_type}"
+        if source_channel:
+            filters["source_channel"] = f"eq.{source_channel}"
+        return self.client.select_many(
+            "dependency_validation_events",
+            filters=filters or None,
+            order="created_at.asc",
+            limit=limit,
+        )
 
     # -- user_comfort_learning ------------------------------------------------
 
@@ -203,4 +512,3 @@ class ConversationRepository:
         if latency_ms is not None:
             payload["latency_ms"] = latency_ms
         return self.client.insert_one("tool_traces", payload)
-

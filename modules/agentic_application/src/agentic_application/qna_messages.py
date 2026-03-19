@@ -12,6 +12,11 @@ _PLAN_TYPE_DESCRIPTIONS = {
 
 _TEMPLATES: Dict[str, str] = {
     "validate_request_started": "Checking your request...",
+    "onboarding_gate_started": "Checking whether your profile is ready for chat...",
+    "onboarding_gate_blocked": "Complete your profile setup before chat can continue.",
+    "onboarding_gate_completed": "Your profile is ready for chat.",
+    "intent_router_started": "Understanding what you need help with...",
+    "intent_router_completed": "",  # dynamic
     "user_context_started": "Loading your style profile...",
     "user_context_completed": "Profile loaded — {richness} detail available.",
     "context_builder_started": "Reviewing conversation context...",
@@ -67,7 +72,15 @@ def _outfit_evaluation_started(ctx: Dict[str, Any]) -> str:
     return "Evaluating outfits for overall fit and style..."
 
 
+def _intent_router_completed(ctx: Dict[str, Any]) -> str:
+    primary = str(ctx.get("primary_intent") or "").replace("_", " ").strip()
+    if primary:
+        return f"Intent understood — routing this as {primary}."
+    return "Intent understood."
+
+
 _DYNAMIC_HANDLERS = {
+    "intent_router_completed": _intent_router_completed,
     "outfit_architect_completed": _outfit_architect_completed,
     "catalog_search_completed": _catalog_search_completed,
     "outfit_evaluation_started": _outfit_evaluation_started,

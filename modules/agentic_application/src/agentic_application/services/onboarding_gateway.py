@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Optional
 
 from fastapi import APIRouter
@@ -21,6 +22,12 @@ class ApplicationUserGateway:
         self._service = OnboardingService(repo=self._repo)
         self._analysis = UserAnalysisService(repo=self._repo)
 
+    def set_policy_logger(self, policy_logger: Optional[Callable[..., None]]) -> None:
+        self._service.set_policy_logger(policy_logger)
+
+    def set_dependency_logger(self, dependency_logger: Optional[Callable[..., None]]) -> None:
+        self._service.set_dependency_logger(dependency_logger)
+
     def get_analysis_status(self, user_id: str) -> dict:
         return dict(self._analysis.get_analysis_status(user_id) or {})
 
@@ -33,12 +40,83 @@ class ApplicationUserGateway:
             return list(row.get("seasonal_groups") or [])
         return []
 
+    def resolve_user_id_by_mobile(self, mobile: str) -> Optional[str]:
+        candidates = [str(mobile or "").strip()]
+        normalized_digits = "".join(ch for ch in candidates[0] if ch.isdigit())
+        if normalized_digits:
+            candidates.append(normalized_digits)
+            candidates.append(f"+{normalized_digits}")
+        seen = set()
+        for candidate in candidates:
+            value = str(candidate or "").strip()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            row = self._repo.get_profile_by_mobile(value)
+            if row and str(row.get("user_id") or "").strip():
+                return str(row.get("user_id") or "").strip()
+        return None
+
     def get_person_image_path(self, user_id: str) -> Optional[str]:
         images = self._repo.get_images(user_id)
         for img in images:
             if img.get("category") == "full_body":
                 return img.get("file_path") or ""
         return None
+
+    def get_wardrobe_items(self, user_id: str) -> list:
+        return list(self._repo.list_wardrobe_items(user_id) or [])
+
+    def save_chat_wardrobe_item(
+        self,
+        *,
+        user_id: str,
+        title: str = "",
+        description: str = "",
+        image_url: str = "",
+        garment_category: str = "",
+        garment_subtype: str = "",
+        primary_color: str = "",
+        secondary_color: str = "",
+        pattern_type: str = "",
+        formality_level: str = "",
+        occasion_fit: str = "",
+        brand: str = "",
+        notes: str = "",
+        metadata_json: Optional[dict] = None,
+    ) -> Optional[dict]:
+        existing = self._repo.get_profile_by_user_id(user_id)
+        if not existing:
+            return None
+        self._service.ensure_allowed_wardrobe_item(
+            user_id=user_id,
+            filename=image_url or title or "chat_wardrobe_item",
+            title=title,
+            description=description,
+            garment_category=garment_category,
+            garment_subtype=garment_subtype,
+            notes=notes,
+            brand=brand,
+            input_class="chat_wardrobe_item",
+        )
+        return self._repo.insert_wardrobe_item(
+            user_id=user_id,
+            source="chat",
+            title=title,
+            description=description,
+            image_url=image_url,
+            image_path="",
+            garment_category=garment_category,
+            garment_subtype=garment_subtype,
+            primary_color=primary_color,
+            secondary_color=secondary_color,
+            pattern_type=pattern_type,
+            formality_level=formality_level,
+            occasion_fit=occasion_fit,
+            brand=brand,
+            notes=notes,
+            metadata_json=metadata_json or {},
+        )
 
     def create_router(self) -> APIRouter:
         return create_onboarding_router(self._service, self._analysis)
@@ -48,7 +126,3 @@ class ApplicationUserGateway:
 
     def render_processing_html(self, *, user_id: str = "") -> str:
         return get_processing_html(user_id=user_id)
-
-
-# Backward compatibility alias
-ApplicationOnboardingGateway = ApplicationUserGateway

@@ -23,6 +23,7 @@ Profession = Literal[
 ]
 
 ImageCategory = Literal["full_body", "headshot"]
+WardrobeSource = Literal["onboarding", "chat", "manual", "inferred"]
 
 FIXED_OTP = "123456"
 AnalysisAgentName = Literal[
@@ -44,6 +45,10 @@ class SendOtpResponse(BaseModel):
 class VerifyOtpRequest(BaseModel):
     mobile: str = Field(min_length=10, max_length=15)
     otp: str = Field(min_length=6, max_length=6)
+    acquisition_source: str = Field(default="unknown", max_length=80)
+    acquisition_campaign: str = Field(default="", max_length=120)
+    referral_code: str = Field(default="", max_length=120)
+    icp_tag: str = Field(default="", max_length=120)
 
 
 class VerifyOtpResponse(BaseModel):
@@ -80,10 +85,44 @@ class ImageUploadResponse(BaseModel):
 class OnboardingStatusResponse(BaseModel):
     user_id: str
     mobile: str = ""
+    acquisition_source: str = "unknown"
+    acquisition_campaign: str = ""
+    referral_code: str = ""
+    icp_tag: str = ""
     profile_complete: bool = False
     images_uploaded: List[str] = Field(default_factory=list)
     style_preference_complete: bool = False
     onboarding_complete: bool = False
+    wardrobe_item_count: int = 0
+
+
+class WardrobeItemResponse(BaseModel):
+    id: str = ""
+    user_id: str
+    source: WardrobeSource
+    title: str = ""
+    description: str = ""
+    image_url: str = ""
+    image_path: str = ""
+    garment_category: str = ""
+    garment_subtype: str = ""
+    primary_color: str = ""
+    secondary_color: str = ""
+    pattern_type: str = ""
+    formality_level: str = ""
+    occasion_fit: str = ""
+    brand: str = ""
+    notes: str = ""
+    metadata_json: Dict[str, Any] = Field(default_factory=dict)
+    is_active: bool = True
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class WardrobeItemListResponse(BaseModel):
+    user_id: str
+    count: int = 0
+    items: List[WardrobeItemResponse] = Field(default_factory=list)
 
 
 class StyleArchetypeImage(BaseModel):
