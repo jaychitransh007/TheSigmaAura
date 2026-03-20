@@ -60,6 +60,29 @@ def get_web_ui_html(user_id: str = "") -> str:
       font-size: 14px;
     }
     .btns { display:flex; gap:8px; flex-wrap:wrap; }
+    .composer-input-row { display:flex; gap:8px; align-items:flex-end; }
+    .composer-input-row .field { flex:1; margin-bottom:0; }
+    .attach-icon-btn {
+      width:38px; height:38px; flex-shrink:0; border-radius:50%;
+      background:#fff; border:1px solid var(--line); color:var(--muted);
+      display:flex; align-items:center; justify-content:center; cursor:pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .attach-icon-btn:hover { background:var(--accent); color:#fff; border-color:var(--accent); }
+    .attach-icon-btn svg { width:18px; height:18px; fill:currentColor; }
+    .composer.dragover { outline:2px dashed var(--accent); outline-offset:-4px; border-radius:14px; background:#f0f9f7; }
+    .img-preview-chip {
+      display:inline-flex; align-items:center; gap:6px;
+      background:#fff; border:1px solid var(--line); border-radius:10px;
+      padding:4px 8px 4px 4px; margin-bottom:8px; max-width:220px;
+    }
+    .img-preview-chip img { height:48px; border-radius:6px; object-fit:cover; }
+    .img-preview-chip .remove-x {
+      width:18px; height:18px; border-radius:50%; background:#e8e3dd; border:none;
+      font-size:12px; line-height:18px; cursor:pointer; color:var(--ink); padding:0;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .img-preview-chip .remove-x:hover { background:#9d1e1e; color:#fff; }
     button {
       border: 1px solid transparent;
       border-radius: 10px;
@@ -432,20 +455,24 @@ def get_web_ui_html(user_id: str = "") -> str:
     </aside>
     <main class="panel chat">
       <div class="feed" id="feed"></div>
-      <div class="composer">
-        <div id="imagePreview" style="display:none;margin-bottom:8px;position:relative;width:fit-content;">
-          <img id="imagePreviewImg" style="max-height:80px;border-radius:8px;border:1px solid var(--line);" />
-          <button id="imageRemoveBtn" type="button" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#9d1e1e;color:#fff;border:none;font-size:12px;line-height:20px;padding:0;cursor:pointer;">&times;</button>
+      <div class="composer" id="composerArea">
+        <div id="imagePreview" style="display:none;">
+          <div class="img-preview-chip">
+            <img id="imagePreviewImg" />
+            <span id="imageFileName" style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px;"></span>
+            <button id="imageRemoveBtn" type="button" class="remove-x">&times;</button>
+          </div>
         </div>
-        <div class="field">
-          <label>Your message</label>
-          <textarea id="message" rows="3" placeholder="Need casual office wear and want to look taller. You can also paste or attach an image of your garment."></textarea>
+        <div class="composer-input-row">
+          <button id="attachImgBtn" type="button" class="attach-icon-btn" title="Attach a garment image">
+            <svg viewBox="0 0 24 24"><path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg>
+          </button>
+          <div class="field">
+            <textarea id="message" rows="3" placeholder="Describe what you need, or attach / paste a garment image for pairing suggestions."></textarea>
+          </div>
+          <button id="sendBtn" title="Send message">Send</button>
         </div>
-        <div class="btns">
-          <button id="sendBtn">Send</button>
-          <button id="attachImgBtn" class="secondary" type="button" title="Attach a garment image">Attach Image</button>
-          <input id="chatImageFile" type="file" accept="image/*" style="display:none;" />
-        </div>
+        <input id="chatImageFile" type="file" accept="image/*" style="display:none;" />
       </div>
     </main>
   </div>
@@ -469,42 +496,54 @@ def get_web_ui_html(user_id: str = "") -> str:
     const imagePreview = document.getElementById("imagePreview");
     const imagePreviewImg = document.getElementById("imagePreviewImg");
     const imageRemoveBtn = document.getElementById("imageRemoveBtn");
+    const imageFileNameEl = document.getElementById("imageFileName");
+    const composerArea = document.getElementById("composerArea");
     let pendingImageData = "";
 
-    function setImagePreview(dataUrl) {
+    function setImagePreview(dataUrl, fileName) {
       pendingImageData = dataUrl;
       imagePreviewImg.src = dataUrl;
+      imageFileNameEl.textContent = fileName || "Pasted image";
       imagePreview.style.display = "block";
     }
     function clearImagePreview() {
       pendingImageData = "";
       imagePreviewImg.src = "";
+      imageFileNameEl.textContent = "";
       imagePreview.style.display = "none";
       chatImageFileEl.value = "";
+    }
+    function handleImageFile(file) {
+      if (!file || file.type.indexOf("image") === -1) return;
+      if (file.size > 10 * 1024 * 1024) { err.textContent = "Image must be under 10 MB."; return; }
+      var reader = new FileReader();
+      reader.onload = function(e) { setImagePreview(e.target.result, file.name); };
+      reader.readAsDataURL(file);
     }
     attachImgBtn.addEventListener("click", function() { chatImageFileEl.click(); });
     imageRemoveBtn.addEventListener("click", clearImagePreview);
     chatImageFileEl.addEventListener("change", function() {
-      var file = chatImageFileEl.files && chatImageFileEl.files[0];
-      if (!file) return;
-      if (file.size > 10 * 1024 * 1024) { err.textContent = "Image must be under 10 MB."; return; }
-      var reader = new FileReader();
-      reader.onload = function(e) { setImagePreview(e.target.result); };
-      reader.readAsDataURL(file);
+      handleImageFile(chatImageFileEl.files && chatImageFileEl.files[0]);
     });
     messageEl.addEventListener("paste", function(e) {
       var items = (e.clipboardData || {}).items || [];
       for (var i = 0; i < items.length; i++) {
         if (items[i].type.indexOf("image") !== -1) {
           e.preventDefault();
-          var blob = items[i].getAsFile();
-          if (blob.size > 10 * 1024 * 1024) { err.textContent = "Pasted image must be under 10 MB."; return; }
-          var reader = new FileReader();
-          reader.onload = function(ev) { setImagePreview(ev.target.result); };
-          reader.readAsDataURL(blob);
+          handleImageFile(items[i].getAsFile());
           return;
         }
       }
+    });
+    // Drag-and-drop support on the composer area
+    composerArea.addEventListener("dragenter", function(e) { e.preventDefault(); composerArea.classList.add("dragover"); });
+    composerArea.addEventListener("dragover", function(e) { e.preventDefault(); composerArea.classList.add("dragover"); });
+    composerArea.addEventListener("dragleave", function(e) { e.preventDefault(); composerArea.classList.remove("dragover"); });
+    composerArea.addEventListener("drop", function(e) {
+      e.preventDefault();
+      composerArea.classList.remove("dragover");
+      var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      handleImageFile(file);
     });
 
     function addBubble(text, kind, imageDataUrl) {
