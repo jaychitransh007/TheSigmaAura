@@ -2370,7 +2370,11 @@ def get_web_ui_html(
     }
 
     function wardrobeImageUrl(item) {
-      return item.image_url || item.image_path || "";
+      if (item.image_url) return item.image_url;
+      var p = item.image_path || "";
+      if (!p) return "";
+      if (p.startsWith("http://") || p.startsWith("https://")) return p;
+      return "/v1/onboarding/images/local?path=" + encodeURIComponent(p);
     }
 
     function wardrobeFilterMatches(item, filter) {
