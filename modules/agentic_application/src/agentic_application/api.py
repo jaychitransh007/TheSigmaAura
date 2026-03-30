@@ -272,7 +272,7 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def home(user: str = "", focus: str = "") -> HTMLResponse:
+    def home(user: str = "", focus: str = "", view: str = "", source: str = "", conversation_id: str = "") -> HTMLResponse:
         if str(focus or "").strip().lower() == "wardrobe":
             html = onboarding_gateway.render_wardrobe_manager_html(user_id=user)
             return HTMLResponse(
@@ -290,7 +290,22 @@ def create_app() -> FastAPI:
         elif analysis_status.get("status") != "completed":
             html = onboarding_gateway.render_processing_html(user_id=user)
         else:
-            html = get_web_ui_html(user_id=user)
+            resolved_view = str(view or "").strip().lower()
+            if not resolved_view:
+                focus_map = {
+                    "chat": "chat",
+                    "planner": "trips",
+                    "tryon": "trips",
+                    "profile": "style",
+                }
+                resolved_view = focus_map.get(str(focus or "").strip().lower(), "dashboard")
+            html = get_web_ui_html(
+                user_id=user,
+                active_view=resolved_view,
+                source=source,
+                focus=focus,
+                conversation_id=conversation_id,
+            )
         return HTMLResponse(
             content=html,
             headers={

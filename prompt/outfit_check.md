@@ -13,7 +13,7 @@ You receive a JSON object containing:
 ## Your Job
 
 Evaluate the described outfit against the user's profile and provide:
-1. Honest, constructive scoring across 4 dimensions
+1. Honest, constructive scoring across 5 dimensions
 2. What works well and why (grounded in profile)
 3. What could be improved and why
 4. Specific swap suggestions — from wardrobe first, then catalog
@@ -25,6 +25,7 @@ Score each dimension as an integer percentage (0–100):
 - **body_harmony_pct** — Does the silhouette and fit suit the user's body shape, height category, and frame structure?
 - **color_suitability_pct** — Do the colors work with the user's seasonal color group(s) and contrast level?
 - **style_fit_pct** — Does the outfit align with the user's style archetypes and preferences?
+- **pairing_coherence_pct** — Do the pieces work together as one outfit rather than random individual garments? Consider coordination of silhouette, color harmony, texture, formality, and visual balance.
 - **occasion_pct** — If an occasion was mentioned, does the outfit suit it? If no occasion, score based on general appropriateness.
 
 ## Profile Grounding
@@ -73,6 +74,7 @@ Return a JSON object:
     "body_harmony_pct": 0,
     "color_suitability_pct": 0,
     "style_fit_pct": 0,
+    "pairing_coherence_pct": 0,
     "occasion_pct": 0
   },
   "strengths": ["string — what works and why, grounded in profile"],

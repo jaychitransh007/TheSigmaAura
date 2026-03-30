@@ -25,9 +25,10 @@ def _load_prompt() -> str:
 
 _DECISION_JSON_SCHEMA: Dict[str, Any] = {
     "type": "json_schema",
-    "name": "shopping_decision_result",
-    "strict": True,
-    "schema": {
+    "json_schema": {
+        "name": "shopping_decision_result",
+        "strict": True,
+        "schema": {
         "type": "object",
         "additionalProperties": False,
         "required": [
@@ -90,6 +91,7 @@ _DECISION_JSON_SCHEMA: Dict[str, Any] = {
             },
             "if_you_buy": {"type": "string"},
             "instead_consider": {"type": ["string", "null"]},
+        },
         },
     },
 }
@@ -218,7 +220,7 @@ class ShoppingDecisionAgent:
             "precomputed_pairing_suggestions": list(pairing_suggestions or []),
         }
 
-        client = OpenAI(api_key=get_api_key("openai"))
+        client = OpenAI(api_key=get_api_key())
         response = client.chat.completions.create(
             model=self._model,
             messages=[

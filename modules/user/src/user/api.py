@@ -1,7 +1,7 @@
 from pathlib import Path
 from threading import Thread
 
-from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 
 from platform_core.supabase_rest import SupabaseError
@@ -33,6 +33,36 @@ from .analysis import UserAnalysisService
 from .style_archetype import resolve_style_asset_file
 
 
+def _repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for base in [here.parent] + list(here.parents):
+        if (base / "data").exists() and (base / "modules").exists():
+            return base
+    return Path.cwd()
+
+
+def _resolve_local_image_file(path_value: str) -> Path | None:
+    raw = str(path_value or "").strip()
+    if not raw:
+        return None
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = (_repo_root() / candidate).resolve()
+    else:
+        candidate = candidate.resolve()
+
+    allowed_roots = [
+        (_repo_root() / "data" / "onboarding" / "images").resolve(),
+    ]
+    for allowed_root in allowed_roots:
+        try:
+            candidate.relative_to(allowed_root)
+            return candidate
+        except ValueError:
+            continue
+    return None
+
+
 def create_onboarding_router(service: OnboardingService, analysis_service: UserAnalysisService) -> APIRouter:
     router = APIRouter(prefix="/v1/onboarding", tags=["onboarding"])
 
@@ -42,6 +72,13 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         if asset_path is None:
             raise HTTPException(status_code=404, detail="Style archetype image not found.")
         return FileResponse(path=Path(asset_path), media_type="image/png")
+
+    @router.get("/images/local", include_in_schema=False)
+    def get_local_image(path: str = Query(..., min_length=1)) -> FileResponse:
+        image_path = _resolve_local_image_file(path)
+        if image_path is None or not image_path.exists() or not image_path.is_file():
+            raise HTTPException(status_code=404, detail="Local image not found.")
+        return FileResponse(path=image_path)
 
     @router.post("/send-otp", response_model=SendOtpResponse)
     def send_otp(payload: SendOtpRequest) -> SendOtpResponse:

@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: March 30, 2026
+Last updated: March 31, 2026
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -115,6 +115,36 @@ Success means users come back before real decisions: should I buy this, what goe
 - [x] define a consistent navigation model across home, chat, wardrobe, style profile, and trip planning
 - [x] define follow-up UX patterns for `Improve It`, `Show Alternatives`, `Explain Why`, `Shop The Gap`, and `Save For Later`
 - [x] define feedback UX that captures fashion-native reactions like `Too safe`, `Too much`, `Not me`, and `Weird pairing`
+
+#### P0 — Single-Page Shell Cleanup
+- [x] split the current all-in-one `/` page into a true dashboard-first IA instead of stacking every major surface in one long page
+- [x] make `/` the stylist dashboard only: hero, quick actions, wardrobe health summary, style summary, recent threads, and saved looks
+- [x] move the full chat workspace into a dedicated primary view instead of forcing dashboard + chat + wardrobe + style + trips onto one page
+- [x] move wardrobe studio into its own destination surface instead of rendering the full closet editor inline on `/`
+- [x] move `My Style Code` into its own destination surface instead of rendering the full profile workspace inline on `/`
+- [x] move outfit-check and trip-planning workspaces behind dedicated entry points instead of permanently occupying homepage real estate
+- [x] add explicit top-level view routing or switching for `dashboard`, `chat`, `wardrobe`, `style`, and `trips`
+- [x] preserve WhatsApp/deep-link continuity while routing users into the correct destination surface
+- [ ] ensure the homepage uses progressive disclosure and one dominant primary action area instead of showing every feature at once
+- [ ] validate that the resulting IA feels curated and fashion-native rather than implementation-stacked
+
+#### P0 — UI Polish And Accessibility
+- [x] add Google Fonts `<link>` for Cormorant Garamond so the editorial serif renders for all users instead of falling back to Times New Roman
+- [x] add a mobile breakpoint at ~430px with a sticky composer, compact chips, and thumb-friendly tap targets as required by `docs/DESIGN.md`
+- [x] add a tablet breakpoint (~768px–900px) so the hub and outfit cards degrade gracefully between desktop and phone layouts
+- [x] populate dashboard hero stats dynamically from the user's real style profile instead of the hardcoded "Classic + Romantic" placeholder
+- [x] add a chat empty state with an editorial welcome message and suggested-prompt cards so first-time users don't land on a blank feed
+- [x] add `prefers-reduced-motion` media query to disable animations for users who request reduced motion
+- [x] add basic ARIA roles and labels to navigation, action cards, source switch, filter chips, and interactive elements
+- [x] add a text alternative for the outfit-card canvas radar chart so screen readers can interpret style archetype scores
+- [x] add loading skeleton states for wardrobe studio and style code views instead of static "waiting" labels
+- [x] hide the product URL field behind a toggle or auto-detect so the composer is simpler for the majority of interactions
+- [x] make the source switch contextual — show it when relevant instead of always visible
+
+#### P1 — Persistence And Robustness
+- [ ] back saved looks and recent threads with server-side persistence instead of localStorage-only so they survive browser data clears
+- [ ] improve follow-up suggestion grouping to use structured metadata from the LLM rather than brittle string-matching on suggestion text
+- [ ] improve wardrobe filter "Occasion-ready" to use enrichment metadata tags instead of keyword matching against item names
 
 #### P0 — Wardrobe / Catalog Routing Reliability
 - [x] fix planner routing so explicit garment-led requests like "pair this shirt", "what goes with this?", and "complete the outfit" resolve to `pairing_request`, not `occasion_recommendation`
@@ -992,6 +1022,7 @@ Checklist:
 - [x] define and implement shared design tokens, typography, color roles, spacing, component patterns, and motion rules from `docs/DESIGN.md`
 - [ ] validate all primary screens on mobile first, then desktop
 - [ ] ensure the entire surface feels editorial, feminine, premium, and fashion-native rather than dashboard-like
+- [x] split the overloaded single-page shell into separate destination views so `/` becomes a clean stylist dashboard instead of a stacked mega-page
 
 Success criteria:
 - the user can discover Aura’s major capabilities without guessing
@@ -1438,3 +1469,89 @@ The architect JSON schema enforces valid filter vocabulary via enums. Null value
 
 Definition of done:
 - architecture docs remain trustworthy and the active runtime behaves as specified
+
+## Current Remediation Plan: Latest Live-Chat Gaps
+
+The latest live chat for `user_2fbe89b7f529` exposed a set of system-quality gaps that are not about fashion judgment quality, but about routing, completion thresholds, metadata consistency, and response UX. These are the next active remediation items.
+
+### Problem Summary
+
+Observed in the latest conversation:
+- follow-up requests such as `What shoes would work best with this?`, `Can you suggest subtle printed shirts for me?`, and `Make it a bit smarter` were often handled by the generic wardrobe-first occasion response instead of a targeted refinement or pairing flow
+- wardrobe-first responses sometimes returned a single wardrobe anchor item while still claiming the request was satisfied
+- some handlers persisted `response_metadata` correctly while wardrobe-first and style-discovery turns often left `resolved_context_json.response_metadata` empty
+- UI surfaces can technically render these results, but a generic single-item wardrobe-first reply reads like a failed answer rather than a useful stylist recommendation
+
+### P0 — Follow-Up Routing Reliability
+
+- [x] treat phrases like `make it smarter`, `make it sharper`, `make it more polished`, `subtle printed shirts`, and `what shoes would work best with this?` as explicit refinement / pairing intents instead of allowing the generic wardrobe-first occasion shortcut to win
+- [x] tighten follow-up-intent mapping so `smarter` maps to polish / formality refinement, not unrelated buckets like `increase_boldness`
+- [x] preserve anchor context from the previous turn more aggressively when a follow-up clearly references `this`
+- [x] add direct regression tests covering:
+  - `What shoes would work best with this?`
+  - `Can you suggest subtle printed shirts for me?`
+  - `Make it a bit smarter`
+
+Definition of done:
+- these prompts route into targeted handlers or a richer refinement path, not the generic wardrobe-first stock answer
+
+### P0 — Wardrobe-First Success Guardrails
+
+- [ ] do not treat a wardrobe-first result as a successful full answer when only one anchor item is available and required outfit roles are still missing
+- [ ] add a completion threshold so wardrobe-first must either:
+  - return a materially complete wardrobe look, or
+  - automatically pivot to hybrid / catalog support
+- [ ] ensure wardrobe-gap analysis is used as a guardrail, not just displayed as metadata after the fact
+- [ ] block contradictory behavior where the system says `built from your saved wardrobe` while also knowing the wardrobe lacks bottoms or shoes for that ask
+
+Definition of done:
+- wardrobe-first only stands as the final answer when the wardrobe actually covers the intent well enough
+
+### P0 — Hybrid Response Path For Incomplete Wardrobes
+
+- [ ] add a clear hybrid response mode for refinement and pairing requests where the best answer is `start with this wardrobe anchor, then add these catalog pieces`
+- [ ] support hybrid responses for shoe-focused and polish-focused follow-ups even when the wardrobe has no saved shoes or no suitable bottom
+- [ ] make the response text explicit when Aura is filling a wardrobe gap from the catalog rather than pretending the wardrobe alone solved it
+
+Definition of done:
+- incomplete wardrobes produce useful hybrid recommendations instead of weak single-item wardrobe-first replies
+
+### P1 — Metadata Persistence Consistency
+
+- [ ] persist `response_metadata` into `resolved_context_json` for wardrobe-first occasion responses
+- [ ] persist `response_metadata` into `resolved_context_json` for style-discovery responses
+- [ ] align all handlers so review tools and UI surfaces can consistently inspect:
+  - `primary_intent`
+  - `answer_source`
+  - `intent_confidence`
+  - confidence payloads
+- [ ] add regression tests that assert `resolved_context_json.response_metadata` is present for wardrobe-first and style-discovery turns
+
+Definition of done:
+- product review and UI logic no longer depend on session-context-only metadata for these handlers
+
+### P1 — Response UX For Partial Answers
+
+- [ ] stop using the stock sentence `Built from your saved wardrobe for ...` as the primary user-facing answer when the result is only one anchored item
+- [ ] require wardrobe-first refinement answers to say what the selected piece is and why it works
+- [ ] if only one suitable wardrobe piece exists, explicitly say what is missing and offer the next best action:
+  - `show me catalog options`
+  - `show me hybrid options`
+  - `save more wardrobe items`
+- [ ] improve UI copy so single-item wardrobe results read as anchors or starting points, not completed outfits
+
+Definition of done:
+- users can tell whether Aura is giving them a full outfit, a refinement suggestion, or just a starting piece
+
+### P1 — Observability And Live Review
+
+- [ ] add targeted review tooling or lightweight debug surfaces for latest-turn inspection that show:
+  - handler chosen
+  - selected item ids
+  - source mode
+  - wardrobe gap analysis
+  - whether the answer was considered complete or partial
+- [ ] log the reason a wardrobe-first short-circuit was accepted or rejected
+
+Definition of done:
+- live-chat failures of this kind can be diagnosed from one turn record without reconstructing the path manually

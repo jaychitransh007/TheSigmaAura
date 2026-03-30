@@ -1,12 +1,21 @@
 from html import escape
 
 
-def get_web_ui_html(user_id: str = "") -> str:
+def get_web_ui_html(
+    user_id: str = "",
+    active_view: str = "dashboard",
+    source: str = "",
+    focus: str = "",
+    conversation_id: str = "",
+) -> str:
     html = """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
   <title>Sigma Aura</title>
   <style>
     :root {
@@ -33,6 +42,18 @@ def get_web_ui_html(user_id: str = "") -> str:
         radial-gradient(circle at top left, rgba(184, 139, 150, 0.22), transparent 28%),
         radial-gradient(circle at 85% 12%, rgba(176, 138, 78, 0.14), transparent 24%),
         linear-gradient(180deg, #fbf6f1 0%, var(--bg) 42%, #f1e6da 100%);
+    }
+    .page-view { display: none; }
+    body.view-dashboard .page-dashboard,
+    body.view-chat .page-chat,
+    body.view-wardrobe .page-wardrobe,
+    body.view-style .page-style,
+    body.view-trips .page-trips {
+      display: block;
+    }
+    body.view-dashboard #jobsRail,
+    body.view-dashboard #stageRail {
+      display: none;
     }
     .shell {
       max-width: 1320px;
@@ -174,6 +195,33 @@ def get_web_ui_html(user_id: str = "") -> str:
       flex-wrap: wrap;
       gap: 8px;
     }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .hero-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 14px;
+      padding: 11px 15px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 13px;
+      border: 1px solid transparent;
+    }
+    .hero-link.primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 12px 26px rgba(111, 47, 69, 0.18);
+    }
+    .hero-link.secondary {
+      background: rgba(255,255,255,0.84);
+      color: var(--ink);
+      border-color: rgba(223, 209, 196, 0.96);
+    }
     .hero-pill, .context-chip, .mode-chip {
       display: inline-flex;
       align-items: center;
@@ -205,6 +253,26 @@ def get_web_ui_html(user_id: str = "") -> str:
       letter-spacing: 0.18em;
       text-transform: uppercase;
       color: var(--muted-soft);
+    }
+    .dashboard-snapshot {
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .dashboard-snapshot strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 15px;
+    }
+    .dashboard-snapshot p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      max-width: 620px;
     }
     .hero-stat-card strong {
       display: block;
@@ -327,6 +395,24 @@ def get_web_ui_html(user_id: str = "") -> str:
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 10px;
       align-items: end;
+    }
+    .composer-extras {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .composer-extras .source-switch {
+      opacity: 0;
+      max-height: 0;
+      overflow: hidden;
+      transition: opacity 0.2s ease, max-height 0.2s ease;
+    }
+    .composer-extras .source-switch.visible {
+      opacity: 1;
+      max-height: 50px;
     }
     .source-switch {
       display: flex;
@@ -1210,21 +1296,141 @@ def get_web_ui_html(user_id: str = "") -> str:
     .feedback-status.success { color: var(--accent); }
     .feedback-status.error { color: #9d1e1e; }
 
+    .skeleton-line {
+      height: 14px;
+      border-radius: 8px;
+      background: linear-gradient(90deg, rgba(223,209,196,0.3) 25%, rgba(223,209,196,0.5) 50%, rgba(223,209,196,0.3) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s ease-in-out infinite;
+    }
+    .skeleton-line + .skeleton-line { margin-top: 8px; }
+    .skeleton-line.short { width: 60%; }
+    .skeleton-line.medium { width: 80%; }
+    .skeleton-line.tall { height: 22px; width: 50%; }
+    .skeleton-card {
+      border: 1px solid rgba(223,209,196,0.6);
+      border-radius: 18px;
+      padding: 16px;
+      background: rgba(255,255,255,0.5);
+    }
+    .skeleton-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .skeleton-closet-card {
+      border: 1px solid rgba(223,209,196,0.6);
+      border-radius: 18px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.5);
+    }
+    .skeleton-closet-img {
+      height: 160px;
+      background: linear-gradient(90deg, rgba(223,209,196,0.25) 25%, rgba(223,209,196,0.45) 50%, rgba(223,209,196,0.25) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s ease-in-out infinite;
+    }
+    .skeleton-closet-body { padding: 14px; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    .feed-welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding: 36px 18px;
+      text-align: center;
+      min-height: 300px;
+    }
+    .welcome-hero { max-width: 480px; }
+    .welcome-title {
+      font-family: "Cormorant Garamond", "Times New Roman", serif;
+      font-size: 32px;
+      line-height: 1.05;
+      margin: 8px 0 10px;
+    }
+    .welcome-sub {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      margin: 0;
+    }
+    .welcome-prompts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      max-width: 520px;
+      width: 100%;
+    }
+    .welcome-card {
+      text-align: left;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(223, 209, 196, 0.95);
+      background: linear-gradient(180deg, rgba(255,255,255,0.84), rgba(247,239,232,0.96));
+      cursor: pointer;
+      transition: transform 0.18s ease, border-color 0.18s ease;
+      box-shadow: none;
+    }
+    .welcome-card:hover { transform: translateY(-1px); border-color: rgba(111, 47, 69, 0.24); }
+    .welcome-card strong { display: block; font-size: 15px; margin-bottom: 4px; }
+    .welcome-card span { display: block; color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+    /* --- Tablet (768–900px) --- */
     @media (max-width: 900px) {
-      .shell { padding: 18px 12px 22px; }
+      .shell { padding: 18px 14px 22px; }
       .topbar { flex-direction: column; }
       .hub { grid-template-columns: 1fr; }
-      .hero { grid-template-columns: 1fr; padding: 20px; min-height: auto; }
+      .hero { grid-template-columns: 1fr; padding: 22px; min-height: auto; }
       .hero-title { font-size: 44px; max-width: none; }
-      .insight-grid { grid-template-columns: 1fr; }
+      .insight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .memory-grid { grid-template-columns: 1fr; }
       .composer-meta-row { grid-template-columns: 1fr; }
-      .wardrobe-stats,
+      .wardrobe-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .wardrobe-layout,
-      .closet-grid,
-      .style-code-layout,
+      .style-code-layout { grid-template-columns: 1fr; }
+      .closet-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .style-facts,
       .journey-grid { grid-template-columns: 1fr; }
+      .outfit-card {
+        grid-template-columns: 80px minmax(0, 1fr);
+        grid-template-rows: auto auto;
+      }
+      .outfit-info {
+        grid-column: 1 / -1;
+        border-left: none;
+        border-top: 1px solid var(--line);
+      }
+    }
+
+    @media (max-width: 600px) {
+      .welcome-prompts { grid-template-columns: 1fr; }
+      .welcome-title { font-size: 26px; }
+    }
+
+    /* --- Phone (≤430px) --- */
+    @media (max-width: 430px) {
+      .shell { padding: 14px 10px 0; }
+      .topbar h1 { font-size: 32px; }
+      .topbar p { font-size: 13px; }
+      .section-nav { gap: 6px; }
+      .section-nav a { padding: 7px 10px; font-size: 11px; }
+      .hero { padding: 16px; }
+      .hero-title { font-size: 34px; }
+      .hero-sub { font-size: 14px; }
+      .hero-link { padding: 10px 13px; font-size: 12px; }
+      .hero-pills { gap: 6px; }
+      .hero-pill { font-size: 11px; padding: 5px 9px; }
+      .insight-grid { grid-template-columns: 1fr; }
+      .wardrobe-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .closet-grid { grid-template-columns: 1fr; }
+      .closet-card { grid-template-rows: 160px auto; min-height: auto; }
+      .chat-head { padding: 14px 14px 10px; }
+      .chat-head-title { font-size: 24px; }
+      .chip-row { gap: 6px; }
+      .context-chip { font-size: 11px; padding: 6px 9px; }
+      .feed { padding: 14px; }
       .outfit-card {
         grid-template-columns: 1fr;
         grid-template-rows: auto auto auto;
@@ -1238,16 +1444,50 @@ def get_web_ui_html(user_id: str = "") -> str:
         overflow-y: hidden;
         order: 2;
       }
-      .outfit-main-img { order: 1; min-height: 260px; }
+      .outfit-main-img { order: 1; min-height: 220px; }
       .outfit-info {
         order: 3;
         border-left: none;
         border-top: 1px solid var(--line);
+        grid-column: auto;
+      }
+      /* Sticky composer on mobile */
+      .page-chat.chat-shell {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        height: calc(100vh - 140px);
+        height: calc(100dvh - 140px);
+      }
+      .composer {
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+        padding: 12px 14px 14px;
+        border-radius: 20px 20px 0 0;
+        box-shadow: 0 -8px 24px rgba(45, 28, 22, 0.06);
+      }
+      .composer-input-row { gap: 8px; }
+      .composer-note { display: none; }
+      .source-switch { gap: 6px; }
+      .source-option { padding: 6px 10px; font-size: 11px; }
+      .attach-icon-btn { width: 38px; height: 38px; }
+      #message { font-size: 16px; }
+      .section-copy h2 { font-size: 26px; }
+      .style-hero h3 { font-size: 26px; }
+      .wardrobe-stat strong { font-size: 24px; }
+      .hero-stat-card strong { font-size: 24px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
       }
     }
   </style>
 </head>
-<body>
+<body class="view-__ACTIVE_VIEW__">
   <div class="shell">
     <div class="topbar">
       <div class="brand-mark">
@@ -1267,21 +1507,21 @@ def get_web_ui_html(user_id: str = "") -> str:
       </div>
       <div class="mode-chip" id="handoffMode">Web Studio</div>
     </div>
-    <nav class="section-nav">
-      <a href="#stylistHub">Home</a>
-      <a href="#stylistChat">Chat</a>
-      <a href="#wardrobeStudio">Wardrobe</a>
-      <a href="#styleCodeStudio">Style Code</a>
-      <a href="#journeyStudios">Flows</a>
+    <nav class="section-nav" aria-label="Main navigation">
+      <a href="/?user=__USER_ID__&view=dashboard__NAV_PARAMS__" aria-label="Home dashboard">Home</a>
+      <a href="/?user=__USER_ID__&view=chat__NAV_PARAMS__" aria-label="Stylist chat">Chat</a>
+      <a href="/?user=__USER_ID__&view=wardrobe__NAV_PARAMS__" aria-label="Wardrobe studio">Wardrobe</a>
+      <a href="/?user=__USER_ID__&view=style__NAV_PARAMS__" aria-label="Style code profile">Style Code</a>
+      <a href="/?user=__USER_ID__&view=trips__NAV_PARAMS__" aria-label="Trips and planning">Trips</a>
     </nav>
     <div class="hub">
-      <aside class="panel rail">
+      <aside class="panel rail" role="complementary" aria-label="Styling jobs and session">
         <div class="rail-card">
           <div class="eyebrow">Today With Aura</div>
           <h2>Start with the right styling job.</h2>
           <p>Ask for an outfit, style a garment, check a look, or plan a trip without needing to guess what Aura can do.</p>
         </div>
-        <div class="action-list">
+        <div class="action-list" id="jobsRail">
           <button class="action-card" data-prompt="Build me a polished outfit from my wardrobe for tomorrow night.">
             <strong>Dress Me</strong>
             <span>Occasion outfits from your wardrobe first, with an optional catalog upgrade.</span>
@@ -1307,7 +1547,7 @@ def get_web_ui_html(user_id: str = "") -> str:
             <span>Open the direct wardrobe manager to edit metadata, remove items, and inspect coverage detail.</span>
           </a>
         </div>
-        <div class="rail-card">
+        <div class="rail-card" id="stageRail">
           <div class="section-title">Session</div>
           <div class="field">
             <label>User ID</label>
@@ -1326,7 +1566,7 @@ def get_web_ui_html(user_id: str = "") -> str:
         </div>
       </aside>
       <main class="main-stack">
-        <section class="panel hero" id="stylistHub">
+        <section class="panel hero page-view page-dashboard" id="stylistHub">
           <div class="hero-copy">
             <div>
               <div class="eyebrow">Stylist Studio</div>
@@ -1339,21 +1579,34 @@ def get_web_ui_html(user_id: str = "") -> str:
               <span class="hero-pill">Outfit checks</span>
               <span class="hero-pill">Trip capsules</span>
             </div>
+            <div class="hero-actions">
+              <a class="hero-link primary" href="/?user=__USER_ID__&view=chat__NAV_PARAMS__">Start In Chat</a>
+              <a class="hero-link secondary" href="/?user=__USER_ID__&view=wardrobe__NAV_PARAMS__">Open Wardrobe</a>
+              <a class="hero-link secondary" href="/?user=__USER_ID__&view=style__NAV_PARAMS__">See My Style Code</a>
+            </div>
           </div>
           <div class="hero-stat-panel">
             <div class="hero-stat-card">
               <h3>Style Profile</h3>
-              <strong>Classic + Romantic</strong>
-              <p>Use Aura to turn profile insight into daily outfit and pairing decisions.</p>
+              <strong id="heroStyleLabel">Loading&hellip;</strong>
+              <p id="heroStyleCopy">Your style profile will appear here once loaded.</p>
             </div>
             <div class="hero-stat-card">
-              <h3>Wardrobe Promise</h3>
-              <strong>Wear more. Buy smarter.</strong>
-              <p>Wardrobe, catalog, and hybrid answers are surfaced clearly so trust stays high.</p>
+              <h3>Wardrobe</h3>
+              <strong id="heroWardrobeLabel">Loading&hellip;</strong>
+              <p id="heroWardrobeCopy">Your wardrobe summary will appear here once loaded.</p>
             </div>
           </div>
         </section>
-        <section class="insight-grid">
+        <section class="panel dashboard-snapshot page-view page-dashboard">
+          <div>
+            <div class="section-title">Start Here</div>
+            <strong>Begin with one styling decision, then go deeper only if you need to.</strong>
+            <p>The dashboard should point you into the right workspace. Use chat for active styling, wardrobe for closet work, style code for guidance, and trips for planning.</p>
+          </div>
+          <div class="mode-chip">Dashboard-first flow</div>
+        </section>
+        <section class="insight-grid page-view page-dashboard">
           <div class="panel insight-card">
             <div class="section-title">Wardrobe Health</div>
             <strong>Build from what you own first</strong>
@@ -1370,7 +1623,7 @@ def get_web_ui_html(user_id: str = "") -> str:
             <p>Capsules now scale to trip duration and can mix wardrobe looks with catalog-supported additions.</p>
           </div>
         </section>
-        <section class="memory-grid">
+        <section class="memory-grid page-view page-dashboard">
           <div class="panel memory-card">
             <div class="section-title">Recent Threads</div>
             <strong>Jump back into real styling jobs</strong>
@@ -1388,7 +1641,7 @@ def get_web_ui_html(user_id: str = "") -> str:
             </div>
           </div>
         </section>
-        <section class="panel chat-shell" id="stylistChat">
+        <section class="panel chat-shell page-view page-chat" id="stylistChat">
           <div class="chat-head">
             <div class="chat-head-top">
               <h2 class="chat-head-title">Stylist Chat</h2>
@@ -1403,22 +1656,51 @@ def get_web_ui_html(user_id: str = "") -> str:
               <button class="secondary context-chip prompt-chip" data-prompt="Explain why this works for me.">Explain Why</button>
             </div>
           </div>
-          <div class="feed" id="feed"></div>
-          <div class="composer" id="composerArea">
+          <div class="feed" id="feed" aria-live="polite" aria-label="Conversation feed">
+            <div id="feedWelcome" class="feed-welcome">
+              <div class="welcome-hero">
+                <div class="eyebrow">Your Stylist Is Ready</div>
+                <h3 class="welcome-title">What would you like to work on today?</h3>
+                <p class="welcome-sub">Describe a styling need, attach a garment photo, or pick one of these starting points.</p>
+              </div>
+              <div class="welcome-prompts">
+                <button class="welcome-card" data-prompt="Build me a polished outfit from my wardrobe for a dinner this weekend.">
+                  <strong>Dress Me</strong>
+                  <span>Get an occasion outfit from your wardrobe first</span>
+                </button>
+                <button class="welcome-card" data-prompt="Rate my outfit and suggest wardrobe swaps.">
+                  <strong>Check My Outfit</strong>
+                  <span>Upload a photo for a stylist critique</span>
+                </button>
+                <button class="welcome-card" data-prompt="What goes with this piece? Use my wardrobe first.">
+                  <strong>Style A Piece</strong>
+                  <span>Pair around a garment you already own</span>
+                </button>
+                <button class="welcome-card" data-prompt="What collar, color, and silhouette suit me best?">
+                  <strong>Know My Style</strong>
+                  <span>Profile-grounded fashion advice</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="composer" id="composerArea" role="form" aria-label="Message composer">
         <div class="composer-controls">
-          <div class="composer-meta-row">
+          <div id="urlFieldWrapper" class="composer-meta-row" style="display:none;">
             <div class="field">
               <label for="productUrl">Product URL</label>
               <input id="productUrl" type="url" placeholder="Paste a product link for buy/skip or pairing help" />
             </div>
-            <div class="source-switch" id="sourceSwitch">
-              <button class="source-option active" type="button" data-source="auto">Auto</button>
-              <button class="source-option" type="button" data-source="wardrobe">Wardrobe First</button>
-              <button class="source-option" type="button" data-source="catalog">Catalog Only</button>
-              <button class="source-option" type="button" data-source="hybrid">Blend Both</button>
+            <button id="urlFieldClose" type="button" class="remove-x" style="align-self:end;margin-bottom:10px;" title="Close URL field">&times;</button>
+          </div>
+          <div class="composer-extras">
+            <button id="urlFieldToggle" type="button" class="source-option" style="font-size:11px;">+ Product URL</button>
+            <div class="source-switch" id="sourceSwitch" role="group" aria-label="Source preference">
+              <button class="source-option active" type="button" data-source="auto" aria-pressed="true">Auto</button>
+              <button class="source-option" type="button" data-source="wardrobe" aria-pressed="false">Wardrobe First</button>
+              <button class="source-option" type="button" data-source="catalog" aria-pressed="false">Catalog Only</button>
+              <button class="source-option" type="button" data-source="hybrid" aria-pressed="false">Blend Both</button>
             </div>
           </div>
-          <div class="composer-note">Chat remains the control surface. Add a link, an image, or a plain-language request and Aura will route the job from there.</div>
         </div>
         <div id="imagePreview" style="display:none;">
           <div class="img-preview-chip">
@@ -1439,7 +1721,7 @@ def get_web_ui_html(user_id: str = "") -> str:
         <input id="chatImageFile" type="file" accept="image/*" style="display:none;" />
           </div>
         </section>
-        <section class="panel section-block" id="wardrobeStudio">
+        <section class="panel section-block page-view page-wardrobe" id="wardrobeStudio">
           <div class="section-head">
             <div class="section-copy">
               <div class="eyebrow">Wardrobe Studio</div>
@@ -1485,12 +1767,12 @@ def get_web_ui_html(user_id: str = "") -> str:
                   <h2 style="font-size:28px;">Saved pieces ready to style</h2>
                 </div>
               </div>
-              <div class="wardrobe-filter-row" id="wardrobeFilterRow">
-                <button class="filter-chip active" type="button" data-filter="all">All</button>
-                <button class="filter-chip" type="button" data-filter="tops">Tops</button>
-                <button class="filter-chip" type="button" data-filter="bottoms">Bottoms</button>
-                <button class="filter-chip" type="button" data-filter="shoes">Shoes</button>
-                <button class="filter-chip" type="button" data-filter="occasion">Occasion-ready</button>
+              <div class="wardrobe-filter-row" id="wardrobeFilterRow" role="group" aria-label="Wardrobe filters">
+                <button class="filter-chip active" type="button" data-filter="all" aria-pressed="true">All</button>
+                <button class="filter-chip" type="button" data-filter="tops" aria-pressed="false">Tops</button>
+                <button class="filter-chip" type="button" data-filter="bottoms" aria-pressed="false">Bottoms</button>
+                <button class="filter-chip" type="button" data-filter="shoes" aria-pressed="false">Shoes</button>
+                <button class="filter-chip" type="button" data-filter="occasion" aria-pressed="false">Occasion-ready</button>
               </div>
               <div class="closet-grid" id="wardrobeClosetGrid">
                 <div class="wardrobe-empty" style="grid-column: 1 / -1;">Load your wardrobe to browse saved pieces in the studio.</div>
@@ -1518,7 +1800,7 @@ def get_web_ui_html(user_id: str = "") -> str:
             </aside>
           </div>
         </section>
-        <section class="panel section-block" id="styleCodeStudio">
+        <section class="panel section-block page-view page-style" id="styleCodeStudio">
           <div class="section-head">
             <div class="section-copy">
               <div class="eyebrow">My Style Code</div>
@@ -1568,7 +1850,7 @@ def get_web_ui_html(user_id: str = "") -> str:
             </aside>
           </div>
         </section>
-        <section class="panel section-block" id="journeyStudios">
+        <section class="panel section-block page-view page-trips" id="journeyStudios">
           <div class="section-head">
             <div class="section-copy">
               <div class="eyebrow">Guided Flows</div>
@@ -1701,6 +1983,7 @@ def get_web_ui_html(user_id: str = "") -> str:
       imagePreviewImg.src = dataUrl;
       imageFileNameEl.textContent = fileName || "Pasted image";
       imagePreview.style.display = "block";
+      if (typeof updateSourceSwitchVisibility === "function") updateSourceSwitchVisibility();
     }
     function clearImagePreview() {
       pendingImageData = "";
@@ -1708,6 +1991,7 @@ def get_web_ui_html(user_id: str = "") -> str:
       imageFileNameEl.textContent = "";
       imagePreview.style.display = "none";
       chatImageFileEl.value = "";
+      if (typeof updateSourceSwitchVisibility === "function") updateSourceSwitchVisibility();
     }
     function handleImageFile(file) {
       if (!file || file.type.indexOf("image") === -1) return;
@@ -1720,6 +2004,7 @@ def get_web_ui_html(user_id: str = "") -> str:
       messageEl.value = text || "";
       messageEl.focus();
       messageEl.setSelectionRange(messageEl.value.length, messageEl.value.length);
+      if (typeof updateSourceSwitchVisibility === "function") updateSourceSwitchVisibility();
     }
     function sourcePreferencePhrase(source) {
       if (source === "wardrobe") return "Use my wardrobe first.";
@@ -1830,6 +2115,19 @@ def get_web_ui_html(user_id: str = "") -> str:
     }
     attachImgBtn.addEventListener("click", function() { chatImageFileEl.click(); });
     imageRemoveBtn.addEventListener("click", clearImagePreview);
+    const urlFieldWrapper = document.getElementById("urlFieldWrapper");
+    const urlFieldToggle = document.getElementById("urlFieldToggle");
+    const urlFieldClose = document.getElementById("urlFieldClose");
+    urlFieldToggle.addEventListener("click", function() {
+      urlFieldWrapper.style.display = "";
+      urlFieldToggle.style.display = "none";
+      document.getElementById("productUrl").focus();
+    });
+    urlFieldClose.addEventListener("click", function() {
+      urlFieldWrapper.style.display = "none";
+      urlFieldToggle.style.display = "";
+      document.getElementById("productUrl").value = "";
+    });
     chatImageFileEl.addEventListener("change", function() {
       handleImageFile(chatImageFileEl.files && chatImageFileEl.files[0]);
     });
@@ -1845,7 +2143,9 @@ def get_web_ui_html(user_id: str = "") -> str:
       if (!nextSource) return;
       activeSourcePreference = nextSource;
       sourceButtons.forEach(function(button) {
-        button.classList.toggle("active", button.dataset.source === nextSource);
+        const isActive = button.dataset.source === nextSource;
+        button.classList.toggle("active", isActive);
+        button.setAttribute("aria-pressed", String(isActive));
       });
     });
     flowPromptButtons.forEach(function(button) {
@@ -1861,7 +2161,9 @@ def get_web_ui_html(user_id: str = "") -> str:
       if (!nextFilter) return;
       activeWardrobeFilter = nextFilter;
       Array.from(wardrobeFilterRow.querySelectorAll("[data-filter]")).forEach(function(button) {
-        button.classList.toggle("active", button.dataset.filter === nextFilter);
+        const isActive = button.dataset.filter === nextFilter;
+        button.classList.toggle("active", isActive);
+        button.setAttribute("aria-pressed", String(isActive));
       });
       renderWardrobeCloset();
     });
@@ -1935,7 +2237,13 @@ def get_web_ui_html(user_id: str = "") -> str:
       handleImageFile(file);
     });
 
+    function dismissFeedWelcome() {
+      const w = document.getElementById("feedWelcome");
+      if (w) w.remove();
+    }
+
     function addBubble(text, kind, imageDataUrl) {
+      dismissFeedWelcome();
       const div = document.createElement("div");
       div.className = "bubble " + kind;
       if (imageDataUrl) {
@@ -2024,6 +2332,30 @@ def get_web_ui_html(user_id: str = "") -> str:
       return answerSource || "catalog";
     }
 
+    function buildEvaluationCriteria(outfit, responseMetadata) {
+      const isOutfitCheck = String(responseMetadata && responseMetadata.primary_intent || "").toLowerCase() === "outfit_check"
+        || String(responseMetadata && responseMetadata.answer_source || "").toLowerCase().indexOf("outfit_check") !== -1;
+      if (isOutfitCheck) {
+        return [
+          { key: "body_harmony_pct", label: "Body Harmony" },
+          { key: "color_suitability_pct", label: "Color Suitability" },
+          { key: "style_fit_pct", label: "Style Fit" },
+          { key: "pairing_coherence_pct", label: "Pairing" },
+          { key: "occasion_pct", label: "Occasion" },
+        ];
+      }
+      return [
+        { key: "body_harmony_pct", label: "Body Harmony" },
+        { key: "color_suitability_pct", label: "Color Suitability" },
+        { key: "style_fit_pct", label: "Style Fit" },
+        { key: "risk_tolerance_pct", label: "Risk Tolerance" },
+        { key: "occasion_pct", label: "Occasion" },
+        { key: "comfort_boundary_pct", label: "Comfort" },
+        { key: "specific_needs_pct", label: "Specific Needs" },
+        { key: "pairing_coherence_pct", label: "Pairing" },
+      ];
+    }
+
     function buildStylistSummary(outfit) {
       const summary = String(outfit.reasoning || "").trim();
       if (summary) return summary;
@@ -2087,6 +2419,7 @@ def get_web_ui_html(user_id: str = "") -> str:
             return "<div>" + escapeHtml(item.label || item.key || "Occasion") + ": " + escapeHtml(String(item.item_count || 0)) + " piece(s)</div>";
           }).join("")
         : "<div>No occasion coverage data loaded yet.</div>";
+      updateHeroStats();
     }
 
     function renderWardrobeCloset() {
@@ -2135,6 +2468,10 @@ def get_web_ui_html(user_id: str = "") -> str:
         return;
       }
       wardrobeStatusPill.textContent = "Loading closet";
+      wardrobeClosetGrid.innerHTML = '<div class="skeleton-grid" style="grid-column:1/-1;">' +
+        [0,1,2].map(function() {
+          return '<div class="skeleton-closet-card"><div class="skeleton-closet-img"></div><div class="skeleton-closet-body"><div class="skeleton-line tall"></div><div class="skeleton-line medium"></div><div class="skeleton-line short"></div></div></div>';
+        }).join("") + '</div>';
       try {
         const responses = await Promise.all([
           fetch("/v1/onboarding/wardrobe/" + encodeURIComponent(userId)),
@@ -2191,6 +2528,34 @@ def get_web_ui_html(user_id: str = "") -> str:
       return prompts;
     }
 
+    function updateHeroStats() {
+      const heroStyle = document.getElementById("heroStyleLabel");
+      const heroStyleCopy = document.getElementById("heroStyleCopy");
+      const heroWardrobe = document.getElementById("heroWardrobeLabel");
+      const heroWardrobeCopy = document.getElementById("heroWardrobeCopy");
+      if (heroStyle && styleCodeData) {
+        heroStyle.textContent = styleCodeData.primary
+          ? styleCodeData.primary + (styleCodeData.secondary ? " + " + styleCodeData.secondary : "")
+          : "Profile in progress";
+        heroStyleCopy.textContent = styleCodeData.seasonal
+          ? styleCodeData.seasonal + " palette \u00b7 " + (styleCodeData.contrast || "Contrast pending") + " contrast"
+          : "Use Aura to turn profile insight into daily outfit and pairing decisions.";
+      }
+      if (heroWardrobe && wardrobeSummary) {
+        const pct = wardrobeSummary.completeness_score_pct || 0;
+        const count = wardrobeItems.length;
+        heroWardrobe.textContent = count + (count === 1 ? " piece" : " pieces") + " \u00b7 " + pct + "% ready";
+        heroWardrobeCopy.textContent = pct >= 70
+          ? "Strong coverage. Your wardrobe is a real styling asset."
+          : pct >= 40
+            ? "Growing nicely. A few more key pieces will unlock wardrobe-first answers."
+            : "Just getting started. Add more pieces so Aura can style from what you own.";
+      } else if (heroWardrobe && wardrobeItems.length > 0) {
+        heroWardrobe.textContent = wardrobeItems.length + " pieces saved";
+        heroWardrobeCopy.textContent = "Wardrobe summary loading.";
+      }
+    }
+
     function renderStyleCode() {
       if (!styleCodeData) {
         styleIdentityHeading.textContent = "Profile not loaded yet";
@@ -2227,6 +2592,7 @@ def get_web_ui_html(user_id: str = "") -> str:
       stylePromptList.innerHTML = buildStylePromptSuggestions(styleCodeData).map(function(item) {
         return '<div data-style-prompt="' + escapeHtml(item) + '">' + escapeHtml(item) + "</div>";
       }).join("");
+      updateHeroStats();
     }
 
     async function loadStyleCode() {
@@ -2237,6 +2603,12 @@ def get_web_ui_html(user_id: str = "") -> str:
         return;
       }
       styleCodeStatusPill.textContent = "Loading profile";
+      styleFactsGrid.innerHTML = [0,1,2,3].map(function() {
+        return '<div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line tall"></div><div class="skeleton-line medium"></div></div>';
+      }).join("");
+      styleLeanList.innerHTML = [0,1,2].map(function() {
+        return '<div class="skeleton-line medium"></div>';
+      }).join("");
       try {
         const responses = await Promise.all([
           fetch("/v1/onboarding/status/" + encodeURIComponent(userId)),
@@ -2457,6 +2829,12 @@ def get_web_ui_html(user_id: str = "") -> str:
       const radarDiv = document.createElement("div");
       radarDiv.className = "outfit-radar";
       const canvas = document.createElement("canvas");
+      canvas.setAttribute("role", "img");
+      const radarAltParts = archetypes.map(function(a) {
+        const v = Number(outfit.style_archetype_scores && outfit.style_archetype_scores[a.key]) || 0;
+        return a.label + " " + v + "%";
+      });
+      canvas.setAttribute("aria-label", "Style archetype radar: " + radarAltParts.join(", "));
       const size = 240;
       const dpr = window.devicePixelRatio || 1;
       canvas.width = size * dpr;
@@ -2537,16 +2915,7 @@ def get_web_ui_html(user_id: str = "") -> str:
       }
 
       // 8 evaluation criteria percentage bars
-      const criteria = [
-        { key: "body_harmony_pct", label: "Body Harmony" },
-        { key: "color_suitability_pct", label: "Color Suitability" },
-        { key: "style_fit_pct", label: "Style Fit" },
-        { key: "risk_tolerance_pct", label: "Risk Tolerance" },
-        { key: "occasion_pct", label: "Occasion" },
-        { key: "comfort_boundary_pct", label: "Comfort" },
-        { key: "specific_needs_pct", label: "Specific Needs" },
-        { key: "pairing_coherence_pct", label: "Pairing" },
-      ];
+      const criteria = buildEvaluationCriteria(outfit, responseMetadata);
       const criteriaDiv = document.createElement("div");
       criteriaDiv.className = "outfit-criteria";
       for (const c of criteria) {
@@ -2896,6 +3265,11 @@ def get_web_ui_html(user_id: str = "") -> str:
         send();
       }
     });
+    function updateSourceSwitchVisibility() {
+      const hasContent = messageEl.value.trim().length > 0 || pendingImageData;
+      sourceSwitch.classList.toggle("visible", !!hasContent);
+    }
+    messageEl.addEventListener("input", updateSourceSwitchVisibility);
     addBubble(
       "Tell me what you want to wear, what you want to style, or what you want to understand about your profile. I can work wardrobe-first, catalog-only, or blend both.",
       "assistant"
@@ -2914,4 +3288,18 @@ def get_web_ui_html(user_id: str = "") -> str:
 </body>
 </html>
 """
-    return html.replace("__USER_ID__", escape(user_id))
+    resolved_view = (active_view or "dashboard").strip().lower()
+    if resolved_view not in {"dashboard", "chat", "wardrobe", "style", "trips"}:
+      resolved_view = "dashboard"
+    nav_parts = []
+    if source:
+      nav_parts.append(f"&source={escape(source)}")
+    if focus:
+      nav_parts.append(f"&focus={escape(focus)}")
+    if conversation_id:
+      nav_parts.append(f"&conversation_id={escape(conversation_id)}")
+    return (
+        html.replace("__USER_ID__", escape(user_id))
+        .replace("__ACTIVE_VIEW__", escape(resolved_view))
+        .replace("__NAV_PARAMS__", "".join(nav_parts))
+    )

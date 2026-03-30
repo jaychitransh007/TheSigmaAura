@@ -49,12 +49,14 @@ _CHECK_JSON_SCHEMA: Dict[str, Any] = {
                     "body_harmony_pct",
                     "color_suitability_pct",
                     "style_fit_pct",
+                    "pairing_coherence_pct",
                     "occasion_pct",
                 ],
                 "properties": {
                     "body_harmony_pct": {"type": "integer"},
                     "color_suitability_pct": {"type": "integer"},
                     "style_fit_pct": {"type": "integer"},
+                    "pairing_coherence_pct": {"type": "integer"},
                     "occasion_pct": {"type": "integer"},
                 },
             },
@@ -110,6 +112,7 @@ class OutfitCheckResult:
         self.body_harmony_pct: int = max(0, min(100, int(scores.get("body_harmony_pct", 0))))
         self.color_suitability_pct: int = max(0, min(100, int(scores.get("color_suitability_pct", 0))))
         self.style_fit_pct: int = max(0, min(100, int(scores.get("style_fit_pct", 0))))
+        self.pairing_coherence_pct: int = max(0, min(100, int(scores.get("pairing_coherence_pct", 0))))
         self.occasion_pct: int = max(0, min(100, int(scores.get("occasion_pct", 0))))
         self.strengths: List[str] = list(raw.get("strengths") or [])
         self.improvements: List[Dict[str, str]] = list(raw.get("improvements") or [])
@@ -125,7 +128,13 @@ class OutfitCheckResult:
     @property
     def overall_score_pct(self) -> int:
         return int(
-            (self.body_harmony_pct + self.color_suitability_pct + self.style_fit_pct + self.occasion_pct) / 4
+            (
+                self.body_harmony_pct
+                + self.color_suitability_pct
+                + self.style_fit_pct
+                + self.pairing_coherence_pct
+                + self.occasion_pct
+            ) / 5
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -137,6 +146,7 @@ class OutfitCheckResult:
                 "body_harmony_pct": self.body_harmony_pct,
                 "color_suitability_pct": self.color_suitability_pct,
                 "style_fit_pct": self.style_fit_pct,
+                "pairing_coherence_pct": self.pairing_coherence_pct,
                 "occasion_pct": self.occasion_pct,
             },
             "strengths": self.strengths,
@@ -188,6 +198,7 @@ class OutfitCheckAgent:
     """Evaluates a user's described outfit against their profile."""
 
     def __init__(self, model: str = "gpt-5.4") -> None:
+        self._client = OpenAI(api_key=get_api_key())
         self._model = model
         self._system_prompt = _load_prompt()
 
@@ -206,16 +217,25 @@ class OutfitCheckAgent:
             "profile_confidence_pct": profile_confidence_pct,
         }
 
-        client = OpenAI(api_key=get_api_key("openai"))
-        response = client.chat.completions.create(
+        response = self._client.responses.create(
             model=self._model,
-            messages=[
-                {"role": "system", "content": self._system_prompt},
-                {"role": "user", "content": json.dumps(payload, default=str)},
+            input=[
+                {
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": self._system_prompt}],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": json.dumps(payload, indent=2, default=str),
+                        }
+                    ],
+                },
             ],
-            response_format=_CHECK_JSON_SCHEMA,
-            temperature=0.3,
+            text={"format": _CHECK_JSON_SCHEMA},
         )
-        raw_text = response.choices[0].message.content or "{}"
+        raw_text = getattr(response, "output_text", "") or "{}"
         raw = json.loads(raw_text)
         return OutfitCheckResult(raw)

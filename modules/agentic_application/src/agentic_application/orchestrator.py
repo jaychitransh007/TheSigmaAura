@@ -5,6 +5,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional
+from urllib.parse import quote
 
 from platform_core.config import AuraRuntimeConfig
 from platform_core.fallback_messages import graceful_policy_message
@@ -263,12 +264,121 @@ class AgenticOrchestrator:
             "outfit with this",
             "wear with this",
             "style this",
+            "what shoes would work best with this",
+            "what shoes work best with this",
+            "which shoes would work best with this",
+            "what shoes with this",
+            "which shoes with this",
         )
         if any(phrase in normalized for phrase in pairing_phrases):
             return True
         if has_attached_image and ("with this shirt" in normalized or "with this piece" in normalized or "with this garment" in normalized):
             return True
         return False
+
+    def _message_requests_targeted_item_suggestions(self, *, message: str) -> bool:
+        normalized = self._normalize_text_token(message)
+        if not normalized:
+            return False
+        if any(
+            phrase in normalized
+            for phrase in (
+                "subtle printed shirts",
+                "subtle print shirts",
+                "printed shirts for me",
+                "printed shirt for me",
+            )
+        ):
+            return True
+        suggestion_tokens = ("suggest", "show me", "recommend", "find me", "give me")
+        targeted_item_tokens = (
+            "shirt",
+            "shirts",
+            "shoe",
+            "shoes",
+            "trouser",
+            "trousers",
+            "pant",
+            "pants",
+            "blazer",
+            "blazers",
+            "jacket",
+            "jackets",
+            "top",
+            "tops",
+        )
+        return any(token in normalized for token in suggestion_tokens) and any(
+            token in normalized for token in targeted_item_tokens
+        )
+
+    def _infer_followup_intent_override(self, *, message: str) -> str:
+        normalized = self._normalize_text_token(message)
+        if not normalized:
+            return ""
+        if any(token in normalized for token in ("smarter", "more polished", "more polish", "sharper", "dressier", "more refined")):
+            return "increase_formality"
+        if any(token in normalized for token in ("more casual", "less dressy", "more relaxed")):
+            return "decrease_formality"
+        return ""
+
+    def _message_references_prior_context(self, *, message: str) -> bool:
+        normalized = self._normalize_text_token(message)
+        if not normalized:
+            return False
+        if normalized.startswith("make it ") or normalized.startswith("make this ") or normalized.startswith("make that "):
+            return True
+        return any(
+            phrase in normalized
+            for phrase in (
+                "with this",
+                "with it",
+                "this outfit",
+                "this look",
+                "that outfit",
+                "that look",
+                "smarter",
+                "more polished",
+                "more polish",
+                "sharper",
+                "dressier",
+                "more refined",
+                "more casual",
+                "less dressy",
+                "more relaxed",
+            )
+        )
+
+    def _message_requires_richer_refinement_path(
+        self,
+        *,
+        message: str,
+        intent: IntentClassification,
+        live_context: LiveContext,
+    ) -> bool:
+        if intent.primary_intent != "occasion_recommendation":
+            return False
+        if self._message_requests_targeted_item_suggestions(message=message):
+            return True
+        followup_intent = str(live_context.followup_intent or "").strip()
+        if followup_intent in {"increase_formality", "decrease_formality"} and self._message_references_prior_context(message=message):
+            return True
+        return False
+
+    def _previous_anchor_title(self, *, previous_context: Dict[str, Any]) -> str:
+        candidates = [
+            str((previous_context.get("last_live_context") or {}).get("user_need") or "").strip(),
+            str(previous_context.get("last_user_message") or "").strip(),
+        ]
+        pattern = re.compile(r"Attached garment context:\s*([^,\.]+)")
+        for candidate in candidates:
+            if not candidate:
+                continue
+            match = pattern.search(candidate)
+            if match:
+                title = str(match.group(1) or "").strip()
+                if title:
+                    return title
+        return ""
 
     def _message_requests_catalog_followup(
         self,
@@ -356,6 +466,34 @@ class AgenticOrchestrator:
             if not plan_result.resolved_context.followup_intent:
                 plan_result.resolved_context.followup_intent = "catalog_followup"
 
+        followup_override = self._infer_followup_intent_override(message=message)
+        if followup_override:
+            plan_result.resolved_context.followup_intent = followup_override
+            if followup_override == "increase_formality":
+                plan_result.resolved_context.formality_hint = (
+                    plan_result.resolved_context.formality_hint or "smart_casual"
+                )
+            if "followup_phrase_override" not in override_reasons:
+                override_reasons.append("followup_phrase_override")
+
+        if self._message_requests_targeted_item_suggestions(message=message):
+            if plan_result.intent not in {"occasion_recommendation", "pairing_request"}:
+                plan_result.intent = "occasion_recommendation"
+            if plan_result.action != "run_recommendation_pipeline":
+                plan_result.action = "run_recommendation_pipeline"
+            if "targeted_item_refinement" not in plan_result.resolved_context.specific_needs:
+                plan_result.resolved_context.specific_needs.append("targeted_item_refinement")
+            normalized = self._normalize_text_token(message)
+            if "shirt" in normalized and "targeted_shirts" not in plan_result.resolved_context.specific_needs:
+                plan_result.resolved_context.specific_needs.append("targeted_shirts")
+            if (
+                ("subtle printed" in normalized or "subtle print" in normalized)
+                and "subtle_prints" not in plan_result.resolved_context.specific_needs
+            ):
+                plan_result.resolved_context.specific_needs.append("subtle_prints")
+            if "targeted_item_refinement_override" not in override_reasons:
+                override_reasons.append("targeted_item_refinement_override")
+
         if self._message_requests_pairing(message=message, has_attached_image=has_attached_image):
             attached = dict(attached_item or {})
             if plan_result.intent != "pairing_request":
@@ -367,6 +505,8 @@ class AgenticOrchestrator:
                 override_reasons.append("pairing_request_override")
             if not str(plan_result.action_parameters.target_piece or "").strip():
                 anchor_title = str(attached.get("title") or "").strip()
+                if not anchor_title:
+                    anchor_title = self._previous_anchor_title(previous_context=previous_context)
                 if anchor_title:
                     plan_result.action_parameters.target_piece = anchor_title
 
@@ -423,8 +563,18 @@ class AgenticOrchestrator:
         force_catalog_followup: bool,
     ) -> LiveContext:
         if not force_catalog_followup:
+            user_need = message.strip()
+            if resolved_context.is_followup and self._message_references_prior_context(message=message):
+                last_live_context = dict(previous_context.get("last_live_context") or {})
+                prior_need = str(
+                    last_live_context.get("user_need")
+                    or previous_context.get("last_user_message")
+                    or ""
+                ).strip()
+                if prior_need and prior_need != user_need:
+                    user_need = f"{user_need} Follow-up anchor context: {prior_need}"
             return LiveContext(
-                user_need=message.strip(),
+                user_need=user_need,
                 occasion_signal=resolved_context.occasion_signal,
                 formality_hint=resolved_context.formality_hint,
                 time_hint=resolved_context.time_hint,
@@ -1288,6 +1438,9 @@ class AgenticOrchestrator:
         outfit, blocked_terms = self._filter_restricted_recommendation_items(outfit)
         if not outfit:
             return None
+        outfit_roles = {self._normalize_text_token(item.get("role") or "") for item in outfit}
+        if len(outfit) <= 1 and "one piece" not in outfit_roles and "one_piece" not in outfit_roles:
+            return None
         anchor_id = str(anchored_item_id or "").strip()
         selected_ids = [str(item.get("product_id") or "") for item in outfit if str(item.get("product_id") or "").strip()]
         if anchor_id and len(selected_ids) <= 1 and selected_ids == [anchor_id]:
@@ -1359,13 +1512,14 @@ class AgenticOrchestrator:
             "live_context": live_context.model_dump(),
             "conversation_memory": conversation_memory,
             "intent_classification": intent.model_dump(),
-            "profile_confidence": profile_confidence.model_dump(),
-            "sentiment_trace": sentiment_trace,
-            "handler": "occasion_recommendation_wardrobe_first",
-            "handler_payload": {
-                "answer_source": "wardrobe_first",
-                "selected_item_ids": [str(item.get("product_id") or "") for item in outfit],
-                "answer_components": answer_components,
+                "profile_confidence": profile_confidence.model_dump(),
+                "sentiment_trace": sentiment_trace,
+                "response_metadata": metadata,
+                "handler": "occasion_recommendation_wardrobe_first",
+                "handler_payload": {
+                    "answer_source": "wardrobe_first",
+                    "selected_item_ids": [str(item.get("product_id") or "") for item in outfit],
+                    "answer_components": answer_components,
                 "source_selection": source_selection,
                 "catalog_upsell": catalog_upsell,
                 "recommendation_confidence": recommendation_confidence.model_dump(),
@@ -1537,6 +1691,7 @@ class AgenticOrchestrator:
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
                 "sentiment_trace": sentiment_trace,
+                "response_metadata": metadata,
                 "handler": "occasion_recommendation_wardrobe_unavailable",
                 "handler_payload": {
                     "answer_source": "wardrobe_unavailable",
@@ -2186,6 +2341,18 @@ class AgenticOrchestrator:
         return [AgenticOrchestrator._wardrobe_item_to_outfit_item(item) for item in fallback]
 
     @staticmethod
+    def _browser_safe_image_url(value: Any) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return ""
+        normalized = raw.lower()
+        if normalized.startswith(("http://", "https://", "data:", "/v1/")):
+            return raw
+        if raw.startswith("data/") or "/data/onboarding/images/" in raw or "onboarding/images/" in raw:
+            return "/v1/onboarding/images/local?path=" + quote(raw, safe="/._-")
+        return raw
+
+    @staticmethod
     def _wardrobe_item_to_outfit_item(item: Dict[str, Any]) -> Dict[str, Any]:
         role = str(item.get("_role") or "").strip()
         metadata = dict(item.get("metadata_json") or {})
@@ -2193,7 +2360,7 @@ class AgenticOrchestrator:
         return {
             "product_id": str(item.get("id") or ""),
             "title": str(item.get("title") or ""),
-            "image_url": str(item.get("image_url") or item.get("image_path") or ""),
+            "image_url": AgenticOrchestrator._browser_safe_image_url(item.get("image_url") or item.get("image_path") or ""),
             "price": "",
             "product_url": "",
             "garment_category": str(item.get("garment_category") or ""),
@@ -2773,6 +2940,7 @@ class AgenticOrchestrator:
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
                 "sentiment_trace": sentiment_trace,
+                "response_metadata": metadata,
                 "handler": "style_discovery",
                 "channel": channel,
             },
@@ -3441,6 +3609,12 @@ class AgenticOrchestrator:
         if catalog_image_pairing is not None:
             return catalog_image_pairing
 
+        richer_refinement_path = self._message_requires_richer_refinement_path(
+            message=message,
+            intent=intent,
+            live_context=initial_live_context,
+        )
+
         # Wardrobe-first check
         if not force_catalog_followup and source_preference != "catalog":
             wardrobe_first_pairing = self._build_wardrobe_first_pairing_response(
@@ -3461,39 +3635,40 @@ class AgenticOrchestrator:
             if wardrobe_first_pairing is not None:
                 return wardrobe_first_pairing
 
-            wardrobe_first_response = self._build_wardrobe_first_occasion_response(
-                external_user_id=external_user_id,
-                message=message,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                channel=channel,
-                intent=intent,
-                previous_context=previous_context,
-                user_context=user_context,
-                live_context=initial_live_context,
-                conversation_memory=conversation_memory.model_dump(),
-                profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
-                anchored_item_id=anchored_item_id,
-            )
-            if wardrobe_first_response is not None:
-                return wardrobe_first_response
+            if not richer_refinement_path:
+                wardrobe_first_response = self._build_wardrobe_first_occasion_response(
+                    external_user_id=external_user_id,
+                    message=message,
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    channel=channel,
+                    intent=intent,
+                    previous_context=previous_context,
+                    user_context=user_context,
+                    live_context=initial_live_context,
+                    conversation_memory=conversation_memory.model_dump(),
+                    profile_confidence=profile_confidence,
+                    sentiment_trace=sentiment_trace,
+                    anchored_item_id=anchored_item_id,
+                )
+                if wardrobe_first_response is not None:
+                    return wardrobe_first_response
 
-            wardrobe_only_fallback = self._build_wardrobe_only_occasion_fallback(
-                message=message,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                channel=channel,
-                intent=intent,
-                previous_context=previous_context,
-                user_context=user_context,
-                live_context=initial_live_context,
-                conversation_memory=conversation_memory.model_dump(),
-                profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
-            )
-            if wardrobe_only_fallback is not None:
-                return wardrobe_only_fallback
+                wardrobe_only_fallback = self._build_wardrobe_only_occasion_fallback(
+                    message=message,
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    channel=channel,
+                    intent=intent,
+                    previous_context=previous_context,
+                    user_context=user_context,
+                    live_context=initial_live_context,
+                    conversation_memory=conversation_memory.model_dump(),
+                    profile_confidence=profile_confidence,
+                    sentiment_trace=sentiment_trace,
+                )
+                if wardrobe_only_fallback is not None:
+                    return wardrobe_only_fallback
 
         # Run Outfit Architect
         emit("outfit_architect", "started")
@@ -3821,6 +3996,17 @@ class AgenticOrchestrator:
             reasoning_notes=[],
         )
 
+        wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
+        anchor_item = self._find_target_wardrobe_piece(
+            wardrobe_items=wardrobe_items,
+            target_text=message,
+        )
+        outfit_card_items = (
+            [self._wardrobe_item_to_outfit_item(dict(anchor_item, _role="anchor"))]
+            if anchor_item is not None
+            else []
+        )
+
         outfit_card = OutfitCard(
             rank=1,
             title="Outfit Check",
@@ -3832,6 +4018,7 @@ class AgenticOrchestrator:
             body_harmony_pct=check.body_harmony_pct,
             color_suitability_pct=check.color_suitability_pct,
             style_fit_pct=check.style_fit_pct,
+            pairing_coherence_pct=check.pairing_coherence_pct,
             occasion_pct=check.occasion_pct,
             classic_pct=check.style_archetype_read.get("classic_pct", 0),
             dramatic_pct=check.style_archetype_read.get("dramatic_pct", 0),
@@ -3841,17 +4028,16 @@ class AgenticOrchestrator:
             creative_pct=check.style_archetype_read.get("creative_pct", 0),
             sporty_pct=check.style_archetype_read.get("sporty_pct", 0),
             edgy_pct=check.style_archetype_read.get("edgy_pct", 0),
-            items=[],
+            items=outfit_card_items,
         )
-        wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
         wardrobe_gap_analysis = self._build_wardrobe_gap_analysis(
             wardrobe_items=wardrobe_items,
             occasion=occasion_signal or "",
             required_roles=["top", "bottom", "shoe"],
         )
 
-        strengths = [str(item).strip() for item in check.strengths if str(item).strip()][:3]
-        improvements = [dict(item) for item in check.improvements[:3]]
+        strengths = [str(item).strip() for item in check.strengths if str(item).strip()][:2]
+        improvements = [dict(item) for item in check.improvements[:2]]
         wardrobe_suggestions = self._build_outfit_check_wardrobe_suggestions(
             wardrobe_items=wardrobe_items,
             improvements=improvements,
@@ -3863,32 +4049,44 @@ class AgenticOrchestrator:
                 f"My confidence is moderate here because your profile confidence is {profile_confidence.score_pct}%."
             )
         if strengths:
-            assistant_parts.append("What works: " + "; ".join(strengths) + ".")
+            assistant_parts.append("What works: " + " ".join(strengths))
+        referenced_swap_details: set[str] = set()
         if improvements:
             improvement_lines = []
             for item in improvements:
                 suggestion = str(item.get("suggestion") or "").strip()
                 swap_detail = str(item.get("swap_detail") or "").strip()
                 swap_source = str(item.get("swap_source") or "").strip()
+                if swap_detail:
+                    normalized_detail = self._normalize_text_token(swap_detail)
+                    if normalized_detail.startswith("your "):
+                        normalized_detail = normalized_detail[5:]
+                    referenced_swap_details.add(normalized_detail)
                 if suggestion and swap_detail:
                     improvement_lines.append(f"{suggestion} Try {swap_detail} ({swap_source}).")
                 elif suggestion:
                     improvement_lines.append(suggestion)
             if improvement_lines:
                 assistant_parts.append("Tweaks: " + " ".join(improvement_lines))
-        if wardrobe_suggestions:
+        fresh_wardrobe_suggestions = [
+            item
+            for item in wardrobe_suggestions
+            if str(item.get("title") or "").strip()
+            and (
+                self._normalize_text_token(str(item.get("title") or "").strip())[5:]
+                if self._normalize_text_token(str(item.get("title") or "").strip()).startswith("your ")
+                else self._normalize_text_token(str(item.get("title") or "").strip())
+            ) not in referenced_swap_details
+        ]
+        if fresh_wardrobe_suggestions:
             assistant_parts.append(
                 "From your wardrobe, try: "
                 + "; ".join(
                     f"{item['title']} ({item['reason']})"
-                    for item in wardrobe_suggestions[:2]
+                    for item in fresh_wardrobe_suggestions[:2]
                     if str(item.get("title") or "").strip()
                 )
                 + "."
-            )
-        if wardrobe_gap_analysis.get("gap_items"):
-            assistant_parts.append(
-                "Wardrobe gap to close next: " + ", ".join(list(wardrobe_gap_analysis.get("gap_items") or [])[:2]) + "."
             )
         assistant_message = " ".join(part for part in assistant_parts if part).strip()
         gap_items = [str(item).strip() for item in list(wardrobe_gap_analysis.get("gap_items") or []) if str(item).strip()]
@@ -3928,6 +4126,7 @@ class AgenticOrchestrator:
                 "body_harmony_pct": check.body_harmony_pct,
                 "color_suitability_pct": check.color_suitability_pct,
                 "style_fit_pct": check.style_fit_pct,
+                "pairing_coherence_pct": check.pairing_coherence_pct,
                 "occasion_pct": check.occasion_pct,
             },
             "strengths": strengths,
@@ -3959,6 +4158,7 @@ class AgenticOrchestrator:
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
                 "sentiment_trace": sentiment_trace,
+                "response_metadata": metadata,
                 "handler": "outfit_check",
                 "handler_payload": handler_payload,
                 "channel": channel,

@@ -1,10 +1,11 @@
 import sys
 import unittest
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
-from fastapi import APIRouter
+from fastapi import APIRouter, FastAPI
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +23,7 @@ for p in (
 
 
 from agentic_application.api import create_app
+from user.api import create_onboarding_router
 
 
 class AgenticApplicationApiUiTests(unittest.TestCase):
@@ -130,6 +132,24 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertEqual(200, resp.status_code)
         self.assertIn("Wardrobe Manager", resp.text)
         onboarding_gateway.render_wardrobe_manager_html.assert_called_with(user_id="user_ready")
+
+    def test_onboarding_local_image_route_serves_saved_wardrobe_assets(self) -> None:
+        app = FastAPI()
+        app.include_router(create_onboarding_router(Mock(), Mock()))
+        root = Path(__file__).resolve().parents[1]
+        wardrobe_dir = root / "data" / "onboarding" / "images" / "wardrobe"
+        wardrobe_dir.mkdir(parents=True, exist_ok=True)
+        tmp = tempfile.NamedTemporaryFile(dir=wardrobe_dir, suffix=".jpg", delete=False)
+        try:
+            tmp.write(b"fake-image-bytes")
+            tmp.close()
+            rel_path = f"data/onboarding/images/wardrobe/{Path(tmp.name).name}"
+            client = TestClient(app)
+            resp = client.get("/v1/onboarding/images/local", params={"path": rel_path})
+            self.assertEqual(200, resp.status_code)
+            self.assertEqual(b"fake-image-bytes", resp.content)
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
 
     def test_turn_endpoint_uses_minimal_payload(self) -> None:
         app, orchestrator, _, _, _ = self._patched_app("completed")
