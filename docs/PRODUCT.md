@@ -1,6 +1,6 @@
 # Product Overview
 
-Last updated: March 19, 2026
+Last updated: March 30, 2026
 
 ## Purpose
 
@@ -12,6 +12,7 @@ For a user, it is meant to become a repeat-use assistant for real clothing decis
 - should I buy this
 - how would this look on me
 - how do I plan from what I already own
+- what collar, color, pattern, or style direction suits me
 
 The product is not meant to behave like a one-time recommendation demo.
 It is meant to behave like a memory-backed style assistant that gets more useful as the user completes onboarding, adds wardrobe items, gives feedback, and returns through chat.
@@ -64,6 +65,7 @@ Typical prompts:
 - "What goes with this blazer?"
 - "What should I wear tomorrow?"
 - "Plan a mini capsule for my trip."
+- "Build an outfit around this shirt from my wardrobe."
 
 ### 3. Style Learner
 
@@ -76,6 +78,7 @@ Typical prompts:
 - "What style suits me?"
 - "Why did you recommend this?"
 - "What should I avoid?"
+- "What collar works best on me?"
 
 ### 4. Low-Friction Return User
 
@@ -100,6 +103,11 @@ Goals:
 - decide whether onboarding is worth the effort
 - start onboarding
 
+Expected surface:
+- stylist-led landing language
+- visible jobs to be done
+- immediate clarity that Aura helps with dressing, pairing, checking, learning, and planning
+
 ### Stage 2: Onboarding
 
 The user verifies identity by OTP and completes the required pre-chat contract:
@@ -122,6 +130,9 @@ Chat remains blocked until the required onboarding state is complete.
 User outcome:
 - the user sees that the system is preparing a profile before giving advice
 
+Unlock requirement:
+- once analysis is complete, the user lands in a stylist dashboard rather than an empty chat box
+
 ### Stage 4: First Successful Chat
 
 The user asks a first real question on web.
@@ -133,6 +144,13 @@ Examples:
 
 User outcome:
 - the product demonstrates profile-aware value quickly
+
+Ideal first-session entry points:
+- `Dress Me` for occasion outfits
+- `Style This` for pairing
+- `Check Me` for outfit critique
+- `Know Me` for style advice
+- `Trips` for capsule planning
 
 ### Stage 5: Memory Growth
 
@@ -152,6 +170,67 @@ Examples:
 
 User outcome:
 - repeat usage becomes habit-like, not novelty-like
+
+### Stage 7: Web Return From WhatsApp
+
+The user returns from WhatsApp through a deep link when the task needs richer visuals or more editing control.
+
+Expected behavior:
+- the same task context is visible on web
+- the user lands in the relevant section, not a generic home state
+- the stylist tone and source clarity remain consistent across channels
+
+## Canonical Journey Loop
+
+The full operating loop should be:
+
+1. discovery on web
+2. onboarding and processing
+3. first value on web
+4. wardrobe growth and saved-look accumulation
+5. repeat day-to-day usage in chat and WhatsApp
+6. return to web for richer review, wardrobe management, outfit check, or trip planning
+
+This loop is the product’s intended habit system.
+
+## First-Run Experience Contract
+
+Immediately after onboarding and analysis completion, the user should land in:
+- a stylist dashboard
+- not an empty text field
+- not a processing residue state
+
+The first-run page should answer:
+- what can Aura do for me right now
+- what should I ask first
+- what has Aura already learned about me
+- how do I use my wardrobe with it
+
+## Ideal First-Session Paths
+
+### Occasion Outfit
+- entry: `Dress Me`
+- success condition: user receives a source-labeled occasion answer and can refine it quickly
+
+### Pairing
+- entry: `Style This` or image upload
+- success condition: Aura builds around an anchor piece instead of echoing it
+
+### Outfit Check
+- entry: `Check Me` or outfit photo
+- success condition: user receives a critique plus wardrobe-first swaps
+
+### Shopping Decision
+- entry: pasted product URL
+- success condition: user gets buy / skip guidance plus a natural next step
+
+### Style Advice
+- entry: `Know Me`
+- success condition: user understands one concrete profile-grounded styling principle
+
+### Trip Planning
+- entry: `Trips`
+- success condition: user gets a duration-aware plan, not a generic short list
 
 ## Operating Surfaces
 
@@ -185,9 +264,20 @@ As a new user, I want onboarding to happen before chat so the advice is grounded
 
 As an onboarded user, I want to ask what to wear for an occasion and get a useful answer based on my profile and, when available, my wardrobe first.
 
+Expected behavior:
+- wardrobe-first should work when the user wants an outfit from owned items
+- catalog-only should work when the user explicitly wants options from the catalog
+- the response should make the source mode explicit: wardrobe-first, catalog-only, or hybrid
+
 ### US-03: Pairing request
 
 As an onboarded user, I want to ask what goes with a piece I own or want to buy.
+
+Expected behavior:
+- uploading a wardrobe garment image should let the user ask for the best pairing for an occasion
+- uploading a catalog garment image should let the user ask for the best pairing for an occasion
+- the product should pair around the garment, not repeat the garment back as the only answer
+- the system should distinguish wardrobe-image vs catalog-image anchors automatically or from explicit user phrasing
 
 ### US-04: Shopping decision
 
@@ -201,6 +291,10 @@ As an onboarded user, I want to save items into my wardrobe during onboarding or
 
 As an onboarded user, I want to understand what suits me and why.
 
+Expected behavior:
+- the user can ask broad style questions ("what style suits me?")
+- the user can ask specific styling questions ("what collar / color / pattern suits me?")
+
 ### US-07: Explanation request
 
 As an onboarded user, I want the system to explain recommendations using my actual profile, memory, wardrobe, and confidence state.
@@ -212,6 +306,24 @@ As an onboarded user, I want to request a try-on when it is safe and the output 
 ### US-09: Cross-channel continuity
 
 As a repeat user, I want the same memory and identity to carry from web to WhatsApp.
+
+### US-10: Outfit check with wardrobe follow-up
+
+As an onboarded user, I want to rate or check my current outfit and get suggestions for what would work better from my wardrobe.
+
+Expected behavior:
+- the critique should suggest wardrobe swaps first
+- catalog follow-up should stay optional, not forced
+- a later `Show me better options from the catalog` should pivot with the same outfit context
+
+### US-11: Trip / capsule planning
+
+As an onboarded user, I want a trip-duration-aware capsule or outfit list that combines my wardrobe first and catalog gap-fillers when needed.
+
+Expected behavior:
+- trip duration should expand the number of looks up to a bounded multi-day plan
+- the plan should cover multiple contexts or dayparts, not repeated undifferentiated looks
+- catalog-supported hybrid looks should appear when wardrobe depth alone cannot cover the trip
 
 ## What Success Looks Like For The User
 

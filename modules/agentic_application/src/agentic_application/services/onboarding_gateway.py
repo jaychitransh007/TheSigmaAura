@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter
 
@@ -9,7 +9,7 @@ from user.analysis import UserAnalysisService
 from user.api import create_onboarding_router
 from user.repository import OnboardingRepository
 from user.service import OnboardingService
-from user.ui import get_onboarding_html, get_processing_html
+from user.ui import get_onboarding_html, get_processing_html, get_wardrobe_manager_html
 
 from platform_core.supabase_rest import SupabaseRestClient
 
@@ -65,7 +65,42 @@ class ApplicationUserGateway:
         return None
 
     def get_wardrobe_items(self, user_id: str) -> list:
-        return list(self._repo.list_wardrobe_items(user_id) or [])
+        items = list(self._repo.list_wardrobe_items(user_id) or [])
+        enriched: list[dict[str, Any]] = []
+        for item in items:
+            row = dict(item)
+            metadata = dict(row.get("metadata_json") or {})
+            catalog_attrs = dict(metadata.get("catalog_attributes") or {})
+            if catalog_attrs:
+                row["catalog_attributes"] = catalog_attrs
+                row["volume_profile"] = str(row.get("volume_profile") or catalog_attrs.get("VolumeProfile") or "")
+                row["fit_type"] = str(row.get("fit_type") or catalog_attrs.get("FitType") or "")
+                row["silhouette_type"] = str(row.get("silhouette_type") or catalog_attrs.get("SilhouetteType") or "")
+                row["formality_level"] = str(row.get("formality_level") or catalog_attrs.get("FormalityLevel") or catalog_attrs.get("FormalitySignalStrength") or "")
+                row["occasion_fit"] = str(row.get("occasion_fit") or catalog_attrs.get("OccasionFit") or "")
+                row["pattern_type"] = str(row.get("pattern_type") or catalog_attrs.get("PatternType") or "")
+            enriched.append(row)
+        return enriched
+
+    def save_uploaded_chat_wardrobe_item(
+        self,
+        *,
+        user_id: str,
+        image_data: str,
+        title: str = "",
+        description: str = "",
+        notes: str = "",
+    ) -> Optional[dict]:
+        existing = self._repo.get_profile_by_user_id(user_id)
+        if not existing:
+            return None
+        return self._service.save_chat_wardrobe_image(
+            user_id=user_id,
+            image_data=image_data,
+            title=title,
+            description=description,
+            notes=notes,
+        )
 
     def save_chat_wardrobe_item(
         self,
@@ -121,8 +156,13 @@ class ApplicationUserGateway:
     def create_router(self) -> APIRouter:
         return create_onboarding_router(self._service, self._analysis)
 
-    def render_onboarding_html(self) -> str:
+    def render_onboarding_html(self, *, user_id: str = "", focus: str = "") -> str:
+        if str(focus or "").strip().lower() == "wardrobe":
+            return get_wardrobe_manager_html(user_id=user_id)
         return get_onboarding_html()
 
     def render_processing_html(self, *, user_id: str = "") -> str:
         return get_processing_html(user_id=user_id)
+
+    def render_wardrobe_manager_html(self, *, user_id: str = "") -> str:
+        return get_wardrobe_manager_html(user_id=user_id)

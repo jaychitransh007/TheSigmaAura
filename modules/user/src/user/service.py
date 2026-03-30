@@ -1,7 +1,9 @@
 import hashlib
+import mimetypes
 import os
 import subprocess
 import tempfile
+import base64
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +18,7 @@ from platform_core.restricted_categories import ensure_allowed_garment_upload
 from .repository import OnboardingRepository
 from .schemas import FIXED_OTP, ImageCategory
 from .style_archetype import interpret_style_preference, selection_session
+from .wardrobe_enrichment import infer_wardrobe_catalog_attributes
 
 
 REQUIRED_IMAGE_CATEGORIES = frozenset(("full_body", "headshot"))
@@ -49,6 +52,140 @@ class OnboardingService:
         self._image_moderation = ImageModerationService()
         self._policy_logger = policy_logger
         self._dependency_logger = dependency_logger
+
+    @staticmethod
+    def _decode_data_url_image(image_data: str) -> tuple[bytes, str, str]:
+        raw = str(image_data or "").strip()
+        if not raw.startswith("data:") or ";base64," not in raw:
+            raise ValueError("Attached image must be a valid base64 data URL.")
+        header, encoded = raw.split(",", 1)
+        mime_type = header.split(";")[0].split(":", 1)[1] if ":" in header else "image/jpeg"
+        extension = mimetypes.guess_extension(mime_type) or ".jpg"
+        try:
+            data = base64.b64decode(encoded)
+        except Exception as exc:
+            raise ValueError("Attached image data could not be decoded.") from exc
+        return data, mime_type, f"chat_upload{extension}"
+
+    @staticmethod
+    def _clean_attr(value: Any) -> str:
+        text = str(value or "").strip()
+        if text.lower() in {"", "null", "none", "unknown", "unspecified", "n_a", "n/a"}:
+            return ""
+        return text
+
+    def _project_catalog_attributes(
+        self,
+        *,
+        extracted: dict[str, Any],
+        title: str,
+        description: str,
+        garment_category: str,
+        garment_subtype: str,
+        primary_color: str,
+        secondary_color: str,
+        pattern_type: str,
+        formality_level: str,
+        occasion_fit: str,
+    ) -> dict[str, str]:
+        attrs = dict((extracted or {}).get("attributes") or {})
+        resolved_category = self._clean_attr(attrs.get("GarmentCategory")) or garment_category
+        resolved_subtype = self._clean_attr(attrs.get("GarmentSubtype")) or garment_subtype or resolved_category
+        resolved_primary_color = self._clean_attr(attrs.get("PrimaryColor")) or primary_color
+        resolved_secondary_color = self._clean_attr(attrs.get("SecondaryColor")) or secondary_color
+        resolved_pattern = self._clean_attr(attrs.get("PatternType")) or pattern_type
+        resolved_formality = (
+            self._clean_attr(attrs.get("FormalityLevel"))
+            or self._clean_attr(attrs.get("FormalitySignalStrength"))
+            or formality_level
+        )
+        resolved_occasion = self._clean_attr(attrs.get("OccasionFit")) or occasion_fit
+        resolved_title = str(title or "").strip()
+        if not resolved_title:
+            resolved_title = " ".join(
+                part
+                for part in (resolved_primary_color.replace("_", " ").title() if resolved_primary_color else "", resolved_subtype.replace("_", " ").title() if resolved_subtype else "")
+                if part
+            ).strip()
+        resolved_description = str(description or "").strip()
+        if not resolved_description:
+            desc_parts = [
+                self._clean_attr(attrs.get("GarmentLength")).replace("_", " "),
+                self._clean_attr(attrs.get("SilhouetteType")).replace("_", " "),
+                self._clean_attr(attrs.get("FitType")).replace("_", " "),
+            ]
+            resolved_description = " ".join(part for part in desc_parts if part).strip()
+        return {
+            "title": resolved_title or "Wardrobe Item",
+            "description": resolved_description,
+            "garment_category": resolved_category,
+            "garment_subtype": resolved_subtype,
+            "primary_color": resolved_primary_color,
+            "secondary_color": resolved_secondary_color,
+            "pattern_type": resolved_pattern,
+            "formality_level": resolved_formality,
+            "occasion_fit": resolved_occasion,
+        }
+
+    @staticmethod
+    def _wardrobe_role_of(item: dict[str, Any]) -> str:
+        category = OnboardingService._clean_attr(item.get("garment_category") or item.get("garment_subtype")).lower()
+        if category in {"dress", "jumpsuit", "co-ord", "coord", "suit"}:
+            return "one_piece"
+        if category in {"top", "shirt", "tshirt", "t-shirt", "tee", "blouse", "knitwear", "sweater"}:
+            return "top"
+        if category in {"blazer", "jacket", "coat", "cardigan", "outerwear", "overshirt"}:
+            return "outerwear"
+        if category in {"bottom", "trouser", "trousers", "pants", "jeans", "skirt", "shorts"}:
+            return "bottom"
+        if category in {"shoe", "shoes", "sneaker", "sneakers", "loafer", "loafers", "heel", "heels", "boot", "boots", "sandal", "sandals"}:
+            return "shoe"
+        return "other"
+
+    @staticmethod
+    def _occasion_keys_of(item: dict[str, Any]) -> set[str]:
+        normalized = OnboardingService._clean_attr(item.get("occasion_fit")).lower().replace("-", " ").replace("_", " ")
+        tokens = {token for token in normalized.split() if token}
+        coverage: set[str] = set()
+        if {"office", "work", "formal", "business"} & tokens:
+            coverage.add("office")
+        if {"casual", "weekend", "day", "everyday"} & tokens:
+            coverage.add("casual")
+        if {"evening", "party", "dinner", "date"} & tokens:
+            coverage.add("evening")
+        if {"travel", "trip", "vacation", "holiday"} & tokens:
+            coverage.add("travel")
+        return coverage
+
+    def _get_wardrobe_item_by_id(self, *, user_id: str, wardrobe_item_id: str) -> Optional[dict]:
+        if self._repo is None:
+            return None
+        items = list(self._repo.list_wardrobe_items(user_id, active_only=False) or [])
+        for item in items:
+            if str(item.get("id") or "") == str(wardrobe_item_id):
+                return dict(item)
+        return None
+
+    def save_chat_wardrobe_image(
+        self,
+        *,
+        user_id: str,
+        image_data: str,
+        title: str = "",
+        description: str = "",
+        notes: str = "",
+    ) -> Optional[dict]:
+        file_data, content_type, filename = self._decode_data_url_image(image_data)
+        return self.save_wardrobe_item(
+            user_id=user_id,
+            file_data=file_data,
+            filename=filename,
+            content_type=content_type,
+            source="chat",
+            title=title,
+            description=description,
+            notes=notes,
+        )
 
     def set_policy_logger(self, policy_logger: Optional[Callable[..., None]]) -> None:
         self._policy_logger = policy_logger
@@ -269,19 +406,65 @@ class OnboardingService:
             "file_size_bytes": len(file_data),
             "encrypted_filename": encrypted_name,
         }
+        projected = {
+            "title": title,
+            "description": description,
+            "garment_category": garment_category,
+            "garment_subtype": garment_subtype,
+            "primary_color": primary_color,
+            "secondary_color": secondary_color,
+            "pattern_type": pattern_type,
+            "formality_level": formality_level,
+            "occasion_fit": occasion_fit,
+        }
+        try:
+            extracted = infer_wardrobe_catalog_attributes(
+                image_ref=str(dest),
+                title=title,
+                description=description,
+                garment_category=garment_category,
+                garment_subtype=garment_subtype,
+                primary_color=primary_color,
+                secondary_color=secondary_color,
+                pattern_type=pattern_type,
+                formality_level=formality_level,
+                occasion_fit=occasion_fit,
+                brand=brand,
+                notes=notes,
+            )
+            metadata_json["catalog_attribute_extraction_status"] = "ok"
+            metadata_json["catalog_attributes"] = dict(extracted.get("attributes") or {})
+            metadata_json["catalog_attribute_model"] = str(extracted.get("model") or "")
+            metadata_json["catalog_attribute_extracted_at"] = datetime.now(timezone.utc).isoformat()
+            metadata_json["user_supplied_fields"] = dict(projected)
+            projected = self._project_catalog_attributes(
+                extracted=extracted,
+                title=title,
+                description=description,
+                garment_category=garment_category,
+                garment_subtype=garment_subtype,
+                primary_color=primary_color,
+                secondary_color=secondary_color,
+                pattern_type=pattern_type,
+                formality_level=formality_level,
+                occasion_fit=occasion_fit,
+            )
+        except Exception as exc:
+            metadata_json["catalog_attribute_extraction_status"] = "error"
+            metadata_json["catalog_attribute_error"] = str(exc)
         return self._repo.insert_wardrobe_item(
             user_id=user_id,
             source=source,
-            title=title,
-            description=description,
+            title=projected["title"],
+            description=projected["description"],
             image_path=str(dest),
-            garment_category=garment_category,
-            garment_subtype=garment_subtype,
-            primary_color=primary_color,
-            secondary_color=secondary_color,
-            pattern_type=pattern_type,
-            formality_level=formality_level,
-            occasion_fit=occasion_fit,
+            garment_category=projected["garment_category"],
+            garment_subtype=projected["garment_subtype"],
+            primary_color=projected["primary_color"],
+            secondary_color=projected["secondary_color"],
+            pattern_type=projected["pattern_type"],
+            formality_level=projected["formality_level"],
+            occasion_fit=projected["occasion_fit"],
             brand=brand,
             notes=notes,
             metadata_json=metadata_json,
@@ -295,6 +478,166 @@ class OnboardingService:
             "user_id": user_id,
             "count": len(items),
             "items": items,
+        }
+
+    def update_wardrobe_item(
+        self,
+        *,
+        user_id: str,
+        wardrobe_item_id: str,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        garment_category: Optional[str] = None,
+        garment_subtype: Optional[str] = None,
+        primary_color: Optional[str] = None,
+        secondary_color: Optional[str] = None,
+        pattern_type: Optional[str] = None,
+        formality_level: Optional[str] = None,
+        occasion_fit: Optional[str] = None,
+        brand: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> Optional[dict]:
+        if self._repo is None:
+            return None
+        existing = self._get_wardrobe_item_by_id(user_id=user_id, wardrobe_item_id=wardrobe_item_id)
+        if not existing:
+            return None
+
+        merged = {
+            "title": existing.get("title") if title is None else title,
+            "description": existing.get("description") if description is None else description,
+            "garment_category": existing.get("garment_category") if garment_category is None else garment_category,
+            "garment_subtype": existing.get("garment_subtype") if garment_subtype is None else garment_subtype,
+            "primary_color": existing.get("primary_color") if primary_color is None else primary_color,
+            "secondary_color": existing.get("secondary_color") if secondary_color is None else secondary_color,
+            "pattern_type": existing.get("pattern_type") if pattern_type is None else pattern_type,
+            "formality_level": existing.get("formality_level") if formality_level is None else formality_level,
+            "occasion_fit": existing.get("occasion_fit") if occasion_fit is None else occasion_fit,
+            "brand": existing.get("brand") if brand is None else brand,
+            "notes": existing.get("notes") if notes is None else notes,
+        }
+        self.ensure_allowed_wardrobe_item(
+            user_id=user_id,
+            filename=str(existing.get("image_url") or existing.get("image_path") or existing.get("title") or "wardrobe_item"),
+            title=str(merged["title"] or ""),
+            description=str(merged["description"] or ""),
+            garment_category=str(merged["garment_category"] or ""),
+            garment_subtype=str(merged["garment_subtype"] or ""),
+            notes=str(merged["notes"] or ""),
+            brand=str(merged["brand"] or ""),
+            input_class="wardrobe_item_update",
+        )
+        return self._repo.update_wardrobe_item(
+            wardrobe_item_id,
+            title=str(merged["title"] or ""),
+            description=str(merged["description"] or ""),
+            garment_category=str(merged["garment_category"] or ""),
+            garment_subtype=str(merged["garment_subtype"] or ""),
+            primary_color=str(merged["primary_color"] or ""),
+            secondary_color=str(merged["secondary_color"] or ""),
+            pattern_type=str(merged["pattern_type"] or ""),
+            formality_level=str(merged["formality_level"] or ""),
+            occasion_fit=str(merged["occasion_fit"] or ""),
+            brand=str(merged["brand"] or ""),
+            notes=str(merged["notes"] or ""),
+        )
+
+    def delete_wardrobe_item(self, *, user_id: str, wardrobe_item_id: str) -> bool:
+        if self._repo is None:
+            return False
+        existing = self._get_wardrobe_item_by_id(user_id=user_id, wardrobe_item_id=wardrobe_item_id)
+        if not existing:
+            return False
+        self._repo.deactivate_wardrobe_item(wardrobe_item_id)
+        return True
+
+    def get_wardrobe_summary(self, user_id: str) -> dict:
+        if self._repo is None:
+            return {
+                "user_id": user_id,
+                "count": 0,
+                "completeness_score_pct": 0,
+                "summary": "",
+                "category_counts": {},
+                "occasion_coverage": [],
+                "missing_categories": [],
+                "gap_items": [],
+            }
+
+        items = list(self._repo.list_wardrobe_items(user_id) or [])
+        role_counts = {
+            "top": 0,
+            "bottom": 0,
+            "shoe": 0,
+            "outerwear": 0,
+            "one_piece": 0,
+        }
+        occasion_counts = {"office": 0, "casual": 0, "evening": 0, "travel": 0}
+        for item in items:
+            role = self._wardrobe_role_of(item)
+            if role in role_counts:
+                role_counts[role] += 1
+            for key in self._occasion_keys_of(item):
+                occasion_counts[key] += 1
+
+        weighted_score = (
+            min(role_counts["top"], 3) * 18
+            + min(role_counts["bottom"], 2) * 18
+            + min(role_counts["shoe"], 2) * 12
+            + min(role_counts["outerwear"], 2) * 10
+            + min(role_counts["one_piece"], 1) * 8
+            + sum(8 for count in occasion_counts.values() if count > 0)
+        )
+        completeness_score_pct = min(int(weighted_score), 100)
+
+        role_labels = {
+            "top": "tops",
+            "bottom": "bottoms",
+            "shoe": "shoe options",
+            "outerwear": "layers",
+            "one_piece": "one-piece looks",
+        }
+        missing_categories = [label for key, label in role_labels.items() if role_counts[key] == 0]
+
+        gap_items: list[str] = []
+        if role_counts["bottom"] == 0:
+            gap_items.append("a versatile trouser or skirt")
+        if role_counts["shoe"] == 0:
+            gap_items.append("a reliable everyday shoe")
+        if role_counts["outerwear"] == 0:
+            gap_items.append("a layering piece like a blazer or jacket")
+        if role_counts["top"] < 2:
+            gap_items.append("one more easy top to improve outfit rotation")
+        if not any(occasion_counts.values()):
+            gap_items.append("clear occasion tags so Aura can plan outfits more accurately")
+
+        covered_occasions = [key for key, count in occasion_counts.items() if count > 0]
+        if covered_occasions:
+            summary = (
+                f"Your wardrobe is {completeness_score_pct}% ready right now, with the strongest coverage in "
+                + ", ".join(covered_occasions[:3])
+                + "."
+            )
+        else:
+            summary = f"Your wardrobe is {completeness_score_pct}% ready right now. Add a few tagged staples to unlock better planning."
+
+        return {
+            "user_id": user_id,
+            "count": len(items),
+            "completeness_score_pct": completeness_score_pct,
+            "summary": summary,
+            "category_counts": role_counts,
+            "occasion_coverage": [
+                {
+                    "key": key,
+                    "label": key.replace("_", " ").title(),
+                    "item_count": count,
+                    "covered": count > 0,
+                }
+                for key, count in occasion_counts.items()
+            ],
+            "missing_categories": missing_categories,
+            "gap_items": gap_items[:4],
         }
 
     def normalize_image_for_crop(

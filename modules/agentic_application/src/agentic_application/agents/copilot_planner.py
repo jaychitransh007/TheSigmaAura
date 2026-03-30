@@ -70,6 +70,8 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                 "type": "string",
                 "enum": [
                     "run_recommendation_pipeline",
+                    "run_outfit_check",
+                    "run_shopping_decision",
                     "respond_directly",
                     "ask_clarification",
                     "run_virtual_tryon",

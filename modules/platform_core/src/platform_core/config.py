@@ -9,6 +9,10 @@ class AuraRuntimeConfig:
     catalog_csv_path: str = "data/catalog/enriched_catalog.csv"
     retrieval_match_count: int = 12
     request_timeout_seconds: int = 30
+    whatsapp_access_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_webhook_verify_token: str = ""
+    whatsapp_api_version: str = "v22.0"
 
 
 def _resolve_env_file(explicit_path: str | None = None) -> str:
@@ -87,4 +91,8 @@ def load_config() -> AuraRuntimeConfig:
         supabase_rest_url=_ensure_rest_url(supabase_url),
         supabase_service_role_key=service_key,
         catalog_csv_path=catalog_csv_path,
+        whatsapp_access_token=os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip(),
+        whatsapp_phone_number_id=os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip(),
+        whatsapp_webhook_verify_token=os.getenv("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "").strip(),
+        whatsapp_api_version=os.getenv("WHATSAPP_API_VERSION", "v22.0").strip() or "v22.0",
     )

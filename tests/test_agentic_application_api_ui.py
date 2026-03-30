@@ -32,6 +32,7 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         orch_cls = patch("agentic_application.api.AgenticOrchestrator")
         onboarding_gateway_cls = patch("agentic_application.api.ApplicationUserGateway")
         dependency_reporting_cls = patch("agentic_application.api.DependencyReportingService")
+        whatsapp_sender_cls = patch("agentic_application.api.WhatsAppCloudSender")
 
         mocked = [
             load_cfg.start(),
@@ -40,6 +41,7 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
             orch_cls.start(),
             onboarding_gateway_cls.start(),
             dependency_reporting_cls.start(),
+            whatsapp_sender_cls.start(),
         ]
         self.addCleanup(load_cfg.stop)
         self.addCleanup(sb_client.stop)
@@ -47,6 +49,7 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.addCleanup(orch_cls.stop)
         self.addCleanup(onboarding_gateway_cls.stop)
         self.addCleanup(dependency_reporting_cls.stop)
+        self.addCleanup(whatsapp_sender_cls.stop)
 
         mocked[0].return_value = Mock(
             supabase_rest_url="http://127.0.0.1:55321/rest/v1",
@@ -54,14 +57,21 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
             request_timeout_seconds=5,
             catalog_csv_path="data/catalog/enriched_catalog.csv",
             retrieval_match_count=12,
+            whatsapp_access_token="token",
+            whatsapp_phone_number_id="phone-id",
+            whatsapp_webhook_verify_token="verify-me",
+            whatsapp_api_version="v22.0",
         )
         mocked[1].return_value = Mock()
         mocked[2].return_value = Mock()
         repo = mocked[2].return_value
         onboarding_gateway = Mock()
         onboarding_gateway.create_router.return_value = APIRouter()
-        onboarding_gateway.render_onboarding_html.return_value = "<html>Onboarding</html>"
+        onboarding_gateway.render_onboarding_html.side_effect = (
+            lambda user_id="", focus="": "<html>Wardrobe Manager</html>" if focus == "wardrobe" else "<html>Onboarding</html>"
+        )
         onboarding_gateway.render_processing_html.return_value = "<html>Profile processing in progress.</html>"
+        onboarding_gateway.render_wardrobe_manager_html.return_value = "<html>Wardrobe Manager</html>"
         onboarding_gateway.get_onboarding_status.return_value = {"onboarding_complete": True}
         onboarding_gateway.get_effective_seasonal_groups.return_value = None
         onboarding_gateway.resolve_user_id_by_mobile.return_value = None
@@ -73,6 +83,15 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         }
         mocked[4].return_value = onboarding_gateway
         mocked[5].return_value.build_report.return_value = {"overview": {"onboarded_user_count": 0}}
+        sender = mocked[6].return_value
+        sender.send_text_message.return_value.as_dict.return_value = {
+            "delivered": True,
+            "skipped": False,
+            "status_code": 200,
+            "response_text": "{\"messages\":[{\"id\":\"wamid.outbound\"}]}",
+            "error": "",
+        }
+        self._last_whatsapp_sender = sender
         return create_app(), mocked[3].return_value, repo, onboarding_gateway, mocked[5].return_value
 
     def test_completed_user_gets_minimal_conversation_ui(self) -> None:
@@ -95,6 +114,22 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         resp = client.get("/?user=user_processing")
         self.assertEqual(200, resp.status_code)
         self.assertIn("Profile processing in progress.", resp.text)
+
+    def test_onboard_focus_wardrobe_renders_manager_html(self) -> None:
+        app, _, _, onboarding_gateway, _ = self._patched_app("completed")
+        client = TestClient(app)
+        resp = client.get("/onboard?user=user_ready&focus=wardrobe")
+        self.assertEqual(200, resp.status_code)
+        self.assertIn("Wardrobe Manager", resp.text)
+        onboarding_gateway.render_onboarding_html.assert_called_with(user_id="user_ready", focus="wardrobe")
+
+    def test_home_focus_wardrobe_bypasses_main_chat_ui(self) -> None:
+        app, _, _, onboarding_gateway, _ = self._patched_app("completed")
+        client = TestClient(app)
+        resp = client.get("/?user=user_ready&focus=wardrobe")
+        self.assertEqual(200, resp.status_code)
+        self.assertIn("Wardrobe Manager", resp.text)
+        onboarding_gateway.render_wardrobe_manager_html.assert_called_with(user_id="user_ready")
 
     def test_turn_endpoint_uses_minimal_payload(self) -> None:
         app, orchestrator, _, _, _ = self._patched_app("completed")
@@ -533,6 +568,92 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertIn("focus=wardrobe", payload["deep_link_url"])
         self.assertIn("conversation_id=c-existing", payload["deep_link_url"])
 
+    def test_whatsapp_webhook_verification_succeeds(self) -> None:
+        app, _, _, _, _ = self._patched_app("completed")
+        client = TestClient(app)
+        resp = client.get(
+            "/v1/channels/whatsapp/webhook",
+            params={
+                "hub.mode": "subscribe",
+                "hub.verify_token": "verify-me",
+                "hub.challenge": "12345",
+            },
+        )
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual("12345", resp.text)
+
+    def test_whatsapp_webhook_post_processes_event_and_sends_delivery(self) -> None:
+        app, orchestrator, repo, _, _ = self._patched_app("completed")
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_latest_conversation_for_user.return_value = {"id": "c-existing", "user_id": "db-user"}
+        orchestrator.process_turn.return_value = {
+            "conversation_id": "c-existing",
+            "turn_id": "t-wa-webhook",
+            "assistant_message": "Use your wardrobe first.",
+            "response_type": "recommendation",
+            "resolved_context": {"request_summary": "Need an office look", "occasion": "office", "style_goal": ""},
+            "filters_applied": {},
+            "outfits": [],
+            "follow_up_suggestions": ["Show me more"],
+            "metadata": {"primary_intent": "occasion_recommendation"},
+        }
+
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/channels/whatsapp/webhook",
+            json={
+                "entry": [
+                    {
+                        "changes": [
+                            {
+                                "value": {
+                                    "contacts": [{"wa_id": "15551234567", "profile": {"name": "Maya"}}],
+                                    "messages": [
+                                        {
+                                            "id": "wamid.webhook.1",
+                                            "from": "15551234567",
+                                            "type": "text",
+                                            "text": {"body": "Need an office look for tomorrow"},
+                                        }
+                                    ],
+                                }
+                            }
+                        ]
+                    }
+                ]
+            },
+        )
+        self.assertEqual(200, resp.status_code)
+        payload = resp.json()
+        self.assertEqual(1, payload["received_event_count"])
+        self.assertEqual(1, payload["processed_event_count"])
+        self.assertEqual("wamid.webhook.1", payload["processed"][0]["message_id"])
+        self.assertTrue(payload["deliveries"][0]["delivered"])
+        self._last_whatsapp_sender.send_text_message.assert_called_once()
+        send_kwargs = self._last_whatsapp_sender.send_text_message.call_args.kwargs
+        self.assertEqual("+15551234567", send_kwargs["phone_number"])
+        self.assertIn("Use your wardrobe first.", send_kwargs["message"])
+
+    def test_whatsapp_reminder_endpoint_returns_trigger_metadata(self) -> None:
+        app, _, repo, _, _ = self._patched_app("completed")
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_latest_conversation_for_user.return_value = {
+            "id": "c-existing",
+            "user_id": "db-user",
+            "updated_at": "2026-03-25T10:00:00+00:00",
+            "session_context_json": {
+                "last_intent": "shopping_decision",
+                "memory": {"wardrobe_item_count": 2},
+            },
+        }
+
+        client = TestClient(app)
+        resp = client.post("/v1/channels/whatsapp/reminders", json={"phone_number": "+15551234567"})
+        self.assertEqual(200, resp.status_code)
+        trigger = resp.json()["metadata"]["trigger"]
+        self.assertTrue(trigger["eligible"])
+        self.assertEqual("cooldown_satisfied", trigger["reason"])
+
     def test_admin_catalog_page_renders(self) -> None:
         app, _, _, _, _ = self._patched_app("completed")
         client = TestClient(app)
@@ -654,15 +775,16 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertNotIn("tryon-label", html)
         self.assertNotIn("renderRecommendations", html)
 
-    def test_ui_html_exposes_garment_pairing_upload_surface(self) -> None:
+    def test_ui_html_routes_pairing_through_chat_attachment_surface(self) -> None:
         app, _, _, _, _ = self._patched_app("completed")
         client = TestClient(app)
         resp = client.get("/?user=user_ready")
         html = resp.text
-        self.assertIn("Pair A Garment", html)
-        self.assertIn("uploadPairBtn", html)
-        self.assertIn("/v1/onboarding/wardrobe/items", html)
-        self.assertIn("What goes with my ", html)
+        self.assertNotIn("Pair A Garment", html)
+        self.assertNotIn("uploadPairBtn", html)
+        self.assertIn("attachImgBtn", html)
+        self.assertIn("chatImageFile", html)
+        self.assertIn("What goes with this? Show me pairing options.", html)
 
     def test_outfit_card_schema_accepts_tryon_and_enrichment_fields(self) -> None:
         from platform_core.api_schemas import OutfitCard, OutfitItem

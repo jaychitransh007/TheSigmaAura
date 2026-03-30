@@ -2248,6 +2248,234 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual(["w1", "w2"], resolved_context["handler_payload"]["selected_item_ids"])
         self.assertEqual("wardrobe", resolved_context["handler_payload"]["answer_components"]["primary_source"])
         self.assertTrue(resolved_context["handler_payload"]["catalog_upsell"]["available"])
+        self.assertEqual("auto", result["metadata"]["source_selection"]["preferred_source"])
+        self.assertEqual("wardrobe", result["metadata"]["source_selection"]["fulfilled_source"])
+
+    def test_explicit_wardrobe_occasion_request_prefers_saved_wardrobe(self) -> None:
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1",
+            "user_id": "db-user",
+            "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
+        }
+        gw.get_wardrobe_items.return_value = [
+            {"id": "w1", "title": "Navy Blazer", "garment_category": "top", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w2", "title": "Cream Trousers", "garment_category": "bottom", "occasion_fit": "office", "formality_level": "business_casual"},
+        ]
+        planner_mock = Mock()
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="occasion_recommendation",
+            intent_confidence=0.95,
+            action="run_recommendation_pipeline",
+            context_sufficient=True,
+            assistant_message="Let me build that.",
+            follow_up_suggestions=["Show me more"],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="office",
+                formality_hint="business_casual",
+            ),
+            action_parameters=CopilotActionParameters(),
+        )
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
+            "agentic_application.orchestrator.OutfitArchitect"
+        ) as architect_cls, patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Build me an office outfit from my wardrobe",
+            )
+
+        architect_cls.return_value.plan.assert_not_called()
+        self.assertEqual("wardrobe_first", result["metadata"]["answer_source"])
+        self.assertEqual("wardrobe", result["metadata"]["source_selection"]["preferred_source"])
+        self.assertEqual("wardrobe", result["metadata"]["source_selection"]["fulfilled_source"])
+        self.assertIn("wardrobe_source_override", result["metadata"]["intent_reason_codes"])
+
+    def test_explicit_wardrobe_occasion_request_returns_gap_fallback_when_coverage_is_missing(self) -> None:
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1",
+            "user_id": "db-user",
+            "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
+        }
+        gw.get_wardrobe_items.return_value = []
+        planner_mock = Mock()
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="occasion_recommendation",
+            intent_confidence=0.95,
+            action="run_recommendation_pipeline",
+            context_sufficient=True,
+            assistant_message="Let me build that.",
+            follow_up_suggestions=[],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="office",
+                formality_hint="business_casual",
+            ),
+            action_parameters=CopilotActionParameters(),
+        )
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
+            "agentic_application.orchestrator.OutfitArchitect"
+        ) as architect_cls, patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="What should I wear to the office from my wardrobe?",
+            )
+
+        architect_cls.return_value.plan.assert_not_called()
+        self.assertEqual("wardrobe_unavailable", result["metadata"]["answer_source"])
+        self.assertEqual("wardrobe", result["metadata"]["source_selection"]["preferred_source"])
+        self.assertEqual("wardrobe_unavailable", result["metadata"]["source_selection"]["fulfilled_source"])
+        self.assertIn("Show me better options from the catalog", result["follow_up_suggestions"])
+
+    def test_explicit_catalog_occasion_request_skips_wardrobe_first_and_returns_catalog_only(self) -> None:
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+            RecommendationPlan, DirectionSpec, QuerySpec, ResolvedContextBlock,
+        )
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1",
+            "user_id": "db-user",
+            "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
+        }
+        gw.get_wardrobe_items.return_value = [
+            {"id": "w1", "title": "Navy Blazer", "garment_category": "top", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w2", "title": "Cream Trousers", "garment_category": "bottom", "occasion_fit": "office", "formality_level": "business_casual"},
+        ]
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="occasion_recommendation",
+            intent_confidence=0.97,
+            action="run_recommendation_pipeline",
+            context_sufficient=True,
+            assistant_message="Let me find catalog options.",
+            follow_up_suggestions=["Show me more"],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="office",
+                formality_hint="business_casual",
+            ),
+            action_parameters=CopilotActionParameters(),
+        )
+        fake_plan = RecommendationPlan(
+            plan_type="complete_only",
+            retrieval_count=12,
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="complete",
+                    label="Catalog direction",
+                    queries=[
+                        QuerySpec(
+                            query_id="A1",
+                            role="complete",
+                            hard_filters={},
+                            query_document="office catalog outfit",
+                        )
+                    ],
+                )
+            ],
+            resolved_context=ResolvedContextBlock(
+                occasion_signal="office",
+                formality_hint="business_casual",
+                specific_needs=["catalog_only"],
+            ),
+        )
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway") as _gateway_cls, \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            architect_cls.return_value.plan.return_value = fake_plan
+            orchestrator = AgenticOrchestrator(
+                repo=repo,
+                onboarding_gateway=gw,
+                config=Mock(),
+            )
+            orchestrator.catalog_search_agent.search = Mock(return_value=[])
+            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            orchestrator.response_formatter.format = Mock(
+                return_value=RecommendationResponse(
+                    success=True,
+                    message="Here are catalog-first office options.",
+                    outfits=[
+                        OutfitCard(
+                            rank=1,
+                            title="Catalog Office Look",
+                            reasoning="Catalog only",
+                            items=[{"product_id": "c1", "title": "Wool Trouser", "source": "catalog"}],
+                        )
+                    ],
+                    follow_up_suggestions=["Show me more"],
+                    metadata={"answer_components": {"primary_source": "catalog", "catalog_item_count": 1, "wardrobe_item_count": 0}},
+                )
+            )
+
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Show me an office outfit from the catalog",
+            )
+
+        architect_cls.return_value.plan.assert_called_once()
+        self.assertEqual("catalog_only", result["metadata"]["answer_source"])
+        self.assertEqual("catalog", result["metadata"]["source_selection"]["preferred_source"])
+        self.assertEqual("catalog", result["metadata"]["source_selection"]["fulfilled_source"])
+        self.assertIn("catalog_source_override", result["metadata"]["intent_reason_codes"])
 
 
 
@@ -2350,6 +2578,8 @@ class CopilotPlannerTests(unittest.TestCase):
     def _build_orchestrator(self, repo, gw, planner_mock):
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
              patch("agentic_application.orchestrator.OutfitArchitect"), \
+             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
+             patch("agentic_application.orchestrator.ShoppingDecisionAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
             return AgenticOrchestrator(
                 repo=repo,
@@ -2381,10 +2611,176 @@ class CopilotPlannerTests(unittest.TestCase):
 
         planner_mock.plan.assert_called_once()
         self.assertEqual("style_discovery", result["metadata"]["primary_intent"])
+        self.assertEqual("style_discovery_handler", result["metadata"]["answer_source"])
         self.assertIn("Autumn", result["assistant_message"])
+        self.assertIn("confident", result["assistant_message"].lower())
         self.assertEqual("recommendation", result["response_type"])
         self.assertEqual([], result["outfits"])
         self.assertIn("What colors should I avoid?", result["follow_up_suggestions"])
+        self.assertEqual("color", result["metadata"]["style_discovery"]["advice_topic"])
+
+    def test_style_discovery_returns_profile_grounded_collar_advice(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="style_discovery",
+            intent_confidence=0.95,
+            action="respond_directly",
+            context_sufficient=True,
+            assistant_message="I’ll break down the best collar direction for you.",
+            follow_up_suggestions=["What necklines suit me?", "Show me shirt ideas"],
+            resolved_context=CopilotResolvedContext(style_goal="style_discovery"),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="What collar will look good on me?",
+        )
+
+        self.assertEqual("style_discovery_handler", result["metadata"]["answer_source"])
+        self.assertEqual("collar", result["metadata"]["style_discovery"]["advice_topic"])
+        self.assertIn("open, elongated shape", result["assistant_message"])
+        self.assertIn("hourglass", result["assistant_message"].lower())
+
+    def test_style_discovery_returns_profile_grounded_pattern_advice(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="style_discovery",
+            intent_confidence=0.94,
+            action="respond_directly",
+            context_sufficient=True,
+            assistant_message="I’ll break down patterns for you.",
+            follow_up_suggestions=["What colors suit me?", "Show me printed pieces"],
+            resolved_context=CopilotResolvedContext(style_goal="style_discovery"),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="What patterns work on me?",
+        )
+
+        self.assertEqual("pattern", result["metadata"]["style_discovery"]["advice_topic"])
+        self.assertIn("medium-scale patterns", result["assistant_message"])
+        self.assertIn("classic", result["assistant_message"].lower())
+        self.assertIn("romantic", result["assistant_message"].lower())
+
+    def test_style_discovery_returns_profile_grounded_silhouette_advice(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="style_discovery",
+            intent_confidence=0.94,
+            action="respond_directly",
+            context_sufficient=True,
+            assistant_message="I’ll explain the best silhouettes for you.",
+            follow_up_suggestions=["What collars suit me?", "Show me outfit ideas"],
+            resolved_context=CopilotResolvedContext(style_goal="style_discovery"),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="What silhouette works best on me?",
+        )
+
+        self.assertEqual("silhouette", result["metadata"]["style_discovery"]["advice_topic"])
+        self.assertIn("waist definition", result["assistant_message"].lower())
+        self.assertIn("boxy", result["assistant_message"].lower())
+
+    def test_style_discovery_returns_profile_grounded_archetype_advice(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="style_discovery",
+            intent_confidence=0.94,
+            action="respond_directly",
+            context_sufficient=True,
+            assistant_message="I’ll explain your archetype blend.",
+            follow_up_suggestions=["What colors suit me?", "Show me outfits for work"],
+            resolved_context=CopilotResolvedContext(style_goal="style_discovery"),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="Which style archetypes fit me?",
+        )
+
+        self.assertEqual("archetype", result["metadata"]["style_discovery"]["advice_topic"])
+        self.assertIn("classic", result["assistant_message"].lower())
+        self.assertIn("romantic", result["assistant_message"].lower())
+        self.assertIn("accent", result["assistant_message"].lower())
+
+    def test_planner_respond_directly_for_explanation_request(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        repo.get_conversation.return_value = {
+            "id": "c1",
+            "user_id": "db-user",
+            "session_context_json": {
+                "last_recommendations": [
+                    {
+                        "rank": 1,
+                        "title": "Elegant Wedding Look",
+                        "primary_colors": ["burgundy", "cream"],
+                        "garment_categories": ["dress"],
+                        "occasion_fits": ["wedding"],
+                    }
+                ],
+                "last_response_metadata": {
+                    "recommendation_confidence": {
+                        "confidence_band": "high",
+                        "explanation": [
+                            "Strongest evidence: the occasion and profile aligned cleanly.",
+                            "Also helpful: the retrieved options had clear metadata coverage.",
+                        ],
+                    }
+                },
+            },
+        }
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="explanation_request",
+            intent_confidence=0.94,
+            action="respond_directly",
+            context_sufficient=True,
+            assistant_message="I’ll break down why that recommendation worked.",
+            follow_up_suggestions=["Show me something bolder", "Explain another option"],
+            resolved_context=CopilotResolvedContext(style_goal="explanation"),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="Why did you recommend that?",
+        )
+
+        self.assertEqual("explanation_request", result["metadata"]["primary_intent"])
+        self.assertEqual("explanation_handler", result["metadata"]["answer_source"])
+        self.assertIn("Elegant Wedding Look", result["assistant_message"])
+        self.assertIn("confidence", result["assistant_message"].lower())
+        self.assertEqual([], result["outfits"])
 
     def test_planner_ask_clarification(self):
         from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
@@ -2559,6 +2955,1078 @@ class CopilotPlannerTests(unittest.TestCase):
         self.assertEqual("wardrobe_ingestion", result["metadata"]["primary_intent"])
         self.assertIn("saved", result["assistant_message"].lower())
         gw.save_chat_wardrobe_item.assert_called_once()
+
+    def test_attached_chat_image_is_ingested_before_planning(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        gw.save_uploaded_chat_wardrobe_item.return_value = {
+            "id": "w-upload",
+            "title": "Navy Shirt",
+            "garment_category": "top",
+            "garment_subtype": "shirt",
+            "primary_color": "navy",
+            "pattern_type": "solid",
+            "occasion_fit": "workwear",
+            "formality_level": "smart_casual",
+            "metadata_json": {
+                "catalog_attributes": {
+                    "GarmentCategory": "top",
+                    "GarmentSubtype": "shirt",
+                    "PrimaryColor": "navy",
+                    "PatternType": "solid",
+                    "OccasionFit": "workwear",
+                    "FormalityLevel": "smart_casual",
+                }
+            },
+        }
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="pairing_request",
+            intent_confidence=0.94,
+            action="respond_directly",
+            context_sufficient=True,
+            assistant_message="Use a cream trouser or dark denim bottom.",
+            follow_up_suggestions=["Show me options"],
+            resolved_context=CopilotResolvedContext(),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="What goes with this?",
+            image_data="data:image/png;base64,AAAA",
+        )
+
+        self.assertEqual("pairing_request", result["metadata"]["primary_intent"])
+        gw.save_uploaded_chat_wardrobe_item.assert_called_once()
+        planner_message = planner_mock.plan.call_args.args[0]["user_message"]
+        self.assertIn("Attached garment context:", planner_message)
+        self.assertIn("Navy Shirt", planner_message)
+        self.assertIn("shirt", planner_message.lower())
+        self.assertIn("Image anchor source: wardrobe image.", planner_message)
+
+    def test_attached_garment_pairing_request_overrides_misclassified_planner_intent(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        repo.client.select_many.return_value = [
+            {
+                "product_id": "c1",
+                "title": "Stone Pleated Trousers",
+                "garment_category": "trousers",
+                "garment_subtype": "trousers",
+                "primary_color": "stone",
+                "occasion_fit": "smart_casual",
+                "formality_level": "smart_casual",
+                "url": "https://store.example/stone-trousers",
+            }
+        ]
+        gw = self._standard_onboarding_gateway()
+        gw.save_uploaded_chat_wardrobe_item.return_value = {
+            "id": "w-anchor",
+            "title": "White Shirt",
+            "garment_category": "top",
+            "garment_subtype": "shirt",
+            "primary_color": "white",
+            "occasion_fit": "smart_casual",
+            "formality_level": "smart_casual",
+        }
+        gw.get_wardrobe_items.return_value = [
+            {
+                "id": "w-anchor",
+                "title": "White Shirt",
+                "garment_category": "top",
+                "garment_subtype": "shirt",
+                "primary_color": "white",
+                "occasion_fit": "smart_casual",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w-bottom",
+                "title": "Navy Trousers",
+                "garment_category": "trousers",
+                "garment_subtype": "trousers",
+                "primary_color": "navy",
+                "occasion_fit": "smart_casual",
+                "formality_level": "smart_casual",
+            },
+        ]
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="occasion_recommendation",
+            intent_confidence=0.97,
+            action="run_recommendation_pipeline",
+            context_sufficient=True,
+            assistant_message="Let me put together options.",
+            follow_up_suggestions=["Show me more"],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="smart_casual",
+                formality_hint="smart_casual",
+            ),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        orchestrator.outfit_architect.plan = Mock(side_effect=AssertionError("catalog pipeline should not run"))
+
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="Find me a perfect outfit with this shirt.",
+            image_data="data:image/png;base64,AAAA",
+        )
+
+        self.assertEqual("pairing_request", result["metadata"]["primary_intent"])
+        self.assertEqual("pairing_request_wardrobe_first", repo.finalize_turn.call_args.kwargs["resolved_context"]["handler"])
+        self.assertIn("White Shirt", result["assistant_message"])
+        self.assertIn("Navy Trousers", result["assistant_message"])
+        self.assertIn("pairing_request_override", result["metadata"]["intent_reason_codes"])
+
+    def test_catalog_garment_image_pairing_uses_catalog_handler_with_complementary_items(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        repo.client.select_many.return_value = [
+            {
+                "product_id": "c1",
+                "title": "Stone Pleated Trousers",
+                "garment_category": "trousers",
+                "garment_subtype": "trousers",
+                "primary_color": "stone",
+                "occasion_fit": "smart_casual",
+                "formality_level": "smart_casual",
+                "url": "https://store.example/stone-trousers",
+            },
+            {
+                "product_id": "c2",
+                "title": "Brown Penny Loafers",
+                "garment_category": "shoe",
+                "garment_subtype": "loafer",
+                "primary_color": "brown",
+                "occasion_fit": "smart_casual",
+                "formality_level": "smart_casual",
+                "url": "https://store.example/brown-loafers",
+            },
+        ]
+        gw = self._standard_onboarding_gateway()
+        gw.save_uploaded_chat_wardrobe_item.return_value = {
+            "id": "img-anchor",
+            "title": "White Shirt",
+            "garment_category": "top",
+            "garment_subtype": "shirt",
+            "primary_color": "white",
+            "occasion_fit": "smart_casual",
+            "formality_level": "smart_casual",
+        }
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="occasion_recommendation",
+            intent_confidence=0.96,
+            action="run_recommendation_pipeline",
+            context_sufficient=True,
+            assistant_message="Let me build around it.",
+            follow_up_suggestions=["Show me more"],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="smart_casual",
+                formality_hint="smart_casual",
+            ),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        orchestrator.outfit_architect.plan = Mock(side_effect=AssertionError("catalog image pairing should not hit architect"))
+
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="Pair this from the catalog for smart casual",
+            image_data="data:image/png;base64,AAAA",
+        )
+
+        self.assertEqual("pairing_request", result["metadata"]["primary_intent"])
+        self.assertEqual("catalog_image_pairing", result["metadata"]["answer_source"])
+        self.assertEqual("catalog", result["metadata"]["source_selection"]["preferred_source"])
+        self.assertEqual("catalog", result["metadata"]["source_selection"]["fulfilled_source"])
+        self.assertEqual("pairing_request_catalog_image", repo.finalize_turn.call_args.kwargs["resolved_context"]["handler"])
+        self.assertEqual(1, len(result["outfits"]))
+        self.assertGreater(len(result["outfits"][0]["items"]), 1)
+        self.assertTrue(all(item["source"] == "catalog" for item in result["outfits"][0]["items"]))
+        self.assertIn("Stone Pleated Trousers", result["assistant_message"])
+        planner_message = planner_mock.plan.call_args.args[0]["user_message"]
+        self.assertIn("Image anchor source: catalog image.", planner_message)
+
+    def test_catalog_followup_overrides_wardrobe_first_short_circuit(self):
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+            RecommendationPlan, DirectionSpec, QuerySpec, ResolvedContextBlock,
+        )
+        repo = self._standard_repo()
+        repo.get_conversation.return_value = {
+            "id": "c1",
+            "user_id": "db-user",
+            "session_context_json": {
+                "last_response_metadata": {
+                    "answer_source": "wardrobe_first",
+                    "catalog_upsell": {
+                        "available": True,
+                        "cta": "Show me better options from the catalog",
+                    },
+                },
+            },
+        }
+        gw = self._standard_onboarding_gateway()
+        gw.get_wardrobe_items.return_value = [
+            {
+                "id": "w1",
+                "title": "Cream Shirt",
+                "garment_category": "top",
+                "garment_subtype": "shirt",
+                "primary_color": "cream",
+                "occasion_fit": "casual",
+                "formality_level": "casual",
+            }
+        ]
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="occasion_recommendation",
+            intent_confidence=0.99,
+            action="run_recommendation_pipeline",
+            context_sufficient=True,
+            assistant_message="Let me find better options.",
+            follow_up_suggestions=["Show me more"],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="casual",
+                formality_hint="casual",
+            ),
+            action_parameters=CopilotActionParameters(),
+        )
+        fake_plan = RecommendationPlan(
+            plan_type="complete_only",
+            retrieval_count=12,
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="complete",
+                    label="Catalog direction",
+                    queries=[
+                        QuerySpec(
+                            query_id="A1",
+                            role="complete",
+                            hard_filters={},
+                            query_document="casual smart-casual catalog look",
+                        )
+                    ],
+                )
+            ],
+            resolved_context=ResolvedContextBlock(
+                occasion_signal="casual",
+                formality_hint="casual",
+            ),
+        )
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway") as _gateway_cls, \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            architect_cls.return_value.plan.return_value = fake_plan
+            orchestrator = AgenticOrchestrator(
+                repo=repo,
+                onboarding_gateway=gw,
+                config=self._make_planner_config(),
+            )
+            orchestrator.catalog_search_agent.search = Mock(return_value=[])
+            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            orchestrator.response_formatter.format = Mock(
+                return_value=RecommendationResponse(
+                    success=True,
+                    message="Here are stronger catalog-led options.",
+                    outfits=[
+                        OutfitCard(
+                            rank=1,
+                            title="Catalog Look",
+                            reasoning="Built from catalog alternatives.",
+                            items=[
+                                {
+                                    "product_id": "c1",
+                                    "title": "Stone Trousers",
+                                    "source": "catalog",
+                                    "role": "bottom",
+                                }
+                            ],
+                        )
+                    ],
+                    follow_up_suggestions=["Show me more"],
+                    metadata={"answer_source": "catalog"},
+                )
+            )
+
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Show me better options from the catalog",
+            )
+
+        architect_cls.return_value.plan.assert_called_once()
+        self.assertEqual(1, len(result["outfits"]))
+        self.assertEqual("catalog", result["outfits"][0]["items"][0]["source"])
+        self.assertIn("catalog-led options", result["assistant_message"])
+
+    def test_catalog_followup_preserves_previous_anchor_context(self):
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+            RecommendationPlan, DirectionSpec, QuerySpec, ResolvedContextBlock,
+        )
+        repo = self._standard_repo()
+        repo.get_conversation.return_value = {
+            "id": "c1",
+            "user_id": "db-user",
+            "session_context_json": {
+                "last_user_message": "Find me a perfect outfit with this shirt. Attached garment context: White Shirt, top, shirt, white, solid, smart_casual, smart_casual.",
+                "last_live_context": {
+                    "user_need": "Find me a perfect outfit with this shirt. Attached garment context: White Shirt, top, shirt, white, solid, smart_casual, smart_casual.",
+                    "occasion_signal": "smart_casual",
+                    "formality_hint": "smart_casual",
+                    "time_hint": None,
+                    "specific_needs": ["versatility", "polished_minimalism"],
+                    "is_followup": True,
+                    "followup_intent": "more_options",
+                },
+                "last_response_metadata": {
+                    "answer_source": "wardrobe_first",
+                    "catalog_upsell": {
+                        "available": True,
+                        "cta": "Show me better options from the catalog",
+                    },
+                },
+            },
+        }
+        gw = self._standard_onboarding_gateway()
+        gw.get_wardrobe_items.return_value = [
+            {
+                "id": "w1",
+                "title": "White Shirt",
+                "garment_category": "top",
+                "garment_subtype": "shirt",
+                "primary_color": "white",
+                "occasion_fit": "smart_casual",
+                "formality_level": "smart_casual",
+            }
+        ]
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="occasion_recommendation",
+            intent_confidence=0.99,
+            action="run_recommendation_pipeline",
+            context_sufficient=True,
+            assistant_message="Let me find stronger catalog options.",
+            follow_up_suggestions=["Show me more"],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="smart_casual",
+                formality_hint="smart_casual",
+            ),
+            action_parameters=CopilotActionParameters(),
+        )
+        fake_plan = RecommendationPlan(
+            plan_type="complete_only",
+            retrieval_count=12,
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="complete",
+                    label="Catalog direction",
+                    queries=[
+                        QuerySpec(
+                            query_id="A1",
+                            role="complete",
+                            hard_filters={},
+                            query_document="smart casual outfit around a white shirt",
+                        )
+                    ],
+                )
+            ],
+            resolved_context=ResolvedContextBlock(
+                occasion_signal="smart_casual",
+                formality_hint="smart_casual",
+            ),
+        )
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway") as _gateway_cls, \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            architect_cls.return_value.plan.return_value = fake_plan
+            orchestrator = AgenticOrchestrator(
+                repo=repo,
+                onboarding_gateway=gw,
+                config=self._make_planner_config(),
+            )
+            orchestrator.catalog_search_agent.search = Mock(return_value=[])
+            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+
+            orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Show me better options from the catalog",
+            )
+
+        combined_context = architect_cls.return_value.plan.call_args.args[0]
+        self.assertIn("White Shirt", combined_context.live.user_need)
+        self.assertIn("Catalog follow-up requested", combined_context.live.user_need)
+        self.assertEqual("smart_casual", combined_context.live.occasion_signal)
+        self.assertIn("catalog_followup", combined_context.live.specific_needs)
+
+    def test_planner_run_outfit_check_returns_structured_scoring(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        gw.get_wardrobe_items.return_value = [
+            {
+                "id": "w1",
+                "title": "Tan Loafers",
+                "garment_category": "shoe",
+                "garment_subtype": "loafer",
+                "primary_color": "tan",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w2",
+                "title": "Charcoal Trousers",
+                "garment_category": "trousers",
+                "garment_subtype": "trousers",
+                "primary_color": "charcoal",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+            },
+        ]
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="outfit_check",
+            intent_confidence=0.96,
+            action="run_outfit_check",
+            context_sufficient=True,
+            assistant_message="Let me assess this look.",
+            follow_up_suggestions=["What would improve this look?", "Use my wardrobe first"],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="office",
+                style_goal="outfit_check",
+            ),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        orchestrator.outfit_check_agent.evaluate.return_value = Mock(
+            overall_verdict="good_with_tweaks",
+            overall_note="This is a polished base that works well for your profile.",
+            body_harmony_pct=82,
+            color_suitability_pct=76,
+            style_fit_pct=80,
+            occasion_pct=88,
+            overall_score_pct=81,
+            strengths=[
+                "The silhouette feels balanced on your frame.",
+                "The navy works with your Autumn depth.",
+            ],
+            improvements=[
+                {
+                    "area": "color",
+                    "suggestion": "Swap the stark white shoe for a warmer neutral.",
+                    "reason": "A softer warm neutral will sit better with your palette.",
+                    "swap_source": "wardrobe",
+                    "swap_detail": "your tan loafers",
+                }
+            ],
+            style_archetype_read={
+                "classic_pct": 78,
+                "dramatic_pct": 20,
+                "romantic_pct": 32,
+                "natural_pct": 44,
+                "minimalist_pct": 60,
+                "creative_pct": 18,
+                "sporty_pct": 12,
+                "edgy_pct": 10,
+            },
+            to_dict=Mock(return_value={"overall_verdict": "good_with_tweaks"}),
+        )
+
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="Outfit check this navy blazer with white tee and trousers",
+        )
+
+        self.assertEqual("outfit_check", result["metadata"]["primary_intent"])
+        self.assertEqual("outfit_check_handler", result["metadata"]["answer_source"])
+        self.assertEqual(1, len(result["outfits"]))
+        self.assertEqual(82, result["outfits"][0]["body_harmony_pct"])
+        self.assertEqual(76, result["outfits"][0]["color_suitability_pct"])
+        self.assertIn("What works:", result["assistant_message"])
+        self.assertIn("Tweaks:", result["assistant_message"])
+        self.assertIn("From your wardrobe, try:", result["assistant_message"])
+        self.assertIn("wardrobe_gap_analysis", result["metadata"]["outfit_check"])
+        self.assertTrue(result["metadata"]["outfit_check"]["wardrobe_suggestions"])
+        self.assertEqual("your tan loafers", result["metadata"]["outfit_check"]["wardrobe_suggestions"][0]["title"])
+        self.assertTrue(result["metadata"]["catalog_upsell"]["available"])
+        self.assertEqual("outfit_check", result["metadata"]["catalog_upsell"]["entry_intent"])
+        self.assertIn("Show me better options from the catalog", result["follow_up_suggestions"])
+        session_context = repo.update_conversation_context.call_args.kwargs["session_context"]
+        self.assertEqual(
+            "Outfit check this navy blazer with white tee and trousers",
+            session_context["last_live_context"]["user_need"],
+        )
+        self.assertEqual(
+            "good_with_tweaks",
+            result["metadata"]["outfit_check"]["overall_verdict"],
+        )
+        repo.log_model_call.assert_called()
+
+    def test_rate_my_outfit_overrides_planner_into_outfit_check(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="occasion_recommendation",
+            intent_confidence=0.92,
+            action="run_recommendation_pipeline",
+            context_sufficient=True,
+            assistant_message="Let me think about that look.",
+            follow_up_suggestions=["Show me more"],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="dinner",
+                style_goal="occasion_recommendation",
+            ),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        orchestrator.outfit_check_agent.evaluate.return_value = Mock(
+            overall_verdict="good_with_tweaks",
+            overall_note="This works, but a warmer shoe would improve it.",
+            body_harmony_pct=78,
+            color_suitability_pct=74,
+            style_fit_pct=79,
+            occasion_pct=82,
+            overall_score_pct=78,
+            strengths=["The proportions are balanced."],
+            improvements=[],
+            style_archetype_read={},
+            to_dict=Mock(return_value={"overall_verdict": "good_with_tweaks"}),
+        )
+
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="Rate my outfit for dinner tonight",
+        )
+
+        self.assertEqual("outfit_check", result["metadata"]["primary_intent"])
+        self.assertIn("outfit_check_override", result["metadata"]["intent_reason_codes"])
+        self.assertEqual("outfit_check", repo.finalize_turn.call_args.kwargs["resolved_context"]["handler"])
+
+    def test_outfit_check_catalog_followup_preserves_context_for_catalog_pivot(self):
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+            RecommendationPlan, DirectionSpec, QuerySpec, ResolvedContextBlock,
+        )
+        repo = self._standard_repo()
+        repo.get_conversation.return_value = {
+            "id": "c1",
+            "user_id": "db-user",
+            "session_context_json": {
+                "last_user_message": "Rate my outfit for dinner tonight",
+                "last_live_context": {
+                    "user_need": "Rate my outfit for dinner tonight",
+                    "occasion_signal": "dinner",
+                    "formality_hint": None,
+                    "time_hint": None,
+                    "specific_needs": ["outfit_check"],
+                    "is_followup": False,
+                    "followup_intent": None,
+                },
+                "last_response_metadata": {
+                    "answer_source": "outfit_check_handler",
+                    "catalog_upsell": {
+                        "available": True,
+                        "entry_intent": "outfit_check",
+                        "cta": "Show me better options from the catalog",
+                    },
+                },
+            },
+        }
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="occasion_recommendation",
+            intent_confidence=0.94,
+            action="run_recommendation_pipeline",
+            context_sufficient=True,
+            assistant_message="Let me find stronger options.",
+            follow_up_suggestions=["Show me more"],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="dinner",
+                style_goal="occasion_recommendation",
+            ),
+            action_parameters=CopilotActionParameters(),
+        )
+        fake_plan = RecommendationPlan(
+            plan_type="complete_only",
+            retrieval_count=12,
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="complete",
+                    label="Catalog direction",
+                    queries=[
+                        QuerySpec(
+                            query_id="A1",
+                            role="complete",
+                            hard_filters={},
+                            query_document="dinner outfit alternatives",
+                        )
+                    ],
+                )
+            ],
+            resolved_context=ResolvedContextBlock(
+                occasion_signal="dinner",
+                specific_needs=["outfit_check", "catalog_followup"],
+                followup_intent="catalog_followup",
+            ),
+        )
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway") as _gateway_cls, \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            architect_cls.return_value.plan.return_value = fake_plan
+            orchestrator = AgenticOrchestrator(
+                repo=repo,
+                onboarding_gateway=gw,
+                config=self._make_planner_config(),
+            )
+            orchestrator.catalog_search_agent.search = Mock(return_value=[])
+            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            orchestrator.response_formatter.format = Mock(
+                return_value=RecommendationResponse(
+                    success=True,
+                    message="Here are catalog alternatives for the same styling problem.",
+                    outfits=[
+                        OutfitCard(
+                            rank=1,
+                            title="Dinner Alternative",
+                            reasoning="Catalog pivot",
+                            items=[{"product_id": "c1", "title": "Silk Camp Shirt", "source": "catalog"}],
+                        )
+                    ],
+                    follow_up_suggestions=["Show me more"],
+                    metadata={"answer_source": "catalog"},
+                )
+            )
+
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Show me better options from the catalog",
+            )
+
+        combined_context = architect_cls.return_value.plan.call_args.args[0]
+        self.assertIn("Rate my outfit for dinner tonight", combined_context.live.user_need)
+        self.assertIn("Catalog follow-up requested", combined_context.live.user_need)
+        self.assertEqual("dinner", combined_context.live.occasion_signal)
+        self.assertIn("catalog_followup", combined_context.live.specific_needs)
+        self.assertEqual("catalog", result["outfits"][0]["items"][0]["source"])
+
+    def test_planner_run_shopping_decision_returns_verdict_and_overlap(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        gw.get_wardrobe_items.return_value = [
+            {
+                "id": "w1",
+                "title": "Navy Blazer",
+                "garment_category": "blazer",
+                "garment_subtype": "blazer",
+                "primary_color": "navy",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w2",
+                "title": "Cream Trousers",
+                "garment_category": "trousers",
+                "garment_subtype": "trousers",
+                "primary_color": "cream",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+            },
+        ]
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="shopping_decision",
+            intent_confidence=0.97,
+            action="run_shopping_decision",
+            context_sufficient=True,
+            assistant_message="Let me evaluate this against your profile and wardrobe.",
+            follow_up_suggestions=["What goes with this?", "Show me better options"],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="office",
+                style_goal="shopping_decision",
+            ),
+            action_parameters=CopilotActionParameters(
+                detected_garments=["blazer"],
+                detected_colors=["navy"],
+                product_urls=["https://store.example/navy-blazer"],
+            ),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        orchestrator.shopping_decision_agent.evaluate.return_value = Mock(
+            verdict="skip",
+            verdict_confidence="high",
+            verdict_note="This feels too close to what you already own.",
+            color_suitability_pct=82,
+            body_harmony_pct=78,
+            style_fit_pct=75,
+            wardrobe_versatility_pct=72,
+            wardrobe_gap_pct=28,
+            strengths=["The color works for your Autumn palette."],
+            concerns=["It overlaps heavily with your existing blazer."],
+            wardrobe_overlap={
+                "has_duplicate": True,
+                "duplicate_detail": "Navy Blazer",
+                "overlap_level": "strong",
+            },
+            pairing_suggestions=[
+                {"wardrobe_item": "Cream Trousers", "pairing_note": "They lighten the navy and keep it office-ready."}
+            ],
+            if_you_buy="Wear it with warmer neutrals so it feels distinct.",
+            instead_consider="a warm brown textured blazer instead",
+            to_dict=Mock(return_value={"verdict": "skip", "verdict_confidence": "high"}),
+        )
+
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="Should I buy this navy blazer? https://store.example/navy-blazer",
+        )
+
+        self.assertEqual("shopping_decision", result["metadata"]["primary_intent"])
+        self.assertEqual("shopping_decision_handler", result["metadata"]["answer_source"])
+        self.assertIn("My verdict: SKIP.", result["assistant_message"])
+        self.assertIn("You already own something similar", result["assistant_message"])
+        self.assertEqual("skip", result["metadata"]["shopping_decision"]["verdict"])
+        self.assertEqual(
+            ["https://store.example/navy-blazer"],
+            result["metadata"]["shopping_decision"]["product_urls"],
+        )
+        repo.log_model_call.assert_called()
+
+    def test_planner_pairing_request_uses_wardrobe_first_pairing_handler(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        repo.client.select_many.return_value = [
+            {
+                "product_id": "c1",
+                "title": "Stone Pleated Trousers",
+                "garment_category": "trousers",
+                "garment_subtype": "trousers",
+                "primary_color": "stone",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+                "url": "https://store.example/stone-trousers",
+            },
+            {
+                "product_id": "c2",
+                "title": "Brown Penny Loafers",
+                "garment_category": "loafer",
+                "garment_subtype": "loafer",
+                "primary_color": "brown",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+                "url": "https://store.example/brown-loafers",
+            },
+        ]
+        gw = self._standard_onboarding_gateway()
+        gw.get_wardrobe_items.return_value = [
+            {
+                "id": "w1",
+                "title": "Navy Blazer",
+                "garment_category": "blazer",
+                "garment_subtype": "blazer",
+                "primary_color": "navy",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w2",
+                "title": "Cream Trousers",
+                "garment_category": "trousers",
+                "garment_subtype": "trousers",
+                "primary_color": "cream",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w3",
+                "title": "Tan Loafers",
+                "garment_category": "shoe",
+                "garment_subtype": "loafer",
+                "primary_color": "tan",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+            },
+        ]
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="pairing_request",
+            intent_confidence=0.95,
+            action="run_recommendation_pipeline",
+            context_sufficient=True,
+            assistant_message="Let me find great pairings for your blazer.",
+            follow_up_suggestions=["Show me more from my wardrobe", "Show me catalog alternatives"],
+            resolved_context=CopilotResolvedContext(style_goal="pairing_request"),
+            action_parameters=CopilotActionParameters(target_piece="navy blazer"),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        orchestrator.outfit_architect.plan = Mock(side_effect=AssertionError("catalog pipeline should not run"))
+
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="What goes with my navy blazer?",
+        )
+
+        self.assertEqual("pairing_request", result["metadata"]["primary_intent"])
+        self.assertEqual("wardrobe_first_pairing_hybrid", result["metadata"]["answer_source"])
+        self.assertIn("wardrobe_gap_analysis", result["metadata"])
+        self.assertEqual(2, len(result["outfits"]))
+        self.assertEqual("wardrobe", result["outfits"][0]["items"][0]["source"])
+        self.assertEqual("catalog", result["outfits"][1]["items"][1]["source"])
+        self.assertIn("Navy Blazer", result["assistant_message"])
+        self.assertIn("Cream Trousers", result["assistant_message"])
+        self.assertIn("Stone Pleated Trousers", result["assistant_message"])
+        self.assertEqual("pairing_request_wardrobe_first", repo.finalize_turn.call_args.kwargs["resolved_context"]["handler"])
+
+    def test_planner_capsule_or_trip_planning_returns_capsule_and_packing_list(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        gw.get_wardrobe_items.return_value = [
+            {
+                "id": "w1",
+                "title": "Navy Blazer",
+                "garment_category": "blazer",
+                "garment_subtype": "blazer",
+                "primary_color": "navy",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w2",
+                "title": "White Shirt",
+                "garment_category": "shirt",
+                "garment_subtype": "shirt",
+                "primary_color": "white",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w3",
+                "title": "Cream Trousers",
+                "garment_category": "trousers",
+                "garment_subtype": "trousers",
+                "primary_color": "cream",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w4",
+                "title": "Tan Loafers",
+                "garment_category": "shoe",
+                "garment_subtype": "loafer",
+                "primary_color": "tan",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+            },
+        ]
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="capsule_or_trip_planning",
+            intent_confidence=0.93,
+            action="respond_directly",
+            context_sufficient=True,
+            assistant_message="Let me map out a compact workweek capsule.",
+            follow_up_suggestions=["Build a shopping list", "Show me catalog gap fillers"],
+            resolved_context=CopilotResolvedContext(style_goal="workweek capsule"),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="Plan me a 3-day work trip capsule",
+        )
+
+        self.assertEqual("capsule_or_trip_planning", result["metadata"]["primary_intent"])
+        self.assertEqual("capsule_planning_handler", result["metadata"]["answer_source"])
+        self.assertIn("wardrobe_gap_analysis", result["metadata"])
+        self.assertGreaterEqual(len(result["outfits"]), 3)
+        self.assertEqual(3, result["metadata"]["capsule_plan"]["trip_days"])
+        self.assertGreaterEqual(result["metadata"]["capsule_plan"]["target_outfit_count"], 6)
+        self.assertGreaterEqual(len(result["metadata"]["capsule_plan"]["packing_list"]), 1)
+        self.assertIn("look", result["assistant_message"].lower())
+        self.assertTrue(result["metadata"]["capsule_plan"]["contexts"])
+        self.assertEqual("capsule_or_trip_planning", repo.finalize_turn.call_args.kwargs["resolved_context"]["handler"])
+
+    def test_planner_capsule_or_trip_planning_scales_output_for_multi_day_trip(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        gw.get_wardrobe_items.return_value = [
+            {
+                "id": "w1",
+                "title": "Navy Blazer",
+                "garment_category": "blazer",
+                "garment_subtype": "blazer",
+                "primary_color": "navy",
+                "occasion_fit": "work_trip",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w2",
+                "title": "White Shirt",
+                "garment_category": "shirt",
+                "garment_subtype": "shirt",
+                "primary_color": "white",
+                "occasion_fit": "work_trip",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w3",
+                "title": "Blue Oxford Shirt",
+                "garment_category": "shirt",
+                "garment_subtype": "shirt",
+                "primary_color": "blue",
+                "occasion_fit": "work_trip",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w4",
+                "title": "Cream Trousers",
+                "garment_category": "trousers",
+                "garment_subtype": "trousers",
+                "primary_color": "cream",
+                "occasion_fit": "work_trip",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w5",
+                "title": "Charcoal Trousers",
+                "garment_category": "trousers",
+                "garment_subtype": "trousers",
+                "primary_color": "charcoal",
+                "occasion_fit": "work_trip",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w6",
+                "title": "Tan Loafers",
+                "garment_category": "shoe",
+                "garment_subtype": "loafer",
+                "primary_color": "tan",
+                "occasion_fit": "work_trip",
+                "formality_level": "smart_casual",
+            },
+        ]
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="capsule_or_trip_planning",
+            intent_confidence=0.93,
+            action="respond_directly",
+            context_sufficient=True,
+            assistant_message="Let me map out the trip.",
+            follow_up_suggestions=["Build a shopping list", "Show me catalog gap fillers"],
+            resolved_context=CopilotResolvedContext(style_goal="trip capsule", occasion_signal="work_trip"),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="Plan me a 5-day work trip capsule",
+        )
+
+        self.assertEqual(5, result["metadata"]["capsule_plan"]["trip_days"])
+        self.assertEqual(10, result["metadata"]["capsule_plan"]["target_outfit_count"])
+        self.assertGreaterEqual(len(result["outfits"]), 6)
+        self.assertGreaterEqual(len(set(outfit["title"] for outfit in result["outfits"])), 4)
+
+    def test_planner_capsule_or_trip_planning_returns_catalog_gap_fillers(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        repo.client.select_many.return_value = [
+            {
+                "product_id": "c1",
+                "title": "Espresso Loafers",
+                "garment_category": "loafer",
+                "garment_subtype": "loafer",
+                "primary_color": "brown",
+                "occasion_fit": "work_trip",
+                "formality_level": "smart_casual",
+                "url": "https://store.example/espresso-loafers",
+            },
+            {
+                "product_id": "c2",
+                "title": "Textured Overshirt",
+                "garment_category": "overshirt",
+                "garment_subtype": "overshirt",
+                "primary_color": "olive",
+                "occasion_fit": "work_trip",
+                "formality_level": "smart_casual",
+                "url": "https://store.example/textured-overshirt",
+            },
+        ]
+        gw = self._standard_onboarding_gateway()
+        gw.get_wardrobe_items.return_value = [
+            {
+                "id": "w1",
+                "title": "White Shirt",
+                "garment_category": "shirt",
+                "garment_subtype": "shirt",
+                "primary_color": "white",
+                "occasion_fit": "work_trip",
+                "formality_level": "smart_casual",
+            },
+            {
+                "id": "w2",
+                "title": "Navy Trousers",
+                "garment_category": "trousers",
+                "garment_subtype": "trousers",
+                "primary_color": "navy",
+                "occasion_fit": "work_trip",
+                "formality_level": "smart_casual",
+            },
+        ]
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="capsule_or_trip_planning",
+            intent_confidence=0.93,
+            action="respond_directly",
+            context_sufficient=True,
+            assistant_message="Let me map out a compact workweek capsule.",
+            follow_up_suggestions=["Build a shopping list", "Show me catalog gap fillers"],
+            resolved_context=CopilotResolvedContext(style_goal="workweek capsule", occasion_signal="work_trip"),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+
+        result = orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="Plan me a compact work trip capsule",
+        )
+
+        fillers = result["metadata"]["capsule_plan"]["catalog_gap_fillers"]
+        self.assertGreaterEqual(len(fillers), 1)
+        self.assertEqual("catalog", fillers[0]["source"])
+        self.assertIn("Espresso Loafers", result["assistant_message"])
+        self.assertTrue(any(any(item["source"] == "catalog" for item in outfit["items"]) for outfit in result["outfits"]))
 
     def test_planner_virtual_tryon(self):
         from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters

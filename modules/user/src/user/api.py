@@ -25,6 +25,8 @@ from .schemas import (
     VerifyOtpResponse,
     WardrobeItemListResponse,
     WardrobeItemResponse,
+    WardrobeItemUpdateRequest,
+    WardrobeSummaryResponse,
 )
 from .service import OnboardingService
 from .analysis import UserAnalysisService
@@ -159,6 +161,14 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return WardrobeItemListResponse(**out)
 
+    @router.get("/wardrobe/{user_id}/summary", response_model=WardrobeSummaryResponse)
+    def get_wardrobe_summary(user_id: str) -> WardrobeSummaryResponse:
+        try:
+            out = service.get_wardrobe_summary(user_id)
+        except (SupabaseError, RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return WardrobeSummaryResponse(**out)
+
     @router.post("/wardrobe/items", response_model=WardrobeItemResponse)
     def save_wardrobe_item(
         user_id: str = Form(...),
@@ -204,6 +214,40 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         if not out:
             raise HTTPException(status_code=404, detail="User not found.")
         return WardrobeItemResponse(**out)
+
+    @router.patch("/wardrobe/items/{wardrobe_item_id}", response_model=WardrobeItemResponse)
+    def update_wardrobe_item(wardrobe_item_id: str, payload: WardrobeItemUpdateRequest) -> WardrobeItemResponse:
+        try:
+            out = service.update_wardrobe_item(
+                user_id=payload.user_id,
+                wardrobe_item_id=wardrobe_item_id,
+                title=payload.title,
+                description=payload.description,
+                garment_category=payload.garment_category,
+                garment_subtype=payload.garment_subtype,
+                primary_color=payload.primary_color,
+                secondary_color=payload.secondary_color,
+                pattern_type=payload.pattern_type,
+                formality_level=payload.formality_level,
+                occasion_fit=payload.occasion_fit,
+                brand=payload.brand,
+                notes=payload.notes,
+            )
+        except (SupabaseError, RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not out:
+            raise HTTPException(status_code=404, detail="Wardrobe item not found.")
+        return WardrobeItemResponse(**out)
+
+    @router.delete("/wardrobe/items/{wardrobe_item_id}")
+    def delete_wardrobe_item(wardrobe_item_id: str, user_id: str) -> dict:
+        try:
+            ok = service.delete_wardrobe_item(user_id=user_id, wardrobe_item_id=wardrobe_item_id)
+        except (SupabaseError, RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not ok:
+            raise HTTPException(status_code=404, detail="Wardrobe item not found.")
+        return {"ok": True, "wardrobe_item_id": wardrobe_item_id}
 
     @router.post("/style/complete", response_model=StylePreferenceResponse)
     def save_style_preference(payload: StylePreferenceCompleteRequest) -> StylePreferenceResponse:

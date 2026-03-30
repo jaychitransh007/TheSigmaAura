@@ -23,7 +23,7 @@ from user.service import OnboardingService, _encrypt_filename
 from user.style_archetype import ARCHETYPE_ORDER
 from user.analysis import UserAnalysisService
 from user.api import create_onboarding_router
-from user.ui import get_onboarding_html, get_processing_html
+from user.ui import get_onboarding_html, get_processing_html, get_wardrobe_manager_html
 from platform_core.supabase_rest import SupabaseError
 
 
@@ -427,6 +427,62 @@ class OnboardingTests(unittest.TestCase):
             self.assertTrue(Path(kwargs["image_path"]).exists())
             self.assertEqual("blazer.jpg", kwargs["metadata_json"]["original_filename"])
 
+    @patch("user.service.infer_wardrobe_catalog_attributes")
+    def test_save_wardrobe_item_persists_catalog_shaped_attributes(self, infer_mock) -> None:
+        repo = Mock()
+        repo.get_profile_by_user_id.return_value = {"user_id": "user_style"}
+        repo.insert_wardrobe_item.return_value = {"id": "w1", "user_id": "user_style", "source": "onboarding"}
+        infer_mock.return_value = {
+            "model": "gpt-5-mini",
+            "attributes": {
+                "GarmentCategory": "top",
+                "GarmentCategory_confidence": 0.98,
+                "GarmentSubtype": "shirt",
+                "GarmentSubtype_confidence": 0.96,
+                "PrimaryColor": "navy",
+                "PrimaryColor_confidence": 0.97,
+                "SecondaryColor": None,
+                "SecondaryColor_confidence": 0.11,
+                "PatternType": "solid",
+                "PatternType_confidence": 0.92,
+                "FormalityLevel": "smart_casual",
+                "FormalityLevel_confidence": 0.79,
+                "OccasionFit": "workwear",
+                "OccasionFit_confidence": 0.74,
+                "GarmentLength": "hip",
+                "GarmentLength_confidence": 0.81,
+                "SilhouetteType": "straight",
+                "SilhouetteType_confidence": 0.88,
+                "FitType": "tailored",
+                "FitType_confidence": 0.87,
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = OnboardingService(repo=repo, image_dir=tmp_dir)
+            service.save_wardrobe_item(
+                user_id="user_style",
+                file_data=b"img-bytes",
+                filename="shirt.jpg",
+                content_type="image/jpeg",
+                title="",
+                garment_category="",
+                primary_color="",
+            )
+
+        kwargs = repo.insert_wardrobe_item.call_args.kwargs
+        self.assertEqual("top", kwargs["garment_category"])
+        self.assertEqual("shirt", kwargs["garment_subtype"])
+        self.assertEqual("navy", kwargs["primary_color"])
+        self.assertEqual("solid", kwargs["pattern_type"])
+        self.assertEqual("smart_casual", kwargs["formality_level"])
+        self.assertEqual("workwear", kwargs["occasion_fit"])
+        self.assertEqual("Navy Shirt", kwargs["title"])
+        self.assertEqual("hip straight tailored", kwargs["description"])
+        self.assertEqual("ok", kwargs["metadata_json"]["catalog_attribute_extraction_status"])
+        self.assertEqual("top", kwargs["metadata_json"]["catalog_attributes"]["GarmentCategory"])
+        self.assertEqual("gpt-5-mini", kwargs["metadata_json"]["catalog_attribute_model"])
+
     def test_onboarding_router_supports_wardrobe_upload_and_list(self) -> None:
         service = Mock()
         analysis_service = Mock()
@@ -479,6 +535,124 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(200, listing.status_code)
         self.assertEqual(1, listing.json()["count"])
         self.assertEqual("Navy Blazer", listing.json()["items"][0]["title"])
+
+    def test_get_wardrobe_summary_scores_coverage_and_gaps(self) -> None:
+        repo = Mock()
+        repo.list_wardrobe_items.return_value = [
+            {"id": "w1", "garment_category": "shirt", "occasion_fit": "office casual"},
+            {"id": "w2", "garment_category": "trousers", "occasion_fit": "office"},
+            {"id": "w3", "garment_category": "loafer", "occasion_fit": "office travel"},
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = OnboardingService(repo=repo, image_dir=tmp_dir)
+            summary = service.get_wardrobe_summary("user_style")
+
+        self.assertEqual("user_style", summary["user_id"])
+        self.assertEqual(3, summary["count"])
+        self.assertGreater(summary["completeness_score_pct"], 0)
+        self.assertIn("a layering piece like a blazer or jacket", summary["gap_items"])
+        self.assertTrue(any(item["key"] == "office" and item["covered"] for item in summary["occasion_coverage"]))
+
+    def test_update_and_delete_wardrobe_item_use_existing_record(self) -> None:
+        repo = Mock()
+        repo.list_wardrobe_items.return_value = [
+            {
+                "id": "w1",
+                "title": "Navy Blazer",
+                "description": "",
+                "image_path": "data/onboarding/images/wardrobe/blazer.jpg",
+                "garment_category": "blazer",
+                "garment_subtype": "blazer",
+                "primary_color": "navy",
+                "secondary_color": "",
+                "pattern_type": "",
+                "formality_level": "smart_casual",
+                "occasion_fit": "office",
+                "brand": "",
+                "notes": "",
+            }
+        ]
+        repo.update_wardrobe_item.return_value = {"id": "w1", "title": "Updated Blazer"}
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = OnboardingService(repo=repo, image_dir=tmp_dir)
+            updated = service.update_wardrobe_item(
+                user_id="user_style",
+                wardrobe_item_id="w1",
+                title="Updated Blazer",
+                occasion_fit="office dinner",
+            )
+            deleted = service.delete_wardrobe_item(user_id="user_style", wardrobe_item_id="w1")
+
+        self.assertEqual("Updated Blazer", updated["title"])
+        repo.update_wardrobe_item.assert_called()
+        repo.deactivate_wardrobe_item.assert_called_once_with("w1")
+        self.assertTrue(deleted)
+
+    def test_onboarding_router_supports_wardrobe_summary_update_and_delete(self) -> None:
+        service = Mock()
+        analysis_service = Mock()
+        service.get_wardrobe_summary.return_value = {
+            "user_id": "user_style",
+            "count": 2,
+            "completeness_score_pct": 68,
+            "summary": "Your wardrobe is 68% ready right now.",
+            "category_counts": {"top": 1, "bottom": 1, "shoe": 0, "outerwear": 0, "one_piece": 0},
+            "occasion_coverage": [{"key": "office", "label": "Office", "item_count": 2, "covered": True}],
+            "missing_categories": ["shoe options"],
+            "gap_items": ["a reliable everyday shoe"],
+        }
+        service.update_wardrobe_item.return_value = {
+            "id": "w1",
+            "user_id": "user_style",
+            "source": "onboarding",
+            "title": "Edited Navy Blazer",
+            "description": "",
+            "image_url": "",
+            "image_path": "data/onboarding/images/wardrobe/file.jpg",
+            "garment_category": "blazer",
+            "garment_subtype": "blazer",
+            "primary_color": "navy",
+            "secondary_color": "",
+            "pattern_type": "",
+            "formality_level": "smart_casual",
+            "occasion_fit": "office",
+            "brand": "",
+            "notes": "",
+            "metadata_json": {},
+            "is_active": True,
+            "created_at": "",
+            "updated_at": "",
+        }
+        service.delete_wardrobe_item.return_value = True
+
+        app = FastAPI()
+        app.include_router(create_onboarding_router(service, analysis_service))
+        client = TestClient(app)
+
+        summary = client.get("/v1/onboarding/wardrobe/user_style/summary")
+        self.assertEqual(200, summary.status_code)
+        self.assertEqual(68, summary.json()["completeness_score_pct"])
+
+        update = client.patch(
+            "/v1/onboarding/wardrobe/items/w1",
+            json={"user_id": "user_style", "title": "Edited Navy Blazer"},
+        )
+        self.assertEqual(200, update.status_code)
+        self.assertEqual("Edited Navy Blazer", update.json()["title"])
+
+        delete = client.delete("/v1/onboarding/wardrobe/items/w1", params={"user_id": "user_style"})
+        self.assertEqual(200, delete.status_code)
+        self.assertTrue(delete.json()["ok"])
+
+    def test_wardrobe_manager_html_contains_management_sections(self) -> None:
+        html = get_wardrobe_manager_html("user_style")
+        self.assertIn("Wardrobe Management UI", html)
+        self.assertIn("Wardrobe completeness scoring", html)
+        self.assertIn("Wardrobe gap analysis view", html)
+        self.assertIn("/v1/onboarding/wardrobe/items/", html)
+        self.assertIn("Load Wardrobe", html)
 
 
 if __name__ == "__main__":

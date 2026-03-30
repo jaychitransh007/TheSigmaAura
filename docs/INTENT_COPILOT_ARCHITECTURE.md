@@ -1,6 +1,6 @@
 # Intent-Driven Fashion Copilot Architecture
 
-Last updated: March 19, 2026
+Last updated: March 30, 2026
 
 ## Purpose
 
@@ -542,6 +542,8 @@ Responsibilities:
 - collect result
 - write memory
 - emit telemetry
+- enforce follow-up overrides when the user explicitly pivots from wardrobe-first answers into catalog support
+- prevent attached-garment requests from collapsing into one-item self-echo responses
 
 ### Response Composer
 
@@ -588,6 +590,10 @@ Handles:
 - mini capsules
 - workweek outfit sets
 - travel packing / outfit planning
+- trip-duration-aware look counts
+- wardrobe-plus-catalog gap-filler planning
+- daypart/context-labeled look plans
+- repeated-look fallback only after wardrobe and hybrid coverage are exhausted
 
 ### A3. Outfit Check Agent
 
@@ -609,6 +615,12 @@ Handles:
 - what goes with this piece
 - wardrobe-first pairing
 - catalog fallback pairing
+- garment-image-led pairing requests from wardrobe or catalog
+
+Current reliability requirement:
+- attached garments must be treated as anchors to pair around, not as complete answers by themselves
+- explicit pairing language must route here even when the message could also be read as a general occasion request
+- uploaded garment images must be distinguished at intake as wardrobe-image vs catalog-image anchors
 
 ### A6. Wardrobe Ingestion Agent
 
@@ -623,12 +635,17 @@ Handles:
 - what should I wear for a specific occasion
 - wardrobe-first answer
 - optional better-option catalog nudge
+- explicit source preference: wardrobe-first, catalog-only, or hybrid
+
+Current reliability requirement:
+- explicit catalog follow-up requests after a wardrobe-first answer must be able to hand off into catalog or hybrid recommendation paths
 
 ### A8. Style Discovery Agent
 
 Handles:
 - what style suits me
 - explanation grounded in profile evidence
+- specific style-advice questions such as collar, neckline, color, pattern, and silhouette guidance
 
 ### A9. Explanation Agent
 

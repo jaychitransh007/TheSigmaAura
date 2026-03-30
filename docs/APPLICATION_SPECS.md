@@ -1,72 +1,71 @@
 # Application Layer — Implementation Specification
 
-Last updated: March 19, 2026
+Last updated: March 30, 2026
+
+## Product Positioning
+
+> **For** people who want to dress better every day, **Aura is** a personal fashion copilot **that** knows your body, your style, and your wardrobe — so you always know what to wear and what's worth buying.
+
+Strategy: **stylist for retention, shopping for revenue.** Users make Aura part of their lifestyle — checking outfits, getting pairing advice, planning what to wear. They can also shop from it: complete outfit recommendations, gap-filling for pieces they already own, or buy/skip verdicts on items they're considering. Dependency keeps them on the platform; shopping generates revenue.
 
 ## Current Implementation Status
 
 This document serves two purposes:
-- the current implementation reference for the active recommendation runtime in `modules/agentic_application`
-- the next-phase product contract for the intent-driven personal fashion copilot discussed on March 19, 2026
+- the implementation specification and contract for the fashion copilot runtime in `modules/agentic_application`
+- the prioritized build plan for closing the gap between current state (shopping-first recommendation engine) and target state (lifestyle stylist with shopping)
 
 For the user-facing product summary, personas, journeys, and stories, see `docs/PRODUCT.md`.
+For the current project state, gap analysis, and file layout, see `docs/CURRENT_STATE.md`.
 
 Implemented now:
+- copilot planner (gpt-5.4) — intent classification across 11 intents, action routing (`run_recommendation_pipeline`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`)
 - active runtime entrypoint in `agentic_application/api.py` with `AgenticOrchestrator`
 - saved user-context loading from onboarding/profile-analysis/style-preference persistence
-- rule-based live-context extraction with phrase-priority matching
 - server-side conversation-memory carry-forward across follow-up turns
-- LLM-only planning via Outfit Architect (gpt-5.4) — no deterministic fallback
-- concept-first paired planning handled entirely by the LLM (color coordination, volume balance, pattern distribution)
-- strict JSON schema with enum-constrained hard filter vocabulary (no free-form filter values)
+- planner-driven runtime with deterministic handler overrides for pairing, outfit check, source preference, and catalog CTA follow-up
+- strict JSON schema with enum-constrained hard filter vocabulary
 - hard filters: `gender_expression`, `styling_completeness`, `garment_category`, `garment_subtype`
 - soft signals via embedding similarity only: `occasion_fit`, `formality_level`, `time_of_day`
-- no filter relaxation — single search pass per query, no retry with dropped filters
+- no filter relaxation — single search pass per query
 - embedding retrieval from `catalog_item_embeddings` with hydration from `catalog_enriched`
-- direction-aware retrieval: `needs_bottomwear` for tops, `needs_topwear` for bottoms, `complete` for complete outfits
-- deterministic assembly and LLM evaluation with graceful evaluator fallback and server-side output validation (match_score clamping 0.0–1.0, item_id verification against candidate products, note field backfill)
+- direction-aware retrieval: `needs_bottomwear` / `needs_topwear` / `complete`
+- deterministic assembly and LLM evaluation with graceful evaluator fallback
 - architect failure returns error to user (no silent degradation)
-- latency tracking via `time.monotonic()` on architect, search, and evaluator (persisted as `latency_ms`)
+- latency tracking via `time.monotonic()` per agent stage
 - persisted turn artifacts: live context, memory, plan, applied filters, retrieved IDs, assembled candidates, final recommendations
-- response formatting for `outfits` (max 3 outfits) with 16-field item cards including 6 enrichment attributes
-- virtual try-on via Gemini (`gemini-3.1-flash-image-preview`) with parallel image generation, rendered as default hero in outfit PDP cards
-- 3-column PDP outfit cards in chat UI: thumbnail rail, hero image viewer, info panel with Buy Now buttons, style archetype radar chart, 8 criteria progress bars, and feedback CTAs
-- per-outfit feedback capture (Like / Didn't Like with optional notes) via `POST /v1/conversations/{id}/feedback`
-- feedback persistence: one `feedback_events` row per garment, correlated via `turn_id` + `outfit_rank` (recommendation_run_id nullable)
-- `response.metadata` includes `turn_id` for feedback correlation
-- canonical product URL persistence during catalog ingestion, with runtime product links resolved from persisted canonical URLs
-- catalog admin and ops support URL backfill for older `catalog_enriched` rows that still lack canonical product URLs
-- context gate between context builder and outfit architect — rule-based signal scoring (<1ms) short-circuits vague requests with a clarifying question instead of running the full pipeline
-- context gate persists accumulated signals via conversation memory so follow-up answers carry forward
-- context gate bypass rules: explicit "surprise me" / "just show me" phrases, follow-up turns, and max 2 consecutive blocks safety cap
-- `response_type` field on response payload: `"recommendation"` | `"clarification"`
-- quick-reply suggestion chips rendered in UI for clarification responses
-- occasion resolver now runs before the context gate (not just for memory bridging) so structured signals are available for gate scoring
-- digital draping integration: effective seasonal groups from `user_effective_seasonal_groups` overlaid onto user context before recommendation pipeline
-- comfort learning: behavioral seasonal palette refinement triggered by outfit likes, integrated into feedback endpoint
-- multi-group seasonal color support: architect and evaluator receive `SeasonalColorGroup_additional` when user has multiple seasonal groups
+- response formatting for recommendation-pipeline turns (max 3 outfits) with 16-field item cards; dedicated handlers can return bounded multi-look outputs beyond that
+- virtual try-on via Gemini (`gemini-3.1-flash-image-preview`) with parallel generation and quality gate
+- 3-column PDP outfit cards with Buy Now, radar chart, progress bars, feedback CTAs
+- per-outfit feedback capture with turn-level correlation
+- wardrobe ingestion from chat with vision-API enrichment and dual-layer image moderation
+- wardrobe-first occasion, pairing, outfit-check follow-through, and capsule/trip support
+- explicit source selection metadata: wardrobe-first, catalog-only, or hybrid
+- digital draping integration: effective seasonal groups overlaid onto user context
+- comfort learning: behavioral seasonal palette refinement from outfit likes
+- profile confidence engine and recommendation confidence engine (9-factor, 0–100 scoring)
+- dual-layer image moderation (heuristic blocklist + vision API)
+- restricted category exclusion in catalog retrieval
+- WhatsApp message formatting, deep linking, and source labeling
+- dependency/retention instrumentation (turn-completion events, cohort anchors, memory-input lift)
+- follow-up turns with 7 follow-up intent types
+- `response_type` field: `"recommendation"` | `"clarification"`
+- quick-reply suggestion chips for clarification responses
 
-All features implemented and smoke-tested.
+Remaining work is now concentrated in hardening and live-environment validation rather than core intent/runtime capability gaps. See `docs/CURRENT_STATE.md` for the execution checklist.
 
-## March 19, 2026 Strategic Product Direction
+## Strategic Product Direction
 
-This section defines the next major implementation phase.
-
-It does **not** replace the current runtime description below. Instead, it reframes the application layer from a recommendation-only pipeline into a broader memory-backed fashion copilot that:
-- requires onboarding before chat access
-- uses the website for onboarding and discovery
-- uses WhatsApp for repeat usage and retention
-- routes every chat turn by intent instead of exposing separate tools
-- combines user profile, user wardrobe, catalog inventory, and interaction history in one orchestration model
+This section defines the target product state. The current runtime implements the recommendation pipeline and supporting infrastructure. The remaining build work is closing the gap to a full lifestyle copilot.
 
 ### Product Definition
 
-Target product definition:
+> A mandatory-onboarding, memory-backed personal fashion copilot that helps the user make better shopping and dressing decisions over time through intent-routed chat.
 
-> A mandatory-onboarding, intent-driven personal fashion copilot that helps the user make better shopping and dressing decisions over time, using structured profile analysis, optional wardrobe memory, catalog retrieval, and conversational learning.
-
-Core principle:
+Core principles:
 - onboarding is required before chat access
 - wardrobe onboarding is optional for the user, but wardrobe support is mandatory in the system
+- wardrobe-first answers across all intents — catalog fills gaps, not the default
+- dependency is the product metric; shopping is the business model
 - chat is the primary operating surface after onboarding
 
 ### First-50 Validation Goal
@@ -361,110 +360,156 @@ flowchart TD
 
 ### High-Level Implementation Plan
 
-Implementation should proceed in seven phases.
+Implementation is organized in phases. Phases 0–3 and Phase 6 are substantially complete. The remaining work focuses on closing the gap between the current shopping-first engine and the target lifestyle stylist.
 
-#### Phase 0 — contracts, analytics, and truth model
+#### Phase 0 — contracts, analytics, and truth model — COMPLETE
 
-Deliverables:
-- formal intent taxonomy
-- event schema for every user action and policy action
-- data lineage contract for every confidence percentage
-- success metrics for the first 50 users
+Status: done.
+- formal intent taxonomy defined (11 intents in copilot planner)
+- event schema for turn-completion, feedback, and dependency validation
+- confidence formula documented for profile and recommendation engines
+- first-50 success metrics defined
 
-Done when:
-- every surface has a named event contract
-- every intent has read/write memory definitions
-- every reported confidence percentage has a documented formula source
+#### Phase 1 — onboarding gate and confidence foundation — COMPLETE
 
-#### Phase 1 — onboarding gate and confidence foundation
+Status: done.
+- onboarding gate enforced before chat access
+- profile confidence engine operational
+- optional wardrobe onboarding entry point available
+- acquisition source tracking on OTP verification
 
-Deliverables:
-- enforce chat lock until onboarding completion
-- profile confidence engine
-- onboarding completion steps with explicit "how to improve confidence"
-- optional wardrobe onboarding entry point
+#### Phase 2 — unified memory model — COMPLETE
 
-Done when:
-- user cannot access chat before required onboarding
-- onboarding completion status is deterministic and testable
-- profile confidence updates as required evidence is added
+Status: done.
+- conversation memory carry-forward across turns
+- feedback history with turn-level correlation
+- wardrobe item persistence with enrichment metadata
+- comfort learning (behavioral seasonal palette refinement)
+- turn artifact persistence (live context, memory, plan, filters, candidates, recommendations)
 
-#### Phase 2 — unified memory model
+#### Phase 3 — intent router and handler contracts — COMPLETE
 
-Deliverables:
-- persistent stores for:
-  - user queries
-  - past chats
-  - feedback history
-  - catalog interaction history
-  - wardrobe items
-  - sentiment traces
-- context compiler that reads the right memory per intent
+Status: router and dedicated handler set are implemented in runtime.
 
-Done when:
-- every response is traceable to its memory inputs
-- wardrobe, feedback, and chat history can all influence later turns
+Done:
+- copilot planner classifies 11 intents with action dispatch
+- `run_recommendation_pipeline` handler fully operational (occasion recommendation)
+- `run_outfit_check` handler implemented with structured scoring, critique, and improvement suggestions
+- `run_shopping_decision` handler implemented with product parsing, verdicting, wardrobe overlap checks, and pairing follow-up
+- `pairing_request` handler implemented with deterministic garment-led routing overrides, wardrobe-image pairing, and catalog-image pairing
+- `style_discovery` handler implemented with profile-grounded explanation and deterministic attribute-level advice for color, collar, neckline, pattern, silhouette, and archetype questions
+- `explanation_request` handler implemented with recommendation-evidence explanations from prior turn context
+- `capsule_or_trip_planning` handler implemented with trip-duration-aware multi-look planning, daypart/context labeling, and catalog-supported gap coverage
+- `respond_directly` and `ask_clarification` actions for non-recommendation turns
+- `save_wardrobe_item` and `save_feedback` actions implemented
+- `run_virtual_tryon` action implemented
+- wardrobe-first occasion response implemented
 
-#### Phase 3 — intent router and handler contracts
+#### Phase 4 — wardrobe + catalog blend — COMPLETE
 
-Deliverables:
-- router for all primary intents
-- handler interfaces for the 11 supported intents
-- common response schema for explanation, confidence, follow-ups, and actions
+Status: wardrobe-first and catalog-follow-through contract implemented across occasion, pairing, outfit-check follow-up, and capsule planning.
 
-Done when:
-- every user message resolves to one primary intent
-- unsupported / ambiguous turns trigger clarification, not silent fallback
+Done:
+- wardrobe ingestion from chat with vision-API enrichment and moderation
+- wardrobe retrieval and count
+- wardrobe-first occasion response in orchestrator
+- wardrobe source labeling in WhatsApp formatter
+- explicit source preference routing (`from my wardrobe`, `from the catalog`) with `source_selection` metadata
+- catalog upsell follow-through after wardrobe-first occasion and outfit-check answers
+- wardrobe-image vs catalog-image pairing distinction at intake and runtime
 
-#### Phase 4 — wardrobe + catalog blend
+#### Phase 5 — WhatsApp retention surface — COMPLETE
 
-Deliverables:
-- wardrobe-first retrieval for pairing and occasion flows
-- catalog upsell / better-option nudge
-- wardrobe ingestion from onboarding and chat
+Status: done.
 
-Done when:
-- the system can answer from wardrobe only
-- the system can answer from catalog only
-- the system can answer from wardrobe first, then catalog as a secondary suggestion
+Done:
+- WhatsApp message formatting (outfits, suggestions, source labeling)
+- deep linking with task routing (onboarding, wardrobe, tryon review, chat)
+- WhatsApp Business API integration — inbound webhook, outbound delivery
+- cross-channel identity resolver — phone number → user_id mapping
+- input normalizer for WhatsApp message format (text, images, product links)
+- re-engagement trigger logic (when to nudge, what to say)
+- onboarding gate enforcement for WhatsApp inbound
 
-#### Phase 5 — WhatsApp retention surface
+#### Phase 6 — safety, try-on, and trust layer — COMPLETE
 
-Deliverables:
-- WhatsApp channel adapter
-- channel-safe response formatting
-- re-engagement messages
-- deep links back to website for heavy tasks
+Status: done.
+- dual-layer image moderation (heuristic blocklist + vision API check)
+- restricted category exclusion in catalog retrieval
+- virtual try-on quality gate (fails closed)
+- policy event logging for all moderation decisions
+- wardrobe upload moderation (rejects non-garment, explicit, minor images)
 
-Done when:
-- an onboarded user can use the same memory-backed copilot from WhatsApp
-- WhatsApp events are linked to the same user and conversation graph as web events
+#### Phase 7 — first-50 dependency validation — PARTIAL
 
-#### Phase 6 — safety, try-on, and trust layer
+Status: instrumentation done, rollout pending.
 
-Deliverables:
-- nudity / restricted garment moderation
-- restricted-category exclusion in retrieval
-- virtual try-on quality gate
-- explanation payloads for confidence and recommendation reasoning
+Done:
+- dependency validation event schema
+- turn-completion events across web / WhatsApp
+- cohort anchors and retention reporting
+- memory-input lift measurement
 
-Done when:
-- blocked content is consistently blocked and audited
-- distorted try-on output never reaches the user
-- "why" answers are grounded in persisted evidence
+Not done:
+- [ ] first-50 user recruitment
+- [ ] recurring-intent analysis from live data
+- [ ] dependency and referral reporting from real cohorts
 
-#### Phase 7 — first-50 dependency validation
+### Implementation Priority (Build Order)
 
-Deliverables:
-- first-50 recruitment and instrumentation
-- cohort tracking
-- recurring-intent analysis
-- dependency and referral reporting
+This is the prioritized build sequence for closing the remaining gaps.
 
-Done when:
-- we can identify which intents drive repeat usage
-- we can measure whether users return before real shopping / dressing decisions
-- we can observe which users convert into advocates
+#### P0 — WhatsApp Runtime + Cross-Channel Identity — COMPLETE
+Why: no repeat usage without this. WhatsApp is the retention surface.
+- WhatsApp Business API integration (inbound webhook + outbound delivery)
+- cross-channel identity resolver (phone → user_id)
+- input normalizer (text, images, product links from WhatsApp format)
+- onboarding gate enforcement for WhatsApp
+- re-engagement trigger logic
+
+#### P1 — Outfit Check Pipeline — COMPLETE
+Why: highest daily-use intent. "Does this work?" before leaving the house drives habit.
+- dedicated handler: user uploads outfit photo → evaluate against profile
+- scoring: body harmony, color suitability, style fit, occasion appropriateness
+- improvement suggestions: wardrobe-first swaps, then catalog
+- confidence-aware critique
+
+#### P1 — Shopping Decision Agent — COMPLETE
+Why: clearest revenue path. "Should I buy this?" = purchase intent.
+- product link/screenshot parser
+- buy/skip verdict against user profile
+- wardrobe dedup check
+- pairing follow-up from wardrobe then catalog
+
+#### P1 — Wardrobe-First Routing Across All Intents — COMPLETE
+Why: makes the product feel like a stylist, not a shopping app.
+- extend wardrobe-first beyond occasion to: pairing, capsule, outfit check suggestions
+- wardrobe gap detection → catalog nudge
+- source labeling in every response (wardrobe vs catalog)
+
+#### P2 — Pairing Agent (Wardrobe-First Mode) — COMPLETE
+Why: bridges retention and revenue naturally.
+- wardrobe-first pairing search
+- hybrid response: wardrobe pairs + catalog alternatives
+- source labeling
+
+#### P2 — Wardrobe Management UI — COMPLETE
+Why: users need to see and trust their wardrobe data.
+- web-based wardrobe browsing (view, edit, delete)
+- wardrobe completeness scoring
+- gap analysis view
+
+#### P2 — Style Discovery + Explanation Handlers — COMPLETE
+Why: builds trust and keeps users engaged.
+- profile-grounded style explanation using actual analysis data
+- recommendation explanation using evaluator scores + profile evidence
+- confidence rationale in user-facing language
+
+#### P3 — Capsule / Trip Planning — COMPLETE
+Why: high value but lower frequency.
+- multi-outfit planning (wardrobe first, catalog for gaps)
+- packing list (deduplicated items across outfits)
+- gap shopping list → catalog
 
 ### User Stories and Clear Outcome Measures
 
@@ -497,6 +542,8 @@ Acceptance outcomes:
 - response is bounded to the requested context
 - wardrobe is used first if available
 - missing wardrobe / catalog gaps are made explicit
+- trip duration expands the look count up to a bounded multi-day plan
+- response can mix wardrobe and catalog fillers when wardrobe depth is insufficient
 
 #### US-04 — Outfit check for what I am wearing
 
@@ -524,6 +571,7 @@ Acceptance outcomes:
 - system can return pairings from wardrobe
 - system can return pairings from catalog
 - response identifies whether each pairing came from wardrobe or catalog
+- uploaded wardrobe garments and uploaded catalog garments are treated as anchors, not echoed back as one-item answers
 
 #### US-07 — Wardrobe ingestion
 

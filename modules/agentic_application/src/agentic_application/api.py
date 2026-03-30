@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from catalog.admin_api import create_catalog_admin_router
 from catalog.ui import get_catalog_admin_html
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
 
 from platform_core.api_schemas import (
@@ -47,6 +47,12 @@ from .services.onboarding_gateway import ApplicationUserGateway
 from .services.tryon_quality_gate import TryonQualityGate
 from .services.whatsapp_deep_links import build_whatsapp_deep_link
 from .services.whatsapp_reengagement import build_whatsapp_reengagement_message
+from .services.whatsapp_runtime import (
+    WhatsAppCloudSender,
+    evaluate_reengagement_trigger,
+    normalize_whatsapp_webhook_payload,
+    verify_whatsapp_webhook,
+)
 from .services.tryon_service import TryonService
 from .services.whatsapp_formatter import format_turn_response_for_whatsapp
 
@@ -162,6 +168,11 @@ def create_app() -> FastAPI:
     orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=cfg)
     image_moderation = ImageModerationService()
     dependency_reporting = DependencyReportingService(client)
+    whatsapp_sender = WhatsAppCloudSender(
+        access_token=getattr(cfg, "whatsapp_access_token", ""),
+        phone_number_id=getattr(cfg, "whatsapp_phone_number_id", ""),
+        api_version=getattr(cfg, "whatsapp_api_version", "v22.0"),
+    )
 
     tryon_service = TryonService()
     tryon_quality_gate = TryonQualityGate()
@@ -228,9 +239,9 @@ def create_app() -> FastAPI:
     app.include_router(create_catalog_admin_router())
 
     @app.get("/onboard", response_class=HTMLResponse, include_in_schema=False)
-    def onboard() -> HTMLResponse:
+    def onboard(user: str = "", focus: str = "") -> HTMLResponse:
         return HTMLResponse(
-            content=onboarding_gateway.render_onboarding_html(),
+            content=onboarding_gateway.render_onboarding_html(user_id=user, focus=focus),
             headers={
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
                 "Pragma": "no-cache",
@@ -261,11 +272,21 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def home(user: str = "") -> HTMLResponse:
+    def home(user: str = "", focus: str = "") -> HTMLResponse:
+        if str(focus or "").strip().lower() == "wardrobe":
+            html = onboarding_gateway.render_wardrobe_manager_html(user_id=user)
+            return HTMLResponse(
+                content=html,
+                headers={
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                },
+            )
         status = onboarding_gateway.get_onboarding_status(user) if user else {"onboarding_complete": False}
         analysis_status = onboarding_gateway.get_analysis_status(user) if user else {"status": "not_started"}
         if not status.get("onboarding_complete"):
-            html = onboarding_gateway.render_onboarding_html()
+            html = onboarding_gateway.render_onboarding_html(user_id=user, focus=focus)
         elif analysis_status.get("status") != "completed":
             html = onboarding_gateway.render_processing_html(user_id=user)
         else:
@@ -456,6 +477,68 @@ def create_app() -> FastAPI:
         except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/v1/channels/whatsapp/webhook")
+    def whatsapp_webhook_verify(
+        hub_mode: str = Query(default="", alias="hub.mode"),
+        hub_verify_token: str = Query(default="", alias="hub.verify_token"),
+        hub_challenge: str = Query(default="", alias="hub.challenge"),
+    ) -> Response:
+        try:
+            challenge = verify_whatsapp_webhook(
+                mode=hub_mode,
+                verify_token=hub_verify_token,
+                challenge=hub_challenge,
+                expected_verify_token=getattr(cfg, "whatsapp_webhook_verify_token", ""),
+            )
+            return Response(content=challenge, media_type="text/plain")
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @app.post("/v1/channels/whatsapp/webhook")
+    def whatsapp_webhook(payload: Dict[str, Any]) -> dict:
+        try:
+            events = normalize_whatsapp_webhook_payload(payload)
+            processed: List[Dict[str, Any]] = []
+            deliveries: List[Dict[str, Any]] = []
+            for event in events:
+                inbound = WhatsAppInboundRequest(
+                    phone_number=str(event.get("phone_number") or ""),
+                    message=str(event.get("message") or ""),
+                    message_id=str(event.get("message_id") or ""),
+                    profile_name=str(event.get("profile_name") or ""),
+                    image_url=str(event.get("image_url") or ""),
+                    link_url=str(event.get("link_url") or ""),
+                    media_type=str(event.get("media_type") or ""),
+                )
+                response = whatsapp_inbound(inbound)
+                delivery = whatsapp_sender.send_text_message(
+                    phone_number=response.phone_number,
+                    message=response.assistant_message,
+                )
+                processed.append(
+                    {
+                        "message_id": response.input_message_id,
+                        "conversation_id": response.conversation_id,
+                        "turn_id": response.turn_id,
+                        "user_id": response.user_id,
+                    }
+                )
+                deliveries.append(
+                    {
+                        "message_id": response.input_message_id,
+                        "phone_number": response.phone_number,
+                        **delivery.as_dict(),
+                    }
+                )
+            return {
+                "received_event_count": len(events),
+                "processed_event_count": len(processed),
+                "processed": processed,
+                "deliveries": deliveries,
+            }
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/v1/channels/whatsapp/reminders", response_model=WhatsAppReminderResponse)
     def whatsapp_reminder_preview(payload: WhatsAppReminderRequest) -> WhatsAppReminderResponse:
         try:
@@ -468,6 +551,8 @@ def create_app() -> FastAPI:
             ) if (normalized_phone or str(payload.user_id or "").strip()) else ""
             conversation_id = str(payload.conversation_id or "").strip()
             previous_context: Dict[str, Any] = {}
+            conversation: Dict[str, Any] = {}
+            latest_conversation: Dict[str, Any] = {}
 
             if conversation_id:
                 conversation = repo.get_conversation(conversation_id)
@@ -483,6 +568,15 @@ def create_app() -> FastAPI:
                 if latest_conversation:
                     conversation_id = str(latest_conversation.get("id") or "")
                     previous_context = dict(latest_conversation.get("session_context_json") or {})
+            trigger = evaluate_reengagement_trigger(
+                previous_context=previous_context,
+                conversation_updated_at=str((latest_conversation or conversation or {}).get("updated_at") or ""),
+                reminder_type=payload.reminder_type,
+            ) if (latest_conversation or conversation or previous_context) else {
+                "eligible": True,
+                "reason": "no_conversation_context",
+                "cooldown_hours": 72,
+            }
 
             reminder = build_whatsapp_reengagement_message(
                 previous_context=previous_context,
@@ -499,6 +593,7 @@ def create_app() -> FastAPI:
                     **dict(reminder.get("metadata") or {}),
                     "phone_number": normalized_phone,
                     "has_conversation_context": bool(previous_context),
+                    "trigger": trigger,
                 },
             )
         except (ValueError, SupabaseError, RuntimeError) as exc:

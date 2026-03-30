@@ -1663,6 +1663,655 @@ def get_onboarding_html() -> str:
 """
 
 
+def get_wardrobe_manager_html(user_id: str = "") -> str:
+    initial_user_id = escape(user_id)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sigma Aura Wardrobe Manager</title>
+  <style>
+    :root {{
+      --bg: #f4ede5;
+      --surface: rgba(255, 252, 247, 0.94);
+      --surface-strong: #fffdfa;
+      --ink: #1f1b17;
+      --muted: #6a6258;
+      --line: #d9cdbf;
+      --line-strong: #baa78e;
+      --accent: #1f6f5f;
+      --accent-soft: #e4efe9;
+      --warm: #b7742a;
+      --danger: #a22929;
+      --danger-soft: #fdeeee;
+      --shadow: 0 24px 64px rgba(49, 37, 23, 0.14);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, #f7e4cb 0%, rgba(247, 228, 203, 0.34) 26%, transparent 52%),
+        radial-gradient(circle at bottom right, #ddebe4 0%, rgba(221, 235, 228, 0.45) 22%, transparent 50%),
+        linear-gradient(135deg, #f5efe7 0%, #efe4d8 48%, #ece2d6 100%);
+      padding: 24px 16px;
+    }}
+    .shell {{
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 18px;
+    }}
+    .sidebar,
+    .main-panel,
+    .card {{
+      border: 1px solid rgba(186, 167, 142, 0.42);
+      border-radius: 24px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }}
+    .sidebar {{
+      padding: 26px;
+      background:
+        linear-gradient(180deg, rgba(31, 111, 95, 0.94) 0%, rgba(22, 83, 71, 0.96) 100%);
+      color: #f7f2ea;
+      display: grid;
+      align-content: start;
+      gap: 18px;
+    }}
+    .eyebrow {{
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      opacity: 0.74;
+    }}
+    h1, h2, h3, p {{ margin: 0; }}
+    .sidebar h1 {{
+      font-size: 34px;
+      line-height: 1.02;
+    }}
+    .sidebar p {{
+      color: rgba(247, 242, 234, 0.84);
+      line-height: 1.55;
+      font-size: 14px;
+    }}
+    .pill {{
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }}
+    .sidebar-list {{
+      display: grid;
+      gap: 10px;
+    }}
+    .sidebar-list div {{
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.08);
+      font-size: 13px;
+      line-height: 1.45;
+    }}
+    .main {{
+      display: grid;
+      gap: 18px;
+    }}
+    .main-panel {{
+      padding: 24px;
+      display: grid;
+      gap: 18px;
+    }}
+    .topline {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }}
+    .topline h2 {{
+      font-size: 28px;
+      line-height: 1.05;
+    }}
+    .muted {{
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }}
+    .input-row,
+    .summary-grid,
+    .wardrobe-grid,
+    .form-grid {{
+      display: grid;
+      gap: 14px;
+    }}
+    .input-row {{
+      grid-template-columns: minmax(0, 1fr) auto;
+    }}
+    .summary-grid {{
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }}
+    .wardrobe-grid {{
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }}
+    .form-grid {{
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }}
+    .card {{
+      padding: 18px;
+    }}
+    .metric-value {{
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-top: 10px;
+    }}
+    .field {{
+      display: grid;
+      gap: 8px;
+    }}
+    .field label {{
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }}
+    .field input,
+    .field textarea,
+    .field select {{
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px 16px;
+      background: var(--surface-strong);
+      color: var(--ink);
+      font-size: 15px;
+    }}
+    .field textarea {{
+      min-height: 96px;
+      resize: vertical;
+    }}
+    .actions {{
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }}
+    .btn {{
+      border: none;
+      border-radius: 16px;
+      padding: 13px 16px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }}
+    .btn.primary {{
+      background: var(--accent);
+      color: #fff;
+    }}
+    .btn.secondary {{
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }}
+    .btn.danger {{
+      background: var(--danger-soft);
+      color: var(--danger);
+      border: 1px solid rgba(162, 41, 41, 0.12);
+    }}
+    .status {{
+      display: none;
+      padding: 12px 14px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.45;
+    }}
+    .status.show {{
+      display: block;
+    }}
+    .status.error {{
+      background: var(--danger-soft);
+      color: var(--danger);
+    }}
+    .status.ok {{
+      background: var(--accent-soft);
+      color: var(--accent);
+    }}
+    .item-card {{
+      border: 1px solid rgba(217, 205, 191, 0.86);
+      border-radius: 18px;
+      padding: 16px;
+      background: var(--surface-strong);
+      display: grid;
+      gap: 12px;
+    }}
+    .item-head {{
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+    }}
+    .item-title {{
+      font-size: 18px;
+      line-height: 1.15;
+    }}
+    .tag-row {{
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }}
+    .tag {{
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #f4eee7;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }}
+    .list {{
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }}
+    .list div {{
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: #f8f2eb;
+      font-size: 13px;
+      line-height: 1.45;
+    }}
+    .empty {{
+      padding: 26px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 18px;
+      text-align: center;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.5);
+    }}
+    @media (max-width: 980px) {{
+      .shell {{
+        grid-template-columns: 1fr;
+      }}
+      .summary-grid,
+      .wardrobe-grid,
+      .form-grid,
+      .input-row {{
+        grid-template-columns: 1fr;
+      }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div>
+        <div class="eyebrow">Sigma Aura</div>
+        <h1>Wardrobe Management UI</h1>
+      </div>
+      <p>Review saved wardrobe items, fix metadata, delete bad entries, and inspect the wardrobe completeness scoring Aura uses for wardrobe-first decisions.</p>
+      <div class="pill">Wardrobe-first operating view</div>
+      <div class="sidebar-list">
+        <div>Browse and edit saved wardrobe items</div>
+        <div>Wardrobe completeness scoring for your current rotation</div>
+        <div>Wardrobe gap analysis view for missing staples and occasion coverage</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="main-panel">
+        <div class="topline">
+          <div>
+            <div class="eyebrow" style="color: var(--muted); opacity: 1;">Direct Manager</div>
+            <h2>See what Aura thinks is in your closet.</h2>
+          </div>
+          <a class="btn secondary" href="/?user={initial_user_id}">Back to Chat</a>
+        </div>
+        <p class="muted">Use a user id to load wardrobe items and the summary that powers wardrobe gap detection.</p>
+        <div class="input-row">
+          <div class="field">
+            <label for="userIdInput">User ID</label>
+            <input id="userIdInput" type="text" value="{initial_user_id}" placeholder="user_123" />
+          </div>
+          <div class="actions" style="justify-content: end; align-self: end;">
+            <button class="btn primary" id="loadWardrobeBtn">Load Wardrobe</button>
+          </div>
+        </div>
+        <div id="statusBox" class="status"></div>
+      </section>
+
+      <section class="summary-grid">
+        <div class="card">
+          <div class="eyebrow" style="color: var(--muted); opacity: 1;">Wardrobe Summary</div>
+          <div class="metric-value" id="summaryCount">0 items</div>
+          <p class="muted" id="summaryText">Load a user to inspect wardrobe coverage.</p>
+        </div>
+        <div class="card">
+          <div class="eyebrow" style="color: var(--muted); opacity: 1;">Completeness Score</div>
+          <div class="metric-value" id="completenessScore">0%</div>
+          <p class="muted">Wardrobe completeness scoring for user's typical occasion coverage.</p>
+        </div>
+        <div class="card">
+          <div class="eyebrow" style="color: var(--muted); opacity: 1;">Gap Analysis</div>
+          <div class="metric-value" id="gapCount">0</div>
+          <p class="muted">Wardrobe gap analysis view for missing categories and weak occasion coverage.</p>
+        </div>
+      </section>
+
+      <section class="wardrobe-grid">
+        <div class="card">
+          <div class="topline">
+            <div>
+              <div class="eyebrow" style="color: var(--muted); opacity: 1;">Gaps</div>
+              <h3>What is missing</h3>
+            </div>
+          </div>
+          <div class="list" id="gapList"></div>
+        </div>
+        <div class="card">
+          <div class="topline">
+            <div>
+              <div class="eyebrow" style="color: var(--muted); opacity: 1;">Coverage</div>
+              <h3>Occasion coverage</h3>
+            </div>
+          </div>
+          <div class="list" id="coverageList"></div>
+        </div>
+      </section>
+
+      <section class="main-panel">
+        <div class="topline">
+          <div>
+            <div class="eyebrow" style="color: var(--muted); opacity: 1;">Edit Metadata</div>
+            <h2>Update a saved item</h2>
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="itemTitle">Title</label>
+            <input id="itemTitle" type="text" placeholder="Navy Blazer" />
+          </div>
+          <div class="field">
+            <label for="itemCategory">Category</label>
+            <input id="itemCategory" type="text" placeholder="blazer" />
+          </div>
+          <div class="field">
+            <label for="itemSubtype">Subtype</label>
+            <input id="itemSubtype" type="text" placeholder="single-breasted blazer" />
+          </div>
+          <div class="field">
+            <label for="itemOccasion">Occasion Fit</label>
+            <input id="itemOccasion" type="text" placeholder="office" />
+          </div>
+          <div class="field">
+            <label for="itemPrimaryColor">Primary Color</label>
+            <input id="itemPrimaryColor" type="text" placeholder="navy" />
+          </div>
+          <div class="field">
+            <label for="itemFormality">Formality</label>
+            <input id="itemFormality" type="text" placeholder="smart_casual" />
+          </div>
+          <div class="field" style="grid-column: 1 / -1;">
+            <label for="itemDescription">Description</label>
+            <textarea id="itemDescription" placeholder="Add notes that help Aura reason about this piece."></textarea>
+          </div>
+          <div class="field" style="grid-column: 1 / -1;">
+            <label for="itemNotes">Notes</label>
+            <textarea id="itemNotes" placeholder="Fit notes, seasonality, comfort boundaries, or pairing hints."></textarea>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="saveEditBtn" disabled>Save Changes</button>
+          <button class="btn secondary" id="clearEditBtn">Clear</button>
+          <span class="muted" id="editingState">Pick an item below to edit metadata.</span>
+        </div>
+      </section>
+
+      <section class="main-panel">
+        <div class="topline">
+          <div>
+            <div class="eyebrow" style="color: var(--muted); opacity: 1;">Saved Items</div>
+            <h2>Your wardrobe items</h2>
+          </div>
+        </div>
+        <div id="wardrobeItems" class="wardrobe-grid">
+          <div class="empty" style="grid-column: 1 / -1;">Load a user to browse wardrobe items.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const state = {{
+      userId: {initial_user_id!r},
+      items: [],
+      summary: null,
+      editingId: "",
+    }};
+
+    const userIdInput = document.getElementById("userIdInput");
+    const statusBox = document.getElementById("statusBox");
+    const wardrobeItems = document.getElementById("wardrobeItems");
+    const summaryCount = document.getElementById("summaryCount");
+    const completenessScore = document.getElementById("completenessScore");
+    const summaryText = document.getElementById("summaryText");
+    const gapCount = document.getElementById("gapCount");
+    const gapList = document.getElementById("gapList");
+    const coverageList = document.getElementById("coverageList");
+    const editingState = document.getElementById("editingState");
+    const saveEditBtn = document.getElementById("saveEditBtn");
+
+    const fieldMap = {{
+      title: document.getElementById("itemTitle"),
+      description: document.getElementById("itemDescription"),
+      garment_category: document.getElementById("itemCategory"),
+      garment_subtype: document.getElementById("itemSubtype"),
+      occasion_fit: document.getElementById("itemOccasion"),
+      primary_color: document.getElementById("itemPrimaryColor"),
+      formality_level: document.getElementById("itemFormality"),
+      notes: document.getElementById("itemNotes"),
+    }};
+
+    function setStatus(message, tone = "ok") {{
+      statusBox.textContent = message || "";
+      statusBox.className = "status show " + tone;
+    }}
+
+    function clearStatus() {{
+      statusBox.className = "status";
+      statusBox.textContent = "";
+    }}
+
+    function renderSummary() {{
+      const summary = state.summary;
+      summaryCount.textContent = (summary ? summary.count : 0) + " items";
+      completenessScore.textContent = (summary ? summary.completeness_score_pct : 0) + "%";
+      summaryText.textContent = (summary && summary.summary) ? summary.summary : "Load a user to inspect wardrobe coverage.";
+      const gaps = (summary && summary.gap_items) ? summary.gap_items : [];
+      gapCount.textContent = String(gaps.length);
+      gapList.innerHTML = gaps.length
+        ? gaps.map((item) => "<div>" + item + "</div>").join("")
+        : '<div>No obvious gaps detected yet.</div>';
+      const coverage = (summary && summary.occasion_coverage) ? summary.occasion_coverage : [];
+      coverageList.innerHTML = coverage.length
+        ? coverage.map((item) => "<div>" + item.label + ": " + item.item_count + " item(s)</div>").join("")
+        : '<div>No occasion coverage data yet.</div>';
+    }}
+
+    function startEdit(itemId) {{
+      const item = state.items.find((entry) => entry.id === itemId);
+      if (!item) {{
+        return;
+      }}
+      state.editingId = itemId;
+      Object.entries(fieldMap).forEach(([key, element]) => {{
+        element.value = item[key] || "";
+      }});
+      editingState.textContent = "Editing " + (item.title || "wardrobe item") + ".";
+      saveEditBtn.disabled = false;
+      window.scrollTo({{ top: document.body.scrollHeight * 0.38, behavior: "smooth" }});
+    }}
+
+    function clearEdit() {{
+      state.editingId = "";
+      Object.values(fieldMap).forEach((element) => {{
+        element.value = "";
+      }});
+      editingState.textContent = "Pick an item below to edit metadata.";
+      saveEditBtn.disabled = true;
+    }}
+
+    function renderItems() {{
+      if (!state.items.length) {{
+        wardrobeItems.innerHTML = '<div class="empty" style="grid-column: 1 / -1;">No active wardrobe items found for this user yet.</div>';
+        return;
+      }}
+      wardrobeItems.innerHTML = state.items.map((item) => {{
+        const tags = [
+          item.garment_category,
+          item.primary_color,
+          item.occasion_fit,
+          item.formality_level,
+        ].filter(Boolean);
+        return `
+          <article class="item-card">
+            <div class="item-head">
+              <div>
+                <div class="item-title">${{item.title || "Wardrobe Item"}}</div>
+                <div class="muted">${{item.description || "No description saved yet."}}</div>
+              </div>
+              <div class="tag">${{item.source || "wardrobe"}}</div>
+            </div>
+            <div class="tag-row">
+              ${{tags.map((tag) => `<span class="tag">${{tag}}</span>`).join("") || '<span class="tag">untagged</span>'}}
+            </div>
+            <div class="actions">
+              <button class="btn secondary" data-action="edit" data-id="${{item.id}}">Edit</button>
+              <button class="btn danger" data-action="delete" data-id="${{item.id}}">Delete</button>
+            </div>
+          </article>
+        `;
+      }}).join("");
+    }}
+
+    async function loadWardrobe() {{
+      const userId = userIdInput.value.trim();
+      if (!userId) {{
+        setStatus("Enter a user id first.", "error");
+        return;
+      }}
+      state.userId = userId;
+      clearEdit();
+      clearStatus();
+      try {{
+        const [itemsResp, summaryResp] = await Promise.all([
+          fetch("/v1/onboarding/wardrobe/" + encodeURIComponent(userId)),
+          fetch("/v1/onboarding/wardrobe/" + encodeURIComponent(userId) + "/summary"),
+        ]);
+        if (!itemsResp.ok || !summaryResp.ok) {{
+          throw new Error("Unable to load wardrobe data.");
+        }}
+        const itemsPayload = await itemsResp.json();
+        const summaryPayload = await summaryResp.json();
+        state.items = itemsPayload.items || [];
+        state.summary = summaryPayload;
+        renderItems();
+        renderSummary();
+        setStatus("Wardrobe loaded.", "ok");
+      }} catch (error) {{
+        setStatus(error.message || "Unable to load wardrobe data.", "error");
+      }}
+    }}
+
+    async function saveEdit() {{
+      if (!state.editingId || !state.userId) {{
+        return;
+      }}
+      const payload = {{ user_id: state.userId }};
+      Object.entries(fieldMap).forEach(([key, element]) => {{
+        payload[key] = element.value.trim();
+      }});
+      try {{
+        const resp = await fetch("/v1/onboarding/wardrobe/items/" + encodeURIComponent(state.editingId), {{
+          method: "PATCH",
+          headers: {{ "Content-Type": "application/json" }},
+          body: JSON.stringify(payload),
+        }});
+        if (!resp.ok) {{
+          const body = await resp.json().catch(() => ({{}}));
+          throw new Error(body.detail || "Unable to update wardrobe item.");
+        }}
+        await loadWardrobe();
+        setStatus("Wardrobe item updated.", "ok");
+      }} catch (error) {{
+        setStatus(error.message || "Unable to update wardrobe item.", "error");
+      }}
+    }}
+
+    async function deleteItem(itemId) {{
+      if (!state.userId) {{
+        return;
+      }}
+      try {{
+        const resp = await fetch("/v1/onboarding/wardrobe/items/" + encodeURIComponent(itemId) + "?user_id=" + encodeURIComponent(state.userId), {{
+          method: "DELETE",
+        }});
+        if (!resp.ok) {{
+          const body = await resp.json().catch(() => ({{}}));
+          throw new Error(body.detail || "Unable to delete wardrobe item.");
+        }}
+        if (state.editingId === itemId) {{
+          clearEdit();
+        }}
+        await loadWardrobe();
+        setStatus("Wardrobe item deleted.", "ok");
+      }} catch (error) {{
+        setStatus(error.message || "Unable to delete wardrobe item.", "error");
+      }}
+    }}
+
+    document.getElementById("loadWardrobeBtn").addEventListener("click", loadWardrobe);
+    document.getElementById("saveEditBtn").addEventListener("click", saveEdit);
+    document.getElementById("clearEditBtn").addEventListener("click", clearEdit);
+    wardrobeItems.addEventListener("click", (event) => {{
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {{
+        return;
+      }}
+      const action = target.dataset.action || "";
+      const itemId = target.dataset.id || "";
+      if (!action || !itemId) {{
+        return;
+      }}
+      if (action === "edit") {{
+        startEdit(itemId);
+      }} else if (action === "delete") {{
+        deleteItem(itemId);
+      }}
+    }});
+
+    if (state.userId) {{
+      loadWardrobe();
+    }} else {{
+      renderSummary();
+    }}
+  </script>
+</body>
+</html>
+"""
+
+
 def get_processing_html(user_id: str = "") -> str:
     html = """<!doctype html>
 <html lang="en">

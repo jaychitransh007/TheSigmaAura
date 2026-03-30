@@ -125,6 +125,39 @@ class WardrobeItemListResponse(BaseModel):
     items: List[WardrobeItemResponse] = Field(default_factory=list)
 
 
+class WardrobeItemUpdateRequest(BaseModel):
+    user_id: str = Field(min_length=1)
+    title: Optional[str] = None
+    description: Optional[str] = None
+    garment_category: Optional[str] = None
+    garment_subtype: Optional[str] = None
+    primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
+    pattern_type: Optional[str] = None
+    formality_level: Optional[str] = None
+    occasion_fit: Optional[str] = None
+    brand: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class WardrobeCoverageEntry(BaseModel):
+    key: str
+    label: str
+    item_count: int = 0
+    covered: bool = False
+
+
+class WardrobeSummaryResponse(BaseModel):
+    user_id: str
+    count: int = 0
+    completeness_score_pct: int = 0
+    summary: str = ""
+    category_counts: Dict[str, int] = Field(default_factory=dict)
+    occasion_coverage: List[WardrobeCoverageEntry] = Field(default_factory=list)
+    missing_categories: List[str] = Field(default_factory=list)
+    gap_items: List[str] = Field(default_factory=list)
+
+
 class StyleArchetypeImage(BaseModel):
     id: str
     gender: Literal["male", "female"]
