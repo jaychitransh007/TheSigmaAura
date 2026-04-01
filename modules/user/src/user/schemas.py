@@ -85,6 +85,12 @@ class ImageUploadResponse(BaseModel):
 class OnboardingStatusResponse(BaseModel):
     user_id: str
     mobile: str = ""
+    name: str = ""
+    date_of_birth: str = ""
+    gender: str = ""
+    height_cm: Any = ""
+    waist_cm: Any = ""
+    profession: str = ""
     acquisition_source: str = "unknown"
     acquisition_campaign: str = ""
     referral_code: str = ""

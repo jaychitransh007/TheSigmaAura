@@ -915,6 +915,12 @@ class OnboardingService:
         return {
             "user_id": profile["user_id"],
             "mobile": profile.get("mobile", ""),
+            "name": profile.get("name") or "",
+            "date_of_birth": profile.get("date_of_birth") or "",
+            "gender": profile.get("gender") or "",
+            "height_cm": profile.get("height_cm") or "",
+            "waist_cm": profile.get("waist_cm") or "",
+            "profession": profile.get("profession") or "",
             "acquisition_source": profile.get("acquisition_source", "unknown"),
             "acquisition_campaign": profile.get("acquisition_campaign", ""),
             "referral_code": profile.get("referral_code", ""),

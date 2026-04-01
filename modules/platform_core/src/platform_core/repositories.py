@@ -487,6 +487,56 @@ class ConversationRepository:
             order="created_at.desc",
         )
 
+    # -- conversation & turn listing for UI --------------------------------
+
+    def list_conversations_for_user(
+        self,
+        user_id: str,
+        *,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        return self.client.select_many(
+            "conversations",
+            filters={"user_id": f"eq.{user_id}"},
+            order="updated_at.desc",
+            limit=limit,
+        )
+
+    def list_turns_for_conversation(
+        self,
+        conversation_id: str,
+    ) -> List[Dict[str, Any]]:
+        return self.client.select_many(
+            "conversation_turns",
+            filters={"conversation_id": f"eq.{conversation_id}"},
+            order="created_at.asc",
+        )
+
+    def list_recent_results_for_user(
+        self,
+        user_id: str,
+        *,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        conversations = self.client.select_many(
+            "conversations",
+            filters={"user_id": f"eq.{user_id}"},
+            columns="id",
+        )
+        if not conversations:
+            return []
+        conv_ids = [c["id"] for c in conversations]
+        turns = self.client.select_many(
+            "conversation_turns",
+            filters={"conversation_id": f"in.({','.join(conv_ids)})"},
+            order="created_at.desc",
+            limit=limit,
+        )
+        return [
+            t for t in turns
+            if t.get("resolved_context_json") and t.get("assistant_message")
+        ]
+
     def log_tool_trace(
         self,
         *,

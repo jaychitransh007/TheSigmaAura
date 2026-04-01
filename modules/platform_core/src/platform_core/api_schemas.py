@@ -215,3 +215,52 @@ class ConversationStateResponse(BaseModel):
     user_id: str
     status: str
     latest_context: Optional[ResolvedContext] = None
+
+
+# -- Listing schemas for UI ------------------------------------------------
+
+
+class ConversationListItem(BaseModel):
+    conversation_id: str
+    status: str
+    preview: str = ""
+    occasion: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class ConversationListResponse(BaseModel):
+    user_id: str
+    conversations: List[ConversationListItem] = Field(default_factory=list)
+
+
+class TurnListItem(BaseModel):
+    turn_id: str
+    role: str = ""
+    user_message: str = ""
+    assistant_message: str = ""
+    resolved_context: Optional[Dict[str, Any]] = None
+    created_at: str = ""
+
+
+class TurnListResponse(BaseModel):
+    conversation_id: str
+    turns: List[TurnListItem] = Field(default_factory=list)
+
+
+class ResultListItem(BaseModel):
+    turn_id: str
+    conversation_id: str
+    user_message: str = ""
+    assistant_message: str = ""
+    occasion: str = ""
+    intent: str = ""
+    source: str = ""
+    outfit_count: int = 0
+    first_outfit_image: str = ""
+    created_at: str = ""
+
+
+class ResultListResponse(BaseModel):
+    user_id: str
+    results: List[ResultListItem] = Field(default_factory=list)

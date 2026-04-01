@@ -810,6 +810,20 @@ def get_onboarding_html() -> str:
   </div>
 
   <script>
+    // Auto-redirect returning users who have a stored session
+    (function() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        if (!params.get("user")) {
+          var storedUser = localStorage.getItem("aura_user_id");
+          if (storedUser) {
+            window.location.href = "/?user=" + encodeURIComponent(storedUser) + "&view=chat";
+            return;
+          }
+        }
+      } catch(_) {}
+    })();
+
     const STEP_ORDER = [
       "mobile",
       "otp",
@@ -1532,6 +1546,7 @@ def get_onboarding_html() -> str:
         try {
           const data = await postJson("/v1/onboarding/verify-otp", { mobile, otp }, "OTP verification failed");
           state.userId = data.user_id;
+          try { localStorage.setItem("aura_user_id", state.userId); } catch(_) {}
           const statusResponse = await fetch("/v1/onboarding/status/" + encodeURIComponent(state.userId));
           const status = await statusResponse.json();
           if (!statusResponse.ok) {
@@ -1646,7 +1661,7 @@ def get_onboarding_html() -> str:
       });
 
       document.getElementById("goToPlatformBtn").addEventListener("click", () => {
-        window.location.href = "/?user=" + encodeURIComponent(state.userId);
+        window.location.href = "/?user=" + encodeURIComponent(state.userId) + "&view=chat";
       });
     }
 
@@ -2993,7 +3008,7 @@ def get_processing_html(user_id: str = "") -> str:
     });
 
     openPlatformBtn.addEventListener("click", () => {
-      window.location.href = "/?user=" + encodeURIComponent(userId);
+      window.location.href = "/?user=" + encodeURIComponent(userId) + "&view=chat";
     });
 
     startFlow();

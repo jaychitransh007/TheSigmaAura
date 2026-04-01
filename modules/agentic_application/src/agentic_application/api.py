@@ -10,6 +10,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
 
 from platform_core.api_schemas import (
+    ConversationListItem,
+    ConversationListResponse,
     ConversationResponse,
     ConversationStateResponse,
     CreateConversationRequest,
@@ -20,8 +22,12 @@ from platform_core.api_schemas import (
     ReferralEventResponse,
     ResolveConversationRequest,
     ResolveConversationResponse,
+    ResultListItem,
+    ResultListResponse,
     TurnJobStartResponse,
     TurnJobStatusResponse,
+    TurnListItem,
+    TurnListResponse,
     TurnResponse,
     WhatsAppDeepLinkRequest,
     WhatsAppDeepLinkResponse,
@@ -294,11 +300,13 @@ def create_app() -> FastAPI:
             if not resolved_view:
                 focus_map = {
                     "chat": "chat",
-                    "planner": "trips",
-                    "tryon": "trips",
-                    "profile": "style",
+                    "planner": "chat",
+                    "tryon": "chat",
+                    "profile": "profile",
+                    "wardrobe": "wardrobe",
+                    "results": "results",
                 }
-                resolved_view = focus_map.get(str(focus or "").strip().lower(), "dashboard")
+                resolved_view = focus_map.get(str(focus or "").strip().lower(), "chat")
             html = get_web_ui_html(
                 user_id=user,
                 active_view=resolved_view,
@@ -934,6 +942,91 @@ def create_app() -> FastAPI:
             return {"ok": True, "count": count, "turn_id": turn_id or ""}
         except HTTPException:
             raise
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # -- UI listing endpoints --------------------------------------------------
+
+    @app.get("/v1/users/{user_id}/conversations", response_model=ConversationListResponse)
+    def list_user_conversations(user_id: str) -> ConversationListResponse:
+        try:
+            user = repo.get_or_create_user(user_id)
+            internal_uid = str(user["id"])
+            rows = repo.list_conversations_for_user(internal_uid)
+            items: list[ConversationListItem] = []
+            for row in rows:
+                conv_id = str(row.get("id") or "")
+                first_turn = repo.get_latest_turn(conv_id)
+                ctx = dict(row.get("session_context_json") or {})
+                preview = ""
+                if first_turn:
+                    preview = str(first_turn.get("user_message") or "")[:80]
+                items.append(
+                    ConversationListItem(
+                        conversation_id=conv_id,
+                        status=str(row.get("status") or ""),
+                        preview=preview,
+                        occasion=str(ctx.get("occasion") or ""),
+                        created_at=str(row.get("created_at") or ""),
+                        updated_at=str(row.get("updated_at") or ""),
+                    )
+                )
+            return ConversationListResponse(user_id=user_id, conversations=items)
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/v1/conversations/{conversation_id}/turns", response_model=TurnListResponse)
+    def list_conversation_turns(conversation_id: str) -> TurnListResponse:
+        try:
+            rows = repo.list_turns_for_conversation(conversation_id)
+            items: list[TurnListItem] = []
+            for row in rows:
+                items.append(
+                    TurnListItem(
+                        turn_id=str(row.get("id") or ""),
+                        user_message=str(row.get("user_message") or ""),
+                        assistant_message=str(row.get("assistant_message") or ""),
+                        resolved_context=row.get("resolved_context_json"),
+                        created_at=str(row.get("created_at") or ""),
+                    )
+                )
+            return TurnListResponse(conversation_id=conversation_id, turns=items)
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/v1/users/{user_id}/results", response_model=ResultListResponse)
+    def list_user_results(user_id: str) -> ResultListResponse:
+        try:
+            user = repo.get_or_create_user(user_id)
+            internal_uid = str(user["id"])
+            rows = repo.list_recent_results_for_user(internal_uid)
+            items: list[ResultListItem] = []
+            for row in rows:
+                ctx = dict(row.get("resolved_context_json") or {})
+                recs = ctx.get("final_recommendations") or ctx.get("recommendations") or []
+                first_img = ""
+                for rec in recs:
+                    for item in (rec.get("items") or []):
+                        if item.get("image_url"):
+                            first_img = str(item["image_url"])
+                            break
+                    if first_img:
+                        break
+                items.append(
+                    ResultListItem(
+                        turn_id=str(row.get("id") or ""),
+                        conversation_id=str(row.get("conversation_id") or ""),
+                        user_message=str(row.get("user_message") or ""),
+                        assistant_message=str(row.get("assistant_message") or "")[:200],
+                        occasion=str(ctx.get("occasion") or ""),
+                        intent=str(ctx.get("intent") or ctx.get("response_type") or ""),
+                        source=str(ctx.get("source_preference") or ""),
+                        outfit_count=len(recs),
+                        first_outfit_image=first_img,
+                        created_at=str(row.get("created_at") or ""),
+                    )
+                )
+            return ResultListResponse(user_id=user_id, results=items)
         except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
