@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class CatalogSyncRequest(BaseModel):
-    input_csv_path: str = Field(default="data/catalog/enriched_catalog.csv", min_length=1)
+    input_csv_path: str = Field(default="data/catalog/enriched_catalog_upload.csv", min_length=1)
     max_rows: int = Field(default=0, ge=0)
     start_row: int = Field(default=0, ge=0)
     end_row: int = Field(default=0, ge=0)

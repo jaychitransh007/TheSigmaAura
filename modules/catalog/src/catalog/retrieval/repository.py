@@ -51,10 +51,25 @@ def canonical_product_url(*, raw_url: str = "", store: str = "", handle: str = "
     return f"https://www.{domain}/products/{normalized_handle}"
 
 
+def _has_row_status_column(rows: List[Dict[str, str]]) -> bool:
+    return bool(rows) and "row_status" in rows[0]
+
+
+def _infer_row_status(rows: List[Dict[str, str]]) -> None:
+    """Auto-set row_status='ok' for rows that have product_id and title when the CSV lacks a row_status column."""
+    for row in rows:
+        pid = str(row.get("product_id") or row.get("id") or "").strip()
+        title = str(row.get("title") or "").strip()
+        row["row_status"] = "ok" if pid and title else "missing"
+
+
 def read_catalog_rows(csv_path: str) -> List[Dict[str, str]]:
     path = Path(csv_path)
     with path.open("r", encoding="utf-8", newline="") as handle:
-        return list(csv.DictReader(handle))
+        rows = list(csv.DictReader(handle))
+    if not _has_row_status_column(rows):
+        _infer_row_status(rows)
+    return rows
 
 
 def write_jsonl(path: str, rows: Iterable[dict]) -> None:
@@ -66,35 +81,6 @@ def write_jsonl(path: str, rows: Iterable[dict]) -> None:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=True) + "\n")
 
-
-def build_catalog_item_rows(rows: Iterable[Dict[str, str]]) -> List[Dict[str, Any]]:
-    output: List[Dict[str, Any]] = []
-    for index, row in enumerate(rows):
-        product_id = str(row.get("id") or "").strip()
-        if not product_id:
-            continue
-        row_id = str(row.get("") or index)
-        price_value = str(row.get("price") or "").strip()
-        try:
-            price = float(price_value) if price_value else None
-        except ValueError:
-            price = None
-        output.append(
-            {
-                "catalog_row_id": row_id,
-                "product_id": product_id,
-                "title": str(row.get("title") or ""),
-                "description": str(row.get("description") or ""),
-                "price": price,
-                "primary_image_url": str(row.get("images__0__src") or ""),
-                "secondary_image_url": str(row.get("images__1__src") or ""),
-                "url": str(row.get("url") or ""),
-                "row_status": str(row.get("row_status") or ""),
-                "error_reason": str(row.get("error_reason") or ""),
-                "metadata_json": dict(row),
-            }
-        )
-    return output
 
 
 def build_catalog_enriched_rows(rows: Iterable[Dict[str, str]]) -> List[Dict[str, Any]]:
@@ -161,7 +147,6 @@ def build_catalog_enriched_rows(rows: Iterable[Dict[str, str]]) -> List[Dict[str
 
 __all__ = [
     "build_catalog_enriched_rows",
-    "build_catalog_item_rows",
     "canonical_product_url",
     "read_catalog_rows",
     "write_jsonl",

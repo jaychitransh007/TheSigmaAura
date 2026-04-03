@@ -39,8 +39,11 @@ class CatalogAdminService:
         destination.write_bytes(content)
         return str(destination)
 
-    def get_status(self, *, input_csv_path: str = "data/catalog/enriched_catalog.csv") -> Dict[str, Any]:
-        rows = read_catalog_rows(input_csv_path)
+    def get_status(self, *, input_csv_path: str = "data/catalog/enriched_catalog_upload.csv") -> Dict[str, Any]:
+        try:
+            rows = read_catalog_rows(input_csv_path)
+        except FileNotFoundError:
+            rows = []
         eligible_embedding_rows = sum(
             1 for row in rows if str(row.get("row_status") or "").strip().lower() in {"ok", "complete"}
         )
@@ -165,6 +168,12 @@ class CatalogAdminService:
             rows = rows[start_row : end_row or None]
             if max_rows > 0:
                 rows = rows[:max_rows]
+            existing_ids = self.vector_store.embedded_product_ids()
+            rows = [
+                row for row in rows
+                if str(row.get("product_id") or row.get("id") or "").strip() not in existing_ids
+            ]
+            logger.info("Skipped %d already-embedded products, %d remaining", len(existing_ids), len(rows))
             config = CatalogEmbeddingConfig(
                 input_csv_path=input_csv_path,
                 max_rows=max_rows,

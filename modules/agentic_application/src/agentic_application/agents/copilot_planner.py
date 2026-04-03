@@ -200,6 +200,9 @@ def build_planner_input(
         "user_profile": {
             "gender": user_context.gender,
             "seasonal_color_group": _nested_value(derived, "SeasonalColorGroup") or None,
+            "base_colors": (derived.get("BaseColors") or {}).get("value") or [],
+            "accent_colors": (derived.get("AccentColors") or {}).get("value") or [],
+            "avoid_colors": (derived.get("AvoidColors") or {}).get("value") or [],
             "contrast_level": _nested_value(derived, "ContrastLevel") or None,
             "frame_structure": _nested_value(derived, "FrameStructure") or None,
             "height_category": _nested_value(derived, "HeightCategory") or None,

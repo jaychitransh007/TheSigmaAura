@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: March 31, 2026
+Last updated: April 3, 2026
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -30,6 +30,12 @@ Project status:
 - wardrobe: ingestion, enrichment, retrieval, and wardrobe-first occasion response implemented
 - WhatsApp: message formatting and deep linking implemented; no inbound message runtime yet
 - safety: dual-layer image moderation (heuristic + vision), restricted category exclusion, try-on quality gate implemented
+- web UI: modern chat-first interface with unified warm/burgundy design across onboarding, profile analysis, main app, and admin
+- profile: unified view + edit page with inline editing toggle, style code card, and personalized color palette card (base/accent/avoid)
+- wardrobe: "+Add Item" modal with photo upload, category, color, occasion, brand, notes
+- chat composer: `+` button popover with "Upload image" and "Select from wardrobe" options; drag-drop and paste support
+- results: previous results grid with outfit preview thumbnails extracted from outfits[].items[].image_url
+- catalog admin: pipeline with upload, enrichment sync, embedding generation, URL backfill, include-incomplete toggle, skip-already-embedded optimization
 
 The system is a working recommendation engine with supporting infrastructure. The next phase is evolving it from a shopping-first tool into a lifestyle stylist — wardrobe-first across all intents, dedicated handlers for non-recommendation intents (outfit check, shopping decision, pairing, capsule planning), and WhatsApp as a live retention surface.
 
@@ -81,6 +87,10 @@ Success means users come back before real decisions: should I buy this, what goe
 - wardrobe retrieval and wardrobe-first occasion response
 - virtual try-on via Gemini with quality gate
 - 3-column PDP outfit cards with Buy Now, radar chart, progress bars, feedback CTAs
+- unified profile page with inline editing, style code card, and color palette card
+- wardrobe add-item modal from wardrobe page
+- chat composer + button with upload image / select from wardrobe popover
+- results page with outfit preview thumbnails
 - feedback capture + comfort learning
 - profile confidence engine and recommendation confidence engine (9-factor scoring)
 - dual-layer image moderation (heuristic + vision API)
@@ -207,6 +217,9 @@ Implemented:
 - Each agent returns JSON with `{value, confidence, evidence_note}` per attribute
 - Deterministic interpretation pipeline (`interpreter.py`) derives:
   - `SeasonalColorGroup` — 4-season color analysis (Spring, Summer, Autumn, Winter) — deterministic fallback from surface color, hair, eye inputs. Overridden by digital draping when headshot available.
+  - `BaseColors` — Foundation/neutral colors for outfit anchors (4-5 per season, e.g. Autumn: warm taupe, warm brown, olive, muted gold)
+  - `AccentColors` — Statement/pop colors that complement the user's coloring (4-5 per season, e.g. Autumn: terracotta, rust, burgundy, forest green, burnt orange)
+  - `AvoidColors` — Colors that clash with the user's natural coloring (4-5 per season, e.g. Autumn: icy blue, fuchsia, royal blue, stark white, silver)
   - `HeightCategory` — Petite (<160cm) / Average (160-175cm) / Tall (>175cm)
   - `WaistSizeBand` — Very Small / Small / Medium / Large / Very Large
   - `ContrastLevel` — Low / Medium-Low / Medium / Medium-High / High (from depth spread across skin, hair, eyes)
@@ -225,6 +238,7 @@ Implemented:
   - Max 2 groups per user
 - Style archetype preference: user selects 3-5 archetypes across 3 layers → produces primaryArchetype, secondaryArchetype, blending ratios, risk tolerance, formality lean, pattern type, comfort boundaries
 - style archetype session images are served by the onboarding app from repo-backed assets under `archetypes/choices`, so local onboarding no longer depends on Supabase bucket sync
+- all user-facing pages (onboarding, profile analysis/processing, main app) share the unified warm/burgundy design system
 - Profile status / rerun support (single-agent targeted reruns with baseline preservation)
 
 Current ownership reality:
@@ -242,7 +256,7 @@ Status:
 - functionally usable
 
 Implemented:
-- admin upload screen (`/admin/catalog`)
+- admin upload screen (`/admin/catalog`) with modern burgundy theme matching main app
 - CSV upload flow (saves to `data/catalog/uploads/`)
 - enrichment pipeline (50+ attributes organized in 8 sections)
 - sync into `catalog_enriched` (upsert on `product_id`)
@@ -250,10 +264,15 @@ Implemented:
 - partial run support via `max_rows`
 - local/staging sync paths
 - canonical product URL persistence during ingestion (with backfill for older rows)
-- only rows with `row_status` in `{ok, complete}` are embeddable
+- auto-inferred `row_status`: CSVs lacking a `row_status` column get `"ok"` for rows with valid product_id + title, `"missing"` otherwise
+- only rows with `row_status` in `{ok, complete}` are embeddable by default; `include_incomplete` flag bypasses this filter
+- skip-already-embedded optimization: embedding sync fetches existing product IDs from Supabase and skips them, so only new/missing rows are embedded
 - job lifecycle tracking: every sync operation (items, URLs, embeddings) creates a `catalog_jobs` row with status transitions (running → completed/failed), params, row counts, and error messages
 - selective rerun support: `start_row`/`end_row` parameters on items sync and embeddings sync for range-based partial reruns
 - admin job history: `/status` endpoint returns running/failed job counts and recent job list; UI renders job history table with status pills, params, row counts, and truncated errors
+- default source CSV path: `data/catalog/enriched_catalog_upload.csv`
+- graceful handling when source CSV doesn't exist (status endpoint returns empty rows instead of 500)
+- `catalog_items` table removed (superseded by `catalog_enriched`)
 
 Catalog embedding document structure (8 labeled sections):
 1. `GARMENT_IDENTITY` — GarmentCategory, GarmentSubtype, GarmentLength, StylingCompleteness, GenderExpression
@@ -405,11 +424,19 @@ Current response behavior:
 - `response.metadata` includes `turn_id` for feedback correlation
 - both internal (`agentic_application/schemas.py`) and shared (`platform_core/api_schemas.py`) schemas are aligned
 
+## Chat UI: Composer + Outfit Cards
+
+Chat composer features:
+- `+` button popover with two options: "Upload image" (triggers file picker) and "Select from wardrobe" (opens wardrobe picker modal)
+- image chip preview with remove button for attached images
+- paste support for images from clipboard
+- drag-and-drop image attach onto composer area
+- wardrobe picker modal loads user's wardrobe items as a grid; selecting an item attaches its image
+
 ## Chat UI: Outfit Card — 3-Column PDP Layout + Feedback CTAs
 
 Status:
 - implemented
-- pending manual smoke test on live server
 
 Current UI behavior (implemented):
 - one unified PDP-style card per outfit (`.outfit-card` CSS class)
@@ -484,6 +511,8 @@ Conversation-level state currently persisted:
 Current alignment level:
 - architectural alignment: strong — pipeline, schemas, persistence all clean
 - behavioral alignment: partial — system defaults to catalog-first; wardrobe-first and non-recommendation intents are the gap
+- color guidance: strong — seasonal color group drives base/accent/avoid color palettes passed to planner, architect, and outfit check agents
+- design consistency: strong — onboarding, main app, and admin share unified warm/burgundy visual language
 
 Main strengths:
 - copilot planner routes 11 intents with action dispatch
@@ -508,16 +537,18 @@ Main weak spots:
 - OTP-based onboarding with acquisition source tracking
 - 3-agent parallel analysis pipeline (body type, color, other details) via gpt-5.4
 - digital draping — 3-round LLM vision chain for seasonal color analysis
-- deterministic interpretation engine (seasonal color, height, waist, contrast, frame)
+- deterministic interpretation engine (seasonal color, base/accent/avoid color palettes, height, waist, contrast, frame)
 - style archetype preference capture (3 layers → primary/secondary archetypes, risk tolerance, formality lean)
 - comfort learning — behavioral seasonal palette refinement from outfit likes
 - wardrobe ingestion with vision-API enrichment and dual-layer image moderation
 
 ### Catalog Layer
 - CSV upload + enrichment pipeline (50+ attributes, 8 embedding sections)
-- embedding generation (text-embedding-3-small, 1536 dim, pgvector)
+- embedding generation (text-embedding-3-small, 1536 dim, pgvector) with skip-already-embedded optimization
+- auto-inferred `row_status` for CSVs lacking the column; include-incomplete toggle for embedding
 - canonical product URL persistence with backfill support
 - job lifecycle tracking with admin UI
+- `catalog_items` table removed (superseded by `catalog_enriched`)
 
 ### Application Layer
 - copilot planner (gpt-5.4) — intent classification across 11 intents, action routing
@@ -528,10 +559,15 @@ Main weak spots:
 - 3-column PDP outfit cards with Buy Now, radar chart (8 style archetypes), 8 evaluation criteria progress bars
 - per-outfit feedback capture (Like / Didn't Like with notes)
 - follow-up turns with 7 follow-up intent types (increase boldness, change color, similar, etc.)
+- color palette system: base/accent/avoid colors derived from seasonal group, passed to planner, architect, and outfit check agents
 - profile confidence engine + recommendation confidence engine (9-factor, 0–100 scoring)
 - dual-layer image moderation (heuristic blocklist + vision API check)
 - restricted category exclusion in catalog retrieval
 - QnA stage narration with context-aware messages
+- results page with outfit preview thumbnails (extracted from outfits[].items[].image_url)
+- unified profile page with inline edit toggle, style code, and color palette display
+- wardrobe add-item modal (photo + metadata) from wardrobe page
+- chat composer + button with upload image / wardrobe picker popover
 
 ### WhatsApp (Partial)
 - message formatting for outfits, suggestions, and wardrobe source labeling
@@ -583,7 +619,7 @@ Supabase tables (26 migrations in `supabase/migrations/`):
 - `onboarding_profiles` — user_id (unique), mobile (unique), otp fields, acquisition_source, acquisition_campaign, referral_code, icp_tag, name, date_of_birth, gender, height_cm, waist_cm, profession, profile_complete, onboarding_complete
 - `onboarding_images` — user_id, category (full_body/headshot), encrypted_filename, file_path, mime_type, file_size_bytes; unique on (user_id, category)
 - `user_analysis_runs` — tracks analysis snapshots per user (status, model_name, body_type_output, color_headshot_output, other_details_output, collated_output)
-- `user_derived_interpretations` — stores deterministic interpretations (SeasonalColorGroup, HeightCategory, WaistSizeBand, ContrastLevel, FrameStructure) with value/confidence/evidence_note
+- `user_derived_interpretations` — stores deterministic interpretations (SeasonalColorGroup, BaseColors, AccentColors, AvoidColors, HeightCategory, WaistSizeBand, ContrastLevel, FrameStructure) with value/confidence/evidence_note
 - `user_style_preference` — primary_archetype, secondary_archetype, risk_tolerance, formality_lean, pattern_type, selected_images
 - `user_analysis_snapshots` — now includes `draping_output` (jsonb) column for digital draping chain results
 - `user_interpretation_snapshots` — now includes `seasonal_color_distribution`, `seasonal_color_groups_json`, `seasonal_color_source`, `draping_chain_log` columns
@@ -594,6 +630,7 @@ Supabase tables (26 migrations in `supabase/migrations/`):
 - `catalog_enriched` — product_id (unique), title, description, price, url, image_urls, row_status, raw_row_json, error_reason + 50+ enrichment attribute columns with confidence scores
 - `catalog_item_embeddings` — product_id, embedding (pgvector 1536), metadata_json; indexed on product_id
 - `catalog_jobs` — id (uuid), job_type (`items_sync` | `url_backfill` | `embeddings_sync`), status (`pending` | `running` | `completed` | `failed`), params_json (JSONB), processed_rows, saved_rows, missing_url_rows, error_message, started_at, completed_at, created_at, updated_at; indexed on job_type, status, created_at desc
+- `catalog_interaction_history` — user_id, product_id, interaction_type (view/click/save/dismiss/buy_skip_request/buy/skip), source_channel (web/whatsapp), source_surface, conversation_id, turn_id, metadata_json
 
 ## Module File Layout
 

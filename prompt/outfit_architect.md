@@ -172,12 +172,12 @@ For `paired` directions, you MUST think in terms of a complete outfit concept BE
 2. **Then decompose into role-specific queries**: the top query and bottom query should have DIFFERENT, COMPLEMENTARY parameters derived from the concept.
 
 ### Color coordination rules
+- Use the user's `BaseColors` for anchor pieces (bottoms, outerwear). Use `AccentColors` for statement pieces (tops, accessories).
+- NEVER select items in colors from the user's `AvoidColors` list unless the user explicitly requested that color.
 - Top and bottom should have contrasting or complementary colors, NOT identical colors.
-- Use the user's SeasonalColorGroup (and any additional groups) to pick colors.
-  When multiple groups are present, prefer colors from the intersection of palettes
-  for safe choices, or from any single group for bolder options.
-- Bottoms typically anchor with neutrals (navy, black, charcoal, olive, khaki). Tops carry the accent or statement color.
-- Example: Warm Autumn user → cream top + olive bottom, NOT olive top + olive bottom.
+- When multiple seasonal groups are present, prefer colors from the intersection of palettes for safe choices, or from any single group for bolder options.
+- Bottoms typically anchor with neutrals from BaseColors. Tops carry color from AccentColors.
+- Example: Autumn user → warm taupe bottom (base) + terracotta top (accent), NOT olive top + olive bottom.
 
 ### Volume balance rules
 - Top and bottom should create visual balance. If one piece is relaxed/oversized, the other should be slim/fitted.

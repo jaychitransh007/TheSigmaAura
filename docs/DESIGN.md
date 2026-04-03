@@ -1,6 +1,6 @@
 # Design System And Experience Principles
 
-Last updated: March 30, 2026
+Last updated: April 3, 2026
 
 ## Purpose
 
@@ -15,6 +15,14 @@ It defines:
 - the fashion-specific experience standards
 
 All new web and mobile UI work should align with this document unless an explicit product decision overrides it.
+
+The design system is now applied uniformly across all surfaces: onboarding, profile analysis/processing, main chat app, profile, wardrobe, results, and catalog admin. All share the same warm/burgundy accent (`#6f2f45`), background gradients, Cormorant Garamond serif headings, and Avenir Next sans-serif body text.
+
+Key UI patterns implemented:
+- **Unified profile page**: Single page with inline edit toggle — view mode shows read-only fields, edit mode switches to inputs/selects in place. Includes style code card and personalized color palette card (base/accent/avoid chips).
+- **Chat composer**: `+` button opens a popover with "Upload image" (file picker) and "Select from wardrobe" (modal with wardrobe grid). Supports drag-drop and paste.
+- **Wardrobe add-item modal**: Photo upload with preview, category, color, occasion, brand, notes fields.
+- **Results grid**: 2-column card grid with outfit preview thumbnails, user message, occasion chips, and relative timestamps.
 
 Related docs:
 - [`docs/PRODUCT.md`](/Users/mj/Projects/TheSigmaProject/Aura/docs/PRODUCT.md)

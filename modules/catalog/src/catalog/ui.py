@@ -7,25 +7,29 @@ def get_catalog_admin_html() -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
   <title>Aura Catalog Admin</title>
   <style>
     :root {
-      --bg: #f2efe8;
-      --surface: #fffdf8;
-      --ink: #1f2228;
-      --muted: #66707a;
-      --line: #d9d2c8;
-      --accent: #1c5d56;
-      --accent-soft: #e7f1ee;
-      --warn: #a85d1c;
+      --bg: #f6f0ea;
+      --surface: #fffaf5;
+      --ink: #201915;
+      --muted: #6e655f;
+      --line: #dfd1c4;
+      --accent: #6f2f45;
+      --accent-soft: #f3e6ea;
+      --warn: #b08a4e;
     }
     body {
       margin: 0;
       font-family: "Avenir Next", "Segoe UI", sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at top left, #efe2cf 0%, transparent 32%),
-        linear-gradient(180deg, #f5f1ea 0%, #ede7de 100%);
+        radial-gradient(circle at top left, rgba(184, 139, 150, 0.22), transparent 28%),
+        radial-gradient(circle at 85% 12%, rgba(176, 138, 78, 0.14), transparent 24%),
+        linear-gradient(180deg, #fbf6f1 0%, var(--bg) 42%, #f1e6da 100%);
     }
     .wrap {
       max-width: 1240px;
@@ -44,7 +48,9 @@ def get_catalog_admin_html() -> str:
     }
     .hero h1 {
       margin: 0 0 8px;
-      font-size: 28px;
+      font-family: "Cormorant Garamond", serif;
+      font-size: 32px;
+      font-weight: 600;
     }
     .hero p {
       margin: 0;
@@ -233,7 +239,7 @@ def get_catalog_admin_html() -> str:
         <h2>Control Panel</h2>
         <div class="field">
           <label>Source CSV Path</label>
-          <input id="inputPath" value="data/catalog/enriched_catalog.csv" />
+          <input id="inputPath" value="data/catalog/enriched_catalog_upload.csv" />
         </div>
         <div class="field">
           <label>Max Rows</label>
@@ -246,6 +252,10 @@ def get_catalog_admin_html() -> str:
         <div class="field">
           <label>End Row (0 = all)</label>
           <input id="endRow" type="number" min="0" value="0" />
+        </div>
+        <div class="field" style="flex-direction:row;align-items:center;gap:8px;">
+          <input id="includeIncomplete" type="checkbox" style="width:auto;" />
+          <label for="includeIncomplete" style="margin:0;">Include Incomplete Rows</label>
         </div>
         <div class="field">
           <label>Upload New CSV</label>
@@ -376,7 +386,7 @@ def get_catalog_admin_html() -> str:
         max_rows: parseInt(maxRowsEl.value || "0", 10),
         start_row: parseInt(startRowEl.value || "0", 10),
         end_row: parseInt(endRowEl.value || "0", 10),
-        include_incomplete: false
+        include_incomplete: document.getElementById("includeIncomplete").checked
       };
     }
 

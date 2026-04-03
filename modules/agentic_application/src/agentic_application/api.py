@@ -1003,12 +1003,12 @@ def create_app() -> FastAPI:
             items: list[ResultListItem] = []
             for row in rows:
                 ctx = dict(row.get("resolved_context_json") or {})
-                recs = ctx.get("final_recommendations") or ctx.get("recommendations") or []
                 first_img = ""
-                for rec in recs:
-                    for item in (rec.get("items") or []):
-                        if item.get("image_url"):
-                            first_img = str(item["image_url"])
+                for outfit in (ctx.get("outfits") or []):
+                    for item in (outfit.get("items") or []):
+                        img = str(item.get("image_url") or "").strip()
+                        if img:
+                            first_img = img
                             break
                     if first_img:
                         break

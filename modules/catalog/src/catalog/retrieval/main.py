@@ -9,7 +9,7 @@ from .vector_store import SupabaseVectorStore
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build catalog embedding documents and optional embeddings.")
-    parser.add_argument("--input", default="data/catalog/enriched_catalog.csv", help="Input enriched catalog CSV path.")
+    parser.add_argument("--input", default="data/catalog/enriched_catalog_upload.csv", help="Input enriched catalog CSV path.")
     parser.add_argument("--documents-output", default="data/catalog/embeddings/catalog_documents.jsonl", help="Output JSONL path for embedding documents.")
     parser.add_argument("--embeddings-output", default="data/catalog/embeddings/catalog_embeddings.jsonl", help="Output JSONL path for generated embeddings.")
     parser.add_argument("--model", default="text-embedding-3-small", help="Embedding model name.")

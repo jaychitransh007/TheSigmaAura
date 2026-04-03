@@ -60,7 +60,7 @@ def get_web_ui_html(
     body.view-wardrobe .page-wardrobe { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-results .page-results { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-profile .page-profile { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
-    body.view-edit-profile .page-edit-profile { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
+    body.view-edit-profile .page-profile { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body:not(.view-chat) .history-rail { display: none !important; }
 
     /* ===== App Header ===== */
@@ -217,7 +217,7 @@ def get_web_ui_html(
     }
     .composer-outer {
       background: var(--surface); border: 1.5px solid var(--line);
-      border-radius: 24px; overflow: hidden;
+      border-radius: 24px;
       transition: border-color 140ms ease, box-shadow 140ms ease;
     }
     .composer-outer:focus-within { border-color: var(--accent-soft); box-shadow: 0 0 0 3px rgba(111, 47, 69, 0.06); }
@@ -504,58 +504,70 @@ def get_web_ui_html(
     .result-card .body .meta-row .ts { font-size: 11px; color: var(--muted-soft); }
     .results-empty { text-align: center; padding: 48px; color: var(--muted); font-size: 14px; grid-column: 1/-1; }
 
-    /* ===== Profile Page ===== */
+    /* ===== Add Wardrobe Item Modal ===== */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 9000; background: rgba(32, 25, 21, 0.45);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 160ms ease;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .modal-box {
+      background: var(--surface); border-radius: 20px; width: min(92vw, 480px);
+      max-height: 88vh; overflow-y: auto; padding: 28px;
+      box-shadow: 0 24px 80px rgba(32, 25, 21, 0.18);
+    }
+    .modal-box h2 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 22px; font-weight: 600; margin-bottom: 20px; }
+    .modal-field { margin-bottom: 14px; }
+    .modal-field label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
+    .modal-field input, .modal-field select {
+      width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px;
+      font-family: inherit; font-size: 14px; color: var(--ink); background: #fff;
+    }
+    .modal-field input[type="file"] { padding: 8px; }
+    .modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .modal-actions .btn-cancel {
+      padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line);
+      background: none; font-size: 13px; font-weight: 600; color: var(--muted);
+      cursor: pointer;
+    }
+    .modal-error { color: #9b2323; font-size: 12px; margin-top: 8px; }
+    .modal-preview { width: 80px; height: 100px; border-radius: 10px; object-fit: cover; margin-top: 8px; border: 1px solid var(--line); }
+
+    /* ===== Profile Page (unified view + edit) ===== */
     .page-profile {
-      padding: 32px; max-width: 680px; margin: 0 auto; width: 100%;
+      padding: 32px; max-width: 720px; margin: 0 auto; width: 100%;
     }
     .profile-card {
       background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
       padding: 28px; margin-bottom: 20px;
     }
-    .profile-card h2 {
+    .profile-card-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;
+    }
+    .profile-card-header h2 {
       font-family: "Cormorant Garamond", Georgia, serif;
-      font-size: 24px; font-weight: 600; margin-bottom: 20px;
+      font-size: 24px; font-weight: 600; margin: 0;
     }
     .profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .profile-field { }
     .profile-field .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
     .profile-field .value { font-size: 15px; font-weight: 500; }
-    .profile-actions { margin-top: 20px; }
+    .profile-field input, .profile-field select {
+      width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px;
+      font-family: inherit; font-size: 14px; color: var(--ink); background: #fff; outline: none;
+      display: none;
+    }
+    .profile-field input:focus, .profile-field select:focus { border-color: var(--accent-soft); }
+    .profile-field.editing .value { display: none; }
+    .profile-field.editing input, .profile-field.editing select { display: block; }
+    .profile-actions { display: flex; gap: 10px; margin-top: 20px; }
     .btn-primary {
       padding: 10px 24px; border-radius: 999px; border: none;
       background: var(--accent); color: #fff; font-size: 13px; font-weight: 700;
       cursor: pointer; transition: opacity 120ms ease;
     }
     .btn-primary:hover { opacity: 0.88; }
-    .style-code-card {
-      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
-      padding: 28px;
-    }
-    .style-code-card h3 { font-size: 18px; font-weight: 600; margin-bottom: 16px; font-family: "Cormorant Garamond", Georgia, serif; }
-    .style-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-    .style-fact { background: var(--surface-alt); border-radius: 10px; padding: 12px 14px; }
-    .style-fact .fact-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-soft); margin-bottom: 2px; }
-    .style-fact .fact-value { font-size: 14px; font-weight: 600; }
-    .style-summary { font-size: 14px; color: var(--muted); line-height: 1.6; }
-
-    /* ===== Edit Profile Page ===== */
-    .page-edit-profile {
-      padding: 32px; max-width: 680px; margin: 0 auto; width: 100%;
-    }
-    .edit-card {
-      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
-      padding: 28px;
-    }
-    .edit-card h2 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 24px; font-weight: 600; margin-bottom: 20px; }
-    .edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
-    .edit-field label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
-    .edit-field input, .edit-field select {
-      width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px;
-      font-family: inherit; font-size: 14px; color: var(--ink); background: var(--surface);
-      outline: none;
-    }
-    .edit-field input:focus, .edit-field select:focus { border-color: var(--accent-soft); }
-    .edit-actions { display: flex; gap: 10px; }
     .btn-secondary {
       padding: 10px 24px; border-radius: 999px; border: 1px solid var(--line);
       background: var(--surface); color: var(--muted); font-size: 13px; font-weight: 700;
@@ -565,6 +577,31 @@ def get_web_ui_html(
     .edit-status { font-size: 12px; margin-top: 10px; min-height: 18px; }
     .edit-status.success { color: var(--wardrobe); }
     .edit-status.error { color: #c62828; }
+    .style-code-card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+      padding: 28px; margin-bottom: 20px;
+    }
+    .style-code-card h3 { font-size: 18px; font-weight: 600; margin-bottom: 16px; font-family: "Cormorant Garamond", Georgia, serif; }
+    .style-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .style-fact { background: var(--surface-alt); border-radius: 10px; padding: 12px 14px; }
+    .style-fact .fact-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-soft); margin-bottom: 2px; }
+    .style-fact .fact-value { font-size: 14px; font-weight: 600; }
+    .style-summary { font-size: 14px; color: var(--muted); line-height: 1.6; }
+    .color-palette-card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+      padding: 28px;
+    }
+    .color-palette-card h3 { font-size: 18px; font-weight: 600; margin-bottom: 16px; font-family: "Cormorant Garamond", Georgia, serif; }
+    .palette-section { margin-bottom: 14px; }
+    .palette-section:last-child { margin-bottom: 0; }
+    .palette-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-soft); margin-bottom: 6px; }
+    .palette-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .palette-chip {
+      padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    }
+    .palette-chip.base { background: var(--surface-alt); color: var(--ink); }
+    .palette-chip.accent { background: rgba(111, 47, 69, 0.10); color: var(--accent); }
+    .palette-chip.avoid { background: rgba(155, 35, 35, 0.08); color: #9b2323; }
 
     /* ===== Responsive ===== */
     @media (max-width: 900px) {
@@ -591,7 +628,7 @@ def get_web_ui_html(
       .chat-feed { padding: 16px 12px; }
       .composer-wrap { padding: 6px 12px 12px; }
       .prompt-grid { grid-template-columns: 1fr; }
-      .page-wardrobe, .page-results, .page-profile, .page-edit-profile { padding: 16px; }
+      .page-wardrobe, .page-results, .page-profile { padding: 16px; }
       .closet-grid { grid-template-columns: 1fr 1fr; }
     }
     @media (max-width: 430px) {
@@ -636,7 +673,7 @@ def get_web_ui_html(
       <button class="avatar-btn" id="avatarBtn" aria-label="User menu">&#128100;</button>
       <div class="avatar-dropdown" id="avatarDropdown">
         <a href="/?user={safe_user_id}&view=profile">Profile</a>
-        <a href="/?user={safe_user_id}&view=edit-profile">Edit Profile</a>
+        <!-- Edit is now inline on the profile page -->
         <div class="divider"></div>
         <button id="logoutBtn">Logout</button>
       </div>
@@ -731,6 +768,66 @@ def get_web_ui_html(
 </div>
 """
 
+    # ── Add Wardrobe Item Modal ──
+    html += """
+<div class="modal-overlay" id="addItemModal">
+  <div class="modal-box">
+    <h2>Add Wardrobe Item</h2>
+    <form id="addItemForm">
+      <div class="modal-field">
+        <label>Photo *</label>
+        <input type="file" id="addItemFile" accept="image/*" required />
+        <img class="modal-preview" id="addItemPreview" style="display:none;" alt="" />
+      </div>
+      <div class="modal-field">
+        <label>Title</label>
+        <input type="text" id="addItemTitle" placeholder="e.g. Black silk blouse" />
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label>Category</label>
+          <select id="addItemCategory">
+            <option value="">Select...</option>
+            <option>Top</option><option>Bottom</option><option>Dress</option>
+            <option>Outerwear</option><option>Shoes</option><option>Accessory</option>
+            <option>Saree</option><option>Kurta</option><option>Salwar Suit</option>
+            <option>Lehenga</option><option>Other</option>
+          </select>
+        </div>
+        <div class="modal-field">
+          <label>Primary Color</label>
+          <input type="text" id="addItemColor" placeholder="e.g. Navy blue" />
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label>Occasion</label>
+          <select id="addItemOccasion">
+            <option value="">Select...</option>
+            <option>Casual</option><option>Work</option><option>Formal</option>
+            <option>Party</option><option>Wedding</option><option>Festive</option>
+            <option>Date Night</option><option>Brunch</option>
+          </select>
+        </div>
+        <div class="modal-field">
+          <label>Brand</label>
+          <input type="text" id="addItemBrand" placeholder="Optional" />
+        </div>
+      </div>
+      <div class="modal-field">
+        <label>Notes</label>
+        <input type="text" id="addItemNotes" placeholder="Any styling notes..." />
+      </div>
+      <div class="modal-error" id="addItemError"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" id="addItemCancel">Cancel</button>
+        <button type="submit" class="btn-primary" id="addItemSubmit">Add to Wardrobe</button>
+      </div>
+    </form>
+  </div>
+</div>
+"""
+
     # ── Results Page ──
     html += """
 <div class="page-view page-results">
@@ -756,69 +853,29 @@ def get_web_ui_html(
 </div>
 """
 
-    # ── Profile Page ──
+    # ── Profile Page (unified view + edit) ──
     html += """
 <div class="page-view page-profile">
   <div class="profile-card" id="profileCard">
-    <h2>Your Profile</h2>
-    <div class="profile-grid" id="profileGrid"></div>
-    <div class="profile-actions">
-      <a href="" class="btn-primary" id="editProfileLink">Edit Profile</a>
+    <div class="profile-card-header">
+      <h2>Your Profile</h2>
+      <button class="btn-secondary" id="editToggleBtn">Edit</button>
     </div>
+    <div class="profile-grid" id="profileGrid"></div>
+    <div class="profile-actions" id="profileEditActions" style="display:none;">
+      <button class="btn-primary" id="editSaveBtn">Save Changes</button>
+      <button class="btn-secondary" id="editCancelBtn">Cancel</button>
+    </div>
+    <div class="edit-status" id="editStatus"></div>
   </div>
   <div class="style-code-card" id="styleCodeCard">
     <h3>Your Style Code</h3>
     <div class="style-facts" id="styleFacts"></div>
     <div class="style-summary" id="styleSummary"></div>
   </div>
-</div>
-"""
-
-    # ── Edit Profile Page ──
-    html += """
-<div class="page-view page-edit-profile">
-  <div class="edit-card">
-    <h2>Edit Profile</h2>
-    <div class="edit-grid" id="editGrid">
-      <div class="edit-field"><label>Name</label><input id="editName" type="text" maxlength="100" /></div>
-      <div class="edit-field"><label>Date of Birth</label><input id="editDob" type="date" /></div>
-      <div class="edit-field">
-        <label>Gender</label>
-        <select id="editGender">
-          <option value="">Select</option>
-          <option value="male">Male</option>
-          <option value="female">Female</option>
-          <option value="non_binary">Non-binary</option>
-          <option value="prefer_not_to_say">Prefer not to say</option>
-        </select>
-      </div>
-      <div class="edit-field"><label>Height (cm)</label><input id="editHeight" type="number" min="50" max="300" /></div>
-      <div class="edit-field"><label>Waist (cm)</label><input id="editWaist" type="number" min="30" max="200" /></div>
-      <div class="edit-field">
-        <label>Profession</label>
-        <select id="editProfession">
-          <option value="">Select</option>
-          <option value="software_engineer">Software Engineer</option>
-          <option value="doctor">Doctor</option>
-          <option value="lawyer">Lawyer</option>
-          <option value="teacher">Teacher</option>
-          <option value="designer">Designer</option>
-          <option value="architect">Architect</option>
-          <option value="business_finance">Business / Finance</option>
-          <option value="marketing">Marketing</option>
-          <option value="artist">Artist</option>
-          <option value="student">Student</option>
-          <option value="entrepreneur">Entrepreneur</option>
-          <option value="homemaker">Homemaker</option>
-          <option value="other">Other</option>
-        </select>
-      </div>
-    </div>
-    <div class="edit-actions">
-      <button class="btn-primary" id="editSaveBtn">Save Changes</button>
-      <a href="" class="btn-secondary" id="editCancelLink">Cancel</a>
-    </div>
-    <div class="edit-status" id="editStatus"></div>
+  <div class="color-palette-card" id="colorPaletteCard">
+    <h3>Your Color Palette</h3>
+    <div id="colorPaletteContent"></div>
   </div>
 </div>
 """
@@ -909,21 +966,12 @@ def get_web_ui_html(
   var resultsFilters = document.getElementById("resultsFilters");
   // Profile
   var profileGrid = document.getElementById("profileGrid");
-  var editProfileLink = document.getElementById("editProfileLink");
   var styleFacts = document.getElementById("styleFacts");
   var styleSummary = document.getElementById("styleSummary");
-  // Edit profile
-  var editSaveBtn = document.getElementById("editSaveBtn");
-  var editCancelLink = document.getElementById("editCancelLink");
-  var editStatus = document.getElementById("editStatus");
   // Wardrobe picker modal
   var wardrobePickerModal = document.getElementById("wardrobePickerModal");
   var wardrobePickerGrid = document.getElementById("wardrobePickerGrid");
   var wardrobePickerClose = document.getElementById("wardrobePickerClose");
-
-  // Fix profile links
-  if (editProfileLink) editProfileLink.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=edit-profile";
-  if (editCancelLink) editCancelLink.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=profile";
 
   // ══════════════════════════════════════════════
   // UTILITY HELPERS
@@ -1108,64 +1156,82 @@ def get_web_ui_html(
     reader.readAsDataURL(file);
   }}
 
-  chatImageFileEl.addEventListener("change", function() {{
-    if (this.files && this.files[0]) handleImageFile(this.files[0]);
-  }});
+  if (chatImageFileEl) {{
+    chatImageFileEl.addEventListener("change", function() {{
+      if (this.files && this.files[0]) handleImageFile(this.files[0]);
+    }});
+  }}
 
-  imageChipRemove.addEventListener("click", clearImagePreview);
+  if (imageChipRemove) {{ imageChipRemove.addEventListener("click", clearImagePreview); }}
 
   // Paste
-  messageEl.addEventListener("paste", function(e) {{
-    var items = (e.clipboardData || {{}}).items || [];
-    for (var i = 0; i < items.length; i++) {{
-      if (items[i].type.indexOf("image") !== -1) {{
-        e.preventDefault();
-        handleImageFile(items[i].getAsFile());
-        return;
+  if (messageEl) {{
+    messageEl.addEventListener("paste", function(e) {{
+      var items = (e.clipboardData || {{}}).items || [];
+      for (var i = 0; i < items.length; i++) {{
+        if (items[i].type.indexOf("image") !== -1) {{
+          e.preventDefault();
+          handleImageFile(items[i].getAsFile());
+          return;
+        }}
       }}
-    }}
-  }});
+    }});
+  }}
 
   // Drag-drop
-  composerArea.addEventListener("dragenter", function(e) {{ e.preventDefault(); composerArea.classList.add("dragover"); }});
-  composerArea.addEventListener("dragover", function(e) {{ e.preventDefault(); composerArea.classList.add("dragover"); }});
-  composerArea.addEventListener("dragleave", function(e) {{ e.preventDefault(); composerArea.classList.remove("dragover"); }});
-  composerArea.addEventListener("drop", function(e) {{
-    e.preventDefault();
-    composerArea.classList.remove("dragover");
-    var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    handleImageFile(file);
-  }});
+  if (composerArea) {{
+    composerArea.addEventListener("dragenter", function(e) {{ e.preventDefault(); composerArea.classList.add("dragover"); }});
+    composerArea.addEventListener("dragover", function(e) {{ e.preventDefault(); composerArea.classList.add("dragover"); }});
+    composerArea.addEventListener("dragleave", function(e) {{ e.preventDefault(); composerArea.classList.remove("dragover"); }});
+    composerArea.addEventListener("drop", function(e) {{
+      e.preventDefault();
+      composerArea.classList.remove("dragover");
+      var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      handleImageFile(file);
+    }});
+  }}
 
   // ══════════════════════════════════════════════
   // PLUS MENU & WARDROBE PICKER
   // ══════════════════════════════════════════════
 
-  plusBtn.addEventListener("click", function(e) {{
-    e.stopPropagation();
-    plusPopover.classList.toggle("open");
-  }});
-  document.addEventListener("click", function() {{ plusPopover.classList.remove("open"); }});
-  plusPopover.addEventListener("click", function(e) {{ e.stopPropagation(); }});
+  if (plusBtn && plusPopover) {{
+    plusBtn.addEventListener("click", function(e) {{
+      e.stopPropagation();
+      plusPopover.classList.toggle("open");
+    }});
+    document.addEventListener("click", function() {{ plusPopover.classList.remove("open"); }});
+    plusPopover.addEventListener("click", function(e) {{ e.stopPropagation(); }});
+  }}
 
-  uploadImageBtn.addEventListener("click", function() {{
-    plusPopover.classList.remove("open");
-    chatImageFileEl.click();
-  }});
+  if (uploadImageBtn) {{
+    uploadImageBtn.addEventListener("click", function() {{
+      plusPopover.classList.remove("open");
+      chatImageFileEl.click();
+    }});
+  }}
 
-  selectWardrobeBtn.addEventListener("click", function() {{
-    plusPopover.classList.remove("open");
-    openWardrobePicker();
-  }});
+  if (selectWardrobeBtn) {{
+    selectWardrobeBtn.addEventListener("click", function() {{
+      plusPopover.classList.remove("open");
+      openWardrobePicker();
+    }});
+  }}
 
   function openWardrobePicker() {{
-    wardrobePickerModal.classList.add("open");
-    loadWardrobePickerItems();
+    if (wardrobePickerModal) {{
+      wardrobePickerModal.classList.add("open");
+      loadWardrobePickerItems();
+    }}
   }}
-  wardrobePickerClose.addEventListener("click", function() {{ wardrobePickerModal.classList.remove("open"); }});
-  wardrobePickerModal.addEventListener("click", function(e) {{
-    if (e.target === wardrobePickerModal) wardrobePickerModal.classList.remove("open");
-  }});
+  if (wardrobePickerClose) {{
+    wardrobePickerClose.addEventListener("click", function() {{ wardrobePickerModal.classList.remove("open"); }});
+  }}
+  if (wardrobePickerModal) {{
+    wardrobePickerModal.addEventListener("click", function(e) {{
+      if (e.target === wardrobePickerModal) wardrobePickerModal.classList.remove("open");
+    }});
+  }}
 
   function loadWardrobePickerItems() {{
     if (!USER_ID) {{ wardrobePickerGrid.innerHTML = '<div class="modal-empty">No user ID.</div>'; return; }}
@@ -1822,6 +1888,57 @@ def get_web_ui_html(
     document.getElementById("wardrobeRefreshBtn").addEventListener("click", loadWardrobeStudio);
   }}
 
+  // Add Item modal
+  (function() {{
+    var modal = document.getElementById("addItemModal");
+    var form = document.getElementById("addItemForm");
+    var fileInput = document.getElementById("addItemFile");
+    var preview = document.getElementById("addItemPreview");
+    var errorEl = document.getElementById("addItemError");
+    var addBtn = document.getElementById("wardrobeAddBtn");
+    var cancelBtn = document.getElementById("addItemCancel");
+    if (!modal || !form || !addBtn) return;
+
+    addBtn.addEventListener("click", function() {{ modal.classList.add("open"); }});
+    cancelBtn.addEventListener("click", function() {{ modal.classList.remove("open"); form.reset(); preview.style.display = "none"; errorEl.textContent = ""; }});
+    modal.addEventListener("click", function(e) {{ if (e.target === modal) {{ modal.classList.remove("open"); form.reset(); preview.style.display = "none"; errorEl.textContent = ""; }} }});
+
+    fileInput.addEventListener("change", function() {{
+      if (fileInput.files && fileInput.files[0]) {{
+        var reader = new FileReader();
+        reader.onload = function(e) {{ preview.src = e.target.result; preview.style.display = "block"; }};
+        reader.readAsDataURL(fileInput.files[0]);
+      }}
+    }});
+
+    form.addEventListener("submit", async function(e) {{
+      e.preventDefault();
+      if (!fileInput.files || !fileInput.files[0]) {{ errorEl.textContent = "Please select a photo."; return; }}
+      var submitBtn = document.getElementById("addItemSubmit");
+      submitBtn.disabled = true; submitBtn.textContent = "Saving...";
+      errorEl.textContent = "";
+      var fd = new FormData();
+      fd.append("user_id", USER_ID);
+      fd.append("file", fileInput.files[0]);
+      fd.append("title", document.getElementById("addItemTitle").value);
+      fd.append("garment_category", document.getElementById("addItemCategory").value);
+      fd.append("primary_color", document.getElementById("addItemColor").value);
+      fd.append("occasion_fit", document.getElementById("addItemOccasion").value);
+      fd.append("brand", document.getElementById("addItemBrand").value);
+      fd.append("notes", document.getElementById("addItemNotes").value);
+      try {{
+        var res = await fetch("/v1/onboarding/wardrobe/items", {{ method: "POST", body: fd }});
+        if (!res.ok) {{ var err = await res.json(); throw new Error(err.detail || "Failed to save"); }}
+        modal.classList.remove("open"); form.reset(); preview.style.display = "none";
+        loadWardrobeStudio();
+      }} catch (ex) {{
+        errorEl.textContent = ex.message || "Failed to save item.";
+      }} finally {{
+        submitBtn.disabled = false; submitBtn.textContent = "Add to Wardrobe";
+      }}
+    }});
+  }}())
+
   // ══════════════════════════════════════════════
   // RESULTS VIEW
   // ══════════════════════════════════════════════
@@ -1904,8 +2021,72 @@ def get_web_ui_html(
   }}
 
   // ══════════════════════════════════════════════
-  // PROFILE VIEW
+  // PROFILE VIEW (unified view + inline edit)
   // ══════════════════════════════════════════════
+
+  var profileEditing = false;
+  var profileData = {{}};
+  var editToggleBtn = document.getElementById("editToggleBtn");
+  var editSaveBtn = document.getElementById("editSaveBtn");
+  var editCancelBtn = document.getElementById("editCancelBtn");
+  var editActions = document.getElementById("profileEditActions");
+  var editStatus = document.getElementById("editStatus");
+  var colorPaletteContent = document.getElementById("colorPaletteContent");
+
+  var genderOptions = '<option value="">Select</option><option value="male">Male</option><option value="female">Female</option><option value="non_binary">Non-binary</option><option value="prefer_not_to_say">Prefer not to say</option>';
+  var professionOptions = '<option value="">Select</option><option value="software_engineer">Software Engineer</option><option value="doctor">Doctor</option><option value="lawyer">Lawyer</option><option value="teacher">Teacher</option><option value="designer">Designer</option><option value="architect">Architect</option><option value="business_finance">Business / Finance</option><option value="marketing">Marketing</option><option value="artist">Artist</option><option value="student">Student</option><option value="entrepreneur">Entrepreneur</option><option value="homemaker">Homemaker</option><option value="other">Other</option>';
+
+  function renderProfileGrid(profile, editing) {{
+    var fields = [
+      {{ key: "name", label: "Name", value: profile.name || "", type: "text" }},
+      {{ key: "gender", label: "Gender", value: profile.gender || "", type: "select", options: genderOptions }},
+      {{ key: "date_of_birth", label: "Date of Birth", value: profile.date_of_birth || "", type: "date" }},
+      {{ key: "profession", label: "Profession", value: profile.profession || "", type: "select", options: professionOptions }},
+      {{ key: "height_cm", label: "Height (cm)", value: profile.height_cm || "", type: "number" }},
+      {{ key: "waist_cm", label: "Waist (cm)", value: profile.waist_cm || "", type: "number" }},
+    ];
+    profileGrid.innerHTML = fields.map(function(f) {{
+      var displayVal = f.key === "height_cm" || f.key === "waist_cm"
+        ? (f.value ? f.value + " cm" : "Not set")
+        : (f.value || "Not set");
+      var inputHtml = "";
+      if (f.type === "select") {{
+        inputHtml = '<select id="edit_' + f.key + '" style="' + (editing ? "display:block" : "display:none") + '">' + f.options + '</select>';
+      }} else {{
+        inputHtml = '<input id="edit_' + f.key + '" type="' + f.type + '" value="' + escapeHtml(String(f.value)) + '" style="' + (editing ? "display:block" : "display:none") + '" />';
+      }}
+      return '<div class="profile-field' + (editing ? " editing" : "") + '"><div class="label">' + escapeHtml(f.label) + '</div><div class="value">' + escapeHtml(displayVal) + '</div>' + inputHtml + '</div>';
+    }}).join("");
+    // Set select values after rendering
+    if (editing) {{
+      var genderSel = document.getElementById("edit_gender");
+      var profSel = document.getElementById("edit_profession");
+      if (genderSel) genderSel.value = profile.gender || "";
+      if (profSel) profSel.value = profile.profession || "";
+    }}
+  }}
+
+  function renderColorPalette(derived) {{
+    if (!colorPaletteContent) return;
+    var base = profileListValue(derived.BaseColors);
+    var accent = profileListValue(derived.AccentColors);
+    var avoid = profileListValue(derived.AvoidColors);
+    if (!base.length && !accent.length && !avoid.length) {{
+      colorPaletteContent.innerHTML = '<div style="color:var(--muted);font-size:13px;">Complete your analysis to see your personalized color palette.</div>';
+      return;
+    }}
+    function chips(arr, cls) {{ return arr.map(function(c) {{ return '<span class="palette-chip ' + cls + '">' + escapeHtml(c) + '</span>'; }}).join(""); }}
+    colorPaletteContent.innerHTML =
+      '<div class="palette-section"><div class="palette-label">Base Colors</div><div class="palette-chips">' + chips(base, "base") + '</div></div>' +
+      '<div class="palette-section"><div class="palette-label">Accent Colors</div><div class="palette-chips">' + chips(accent, "accent") + '</div></div>' +
+      '<div class="palette-section"><div class="palette-label">Colors to Avoid</div><div class="palette-chips">' + chips(avoid, "avoid") + '</div></div>';
+  }}
+
+  function profileListValue(entry) {{
+    if (!entry) return [];
+    var v = entry.value || entry;
+    return Array.isArray(v) ? v : [];
+  }}
 
   async function loadProfile() {{
     if (!USER_ID || !profileGrid) return;
@@ -1917,18 +2098,8 @@ def get_web_ui_html(
       if (!responses[0].ok) return;
       var status = await responses[0].json();
       var analysis = responses[1].ok ? await responses[1].json() : {{}};
-      var profile = status || {{}};
-      var fields = [
-        {{ label: "Name", value: profile.name }},
-        {{ label: "Gender", value: profile.gender }},
-        {{ label: "Date of Birth", value: profile.date_of_birth }},
-        {{ label: "Height", value: profile.height_cm ? profile.height_cm + " cm" : "" }},
-        {{ label: "Waist", value: profile.waist_cm ? profile.waist_cm + " cm" : "" }},
-        {{ label: "Profession", value: profile.profession }},
-      ];
-      profileGrid.innerHTML = fields.map(function(f) {{
-        return '<div class="profile-field"><div class="label">' + escapeHtml(f.label) + '</div><div class="value">' + escapeHtml(f.value || "Not set") + '</div></div>';
-      }}).join("");
+      profileData = status || {{}};
+      renderProfileGrid(profileData, profileEditing);
 
       // Style code
       var derived = analysis.derived_interpretations || {{}};
@@ -1958,23 +2129,30 @@ def get_web_ui_html(
           ? "Aura sees you through a " + [primary, secondary].filter(Boolean).join(" + ") + " lens, grounded in " + (seasonal || "your evolving palette") + " color direction and " + (frame || "balanced") + " shape guidance."
           : "Complete your analysis to unlock your full style code.";
       }}
-
-      // Populate edit form if on edit-profile view
-      if (ACTIVE_VIEW === "edit-profile") {{
-        var editName = document.getElementById("editName");
-        var editDob = document.getElementById("editDob");
-        var editGender = document.getElementById("editGender");
-        var editHeight = document.getElementById("editHeight");
-        var editWaist = document.getElementById("editWaist");
-        var editProfession = document.getElementById("editProfession");
-        if (editName) editName.value = profile.name || "";
-        if (editDob) editDob.value = profile.date_of_birth || "";
-        if (editGender) editGender.value = profile.gender || "";
-        if (editHeight) editHeight.value = profile.height_cm || "";
-        if (editWaist) editWaist.value = profile.waist_cm || "";
-        if (editProfession) editProfession.value = profile.profession || "";
-      }}
+      renderColorPalette(derived);
     }} catch (_) {{}}
+  }}
+
+  // Toggle edit mode
+  if (editToggleBtn) {{
+    editToggleBtn.addEventListener("click", function() {{
+      profileEditing = true;
+      renderProfileGrid(profileData, true);
+      editToggleBtn.style.display = "none";
+      editActions.style.display = "flex";
+      editStatus.textContent = "";
+    }});
+  }}
+
+  // Cancel edit
+  if (editCancelBtn) {{
+    editCancelBtn.addEventListener("click", function() {{
+      profileEditing = false;
+      renderProfileGrid(profileData, false);
+      editToggleBtn.style.display = "";
+      editActions.style.display = "none";
+      editStatus.textContent = "";
+    }});
   }}
 
   // Save profile edits
@@ -1985,12 +2163,12 @@ def get_web_ui_html(
       try {{
         var payload = {{
           user_id: USER_ID,
-          name: document.getElementById("editName").value.trim(),
-          date_of_birth: document.getElementById("editDob").value,
-          gender: document.getElementById("editGender").value,
-          height_cm: parseInt(document.getElementById("editHeight").value) || 0,
-          waist_cm: parseInt(document.getElementById("editWaist").value) || 0,
-          profession: document.getElementById("editProfession").value,
+          name: (document.getElementById("edit_name") || {{}}).value || "",
+          date_of_birth: (document.getElementById("edit_date_of_birth") || {{}}).value || "",
+          gender: (document.getElementById("edit_gender") || {{}}).value || "",
+          height_cm: parseInt((document.getElementById("edit_height_cm") || {{}}).value) || 0,
+          waist_cm: parseInt((document.getElementById("edit_waist_cm") || {{}}).value) || 0,
+          profession: (document.getElementById("edit_profession") || {{}}).value || "",
         }};
         var res = await fetch("/v1/onboarding/profile", {{
           method: "POST",
@@ -2003,6 +2181,10 @@ def get_web_ui_html(
         }}
         editStatus.textContent = "Profile updated.";
         editStatus.className = "edit-status success";
+        profileEditing = false;
+        editToggleBtn.style.display = "";
+        editActions.style.display = "none";
+        loadProfile();
       }} catch (e) {{
         editStatus.textContent = "Error: " + (e.message || String(e));
         editStatus.className = "edit-status error";

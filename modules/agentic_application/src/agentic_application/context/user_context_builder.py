@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from user.interpreter import derive_color_palette
+
 from ..schemas import UserContext
 from ..services.onboarding_gateway import ApplicationUserGateway
 
@@ -70,6 +72,12 @@ def build_user_context(
                 "source_agent": effective[0].get("source", "draping"),
                 "additional_groups": effective[1:],
             }
+
+    # Re-derive color palette in case seasonal group was overridden by draping/comfort learning
+    updated_season = (derived.get("SeasonalColorGroup") or {}).get("value", "")
+    updated_conf = (derived.get("SeasonalColorGroup") or {}).get("confidence", 0.0)
+    if updated_season and updated_season != "Unable to Assess":
+        derived.update(derive_color_palette(updated_season, updated_conf))
 
     gender = str(profile.get("gender") or "")
     richness = _compute_profile_richness(gender, attributes, derived, style_pref)

@@ -139,10 +139,14 @@ def _build_user_payload(ctx: CombinedContext) -> str:
         "profile_richness": user.profile_richness,
     }
     attrs = {key: _extract_value(user.analysis_attributes, key) for key in user.analysis_attributes}
-    interps = {
-        key: _extract_value(user.derived_interpretations, key)
-        for key in user.derived_interpretations
-    }
+    interps = {}
+    for key in user.derived_interpretations:
+        raw = user.derived_interpretations[key]
+        if isinstance(raw, dict):
+            val = raw.get("value", "")
+            interps[key] = ", ".join(val) if isinstance(val, list) else str(val or "").strip()
+        else:
+            interps[key] = str(raw or "").strip()
 
     # Surface additional seasonal groups for multi-group color guidance
     seasonal_raw = user.derived_interpretations.get("SeasonalColorGroup")

@@ -109,9 +109,12 @@ Use when the user expresses like/dislike about a previous recommendation. Look f
 
 When the user has profile data, always incorporate it:
 
-### Color Season
-- **Spring** or **Autumn** = warm undertone. Recommend: earthy tones, warm neutrals, gold accents, rich warm shades. Avoid: icy blues, stark white, silver.
-- **Summer** or **Winter** = cool undertone. Recommend: icy tones, cool neutrals, silver accents, crisp cool shades. Avoid: golden yellow, orange, rusty earth tones.
+### Color Palette
+- The user's seasonal color group determines their ideal color palette, broken into three lists:
+- **Base colors** (`base_colors`): Use these as outfit foundations — bottoms, outerwear, basics.
+- **Accent colors** (`accent_colors`): Use these for statement pieces — tops, accessories, pops of color.
+- **Avoid colors** (`avoid_colors`): Do NOT recommend items in these colors. They clash with the user's natural coloring.
+- When the user explicitly requests a color from the avoid list, honor their request but note the mismatch gently.
 
 ### Contrast Level
 - **High contrast**: Can carry bold color combinations, strong light-dark pairings, bold prints.

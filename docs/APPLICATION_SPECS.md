@@ -1,6 +1,6 @@
 # Application Layer — Implementation Specification
 
-Last updated: March 30, 2026
+Last updated: April 3, 2026
 
 ## Product Positioning
 
@@ -41,6 +41,7 @@ Implemented now:
 - wardrobe-first occasion, pairing, outfit-check follow-through, and capsule/trip support
 - explicit source selection metadata: wardrobe-first, catalog-only, or hybrid
 - digital draping integration: effective seasonal groups overlaid onto user context
+- color palette system: base/accent/avoid colors derived from seasonal group, passed to copilot planner, outfit architect, and outfit check agents
 - comfort learning: behavioral seasonal palette refinement from outfit likes
 - profile confidence engine and recommendation confidence engine (9-factor, 0–100 scoring)
 - dual-layer image moderation (heuristic blocklist + vision API)
@@ -50,6 +51,11 @@ Implemented now:
 - follow-up turns with 7 follow-up intent types
 - `response_type` field: `"recommendation"` | `"clarification"`
 - quick-reply suggestion chips for clarification responses
+- unified profile page with inline editing, style code, and color palette display
+- chat composer + button with upload image / wardrobe picker popover
+- wardrobe add-item modal from wardrobe page
+- results page with outfit preview thumbnails from outfits[].items[].image_url
+- unified warm/burgundy design system across onboarding, processing, main app, and admin
 
 Remaining work is now concentrated in hardening and live-environment validation rather than core intent/runtime capability gaps. See `docs/CURRENT_STATE.md` for the execution checklist.
 
@@ -1154,7 +1160,7 @@ For paired directions, the architect LLM uses a concept-first approach as instru
 
 Key concept rules (instructed in `prompt/outfit_architect.md`):
 
-**Color coordination** — Top and bottom should have contrasting or complementary colors, NOT identical colors. Bottoms typically anchor with neutrals (navy, black, charcoal, olive, khaki). Tops carry the accent or statement color. Uses the user's SeasonalColorGroup palette(s) — when multiple seasonal groups are present, prefers colors from the intersection of palettes for safe choices, or from any single group for bolder options.
+**Color coordination** — Use the user's `BaseColors` for anchor pieces (bottoms, outerwear) and `AccentColors` for statement pieces (tops, accessories). Never select items in colors from the user's `AvoidColors` list unless the user explicitly requested that color. Top and bottom should have contrasting or complementary colors, NOT identical colors. When multiple seasonal groups are present, prefer colors from the intersection of palettes for safe choices, or from any single group for bolder options.
 
 **Volume balance** — Top and bottom should create visual balance. If one piece is relaxed/oversized, the other should be slim/fitted. Uses the user's FrameStructure to decide which piece gets more volume.
 
@@ -1718,6 +1724,7 @@ Minimum required profile for recommendation:
 - `gender`
 - `SeasonalColorGroup`
 - `SeasonalColorGroup` may include `additional_groups` from digital draping or comfort learning (max 2 groups total)
+- `BaseColors`, `AccentColors`, `AvoidColors` are derived from the seasonal group and re-derived when draping/comfort learning updates the group
 - `style_preference.primaryArchetype`
 
 The system should degrade gracefully with partial body or detail attributes.

@@ -27,7 +27,7 @@ def create_catalog_admin_router(service: CatalogAdminService | None = None) -> A
         )
 
     @router.get("/status", response_model=CatalogAdminStatusResponse)
-    def get_catalog_status(input_csv_path: str = "data/catalog/enriched_catalog.csv") -> CatalogAdminStatusResponse:
+    def get_catalog_status(input_csv_path: str = "data/catalog/enriched_catalog_upload.csv") -> CatalogAdminStatusResponse:
         try:
             result = get_service().get_status(input_csv_path=input_csv_path)
             return CatalogAdminStatusResponse(**result)

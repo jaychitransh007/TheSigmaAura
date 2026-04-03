@@ -1,4 +1,56 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
+
+
+SEASON_PALETTE_MAP: Dict[str, Dict[str, List[str]]] = {
+    "Spring": {
+        "base": ["ivory", "warm beige", "camel", "light gold"],
+        "accent": ["coral", "peach", "turquoise", "bright coral", "hot pink"],
+        "avoid": ["black", "charcoal", "icy blue", "dark navy", "stark white"],
+    },
+    "Summer": {
+        "base": ["light grey", "soft white", "slate blue", "mauve"],
+        "accent": ["lavender", "powder blue", "dusty rose", "periwinkle", "muted teal"],
+        "avoid": ["orange", "rust", "golden yellow", "burnt orange", "terracotta"],
+    },
+    "Autumn": {
+        "base": ["warm taupe", "warm brown", "olive", "muted gold"],
+        "accent": ["terracotta", "rust", "burgundy", "forest green", "burnt orange"],
+        "avoid": ["icy blue", "fuchsia", "royal blue", "stark white", "silver"],
+    },
+    "Winter": {
+        "base": ["black", "white", "charcoal", "dark navy"],
+        "accent": ["true red", "royal blue", "emerald", "fuchsia", "deep purple"],
+        "avoid": ["golden yellow", "peach", "warm beige", "rust", "muted gold"],
+    },
+}
+
+
+def derive_color_palette(season: str, confidence: float) -> Dict[str, Dict[str, Any]]:
+    palette = SEASON_PALETTE_MAP.get(season)
+    if not palette:
+        unable: Dict[str, Any] = {
+            "value": [],
+            "confidence": 0.0,
+            "evidence_note": f"Cannot derive palette: seasonal group '{season}' is not recognized.",
+        }
+        return {"BaseColors": dict(unable), "AccentColors": dict(unable), "AvoidColors": dict(unable)}
+    return {
+        "BaseColors": {
+            "value": palette["base"],
+            "confidence": confidence,
+            "evidence_note": f"Foundation neutrals for {season} palette.",
+        },
+        "AccentColors": {
+            "value": palette["accent"],
+            "confidence": confidence,
+            "evidence_note": f"Statement colors that complement {season} coloring.",
+        },
+        "AvoidColors": {
+            "value": palette["avoid"],
+            "confidence": confidence,
+            "evidence_note": f"Colors that typically clash with {season} coloring.",
+        },
+    }
 
 
 def derive_interpretations(
@@ -14,6 +66,11 @@ def derive_interpretations(
         "FrameStructure": _derive_frame_structure(attributes, height_cm=height_cm),
         "WaistSizeBand": _derive_waist_size_band(waist_cm),
     }
+    seasonal = outputs["SeasonalColorGroup"]
+    outputs.update(derive_color_palette(
+        seasonal.get("value", ""),
+        seasonal.get("confidence", 0.0),
+    ))
     for payload in outputs.values():
         payload["source_agent"] = "deterministic_interpreter"
     return outputs

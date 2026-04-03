@@ -7,22 +7,25 @@ def get_onboarding_html() -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
   <title>Sigma Aura Onboarding</title>
   <style>
     :root {
-      --bg: #f3ece3;
-      --surface: rgba(255, 251, 246, 0.94);
-      --surface-strong: #fffdf9;
-      --ink: #1c1b19;
-      --muted: #6c665d;
-      --line: #d8cec1;
-      --line-strong: #bcac97;
-      --accent: #1f6f5f;
-      --accent-soft: #e3efe9;
-      --accent-warm: #b7742a;
+      --bg: #f6f0ea;
+      --surface: rgba(255, 250, 245, 0.94);
+      --surface-strong: #fffaf5;
+      --ink: #201915;
+      --muted: #6e655f;
+      --line: #dfd1c4;
+      --line-strong: #c8b8a6;
+      --accent: #6f2f45;
+      --accent-soft: #f3e6ea;
+      --accent-warm: #b08a4e;
       --danger: #9b2323;
       --danger-bg: #fceeee;
-      --shadow: 0 22px 60px rgba(45, 36, 24, 0.12);
+      --shadow: 0 22px 60px rgba(54, 32, 24, 0.08);
     }
     * { box-sizing: border-box; }
     body {
@@ -31,9 +34,9 @@ def get_onboarding_html() -> str:
       font-family: "Avenir Next", "Segoe UI", sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at top left, #f8e7d0 0%, rgba(248, 231, 208, 0.35) 28%, transparent 55%),
-        radial-gradient(circle at bottom right, #dfeee8 0%, rgba(223, 238, 232, 0.45) 24%, transparent 52%),
-        linear-gradient(135deg, #f6f0e9 0%, #f0e6dc 46%, #ece4da 100%);
+        radial-gradient(circle at top left, rgba(184, 139, 150, 0.22), transparent 28%),
+        radial-gradient(circle at 85% 12%, rgba(176, 138, 78, 0.14), transparent 24%),
+        linear-gradient(180deg, #fbf6f1 0%, #f6f0ea 42%, #f1e6da 100%);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -53,7 +56,7 @@ def get_onboarding_html() -> str:
     .sidebar {
       padding: 36px 28px;
       background:
-        linear-gradient(180deg, rgba(31, 111, 95, 0.92) 0%, rgba(24, 90, 77, 0.94) 100%);
+        linear-gradient(180deg, rgba(111, 47, 69, 0.94) 0%, rgba(90, 36, 56, 0.96) 100%);
       color: #f6f2eb;
       display: flex;
       flex-direction: column;
@@ -67,7 +70,9 @@ def get_onboarding_html() -> str:
     }
     .sidebar h1 {
       margin: 0;
-      font-size: 34px;
+      font-family: "Cormorant Garamond", serif;
+      font-size: 38px;
+      font-weight: 600;
       line-height: 1.02;
       letter-spacing: 0.01em;
     }
@@ -164,7 +169,7 @@ def get_onboarding_html() -> str:
       transform: scaleY(1.2);
     }
     .progress-bar.done {
-      background: var(--accent-warm);
+      background: #b08a4e;
     }
     .panel {
       border: 1px solid rgba(188, 172, 151, 0.45);
@@ -2333,20 +2338,23 @@ def get_processing_html(user_id: str = "") -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
   <title>Sigma Aura Profile Processing</title>
   <style>
     :root {
-      --bg: #f3ece3;
-      --surface: #fffdf9;
-      --ink: #1c1b19;
-      --muted: #6c665d;
-      --line: #d8cec1;
-      --accent: #1f6f5f;
-      --accent-soft: #e3efe9;
-      --warm: #b7742a;
+      --bg: #f6f0ea;
+      --surface: #fffaf5;
+      --ink: #201915;
+      --muted: #6e655f;
+      --line: #dfd1c4;
+      --accent: #6f2f45;
+      --accent-soft: #f3e6ea;
+      --warm: #b08a4e;
       --danger: #9b2323;
       --danger-bg: #fceeee;
-      --shadow: 0 22px 60px rgba(45, 36, 24, 0.12);
+      --shadow: 0 22px 60px rgba(54, 32, 24, 0.08);
     }
     * { box-sizing: border-box; }
     body {
@@ -2355,9 +2363,9 @@ def get_processing_html(user_id: str = "") -> str:
       font-family: "Avenir Next", "Segoe UI", sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at top left, #f8e7d0 0%, rgba(248, 231, 208, 0.35) 28%, transparent 55%),
-        radial-gradient(circle at bottom right, #dfeee8 0%, rgba(223, 238, 232, 0.45) 24%, transparent 52%),
-        linear-gradient(135deg, #f6f0e9 0%, #f0e6dc 46%, #ece4da 100%);
+        radial-gradient(circle at top left, rgba(184, 139, 150, 0.22), transparent 28%),
+        radial-gradient(circle at 85% 12%, rgba(176, 138, 78, 0.14), transparent 24%),
+        linear-gradient(180deg, #fbf6f1 0%, #f6f0ea 42%, #f1e6da 100%);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -2375,7 +2383,7 @@ def get_processing_html(user_id: str = "") -> str:
     }
     .side {
       padding: 32px 26px;
-      background: linear-gradient(180deg, rgba(31, 111, 95, 0.94) 0%, rgba(24, 90, 77, 0.96) 100%);
+      background: linear-gradient(180deg, rgba(111, 47, 69, 0.94) 0%, rgba(90, 36, 56, 0.96) 100%);
       color: #f6f2eb;
       display: grid;
       align-content: start;
@@ -2389,7 +2397,9 @@ def get_processing_html(user_id: str = "") -> str:
     }
     .side h1 {
       margin: 0;
-      font-size: 32px;
+      font-family: "Cormorant Garamond", serif;
+      font-size: 34px;
+      font-weight: 600;
       line-height: 1.05;
     }
     .side p {
@@ -2472,7 +2482,7 @@ def get_processing_html(user_id: str = "") -> str:
       width: 14%;
       height: 100%;
       border-radius: inherit;
-      background: linear-gradient(90deg, var(--accent) 0%, var(--warm) 100%);
+      background: linear-gradient(90deg, var(--accent) 0%, #b08a4e 100%);
       transition: width 300ms ease;
     }
     .error {

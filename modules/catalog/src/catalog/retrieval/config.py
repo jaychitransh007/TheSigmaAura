@@ -4,7 +4,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class CatalogEmbeddingConfig:
-    input_csv_path: str = "data/catalog/enriched_catalog.csv"
+    input_csv_path: str = "data/catalog/enriched_catalog_upload.csv"
     documents_output_path: str = "data/catalog/embeddings/catalog_documents.jsonl"
     embeddings_output_path: str = "data/catalog/embeddings/catalog_embeddings.jsonl"
     embedding_model: str = "text-embedding-3-small"

@@ -157,6 +157,29 @@ class SupabaseVectorStore:
             )
         return saved
 
+    def embedded_product_ids(self) -> set[str]:
+        """Return the set of product_ids that already have embeddings."""
+        ids: set[str] = set()
+        batch_size = 1000
+        cursor = ""
+        while True:
+            filters = {"product_id": f"gt.{cursor}"} if cursor else None
+            rows = self._client.select_many(
+                "catalog_item_embeddings",
+                columns="product_id",
+                limit=batch_size,
+                order="product_id.asc",
+                filters=filters,
+            )
+            for row in rows:
+                pid = str(row.get("product_id") or "").strip()
+                if pid:
+                    ids.add(pid)
+            if len(rows) < batch_size:
+                break
+            cursor = rows[-1].get("product_id", "")
+        return ids
+
     def create_job(self, job_type: str, params: Dict[str, Any] | None = None) -> Dict[str, Any]:
         return self._client.insert_one(
             "catalog_jobs",

@@ -6,7 +6,7 @@ import os
 class AuraRuntimeConfig:
     supabase_rest_url: str
     supabase_service_role_key: str
-    catalog_csv_path: str = "data/catalog/enriched_catalog.csv"
+    catalog_csv_path: str = "data/catalog/enriched_catalog_upload.csv"
     retrieval_match_count: int = 12
     request_timeout_seconds: int = 30
     whatsapp_access_token: str = ""
@@ -83,8 +83,8 @@ def load_config() -> AuraRuntimeConfig:
         )
 
     catalog_csv_path = (
-        os.getenv("CATALOG_CSV_PATH", "data/catalog/enriched_catalog.csv").strip()
-        or "data/catalog/enriched_catalog.csv"
+        os.getenv("CATALOG_CSV_PATH", "data/catalog/enriched_catalog_upload.csv").strip()
+        or "data/catalog/enriched_catalog_upload.csv"
     )
 
     return AuraRuntimeConfig(
