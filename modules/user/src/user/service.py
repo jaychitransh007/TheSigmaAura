@@ -907,7 +907,9 @@ class OnboardingService:
                 "onboarding_complete": False,
                 "wardrobe_item_count": 0,
             }
-        categories = self._repo.get_image_categories(user_id)
+        image_rows = self._repo.get_images(user_id)
+        categories = [r["category"] for r in image_rows]
+        image_paths = {str(r["category"]): str(r.get("file_path") or "") for r in image_rows}
         try:
             wardrobe_item_count = int(self._repo.count_wardrobe_items(user_id))
         except Exception:
@@ -927,6 +929,7 @@ class OnboardingService:
             "icp_tag": profile.get("icp_tag", ""),
             "profile_complete": bool(profile.get("profile_complete")),
             "images_uploaded": categories,
+            "image_paths": image_paths,
             "style_preference_complete": bool(profile.get("style_preference_complete")),
             "onboarding_complete": bool(profile.get("onboarding_complete")),
             "wardrobe_item_count": wardrobe_item_count,

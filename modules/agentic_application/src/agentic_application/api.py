@@ -7,7 +7,7 @@ from uuid import uuid4
 from catalog.admin_api import create_catalog_admin_router
 from catalog.ui import get_catalog_admin_html
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from platform_core.api_schemas import (
     ConversationListItem,
@@ -255,16 +255,9 @@ def create_app() -> FastAPI:
             },
         )
 
-    @app.get("/onboard/processing", response_class=HTMLResponse, include_in_schema=False)
-    def onboard_processing(user: str = "") -> HTMLResponse:
-        return HTMLResponse(
-            content=onboarding_gateway.render_processing_html(user_id=user),
-            headers={
-                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-                "Pragma": "no-cache",
-                "Expires": "0",
-            },
-        )
+    @app.get("/onboard/processing", response_class=RedirectResponse, include_in_schema=False)
+    def onboard_processing(user: str = "") -> RedirectResponse:
+        return RedirectResponse(url=f"/?user={user}&view=profile")
 
     @app.get("/admin/catalog", response_class=HTMLResponse, include_in_schema=False)
     def catalog_admin() -> HTMLResponse:
@@ -294,7 +287,14 @@ def create_app() -> FastAPI:
         if not status.get("onboarding_complete"):
             html = onboarding_gateway.render_onboarding_html(user_id=user, focus=focus)
         elif analysis_status.get("status") != "completed":
-            html = onboarding_gateway.render_processing_html(user_id=user)
+            resolved_view = "profile"
+            html = get_web_ui_html(
+                user_id=user,
+                active_view=resolved_view,
+                source=str(source or "").strip().lower(),
+                focus=str(focus or "").strip().lower(),
+                conversation_id=str(conversation_id or "").strip(),
+            )
         else:
             resolved_view = str(view or "").strip().lower()
             if not resolved_view:

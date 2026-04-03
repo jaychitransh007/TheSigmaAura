@@ -32,7 +32,8 @@ Project status:
 - safety: dual-layer image moderation (heuristic + vision), restricted category exclusion, try-on quality gate implemented
 - web UI: modern chat-first interface with unified warm/burgundy design across onboarding, profile analysis, main app, and admin
 - profile: unified view + edit page with inline editing toggle, style code card, and personalized color palette card (base/accent/avoid)
-- wardrobe: "+Add Item" modal with photo upload, category, color, occasion, brand, notes
+- wardrobe: seamless "+Add Item" modal — photo-only upload with auto-enrichment (46 attributes via vision API)
+- virtual try-on: persistent storage with cache reuse — images saved to disk + `virtual_tryon_images` table, mapped by user + garment IDs + source; same garment combination returns cached result without re-generation
 - chat composer: `+` button popover with "Upload image" and "Select from wardrobe" options; drag-drop and paste support
 - results: previous results grid with outfit preview thumbnails extracted from outfits[].items[].image_url
 - catalog admin: pipeline with upload, enrichment sync, embedding generation, URL backfill, include-incomplete toggle, skip-already-embedded optimization
@@ -264,6 +265,7 @@ Implemented:
 - partial run support via `max_rows`
 - local/staging sync paths
 - canonical product URL persistence during ingestion (with backfill for older rows)
+- auto-generated `product_id`: CSVs lacking a `product_id` column get IDs derived from URL (e.g. `CAMPUSSUTRA_mens-crimson-red-shirt`) or title hash
 - auto-inferred `row_status`: CSVs lacking a `row_status` column get `"ok"` for rows with valid product_id + title, `"missing"` otherwise
 - only rows with `row_status` in `{ok, complete}` are embeddable by default; `include_incomplete` flag bypasses this filter
 - skip-already-embedded optimization: embedding sync fetches existing product IDs from Supabase and skips them, so only new/missing rows are embedded
@@ -324,7 +326,7 @@ Implemented:
 - latency tracking via `time.monotonic()` on architect, search, evaluator (persisted as `latency_ms`)
 - style archetype override: user's saved `style_preference.primaryArchetype` is the default, but if the user's message or conversation history explicitly requests a different style, the architect uses the requested style instead; the response formatter reads the archetype from the plan's query documents (not just the profile) so the response message reflects the actual style used
 - response formatting (max 3 outfits) and UI rendering support
-- virtual try-on via Gemini (`gemini-3.1-flash-image-preview`), parallel generation for all outfits
+- virtual try-on via Gemini (`gemini-3.1-flash-image-preview`), parallel generation for all outfits, persistent storage to disk + DB with cache reuse by garment ID set
 - turn artifact persistence
 - dependency-validation instrumentation: turn-completion events across web / WhatsApp, referral events, and retention reporting for first/second/third session behavior, cohort anchors, and memory-input lift
 
@@ -343,7 +345,7 @@ Current execution order:
 7. assemble outfit candidates (deterministic)
 8. evaluate and rank candidates (gpt-5.4, fallback: assembly_score)
 9. format response payload (max 3 outfits)
-10. generate virtual try-on images (gemini-3.1-flash-image-preview, parallel)
+10. generate virtual try-on images (gemini-3.1-flash-image-preview, parallel) — checks cache by user + garment IDs first; saves new results to disk + `virtual_tryon_images` table
 11. persist turn artifacts and updated conversation context
 
 Current supported plan modes:
@@ -419,7 +421,7 @@ Current runtime product cards carry:
 
 Current response behavior:
 - UI renders `result.outfits` as 3-column PDP cards
-- `OutfitCard.tryon_image` is populated by the orchestrator and rendered as the default hero image
+- `OutfitCard.tryon_image` is populated by the orchestrator with a serveable URL (not base64) pointing to a persisted try-on image on disk; rendered as the default hero image
 - `OutfitCard` carries 16 `_pct` fields: 8 evaluation criteria (rendered as progress bars) + 8 style archetypes (rendered as radar chart)
 - `response.metadata` includes `turn_id` for feedback correlation
 - both internal (`agentic_application/schemas.py`) and shared (`platform_core/api_schemas.py`) schemas are aligned
@@ -545,7 +547,7 @@ Main weak spots:
 ### Catalog Layer
 - CSV upload + enrichment pipeline (50+ attributes, 8 embedding sections)
 - embedding generation (text-embedding-3-small, 1536 dim, pgvector) with skip-already-embedded optimization
-- auto-inferred `row_status` for CSVs lacking the column; include-incomplete toggle for embedding
+- auto-generated `product_id` from URL for CSVs lacking the column; auto-inferred `row_status`; include-incomplete toggle for embedding
 - canonical product URL persistence with backfill support
 - job lifecycle tracking with admin UI
 - `catalog_items` table removed (superseded by `catalog_enriched`)
@@ -555,7 +557,7 @@ Main weak spots:
 - recommendation pipeline: architect → catalog search → assembly → evaluation → formatting → try-on
 - wardrobe-first occasion response (wardrobe retrieval + selection for occasion intents)
 - wardrobe item save from chat with moderation
-- virtual try-on via Gemini (gemini-3.1-flash-image-preview), parallel generation, quality gate
+- virtual try-on via Gemini (gemini-3.1-flash-image-preview), parallel generation, quality gate, persistent disk + DB storage with cache reuse
 - 3-column PDP outfit cards with Buy Now, radar chart (8 style archetypes), 8 evaluation criteria progress bars
 - per-outfit feedback capture (Like / Didn't Like with notes)
 - follow-up turns with 7 follow-up intent types (increase boldness, change color, similar, etc.)
@@ -631,6 +633,9 @@ Supabase tables (26 migrations in `supabase/migrations/`):
 - `catalog_item_embeddings` — product_id, embedding (pgvector 1536), metadata_json; indexed on product_id
 - `catalog_jobs` — id (uuid), job_type (`items_sync` | `url_backfill` | `embeddings_sync`), status (`pending` | `running` | `completed` | `failed`), params_json (JSONB), processed_rows, saved_rows, missing_url_rows, error_message, started_at, completed_at, created_at, updated_at; indexed on job_type, status, created_at desc
 - `catalog_interaction_history` — user_id, product_id, interaction_type (view/click/save/dismiss/buy_skip_request/buy/skip), source_channel (web/whatsapp), source_surface, conversation_id, turn_id, metadata_json
+
+### Virtual try-on tables
+- `virtual_tryon_images` — user_id, conversation_id, turn_id, outfit_rank, garment_ids (text[]), garment_source (catalog/wardrobe/mixed), person_image_path, encrypted_filename, file_path, mime_type, file_size_bytes, generation_model, quality_score_pct, metadata_json; GIN index on garment_ids for cache lookup
 
 ## Module File Layout
 

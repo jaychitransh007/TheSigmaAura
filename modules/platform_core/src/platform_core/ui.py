@@ -587,6 +587,75 @@ def get_web_ui_html(
     .style-fact .fact-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-soft); margin-bottom: 2px; }
     .style-fact .fact-value { font-size: 14px; font-weight: 600; }
     .style-summary { font-size: 14px; color: var(--muted); line-height: 1.6; }
+    /* ===== Analysis Status ===== */
+    .analysis-card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+      padding: 28px; margin-bottom: 20px;
+    }
+    .analysis-card h2 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 24px; font-weight: 600; margin: 0; }
+    .analysis-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .analysis-badge {
+      padding: 6px 12px; border-radius: 999px; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      background: var(--surface-alt); color: var(--muted);
+    }
+    .analysis-badge.completed { background: rgba(95, 106, 82, 0.12); color: var(--wardrobe); }
+    .analysis-badge.running { background: rgba(111, 47, 69, 0.10); color: var(--accent); }
+    .analysis-badge.failed { background: rgba(155, 35, 35, 0.10); color: #9b2323; }
+    .analysis-progress { width: 100%; height: 8px; border-radius: 999px; background: var(--surface-deep); overflow: hidden; margin-bottom: 12px; }
+    .analysis-progress-bar { width: 14%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #b08a4e); transition: width 300ms ease; }
+    .analysis-text { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+    .analysis-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .analysis-error { display: none; padding: 10px 14px; border-radius: 12px; background: rgba(155,35,35,0.06); color: #9b2323; font-size: 12px; margin-bottom: 12px; }
+    .analysis-error.show { display: block; }
+    .agent-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 16px; }
+    .agent-card {
+      border: 1px solid var(--line); border-radius: 14px; padding: 16px; background: #fff;
+    }
+    .agent-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .agent-card h4 { font-size: 13px; font-weight: 700; margin: 0; }
+    .agent-card p { font-size: 12px; color: var(--muted); margin: 0; }
+    .agent-rerun-btn {
+      padding: 5px 10px; font-size: 11px; font-weight: 600; border-radius: 8px;
+      border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+      cursor: pointer; display: none;
+    }
+    .agent-rerun-btn.show { display: inline-block; }
+    .result-group { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; margin-bottom: 14px; }
+    .result-group-header {
+      padding: 10px 16px; background: var(--surface-alt); border-bottom: 1px solid var(--line);
+      font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 700;
+    }
+    .attr-row { display: grid; grid-template-columns: 160px 1fr 70px; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--surface-deep); align-items: start; font-size: 13px; }
+    .attr-row:last-child { border-bottom: none; }
+    .attr-name { font-weight: 600; }
+    .attr-value { line-height: 1.4; }
+    .attr-value small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .attr-confidence {
+      justify-self: end; padding: 4px 8px; border-radius: 999px;
+      background: rgba(111, 47, 69, 0.08); color: var(--accent); font-size: 11px; font-weight: 700;
+    }
+
+    /* ===== Profile Images ===== */
+    .profile-images-card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+      padding: 28px; margin-bottom: 20px;
+    }
+    .profile-images-card h3 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+    .profile-images-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .profile-image-slot { text-align: center; }
+    .profile-image-slot .slot-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-soft); margin-bottom: 8px; }
+    .profile-image-slot img { width: 100%; max-width: 200px; border-radius: 14px; border: 1px solid var(--line); aspect-ratio: 2/3; object-fit: cover; }
+    .profile-image-slot .slot-empty { width: 100%; max-width: 200px; aspect-ratio: 2/3; border-radius: 14px; border: 2px dashed var(--line); display: flex; align-items: center; justify-content: center; color: var(--muted-soft); font-size: 12px; margin: 0 auto; }
+    .profile-image-slot .slot-update { margin-top: 8px; }
+    .profile-image-slot .slot-update label {
+      display: inline-block; padding: 5px 14px; border-radius: 999px; font-size: 11px; font-weight: 600;
+      border: 1px solid var(--line); color: var(--muted); cursor: pointer; transition: all 100ms ease;
+    }
+    .profile-image-slot .slot-update label:hover { border-color: var(--accent-soft); color: var(--ink); }
+    .profile-image-slot .slot-update input { display: none; }
+    .analysis-confidence-pct { font-size: 13px; font-weight: 600; color: var(--accent); margin-left: 8px; }
+
     .color-palette-card {
       background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
       padding: 28px;
@@ -771,55 +840,18 @@ def get_web_ui_html(
     # ── Add Wardrobe Item Modal ──
     html += """
 <div class="modal-overlay" id="addItemModal">
-  <div class="modal-box">
-    <h2>Add Wardrobe Item</h2>
+  <div class="modal-box" style="text-align:center;">
+    <h2 style="margin-bottom:8px;">Add to Wardrobe</h2>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:20px;">Upload a photo and Aura will analyse it automatically.</p>
     <form id="addItemForm">
-      <div class="modal-field">
-        <label>Photo *</label>
-        <input type="file" id="addItemFile" accept="image/*" required />
-        <img class="modal-preview" id="addItemPreview" style="display:none;" alt="" />
-      </div>
-      <div class="modal-field">
-        <label>Title</label>
-        <input type="text" id="addItemTitle" placeholder="e.g. Black silk blouse" />
-      </div>
-      <div class="modal-row">
-        <div class="modal-field">
-          <label>Category</label>
-          <select id="addItemCategory">
-            <option value="">Select...</option>
-            <option>Top</option><option>Bottom</option><option>Dress</option>
-            <option>Outerwear</option><option>Shoes</option><option>Accessory</option>
-            <option>Saree</option><option>Kurta</option><option>Salwar Suit</option>
-            <option>Lehenga</option><option>Other</option>
-          </select>
-        </div>
-        <div class="modal-field">
-          <label>Primary Color</label>
-          <input type="text" id="addItemColor" placeholder="e.g. Navy blue" />
-        </div>
-      </div>
-      <div class="modal-row">
-        <div class="modal-field">
-          <label>Occasion</label>
-          <select id="addItemOccasion">
-            <option value="">Select...</option>
-            <option>Casual</option><option>Work</option><option>Formal</option>
-            <option>Party</option><option>Wedding</option><option>Festive</option>
-            <option>Date Night</option><option>Brunch</option>
-          </select>
-        </div>
-        <div class="modal-field">
-          <label>Brand</label>
-          <input type="text" id="addItemBrand" placeholder="Optional" />
-        </div>
-      </div>
-      <div class="modal-field">
-        <label>Notes</label>
-        <input type="text" id="addItemNotes" placeholder="Any styling notes..." />
-      </div>
-      <div class="modal-error" id="addItemError"></div>
-      <div class="modal-actions">
+      <label for="addItemFile" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:32px 24px;border:2px dashed var(--line);border-radius:16px;cursor:pointer;transition:border-color 120ms ease;min-height:160px;" id="addItemDropzone">
+        <img class="modal-preview" id="addItemPreview" style="display:none;max-height:180px;border-radius:10px;" alt="" />
+        <span id="addItemPlaceholder" style="font-size:28px;">&#128248;</span>
+        <span id="addItemLabel" style="font-size:13px;color:var(--muted);font-weight:500;">Tap to select or drag a photo here</span>
+        <input type="file" id="addItemFile" accept="image/*" required style="display:none;" />
+      </label>
+      <div class="modal-error" id="addItemError" style="text-align:center;"></div>
+      <div class="modal-actions" style="justify-content:center;">
         <button type="button" class="btn-cancel" id="addItemCancel">Cancel</button>
         <button type="submit" class="btn-primary" id="addItemSubmit">Add to Wardrobe</button>
       </div>
@@ -853,9 +885,46 @@ def get_web_ui_html(
 </div>
 """
 
-    # ── Profile Page (unified view + edit) ──
+    # ── Profile Page (unified: analysis + profile + style code + palette) ──
     html += """
 <div class="page-view page-profile">
+  <div class="analysis-card" id="analysisCard">
+    <div class="analysis-header">
+      <h2>Profile Analysis</h2>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span class="analysis-confidence-pct" id="analysisConfidence"></span>
+        <div class="analysis-badge" id="analysisBadge">Loading</div>
+      </div>
+    </div>
+    <div class="analysis-progress" id="analysisProgressWrap"><div class="analysis-progress-bar" id="analysisProgressBar"></div></div>
+    <div class="analysis-text" id="analysisText">Checking analysis status...</div>
+    <div class="analysis-error" id="analysisError"></div>
+    <div class="analysis-actions" id="analysisActions">
+      <button class="btn-secondary" id="analysisRerunBtn" style="display:none;">Re-Run Analysis</button>
+      <button class="btn-secondary" id="analysisRetryBtn" style="display:none;">Retry</button>
+    </div>
+    <div class="agent-grid" id="analysisAgentGrid">
+      <div class="agent-card"><div class="agent-card-head"><h4>Body Type</h4><button class="agent-rerun-btn" data-agent="body_type_analysis">Re-Run</button></div><p id="agentStatus-body_type_analysis">—</p></div>
+      <div class="agent-card"><div class="agent-card-head"><h4>Color Analysis</h4><button class="agent-rerun-btn" data-agent="color_analysis_headshot">Re-Run</button></div><p id="agentStatus-color_analysis_headshot">—</p></div>
+      <div class="agent-card"><div class="agent-card-head"><h4>Other Details</h4><button class="agent-rerun-btn" data-agent="other_details_analysis">Re-Run</button></div><p id="agentStatus-other_details_analysis">—</p></div>
+    </div>
+  </div>
+  <div class="profile-images-card">
+    <h3>Your Photos</h3>
+    <div class="profile-images-grid">
+      <div class="profile-image-slot">
+        <div class="slot-label">Full Body</div>
+        <div id="imgSlotFullBody"><div class="slot-empty">Not uploaded</div></div>
+        <div class="slot-update"><label>Update<input type="file" accept="image/*" id="updateFullBody" /></label></div>
+      </div>
+      <div class="profile-image-slot">
+        <div class="slot-label">Headshot</div>
+        <div id="imgSlotHeadshot"><div class="slot-empty">Not uploaded</div></div>
+        <div class="slot-update"><label>Update<input type="file" accept="image/*" id="updateHeadshot" /></label></div>
+      </div>
+    </div>
+  </div>
+  <div id="analysisResultsWrap"></div>
   <div class="profile-card" id="profileCard">
     <div class="profile-card-header">
       <h2>Your Profile</h2>
@@ -1748,9 +1817,9 @@ def get_web_ui_html(
           addBubble(t.assistant_message, "assistant");
           // Render outfits from resolved context
           var ctx = t.resolved_context || {{}};
-          var recs = ctx.final_recommendations || ctx.recommendations || [];
-          if (recs.length) {{
-            renderOutfits(recs, convId, ctx);
+          var outfits = ctx.outfits || [];
+          if (outfits.length) {{
+            renderOutfits(outfits, convId, ctx);
           }}
         }}
       }}
@@ -1758,39 +1827,53 @@ def get_web_ui_html(
   }}
 
   // New chat
-  newChatBtn.addEventListener("click", function() {{
-    conversationId = "";
-    feed.innerHTML = "";
-    stageBar.textContent = "";
-    if (feedWelcome) {{
-      feedWelcome.style.display = "";
-      feed.appendChild(feedWelcome);
-    }}
-    historyList.querySelectorAll(".history-item").forEach(function(el) {{ el.classList.remove("active"); }});
-    messageEl.focus();
-  }});
+  if (newChatBtn) {{
+    newChatBtn.addEventListener("click", function() {{
+      if (ACTIVE_VIEW !== "chat") {{
+        window.location.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=chat";
+        return;
+      }}
+      conversationId = "";
+      feed.innerHTML = "";
+      stageBar.textContent = "";
+      if (feedWelcome) {{
+        feedWelcome.style.display = "";
+        feed.appendChild(feedWelcome);
+      }}
+      historyList.querySelectorAll(".history-item").forEach(function(el) {{ el.classList.remove("active"); }});
+      messageEl.focus();
+    }});
+  }}
 
-  brandLink.addEventListener("click", function() {{
-    window.location.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=chat";
-  }});
+  if (brandLink) {{
+    brandLink.addEventListener("click", function() {{
+      window.location.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=chat";
+    }});
+  }}
 
   // Hamburger (mobile)
-  hamburgerBtn.addEventListener("click", function() {{
-    historyRail.classList.toggle("mobile-open");
-  }});
+  if (hamburgerBtn) {{
+    hamburgerBtn.addEventListener("click", function() {{
+      if (historyRail) historyRail.classList.toggle("mobile-open");
+    }});
+  }}
 
   // Avatar dropdown
-  avatarBtn.addEventListener("click", function(e) {{
-    e.stopPropagation();
-    avatarDropdown.classList.toggle("open");
-  }});
-  document.addEventListener("click", function() {{ avatarDropdown.classList.remove("open"); }});
+  if (avatarBtn && avatarDropdown) {{
+    avatarBtn.addEventListener("click", function(e) {{
+      e.stopPropagation();
+      avatarDropdown.classList.toggle("open");
+    }});
+    document.addEventListener("click", function() {{ avatarDropdown.classList.remove("open"); }});
+  }}
 
   // Logout
-  logoutBtn.addEventListener("click", function() {{
-    try {{ localStorage.removeItem("aura_user_id"); }} catch(_) {{}}
-    window.location.href = "/";
-  }});
+  if (logoutBtn) {{
+    logoutBtn.addEventListener("click", function() {{
+      try {{ localStorage.removeItem("aura_user_id"); }} catch(_) {{}}
+      window.location.href = "/";
+    }});
+  }}
 
   // ══════════════════════════════════════════════
   // WARDROBE VIEW
@@ -1827,8 +1910,8 @@ def get_web_ui_html(
           '<p>' + escapeHtml(item.description || "Saved in your wardrobe.") + '</p>' +
           '<div class="tag-row">' + (tags.length ? tags.map(function(tag) {{ return '<span class="tag">' + escapeHtml(tag) + '</span>'; }}).join("") : '<span class="tag">untagged</span>') + '</div>' +
           '<div class="closet-actions">' +
-            '<button class="studio-btn" type="button" data-wardrobe-prompt="' + escapeHtml("Style my " + title + " from my wardrobe first.") + '">Style This</button>' +
-            '<button class="studio-btn" type="button" data-wardrobe-prompt="' + escapeHtml("Build me an outfit around my " + title + " for the right occasion.") + '">Build A Look</button>' +
+            '<button class="studio-btn" type="button" data-wardrobe-prompt="' + escapeHtml("Style my " + title + " from my wardrobe.") + '" data-wardrobe-img="' + escapeHtml(imageUrl || "") + '">Style This</button>' +
+            '<button class="studio-btn" type="button" data-wardrobe-prompt="' + escapeHtml("Build me an outfit around my " + title + " for the right occasion.") + '" data-wardrobe-img="' + escapeHtml(imageUrl || "") + '">Build A Look</button>' +
           '</div>' +
         '</div></article>';
     }}).join("");
@@ -1874,12 +1957,11 @@ def get_web_ui_html(
     closetGrid.addEventListener("click", function(e) {{
       var btn = e.target.closest("[data-wardrobe-prompt]");
       if (!btn) return;
-      window.location.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=chat";
-      // If already on chat view, seed prompt
-      if (ACTIVE_VIEW === "chat") {{
-        messageEl.value = btn.getAttribute("data-wardrobe-prompt");
-        messageEl.focus();
-      }}
+      var prompt = btn.getAttribute("data-wardrobe-prompt") || "";
+      var imgUrl = btn.getAttribute("data-wardrobe-img") || "";
+      var chatUrl = "/?user=" + encodeURIComponent(USER_ID) + "&view=chat&prompt=" + encodeURIComponent(prompt);
+      if (imgUrl) chatUrl += "&wardrobe_img=" + encodeURIComponent(imgUrl);
+      window.location.href = chatUrl;
     }});
   }}
 
@@ -1899,37 +1981,43 @@ def get_web_ui_html(
     var cancelBtn = document.getElementById("addItemCancel");
     if (!modal || !form || !addBtn) return;
 
+    var placeholder = document.getElementById("addItemPlaceholder");
+    var dropLabel = document.getElementById("addItemLabel");
+    var dropzone = document.getElementById("addItemDropzone");
+
+    function resetModal() {{ form.reset(); preview.style.display = "none"; errorEl.textContent = ""; if (placeholder) placeholder.style.display = ""; if (dropLabel) dropLabel.style.display = ""; }}
+
     addBtn.addEventListener("click", function() {{ modal.classList.add("open"); }});
-    cancelBtn.addEventListener("click", function() {{ modal.classList.remove("open"); form.reset(); preview.style.display = "none"; errorEl.textContent = ""; }});
-    modal.addEventListener("click", function(e) {{ if (e.target === modal) {{ modal.classList.remove("open"); form.reset(); preview.style.display = "none"; errorEl.textContent = ""; }} }});
+    cancelBtn.addEventListener("click", function() {{ modal.classList.remove("open"); resetModal(); }});
+    modal.addEventListener("click", function(e) {{ if (e.target === modal) {{ modal.classList.remove("open"); resetModal(); }} }});
 
     fileInput.addEventListener("change", function() {{
       if (fileInput.files && fileInput.files[0]) {{
         var reader = new FileReader();
-        reader.onload = function(e) {{ preview.src = e.target.result; preview.style.display = "block"; }};
+        reader.onload = function(e) {{ preview.src = e.target.result; preview.style.display = "block"; if (placeholder) placeholder.style.display = "none"; if (dropLabel) dropLabel.style.display = "none"; }};
         reader.readAsDataURL(fileInput.files[0]);
       }}
     }});
+
+    if (dropzone) {{
+      dropzone.addEventListener("dragover", function(e) {{ e.preventDefault(); dropzone.style.borderColor = "var(--accent)"; }});
+      dropzone.addEventListener("dragleave", function() {{ dropzone.style.borderColor = ""; }});
+      dropzone.addEventListener("drop", function(e) {{ e.preventDefault(); dropzone.style.borderColor = ""; if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {{ fileInput.files = e.dataTransfer.files; fileInput.dispatchEvent(new Event("change")); }} }});
+    }}
 
     form.addEventListener("submit", async function(e) {{
       e.preventDefault();
       if (!fileInput.files || !fileInput.files[0]) {{ errorEl.textContent = "Please select a photo."; return; }}
       var submitBtn = document.getElementById("addItemSubmit");
-      submitBtn.disabled = true; submitBtn.textContent = "Saving...";
+      submitBtn.disabled = true; submitBtn.textContent = "Analysing...";
       errorEl.textContent = "";
       var fd = new FormData();
       fd.append("user_id", USER_ID);
       fd.append("file", fileInput.files[0]);
-      fd.append("title", document.getElementById("addItemTitle").value);
-      fd.append("garment_category", document.getElementById("addItemCategory").value);
-      fd.append("primary_color", document.getElementById("addItemColor").value);
-      fd.append("occasion_fit", document.getElementById("addItemOccasion").value);
-      fd.append("brand", document.getElementById("addItemBrand").value);
-      fd.append("notes", document.getElementById("addItemNotes").value);
       try {{
         var res = await fetch("/v1/onboarding/wardrobe/items", {{ method: "POST", body: fd }});
         if (!res.ok) {{ var err = await res.json(); throw new Error(err.detail || "Failed to save"); }}
-        modal.classList.remove("open"); form.reset(); preview.style.display = "none";
+        modal.classList.remove("open"); resetModal();
         loadWardrobeStudio();
       }} catch (ex) {{
         errorEl.textContent = ex.message || "Failed to save item.";
@@ -2088,50 +2176,250 @@ def get_web_ui_html(
     return Array.isArray(v) ? v : [];
   }}
 
+  // ── Analysis status + polling ──
+  var analysisBadge = document.getElementById("analysisBadge");
+  var analysisProgressBar = document.getElementById("analysisProgressBar");
+  var analysisProgressWrap = document.getElementById("analysisProgressWrap");
+  var analysisText = document.getElementById("analysisText");
+  var analysisError = document.getElementById("analysisError");
+  var analysisRerunBtn = document.getElementById("analysisRerunBtn");
+  var analysisRetryBtn = document.getElementById("analysisRetryBtn");
+  var analysisResultsWrap = document.getElementById("analysisResultsWrap");
+  var agentRerunBtns = document.querySelectorAll(".agent-rerun-btn");
+
+  var AGENT_LABELS = {{ body_type_analysis: "Body Type", color_analysis_headshot: "Color Analysis", other_details_analysis: "Other Details" }};
+
+  function setAnalysisStatus(state, text) {{
+    if (analysisBadge) {{ analysisBadge.textContent = state.replace(/_/g, " "); analysisBadge.className = "analysis-badge " + state; }}
+    if (analysisText) analysisText.textContent = text;
+  }}
+
+  function showAnalysisError(msg) {{ if (analysisError) {{ analysisError.textContent = msg; analysisError.classList.add("show"); }} }}
+  function hideAnalysisError() {{ if (analysisError) {{ analysisError.textContent = ""; analysisError.classList.remove("show"); }} }}
+
+  function renderAnalysisResults(grouped, derivedInterps) {{
+    if (!analysisResultsWrap) return;
+    var html = "";
+    var derivedNames = Object.keys(derivedInterps || {{}});
+    if (derivedNames.length) {{
+      html += '<div class="result-group"><div class="result-group-header">Derived Interpretations</div>';
+      derivedNames.forEach(function(name) {{
+        var item = derivedInterps[name];
+        var val = Array.isArray(item.value) ? item.value.join(", ") : (item.value || "");
+        html += '<div class="attr-row"><div class="attr-name">' + escapeHtml(name) + '</div><div class="attr-value">' + escapeHtml(val) + '<small>' + escapeHtml(item.evidence_note || "") + '</small></div><div class="attr-confidence">' + Math.round((item.confidence || 0) * 100) + '%</div></div>';
+      }});
+      html += '</div>';
+    }}
+    Object.keys(AGENT_LABELS).forEach(function(agentName) {{
+      var values = grouped[agentName] || {{}};
+      var names = Object.keys(values);
+      if (!names.length) return;
+      html += '<div class="result-group"><div class="result-group-header">' + escapeHtml(AGENT_LABELS[agentName]) + '</div>';
+      names.forEach(function(name) {{
+        var item = values[name];
+        html += '<div class="attr-row"><div class="attr-name">' + escapeHtml(name) + '</div><div class="attr-value">' + escapeHtml(item.value || "") + '<small>' + escapeHtml(item.evidence_note || "") + '</small></div><div class="attr-confidence">' + Math.round((item.confidence || 0) * 100) + '%</div></div>';
+      }});
+      html += '</div>';
+    }});
+    analysisResultsWrap.innerHTML = html;
+  }}
+
+  function renderAnalysisState(analysis) {{
+    var state = analysis.status || "not_started";
+    var grouped = analysis.grouped_attributes || {{}};
+    setAnalysisStatus(state, state === "completed" ? "All analysis agents completed successfully." : state === "failed" ? "Analysis failed. You can retry." : "Analysis is running...");
+
+    var progressMap = {{ not_started: 14, pending: 24, running: 68, completed: 100, failed: 100 }};
+    if (analysisProgressBar) analysisProgressBar.style.width = (progressMap[state] || 18) + "%";
+    if (analysisProgressWrap) analysisProgressWrap.style.display = state === "completed" ? "none" : "";
+
+    if (analysisRerunBtn) analysisRerunBtn.style.display = state === "completed" ? "" : "none";
+    if (analysisRetryBtn) analysisRetryBtn.style.display = state === "failed" ? "" : "none";
+
+    agentRerunBtns.forEach(function(btn) {{ btn.classList.toggle("show", state === "completed" || state === "failed"); }});
+
+    Object.keys(AGENT_LABELS).forEach(function(agentName) {{
+      var el = document.getElementById("agentStatus-" + agentName);
+      if (!el) return;
+      var count = Object.keys(grouped[agentName] || {{}}).length;
+      el.textContent = state === "completed" ? (count ? count + " attributes" : "Done") : (count ? count + " prepared" : "Waiting...");
+    }});
+
+    if (state === "completed") {{
+      renderAnalysisResults(grouped, analysis.derived_interpretations || {{}});
+      var pct = computeAnalysisConfidence(grouped, analysis.derived_interpretations || {{}});
+      if (analysisConfidenceEl) analysisConfidenceEl.textContent = pct + "% confidence";
+      hideAnalysisError();
+    }} else {{
+      if (analysisConfidenceEl) analysisConfidenceEl.textContent = "";
+    }}
+    if (state === "failed") {{
+      showAnalysisError(analysis.error_message || "Analysis failed.");
+    }}
+  }}
+
+  async function fetchAnalysisStatus() {{
+    var res = await fetch("/v1/onboarding/analysis/" + encodeURIComponent(USER_ID));
+    if (!res.ok) throw new Error("Unable to load analysis");
+    return await res.json();
+  }}
+
+  async function pollAnalysis() {{
+    while (true) {{
+      var analysis = await fetchAnalysisStatus();
+      renderAnalysisState(analysis);
+      renderStyleAndPalette(analysis);
+      if (analysis.status === "completed" || analysis.status === "failed") return;
+      await new Promise(function(r) {{ setTimeout(r, 1500); }});
+    }}
+  }}
+
+  function renderStyleAndPalette(analysis) {{
+    var derived = analysis.derived_interpretations || {{}};
+    var attributes = analysis.attributes || {{}};
+    var stylePref = (analysis.profile || {{}}).style_preference || {{}};
+    var primary = String(stylePref.primaryArchetype || "").trim();
+    var secondary = String(stylePref.secondaryArchetype || "").trim();
+    var seasonal = profileValue(derived.SeasonalColorGroup);
+    var contrast = profileValue(derived.ContrastLevel);
+    var frame = profileValue(derived.FrameStructure);
+    var bodyShape = profileValue(attributes.BodyShape);
+    var facts = [
+      {{ label: "Primary Archetype", value: primary }},
+      {{ label: "Secondary Archetype", value: secondary }},
+      {{ label: "Seasonal Palette", value: seasonal }},
+      {{ label: "Contrast Level", value: contrast }},
+      {{ label: "Frame Structure", value: frame }},
+      {{ label: "Body Shape", value: bodyShape }},
+    ].filter(function(f) {{ return f.value; }});
+    if (styleFacts) {{
+      styleFacts.innerHTML = facts.map(function(f) {{
+        return '<div class="style-fact"><div class="fact-label">' + escapeHtml(f.label) + '</div><div class="fact-value">' + escapeHtml(f.value) + '</div></div>';
+      }}).join("");
+    }}
+    if (styleSummary) {{
+      styleSummary.textContent = primary || seasonal
+        ? "Aura sees you through a " + [primary, secondary].filter(Boolean).join(" + ") + " lens, grounded in " + (seasonal || "your evolving palette") + " color direction and " + (frame || "balanced") + " shape guidance."
+        : "Complete your analysis to unlock your full style code.";
+    }}
+    renderColorPalette(derived);
+  }}
+
+  // Image previews
+  function renderProfileImages(imagePaths) {{
+    var categories = {{ full_body: "imgSlotFullBody", headshot: "imgSlotHeadshot" }};
+    Object.keys(categories).forEach(function(cat) {{
+      var slot = document.getElementById(categories[cat]);
+      var path = imagePaths[cat] || "";
+      if (slot && path) {{
+        slot.innerHTML = '<img src="/v1/onboarding/images/local?path=' + encodeURIComponent(path) + '" alt="' + escapeHtml(cat) + '" loading="lazy" />';
+      }}
+    }});
+  }}
+
+  // Image update handlers
+  ["updateFullBody", "updateHeadshot"].forEach(function(inputId) {{
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    var category = inputId === "updateFullBody" ? "full_body" : "headshot";
+    input.addEventListener("change", async function() {{
+      if (!input.files || !input.files[0]) return;
+      var fd = new FormData();
+      fd.append("user_id", USER_ID);
+      fd.append("file", input.files[0]);
+      try {{
+        var res = await fetch("/v1/onboarding/images/" + category, {{ method: "POST", body: fd }});
+        if (!res.ok) {{ var err = await res.json(); alert(err.detail || "Upload failed"); return; }}
+        loadProfile();
+      }} catch (ex) {{ alert("Upload failed: " + ex.message); }}
+    }});
+  }});
+
+  // Confidence calculation
+  var analysisConfidenceEl = document.getElementById("analysisConfidence");
+  function computeAnalysisConfidence(grouped, derived) {{
+    var total = 0, count = 0;
+    // Derived interpretations
+    Object.keys(derived || {{}}).forEach(function(k) {{
+      var c = (derived[k] || {{}}).confidence;
+      if (typeof c === "number") {{ total += c; count++; }}
+    }});
+    // Agent attributes
+    Object.keys(grouped || {{}}).forEach(function(agent) {{
+      Object.keys(grouped[agent] || {{}}).forEach(function(attr) {{
+        var c = (grouped[agent][attr] || {{}}).confidence;
+        if (typeof c === "number") {{ total += c; count++; }}
+      }});
+    }});
+    return count > 0 ? Math.round((total / count) * 100) : 0;
+  }}
+
   async function loadProfile() {{
     if (!USER_ID || !profileGrid) return;
     try {{
-      var responses = await Promise.all([
-        fetch("/v1/onboarding/status/" + encodeURIComponent(USER_ID)),
-        fetch("/v1/onboarding/analysis/" + encodeURIComponent(USER_ID)),
-      ]);
-      if (!responses[0].ok) return;
-      var status = await responses[0].json();
-      var analysis = responses[1].ok ? await responses[1].json() : {{}};
-      profileData = status || {{}};
+      var statusRes = await fetch("/v1/onboarding/status/" + encodeURIComponent(USER_ID));
+      profileData = statusRes.ok ? await statusRes.json() : {{}};
+      renderProfileImages(profileData.image_paths || {{}});
+      var analysis = await fetchAnalysisStatus();
       renderProfileGrid(profileData, profileEditing);
+      renderAnalysisState(analysis);
+      renderStyleAndPalette(analysis);
 
-      // Style code
-      var derived = analysis.derived_interpretations || {{}};
-      var attributes = analysis.attributes || {{}};
-      var stylePref = (analysis.profile || {{}}).style_preference || {{}};
-      var primary = String(stylePref.primaryArchetype || "").trim();
-      var secondary = String(stylePref.secondaryArchetype || "").trim();
-      var seasonal = profileValue(derived.SeasonalColorGroup);
-      var contrast = profileValue(derived.ContrastLevel);
-      var frame = profileValue(derived.FrameStructure);
-      var bodyShape = profileValue(attributes.BodyShape);
-      var facts = [
-        {{ label: "Primary Archetype", value: primary }},
-        {{ label: "Secondary Archetype", value: secondary }},
-        {{ label: "Seasonal Palette", value: seasonal }},
-        {{ label: "Contrast Level", value: contrast }},
-        {{ label: "Frame Structure", value: frame }},
-        {{ label: "Body Shape", value: bodyShape }},
-      ].filter(function(f) {{ return f.value; }});
-      if (styleFacts) {{
-        styleFacts.innerHTML = facts.map(function(f) {{
-          return '<div class="style-fact"><div class="fact-label">' + escapeHtml(f.label) + '</div><div class="fact-value">' + escapeHtml(f.value) + '</div></div>';
-        }}).join("");
+      // Poll if not yet complete
+      if (analysis.status && analysis.status !== "completed" && analysis.status !== "failed") {{
+        // Ensure analysis is started
+        try {{ await fetch("/v1/onboarding/analysis/start", {{ method: "POST", headers: {{"Content-Type": "application/json"}}, body: JSON.stringify({{ user_id: USER_ID }}) }}); }} catch(_) {{}}
+        await pollAnalysis();
       }}
-      if (styleSummary) {{
-        styleSummary.textContent = primary || seasonal
-          ? "Aura sees you through a " + [primary, secondary].filter(Boolean).join(" + ") + " lens, grounded in " + (seasonal || "your evolving palette") + " color direction and " + (frame || "balanced") + " shape guidance."
-          : "Complete your analysis to unlock your full style code.";
-      }}
-      renderColorPalette(derived);
     }} catch (_) {{}}
   }}
+
+  // Re-run analysis
+  if (analysisRerunBtn) {{
+    analysisRerunBtn.addEventListener("click", async function() {{
+      analysisRerunBtn.disabled = true;
+      setAnalysisStatus("running", "Re-running profile analysis...");
+      if (analysisProgressWrap) analysisProgressWrap.style.display = "";
+      if (analysisProgressBar) analysisProgressBar.style.width = "24%";
+      hideAnalysisError();
+      try {{
+        await fetch("/v1/onboarding/analysis/rerun", {{ method: "POST", headers: {{"Content-Type": "application/json"}}, body: JSON.stringify({{ user_id: USER_ID }}) }});
+        await pollAnalysis();
+      }} catch (e) {{ showAnalysisError(e.message || "Re-run failed"); }}
+      analysisRerunBtn.disabled = false;
+    }});
+  }}
+
+  // Retry analysis
+  if (analysisRetryBtn) {{
+    analysisRetryBtn.addEventListener("click", async function() {{
+      analysisRetryBtn.disabled = true;
+      hideAnalysisError();
+      try {{
+        await fetch("/v1/onboarding/analysis/start", {{ method: "POST", headers: {{"Content-Type": "application/json"}}, body: JSON.stringify({{ user_id: USER_ID }}) }});
+        await pollAnalysis();
+      }} catch (e) {{ showAnalysisError(e.message || "Retry failed"); }}
+      analysisRetryBtn.disabled = false;
+    }});
+  }}
+
+  // Agent-level re-run
+  agentRerunBtns.forEach(function(btn) {{
+    btn.addEventListener("click", async function() {{
+      var agentName = btn.getAttribute("data-agent");
+      if (!agentName) return;
+      btn.disabled = true;
+      setAnalysisStatus("running", "Re-running " + (AGENT_LABELS[agentName] || "agent") + "...");
+      if (analysisProgressWrap) analysisProgressWrap.style.display = "";
+      if (analysisProgressBar) analysisProgressBar.style.width = "24%";
+      hideAnalysisError();
+      try {{
+        await fetch("/v1/onboarding/analysis/rerun-agent", {{ method: "POST", headers: {{"Content-Type": "application/json"}}, body: JSON.stringify({{ user_id: USER_ID, agent_name: agentName }}) }});
+        await pollAnalysis();
+      }} catch (e) {{ showAnalysisError(e.message || "Re-run failed"); }}
+      btn.disabled = false;
+    }});
+  }})
 
   // Toggle edit mode
   if (editToggleBtn) {{
@@ -2201,6 +2489,37 @@ def get_web_ui_html(
     loadConversationHistory();
     if (INIT_CONV_ID) {{
       loadConversation(INIT_CONV_ID);
+    }}
+
+    // Auto-send from wardrobe "Style This" / "Build A Look"
+    var urlParams = new URLSearchParams(window.location.search);
+    var seedPrompt = urlParams.get("prompt") || "";
+    var seedImg = urlParams.get("wardrobe_img") || "";
+    if (seedPrompt) {{
+      // Clean URL without reloading
+      var cleanUrl = "/?user=" + encodeURIComponent(USER_ID) + "&view=chat";
+      window.history.replaceState(null, "", cleanUrl);
+
+      if (seedImg) {{
+        fetch(seedImg)
+          .then(function(r) {{ return r.blob(); }})
+          .then(function(blob) {{
+            var reader = new FileReader();
+            reader.onload = function(ev) {{
+              setImagePreview(ev.target.result, "Wardrobe item");
+              messageEl.value = seedPrompt;
+              send();
+            }};
+            reader.readAsDataURL(blob);
+          }})
+          .catch(function() {{
+            messageEl.value = seedPrompt;
+            send();
+          }});
+      }} else {{
+        messageEl.value = seedPrompt;
+        send();
+      }}
     }}
   }}
 

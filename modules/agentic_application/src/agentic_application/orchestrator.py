@@ -1062,15 +1062,49 @@ class AgenticOrchestrator:
     # Virtual try-on
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _extract_garment_ids(outfit: OutfitCard) -> list[str]:
+        return sorted(
+            str(item.get("product_id") or "").strip()
+            for item in outfit.items
+            if str(item.get("product_id") or "").strip()
+        )
+
+    @staticmethod
+    def _detect_garment_source(outfit: OutfitCard) -> str:
+        sources = set()
+        for item in outfit.items:
+            src = str(item.get("source") or "").strip().lower()
+            if src in ("wardrobe", "catalog"):
+                sources.add(src)
+        if len(sources) > 1:
+            return "mixed"
+        return sources.pop() if sources else "catalog"
+
+    @staticmethod
+    def _tryon_image_url(file_path: str) -> str:
+        return "/v1/onboarding/images/local?path=" + quote(file_path, safe="")
+
     def _attach_tryon_images(
         self,
         outfits: List[OutfitCard],
         external_user_id: str,
+        *,
+        conversation_id: str = "",
+        turn_id: str = "",
     ) -> None:
-        """Generate virtual try-on images for each outfit in parallel."""
+        """Generate virtual try-on images for each outfit in parallel, with disk + DB persistence and cache reuse."""
+        import base64
+        import hashlib
+        from datetime import datetime, timezone
+        from pathlib import Path
+
         person_path = self.onboarding_gateway.get_person_image_path(external_user_id)
         if not person_path:
             return
+
+        tryon_dir = Path("data/tryon/images")
+        tryon_dir.mkdir(parents=True, exist_ok=True)
 
         def _generate_for_outfit(outfit: OutfitCard) -> tuple[OutfitCard, str]:
             garment_urls: list[tuple[str, str]] = []
@@ -1082,24 +1116,74 @@ class AgenticOrchestrator:
                 garment_urls.append((role or "garment", url))
             if not garment_urls:
                 return outfit, ""
+
+            garment_ids = self._extract_garment_ids(outfit)
+
+            # Cache lookup
+            if garment_ids:
+                cached = self.repo.find_tryon_image_by_garments(external_user_id, garment_ids)
+                if cached and cached.get("file_path"):
+                    cached_path = Path(cached["file_path"])
+                    if cached_path.exists():
+                        _log.info("Try-on cache hit for outfit #%s", outfit.rank)
+                        return outfit, self._tryon_image_url(str(cached_path))
+
+            # Generate
             try:
                 result = self.tryon_service.generate_tryon_outfit(
                     person_image_path=person_path,
                     garment_urls=garment_urls,
                 )
-                if result.get("success"):
-                    quality = self.tryon_quality_gate.evaluate(
-                        person_image_path=person_path,
-                        tryon_result=result,
-                    )
-                    if quality.get("passed"):
-                        return outfit, result["data_url"]
+                if not result.get("success"):
+                    return outfit, ""
+
+                quality = self.tryon_quality_gate.evaluate(
+                    person_image_path=person_path,
+                    tryon_result=result,
+                )
+                if not quality.get("passed"):
                     _log.info(
                         "Try-on quality gate blocked outfit #%s: %s",
                         outfit.rank,
                         quality.get("reason_code") or "unknown_quality_failure",
                     )
                     return outfit, ""
+
+                # Persist to disk
+                image_b64 = result.get("image_base64") or ""
+                mime_type = result.get("mime_type") or "image/png"
+                image_bytes = base64.b64decode(image_b64) if image_b64 else b""
+                if not image_bytes:
+                    return outfit, ""
+
+                ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+                ids_key = "_".join(garment_ids) if garment_ids else ts
+                encrypted = hashlib.sha256(f"{external_user_id}_tryon_{ids_key}_{ts}".encode()).hexdigest()
+                ext = ".png" if "png" in mime_type else ".jpg"
+                filename = f"{encrypted}{ext}"
+                dest = tryon_dir / filename
+                dest.write_bytes(image_bytes)
+
+                # Persist to DB
+                try:
+                    self.repo.insert_tryon_image(
+                        user_id=external_user_id,
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        outfit_rank=outfit.rank,
+                        garment_ids=garment_ids,
+                        garment_source=self._detect_garment_source(outfit),
+                        person_image_path=person_path,
+                        encrypted_filename=encrypted,
+                        file_path=str(dest),
+                        mime_type=mime_type,
+                        file_size_bytes=len(image_bytes),
+                        quality_score_pct=quality.get("quality_score_pct"),
+                    )
+                except Exception:
+                    _log.warning("Failed to persist try-on metadata for outfit #%s", outfit.rank, exc_info=True)
+
+                return outfit, self._tryon_image_url(str(dest))
             except Exception:
                 _log.warning("Try-on generation failed for outfit #%s", outfit.rank, exc_info=True)
             return outfit, ""
@@ -1107,9 +1191,9 @@ class AgenticOrchestrator:
         with ThreadPoolExecutor(max_workers=3) as pool:
             futures = {pool.submit(_generate_for_outfit, o): o for o in outfits}
             for future in as_completed(futures):
-                outfit, data_url = future.result()
-                if data_url:
-                    outfit.tryon_image = data_url
+                outfit, tryon_url = future.result()
+                if tryon_url:
+                    outfit.tryon_image = tryon_url
 
     def _persist_catalog_interactions(
         self,
@@ -3845,7 +3929,7 @@ class AgenticOrchestrator:
         emit("response_formatting", "completed", ctx={"outfit_count": min(len(evaluated), 3)})
 
         emit("virtual_tryon", "started")
-        self._attach_tryon_images(response.outfits, external_user_id)
+        self._attach_tryon_images(response.outfits, external_user_id, conversation_id=conversation_id, turn_id=turn_id)
         emit("virtual_tryon", "completed")
 
         self._persist_catalog_interactions(

@@ -30,37 +30,26 @@ def get_onboarding_html() -> str:
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      min-height: 100vh;
+      height: 100vh;
       font-family: "Avenir Next", "Segoe UI", sans-serif;
       color: var(--ink);
-      background:
-        radial-gradient(circle at top left, rgba(184, 139, 150, 0.22), transparent 28%),
-        radial-gradient(circle at 85% 12%, rgba(176, 138, 78, 0.14), transparent 24%),
-        linear-gradient(180deg, #fbf6f1 0%, #f6f0ea 42%, #f1e6da 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px 16px;
+      background: var(--bg);
+      overflow: hidden;
     }
     .shell {
-      width: min(100%, 1040px);
       display: grid;
-      grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
-      border: 1px solid rgba(188, 172, 151, 0.45);
-      border-radius: 28px;
-      overflow: hidden;
-      background: rgba(255, 251, 246, 0.72);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(16px);
+      grid-template-columns: 1fr 2fr;
+      height: 100vh;
     }
     .sidebar {
-      padding: 36px 28px;
+      padding: 48px 36px;
       background:
-        linear-gradient(180deg, rgba(111, 47, 69, 0.94) 0%, rgba(90, 36, 56, 0.96) 100%);
+        linear-gradient(180deg, rgba(111, 47, 69, 0.96) 0%, rgba(80, 30, 48, 0.98) 100%);
       color: #f6f2eb;
       display: flex;
       flex-direction: column;
-      gap: 24px;
+      gap: 28px;
+      overflow-y: auto;
     }
     .eyebrow {
       font-size: 12px;
@@ -71,16 +60,24 @@ def get_onboarding_html() -> str:
     .sidebar h1 {
       margin: 0;
       font-family: "Cormorant Garamond", serif;
-      font-size: 38px;
+      font-size: 42px;
       font-weight: 600;
-      line-height: 1.02;
+      line-height: 1.06;
       letter-spacing: 0.01em;
     }
     .sidebar p {
       margin: 0;
       color: rgba(246, 242, 235, 0.84);
-      line-height: 1.55;
+      line-height: 1.6;
       font-size: 14px;
+    }
+    .sidebar-tagline {
+      font-family: "Cormorant Garamond", serif;
+      font-size: 18px;
+      font-style: italic;
+      color: rgba(246, 242, 235, 0.72);
+      line-height: 1.4;
+      margin: 0;
     }
     .status-card {
       padding: 18px;
@@ -132,11 +129,15 @@ def get_onboarding_html() -> str:
       flex: 0 0 auto;
     }
     .main {
-      padding: 28px;
-      background: var(--surface);
+      padding: 40px 48px;
+      background:
+        radial-gradient(circle at top left, rgba(184, 139, 150, 0.12), transparent 28%),
+        radial-gradient(circle at 85% 12%, rgba(176, 138, 78, 0.08), transparent 24%),
+        linear-gradient(180deg, #fbf6f1 0%, var(--bg) 42%, #f1e6da 100%);
       display: flex;
       flex-direction: column;
       gap: 18px;
+      overflow-y: auto;
     }
     .topline {
       display: flex;
@@ -172,11 +173,11 @@ def get_onboarding_html() -> str:
       background: #b08a4e;
     }
     .panel {
-      border: 1px solid rgba(188, 172, 151, 0.45);
-      border-radius: 24px;
-      padding: 28px;
-      background: var(--surface-strong);
-      min-height: 560px;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      background: transparent;
+      min-height: 480px;
       display: flex;
       flex-direction: column;
     }
@@ -547,18 +548,20 @@ def get_onboarding_html() -> str:
       background: rgba(188, 172, 151, 0.72);
     }
     @media (max-width: 900px) {
+      body { height: auto; overflow: auto; }
       .shell {
         grid-template-columns: 1fr;
+        height: auto;
       }
       .sidebar {
         padding: 28px 22px 20px;
       }
       .main {
-        padding: 18px;
+        padding: 24px 20px;
+        overflow: visible;
       }
       .panel {
         min-height: 0;
-        padding: 22px 18px;
       }
       .grid-2,
       .choice-grid.cols-2,
@@ -579,20 +582,21 @@ def get_onboarding_html() -> str:
     <aside class="sidebar">
       <div>
         <div class="eyebrow">Sigma Aura</div>
-        <h1>Onboard before you enter the conversation studio.</h1>
+        <h1>Your personal fashion stylist.</h1>
       </div>
-      <p>This first pass collects the profile details, three reference photos, and a final style-archetype preference profile before downstream analysis begins.</p>
-      <div class="status-card">
-        <strong>OTP for local testing</strong>
-        <div class="otp-pill">123456</div>
-      </div>
+      <p class="sidebar-tagline">Know what to wear. Know what to buy. Know what suits you.</p>
+      <p>Aura learns your body, your colors, and your style — then helps you make better dressing and shopping decisions every day.</p>
       <div class="checklist">
-        <strong>What we collect now</strong>
-        <div class="checklist-item"><span class="check-icon">1</span><span>Mobile and OTP verification</span></div>
-        <div class="checklist-item"><span class="check-icon">2</span><span>Name, birth date, gender, height and waist</span></div>
-        <div class="checklist-item"><span class="check-icon">3</span><span>Profession from a fixed set of values</span></div>
-        <div class="checklist-item"><span class="check-icon">4</span><span>Full body and headshot photos</span></div>
-        <div class="checklist-item"><span class="check-icon">5</span><span>Progressive 8-archetype style preference selection</span></div>
+        <strong>What Aura does for you</strong>
+        <div class="checklist-item"><span class="check-icon">&#10024;</span><span>Outfit recommendations for any occasion</span></div>
+        <div class="checklist-item"><span class="check-icon">&#127912;</span><span>Color and style analysis based on your photos</span></div>
+        <div class="checklist-item"><span class="check-icon">&#128090;</span><span>Wardrobe management — use what you own first</span></div>
+        <div class="checklist-item"><span class="check-icon">&#128717;</span><span>Shopping guidance — buy only what you need</span></div>
+        <div class="checklist-item"><span class="check-icon">&#9992;</span><span>Trip and capsule wardrobe planning</span></div>
+      </div>
+      <div class="status-card">
+        <strong>To get started</strong>
+        <p style="margin:0;font-size:13px;color:rgba(246,242,235,0.8);">Complete a quick profile setup so Aura can personalise recommendations to your body, coloring, and taste.</p>
       </div>
     </aside>
 
@@ -1559,7 +1563,7 @@ def get_onboarding_html() -> str:
           }
           const destination = determineResumeDestination(status);
           if (destination.type === "processing") {
-            window.location.href = "/onboard/processing?user=" + encodeURIComponent(state.userId);
+            window.location.href = "/?user=" + encodeURIComponent(state.userId) + "&view=profile";
             return;
           }
           setStep(destination.index);
@@ -1656,7 +1660,7 @@ def get_onboarding_html() -> str:
             shown_images: currentShownImages(),
             selections: state.style.selectedEvents
           }, "Unable to save style preference");
-          window.location.href = "/onboard/processing?user=" + encodeURIComponent(state.userId);
+          window.location.href = "/?user=" + encodeURIComponent(state.userId) + "&view=profile";
         } catch (error) {
           showError("styleErr", String(error.message || error));
         } finally {

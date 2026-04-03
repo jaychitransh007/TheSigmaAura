@@ -55,6 +55,38 @@ def _has_row_status_column(rows: List[Dict[str, str]]) -> bool:
     return bool(rows) and "row_status" in rows[0]
 
 
+def _has_product_id_column(rows: List[Dict[str, str]]) -> bool:
+    if not rows:
+        return False
+    return "product_id" in rows[0] or "id" in rows[0]
+
+
+def _infer_product_id(rows: List[Dict[str, str]]) -> None:
+    """Auto-generate product_id from URL when the CSV lacks a product_id column."""
+    import hashlib
+    from urllib.parse import urlparse
+
+    for row in rows:
+        url = str(row.get("url") or "").strip()
+        if url:
+            # Extract store name from domain and product handle from path
+            parsed = urlparse(url if url.startswith("http") else f"https://{url}")
+            domain = parsed.hostname or ""
+            # Use first part of domain as store prefix (e.g. "campussutra" from "campussutra.com")
+            store = domain.replace("www.", "").split(".")[0].upper() if domain else "UNKNOWN"
+            # Use last path segment as handle
+            handle = parsed.path.rstrip("/").rsplit("/", 1)[-1] if parsed.path else ""
+            if handle:
+                row["product_id"] = f"{store}_{handle}"
+            else:
+                row["product_id"] = f"{store}_{hashlib.md5(url.encode()).hexdigest()[:12]}"
+        else:
+            title = str(row.get("title") or "").strip()
+            if title:
+                import hashlib
+                row["product_id"] = f"AUTO_{hashlib.md5(title.encode()).hexdigest()[:12]}"
+
+
 def _infer_row_status(rows: List[Dict[str, str]]) -> None:
     """Auto-set row_status='ok' for rows that have product_id and title when the CSV lacks a row_status column."""
     for row in rows:
@@ -67,6 +99,8 @@ def read_catalog_rows(csv_path: str) -> List[Dict[str, str]]:
     path = Path(csv_path)
     with path.open("r", encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
+    if not _has_product_id_column(rows):
+        _infer_product_id(rows)
     if not _has_row_status_column(rows):
         _infer_row_status(rows)
     return rows

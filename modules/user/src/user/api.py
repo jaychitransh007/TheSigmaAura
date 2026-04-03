@@ -53,6 +53,7 @@ def _resolve_local_image_file(path_value: str) -> Path | None:
 
     allowed_roots = [
         (_repo_root() / "data" / "onboarding" / "images").resolve(),
+        (_repo_root() / "data" / "tryon" / "images").resolve(),
     ]
     for allowed_root in allowed_roots:
         try:

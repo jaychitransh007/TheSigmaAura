@@ -34,7 +34,7 @@ Implemented now:
 - latency tracking via `time.monotonic()` per agent stage
 - persisted turn artifacts: live context, memory, plan, applied filters, retrieved IDs, assembled candidates, final recommendations
 - response formatting for recommendation-pipeline turns (max 3 outfits) with 16-field item cards; dedicated handlers can return bounded multi-look outputs beyond that
-- virtual try-on via Gemini (`gemini-3.1-flash-image-preview`) with parallel generation and quality gate
+- virtual try-on via Gemini (`gemini-3.1-flash-image-preview`) with parallel generation, quality gate, persistent disk + DB storage (`virtual_tryon_images` table), and cache reuse by user + garment ID set
 - 3-column PDP outfit cards with Buy Now, radar chart, progress bars, feedback CTAs
 - per-outfit feedback capture with turn-level correlation
 - wardrobe ingestion from chat with vision-API enrichment and dual-layer image moderation
@@ -53,7 +53,8 @@ Implemented now:
 - quick-reply suggestion chips for clarification responses
 - unified profile page with inline editing, style code, and color palette display
 - chat composer + button with upload image / wardrobe picker popover
-- wardrobe add-item modal from wardrobe page
+- wardrobe add-item modal — photo-only upload with auto-enrichment (46 attributes via vision API)
+- catalog pipeline: auto-generated product_id from URL for CSVs lacking the column
 - results page with outfit preview thumbnails from outfits[].items[].image_url
 - unified warm/burgundy design system across onboarding, processing, main app, and admin
 
@@ -443,6 +444,7 @@ Status: done.
 - dual-layer image moderation (heuristic blocklist + vision API check)
 - restricted category exclusion in catalog retrieval
 - virtual try-on quality gate (fails closed)
+- virtual try-on persistence: images saved to `data/tryon/images/` with metadata in `virtual_tryon_images` table; cache reuse by user + garment IDs avoids re-generation for same outfit
 - policy event logging for all moderation decisions
 - wardrobe upload moderation (rejects non-garment, explicit, minor images)
 

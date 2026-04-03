@@ -562,3 +562,66 @@ class ConversationRepository:
         if latency_ms is not None:
             payload["latency_ms"] = latency_ms
         return self.client.insert_one("tool_traces", payload)
+
+    # -- virtual_tryon_images -------------------------------------------------
+
+    def insert_tryon_image(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str = "",
+        turn_id: str = "",
+        outfit_rank: int = 0,
+        garment_ids: List[str],
+        garment_source: str = "catalog",
+        person_image_path: str,
+        encrypted_filename: str,
+        file_path: str,
+        mime_type: str = "image/png",
+        file_size_bytes: int = 0,
+        generation_model: str = "gemini-3.1-flash-image-preview",
+        quality_score_pct: Optional[int] = None,
+        metadata_json: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "user_id": user_id,
+            "garment_ids": sorted(garment_ids),
+            "garment_source": garment_source,
+            "person_image_path": person_image_path,
+            "encrypted_filename": encrypted_filename,
+            "file_path": file_path,
+            "mime_type": mime_type,
+            "file_size_bytes": file_size_bytes,
+            "generation_model": generation_model,
+            "metadata_json": metadata_json or {},
+            "created_at": _now_iso(),
+        }
+        if conversation_id:
+            payload["conversation_id"] = conversation_id
+        if turn_id:
+            payload["turn_id"] = turn_id
+        if outfit_rank:
+            payload["outfit_rank"] = outfit_rank
+        if quality_score_pct is not None:
+            payload["quality_score_pct"] = quality_score_pct
+        return self.client.insert_one("virtual_tryon_images", payload)
+
+    def find_tryon_image_by_garments(
+        self,
+        user_id: str,
+        garment_ids: List[str],
+    ) -> Optional[Dict[str, Any]]:
+        """Find an existing try-on for the same user + garment set (cache lookup)."""
+        sorted_ids = sorted(garment_ids)
+        # PostgreSQL array equality: {a,b} = {a,b}
+        array_literal = "{" + ",".join(sorted_ids) + "}"
+        rows = self.client.select_many(
+            "virtual_tryon_images",
+            filters={
+                "user_id": f"eq.{user_id}",
+                "garment_ids": f"eq.{array_literal}",
+            },
+            order="created_at.desc",
+            limit=1,
+        )
+        return rows[0] if rows else None
