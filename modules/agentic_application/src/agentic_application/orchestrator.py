@@ -2617,6 +2617,7 @@ class AgenticOrchestrator:
         profile_confidence: Dict[str, Any] | None = None,
         sentiment_trace: Dict[str, Any] | None = None,
         channel: str = "web",
+        outfits: List[Any] | None = None,
     ) -> Dict[str, Any]:
         retrieval = []
         for retrieved_set in retrieved_sets:
@@ -2686,6 +2687,7 @@ class AgenticOrchestrator:
                 for row in evaluated
             ],
             "response_metadata": response_metadata,
+            "outfits": [o.model_dump() if hasattr(o, "model_dump") else dict(o) for o in (outfits or [])],
         }
 
     @staticmethod
@@ -3966,6 +3968,7 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence.model_dump(),
                 sentiment_trace=sentiment_trace,
                 channel=channel,
+                outfits=response.outfits,
             ),
         )
 

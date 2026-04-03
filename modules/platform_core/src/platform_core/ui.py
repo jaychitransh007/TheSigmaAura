@@ -1826,22 +1826,37 @@ def get_web_ui_html(
     }} catch (_) {{}}
   }}
 
-  // New chat
+  // New chat — creates a fresh conversation
   if (newChatBtn) {{
-    newChatBtn.addEventListener("click", function() {{
+    newChatBtn.addEventListener("click", async function() {{
       if (ACTIVE_VIEW !== "chat") {{
-        window.location.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=chat";
+        window.location.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=chat&new=1";
         return;
       }}
-      conversationId = "";
+      // Create a new conversation immediately
+      try {{
+        var res = await fetch("/v1/conversations", {{
+          method: "POST",
+          headers: {{ "Content-Type": "application/json" }},
+          body: JSON.stringify({{ user_id: USER_ID }}),
+        }});
+        var data = await res.json();
+        if (res.ok && data.conversation_id) {{
+          conversationId = data.conversation_id;
+        }} else {{
+          conversationId = "";
+        }}
+      }} catch (_) {{
+        conversationId = "";
+      }}
       feed.innerHTML = "";
       stageBar.textContent = "";
       if (feedWelcome) {{
         feedWelcome.style.display = "";
         feed.appendChild(feedWelcome);
       }}
-      historyList.querySelectorAll(".history-item").forEach(function(el) {{ el.classList.remove("active"); }});
-      messageEl.focus();
+      loadConversationHistory();
+      if (messageEl) messageEl.focus();
     }});
   }}
 
@@ -2486,13 +2501,25 @@ def get_web_ui_html(
 
   // Load conversation history
   if (ACTIVE_VIEW === "chat") {{
-    loadConversationHistory();
-    if (INIT_CONV_ID) {{
-      loadConversation(INIT_CONV_ID);
-    }}
-
-    // Auto-send from wardrobe "Style This" / "Build A Look"
     var urlParams = new URLSearchParams(window.location.search);
+
+    // Handle +New Chat from another view
+    if (urlParams.get("new") === "1") {{
+      window.history.replaceState(null, "", "/?user=" + encodeURIComponent(USER_ID) + "&view=chat");
+      fetch("/v1/conversations", {{
+        method: "POST",
+        headers: {{ "Content-Type": "application/json" }},
+        body: JSON.stringify({{ user_id: USER_ID }}),
+      }}).then(function(r) {{ return r.json(); }}).then(function(d) {{
+        if (d.conversation_id) conversationId = d.conversation_id;
+        loadConversationHistory();
+      }}).catch(function() {{ loadConversationHistory(); }});
+    }} else {{
+      loadConversationHistory();
+      if (INIT_CONV_ID) {{
+        loadConversation(INIT_CONV_ID);
+      }}
+    }}
     var seedPrompt = urlParams.get("prompt") || "";
     var seedImg = urlParams.get("wardrobe_img") || "";
     if (seedPrompt) {{

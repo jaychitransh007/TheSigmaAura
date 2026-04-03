@@ -1003,15 +1003,24 @@ def create_app() -> FastAPI:
             items: list[ResultListItem] = []
             for row in rows:
                 ctx = dict(row.get("resolved_context_json") or {})
+                outfits = ctx.get("outfits") or []
                 first_img = ""
-                for outfit in (ctx.get("outfits") or []):
-                    for item in (outfit.get("items") or []):
-                        img = str(item.get("image_url") or "").strip()
-                        if img:
-                            first_img = img
-                            break
-                    if first_img:
+                # Prefer tryon_image for preview
+                for outfit in outfits:
+                    tryon = str(outfit.get("tryon_image") or "").strip()
+                    if tryon:
+                        first_img = tryon
                         break
+                # Fallback: first garment image
+                if not first_img:
+                    for outfit in outfits:
+                        for item in (outfit.get("items") or []):
+                            img = str(item.get("image_url") or "").strip()
+                            if img:
+                                first_img = img
+                                break
+                        if first_img:
+                            break
                 items.append(
                     ResultListItem(
                         turn_id=str(row.get("id") or ""),
@@ -1021,7 +1030,7 @@ def create_app() -> FastAPI:
                         occasion=str(ctx.get("occasion") or ""),
                         intent=str(ctx.get("intent") or ctx.get("response_type") or ""),
                         source=str(ctx.get("source_preference") or ""),
-                        outfit_count=len(recs),
+                        outfit_count=len(outfits),
                         first_outfit_image=first_img,
                         created_at=str(row.get("created_at") or ""),
                     )
