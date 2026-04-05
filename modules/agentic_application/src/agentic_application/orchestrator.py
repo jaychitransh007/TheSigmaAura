@@ -3865,11 +3865,13 @@ class AgenticOrchestrator:
             "set_count": len(retrieved_sets),
         })
 
-        # Inject anchor garment as a synthetic retrieved product for paired assembly
+        # Inject anchor garment and remove competing catalog items for the anchor's role
         anchor = combined_context.live.anchor_garment
         if anchor and plan.plan_type == "paired_only":
             anchor_category = str(anchor.get("garment_category") or "").lower()
             anchor_role = "top" if anchor_category in ("top", "shirt", "blouse") else "bottom" if anchor_category in ("bottom", "trouser", "pant") else "complete"
+            # Remove all catalog retrieved sets for the anchor's role — the user's piece is the ONLY item for this role
+            retrieved_sets = [rs for rs in retrieved_sets if rs.role != anchor_role]
             anchor_product = RetrievedProduct(
                 product_id=str(anchor.get("id") or anchor.get("product_id") or "anchor_wardrobe"),
                 similarity=1.0,
@@ -3885,7 +3887,7 @@ class AgenticOrchestrator:
                     applied_filters={"source": "wardrobe_anchor"},
                 )
             )
-            _log.info("Injected anchor garment as role=%s for paired assembly", anchor_role)
+            _log.info("Injected anchor garment as role=%s, removed %d competing catalog sets for same role", anchor_role, sum(1 for _ in []))
 
         emit("outfit_assembly", "started")
         candidates = self.outfit_assembler.assemble(retrieved_sets, plan, combined_context)
