@@ -598,6 +598,7 @@ Main weak spots:
 ## What Is Not Finished
 
 See "What needs to be built" in the gap analysis above. Summary:
+- P0: **Pairing request pipeline fix** — when user uploads a garment image for pairing, the system must: (1) run full 46-attribute enrichment synchronously, (2) use the enriched garment as the fixed anchor in the outfit (not replaceable by catalog items), (3) search ONLY for complementary roles (e.g., anchor is top → search only bottoms/shoes), (4) ensure the anchor appears in every assembled outfit, (5) run full evaluation + virtual try-on on the paired outfit. Current state: anchor injection code exists but the architect sometimes still generates queries for the anchor's role, and the assembler/evaluator can drop the anchor in favor of higher-scoring catalog items. Needs end-to-end fix ensuring the uploaded garment is always the fixed piece in every returned outfit.
 - P0: homepage progressive disclosure and IA validation (last 2 items in Single-Page Shell Cleanup)
 - P1: server-side persistence for saved looks/recent threads, follow-up suggestion grouping improvements, wardrobe occasion-ready filter using enrichment metadata
 - P1: WhatsApp inbound runtime + cross-channel identity (retention surface — code was removed, needs rebuild)
