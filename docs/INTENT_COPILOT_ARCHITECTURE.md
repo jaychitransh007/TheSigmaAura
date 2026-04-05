@@ -14,7 +14,7 @@ This document describes the target architecture for the system we want to build 
 - profile-aware, memory-backed shopping and dressing intelligence
 
 For user-facing product framing, personas, journey, and stories, see `docs/PRODUCT.md`.
-For detailed step-by-step execution flows for all 11 intents, see `knowledge/workflow_reference.md`.
+For detailed step-by-step execution flows for all 12 intents, see `knowledge/workflow_reference.md`.
 
 The architecture below is broader than the current recommendation-only runtime. It is the target system design.
 

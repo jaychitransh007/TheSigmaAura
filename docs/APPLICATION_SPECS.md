@@ -16,11 +16,11 @@ This document serves two purposes:
 
 For the user-facing product summary, personas, journeys, and stories, see `docs/PRODUCT.md`.
 For the current project state, gap analysis, and file layout, see `docs/CURRENT_STATE.md`.
-For detailed step-by-step execution flows for all 11 intents, see `knowledge/workflow_reference.md`.
+For detailed step-by-step execution flows for all 12 intents, see `knowledge/workflow_reference.md`.
 
 Implemented now:
-- **intent registry** (`intent_registry.py`): StrEnum-based single source of truth for all 11 intents (`Intent`), 8 actions (`Action`), and 7 follow-up intents (`FollowUpIntent`) — with metadata registries and JSON schema helpers; consumed by planner, orchestrator, agents, API, and tests
-- copilot planner (gpt-5.4) — intent classification across 11 intents, 8 action dispatch (JSON schema enums generated from registry)
+- **intent registry** (`intent_registry.py`): StrEnum-based single source of truth for all 12 intents (`Intent`), 9 actions (`Action`), and 7 follow-up intents (`FollowUpIntent`) — with metadata registries and JSON schema helpers; consumed by planner, orchestrator, agents, API, and tests
+- copilot planner (gpt-5.4) — intent classification across 12 intents, 8 action dispatch (JSON schema enums generated from registry)
 - active runtime entrypoint in `agentic_application/api.py` with `AgenticOrchestrator`
 - saved user-context loading from onboarding/profile-analysis/style-preference persistence
 - server-side conversation-memory carry-forward across follow-up turns
@@ -209,6 +209,7 @@ Primary intent taxonomy:
 | `explanation_request` | "Why did you recommend this?" | reference to prior answer | prior chats, recommendation history, confidence state | transparent explanation |
 | `feedback_submission` | "I liked / disliked this." | explicit feedback | recommendation history, wardrobe, comfort learning | stored feedback + learning update |
 | `virtual_tryon_request` | "Show this on me." | garment input + user image context | profile, moderation, try-on pipeline | try-on result or safe failure |
+| `product_browse` | "Show me items matching these constraints." | category, color, attribute keywords | user profile, catalog | individual product cards with profile-appropriate filtering |
 
 Intent routing requirements:
 - each turn must have exactly one primary intent
@@ -376,7 +377,7 @@ Implementation is organized in phases. Phases 0–3 and Phase 6 are substantiall
 #### Phase 0 — contracts, analytics, and truth model — COMPLETE
 
 Status: done.
-- formal intent taxonomy defined (11 intents in copilot planner)
+- formal intent taxonomy defined (12 intents in copilot planner)
 - event schema for turn-completion, feedback, and dependency validation
 - confidence formula documented for profile and recommendation engines
 - first-50 success metrics defined
@@ -403,7 +404,7 @@ Status: done.
 Status: router and dedicated handler set are implemented in runtime.
 
 Done:
-- copilot planner classifies 11 intents with action dispatch
+- copilot planner classifies 12 intents with action dispatch
 - `run_recommendation_pipeline` handler fully operational (occasion recommendation)
 - `run_outfit_check` handler implemented with structured scoring, critique, and improvement suggestions
 - `run_shopping_decision` handler implemented with product parsing, verdicting, wardrobe overlap checks, and pairing follow-up

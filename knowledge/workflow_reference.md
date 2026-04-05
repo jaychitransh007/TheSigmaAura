@@ -2,7 +2,7 @@
 
 Last updated: April 5, 2026
 
-> **Runtime role:** This is the system's canonical execution plan reference. After the copilot planner classifies a user message into one of the 11 intents, the orchestrator follows the workflow defined here to produce a response. Every handler, branching condition, database operation, and LLM call is documented. This file is the authoritative source for how each intent is executed — agents and planners should stick to these flows.
+> **Runtime role:** This is the system's canonical execution plan reference. After the copilot planner classifies a user message into one of the 12 intents, the orchestrator follows the workflow defined here to produce a response. Every handler, branching condition, database operation, and LLM call is documented. This file is the authoritative source for how each intent is executed — agents and planners should stick to these flows.
 
 **Registry:** All intent identifiers are defined as `StrEnum` constants in `agentic_application/intent_registry.py`. The copilot planner JSON schema, orchestrator dispatch, and all agent code import from this single source of truth.
 
@@ -38,11 +38,22 @@ User message
    ├── Extracts: occasion_signal, formality_hint, time_hint, style_goal
    └── DB: repo.log_model_call(call_type="copilot_planner")
 
-2. Planner Overrides
-   ├── Check wardrobe-first preference ("from my wardrobe")
-   ├── Check catalog-only preference ("from the catalog")
-   ├── Check source_selection metadata
-   └── Set: force_catalog_followup, source_preference flags
+2. Planner Overrides via _apply_planner_overrides()
+   │  Deterministic keyword checks that CORRECT the LLM planner's classification
+   │  when phrase signals are more reliable than the model's output.
+   │
+   ├── Catalog follow-up override
+   │   └── "show me catalog options" after wardrobe answer → forces followup_intent="catalog_followup"
+   ├── Follow-up intent phrase override
+   │   └── Formality/boldness phrases → overrides followup_intent + sets formality_hint
+   ├── Targeted item override
+   │   └── "show me shirts" → overrides intent→OCCASION_RECOMMENDATION, action→RUN_RECOMMENDATION_PIPELINE
+   ├── Pairing request override
+   │   └── "what goes with this" + attached image → overrides intent→PAIRING_REQUEST, extracts anchor piece
+   ├── Outfit check override
+   │   └── "how does this look" → overrides intent→OUTFIT_CHECK, action→RUN_OUTFIT_CHECK
+   └── Source preference
+       └── "from my wardrobe"/"from the catalog" → appends wardrobe_first or catalog_only to specific_needs
 
 3. Wardrobe-First Check (if wardrobe items exist + not catalog-forced)
    ├── Attempt: _build_wardrobe_first_occasion_response()
@@ -138,10 +149,11 @@ User message
 1. Copilot Planner [gpt-5.4]
    └── May classify as occasion_recommendation initially
 
-2. Planner Override: _message_requests_pairing()
+2. Planner Override: _message_requests_pairing() [corrects LLM misclassification]
    ├── Keyword match: "goes with", "pair with", "style this", "complete the outfit"
-   ├── If match: override intent → PAIRING_REQUEST, action → RUN_RECOMMENDATION_PIPELINE
-   └── Detect anchor piece from attached image or message description
+   ├── If match + planner said something else: override intent → PAIRING_REQUEST, action → RUN_RECOMMENDATION_PIPELINE
+   ├── Extract anchor piece title from attached item or previous context
+   └── Common case: planner classifies as occasion_recommendation, override corrects to pairing_request
 
 3. Route Selection (3 paths):
 
@@ -642,6 +654,69 @@ User message
 
 ---
 
+## 12. Product Browse
+
+**Intent:** `Intent.PRODUCT_BROWSE`
+**Action:** `Action.RUN_PRODUCT_BROWSE`
+**Trigger:** "Show me shirts", "Find me blue dresses", "Browse jackets", "Suggest some trousers"
+
+### Step-by-Step Flow
+
+```
+1. Copilot Planner [gpt-5.4]
+   └── intent=product_browse, action=run_product_browse
+
+2. Dispatch → _handle_product_browse()
+
+3. Extract Constraints [NO LLM]
+   ├── detected_garments from action_parameters → map via GARMENT_TERM_TO_FILTER
+   │   └── e.g., "shirt" → (category="top", subtype="shirt")
+   ├── detected_colors from action_parameters → used in query document
+   └── formality_hint from resolved_context (if any)
+
+4. Build Minimal Search Plan [NO LLM]
+   ├── Single DirectionSpec with single QuerySpec
+   ├── Query document: "A {color} {garment} for {formality}. {profile palette hint}"
+   └── Hard filters: gender_expression + garment_category + garment_subtype
+
+5. Catalog Search [pgvector — embedding only, no LLM]
+   ├── Reuses CatalogSearchAgent.search() public API
+   ├── Embed query document → cosine similarity → hydrate → restricted filter
+   └── Retrieve up to 12 products
+
+6. Build Individual Product Cards
+   ├── Each product as its own OutfitCard (rank=i+1, 1 item)
+   └── NOT grouped as outfits — individual items
+
+7. Follow-up suggestions:
+   ├── "Style this piece" → pairing_request
+   ├── "Show me more like this" → product_browse continuation
+   ├── "Try this on me" → virtual_tryon_request
+   └── "Build an outfit around one of these" → occasion_recommendation
+
+8. DB: repo.finalize_turn(), repo.update_conversation_context(), dependency_event
+```
+
+### Key Differences from Occasion Recommendation
+- **No Outfit Architect** — no direction planning needed
+- **No Assembler** — no outfit grouping needed
+- **No Evaluator** — no body harmony scoring for a catalog browse
+- **No Virtual Try-On** — user can request as follow-up
+- **Faster** — just embed + search + format (single LLM call: planner only)
+- **Individual products, not outfits** — each result is a standalone item card
+
+### Response Metadata
+
+| Field | Value |
+|-------|-------|
+| `response_type` | `"product_browse"` |
+| `metadata.answer_source` | `"product_browse_handler"` |
+| `metadata.product_count` | number of items returned |
+| `metadata.browse_constraints` | garment label, colors, formality, hard filters |
+| `outfits` | Individual product cards (1 item each) |
+
+---
+
 ## Follow-Up Intent Handling
 
 When a user follows up on a previous response, the system detects one of 7 follow-up intents that modify the recommendation pipeline:
@@ -664,14 +739,14 @@ Follow-up intents are detected by the copilot planner via `resolved_context.foll
 
 | Component | Model | When Called | Intents |
 |-----------|-------|------------|---------|
-| Copilot Planner | gpt-5.4 | Every turn | All 11 |
+| Copilot Planner | gpt-5.4 | Every turn | All 12 |
 | Outfit Architect | gpt-5.4 | Recommendation pipeline | occasion, pairing |
 | Outfit Evaluator | gpt-5.4 | Recommendation pipeline | occasion, pairing |
 | Outfit Check Agent | gpt-5.4 | Outfit check handler | outfit_check |
 | Shopping Decision Agent | gpt-5.4 | Shopping decision handler | shopping_decision |
 | Virtual Try-On | gemini-3.1-flash-image-preview | Try-on generation | virtual_tryon, occasion (post-pipeline) |
 
-**No LLM calls:** style_discovery, explanation_request, capsule_or_trip_planning, garment_on_me (uses planner output), wardrobe_ingestion, feedback_submission.
+**No LLM calls:** style_discovery, explanation_request, capsule_or_trip_planning, garment_on_me (uses planner output), wardrobe_ingestion, feedback_submission, product_browse (uses planner output only — no additional LLM calls beyond the planner).
 
 ---
 
@@ -679,8 +754,8 @@ Follow-up intents are detected by the copilot planner via `resolved_context.foll
 
 | Table | Written By | Intents |
 |-------|-----------|---------|
-| `conversation_turns` | `repo.finalize_turn()` | All 11 |
-| `conversations.session_context_json` | `repo.update_conversation_context()` | All 11 |
+| `conversation_turns` | `repo.finalize_turn()` | All 12 |
+| `conversations.session_context_json` | `repo.update_conversation_context()` | All 12 |
 | `model_calls` | `repo.log_model_call()` | occasion, pairing, outfit_check, shopping_decision |
 | `feedback_events` | `repo.create_feedback_event()` | feedback_submission |
 | `user_wardrobe_items` | `onboarding_gateway.save_wardrobe_item()` | wardrobe_ingestion, outfit_check (async decomposition) |
@@ -688,5 +763,5 @@ Follow-up intents are detected by the copilot planner via `resolved_context.foll
 | `catalog_interaction_history` | `_persist_catalog_interactions()` | occasion, pairing |
 | `confidence_history` | `_persist_recommendation_confidence()` | occasion, pairing |
 | `policy_event_log` | `_persist_policy_event()` | virtual_tryon, wardrobe_ingestion |
-| `dependency_validation_events` | `_persist_dependency_turn_event()` | All 11 |
+| `dependency_validation_events` | `_persist_dependency_turn_event()` | All 12 |
 | `user_comfort_learning` | comfort_learning service | feedback_submission (like events) |

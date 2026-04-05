@@ -23,10 +23,11 @@ from enum import StrEnum
 from typing import List
 
 
-# ── Primary Intents (11) ─────────────────────────────────────────────
+# ── Primary Intents (12) ─────────────────────────────────────────────
 
 class Intent(StrEnum):
     OCCASION_RECOMMENDATION = "occasion_recommendation"
+    PRODUCT_BROWSE = "product_browse"
     STYLE_DISCOVERY = "style_discovery"
     EXPLANATION_REQUEST = "explanation_request"
     SHOPPING_DECISION = "shopping_decision"
@@ -39,10 +40,11 @@ class Intent(StrEnum):
     VIRTUAL_TRYON_REQUEST = "virtual_tryon_request"
 
 
-# ── Actions (8) ──────────────────────────────────────────────────────
+# ── Actions (9) ──────────────────────────────────────────────────────
 
 class Action(StrEnum):
     RUN_RECOMMENDATION_PIPELINE = "run_recommendation_pipeline"
+    RUN_PRODUCT_BROWSE = "run_product_browse"
     RUN_OUTFIT_CHECK = "run_outfit_check"
     RUN_SHOPPING_DECISION = "run_shopping_decision"
     RESPOND_DIRECTLY = "respond_directly"
@@ -89,6 +91,13 @@ INTENT_REGISTRY: dict[Intent, IntentMeta] = {
         description="User wants outfit suggestions or product recommendations for an occasion",
         default_action=Action.RUN_RECOMMENDATION_PIPELINE,
         handler="occasion_recommendation",
+    ),
+    Intent.PRODUCT_BROWSE: IntentMeta(
+        name=Intent.PRODUCT_BROWSE,
+        label="Browse Products",
+        description="User wants to browse or search catalog items by category, color, or attribute without an occasion",
+        default_action=Action.RUN_PRODUCT_BROWSE,
+        handler="product_browse",
     ),
     Intent.STYLE_DISCOVERY: IntentMeta(
         name=Intent.STYLE_DISCOVERY,
@@ -167,6 +176,11 @@ ACTION_REGISTRY: dict[Action, ActionMeta] = {
         name=Action.RUN_RECOMMENDATION_PIPELINE,
         label="Show Outfits",
         description="Full recommendation pipeline: architect → search → assemble → evaluate → format",
+    ),
+    Action.RUN_PRODUCT_BROWSE: ActionMeta(
+        name=Action.RUN_PRODUCT_BROWSE,
+        label="Browse Catalog",
+        description="Direct catalog search by category/color/attribute constraints, returning individual product cards",
     ),
     Action.RUN_OUTFIT_CHECK: ActionMeta(
         name=Action.RUN_OUTFIT_CHECK,

@@ -32,7 +32,7 @@ Related docs:
 - [`docs/PRODUCT.md`](PRODUCT.md)
 - [`docs/APPLICATION_SPECS.md`](APPLICATION_SPECS.md)
 - [`docs/CURRENT_STATE.md`](CURRENT_STATE.md)
-- [`knowledge/workflow_reference.md`](../knowledge/workflow_reference.md) — step-by-step execution flows for all 11 intents
+- [`knowledge/workflow_reference.md`](../knowledge/workflow_reference.md) — step-by-step execution flows for all 12 intents
 
 ## Product Design Goal
 

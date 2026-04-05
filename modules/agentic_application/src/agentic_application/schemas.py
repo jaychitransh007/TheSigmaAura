@@ -226,6 +226,23 @@ class EvaluatedRecommendation(BaseModel):
 # --- Response ---
 
 
+class OutfitItem(BaseModel):
+    product_id: str = ""
+    similarity: float = 0.0
+    title: str = ""
+    image_url: str = ""
+    price: str = ""
+    product_url: str = ""
+    garment_category: str = ""
+    garment_subtype: str = ""
+    primary_color: str = ""
+    role: str = ""
+    formality_level: str = ""
+    occasion_fit: str = ""
+    pattern_type: str = ""
+    source: str = ""
+
+
 class OutfitCard(BaseModel):
     rank: int
     title: str

@@ -2325,11 +2325,10 @@ class AgenticApplicationTests(unittest.TestCase):
             repo.finalize_turn.call_args.kwargs["resolved_context"].get("handler"),
         )
 
-    def test_targeted_printed_shirt_refinement_skips_generic_wardrobe_first_short_circuit(self) -> None:
+    def test_product_browse_routes_to_handler_and_skips_architect(self) -> None:
+        """Product browse intent uses direct catalog search, not the outfit architect pipeline."""
         from agentic_application.schemas import (
             CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
-            RecommendationPlan, DirectionSpec, QuerySpec, ResolvedContextBlock,
-            OutfitCard, RecommendationResponse,
         )
         repo = Mock()
         repo.client = Mock()
@@ -2365,94 +2364,33 @@ class AgenticApplicationTests(unittest.TestCase):
             },
         }
         gw.get_person_image_path.return_value = None
-        gw.get_wardrobe_items.return_value = [
-            {
-                "id": "w1",
-                "title": "Cream Shirt",
-                "garment_category": "top",
-                "garment_subtype": "shirt",
-                "primary_color": "cream",
-                "occasion_fit": "casual",
-                "formality_level": "smart_casual",
-            },
-            {
-                "id": "w2",
-                "title": "Olive Trousers",
-                "garment_category": "bottom",
-                "garment_subtype": "trousers",
-                "primary_color": "olive",
-                "occasion_fit": "casual",
-                "formality_level": "smart_casual",
-            },
-            {
-                "id": "w3",
-                "title": "Tan Loafers",
-                "garment_category": "shoe",
-                "garment_subtype": "loafer",
-                "primary_color": "tan",
-                "occasion_fit": "casual",
-                "formality_level": "smart_casual",
-            },
-        ]
+        gw.get_wardrobe_items.return_value = []
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent=Intent.OCCASION_RECOMMENDATION,
-            intent_confidence=0.93,
-            action=Action.RESPOND_DIRECTLY,
+            intent=Intent.PRODUCT_BROWSE,
+            intent_confidence=0.95,
+            action=Action.RUN_PRODUCT_BROWSE,
             context_sufficient=True,
-            assistant_message="I’ll pull subtle printed shirt options for you.",
+            assistant_message="Let me search for printed shirts that suit your profile.",
             follow_up_suggestions=["Show me more"],
             resolved_context=CopilotResolvedContext(
-                occasion_signal="casual",
-                formality_hint="smart_casual",
-                specific_needs=[],
-                is_followup=True,
+                style_goal="product_browse",
             ),
-            action_parameters=CopilotActionParameters(),
-        )
-        fake_plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=12,
-            directions=[
-                DirectionSpec(
-                    direction_id="A",
-                    direction_type="paired",
-                    label="Printed shirt direction",
-                    queries=[
-                        QuerySpec(query_id="A1", role="top", hard_filters={}, query_document="subtle printed shirts for smart casual looks"),
-                        QuerySpec(query_id="A2", role="bottom", hard_filters={}, query_document="clean trousers to support a subtle printed shirt"),
-                    ],
-                )
-            ],
-            resolved_context=ResolvedContextBlock(
-                occasion_signal="casual",
-                formality_hint="smart_casual",
-                specific_needs=["targeted_item_refinement", "targeted_shirts", "subtle_prints"],
-                is_followup=True,
-                followup_intent=FollowUpIntent.MORE_OPTIONS,
+            action_parameters=CopilotActionParameters(
+                detected_garments=["shirt"],
+                detected_colors=[],
             ),
         )
 
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway") as _gateway_cls, \
              patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
-            architect_cls.return_value.plan.return_value = fake_plan
             orchestrator = AgenticOrchestrator(
                 repo=repo,
                 onboarding_gateway=gw,
                 config=Mock(),
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
-            orchestrator.response_formatter.format = Mock(
-                return_value=RecommendationResponse(
-                    message="Here are subtle printed shirt directions.",
-                    outfits=[OutfitCard(rank=1, title="Printed Shirt Direction", reasoning="Targeted refinement.", items=[])],
-                    follow_up_suggestions=["Show me more"],
-                    metadata={"answer_source": "catalog_only", "primary_intent": Intent.OCCASION_RECOMMENDATION},
-                )
-            )
 
             result = orchestrator.process_turn(
                 conversation_id="c1",
@@ -2460,12 +2398,15 @@ class AgenticApplicationTests(unittest.TestCase):
                 message="Can you suggest subtle printed shirts for me?",
             )
 
-        architect_cls.return_value.plan.assert_called_once()
-        self.assertEqual("Here are subtle printed shirt directions.", result["assistant_message"])
-        self.assertNotEqual(
-            "occasion_recommendation_wardrobe_first",
+        # Architect should NOT have been called — product_browse skips it
+        architect_cls.return_value.plan.assert_not_called()
+        # Handler should persist with product_browse handler tag
+        self.assertEqual(
+            Intent.PRODUCT_BROWSE,
             repo.finalize_turn.call_args.kwargs["resolved_context"].get("handler"),
         )
+        self.assertEqual("product_browse", result["response_type"])
+        self.assertEqual("product_browse_handler", result["metadata"]["answer_source"])
 
     def test_make_it_smarter_with_complete_wardrobe_uses_richer_refinement_path_and_preserves_anchor_context(self) -> None:
         from agentic_application.schemas import (

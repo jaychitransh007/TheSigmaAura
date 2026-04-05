@@ -86,7 +86,7 @@ Success means users come back before real decisions: should I buy this, what goe
 ### What exists and works:
 - onboarding flow (OTP, profile, images, analysis, draping, style prefs)
 - catalog enrichment and embedding retrieval pipeline
-- copilot planner with intent classification and action routing (11 intents recognized)
+- copilot planner with intent classification and action routing (12 intents recognized)
 - recommendation pipeline (architect → search → assemble → evaluate → format → try-on)
 - wardrobe ingestion with vision-API enrichment and image moderation
 - wardrobe retrieval and wardrobe-first occasion response
@@ -320,8 +320,8 @@ Status:
 Implemented:
 - orchestrated recommendation pipeline with LLM copilot planner front-end
 - copilot planner (gpt-5.4) classifies intent and decides action — replaces legacy keyword router + context gate
-- **intent registry** (`intent_registry.py`): single source of truth for all 11 intents, 8 actions, and 7 follow-up intents via Python `StrEnum` — consumed by planner, orchestrator, agents, API, and tests
-- planner actions: `run_recommendation_pipeline`, `run_outfit_check`, `run_shopping_decision`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`
+- **intent registry** (`intent_registry.py`): single source of truth for all 12 intents, 9 actions, and 7 follow-up intents via Python `StrEnum` — consumed by planner, orchestrator, agents, API, and tests
+- planner actions: `run_recommendation_pipeline`, `run_outfit_check`, `run_shopping_decision`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`, `run_product_browse`
 - `response_type` field: `"recommendation"` | `"clarification"`
 - saved user context loading
 - conversation memory carry-forward
@@ -529,8 +529,8 @@ Current alignment level:
 - design consistency: strong — onboarding, main app, and admin share unified warm/burgundy visual language
 
 Main strengths:
-- intent registry (`intent_registry.py`) — StrEnum-based single source of truth for 11 intents, 8 actions, 7 follow-up intents; consumed by all runtime and test code
-- copilot planner routes 11 intents with action dispatch
+- intent registry (`intent_registry.py`) — StrEnum-based single source of truth for 12 intents, 9 actions, 7 follow-up intents; consumed by all runtime and test code
+- copilot planner routes 12 intents with action dispatch
 - typed context handoff between all pipeline stages
 - strict JSON schema with enum-constrained filter vocabulary
 - evaluator has graceful assembly_score fallback
@@ -566,8 +566,8 @@ Main weak spots:
 - `catalog_items` table removed (superseded by `catalog_enriched`)
 
 ### Application Layer
-- intent registry (`intent_registry.py`) — StrEnum single source of truth for 11 intents, 8 actions, 7 follow-up intents
-- copilot planner (gpt-5.4) — intent classification across 11 intents, 8 action dispatch
+- intent registry (`intent_registry.py`) — StrEnum single source of truth for 12 intents, 9 actions, 7 follow-up intents
+- copilot planner (gpt-5.4) — intent classification across 12 intents, 8 action dispatch
 - recommendation pipeline: architect → catalog search → assembly → evaluation → formatting → try-on
 - wardrobe-first occasion response (wardrobe retrieval + selection for occasion intents)
 - wardrobe item save from chat with moderation
@@ -656,7 +656,7 @@ Supabase tables (35 migrations in `supabase/migrations/`):
 ```text
 modules/
 ├── agentic_application/src/agentic_application/
-│   ├── intent_registry.py        # StrEnum registry: Intent(11), Action(8), FollowUpIntent(7) + metadata
+│   ├── intent_registry.py        # StrEnum registry: Intent(12), Action(9), FollowUpIntent(7) + metadata
 │   ├── api.py                    # FastAPI app factory, routes
 │   ├── orchestrator.py           # Copilot planner + 7-stage pipeline + virtual try-on
 │   ├── schemas.py                # Pydantic models

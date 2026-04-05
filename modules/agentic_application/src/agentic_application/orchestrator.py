@@ -278,41 +278,6 @@ class AgenticOrchestrator:
             return True
         return False
 
-    def _message_requests_targeted_item_suggestions(self, *, message: str) -> bool:
-        normalized = self._normalize_text_token(message)
-        if not normalized:
-            return False
-        if any(
-            phrase in normalized
-            for phrase in (
-                "subtle printed shirts",
-                "subtle print shirts",
-                "printed shirts for me",
-                "printed shirt for me",
-            )
-        ):
-            return True
-        suggestion_tokens = ("suggest", "show me", "recommend", "find me", "give me")
-        targeted_item_tokens = (
-            "shirt",
-            "shirts",
-            "shoe",
-            "shoes",
-            "trouser",
-            "trousers",
-            "pant",
-            "pants",
-            "blazer",
-            "blazers",
-            "jacket",
-            "jackets",
-            "top",
-            "tops",
-        )
-        return any(token in normalized for token in suggestion_tokens) and any(
-            token in normalized for token in targeted_item_tokens
-        )
-
     def _infer_followup_intent_override(self, *, message: str) -> str:
         normalized = self._normalize_text_token(message)
         if not normalized:
@@ -359,8 +324,6 @@ class AgenticOrchestrator:
     ) -> bool:
         if intent.primary_intent != Intent.OCCASION_RECOMMENDATION:
             return False
-        if self._message_requests_targeted_item_suggestions(message=message):
-            return True
         followup_intent = str(live_context.followup_intent or "").strip()
         if followup_intent in {FollowUpIntent.INCREASE_FORMALITY, FollowUpIntent.DECREASE_FORMALITY} and self._message_references_prior_context(message=message):
             return True
@@ -477,24 +440,6 @@ class AgenticOrchestrator:
                 )
             if "followup_phrase_override" not in override_reasons:
                 override_reasons.append("followup_phrase_override")
-
-        if self._message_requests_targeted_item_suggestions(message=message):
-            if plan_result.intent not in {Intent.OCCASION_RECOMMENDATION, Intent.PAIRING_REQUEST}:
-                plan_result.intent = Intent.OCCASION_RECOMMENDATION
-            if plan_result.action != Action.RUN_RECOMMENDATION_PIPELINE:
-                plan_result.action = Action.RUN_RECOMMENDATION_PIPELINE
-            if "targeted_item_refinement" not in plan_result.resolved_context.specific_needs:
-                plan_result.resolved_context.specific_needs.append("targeted_item_refinement")
-            normalized = self._normalize_text_token(message)
-            if "shirt" in normalized and "targeted_shirts" not in plan_result.resolved_context.specific_needs:
-                plan_result.resolved_context.specific_needs.append("targeted_shirts")
-            if (
-                ("subtle printed" in normalized or "subtle print" in normalized)
-                and "subtle_prints" not in plan_result.resolved_context.specific_needs
-            ):
-                plan_result.resolved_context.specific_needs.append("subtle_prints")
-            if "targeted_item_refinement_override" not in override_reasons:
-                override_reasons.append("targeted_item_refinement_override")
 
         if self._message_requests_pairing(message=message, has_attached_image=has_attached_image):
             attached = dict(attached_item or {})
@@ -1031,6 +976,20 @@ class AgenticOrchestrator:
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
 
+            )
+        elif plan_result.action == Action.RUN_PRODUCT_BROWSE:
+            return self._handle_product_browse(
+                plan_result=plan_result,
+                intent=intent,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                channel=channel,
+                external_user_id=external_user_id,
+                message=effective_message,
+                previous_context=previous_context,
+                user_context=user_context,
+                profile_confidence=profile_confidence,
+                emit=emit,
             )
         else:
             # Unknown action — fall back to direct response
@@ -4973,6 +4932,221 @@ class AgenticOrchestrator:
             "outfits": [],
             "follow_up_suggestions": plan_result.follow_up_suggestions[:5],
             "metadata": metadata,
+        }
+
+    def _handle_product_browse(
+        self,
+        *,
+        plan_result: CopilotPlanResult,
+        intent: IntentClassification,
+        conversation_id: str,
+        turn_id: str,
+        channel: str,
+        external_user_id: str,
+        message: str,
+        previous_context: Dict[str, Any],
+        user_context: Any,
+        profile_confidence: Any,
+        emit: Any,
+    ) -> Dict[str, Any]:
+        """Handle product_browse intent — direct catalog search by category/color/attribute."""
+        from .filters import build_global_hard_filters, merge_filters, resolve_garment_filters
+        from .schemas import (
+            CombinedContext,
+            DirectionSpec,
+            LiveContext,
+            QuerySpec,
+            RecommendationPlan,
+        )
+
+        detected_garments = list(plan_result.action_parameters.detected_garments or [])
+        detected_colors = list(plan_result.action_parameters.detected_colors or [])
+        formality = str(plan_result.resolved_context.formality_hint or "").strip()
+
+        # Build query document from constraints
+        garment_label = detected_garments[0] if detected_garments else "item"
+        color_label = " ".join(detected_colors) if detected_colors else ""
+        profile_hint = ""
+        if hasattr(user_context, "color_palette") and user_context.color_palette:
+            palette = user_context.color_palette
+            if hasattr(palette, "base_colors") and palette.base_colors:
+                profile_hint = f" Profile palette includes {', '.join(palette.base_colors[:3])}."
+        query_parts = ["A"]
+        if color_label:
+            query_parts.append(color_label)
+        query_parts.append(garment_label)
+        if formality:
+            query_parts.append(f"for {formality} wear")
+        query_doc = " ".join(query_parts) + "." + profile_hint
+
+        # Build filters
+        garment_filters = resolve_garment_filters(detected_garments)
+        hard_filters = merge_filters(
+            build_global_hard_filters(user_context),
+            garment_filters,
+        )
+
+        # Build minimal single-direction plan
+        browse_plan = RecommendationPlan(
+            plan_type="complete_only",
+            retrieval_count=12,
+            directions=[
+                DirectionSpec(
+                    direction_id="browse",
+                    direction_type="complete",
+                    label=f"Browse: {garment_label}",
+                    queries=[
+                        QuerySpec(
+                            query_id="browse_q1",
+                            role="complete",
+                            hard_filters=garment_filters,
+                            query_document=query_doc,
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        live_context = LiveContext(
+            user_need=message,
+            occasion_signal=plan_result.resolved_context.occasion_signal or "",
+            formality_hint=formality,
+            time_hint=plan_result.resolved_context.time_hint or "",
+            specific_needs=list(plan_result.resolved_context.specific_needs or []),
+        )
+
+        combined_context = CombinedContext(
+            user=user_context,
+            live=live_context,
+            hard_filters=hard_filters,
+        )
+
+        # Search catalog via existing agent
+        if emit:
+            emit("search", "catalog_browse", "Searching catalog...")
+        retrieved_sets = self.catalog_search_agent.search(browse_plan, combined_context)
+
+        # Collect all products across sets
+        all_products = []
+        for rs in retrieved_sets:
+            all_products.extend(rs.products)
+
+        # Build individual product cards (1 item per OutfitCard)
+        from .schemas import OutfitCard, OutfitItem
+        outfits = []
+        for i, product in enumerate(all_products[:12]):
+            enriched = dict(product.enriched_data or {})
+            metadata = dict(product.metadata or {})
+            item = OutfitItem(
+                product_id=product.product_id,
+                similarity=product.similarity,
+                title=str(enriched.get("title") or metadata.get("title") or ""),
+                image_url=str(enriched.get("image_urls") or metadata.get("image_url") or ""),
+                price=str(enriched.get("price") or metadata.get("price") or ""),
+                product_url=str(enriched.get("url") or enriched.get("product_url") or ""),
+                garment_category=str(enriched.get("garment_category") or metadata.get("garment_category") or ""),
+                garment_subtype=str(enriched.get("garment_subtype") or metadata.get("garment_subtype") or ""),
+                primary_color=str(enriched.get("primary_color") or metadata.get("primary_color") or ""),
+                role="complete",
+                formality_level=str(enriched.get("formality_level") or metadata.get("formality_level") or ""),
+                occasion_fit=str(enriched.get("occasion_fit") or metadata.get("occasion_fit") or ""),
+                pattern_type=str(enriched.get("pattern_type") or ""),
+                source="catalog",
+            )
+            outfits.append(
+                OutfitCard(
+                    rank=i + 1,
+                    title=item.title or f"{garment_label.title()} Option {i + 1}",
+                    items=[item.model_dump()],
+                )
+            )
+
+        # Follow-up suggestions
+        follow_ups = list(plan_result.follow_up_suggestions or [])
+        if not follow_ups:
+            follow_ups = [
+                "Style this piece",
+                "Show me more like this",
+                "Try this on me",
+                "Show me a different color",
+                "Build an outfit around one of these",
+            ]
+
+        # Response message
+        product_count = len(outfits)
+        if product_count:
+            assistant_message = plan_result.assistant_message or f"Here are {product_count} {garment_label} options from the catalog that suit your profile."
+        else:
+            assistant_message = plan_result.assistant_message or f"I couldn't find {garment_label} options matching those filters right now. Try broadening your search."
+
+        # Build metadata
+        response_metadata = self._build_response_metadata(
+            channel=channel,
+            intent=intent,
+            profile_confidence=profile_confidence,
+            extra={
+                "answer_source": "product_browse_handler",
+                "product_count": product_count,
+                "browse_constraints": {
+                    "garment_label": garment_label,
+                    "colors": detected_colors,
+                    "formality": formality,
+                    "hard_filters": hard_filters,
+                },
+            },
+        )
+
+        # Persist
+        resolved_context_dict = {
+            "request_summary": message,
+            "occasion": "",
+            "style_goal": "product_browse",
+            "handler": Intent.PRODUCT_BROWSE,
+        }
+
+        self.repo.finalize_turn(
+            turn_id=turn_id,
+            assistant_message=assistant_message,
+            resolved_context=resolved_context_dict,
+        )
+
+        session_update = {
+            **previous_context,
+            "last_intent": plan_result.intent,
+            "last_live_context": {
+                "occasion_signal": "",
+                "formality_hint": formality,
+                "style_goal": "product_browse",
+            },
+        }
+        self.repo.update_conversation_context(
+            conversation_id=conversation_id,
+            session_context=session_update,
+        )
+
+        self._persist_dependency_turn_event(
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            external_user_id=external_user_id,
+            channel=channel,
+            primary_intent=plan_result.intent,
+            response_type="product_browse",
+            metadata_json={
+                "product_count": product_count,
+                "garment_label": garment_label,
+            },
+        )
+
+        return {
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "assistant_message": assistant_message,
+            "response_type": "product_browse",
+            "resolved_context": resolved_context_dict,
+            "filters_applied": hard_filters,
+            "outfits": [o.model_dump() if hasattr(o, "model_dump") else dict(o) for o in outfits],
+            "follow_up_suggestions": follow_ups[:5],
+            "metadata": response_metadata,
         }
 
     @staticmethod
