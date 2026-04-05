@@ -1,6 +1,6 @@
 # Design System And Experience Principles
 
-Last updated: April 3, 2026
+Last updated: April 5, 2026
 
 ## Purpose
 
@@ -21,7 +21,11 @@ The design system is now applied uniformly across all surfaces: onboarding, prof
 Key UI patterns implemented:
 - **Unified profile page**: Single page with inline edit toggle — view mode shows read-only fields, edit mode switches to inputs/selects in place. Includes style code card and personalized color palette card (base/accent/avoid chips).
 - **Chat composer**: `+` button opens a popover with "Upload image" (file picker) and "Select from wardrobe" (modal with wardrobe grid). Supports drag-drop and paste.
-- **Wardrobe add-item modal**: Photo upload with preview, category, color, occasion, brand, notes fields.
+- **Chat management**: Conversation sidebar with hover-reveal rename (inline edit) and delete (archive with confirmation) actions per history item. Title column on conversations table.
+- **Wardrobe add-item modal**: Photo upload with preview, auto-enrichment (46 attributes via vision API).
+- **Wardrobe edit modal**: Full metadata edit form (title, description, category, subtype, colors, pattern, formality, occasion, brand, notes) with image preview. Calls PATCH endpoint.
+- **Wardrobe delete**: Per-card delete button with confirmation dialog. Soft-deletes via is_active=false.
+- **Wardrobe filters**: Search bar (title/description/brand/category), category chips (All, Tops, Bottoms, Shoes, Dresses, Outerwear, Accessories, Occasion-ready), color filter row (11 colors), and localStorage persistence across page loads.
 - **Results grid**: 2-column card grid with outfit preview thumbnails, user message, occasion chips, and relative timestamps.
 
 Related docs:

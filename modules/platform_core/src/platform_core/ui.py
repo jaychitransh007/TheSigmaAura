@@ -134,12 +134,27 @@ def get_web_ui_html(
       display: block; width: 100%; text-align: left; padding: 10px 12px;
       border-radius: 10px; border: none; background: none; cursor: pointer;
       font-size: 13px; color: var(--ink); transition: background 100ms ease;
-      margin-bottom: 2px;
+      margin-bottom: 2px; position: relative;
     }
     .history-item:hover { background: rgba(111, 47, 69, 0.06); }
     .history-item.active { background: rgba(111, 47, 69, 0.10); font-weight: 600; }
-    .history-item .preview { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .history-item .preview { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 44px; }
     .history-item .ts { display: block; font-size: 11px; color: var(--muted-soft); margin-top: 2px; }
+    .history-actions {
+      position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+      display: none; gap: 2px;
+    }
+    .history-item:hover .history-actions { display: flex; }
+    .history-action-btn {
+      width: 22px; height: 22px; border: none; background: none; cursor: pointer;
+      border-radius: 6px; font-size: 12px; color: var(--muted); padding: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .history-action-btn:hover { background: rgba(111, 47, 69, 0.12); color: var(--ink); }
+    .history-rename-input {
+      width: 100%; padding: 4px 8px; border: 1px solid var(--accent); border-radius: 6px;
+      font-family: inherit; font-size: 13px; color: var(--ink); background: #fff; outline: none;
+    }
     .history-empty { padding: 24px 18px; font-size: 13px; color: var(--muted); line-height: 1.5; }
 
     /* ===== Chat Main ===== */
@@ -465,6 +480,16 @@ def get_web_ui_html(
       cursor: pointer; text-align: center;
     }
     .studio-btn:hover { border-color: var(--wardrobe); color: var(--wardrobe); }
+    .studio-btn.danger { color: #9b2323; border-color: rgba(155,35,35,0.25); }
+    .studio-btn.danger:hover { border-color: #9b2323; }
+    .wardrobe-search {
+      width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 999px;
+      font-family: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
+      margin-bottom: 12px; outline: none; transition: border-color 120ms ease;
+    }
+    .wardrobe-search:focus { border-color: var(--wardrobe); }
+    .wardrobe-search::placeholder { color: var(--muted-soft); }
+    .filter-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
     .wardrobe-empty { text-align: center; padding: 48px 24px; color: var(--muted); font-size: 14px; }
     .wardrobe-add-btn {
       padding: 8px 20px; border-radius: 999px; border: 1.5px dashed var(--line);
@@ -824,12 +849,29 @@ def get_web_ui_html(
     <div><span class="stat-val" id="wStatComplete">0%</span> completeness</div>
     <div id="wStatusPill" style="margin-left:auto;font-size:11px;color:var(--muted-soft);"></div>
   </div>
+  <input type="search" id="wardrobeSearch" class="wardrobe-search" placeholder="Search wardrobe by name, brand, or description..." />
   <div class="wardrobe-filters" id="wardrobeFilters">
     <button class="filter-chip active" data-filter="all">All</button>
     <button class="filter-chip" data-filter="tops">Tops</button>
     <button class="filter-chip" data-filter="bottoms">Bottoms</button>
     <button class="filter-chip" data-filter="shoes">Shoes</button>
+    <button class="filter-chip" data-filter="dresses">Dresses</button>
+    <button class="filter-chip" data-filter="outerwear">Outerwear</button>
+    <button class="filter-chip" data-filter="accessories">Accessories</button>
     <button class="filter-chip" data-filter="occasion">Occasion-ready</button>
+  </div>
+  <div class="filter-row" id="wardrobeColorFilters">
+    <button class="filter-chip active" data-color="all">All Colors</button>
+    <button class="filter-chip" data-color="black">Black</button>
+    <button class="filter-chip" data-color="white">White</button>
+    <button class="filter-chip" data-color="blue">Blue</button>
+    <button class="filter-chip" data-color="red">Red</button>
+    <button class="filter-chip" data-color="green">Green</button>
+    <button class="filter-chip" data-color="brown">Brown</button>
+    <button class="filter-chip" data-color="navy">Navy</button>
+    <button class="filter-chip" data-color="grey">Grey</button>
+    <button class="filter-chip" data-color="beige">Beige</button>
+    <button class="filter-chip" data-color="pink">Pink</button>
   </div>
   <div class="closet-grid" id="closetGrid">
     <div class="wardrobe-empty">Loading wardrobe...</div>
@@ -854,6 +896,78 @@ def get_web_ui_html(
       <div class="modal-actions" style="justify-content:center;">
         <button type="button" class="btn-cancel" id="addItemCancel">Cancel</button>
         <button type="submit" class="btn-primary" id="addItemSubmit">Add to Wardrobe</button>
+      </div>
+    </form>
+  </div>
+</div>
+"""
+
+    # ── Edit Wardrobe Item Modal ──
+    html += """
+<div class="modal-overlay" id="editItemModal">
+  <div class="modal-box">
+    <h2 style="margin-bottom:8px;">Edit Item</h2>
+    <form id="editItemForm">
+      <input type="hidden" id="editItemId" />
+      <div id="editItemImgWrap" style="text-align:center;margin-bottom:16px;">
+        <img id="editItemPreview" style="max-height:140px;border-radius:10px;border:1px solid var(--line);display:none;" alt="" />
+      </div>
+      <div class="modal-field">
+        <label for="editTitle">Title</label>
+        <input type="text" id="editTitle" maxlength="120" />
+      </div>
+      <div class="modal-field">
+        <label for="editDescription">Description</label>
+        <input type="text" id="editDescription" maxlength="300" />
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label for="editCategory">Category</label>
+          <input type="text" id="editCategory" />
+        </div>
+        <div class="modal-field">
+          <label for="editSubtype">Subtype</label>
+          <input type="text" id="editSubtype" />
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label for="editPrimaryColor">Primary Color</label>
+          <input type="text" id="editPrimaryColor" />
+        </div>
+        <div class="modal-field">
+          <label for="editSecondaryColor">Secondary Color</label>
+          <input type="text" id="editSecondaryColor" />
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label for="editPattern">Pattern</label>
+          <input type="text" id="editPattern" />
+        </div>
+        <div class="modal-field">
+          <label for="editFormality">Formality</label>
+          <input type="text" id="editFormality" />
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <label for="editOccasion">Occasion Fit</label>
+          <input type="text" id="editOccasion" />
+        </div>
+        <div class="modal-field">
+          <label for="editBrand">Brand</label>
+          <input type="text" id="editBrand" />
+        </div>
+      </div>
+      <div class="modal-field">
+        <label for="editNotes">Notes</label>
+        <input type="text" id="editNotes" maxlength="500" />
+      </div>
+      <div class="modal-error" id="editItemError"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" id="editItemCancel">Cancel</button>
+        <button type="submit" class="btn-primary" id="editItemSubmit">Save Changes</button>
       </div>
     </form>
   </div>
@@ -987,6 +1101,9 @@ def get_web_ui_html(
   var wardrobeItems = [];
   var wardrobeSummary = null;
   var activeWardrobeFilter = "all";
+  var activeWardrobeColor = "all";
+  var wardrobeSearchQuery = "";
+  var wardrobeItemsById = {{}};
   var styleCodeData = null;
   var conversationId = INIT_CONV_ID;
   var allResults = [];
@@ -1026,6 +1143,8 @@ def get_web_ui_html(
   // Wardrobe
   var closetGrid = document.getElementById("closetGrid");
   var wardrobeFilters = document.getElementById("wardrobeFilters");
+  var wardrobeColorFilters = document.getElementById("wardrobeColorFilters");
+  var wardrobeSearchInput = document.getElementById("wardrobeSearch");
   var wStatusPill = document.getElementById("wStatusPill");
   var wStatCount = document.getElementById("wStatCount");
   var wStatComplete = document.getElementById("wStatComplete");
@@ -1171,6 +1290,7 @@ def get_web_ui_html(
       var img = document.createElement("img");
       img.src = imageDataUrl;
       img.style.cssText = "max-height:120px;border-radius:8px;display:block;margin-bottom:6px;";
+      img.onerror = function() {{ this.style.display = "none"; }};
       div.appendChild(img);
     }}
     div.appendChild(document.createTextNode(text));
@@ -1205,6 +1325,8 @@ def get_web_ui_html(
   function setImagePreview(dataUrl, fileName) {{
     pendingImageData = dataUrl;
     imageChipImg.src = dataUrl;
+    imageChipImg.onerror = function() {{ this.style.display = "none"; }};
+    imageChipImg.style.display = "";
     imageChipName.textContent = fileName || "Pasted image";
     imageChip.classList.add("visible");
   }}
@@ -1218,10 +1340,31 @@ def get_web_ui_html(
   }}
 
   function handleImageFile(file) {{
-    if (!file || file.type.indexOf("image") === -1) return;
+    if (!file) return;
+    var isImage = (file.type && file.type.indexOf("image") !== -1) || /\.(jpe?g|png|gif|webp|heic|heif|bmp|tiff?)$/i.test(file.name);
+    if (!isImage) return;
     if (file.size > 10 * 1024 * 1024) {{ err.textContent = "Image must be under 10 MB."; return; }}
     var reader = new FileReader();
-    reader.onload = function(e) {{ setImagePreview(e.target.result, file.name); }};
+    reader.onload = function(e) {{
+      var dataUrl = e.target.result;
+      var isHeic = /\.(heic|heif)$/i.test(file.name) || file.type === "image/heic" || file.type === "image/heif";
+      if (isHeic) {{
+        imageChipName.textContent = "Converting " + (file.name || "image") + "...";
+        imageChipImg.style.display = "none";
+        imageChip.classList.add("visible");
+        fetch("/v1/images/convert", {{
+          method: "POST",
+          headers: {{ "Content-Type": "application/json" }},
+          body: JSON.stringify({{ image_data: dataUrl }}),
+        }}).then(function(r) {{ return r.json(); }}).then(function(d) {{
+          setImagePreview(d.image_data, file.name.replace(/\.(heic|heif)$/i, ".jpg"));
+        }}).catch(function() {{
+          setImagePreview(dataUrl, file.name);
+        }});
+      }} else {{
+        setImagePreview(dataUrl, file.name);
+      }}
+    }};
     reader.readAsDataURL(file);
   }}
 
@@ -1448,12 +1591,20 @@ def get_web_ui_html(
       prod.className = "outfit-product";
       var pTitle = item.title || item.product_id || "Untitled";
       var url = item.product_url || item.url || "";
+      var itemImg = firstImageUrl(item);
       var itemSource = normalizeSourceToken(item.source) || outfitSource;
-      var html = '<div class="product-header"><span class="outfit-product-title">' + escapeHtml(pTitle) + '</span>';
+      var html = '<div class="product-header" style="display:flex;align-items:center;gap:8px;">';
+      if (itemImg) {{
+        html += '<img src="' + escapeHtml(itemImg) + '" alt="" style="width:40px;height:40px;border-radius:6px;object-fit:cover;" />';
+      }} else if (item.primary_color) {{
+        html += '<span style="display:inline-block;width:40px;height:40px;border-radius:6px;background:' + escapeHtml(item.primary_color) + ';border:1px solid var(--line);flex-shrink:0;"></span>';
+      }}
+      html += '<span class="outfit-product-title">' + escapeHtml(pTitle) + '</span>';
       if (url) html += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer" class="btn-buy">Buy Now</a>';
       html += '</div>';
       html += '<div class="outfit-item-source"><span class="source-mini-pill ' + escapeHtml(sourceBadgeClass(itemSource)) + '">' + escapeHtml(sourceBadgeLabel(itemSource)) + '</span>';
-      if (item.role) html += '<span class="chip">' + escapeHtml(item.role) + '</span>';
+      if (item.garment_category) html += '<span class="chip">' + escapeHtml(item.garment_category) + '</span>';
+      if (item.role && item.role !== item.garment_category) html += '<span class="chip">' + escapeHtml(item.role) + '</span>';
       html += '</div>';
       if (item.price) html += '<div style="margin-bottom:4px;color:#666;">' + escapeHtml(item.price) + '</div>';
       prod.innerHTML = html;
@@ -1676,15 +1827,15 @@ def get_web_ui_html(
 
   async function ensureConversation() {{
     if (conversationId) return conversationId;
-    var res = await fetch("/v1/conversations/resolve", {{
+    var res = await fetch("/v1/conversations", {{
       method: "POST",
       headers: {{ "Content-Type": "application/json" }},
       body: JSON.stringify({{ user_id: USER_ID }}),
     }});
     var data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Failed to resolve conversation");
+    if (!res.ok) throw new Error(data.detail || "Failed to create conversation");
     conversationId = data.conversation_id;
-    addMeta(data.reused_existing ? "conversation resumed" : "conversation created");
+    loadConversationHistory();
     return conversationId;
   }}
 
@@ -1786,14 +1937,92 @@ def get_web_ui_html(
       convs.forEach(function(c) {{
         var btn = document.createElement("button");
         btn.className = "history-item" + (c.conversation_id === conversationId ? " active" : "");
-        btn.innerHTML = '<span class="preview">' + escapeHtml(c.preview || "Conversation") + '</span>' +
-          '<span class="ts">' + escapeHtml(relativeTime(c.updated_at || c.created_at)) + '</span>';
-        btn.addEventListener("click", function() {{
+        var label = c.title || c.preview || "Conversation";
+        btn.innerHTML = '<span class="preview">' + escapeHtml(label) + '</span>' +
+          '<span class="ts">' + escapeHtml(relativeTime(c.updated_at || c.created_at)) + '</span>' +
+          '<span class="history-actions">' +
+            '<span class="history-action-btn" data-hist-action="rename" data-conv-id="' + escapeHtml(c.conversation_id) + '" data-conv-label="' + escapeHtml(label) + '" title="Rename">&#9998;</span>' +
+            '<span class="history-action-btn" data-hist-action="delete" data-conv-id="' + escapeHtml(c.conversation_id) + '" title="Delete">&#128465;</span>' +
+          '</span>';
+        btn.addEventListener("click", function(e) {{
+          if (e.target.closest("[data-hist-action]")) return;
           loadConversation(c.conversation_id);
         }});
         historyList.appendChild(btn);
       }});
     }} catch (_) {{}}
+  }}
+
+  // Chat history rename/delete actions
+  if (historyList) {{
+    historyList.addEventListener("click", async function(e) {{
+      var actionEl = e.target.closest("[data-hist-action]");
+      if (!actionEl) return;
+      e.stopPropagation();
+      var action = actionEl.getAttribute("data-hist-action");
+      var convId = actionEl.getAttribute("data-conv-id");
+
+      if (action === "delete") {{
+        if (!confirm("Delete this conversation?")) return;
+        try {{
+          var res = await fetch("/v1/conversations/" + encodeURIComponent(convId), {{ method: "DELETE" }});
+          if (!res.ok) {{ var err = await res.json(); throw new Error(err.detail || "Delete failed"); }}
+          if (conversationId === convId) {{
+            conversationId = null;
+            feed.innerHTML = "";
+            stageBar.textContent = "";
+          }}
+          loadConversationHistory();
+        }} catch(ex) {{
+          alert(ex.message || "Failed to delete conversation.");
+        }}
+      }}
+
+      if (action === "rename") {{
+        var histItem = actionEl.closest(".history-item");
+        if (!histItem) return;
+        var previewSpan = histItem.querySelector(".preview");
+        if (!previewSpan) return;
+        var currentLabel = actionEl.getAttribute("data-conv-label") || previewSpan.textContent || "";
+        var input = document.createElement("input");
+        input.type = "text";
+        input.className = "history-rename-input";
+        input.value = currentLabel;
+        previewSpan.textContent = "";
+        previewSpan.appendChild(input);
+        input.focus();
+        input.select();
+
+        async function commitRename() {{
+          var newTitle = input.value.trim();
+          if (!newTitle || newTitle === currentLabel) {{
+            previewSpan.textContent = currentLabel;
+            return;
+          }}
+          try {{
+            var res = await fetch("/v1/conversations/" + encodeURIComponent(convId), {{
+              method: "PATCH",
+              headers: {{ "Content-Type": "application/json" }},
+              body: JSON.stringify({{ title: newTitle }})
+            }});
+            if (!res.ok) {{ var err = await res.json(); throw new Error(err.detail || "Rename failed"); }}
+            loadConversationHistory();
+          }} catch(ex) {{
+            previewSpan.textContent = currentLabel;
+            alert(ex.message || "Failed to rename.");
+          }}
+        }}
+
+        var committed = false;
+        input.addEventListener("keydown", function(ke) {{
+          if (ke.key === "Enter") {{ ke.preventDefault(); if (!committed) {{ committed = true; commitRename(); }} }}
+          if (ke.key === "Escape") {{ previewSpan.textContent = currentLabel; }}
+        }});
+        input.addEventListener("blur", function() {{
+          if (!committed) {{ committed = true; commitRename(); }}
+        }});
+      }}
+    }});
   }}
 
   async function loadConversation(convId) {{
@@ -1898,15 +2127,35 @@ def get_web_ui_html(
     if (filter === "all") return true;
     var category = String(item.garment_category || "").toLowerCase();
     var occasionFit = String(item.occasion_fit || "").toLowerCase();
-    if (filter === "tops") return ["top", "shirt", "blouse", "tee", "tshirt", "sweater", "knit", "jacket", "blazer"].some(function(t) {{ return category.indexOf(t) !== -1; }});
+    if (filter === "tops") return ["top", "shirt", "blouse", "tee", "tshirt", "sweater", "knit"].some(function(t) {{ return category.indexOf(t) !== -1; }});
     if (filter === "bottoms") return ["pant", "trouser", "jean", "skirt", "short"].some(function(t) {{ return category.indexOf(t) !== -1; }});
     if (filter === "shoes") return ["shoe", "heel", "boot", "loafer", "sandal", "sneaker"].some(function(t) {{ return category.indexOf(t) !== -1; }});
+    if (filter === "dresses") return ["dress", "gown", "romper", "jumpsuit"].some(function(t) {{ return category.indexOf(t) !== -1; }});
+    if (filter === "outerwear") return ["jacket", "blazer", "coat", "parka", "hoodie", "cardigan"].some(function(t) {{ return category.indexOf(t) !== -1; }});
+    if (filter === "accessories") return ["bag", "belt", "scarf", "watch", "jewelry", "hat", "accessory", "sunglasses", "tie", "bracelet", "necklace", "earring", "ring"].some(function(t) {{ return category.indexOf(t) !== -1; }});
     if (filter === "occasion") return occasionFit.length > 0 && occasionFit !== "everyday";
     return true;
   }}
 
+  function wardrobeColorMatches(item, color) {{
+    if (color === "all") return true;
+    var primary = String(item.primary_color || "").toLowerCase();
+    var secondary = String(item.secondary_color || "").toLowerCase();
+    return primary.indexOf(color) !== -1 || secondary.indexOf(color) !== -1;
+  }}
+
+  function wardrobeSearchMatches(item, query) {{
+    if (!query) return true;
+    var hay = (String(item.title || "") + " " + String(item.description || "") + " " + String(item.brand || "") + " " + String(item.garment_category || "")).toLowerCase();
+    return hay.indexOf(query) !== -1;
+  }}
+
   function renderWardrobeCloset() {{
-    var filtered = wardrobeItems.filter(function(item) {{ return wardrobeFilterMatches(item, activeWardrobeFilter); }});
+    var filtered = wardrobeItems.filter(function(item) {{
+      return wardrobeFilterMatches(item, activeWardrobeFilter)
+        && wardrobeColorMatches(item, activeWardrobeColor)
+        && wardrobeSearchMatches(item, wardrobeSearchQuery);
+    }});
     if (!filtered.length) {{
       closetGrid.innerHTML = '<div class="wardrobe-empty">No saved pieces match this filter yet.</div>';
       return;
@@ -1927,6 +2176,8 @@ def get_web_ui_html(
           '<div class="closet-actions">' +
             '<button class="studio-btn" type="button" data-wardrobe-prompt="' + escapeHtml("Style my " + title + " from my wardrobe.") + '" data-wardrobe-img="' + escapeHtml(imageUrl || "") + '">Style This</button>' +
             '<button class="studio-btn" type="button" data-wardrobe-prompt="' + escapeHtml("Build me an outfit around my " + title + " for the right occasion.") + '" data-wardrobe-img="' + escapeHtml(imageUrl || "") + '">Build A Look</button>' +
+            '<button class="studio-btn" type="button" data-action="edit" data-item-id="' + escapeHtml(item.id) + '">Edit</button>' +
+            '<button class="studio-btn danger" type="button" data-action="delete" data-item-id="' + escapeHtml(item.id) + '">Delete</button>' +
           '</div>' +
         '</div></article>';
     }}).join("");
@@ -1945,9 +2196,23 @@ def get_web_ui_html(
       var summaryPayload = await responses[1].json();
       wardrobeItems = itemsPayload.items || [];
       wardrobeSummary = summaryPayload || null;
+      wardrobeItemsById = {{}};
+      wardrobeItems.forEach(function(item) {{ wardrobeItemsById[item.id] = item; }});
       wStatCount.textContent = String(wardrobeItems.length);
       wStatComplete.textContent = String((wardrobeSummary && wardrobeSummary.completeness_score_pct) || 0) + "%";
       wStatusPill.textContent = wardrobeItems.length ? "Loaded" : "No pieces yet";
+      // Restore persisted filters
+      try {{
+        var saved = JSON.parse(localStorage.getItem("aura_wardrobe_filters") || "null");
+        if (saved) {{
+          if (saved.category) {{ activeWardrobeFilter = saved.category; }}
+          if (saved.color) {{ activeWardrobeColor = saved.color; }}
+          if (saved.search) {{ wardrobeSearchQuery = saved.search; if (wardrobeSearchInput) wardrobeSearchInput.value = saved.search; }}
+          // Sync chip active states
+          if (wardrobeFilters) wardrobeFilters.querySelectorAll(".filter-chip").forEach(function(c) {{ c.classList.toggle("active", (c.getAttribute("data-filter") || "all") === activeWardrobeFilter); }});
+          if (wardrobeColorFilters) wardrobeColorFilters.querySelectorAll(".filter-chip").forEach(function(c) {{ c.classList.toggle("active", (c.getAttribute("data-color") || "all") === activeWardrobeColor); }});
+        }}
+      }} catch(_) {{}}
     }} catch (_) {{
       wardrobeItems = []; wardrobeSummary = null;
       wStatusPill.textContent = "Unable to load";
@@ -1955,7 +2220,16 @@ def get_web_ui_html(
     renderWardrobeCloset();
   }}
 
-  // Wardrobe filter chips
+  // Persist wardrobe filter state
+  function saveWardrobeFilterState() {{
+    try {{
+      localStorage.setItem("aura_wardrobe_filters", JSON.stringify({{
+        category: activeWardrobeFilter, color: activeWardrobeColor, search: wardrobeSearchQuery
+      }}));
+    }} catch(_) {{}}
+  }}
+
+  // Wardrobe category filter chips
   if (wardrobeFilters) {{
     wardrobeFilters.addEventListener("click", function(e) {{
       var chip = e.target.closest(".filter-chip");
@@ -1963,13 +2237,81 @@ def get_web_ui_html(
       activeWardrobeFilter = chip.getAttribute("data-filter") || "all";
       wardrobeFilters.querySelectorAll(".filter-chip").forEach(function(c) {{ c.classList.remove("active"); }});
       chip.classList.add("active");
+      saveWardrobeFilterState();
       renderWardrobeCloset();
     }});
   }}
 
-  // Wardrobe "Style This" / "Build A Look" buttons
+  // Wardrobe color filter chips
+  if (wardrobeColorFilters) {{
+    wardrobeColorFilters.addEventListener("click", function(e) {{
+      var chip = e.target.closest(".filter-chip");
+      if (!chip) return;
+      activeWardrobeColor = chip.getAttribute("data-color") || "all";
+      wardrobeColorFilters.querySelectorAll(".filter-chip").forEach(function(c) {{ c.classList.remove("active"); }});
+      chip.classList.add("active");
+      saveWardrobeFilterState();
+      renderWardrobeCloset();
+    }});
+  }}
+
+  // Wardrobe search
+  if (wardrobeSearchInput) {{
+    wardrobeSearchInput.addEventListener("input", function(e) {{
+      wardrobeSearchQuery = (e.target.value || "").toLowerCase().trim();
+      saveWardrobeFilterState();
+      renderWardrobeCloset();
+    }});
+  }}
+
+  // Wardrobe card actions (Style This, Build A Look, Edit, Delete)
   if (closetGrid) {{
-    closetGrid.addEventListener("click", function(e) {{
+    closetGrid.addEventListener("click", async function(e) {{
+      // Edit action
+      var editBtn = e.target.closest("[data-action='edit']");
+      if (editBtn) {{
+        var itemId = editBtn.getAttribute("data-item-id");
+        var item = wardrobeItemsById[itemId];
+        if (!item) return;
+        var modal = document.getElementById("editItemModal");
+        if (!modal) return;
+        document.getElementById("editItemId").value = item.id;
+        document.getElementById("editTitle").value = item.title || "";
+        document.getElementById("editDescription").value = item.description || "";
+        document.getElementById("editCategory").value = item.garment_category || "";
+        document.getElementById("editSubtype").value = item.garment_subtype || "";
+        document.getElementById("editPrimaryColor").value = item.primary_color || "";
+        document.getElementById("editSecondaryColor").value = item.secondary_color || "";
+        document.getElementById("editPattern").value = item.pattern_type || "";
+        document.getElementById("editFormality").value = item.formality_level || "";
+        document.getElementById("editOccasion").value = item.occasion_fit || "";
+        document.getElementById("editBrand").value = item.brand || "";
+        document.getElementById("editNotes").value = item.notes || "";
+        var imgPreview = document.getElementById("editItemPreview");
+        var imgUrl = wardrobeImageUrl(item);
+        if (imgUrl) {{ imgPreview.src = imgUrl; imgPreview.style.display = "inline-block"; }}
+        else {{ imgPreview.style.display = "none"; }}
+        document.getElementById("editItemError").textContent = "";
+        modal.classList.add("open");
+        return;
+      }}
+      // Delete action
+      var delBtn = e.target.closest("[data-action='delete']");
+      if (delBtn) {{
+        var itemId = delBtn.getAttribute("data-item-id");
+        var item = wardrobeItemsById[itemId];
+        var name = (item && item.title) || "this item";
+        if (!confirm("Remove " + name + " from your wardrobe?")) return;
+        try {{
+          var res = await fetch("/v1/onboarding/wardrobe/items/" + encodeURIComponent(itemId) + "?user_id=" + encodeURIComponent(USER_ID), {{ method: "DELETE" }});
+          if (!res.ok) {{ var err = await res.json(); throw new Error(err.detail || "Delete failed"); }}
+          loadWardrobeStudio();
+        }} catch(ex) {{
+          alert(ex.message || "Failed to delete item.");
+        }}
+        return;
+      }}
+      // Style This / Build A Look (existing)
       var btn = e.target.closest("[data-wardrobe-prompt]");
       if (!btn) return;
       var prompt = btn.getAttribute("data-wardrobe-prompt") || "";
@@ -2038,6 +2380,55 @@ def get_web_ui_html(
         errorEl.textContent = ex.message || "Failed to save item.";
       }} finally {{
         submitBtn.disabled = false; submitBtn.textContent = "Add to Wardrobe";
+      }}
+    }});
+  }}());
+
+  // Edit Item modal
+  (function() {{
+    var modal = document.getElementById("editItemModal");
+    var form = document.getElementById("editItemForm");
+    var cancelBtn = document.getElementById("editItemCancel");
+    var errorEl = document.getElementById("editItemError");
+    if (!modal || !form) return;
+
+    if (cancelBtn) cancelBtn.addEventListener("click", function() {{ modal.classList.remove("open"); }});
+    modal.addEventListener("click", function(e) {{ if (e.target === modal) modal.classList.remove("open"); }});
+
+    form.addEventListener("submit", async function(e) {{
+      e.preventDefault();
+      var itemId = document.getElementById("editItemId").value;
+      if (!itemId) return;
+      var submitBtn = document.getElementById("editItemSubmit");
+      submitBtn.disabled = true; submitBtn.textContent = "Saving...";
+      errorEl.textContent = "";
+      var payload = {{
+        user_id: USER_ID,
+        title: document.getElementById("editTitle").value.trim(),
+        description: document.getElementById("editDescription").value.trim(),
+        garment_category: document.getElementById("editCategory").value.trim(),
+        garment_subtype: document.getElementById("editSubtype").value.trim(),
+        primary_color: document.getElementById("editPrimaryColor").value.trim(),
+        secondary_color: document.getElementById("editSecondaryColor").value.trim(),
+        pattern_type: document.getElementById("editPattern").value.trim(),
+        formality_level: document.getElementById("editFormality").value.trim(),
+        occasion_fit: document.getElementById("editOccasion").value.trim(),
+        brand: document.getElementById("editBrand").value.trim(),
+        notes: document.getElementById("editNotes").value.trim()
+      }};
+      try {{
+        var res = await fetch("/v1/onboarding/wardrobe/items/" + encodeURIComponent(itemId), {{
+          method: "PATCH",
+          headers: {{ "Content-Type": "application/json" }},
+          body: JSON.stringify(payload)
+        }});
+        if (!res.ok) {{ var err = await res.json(); throw new Error(err.detail || "Update failed"); }}
+        modal.classList.remove("open");
+        loadWardrobeStudio();
+      }} catch(ex) {{
+        errorEl.textContent = ex.message || "Failed to update item.";
+      }} finally {{
+        submitBtn.disabled = false; submitBtn.textContent = "Save Changes";
       }}
     }});
   }}())

@@ -43,12 +43,6 @@ def build_dependency_report(
         if str(row.get("event_type") or "") == "turn_completed"
         and str(row.get("user_id") or "").strip() in onboarded_user_ids
     ]
-    referral_events = [
-        row for row in dependency_events
-        if str(row.get("event_type") or "") == "referral"
-        and str(row.get("user_id") or "").strip() in onboarded_user_ids
-    ]
-
     events_by_user: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for row in turn_events:
         events_by_user[str(row.get("user_id") or "").strip()].append(row)
@@ -105,7 +99,6 @@ def build_dependency_report(
     second_session_users = 0
     third_session_users = 0
     repeat_sessions_total = 0
-    repeat_sessions_whatsapp = 0
     repeat_flags: Dict[str, bool] = {}
 
     session_behavior: Dict[int, Dict[str, Any]] = {
@@ -125,8 +118,6 @@ def build_dependency_report(
         for index, session in enumerate(sessions, start=1):
             if index >= 2:
                 repeat_sessions_total += 1
-                if session["source_channel"] == "whatsapp":
-                    repeat_sessions_whatsapp += 1
             if index <= 3:
                 bucket = session_behavior[index]
                 bucket["count"] += 1
@@ -157,11 +148,6 @@ def build_dependency_report(
         and str(row.get("primary_intent") or "") == "feedback_submission"
     }
     catalog_users = {str(row.get("user_id") or "").strip() for row in catalog_interactions}
-    whatsapp_users = {
-        str(row.get("user_id") or "").strip()
-        for row in turn_events
-        if str(row.get("source_channel") or "") == "whatsapp"
-    }
 
     def memory_lift(label: str, users_with_signal: Iterable[str]) -> Dict[str, Any]:
         with_signal = {user_id for user_id in users_with_signal if user_id in onboarded_user_ids}
@@ -189,11 +175,6 @@ def build_dependency_report(
             "third_session_within_30d_count": third_session_users,
             "third_session_within_30d_rate_pct": _safe_ratio(third_session_users, len(onboarded_user_ids)),
             "repeat_sessions_total": repeat_sessions_total,
-            "repeat_sessions_whatsapp_count": repeat_sessions_whatsapp,
-            "repeat_sessions_whatsapp_rate_pct": _safe_ratio(repeat_sessions_whatsapp, repeat_sessions_total),
-            "advocacy_user_count": len({str(row.get("user_id") or "").strip() for row in referral_events}),
-            "advocacy_event_count": len(referral_events),
-            "advocacy_rate_pct": _safe_ratio(len({str(row.get('user_id') or '').strip() for row in referral_events}), len(onboarded_user_ids)),
         },
         "acquisition_sources": _top_counts(acquisition_counter, limit=10),
         "session_behavior": {
@@ -210,7 +191,6 @@ def build_dependency_report(
             memory_lift("wardrobe_items", wardrobe_users),
             memory_lift("feedback_history", feedback_users),
             memory_lift("catalog_interaction_history", catalog_users),
-            memory_lift("whatsapp_usage", whatsapp_users),
         ],
     }
     return report

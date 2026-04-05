@@ -37,20 +37,8 @@ class ResolveConversationResponse(ConversationResponse):
 class CreateTurnRequest(BaseModel):
     user_id: str = Field(min_length=1)
     message: str = Field(min_length=1, max_length=4000)
-    channel: str = Field(default="web", pattern=r"^(web|whatsapp)$")
+    channel: str = Field(default="web", pattern=r"^(web)$")
     image_data: str = Field(default="", max_length=10_000_000)
-
-
-class WhatsAppInboundRequest(BaseModel):
-    phone_number: str = Field(min_length=7, max_length=32)
-    message: str = Field(default="", max_length=4000)
-    conversation_id: str = ""
-    user_id: str = ""
-    message_id: str = ""
-    profile_name: str = ""
-    image_url: str = ""
-    link_url: str = ""
-    media_type: str = Field(default="", pattern=r"^(|product|outfit_photo|wardrobe_item|garment_on_me)$")
 
 
 class OutfitItem(BaseModel):
@@ -121,66 +109,6 @@ class TurnResponse(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
-class WhatsAppInboundResponse(TurnResponse):
-    user_id: str
-    channel: str = "whatsapp"
-    conversation_created: bool = False
-    phone_number: str = ""
-    input_message_id: str = ""
-
-
-class WhatsAppReminderRequest(BaseModel):
-    phone_number: str = ""
-    user_id: str = ""
-    conversation_id: str = ""
-    reminder_type: str = Field(default="", pattern=r"^(|followup|reactivation|shopping|wardrobe|occasion)$")
-
-
-class WhatsAppReminderResponse(BaseModel):
-    user_id: str
-    conversation_id: str = ""
-    channel: str = "whatsapp"
-    reminder_type: str = ""
-    assistant_message: str
-    follow_up_suggestions: List[str] = Field(default_factory=list)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-
-
-class WhatsAppDeepLinkRequest(BaseModel):
-    phone_number: str = ""
-    user_id: str = ""
-    conversation_id: str = ""
-    task: str = Field(
-        default="",
-        pattern=r"^(|complete_onboarding|improve_profile|manage_wardrobe|review_tryon|capsule_planner|chat)$",
-    )
-
-
-class WhatsAppDeepLinkResponse(BaseModel):
-    user_id: str
-    conversation_id: str = ""
-    channel: str = "whatsapp"
-    task: str
-    assistant_message: str
-    deep_link_url: str
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-
-
-class ReferralEventRequest(BaseModel):
-    user_id: str = Field(min_length=1)
-    channel: str = Field(default="web", pattern=r"^(web|whatsapp)$")
-    referral_type: str = Field(default="invite", pattern=r"^(invite|share|referral)$")
-    target: str = ""
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-
-
-class ReferralEventResponse(BaseModel):
-    success: bool
-    event_id: str = ""
-    user_id: str
-    referral_type: str
-
-
 class DependencyReportResponse(BaseModel):
     report: Dict[str, Any] = Field(default_factory=dict)
 
@@ -220,9 +148,14 @@ class ConversationStateResponse(BaseModel):
 # -- Listing schemas for UI ------------------------------------------------
 
 
+class RenameConversationRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
 class ConversationListItem(BaseModel):
     conversation_id: str
     status: str
+    title: str = ""
     preview: str = ""
     occasion: str = ""
     created_at: str = ""

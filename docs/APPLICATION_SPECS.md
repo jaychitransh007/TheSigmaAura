@@ -1,6 +1,6 @@
 # Application Layer — Implementation Specification
 
-Last updated: April 3, 2026
+Last updated: April 5, 2026
 
 ## Product Positioning
 
@@ -46,7 +46,9 @@ Implemented now:
 - profile confidence engine and recommendation confidence engine (9-factor, 0–100 scoring)
 - dual-layer image moderation (heuristic blocklist + vision API)
 - restricted category exclusion in catalog retrieval
-- WhatsApp message formatting, deep linking, and source labeling
+- conversation management: rename (PATCH) and delete/archive (DELETE) endpoints with sidebar UI
+- wardrobe edit modal (all metadata fields) and per-card delete with confirmation
+- wardrobe search bar, enhanced category filter chips (8), color filter row (11), localStorage persistence
 - dependency/retention instrumentation (turn-completion events, cohort anchors, memory-input lift)
 - follow-up turns with 7 follow-up intent types
 - `response_type` field: `"recommendation"` | `"clarification"`
@@ -425,11 +427,11 @@ Done:
 - catalog upsell follow-through after wardrobe-first occasion and outfit-check answers
 - wardrobe-image vs catalog-image pairing distinction at intake and runtime
 
-#### Phase 5 — WhatsApp retention surface — COMPLETE
+#### Phase 5 — WhatsApp retention surface — REMOVED
 
-Status: done.
+Status: code removed from codebase as of April 2026. WhatsApp services (formatter, deep links, reengagement, runtime) were deleted. WhatsApp remains a target retention surface in product strategy but will need to be rebuilt when ready.
 
-Done:
+Previously implemented (now removed):
 - WhatsApp message formatting (outfits, suggestions, source labeling)
 - deep linking with task routing (onboarding, wardrobe, tryon review, chat)
 - WhatsApp Business API integration — inbound webhook, outbound delivery
@@ -467,8 +469,9 @@ Not done:
 
 This is the prioritized build sequence for closing the remaining gaps.
 
-#### P0 — WhatsApp Runtime + Cross-Channel Identity — COMPLETE
+#### P0 — WhatsApp Runtime + Cross-Channel Identity — REMOVED / PENDING REBUILD
 Why: no repeat usage without this. WhatsApp is the retention surface.
+Status: code was removed from the codebase. Will need to be rebuilt when ready for first-50 rollout.
 - WhatsApp Business API integration (inbound webhook + outbound delivery)
 - cross-channel identity resolver (phone → user_id)
 - input normalizer (text, images, product links from WhatsApp format)
@@ -506,6 +509,10 @@ Why: users need to see and trust their wardrobe data.
 - web-based wardrobe browsing (view, edit, delete)
 - wardrobe completeness scoring
 - gap analysis view
+- edit modal with all metadata fields (title, description, category, subtype, colors, pattern, formality, occasion, brand, notes)
+- per-card delete with confirmation dialog
+- search bar, enhanced category filter chips (8), color filter row (11), localStorage filter persistence
+- conversation rename (inline edit) and delete (archive) in sidebar
 
 #### P2 — Style Discovery + Explanation Handlers — COMPLETE
 Why: builds trust and keeps users engaged.

@@ -145,7 +145,6 @@ class UserAnalysisService:
                 str(run["id"]),
                 body_type_output=baseline.get("body_type_output") or {},
                 color_headshot_output=baseline.get("color_headshot_output") or {},
-                color_veins_output={},
                 other_details_output=baseline.get("other_details_output") or {},
                 collated_output=baseline.get("collated_output") or {},
             )
@@ -197,7 +196,6 @@ class UserAnalysisService:
             error_message="",
             body_type_output=agent_outputs["body_type_analysis"],
             color_headshot_output=agent_outputs["color_analysis_headshot"],
-            color_veins_output={},
             other_details_output=agent_outputs["other_details_analysis"],
             collated_output={**collated, "derived_interpretations": derived},
             draping_output=draping_result.to_dict(),
@@ -243,7 +241,6 @@ class UserAnalysisService:
             error_message="",
             body_type_output=agent_outputs["body_type_analysis"],
             color_headshot_output=agent_outputs["color_analysis_headshot"],
-            color_veins_output={},
             other_details_output=agent_outputs["other_details_analysis"],
             collated_output={**collated, "derived_interpretations": derived},
         )

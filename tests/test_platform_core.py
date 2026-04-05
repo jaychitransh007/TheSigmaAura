@@ -14,7 +14,7 @@ for p in (
         sys.path.insert(0, sp)
 
 
-from platform_core.api_schemas import CreateTurnRequest, WhatsAppInboundRequest
+from platform_core.api_schemas import CreateTurnRequest
 from platform_core.config import load_config
 from platform_core.fallback_messages import graceful_policy_message
 from platform_core.image_moderation import ImageModerationService, image_block_message
@@ -86,22 +86,6 @@ class PlatformCoreTests(unittest.TestCase):
         self.assertIn("clothed", graceful_policy_message("explicit_nudity"))
         self.assertIn("full-body photo", graceful_policy_message("missing_person_image"))
         self.assertIn("cleaner product image", graceful_policy_message("low_detail_output"))
-
-    def test_whatsapp_inbound_request_contract(self) -> None:
-        req = WhatsAppInboundRequest(
-            phone_number="+1 (555) 123-4567",
-            message="Need office looks",
-            image_url="https://img/look.jpg",
-            link_url="https://store.example/item",
-            media_type="product",
-        )
-        self.assertEqual("+1 (555) 123-4567", req.phone_number)
-        self.assertEqual("Need office looks", req.message)
-        self.assertEqual("", req.conversation_id)
-        self.assertEqual("", req.user_id)
-        self.assertEqual("https://img/look.jpg", req.image_url)
-        self.assertEqual("https://store.example/item", req.link_url)
-        self.assertEqual("product", req.media_type)
 
     def test_load_config_accepts_supabase_cli_env_vars(self) -> None:
         with patch("platform_core.config._load_dotenv", return_value=None), patch.dict(
@@ -183,7 +167,7 @@ class PlatformCoreTests(unittest.TestCase):
         )
 
         self.assertEqual("canonical-db", row["id"])
-        self.assertEqual(6, client.update_one.call_count)
+        self.assertEqual(5, client.update_one.call_count)
         first_update = client.update_one.call_args_list[0]
         self.assertEqual("conversations", first_update.args[0])
         self.assertEqual("eq.alias-db", first_update.kwargs["filters"]["user_id"])
@@ -192,7 +176,6 @@ class PlatformCoreTests(unittest.TestCase):
         self.assertEqual(
             [
                 "catalog_interaction_history",
-                "user_sentiment_history",
                 "confidence_history",
                 "policy_event_log",
                 "dependency_validation_events",
@@ -215,46 +198,6 @@ class PlatformCoreTests(unittest.TestCase):
 
         self.assertEqual("canonical-db", row["id"])
         client.update_one.assert_not_called()
-
-    def test_create_sentiment_trace_persists_expected_payload(self) -> None:
-        client = unittest.mock.Mock()
-        client.insert_one.return_value = {"id": "s1"}
-        repo = ConversationRepository(client)
-
-        out = repo.create_sentiment_trace(
-            user_id="user-1",
-            conversation_id="c1",
-            turn_id="t1",
-            source_channel="whatsapp",
-            sentiment_source="user_message",
-            sentiment_label="anxious",
-            sentiment_score=-0.65,
-            intensity=0.65,
-            cues_json=["nervous"],
-            metadata_json={"message_length": 18},
-        )
-
-        self.assertEqual({"id": "s1"}, out)
-        payload = client.insert_one.call_args.args[1]
-        self.assertEqual("user-1", payload["user_id"])
-        self.assertEqual("anxious", payload["sentiment_label"])
-        self.assertEqual(-0.65, payload["sentiment_score"])
-        self.assertEqual(0.65, payload["intensity"])
-        self.assertEqual(["nervous"], payload["cues_json"])
-        self.assertEqual("whatsapp", payload["source_channel"])
-
-    def test_list_sentiment_traces_filters_by_user_and_label(self) -> None:
-        client = unittest.mock.Mock()
-        client.select_many.return_value = [{"id": "s1"}]
-        repo = ConversationRepository(client)
-
-        rows = repo.list_sentiment_traces("user-1", sentiment_label="anxious", limit=3)
-
-        self.assertEqual([{"id": "s1"}], rows)
-        kwargs = client.select_many.call_args.kwargs
-        self.assertEqual("eq.user-1", kwargs["filters"]["user_id"])
-        self.assertEqual("eq.anxious", kwargs["filters"]["sentiment_label"])
-        self.assertEqual(3, kwargs["limit"])
 
     def test_create_confidence_history_persists_expected_payload(self) -> None:
         client = unittest.mock.Mock()

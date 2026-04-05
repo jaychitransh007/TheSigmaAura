@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter
 
@@ -152,6 +153,62 @@ class ApplicationUserGateway:
             notes=notes,
             metadata_json=metadata_json or {},
         )
+
+    def save_decomposed_garments(
+        self,
+        *,
+        user_id: str,
+        garments: List[Dict[str, Any]],
+        turn_id: str = "",
+        conversation_id: str = "",
+    ) -> List[Dict[str, Any]]:
+        """Save individual garments decomposed from an outfit photo.
+
+        Each garment with ``image_data`` (base64 data URL of the cropped region)
+        goes through the full wardrobe save pipeline including vision-based
+        attribute extraction (46 attributes).
+        """
+        _log = logging.getLogger(__name__)
+        saved: List[Dict[str, Any]] = []
+        for garment in garments:
+            image_data = str(garment.get("image_data") or "").strip()
+            title = str(garment.get("title") or "").strip()
+            notes = "Decomposed from outfit photo."
+            try:
+                if image_data:
+                    item = self.save_uploaded_chat_wardrobe_item(
+                        user_id=user_id,
+                        image_data=image_data,
+                        title=title,
+                        description=title,
+                        notes=notes,
+                    )
+                else:
+                    item = self.save_chat_wardrobe_item(
+                        user_id=user_id,
+                        title=title,
+                        garment_category=str(garment.get("garment_category") or "").strip(),
+                        garment_subtype=str(garment.get("garment_subtype") or "").strip(),
+                        primary_color=str(garment.get("primary_color") or "").strip(),
+                        secondary_color=str(garment.get("secondary_color") or "").strip(),
+                        pattern_type=str(garment.get("pattern_type") or "").strip(),
+                        formality_level=str(garment.get("formality_level") or "").strip(),
+                        occasion_fit=str(garment.get("occasion_fit") or "").strip(),
+                        notes=notes,
+                        metadata_json={
+                            "source": "outfit_decomposition",
+                            "source_turn_id": turn_id,
+                            "source_conversation_id": conversation_id,
+                        },
+                    )
+                if item is not None:
+                    saved.append(item)
+            except Exception:
+                _log.warning("Failed to save decomposed garment: %s", title, exc_info=True)
+        return saved
+
+    def delete_wardrobe_item(self, *, user_id: str, wardrobe_item_id: str) -> bool:
+        return self._service.delete_wardrobe_item(user_id=user_id, wardrobe_item_id=wardrobe_item_id)
 
     def create_router(self) -> APIRouter:
         return create_onboarding_router(self._service, self._analysis)

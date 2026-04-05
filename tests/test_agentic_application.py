@@ -42,10 +42,6 @@ from agentic_application.orchestrator import AgenticOrchestrator
 from agentic_application.profile_confidence import evaluate_profile_confidence
 from agentic_application.recommendation_confidence import evaluate_recommendation_confidence
 from agentic_application.product_links import resolve_product_url
-from agentic_application.sentiment import extract_sentiment
-from agentic_application.services.whatsapp_formatter import format_turn_response_for_whatsapp
-from agentic_application.services.whatsapp_deep_links import build_whatsapp_deep_link
-from agentic_application.services.whatsapp_reengagement import build_whatsapp_reengagement_message
 from agentic_application.services.dependency_reporting import build_dependency_report
 from agentic_application.services.tryon_quality_gate import TryonQualityGate
 from agentic_application.agents.response_formatter import _build_zero_result_fallback
@@ -126,85 +122,11 @@ class AgenticApplicationTests(unittest.TestCase):
             Path(person_path).unlink(missing_ok=True)
             Path(generated_path).unlink(missing_ok=True)
 
-    def test_whatsapp_formatter_builds_channel_safe_message(self) -> None:
-        result = format_turn_response_for_whatsapp(
-            {
-                "assistant_message": "Here are your best options.",
-                "outfits": [
-                    {
-                        "rank": 1,
-                        "title": "Office Look",
-                        "items": [
-                            {"title": "Navy Blazer", "source": "wardrobe"},
-                            {"title": "Cream Trousers", "source": "catalog"},
-                        ],
-                    }
-                ],
-                "follow_up_suggestions": ["Show me more", "Show me catalog alternatives", "Explain why", "Save this"],
-                "metadata": {"primary_intent": "occasion_recommendation"},
-            }
-        )
-
-        self.assertIn("Top options:", result["assistant_message"])
-        self.assertIn("Navy Blazer (your wardrobe)", result["assistant_message"])
-        self.assertIn("Cream Trousers (catalog)", result["assistant_message"])
-        self.assertIn("Reply with:", result["assistant_message"])
-        self.assertEqual(3, len(result["follow_up_suggestions"]))
-        self.assertEqual("whatsapp", result["metadata"]["channel_rendering"]["surface"])
-
-    def test_whatsapp_reengagement_uses_last_intent(self) -> None:
-        reminder = build_whatsapp_reengagement_message(
-            previous_context={
-                "last_intent": "shopping_decision",
-                "memory": {"wardrobe_item_count": 2},
-            },
-        )
-
-        self.assertEqual("shopping", reminder["reminder_type"])
-        self.assertIn("buy / skip", reminder["assistant_message"].lower())
-        self.assertIn("Should I buy this?", reminder["follow_up_suggestions"])
-
-    def test_whatsapp_reengagement_can_force_reactivation(self) -> None:
-        reminder = build_whatsapp_reengagement_message(
-            previous_context={"last_intent": "occasion_recommendation"},
-            reminder_type="reactivation",
-        )
-
-        self.assertEqual("reactivation", reminder["reminder_type"])
-        self.assertIn("what to wear or buy this week", reminder["assistant_message"].lower())
-        self.assertEqual(3, len(reminder["follow_up_suggestions"]))
-
-    def test_whatsapp_deep_link_infers_onboarding_handoff(self) -> None:
-        link = build_whatsapp_deep_link(
-            base_app_url="http://127.0.0.1:55321",
-            user_id="user-1",
-            previous_context={
-                "last_response_metadata": {"onboarding_required": True},
-            },
-        )
-
-        self.assertEqual("complete_onboarding", link["task"])
-        self.assertIn("/onboard?", link["deep_link_url"])
-        self.assertIn("focus=onboarding", link["deep_link_url"])
-
-    def test_whatsapp_deep_link_supports_explicit_wardrobe_task(self) -> None:
-        link = build_whatsapp_deep_link(
-            base_app_url="http://127.0.0.1:55321/rest/v1",
-            user_id="user-1",
-            conversation_id="c1",
-            task="manage_wardrobe",
-        )
-
-        self.assertEqual("manage_wardrobe", link["task"])
-        self.assertIn("focus=wardrobe", link["deep_link_url"])
-        self.assertIn("conversation_id=c1", link["deep_link_url"])
-        self.assertIn("manage your saved wardrobe", link["assistant_message"].lower())
-
     def test_dependency_report_summarizes_repeat_usage_cohorts_and_memory_lift(self) -> None:
         report = build_dependency_report(
             onboarding_profiles=[
                 {"user_id": "user-1", "onboarding_complete": True, "acquisition_source": "instagram"},
-                {"user_id": "user-2", "onboarding_complete": True, "acquisition_source": "referral"},
+                {"user_id": "user-2", "onboarding_complete": True, "acquisition_source": "organic"},
             ],
             dependency_events=[
                 {
@@ -218,7 +140,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 {
                     "user_id": "user-1",
                     "event_type": "turn_completed",
-                    "source_channel": "whatsapp",
+                    "source_channel": "web",
                     "primary_intent": "pairing_request",
                     "metadata_json": {"memory_sources_read": ["wardrobe_memory"]},
                     "created_at": "2026-03-03T10:00:00+00:00",
@@ -226,18 +148,10 @@ class AgenticApplicationTests(unittest.TestCase):
                 {
                     "user_id": "user-1",
                     "event_type": "turn_completed",
-                    "source_channel": "whatsapp",
+                    "source_channel": "web",
                     "primary_intent": "pairing_request",
                     "metadata_json": {"memory_sources_read": ["wardrobe_memory"]},
                     "created_at": "2026-03-10T10:00:00+00:00",
-                },
-                {
-                    "user_id": "user-1",
-                    "event_type": "referral",
-                    "source_channel": "whatsapp",
-                    "primary_intent": "referral",
-                    "metadata_json": {"referral_type": "invite"},
-                    "created_at": "2026-03-11T10:00:00+00:00",
                 },
                 {
                     "user_id": "user-2",
@@ -260,7 +174,6 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual(2, report["overview"]["onboarded_user_count"])
         self.assertEqual(1, report["overview"]["second_session_within_14d_count"])
         self.assertEqual(1, report["overview"]["third_session_within_30d_count"])
-        self.assertEqual(100.0, report["overview"]["repeat_sessions_whatsapp_rate_pct"])
         self.assertEqual("instagram", report["acquisition_sources"][0]["key"])
         self.assertEqual("pairing_request", report["recurring_anchor_intents_by_cohort"]["instagram"][0]["key"])
         wardrobe_lift = next(item for item in report["memory_input_retention_lift"] if item["memory_input"] == "wardrobe_items")
@@ -326,13 +239,11 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertIn("elongation", effective.specific_needs)
         self.assertEqual(2, memory.followup_count)
 
-    def test_conversation_memory_tracks_intent_channel_sentiment_and_wardrobe(self) -> None:
+    def test_conversation_memory_tracks_intent_channel_and_wardrobe(self) -> None:
         previous_context = {
             "memory": {
                 "recent_intents": ["shopping_decision"],
                 "recent_channels": ["web"],
-                "recent_sentiment_labels": ["uncertain"],
-                "last_sentiment_label": "uncertain",
                 "wardrobe_item_count": 1,
                 "wardrobe_memory_enabled": True,
             },
@@ -343,15 +254,12 @@ class AgenticApplicationTests(unittest.TestCase):
             previous_context,
             live_context,
             current_intent="occasion_recommendation",
-            channel="whatsapp",
-            sentiment_trace={"sentiment_label": "anxious"},
+            channel="web",
             wardrobe_item_count=3,
         )
 
         self.assertEqual(["shopping_decision", "occasion_recommendation"], memory.recent_intents)
-        self.assertEqual(["web", "whatsapp"], memory.recent_channels)
-        self.assertEqual(["uncertain", "anxious"], memory.recent_sentiment_labels)
-        self.assertEqual("anxious", memory.last_sentiment_label)
+        self.assertEqual(["web"], memory.recent_channels)
         self.assertEqual("Need help for office tomorrow", memory.last_user_need)
         self.assertEqual(3, memory.wardrobe_item_count)
         self.assertTrue(memory.wardrobe_memory_enabled)
@@ -779,10 +687,8 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("complete", session_context["last_recommendations"][0]["candidate_type"])
         self.assertEqual(["wedding"], session_context["last_recommendations"][0]["occasion_fits"])
         self.assertEqual(["formal"], session_context["last_recommendations"][0]["formality_levels"])
-        self.assertEqual("neutral", session_context["last_sentiment_trace"]["sentiment_label"])
         self.assertEqual(["occasion_recommendation"], session_context["memory"]["recent_intents"])
         self.assertEqual(["web"], session_context["memory"]["recent_channels"])
-        self.assertEqual(["neutral"], session_context["memory"]["recent_sentiment_labels"])
         self.assertEqual("Show me something bolder", session_context["memory"]["last_user_need"])
         self.assertFalse(session_context["memory"]["wardrobe_memory_enabled"])
         repo.create_catalog_interaction.assert_called_once_with(
@@ -800,18 +706,6 @@ class AgenticApplicationTests(unittest.TestCase):
                 "primary_intent": "occasion_recommendation",
                 "title": "Evening Dress",
             },
-        )
-        repo.create_sentiment_trace.assert_called_once_with(
-            user_id="user-1",
-            conversation_id="c1",
-            turn_id="t1",
-            source_channel="web",
-            sentiment_source="user_message",
-            sentiment_label="neutral",
-            sentiment_score=0.0,
-            intensity=0.0,
-            cues_json=[],
-            metadata_json={"message_length": 24, "has_question": False},
         )
         self.assertEqual(2, repo.create_confidence_history.call_count)
         self.assertEqual("profile", repo.create_confidence_history.call_args_list[0].kwargs["confidence_type"])
@@ -1980,12 +1874,6 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("analysis_pending", gate.status)
         self.assertIn("Wait for profile analysis to complete.", gate.missing_steps)
 
-    def test_extract_sentiment_detects_anxious_language(self) -> None:
-        trace = extract_sentiment("I'm nervous and unsure about what to wear for this event.")
-        self.assertEqual("anxious", trace["sentiment_label"])
-        self.assertLess(trace["sentiment_score"], 0)
-        self.assertIn("nervous", trace["cues"])
-
     def test_orchestrator_blocks_turn_when_onboarding_is_incomplete(self) -> None:
         repo = Mock()
         onboarding_gateway = Mock()
@@ -2016,7 +1904,6 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("clarification", result["response_type"])
         self.assertTrue(result["metadata"]["onboarding_required"])
         self.assertIn("Complete mandatory onboarding", result["assistant_message"])
-        repo.create_sentiment_trace.assert_called_once()
         repo.create_confidence_history.assert_called_once()
         self.assertEqual("profile", repo.create_confidence_history.call_args.kwargs["confidence_type"])
         repo.create_policy_event.assert_called_once()
@@ -4733,6 +4620,153 @@ class CopilotPlannerTests(unittest.TestCase):
         self.assertEqual(85, result["profile_confidence_pct"])
         self.assertTrue(result["has_person_image"])
         self.assertEqual("style_discovery", result["previous_intent"])
+
+
+    @patch("agentic_application.services.outfit_decomposition.OpenAI")
+    @patch("agentic_application.services.outfit_decomposition.get_api_key", return_value="test-key")
+    @patch("agentic_application.services.outfit_decomposition._image_to_input_url", return_value="data:image/jpeg;base64,abc")
+    def test_decompose_outfit_image_returns_garment_list(self, _img_url, _api_key, openai_cls):
+        from agentic_application.services.outfit_decomposition import decompose_outfit_image
+
+        client = Mock()
+        client.responses.create.return_value = Mock(
+            output_text=json.dumps({
+                "garments": [
+                    {
+                        "garment_category": "outerwear",
+                        "garment_subtype": "blazer",
+                        "primary_color": "navy",
+                        "secondary_color": "",
+                        "pattern_type": "solid",
+                        "formality_level": "smart_casual",
+                        "occasion_fit": "office",
+                        "title": "Navy Blazer",
+                        "visibility_pct": 95,
+                        "bbox_top_pct": 10, "bbox_left_pct": 15, "bbox_height_pct": 45, "bbox_width_pct": 70,
+                    },
+                    {
+                        "garment_category": "top",
+                        "garment_subtype": "t-shirt",
+                        "primary_color": "white",
+                        "secondary_color": "",
+                        "pattern_type": "solid",
+                        "formality_level": "casual",
+                        "occasion_fit": "casual",
+                        "title": "White T-Shirt",
+                        "visibility_pct": 90,
+                        "bbox_top_pct": 15, "bbox_left_pct": 20, "bbox_height_pct": 35, "bbox_width_pct": 60,
+                    },
+                    {
+                        "garment_category": "bottom",
+                        "garment_subtype": "jeans",
+                        "primary_color": "blue",
+                        "secondary_color": "",
+                        "pattern_type": "solid",
+                        "formality_level": "casual",
+                        "occasion_fit": "casual",
+                        "title": "Blue Jeans",
+                        "visibility_pct": 40,
+                        "bbox_top_pct": 50, "bbox_left_pct": 20, "bbox_height_pct": 30, "bbox_width_pct": 60,
+                    },
+                ]
+            })
+        )
+        openai_cls.return_value = client
+
+        garments = decompose_outfit_image("/tmp/outfit.jpg")
+
+        self.assertEqual(2, len(garments))  # Blue Jeans (40% visibility) filtered out
+        self.assertEqual("Navy Blazer", garments[0]["title"])
+        self.assertEqual("outerwear", garments[0]["garment_category"])
+        self.assertEqual("White T-Shirt", garments[1]["title"])
+        self.assertNotIn("Blue Jeans", [g["title"] for g in garments])
+
+    def test_outfit_check_passes_image_to_agent_and_decomposes_async(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        gw.get_wardrobe_items.return_value = []
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="outfit_check",
+            intent_confidence=0.96,
+            action="run_outfit_check",
+            context_sufficient=True,
+            assistant_message="Let me assess this look.",
+            resolved_context=CopilotResolvedContext(occasion_signal="office"),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        orchestrator.outfit_check_agent.evaluate.return_value = Mock(
+            overall_verdict="great_choice",
+            overall_note="Great look.",
+            body_harmony_pct=85, color_suitability_pct=80, style_fit_pct=82,
+            pairing_coherence_pct=84, occasion_pct=88, overall_score_pct=84,
+            strengths=["Balanced silhouette."],
+            improvements=[],
+            style_archetype_read={"classic_pct": 70, "dramatic_pct": 10, "romantic_pct": 10, "natural_pct": 10, "minimalist_pct": 0, "creative_pct": 0, "sporty_pct": 0, "edgy_pct": 0},
+            to_dict=Mock(return_value={}),
+        )
+
+        gw.save_uploaded_chat_wardrobe_item.return_value = {
+            "id": "attached-1",
+            "image_path": "/tmp/outfit.jpg",
+            "garment_category": "dress",
+            "title": "Full Outfit",
+        }
+
+        with patch("agentic_application.orchestrator.Thread") as mock_thread:
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Outfit check this",
+                image_data="data:image/jpeg;base64,/9j/4AAQ",
+            )
+
+            # Agent receives image_path
+            eval_kwargs = orchestrator.outfit_check_agent.evaluate.call_args.kwargs
+            self.assertEqual("/tmp/outfit.jpg", eval_kwargs["image_path"])
+
+            # Decomposition launched in background thread
+            mock_thread.assert_called_once()
+            self.assertEqual(mock_thread.return_value.start.call_count, 1)
+
+    def test_outfit_check_without_image_skips_decomposition(self):
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        gw.get_wardrobe_items.return_value = []
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent="outfit_check",
+            intent_confidence=0.96,
+            action="run_outfit_check",
+            context_sufficient=True,
+            assistant_message="Let me assess this look.",
+            resolved_context=CopilotResolvedContext(occasion_signal="office"),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+        orchestrator.outfit_check_agent.evaluate.return_value = Mock(
+            overall_verdict="great_choice",
+            overall_note="Great look.",
+            body_harmony_pct=85, color_suitability_pct=80, style_fit_pct=82,
+            pairing_coherence_pct=84, occasion_pct=88, overall_score_pct=84,
+            strengths=["Balanced."],
+            improvements=[],
+            style_archetype_read={"classic_pct": 70, "dramatic_pct": 10, "romantic_pct": 10, "natural_pct": 10, "minimalist_pct": 0, "creative_pct": 0, "sporty_pct": 0, "edgy_pct": 0},
+            to_dict=Mock(return_value={}),
+        )
+
+        with patch("agentic_application.orchestrator.Thread") as mock_thread:
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Outfit check my navy blazer with trousers",
+            )
+
+            # No image → no background decomposition
+            mock_thread.assert_not_called()
 
 
 if __name__ == "__main__":

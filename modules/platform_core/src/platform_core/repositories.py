@@ -83,7 +83,6 @@ class ConversationRepository:
 
         for table in (
             "catalog_interaction_history",
-            "user_sentiment_history",
             "confidence_history",
             "policy_event_log",
             "dependency_validation_events",
@@ -248,56 +247,6 @@ class ConversationRepository:
             filters["interaction_type"] = f"eq.{interaction_type}"
         return self.client.select_many(
             "catalog_interaction_history",
-            filters=filters,
-            order="created_at.desc",
-            limit=limit,
-        )
-
-    # -- user_sentiment_history --------------------------------------------
-
-    def create_sentiment_trace(
-        self,
-        *,
-        user_id: str,
-        sentiment_label: str,
-        sentiment_score: float,
-        intensity: float,
-        cues_json: Optional[List[str]] = None,
-        conversation_id: Optional[str] = None,
-        turn_id: Optional[str] = None,
-        source_channel: str = "web",
-        sentiment_source: str = "user_message",
-        metadata_json: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
-            "user_id": user_id,
-            "sentiment_label": sentiment_label,
-            "sentiment_score": sentiment_score,
-            "intensity": intensity,
-            "source_channel": source_channel,
-            "sentiment_source": sentiment_source,
-            "cues_json": list(cues_json or []),
-            "metadata_json": metadata_json or {},
-            "created_at": _now_iso(),
-        }
-        if conversation_id:
-            payload["conversation_id"] = conversation_id
-        if turn_id:
-            payload["turn_id"] = turn_id
-        return self.client.insert_one("user_sentiment_history", payload)
-
-    def list_sentiment_traces(
-        self,
-        user_id: str,
-        *,
-        sentiment_label: Optional[str] = None,
-        limit: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        filters: Dict[str, str] = {"user_id": f"eq.{user_id}"}
-        if sentiment_label:
-            filters["sentiment_label"] = f"eq.{sentiment_label}"
-        return self.client.select_many(
-            "user_sentiment_history",
             filters=filters,
             order="created_at.desc",
             limit=limit,
@@ -489,15 +438,33 @@ class ConversationRepository:
 
     # -- conversation & turn listing for UI --------------------------------
 
+    def archive_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+        return self.client.update_one(
+            "conversations",
+            filters={"id": f"eq.{conversation_id}"},
+            patch={"status": "archived", "updated_at": _now_iso()},
+        )
+
+    def rename_conversation(self, conversation_id: str, title: str) -> Optional[Dict[str, Any]]:
+        return self.client.update_one(
+            "conversations",
+            filters={"id": f"eq.{conversation_id}"},
+            patch={"title": title, "updated_at": _now_iso()},
+        )
+
     def list_conversations_for_user(
         self,
         user_id: str,
         *,
+        status: str = "active",
         limit: int = 20,
     ) -> List[Dict[str, Any]]:
+        filters: Dict[str, str] = {"user_id": f"eq.{user_id}"}
+        if status:
+            filters["status"] = f"eq.{status}"
         return self.client.select_many(
             "conversations",
-            filters={"user_id": f"eq.{user_id}"},
+            filters=filters,
             order="updated_at.desc",
             limit=limit,
         )

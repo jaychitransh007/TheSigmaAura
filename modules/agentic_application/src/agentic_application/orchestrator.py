@@ -4,6 +4,7 @@ import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Thread
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import quote
 
@@ -29,7 +30,7 @@ from .services.catalog_retrieval_gateway import ApplicationCatalogRetrievalGatew
 from .services.onboarding_gateway import ApplicationUserGateway
 from .services.tryon_quality_gate import TryonQualityGate
 from .services.tryon_service import TryonService
-from .sentiment import extract_sentiment
+from .services.outfit_decomposition import decompose_outfit_image
 from .qna_messages import generate_stage_message
 from .schemas import (
     CombinedContext,
@@ -715,16 +716,6 @@ class AgenticOrchestrator:
                 effective_message = f"{message.strip()} {attached_context}".strip()
             if attached_item is not None:
                 effective_message = f"{effective_message} Image anchor source: {attachment_source.replace('_', ' ')}.".strip()
-        sentiment_trace = extract_sentiment(message)
-        self._persist_sentiment_trace(
-            external_user_id=external_user_id,
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            channel=channel,
-            message=message,
-            sentiment_trace=sentiment_trace,
-        )
-
         # --- 0.5 Onboarding Gate ---
         emit("onboarding_gate", "started")
         onboarding_status = self.onboarding_gateway.get_onboarding_status(external_user_id)
@@ -769,7 +760,6 @@ class AgenticOrchestrator:
                 resolved_context={
                     "request_summary": message.strip(),
                     "onboarding_gate": onboarding_gate.model_dump(),
-                    "sentiment_trace": sentiment_trace,
                     "channel": channel,
                 },
             )
@@ -781,7 +771,6 @@ class AgenticOrchestrator:
                     "last_assistant_message": onboarding_gate.message,
                     "last_channel": channel,
                     "last_intent": "onboarding_gate",
-                    "last_sentiment_trace": sentiment_trace,
                     "last_response_metadata": metadata,
                 },
             )
@@ -940,7 +929,7 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+
             )
         elif plan_result.action == "ask_clarification":
             return self._handle_clarification(
@@ -953,7 +942,7 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+
             )
         elif plan_result.action == "run_recommendation_pipeline":
             return self._handle_planner_pipeline(
@@ -968,7 +957,7 @@ class AgenticOrchestrator:
                 user_context=user_context,
                 conversation_history=conversation_history,
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+
                 attached_item=attached_item,
                 anchored_item_id=str((attached_item or {}).get("id") or ""),
                 force_catalog_followup=force_catalog_followup,
@@ -987,7 +976,7 @@ class AgenticOrchestrator:
                 previous_context=previous_context,
                 user_context=user_context,
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+                attached_item=attached_item,
             )
         elif plan_result.action == "run_shopping_decision":
             return self._handle_shopping_decision(
@@ -1001,7 +990,7 @@ class AgenticOrchestrator:
                 previous_context=previous_context,
                 user_context=user_context,
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+
             )
         elif plan_result.action == "run_virtual_tryon":
             return self._handle_planner_virtual_tryon(
@@ -1014,7 +1003,7 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+
             )
         elif plan_result.action == "save_wardrobe_item":
             return self._handle_planner_wardrobe_save(
@@ -1027,7 +1016,7 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+
             )
         elif plan_result.action == "save_feedback":
             return self._handle_planner_feedback(
@@ -1040,7 +1029,7 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+
             )
         else:
             # Unknown action — fall back to direct response
@@ -1055,7 +1044,7 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+
             )
 
     # ------------------------------------------------------------------
@@ -1235,35 +1224,6 @@ class AgenticOrchestrator:
                         product_id,
                         exc_info=True,
                     )
-
-    def _persist_sentiment_trace(
-        self,
-        *,
-        external_user_id: str,
-        conversation_id: str,
-        turn_id: str,
-        channel: str,
-        message: str,
-        sentiment_trace: Dict[str, object],
-    ) -> None:
-        try:
-            self.repo.create_sentiment_trace(
-                user_id=external_user_id,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                source_channel=channel,
-                sentiment_source="user_message",
-                sentiment_label=str(sentiment_trace.get("sentiment_label") or "neutral"),
-                sentiment_score=float(sentiment_trace.get("sentiment_score") or 0.0),
-                intensity=float(sentiment_trace.get("intensity") or 0.0),
-                cues_json=list(sentiment_trace.get("cues") or []),
-                metadata_json={
-                    "message_length": len(message.strip()),
-                    "has_question": "?" in message,
-                },
-            )
-        except Exception:
-            _log.warning("Failed to persist sentiment trace", exc_info=True)
 
     def _persist_profile_confidence(
         self,
@@ -1503,7 +1463,7 @@ class AgenticOrchestrator:
         live_context: LiveContext,
         conversation_memory: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, Any],
+
         anchored_item_id: str = "",
     ) -> Dict[str, Any] | None:
         if intent.primary_intent != "occasion_recommendation":
@@ -1597,7 +1557,7 @@ class AgenticOrchestrator:
             "conversation_memory": conversation_memory,
             "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-                "sentiment_trace": sentiment_trace,
+
                 "response_metadata": metadata,
                 "handler": "occasion_recommendation_wardrobe_first",
                 "handler_payload": {
@@ -1648,7 +1608,6 @@ class AgenticOrchestrator:
             "last_user_message": message,
             "last_channel": channel,
             "last_intent": intent.primary_intent,
-            "last_sentiment_trace": sentiment_trace,
             "consecutive_gate_blocks": 0,
             "last_recommendations": [
                 {
@@ -1719,7 +1678,7 @@ class AgenticOrchestrator:
         live_context: LiveContext,
         conversation_memory: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, Any],
+
     ) -> Dict[str, Any] | None:
         if intent.primary_intent != "occasion_recommendation":
             return None
@@ -1774,7 +1733,7 @@ class AgenticOrchestrator:
                 "conversation_memory": conversation_memory,
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-                "sentiment_trace": sentiment_trace,
+
                 "response_metadata": metadata,
                 "handler": "occasion_recommendation_wardrobe_unavailable",
                 "handler_payload": {
@@ -1798,7 +1757,7 @@ class AgenticOrchestrator:
                 "last_user_message": message,
                 "last_channel": channel,
                 "last_intent": intent.primary_intent,
-                "last_sentiment_trace": sentiment_trace,
+
                 "consecutive_gate_blocks": 0,
             },
         )
@@ -1832,7 +1791,7 @@ class AgenticOrchestrator:
         live_context: LiveContext,
         conversation_memory: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, Any],
+
         target_piece: str = "",
     ) -> Dict[str, Any] | None:
         if intent.primary_intent != "pairing_request":
@@ -1980,7 +1939,6 @@ class AgenticOrchestrator:
             "conversation_memory": conversation_memory,
             "intent_classification": intent.model_dump(),
             "profile_confidence": profile_confidence.model_dump(),
-            "sentiment_trace": sentiment_trace,
             "handler": "pairing_request_wardrobe_first",
             "handler_payload": {
                 "answer_source": hybrid_answer_source,
@@ -2046,7 +2004,7 @@ class AgenticOrchestrator:
                 "last_user_message": message,
                 "last_channel": channel,
                 "last_intent": intent.primary_intent,
-                "last_sentiment_trace": sentiment_trace,
+
                 "consecutive_gate_blocks": 0,
                 "last_recommendations": [
                     {
@@ -2137,7 +2095,7 @@ class AgenticOrchestrator:
         live_context: LiveContext,
         conversation_memory: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, Any],
+
         attached_item: Dict[str, Any] | None,
     ) -> Dict[str, Any] | None:
         if intent.primary_intent != "pairing_request":
@@ -2240,7 +2198,7 @@ class AgenticOrchestrator:
                 "conversation_memory": conversation_memory,
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-                "sentiment_trace": sentiment_trace,
+
                 "handler": "pairing_request_catalog_image",
                 "handler_payload": {
                     "answer_source": "catalog_image_pairing",
@@ -2264,7 +2222,7 @@ class AgenticOrchestrator:
                 "last_user_message": message,
                 "last_channel": channel,
                 "last_intent": intent.primary_intent,
-                "last_sentiment_trace": sentiment_trace,
+
                 "consecutive_gate_blocks": 0,
             },
         )
@@ -2615,7 +2573,7 @@ class AgenticOrchestrator:
         response_metadata: Dict[str, Any],
         intent_classification: Dict[str, Any] | None = None,
         profile_confidence: Dict[str, Any] | None = None,
-        sentiment_trace: Dict[str, Any] | None = None,
+
         channel: str = "web",
         outfits: List[Any] | None = None,
     ) -> Dict[str, Any]:
@@ -2651,7 +2609,6 @@ class AgenticOrchestrator:
             "conversation_memory": conversation_memory,
             "intent_classification": intent_classification or {},
             "profile_confidence": profile_confidence or {},
-            "sentiment_trace": sentiment_trace or {},
             "plan": plan,
             "retrieval": retrieval,
             "assembled_candidates": candidate_summaries,
@@ -2726,7 +2683,7 @@ class AgenticOrchestrator:
         message: str,
         previous_context: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, object],
+
     ) -> Dict[str, Any]:
         if intent.primary_intent == "style_discovery":
             return self._handle_style_discovery(
@@ -2739,7 +2696,7 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+
             )
         if intent.primary_intent == "explanation_request":
             return self._handle_explanation_request(
@@ -2752,7 +2709,7 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+
             )
         if intent.primary_intent == "capsule_or_trip_planning":
             return self._handle_capsule_or_trip_planning(
@@ -2765,7 +2722,7 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+
             )
         metadata = self._build_response_metadata(
             channel=channel,
@@ -2780,7 +2737,7 @@ class AgenticOrchestrator:
                 "request_summary": message.strip(),
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-                "sentiment_trace": sentiment_trace,
+
                 "handler": "copilot_planner_direct",
                 "channel": channel,
             },
@@ -2793,7 +2750,7 @@ class AgenticOrchestrator:
                 "last_assistant_message": plan_result.assistant_message,
                 "last_channel": channel,
                 "last_intent": plan_result.intent,
-                "last_sentiment_trace": sentiment_trace,
+
                 "last_response_metadata": metadata,
             },
         )
@@ -2829,6 +2786,14 @@ class AgenticOrchestrator:
             return str(value.get("value") or "").strip()
         return str(value or "").strip()
 
+    _COLOR_KEYWORDS = frozenset((
+        "color", "colour", "colors", "colours", "palette", "hue", "shade", "tone",
+        "black", "white", "navy", "red", "blue", "green", "olive", "rust",
+        "cream", "beige", "brown", "burgundy", "maroon", "camel", "tan",
+        "grey", "gray", "pink", "orange", "yellow", "purple", "teal",
+        "autumn", "spring", "summer", "winter",
+    ))
+
     def _detect_style_advice_topic(self, *, message: str, style_goal: str) -> str:
         normalized = self._normalize_text_token(message)
         goal = self._normalize_text_token(style_goal)
@@ -2842,16 +2807,22 @@ class AgenticOrchestrator:
             return "silhouette"
         if "archetype" in normalized or "style type" in normalized:
             return "archetype"
-        if "color" in normalized or goal == "color direction":
+        if "color" in normalized or "colour" in normalized or goal == "color direction":
+            return "color"
+        if any(kw in normalized for kw in self._COLOR_KEYWORDS):
             return "color"
         if "neckline" in goal:
             return "neckline"
         return "general"
 
+    _COOL_NEUTRAL_COLORS = frozenset(("black", "white", "grey", "gray", "charcoal", "silver"))
+    _WARM_NEUTRAL_COLORS = frozenset(("cream", "beige", "camel", "tan", "ivory", "khaki", "brown"))
+
     def _build_style_advice_response(
         self,
         *,
         topic: str,
+        user_message: str = "",
         seasonal: str,
         contrast: str,
         frame: str,
@@ -2885,10 +2856,42 @@ class AgenticOrchestrator:
         primary_lower = primary.lower()
         secondary_lower = secondary.lower()
 
+        msg_lower = self._normalize_text_token(user_message)
+        mentioned_colors = [kw for kw in self._COLOR_KEYWORDS if kw in msg_lower and kw not in {
+            "color", "colour", "colors", "colours", "palette", "hue", "shade", "tone",
+            "autumn", "spring", "summer", "winter",
+        }]
+
         parts: List[str] = []
         if topic == "color":
-            if seasonal:
-                if season_lower in {"spring", "autumn"}:
+            is_warm_season = season_lower in {"spring", "autumn"}
+            if mentioned_colors:
+                mc = mentioned_colors[0]
+                is_cool_neutral = mc in self._COOL_NEUTRAL_COLORS
+                if seasonal and is_warm_season and is_cool_neutral:
+                    parts.append(
+                        f"{mc.title()} isn't a natural first choice for your {seasonal} palette, but you can absolutely make it work."
+                        f" Ground it with warm companions — pair {mc} with olive, rust, warm brown, deep camel, or forest green"
+                        f" so the overall outfit still reads warm."
+                    )
+                    parts.append(
+                        f"Keep {mc} to one anchor piece (like a trouser or jacket) rather than head-to-toe,"
+                        f" and let your {seasonal} warmth come through in the other layers, accessories, or shoes."
+                    )
+                elif seasonal and not is_warm_season and mc in self._WARM_NEUTRAL_COLORS:
+                    parts.append(
+                        f"{mc.title()} runs warm for your {seasonal} palette."
+                        f" If you love it, pair it with cool anchors like charcoal, navy, or icy blue"
+                        f" to keep the overall balance in your zone."
+                    )
+                else:
+                    if seasonal:
+                        parts.append(
+                            f"{mc.title()} can work within your {seasonal} palette."
+                            f" Lean into your strongest companion shades to build the outfit around it."
+                        )
+            elif seasonal:
+                if is_warm_season:
                     parts.append(f"For your {seasonal} palette, rich warm shades like olive, camel, rust, cream, and warm navy will usually look strongest.")
                 else:
                     parts.append(f"For your {seasonal} palette, cooler tones like charcoal, true navy, berry, icy blue, and crisp white will usually look strongest.")
@@ -2897,7 +2900,8 @@ class AgenticOrchestrator:
                     parts.append("Because your contrast is high, keep some clear light-dark separation rather than washing everything into one mid-tone blend.")
                 elif "low" in contrast_lower:
                     parts.append("Because your contrast is lower, tonal dressing and blended palettes will usually look more polished than sharp oppositions.")
-            parts.append("Avoid colors that fight that direction, especially muddy cools on a warm palette or harsh neon brights that overpower your natural coloring.")
+            if not mentioned_colors:
+                parts.append("Avoid colors that fight that direction, especially muddy cools on a warm palette or harsh neon brights that overpower your natural coloring.")
         elif topic == "collar":
             parts.append("The safest collar direction for you is an open, elongated shape rather than a tight closed neck.")
             if body_lower:
@@ -2968,7 +2972,7 @@ class AgenticOrchestrator:
         message: str,
         previous_context: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, object],
+
     ) -> Dict[str, Any]:
         analysis_status = self.onboarding_gateway.get_analysis_status(external_user_id) or {}
         profile = dict(analysis_status.get("profile") or {})
@@ -2989,6 +2993,7 @@ class AgenticOrchestrator:
         )
         assistant_message, evidence = self._build_style_advice_response(
             topic=advice_topic,
+            user_message=message,
             seasonal=seasonal,
             contrast=contrast,
             frame=frame,
@@ -3025,7 +3030,7 @@ class AgenticOrchestrator:
                 "request_summary": message.strip(),
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-                "sentiment_trace": sentiment_trace,
+
                 "response_metadata": metadata,
                 "handler": "style_discovery",
                 "channel": channel,
@@ -3039,7 +3044,7 @@ class AgenticOrchestrator:
                 "last_assistant_message": assistant_message,
                 "last_channel": channel,
                 "last_intent": plan_result.intent,
-                "last_sentiment_trace": sentiment_trace,
+
                 "last_response_metadata": metadata,
             },
         )
@@ -3080,7 +3085,7 @@ class AgenticOrchestrator:
         message: str,
         previous_context: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, object],
+
     ) -> Dict[str, Any]:
         previous_recommendations = list(previous_context.get("last_recommendations") or [])
         response_metadata = dict(previous_context.get("last_response_metadata") or {})
@@ -3135,7 +3140,7 @@ class AgenticOrchestrator:
                 "request_summary": message.strip(),
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-                "sentiment_trace": sentiment_trace,
+
                 "handler": "explanation_request",
                 "channel": channel,
             },
@@ -3148,7 +3153,7 @@ class AgenticOrchestrator:
                 "last_assistant_message": assistant_message,
                 "last_channel": channel,
                 "last_intent": plan_result.intent,
-                "last_sentiment_trace": sentiment_trace,
+
                 "last_response_metadata": metadata,
             },
         )
@@ -3222,7 +3227,7 @@ class AgenticOrchestrator:
         message: str,
         previous_context: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, object],
+
     ) -> Dict[str, Any]:
         analysis_status = self.onboarding_gateway.get_analysis_status(external_user_id) or {}
         wardrobe_items = list(self.onboarding_gateway.get_wardrobe_items(external_user_id) or [])
@@ -3253,7 +3258,7 @@ class AgenticOrchestrator:
                     "request_summary": message.strip(),
                     "intent_classification": intent.model_dump(),
                     "profile_confidence": profile_confidence.model_dump(),
-                    "sentiment_trace": sentiment_trace,
+    
                     "handler": "capsule_or_trip_planning",
                     "channel": channel,
                 },
@@ -3502,7 +3507,7 @@ class AgenticOrchestrator:
                 "request_summary": message.strip(),
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-                "sentiment_trace": sentiment_trace,
+
                 "handler": "capsule_or_trip_planning",
                 "handler_payload": dict(metadata.get("capsule_plan") or {}),
                 "channel": channel,
@@ -3516,7 +3521,7 @@ class AgenticOrchestrator:
                 "last_assistant_message": assistant_message,
                 "last_channel": channel,
                 "last_intent": plan_result.intent,
-                "last_sentiment_trace": sentiment_trace,
+
                 "last_response_metadata": metadata,
             },
         )
@@ -3564,7 +3569,7 @@ class AgenticOrchestrator:
         message: str,
         previous_context: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, object],
+
     ) -> Dict[str, Any]:
         consecutive_blocks = int(previous_context.get("consecutive_gate_blocks", 0))
         metadata = self._build_response_metadata(
@@ -3581,7 +3586,7 @@ class AgenticOrchestrator:
                 "gate_blocked": True,
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-                "sentiment_trace": sentiment_trace,
+
                 "channel": channel,
             },
         )
@@ -3594,7 +3599,7 @@ class AgenticOrchestrator:
                 "last_assistant_message": plan_result.assistant_message,
                 "last_channel": channel,
                 "last_intent": plan_result.intent,
-                "last_sentiment_trace": sentiment_trace,
+
             },
         )
         self._persist_dependency_turn_event(
@@ -3634,7 +3639,7 @@ class AgenticOrchestrator:
         user_context: Any,
         conversation_history: List[Dict[str, str]],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, object],
+
         attached_item: Dict[str, Any] | None = None,
         anchored_item_id: str = "",
         force_catalog_followup: bool = False,
@@ -3654,7 +3659,6 @@ class AgenticOrchestrator:
             initial_live_context,
             current_intent=plan_result.intent,
             channel=channel,
-            sentiment_trace=sentiment_trace,
             wardrobe_item_count=len(user_context.wardrobe_items),
         )
 
@@ -3689,7 +3693,6 @@ class AgenticOrchestrator:
             live_context=initial_live_context,
             conversation_memory=conversation_memory.model_dump(),
             profile_confidence=profile_confidence,
-            sentiment_trace=sentiment_trace,
             attached_item=attached_item,
         )
         if catalog_image_pairing is not None:
@@ -3715,7 +3718,7 @@ class AgenticOrchestrator:
                 live_context=initial_live_context,
                 conversation_memory=conversation_memory.model_dump(),
                 profile_confidence=profile_confidence,
-                sentiment_trace=sentiment_trace,
+
                 target_piece=str(plan_result.action_parameters.target_piece or ""),
             )
             if wardrobe_first_pairing is not None:
@@ -3734,7 +3737,7 @@ class AgenticOrchestrator:
                     live_context=initial_live_context,
                     conversation_memory=conversation_memory.model_dump(),
                     profile_confidence=profile_confidence,
-                    sentiment_trace=sentiment_trace,
+    
                     anchored_item_id=anchored_item_id,
                 )
                 if wardrobe_first_response is not None:
@@ -3751,7 +3754,7 @@ class AgenticOrchestrator:
                     live_context=initial_live_context,
                     conversation_memory=conversation_memory.model_dump(),
                     profile_confidence=profile_confidence,
-                    sentiment_trace=sentiment_trace,
+    
                 )
                 if wardrobe_only_fallback is not None:
                     return wardrobe_only_fallback
@@ -3837,7 +3840,6 @@ class AgenticOrchestrator:
             effective_live_context,
             current_intent=plan_result.intent,
             channel=channel,
-            sentiment_trace=sentiment_trace,
             wardrobe_item_count=len(user_context.wardrobe_items),
         )
         combined_context = combined_context.model_copy(update={
@@ -3966,7 +3968,7 @@ class AgenticOrchestrator:
                 response_metadata=response.metadata,
                 intent_classification=intent.model_dump(),
                 profile_confidence=profile_confidence.model_dump(),
-                sentiment_trace=sentiment_trace,
+
                 channel=channel,
                 outfits=response.outfits,
             ),
@@ -3987,7 +3989,7 @@ class AgenticOrchestrator:
                 "last_user_message": message,
                 "last_channel": channel,
                 "last_intent": plan_result.intent,
-                "last_sentiment_trace": sentiment_trace,
+
                 "consecutive_gate_blocks": 0,
             },
         )
@@ -4039,15 +4041,19 @@ class AgenticOrchestrator:
         previous_context: Dict[str, Any],
         user_context: Any,
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, object],
+        attached_item: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         occasion_signal = str(plan_result.resolved_context.occasion_signal or "").strip() or None
+        image_path = str((attached_item or {}).get("image_path") or "").strip()
+
+        # Process 1 (blocking): Vision-based outfit check — agent sees the image directly
         try:
             check = self.outfit_check_agent.evaluate(
                 user_context=user_context,
                 outfit_description=message,
                 occasion_signal=occasion_signal,
                 profile_confidence_pct=int(profile_confidence.score_pct),
+                image_path=image_path,
             )
         except Exception as exc:
             _log.error("Outfit check evaluation failed: %s", exc, exc_info=True)
@@ -4084,16 +4090,41 @@ class AgenticOrchestrator:
         )
 
         wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
-        anchor_item = self._find_target_wardrobe_piece(
-            wardrobe_items=wardrobe_items,
-            target_text=message,
-        )
-        outfit_card_items = (
-            [self._wardrobe_item_to_outfit_item(dict(anchor_item, _role="anchor"))]
-            if anchor_item is not None
-            else []
-        )
 
+        # Outfit card items are empty for the live response — decomposed garments
+        # with cropped images are saved to wardrobe asynchronously.  The outfit
+        # photo itself is shown via tryon_image as the hero image.
+        outfit_card_items: List[Dict[str, Any]] = []
+        if not attached_item:
+            anchor_item = self._find_target_wardrobe_piece(
+                wardrobe_items=wardrobe_items,
+                target_text=message,
+            )
+            if anchor_item is not None:
+                outfit_card_items = [self._wardrobe_item_to_outfit_item(dict(anchor_item, _role="anchor"))]
+
+        # Remove the initial full-photo wardrobe item — decomposition will
+        # create proper individual garment items to replace it.
+        attached_item_id = str((attached_item or {}).get("id") or "").strip()
+        if attached_item_id:
+            try:
+                self.onboarding_gateway.delete_wardrobe_item(
+                    user_id=external_user_id,
+                    wardrobe_item_id=attached_item_id,
+                )
+            except Exception:
+                _log.warning("Failed to delete initial outfit wardrobe item %s", attached_item_id, exc_info=True)
+
+        # Process 2 (async): decompose outfit → crop → enrich → save to wardrobe
+        if image_path:
+            Thread(
+                target=self._decompose_and_save_garments,
+                args=(image_path, message, external_user_id, turn_id, conversation_id),
+                daemon=True,
+            ).start()
+
+        attached_image_path = str((attached_item or {}).get("image_path") or "").strip()
+        tryon_image = self._tryon_image_url(attached_image_path) if attached_image_path else None
         outfit_card = OutfitCard(
             rank=1,
             title="Outfit Check",
@@ -4116,6 +4147,7 @@ class AgenticOrchestrator:
             sporty_pct=check.style_archetype_read.get("sporty_pct", 0),
             edgy_pct=check.style_archetype_read.get("edgy_pct", 0),
             items=outfit_card_items,
+            tryon_image=tryon_image,
         )
         wardrobe_gap_analysis = self._build_wardrobe_gap_analysis(
             wardrobe_items=wardrobe_items,
@@ -4234,6 +4266,8 @@ class AgenticOrchestrator:
                 "catalog_upsell": catalog_upsell,
             },
         )
+        outfit_item_ids = [str(item.get("product_id") or "") for item in outfit_card_items if str(item.get("product_id") or "")]
+        outfit_card_data = outfit_card.model_dump()
         self.repo.finalize_turn(
             turn_id=turn_id,
             assistant_message=assistant_message,
@@ -4244,11 +4278,21 @@ class AgenticOrchestrator:
                 "live_context": live_context.model_dump(),
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-                "sentiment_trace": sentiment_trace,
                 "response_metadata": metadata,
                 "handler": "outfit_check",
                 "handler_payload": handler_payload,
                 "channel": channel,
+                "outfits": [outfit_card_data],
+                "recommendations": [
+                    {
+                        "candidate_id": "outfit-check-1",
+                        "rank": 1,
+                        "title": "Outfit Check",
+                        "item_ids": outfit_item_ids,
+                        "match_score": check.overall_score_pct / 100.0,
+                        "reasoning": check.overall_note,
+                    }
+                ],
             },
         )
         self.repo.update_conversation_context(
@@ -4260,7 +4304,7 @@ class AgenticOrchestrator:
                 "last_channel": channel,
                 "last_intent": plan_result.intent,
                 "last_live_context": live_context.model_dump(),
-                "last_sentiment_trace": sentiment_trace,
+
                 "last_response_metadata": metadata,
                 "consecutive_gate_blocks": 0,
             },
@@ -4292,6 +4336,28 @@ class AgenticOrchestrator:
             "follow_up_suggestions": follow_up_suggestions,
             "metadata": metadata,
         }
+
+    def _decompose_and_save_garments(
+        self,
+        image_path: str,
+        message: str,
+        user_id: str,
+        turn_id: str,
+        conversation_id: str,
+    ) -> None:
+        """Process 2 (async): decompose outfit image → crop → enrich 46 attributes → save to wardrobe."""
+        try:
+            garments = decompose_outfit_image(image_path, user_hints=message.strip())
+            if garments:
+                self.onboarding_gateway.save_decomposed_garments(
+                    user_id=user_id,
+                    garments=garments,
+                    turn_id=turn_id,
+                    conversation_id=conversation_id,
+                )
+                _log.info("Background decomposition saved %d garments for turn %s", len(garments), turn_id)
+        except Exception:
+            _log.warning("Background outfit decomposition failed for turn %s", turn_id, exc_info=True)
 
     @staticmethod
     def _normalize_text_token(value: Any) -> str:
@@ -4458,7 +4524,7 @@ class AgenticOrchestrator:
         previous_context: Dict[str, Any],
         user_context: Any,
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, object],
+
     ) -> Dict[str, Any]:
         params = plan_result.action_parameters
         product_urls = list(params.product_urls or []) or extract_urls(message)
@@ -4585,7 +4651,7 @@ class AgenticOrchestrator:
                 "style_goal": "shopping_decision",
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-                "sentiment_trace": sentiment_trace,
+
                 "handler": "shopping_decision",
                 "handler_payload": handler_payload,
                 "channel": channel,
@@ -4599,7 +4665,7 @@ class AgenticOrchestrator:
                 "last_assistant_message": assistant_message,
                 "last_channel": channel,
                 "last_intent": plan_result.intent,
-                "last_sentiment_trace": sentiment_trace,
+
                 "last_response_metadata": metadata,
                 "consecutive_gate_blocks": 0,
             },
@@ -4649,7 +4715,7 @@ class AgenticOrchestrator:
         message: str,
         previous_context: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, object],
+
     ) -> Dict[str, Any]:
         tryon_result = self._run_virtual_tryon_request(
             external_user_id=external_user_id,
@@ -4723,7 +4789,7 @@ class AgenticOrchestrator:
                 "last_assistant_message": assistant_message,
                 "last_channel": channel,
                 "last_intent": plan_result.intent,
-                "last_sentiment_trace": sentiment_trace,
+
                 "last_response_metadata": metadata,
             },
         )
@@ -4760,7 +4826,7 @@ class AgenticOrchestrator:
         message: str,
         previous_context: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, object],
+
     ) -> Dict[str, Any]:
         saved_item = self._save_chat_wardrobe_item(
             external_user_id=external_user_id,
@@ -4791,7 +4857,7 @@ class AgenticOrchestrator:
                 "last_assistant_message": plan_result.assistant_message,
                 "last_channel": channel,
                 "last_intent": plan_result.intent,
-                "last_sentiment_trace": sentiment_trace,
+
                 "last_response_metadata": metadata,
             },
         )
@@ -4828,7 +4894,7 @@ class AgenticOrchestrator:
         message: str,
         previous_context: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-        sentiment_trace: Dict[str, object],
+
     ) -> Dict[str, Any]:
         event_type = str(plan_result.action_parameters.feedback_event_type or "dislike")
         recommendations = list(previous_context.get("last_recommendations") or [])
@@ -4882,7 +4948,7 @@ class AgenticOrchestrator:
                 "last_assistant_message": plan_result.assistant_message,
                 "last_channel": channel,
                 "last_intent": plan_result.intent,
-                "last_sentiment_trace": sentiment_trace,
+
                 "last_response_metadata": metadata,
                 "last_feedback_summary": feedback_summary,
             },

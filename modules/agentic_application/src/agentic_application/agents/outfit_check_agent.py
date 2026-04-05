@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from openai import OpenAI
 
 from user_profiler.config import get_api_key
+from user_profiler.service import _image_to_input_url
 
 _log = logging.getLogger(__name__)
 
@@ -212,6 +213,7 @@ class OutfitCheckAgent:
         outfit_description: str,
         occasion_signal: Optional[str] = None,
         profile_confidence_pct: int = 0,
+        image_path: str = "",
     ) -> OutfitCheckResult:
         payload = {
             "user_profile": _build_user_profile_payload(user_context),
@@ -219,6 +221,19 @@ class OutfitCheckAgent:
             "occasion_signal": occasion_signal,
             "profile_confidence_pct": profile_confidence_pct,
         }
+
+        user_content: List[Dict[str, Any]] = [
+            {
+                "type": "input_text",
+                "text": json.dumps(payload, indent=2, default=str),
+            }
+        ]
+        if image_path:
+            try:
+                image_url = _image_to_input_url(image_path)
+                user_content.append({"type": "input_image", "image_url": image_url})
+            except Exception:
+                _log.warning("Could not attach image to outfit check: %s", image_path, exc_info=True)
 
         response = self._client.responses.create(
             model=self._model,
@@ -229,12 +244,7 @@ class OutfitCheckAgent:
                 },
                 {
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": json.dumps(payload, indent=2, default=str),
-                        }
-                    ],
+                    "content": user_content,
                 },
             ],
             text={"format": _CHECK_JSON_SCHEMA},

@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: April 3, 2026
+Last updated: April 5, 2026
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -26,13 +26,15 @@ Strategy: **stylist for retention, shopping for revenue.** The product should fe
 Project status:
 - user layer: implemented and usable
 - catalog layer: implemented and usable
-- application layer: active, usable end-to-end recommendation pipeline with copilot planner, wardrobe ingestion, image moderation, confidence engines, and WhatsApp formatting
-- wardrobe: ingestion, enrichment, retrieval, and wardrobe-first occasion response implemented
-- WhatsApp: message formatting and deep linking implemented; no inbound message runtime yet
+- application layer: active, usable end-to-end recommendation pipeline with copilot planner, wardrobe ingestion, image moderation, and confidence engines
+- wardrobe: ingestion, enrichment, retrieval, wardrobe-first occasion response, full CRUD UI (add/edit/delete), enhanced filters (search, category, color), and completeness scoring implemented
+- WhatsApp: removed from current codebase (previously had formatting and deep linking; runtime was never built)
 - safety: dual-layer image moderation (heuristic + vision), restricted category exclusion, try-on quality gate implemented
 - web UI: modern chat-first interface with unified warm/burgundy design across onboarding, profile analysis, main app, and admin
 - profile: unified view + edit page with inline editing toggle, style code card, and personalized color palette card (base/accent/avoid)
-- wardrobe: seamless "+Add Item" modal — photo-only upload with auto-enrichment (46 attributes via vision API)
+- wardrobe: seamless "+Add Item" modal — photo-only upload with auto-enrichment (46 attributes via vision API); edit modal for all metadata fields; per-card delete with confirmation
+- wardrobe filters: search bar (title/description/brand/category), category chips (8 including Dresses, Outerwear, Accessories), color filter row (11 colors), localStorage persistence
+- chat management: conversation rename (inline edit) and delete (archive) with hover-reveal sidebar actions; `title` column on conversations table
 - virtual try-on: persistent storage with cache reuse — images saved to disk + `virtual_tryon_images` table, mapped by user + garment IDs + source; same garment combination returns cached result without re-generation
 - chat composer: `+` button popover with "Upload image" and "Select from wardrobe" options; drag-drop and paste support
 - results: previous results grid with outfit preview thumbnails extracted from outfits[].items[].image_url
@@ -90,13 +92,15 @@ Success means users come back before real decisions: should I buy this, what goe
 - 3-column PDP outfit cards with Buy Now, radar chart, progress bars, feedback CTAs
 - unified profile page with inline editing, style code card, and color palette card
 - wardrobe add-item modal from wardrobe page
+- wardrobe edit modal (all metadata fields) and per-card delete with confirmation
+- wardrobe search bar, enhanced category filter chips (8), color filter row (11), localStorage persistence
+- chat management: conversation rename (inline edit) and delete (archive) in sidebar
 - chat composer + button with upload image / select from wardrobe popover
 - results page with outfit preview thumbnails
 - feedback capture + comfort learning
 - profile confidence engine and recommendation confidence engine (9-factor scoring)
 - dual-layer image moderation (heuristic + vision API)
 - restricted category exclusion in retrieval
-- WhatsApp message formatting and deep linking
 - dependency/retention instrumentation
 - follow-up turns with persisted context and 7 follow-up intent types
 
@@ -189,10 +193,15 @@ Success means users come back before real decisions: should I buy this, what goe
 - [x] generate wardrobe-first and catalog-supported trip plans with enough looks for multi-day travel
 - [x] improve diversity across looks, dayparts, and contexts within the same trip plan
 
-#### P2 — Wardrobe Management And Readiness
+#### P2 — Wardrobe Management And Readiness — COMPLETE
 - [x] Web-based wardrobe browsing — view, edit metadata, delete items
 - [x] Wardrobe completeness scoring — "your wardrobe covers X% of your typical occasions"
 - [x] Wardrobe gap analysis view — missing categories for user's lifestyle
+- [x] Wardrobe edit modal — full metadata fields (title, description, category, subtype, colors, pattern, formality, occasion, brand, notes)
+- [x] Wardrobe delete — per-card delete with confirmation dialog (soft-delete via is_active=false)
+- [x] Wardrobe search — text search across title, description, brand, category
+- [x] Enhanced filter chips — 8 category chips (All, Tops, Bottoms, Shoes, Dresses, Outerwear, Accessories, Occasion-ready) + 11 color chips + localStorage persistence
+- [x] Chat conversation management — rename (inline edit via PATCH) and delete/archive (via DELETE) with hover-reveal sidebar actions
 
 #### P2 — Verification Tooling
 - [x] restore `ops/scripts/schema_audit.py` so schema-readiness checks run cleanly again
@@ -571,10 +580,9 @@ Main weak spots:
 - wardrobe add-item modal (photo + metadata) from wardrobe page
 - chat composer + button with upload image / wardrobe picker popover
 
-### WhatsApp (Partial)
-- message formatting for outfits, suggestions, and wardrobe source labeling
-- deep linking with task routing (onboarding, wardrobe, tryon review, chat)
-- re-engagement service file exists (trigger logic not yet implemented)
+### WhatsApp
+- removed from codebase (formatter, deep links, reengagement, runtime services all deleted)
+- WhatsApp remains a target retention surface in product strategy but has no implementation currently
 
 ### Infrastructure
 - dependency/retention instrumentation (turn-completion events, cohort anchors, memory-input lift)
@@ -584,10 +592,11 @@ Main weak spots:
 ## What Is Not Finished
 
 See "What needs to be built" in the gap analysis above. Summary:
-- P0: wardrobe / catalog routing reliability and operational catalog follow-through
-- P1: occasion outfit flows, pairing flows, outfit-check follow-through, and fine-grained style advice
-- P2: capsule / trip planning quality, diversity, and wardrobe-plus-catalog planning depth
-- P3: trust and quality refinements such as try-on quality handling and disliked-item suppression
+- P0: homepage progressive disclosure and IA validation (last 2 items in Single-Page Shell Cleanup)
+- P1: server-side persistence for saved looks/recent threads, follow-up suggestion grouping improvements, wardrobe occasion-ready filter using enrichment metadata
+- P1: WhatsApp inbound runtime + cross-channel identity (retention surface — code was removed, needs rebuild)
+- P2: first-50 validation rollout (user recruitment, recurring-intent analysis, dependency reporting)
+- P3: trust and quality refinements such as disliked-item suppression across turns
 
 ## Repo Reality
 
@@ -606,11 +615,11 @@ This means:
 
 ## Database Table Inventory
 
-Supabase tables (26 migrations in `supabase/migrations/`):
+Supabase tables (35 migrations in `supabase/migrations/`):
 
 ### Core platform tables
 - `users` — id, external_user_id, profile_json, profile_updated_at
-- `conversations` — id, user_id, status, session_context_json
+- `conversations` — id, user_id, status, title, session_context_json
 - `conversation_turns` — id, conversation_id, user_message, assistant_message, resolved_context_json
 - `model_calls` — logging for LLM calls (service, call_type, model, request/response JSON)
 - `tool_traces` — logging for tool executions (tool_name, input/output JSON)
@@ -666,9 +675,7 @@ modules/
 │       ├── tryon_service.py         # Virtual try-on via Gemini (gemini-3.1-flash-image-preview)
 │       ├── comfort_learning.py      # Behavioral seasonal palette refinement
 │       ├── dependency_reporting.py  # First-50 retention/dependency reporting
-│       ├── whatsapp_formatter.py    # WhatsApp message formatting (outfits, suggestions, source labels)
-│       ├── whatsapp_deep_links.py   # WhatsApp deep link builder with task routing
-│       └── whatsapp_reengagement.py # Re-engagement service (trigger logic pending)
+│       └── outfit_decomposition.py  # Outfit decomposition for garment analysis
 ├── user/src/user/
 │   ├── api.py                    # Onboarding REST endpoints
 │   ├── service.py                # OTP, profile, image handling, wardrobe operations
@@ -697,9 +704,9 @@ modules/
 │       └── ...
 ├── platform_core/src/platform_core/
 │   ├── config.py                 # AuraRuntimeConfig, env file resolution
-│   ├── repositories.py           # ConversationRepository (users, conversations, turns, logging)
+│   ├── repositories.py           # ConversationRepository (users, conversations, turns, logging, archive, rename)
 │   ├── supabase_rest.py          # SupabaseRestClient (REST-based, no SDK)
-│   ├── api_schemas.py            # Shared REST API schemas
+│   ├── api_schemas.py            # Shared REST API schemas (incl. RenameConversationRequest)
 │   ├── image_moderation.py       # Dual-layer image moderation (heuristic + vision API)
 │   └── ui.py                     # Chat UI HTML
 └── user_profiler/src/user_profiler/
@@ -736,13 +743,12 @@ Run tests:
 python3 -m pytest tests/ -v
 ```
 
-265 tests across 13 files.
+264 tests across test files (1 pre-existing import failure in test_catalog_retrieval.py).
 
 Focused application suites:
 
 ```bash
 python3 -m pytest tests/test_agentic_application.py -v
-python3 -m pytest tests/test_agentic_application_api_ui.py -v
 ```
 
 ### Test File Inventory
@@ -750,7 +756,6 @@ python3 -m pytest tests/test_agentic_application_api_ui.py -v
 | File | Coverage Area |
 |---|---|
 | `tests/test_agentic_application.py` | Core pipeline: orchestrator, planner, evaluator, assembler, formatter, context builders, filters, conversation memory, follow-up intents, recommendation summaries |
-| `tests/test_agentic_application_api_ui.py` | API routes, async turn jobs, UI rendering, conversation lifecycle, error handling |
 | `tests/test_onboarding.py` | OTP flow, profile persistence, image upload, analysis pipeline, style preference, rerun support |
 | `tests/test_onboarding_interpreter.py` | Deterministic interpretation derivation: 4 seasonal color groups, height categories, waist bands, contrast levels, frame structures |
 | `tests/test_catalog_retrieval.py` | Embedding document builder, vector store operations, similarity search, filter application, confidence policy |

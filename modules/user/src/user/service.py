@@ -1,4 +1,6 @@
 import hashlib
+import io
+import logging
 import mimetypes
 import os
 import subprocess
@@ -19,6 +21,33 @@ from .repository import OnboardingRepository
 from .schemas import FIXED_OTP, ImageCategory
 from .style_archetype import interpret_style_preference, selection_session
 from .wardrobe_enrichment import infer_wardrobe_catalog_attributes
+
+
+_log = logging.getLogger(__name__)
+
+_HEIC_EXTENSIONS = frozenset((".heic", ".heif"))
+
+
+def _convert_heic_to_jpeg(file_data: bytes, filename: str) -> tuple[bytes, str, str]:
+    """Convert HEIC/HEIF images to JPEG. Returns (data, content_type, filename)."""
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in _HEIC_EXTENSIONS:
+        return file_data, "", filename
+    try:
+        from PIL import Image
+        from pillow_heif import register_heif_opener
+        register_heif_opener()
+        img = Image.open(io.BytesIO(file_data))
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        new_name = os.path.splitext(filename)[0] + ".jpg"
+        _log.info("Converted %s from HEIC to JPEG (%d → %d bytes)", filename, len(file_data), buf.tell())
+        return buf.getvalue(), "image/jpeg", new_name
+    except Exception:
+        _log.warning("HEIC conversion failed for %s, keeping original", filename, exc_info=True)
+        return file_data, "", filename
 
 
 REQUIRED_IMAGE_CATEGORIES = frozenset(("full_body", "headshot"))
@@ -321,17 +350,24 @@ class OnboardingService:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
         encrypted_name = _encrypt_filename(user_id, category, timestamp)
 
+        converted_data, converted_ct, converted_name = _convert_heic_to_jpeg(file_data, filename)
+        if converted_ct:
+            file_data = converted_data
+            content_type = converted_ct
+            filename = converted_name
+
         ext = os.path.splitext(filename)[1] or ".jpg"
         stored_filename = f"{encrypted_name}{ext}"
         dest = self._image_dir / stored_filename
         with open(dest, "wb") as f:
             f.write(file_data)
 
-        mime_type = "image/jpeg"
-        if ext.lower() == ".png":
-            mime_type = "image/png"
-        elif ext.lower() == ".webp":
-            mime_type = "image/webp"
+        mime_type = content_type or "image/jpeg"
+        if not content_type:
+            if ext.lower() == ".png":
+                mime_type = "image/png"
+            elif ext.lower() == ".webp":
+                mime_type = "image/webp"
 
         self._repo.upsert_image(
             user_id=user_id,
@@ -389,6 +425,12 @@ class OnboardingService:
             purpose="wardrobe_upload",
             input_class="wardrobe_item_upload",
         )
+
+        converted_data, converted_ct, converted_name = _convert_heic_to_jpeg(file_data, filename)
+        if converted_ct:
+            file_data = converted_data
+            content_type = converted_ct
+            filename = converted_name
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
         encrypted_name = hashlib.sha256(f"{user_id}_wardrobe_{timestamp}".encode("utf-8")).hexdigest()

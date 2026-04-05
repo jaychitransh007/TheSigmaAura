@@ -81,13 +81,6 @@ class IntentClassification(BaseModel):
     reason_codes: List[str] = Field(default_factory=list)
 
 
-class SentimentTrace(BaseModel):
-    sentiment_label: str = "neutral"
-    sentiment_score: float = 0.0
-    intensity: float = 0.0
-    cues: List[str] = Field(default_factory=list)
-
-
 # --- Live Context ---
 
 
@@ -114,8 +107,6 @@ class ConversationMemory(BaseModel):
     last_recommendation_ids: List[str] = Field(default_factory=list)
     recent_intents: List[str] = Field(default_factory=list)
     recent_channels: List[str] = Field(default_factory=list)
-    recent_sentiment_labels: List[str] = Field(default_factory=list)
-    last_sentiment_label: Optional[str] = None
     last_user_need: Optional[str] = None
     wardrobe_item_count: int = 0
     wardrobe_memory_enabled: bool = False

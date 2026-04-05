@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Sigma Aura — System Architecture</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#08090d; display:flex; justify-content:center; padding:24px 12px; }
+  .wrap { max-width:1020px; width:100%; }
+  .title { text-align:center; margin-bottom:10px; }
+  .title h1 { font:700 17px/1.3 'JetBrains Mono','SF Mono',monospace; color:#d8dae6; letter-spacing:1.5px; }
+  .title p  { font:400 11px/1.3 'JetBrains Mono','SF Mono',monospace; color:#7a7f99; margin-top:3px; }
+  svg { display:block; margin:0 auto; }
+  .footer { font:400 9.5px/1.7 'JetBrains Mono','SF Mono',monospace; color:#7a7f99; text-align:center; margin-top:10px; }
+  .footer .c1 { color:#6a9ec4; } .footer .c2 { color:#9e8bc4; } .footer .c3 { color:#c4b86a; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="title">
+    <h1>SIGMA AURA — SYSTEM ARCHITECTURE</h1>
+    <p>Personal Fashion Copilot · Stylist for retention, shopping for revenue</p>
+  </div>
+
+  <svg viewBox="0 0 980 700" xmlns="http://www.w3.org/2000/svg" font-family="'JetBrains Mono','SF Mono',monospace">
+
+    <!-- ════ USE-CASE PILLS ════ -->
+    <g id="usecases">
+      <rect x="30"  y="6" width="120" height="18" rx="9" fill="#c49a6a20" stroke="#c49a6a" stroke-width=".5"/>
+      <text x="90"  y="18" font-size="7" font-weight="600" fill="#c49a6a" text-anchor="middle">Dress Me</text>
+      <rect x="160" y="6" width="120" height="18" rx="9" fill="#c49a6a20" stroke="#c49a6a" stroke-width=".5"/>
+      <text x="220" y="18" font-size="7" font-weight="600" fill="#c49a6a" text-anchor="middle">Style This</text>
+      <rect x="290" y="6" width="120" height="18" rx="9" fill="#c49a6a20" stroke="#c49a6a" stroke-width=".5"/>
+      <text x="350" y="18" font-size="7" font-weight="600" fill="#c49a6a" text-anchor="middle">Check My Outfit</text>
+      <rect x="420" y="6" width="120" height="18" rx="9" fill="#c49a6a20" stroke="#c49a6a" stroke-width=".5"/>
+      <text x="480" y="18" font-size="7" font-weight="600" fill="#c49a6a" text-anchor="middle">Should I Buy?</text>
+      <rect x="550" y="6" width="120" height="18" rx="9" fill="#c49a6a20" stroke="#c49a6a" stroke-width=".5"/>
+      <text x="610" y="18" font-size="7" font-weight="600" fill="#c49a6a" text-anchor="middle">What Suits Me?</text>
+      <rect x="680" y="6" width="120" height="18" rx="9" fill="#c49a6a20" stroke="#c49a6a" stroke-width=".5"/>
+      <text x="740" y="18" font-size="7" font-weight="600" fill="#c49a6a" text-anchor="middle">Plan a Trip</text>
+      <rect x="810" y="6" width="120" height="18" rx="9" fill="#c49a6a20" stroke="#c49a6a" stroke-width=".5"/>
+      <text x="870" y="18" font-size="7" font-weight="600" fill="#c49a6a" text-anchor="middle">Try It On Me</text>
+    </g>
+
+    <!-- ════ LAYER BANDS ════ -->
+    <rect x="0" y="34"  width="980" height="70"  fill="#c49a6a" opacity=".03"/>
+    <line x1="0" y1="34"  x2="980" y2="34"  stroke="#c49a6a" stroke-width=".4" opacity=".18"/>
+    <text x="12" y="46" font-size="7" font-weight="700" fill="#c49a6a" letter-spacing="1.5" opacity=".55">ENTRY SURFACES</text>
+
+    <rect x="0" y="104" width="980" height="100" fill="#6a9ec4" opacity=".03"/>
+    <line x1="0" y1="104" x2="980" y2="104" stroke="#6a9ec4" stroke-width=".4" opacity=".18"/>
+    <text x="12" y="116" font-size="7" font-weight="700" fill="#6a9ec4" letter-spacing="1.5" opacity=".55">USER INTELLIGENCE</text>
+
+    <rect x="0" y="204" width="980" height="170" fill="#8bc46a" opacity=".03"/>
+    <line x1="0" y1="204" x2="980" y2="204" stroke="#8bc46a" stroke-width=".4" opacity=".18"/>
+    <text x="12" y="216" font-size="7" font-weight="700" fill="#8bc46a" letter-spacing="1.5" opacity=".55">INTENT RUNTIME</text>
+
+    <rect x="0" y="374" width="980" height="80"  fill="#c46a9e" opacity=".03"/>
+    <line x1="0" y1="374" x2="980" y2="374" stroke="#c46a9e" stroke-width=".4" opacity=".18"/>
+    <text x="12" y="386" font-size="7" font-weight="700" fill="#c46a9e" letter-spacing="1.5" opacity=".55">OUTPUT &amp; EXPERIENCE</text>
+
+    <rect x="0" y="454" width="980" height="90"  fill="#c4b86a" opacity=".03"/>
+    <line x1="0" y1="454" x2="980" y2="454" stroke="#c4b86a" stroke-width=".4" opacity=".18"/>
+    <text x="12" y="466" font-size="7" font-weight="700" fill="#c4b86a" letter-spacing="1.5" opacity=".55">SAFETY &amp; TRUST</text>
+
+    <rect x="0" y="544" width="980" height="110" fill="#9e8bc4" opacity=".03"/>
+    <line x1="0" y1="544" x2="980" y2="544" stroke="#9e8bc4" stroke-width=".4" opacity=".18"/>
+    <text x="12" y="556" font-size="7" font-weight="700" fill="#9e8bc4" letter-spacing="1.5" opacity=".55">DATA STORES</text>
+
+    <!-- ═══ ENTRY SURFACES ═══ -->
+    <rect x="60"  y="52" width="200" height="42" rx="6" fill="#c49a6a18" stroke="#c49a6a" stroke-width=".7"/>
+    <text x="160" y="66" font-size="9" font-weight="700" fill="#c49a6a" text-anchor="middle">Web App</text>
+    <text x="160" y="76" font-size="6.5" fill="#7a7f99" text-anchor="middle">Onboarding · Chat · Wardrobe · Profile</text>
+
+    <rect x="300" y="52" width="200" height="42" rx="6" fill="#c49a6a18" stroke="#c49a6a" stroke-width=".7"/>
+    <text x="400" y="66" font-size="9" font-weight="700" fill="#c49a6a" text-anchor="middle">Chat Management</text>
+    <text x="400" y="76" font-size="6.5" fill="#7a7f99" text-anchor="middle">Rename · Delete · History · Filters</text>
+
+    <rect x="540" y="52" width="200" height="42" rx="6" fill="#c49a6a18" stroke="#c49a6a" stroke-width=".7"/>
+    <text x="640" y="66" font-size="9" font-weight="700" fill="#c49a6a" text-anchor="middle">Wardrobe Studio</text>
+    <text x="640" y="76" font-size="6.5" fill="#7a7f99" text-anchor="middle">Add · Edit · Delete · Search · Filters</text>
+
+    <rect x="780" y="52" width="150" height="42" rx="6" fill="#c49a6a18" stroke="#c49a6a" stroke-width=".7"/>
+    <text x="855" y="66" font-size="9" font-weight="700" fill="#c49a6a" text-anchor="middle">Catalog Admin</text>
+    <text x="855" y="76" font-size="6.5" fill="#7a7f99" text-anchor="middle">Upload · Enrich · Embed</text>
+
+    <!-- ═══ USER INTELLIGENCE ═══ -->
+    <rect x="30"  y="118" width="140" height="78" rx="6" fill="#6a9ec418" stroke="#6a9ec4" stroke-width=".7"/>
+    <text x="100" y="132" font-size="9" font-weight="700" fill="#6a9ec4" text-anchor="middle">Onboarding</text>
+    <text x="100" y="150" font-size="6.5" fill="#7a7f99" text-anchor="middle">OTP + Profile</text>
+    <text x="100" y="161" font-size="6.5" fill="#7a7f99" text-anchor="middle">Images (body, head)</text>
+    <text x="100" y="172" font-size="6.5" fill="#7a7f99" text-anchor="middle">Style Preferences</text>
+
+    <rect x="185" y="118" width="140" height="78" rx="6" fill="#6a9ec418" stroke="#6a9ec4" stroke-width=".7"/>
+    <text x="255" y="132" font-size="9" font-weight="700" fill="#6a9ec4" text-anchor="middle">Analysis Pipeline</text>
+    <text x="255" y="142" font-size="6.5" fill="#7a7f99" text-anchor="middle">3 agents · gpt-5.4</text>
+    <text x="255" y="156" font-size="6.5" fill="#7a7f99" text-anchor="middle">Body Type</text>
+    <text x="255" y="167" font-size="6.5" fill="#7a7f99" text-anchor="middle">Color Analysis</text>
+    <text x="255" y="178" font-size="6.5" fill="#7a7f99" text-anchor="middle">Detail Analysis</text>
+
+    <rect x="340" y="118" width="140" height="78" rx="6" fill="#6a9ec418" stroke="#6a9ec4" stroke-width=".7"/>
+    <text x="410" y="132" font-size="9" font-weight="700" fill="#6a9ec4" text-anchor="middle">Interpretations</text>
+    <text x="410" y="150" font-size="6.5" fill="#7a7f99" text-anchor="middle">Seasonal Color Group</text>
+    <text x="410" y="161" font-size="6.5" fill="#7a7f99" text-anchor="middle">Color Palette (B/A/A)</text>
+    <text x="410" y="172" font-size="6.5" fill="#7a7f99" text-anchor="middle">Frame · Height · Contrast</text>
+
+    <rect x="495" y="118" width="140" height="78" rx="6" fill="#6a9ec418" stroke="#6a9ec4" stroke-width=".7"/>
+    <text x="565" y="132" font-size="9" font-weight="700" fill="#6a9ec4" text-anchor="middle">Digital Draping</text>
+    <text x="565" y="142" font-size="6.5" fill="#7a7f99" text-anchor="middle">3-round LLM vision</text>
+    <text x="565" y="156" font-size="6.5" fill="#7a7f99" text-anchor="middle">Warm vs Cool</text>
+    <text x="565" y="167" font-size="6.5" fill="#7a7f99" text-anchor="middle">Season Refinement</text>
+    <text x="565" y="178" font-size="6.5" fill="#7a7f99" text-anchor="middle">Cross-Temp Confirm</text>
+
+    <rect x="650" y="118" width="140" height="78" rx="6" fill="#6a9ec418" stroke="#6a9ec4" stroke-width=".7"/>
+    <text x="720" y="132" font-size="9" font-weight="700" fill="#6a9ec4" text-anchor="middle">Style Profile</text>
+    <text x="720" y="150" font-size="6.5" fill="#7a7f99" text-anchor="middle">Primary Archetype</text>
+    <text x="720" y="161" font-size="6.5" fill="#7a7f99" text-anchor="middle">Risk · Formality</text>
+    <text x="720" y="172" font-size="6.5" fill="#7a7f99" text-anchor="middle">Comfort Boundaries</text>
+
+    <rect x="805" y="118" width="140" height="78" rx="6" fill="#6a9ec418" stroke="#6a9ec4" stroke-width=".7"/>
+    <text x="875" y="132" font-size="9" font-weight="700" fill="#6a9ec4" text-anchor="middle">Confidence</text>
+    <text x="875" y="150" font-size="6.5" fill="#7a7f99" text-anchor="middle">Profile Confidence</text>
+    <text x="875" y="161" font-size="6.5" fill="#7a7f99" text-anchor="middle">Recommendation Conf.</text>
+    <text x="875" y="172" font-size="6.5" fill="#7a7f99" text-anchor="middle">9-Factor Scoring</text>
+
+    <!-- Intelligence flow arrows -->
+    <line x1="170" y1="157" x2="185" y2="157" stroke="#6a9ec4" stroke-width=".7" opacity=".45"/>
+    <polygon points="185,157 180,154.5 180,159.5" fill="#6a9ec4" opacity=".45"/>
+    <line x1="325" y1="157" x2="340" y2="157" stroke="#6a9ec4" stroke-width=".7" opacity=".45"/>
+    <polygon points="340,157 335,154.5 335,159.5" fill="#6a9ec4" opacity=".45"/>
+    <line x1="480" y1="157" x2="495" y2="157" stroke="#6a9ec4" stroke-width=".7" opacity=".45"/>
+    <polygon points="495,157 490,154.5 490,159.5" fill="#6a9ec4" opacity=".45"/>
+    <line x1="635" y1="157" x2="650" y2="157" stroke="#6a9ec4" stroke-width=".7" opacity=".45"/>
+    <polygon points="650,157 645,154.5 645,159.5" fill="#6a9ec4" opacity=".45"/>
+    <line x1="790" y1="157" x2="805" y2="157" stroke="#6a9ec4" stroke-width=".7" opacity=".45"/>
+    <polygon points="805,157 800,154.5 800,159.5" fill="#6a9ec4" opacity=".45"/>
+
+    <!-- ═══ INTENT RUNTIME — Planner Row ═══ -->
+    <rect x="60"  y="220" width="180" height="48" rx="6" fill="#8bc46a18" stroke="#8bc46a" stroke-width=".7"/>
+    <text x="150" y="237" font-size="9" font-weight="700" fill="#8bc46a" text-anchor="middle">Copilot Planner</text>
+    <text x="150" y="247" font-size="6.5" fill="#7a7f99" text-anchor="middle">gpt-5.4 · Intent Router</text>
+    <text x="150" y="259" font-size="6.5" fill="#7a7f99" text-anchor="middle">11 intents · 6 actions</text>
+
+    <rect x="260" y="220" width="180" height="48" rx="6" fill="#8bc46a18" stroke="#8bc46a" stroke-width=".7"/>
+    <text x="350" y="237" font-size="9" font-weight="700" fill="#8bc46a" text-anchor="middle">Context Compiler</text>
+    <text x="350" y="247" font-size="6.5" fill="#7a7f99" text-anchor="middle">Profile + Memory + Wardrobe</text>
+    <text x="350" y="259" font-size="6.5" fill="#7a7f99" text-anchor="middle">Conversation Memory carry-fwd</text>
+
+    <rect x="460" y="220" width="180" height="48" rx="6" fill="#8bc46a18" stroke="#8bc46a" stroke-width=".7"/>
+    <text x="550" y="237" font-size="9" font-weight="700" fill="#8bc46a" text-anchor="middle">Orchestrator</text>
+    <text x="550" y="247" font-size="6.5" fill="#7a7f99" text-anchor="middle">Central dispatch + pipeline</text>
+    <text x="550" y="259" font-size="6.5" fill="#7a7f99" text-anchor="middle">Latency tracked per stage</text>
+
+    <rect x="660" y="220" width="280" height="48" rx="6" fill="#8bc46a18" stroke="#8bc46a" stroke-width=".7"/>
+    <text x="800" y="237" font-size="9" font-weight="700" fill="#8bc46a" text-anchor="middle">Dedicated Intent Handlers</text>
+    <text x="800" y="252" font-size="6.5" fill="#7a7f99" text-anchor="middle">Outfit Check · Shopping · Pairing · Style · Capsule · Explain</text>
+
+    <!-- Planner row arrows -->
+    <line x1="240" y1="244" x2="260" y2="244" stroke="#8bc46a" stroke-width=".7" opacity=".45"/>
+    <polygon points="260,244 255,241.5 255,246.5" fill="#8bc46a" opacity=".45"/>
+    <line x1="440" y1="244" x2="460" y2="244" stroke="#8bc46a" stroke-width=".7" opacity=".45"/>
+    <polygon points="460,244 455,241.5 455,246.5" fill="#8bc46a" opacity=".45"/>
+    <line x1="640" y1="244" x2="660" y2="244" stroke="#8bc46a" stroke-width=".7" opacity=".45"/>
+    <polygon points="660,244 655,241.5 655,246.5" fill="#8bc46a" opacity=".45"/>
+
+    <!-- ═══ INTENT RUNTIME — Pipeline Row ═══ -->
+    <rect x="60"  y="282" width="130" height="78" rx="6" fill="#8bc46a18" stroke="#8bc46a" stroke-width=".7"/>
+    <text x="125" y="296" font-size="9" font-weight="700" fill="#8bc46a" text-anchor="middle">Outfit Architect</text>
+    <text x="125" y="306" font-size="6.5" fill="#7a7f99" text-anchor="middle">gpt-5.4 · LLM planner</text>
+    <text x="125" y="320" font-size="6.5" fill="#7a7f99" text-anchor="middle">Plan type + directions</text>
+    <text x="125" y="331" font-size="6.5" fill="#7a7f99" text-anchor="middle">Concept-first pairing</text>
+    <text x="125" y="342" font-size="6.5" fill="#7a7f99" text-anchor="middle">Follow-up intent rules</text>
+
+    <rect x="205" y="282" width="130" height="78" rx="6" fill="#8bc46a18" stroke="#8bc46a" stroke-width=".7"/>
+    <text x="270" y="296" font-size="9" font-weight="700" fill="#8bc46a" text-anchor="middle">Catalog Search</text>
+    <text x="270" y="306" font-size="6.5" fill="#7a7f99" text-anchor="middle">pgvector · cosine sim</text>
+    <text x="270" y="320" font-size="6.5" fill="#7a7f99" text-anchor="middle">Hard + soft filters</text>
+    <text x="270" y="331" font-size="6.5" fill="#7a7f99" text-anchor="middle">12 products / query</text>
+    <text x="270" y="342" font-size="6.5" fill="#7a7f99" text-anchor="middle">No filter relaxation</text>
+
+    <rect x="350" y="282" width="130" height="78" rx="6" fill="#8bc46a18" stroke="#8bc46a" stroke-width=".7"/>
+    <text x="415" y="296" font-size="9" font-weight="700" fill="#8bc46a" text-anchor="middle">Assembler</text>
+    <text x="415" y="306" font-size="6.5" fill="#7a7f99" text-anchor="middle">Deterministic</text>
+    <text x="415" y="320" font-size="6.5" fill="#7a7f99" text-anchor="middle">Compatibility pruning</text>
+    <text x="415" y="331" font-size="6.5" fill="#7a7f99" text-anchor="middle">Follow-up scoring</text>
+    <text x="415" y="342" font-size="6.5" fill="#7a7f99" text-anchor="middle">Max 30 candidates</text>
+
+    <rect x="495" y="282" width="130" height="78" rx="6" fill="#8bc46a18" stroke="#8bc46a" stroke-width=".7"/>
+    <text x="560" y="296" font-size="9" font-weight="700" fill="#8bc46a" text-anchor="middle">Evaluator</text>
+    <text x="560" y="306" font-size="6.5" fill="#7a7f99" text-anchor="middle">gpt-5.4 · Dual scoring</text>
+    <text x="560" y="320" font-size="6.5" fill="#7a7f99" text-anchor="middle">8 criteria + 8 archetypes</text>
+    <text x="560" y="331" font-size="6.5" fill="#7a7f99" text-anchor="middle">Delta-aware ranking</text>
+    <text x="560" y="342" font-size="6.5" fill="#7a7f99" text-anchor="middle">Fallback: assembly score</text>
+
+    <rect x="640" y="282" width="140" height="78" rx="6" fill="#8bc46a18" stroke="#8bc46a" stroke-width=".7"/>
+    <text x="710" y="296" font-size="9" font-weight="700" fill="#8bc46a" text-anchor="middle">Wardrobe Engine</text>
+    <text x="710" y="314" font-size="6.5" fill="#7a7f99" text-anchor="middle">Wardrobe-first retrieval</text>
+    <text x="710" y="325" font-size="6.5" fill="#7a7f99" text-anchor="middle">Gap detection</text>
+    <text x="710" y="336" font-size="6.5" fill="#7a7f99" text-anchor="middle">Source labeling</text>
+
+    <rect x="795" y="282" width="145" height="78" rx="6" fill="#8bc46a18" stroke="#8bc46a" stroke-width=".7"/>
+    <text x="867" y="296" font-size="9" font-weight="700" fill="#8bc46a" text-anchor="middle">Virtual Try-On</text>
+    <text x="867" y="306" font-size="6.5" fill="#7a7f99" text-anchor="middle">Gemini · Parallel</text>
+    <text x="867" y="320" font-size="6.5" fill="#7a7f99" text-anchor="middle">Body-preserving prompt</text>
+    <text x="867" y="331" font-size="6.5" fill="#7a7f99" text-anchor="middle">Quality gate</text>
+    <text x="867" y="342" font-size="6.5" fill="#7a7f99" text-anchor="middle">Disk + DB cache</text>
+
+    <!-- Pipeline row arrows -->
+    <line x1="190" y1="321" x2="205" y2="321" stroke="#8bc46a" stroke-width=".7" opacity=".45"/>
+    <polygon points="205,321 200,318.5 200,323.5" fill="#8bc46a" opacity=".45"/>
+    <line x1="335" y1="321" x2="350" y2="321" stroke="#8bc46a" stroke-width=".7" opacity=".45"/>
+    <polygon points="350,321 345,318.5 345,323.5" fill="#8bc46a" opacity=".45"/>
+    <line x1="480" y1="321" x2="495" y2="321" stroke="#8bc46a" stroke-width=".7" opacity=".45"/>
+    <polygon points="495,321 490,318.5 490,323.5" fill="#8bc46a" opacity=".45"/>
+    <line x1="625" y1="321" x2="640" y2="321" stroke="#8bc46a" stroke-width=".7" opacity=".45"/>
+    <polygon points="640,321 635,318.5 635,323.5" fill="#8bc46a" opacity=".45"/>
+    <line x1="780" y1="321" x2="795" y2="321" stroke="#8bc46a" stroke-width=".7" opacity=".45"/>
+    <polygon points="795,321 790,318.5 790,323.5" fill="#8bc46a" opacity=".45"/>
+
+    <!-- ═══ OUTPUT & EXPERIENCE ═══ -->
+    <rect x="60"  y="386" width="180" height="56" rx="6" fill="#c46a9e18" stroke="#c46a9e" stroke-width=".7"/>
+    <text x="150" y="400" font-size="9" font-weight="700" fill="#c46a9e" text-anchor="middle">Response Formatter</text>
+    <text x="150" y="410" font-size="6.5" fill="#7a7f99" text-anchor="middle">Max 3 outfits · Source-aware</text>
+    <text x="150" y="424" font-size="6.5" fill="#7a7f99" text-anchor="middle">Intent-aware messaging</text>
+    <text x="150" y="435" font-size="6.5" fill="#7a7f99" text-anchor="middle">Follow-up suggestion chips</text>
+
+    <rect x="260" y="386" width="180" height="56" rx="6" fill="#c46a9e18" stroke="#c46a9e" stroke-width=".7"/>
+    <text x="350" y="400" font-size="9" font-weight="700" fill="#c46a9e" text-anchor="middle">3-Column PDP Cards</text>
+    <text x="350" y="410" font-size="6.5" fill="#7a7f99" text-anchor="middle">Thumbnails · Hero · Info</text>
+    <text x="350" y="424" font-size="6.5" fill="#7a7f99" text-anchor="middle">Radar chart + progress bars</text>
+    <text x="350" y="435" font-size="6.5" fill="#7a7f99" text-anchor="middle">Buy Now · Like / Dislike</text>
+
+    <rect x="460" y="386" width="180" height="56" rx="6" fill="#c46a9e18" stroke="#c46a9e" stroke-width=".7"/>
+    <text x="550" y="400" font-size="9" font-weight="700" fill="#c46a9e" text-anchor="middle">Chat UI</text>
+    <text x="550" y="410" font-size="6.5" fill="#7a7f99" text-anchor="middle">Sidebar · Composer · Feed</text>
+    <text x="550" y="424" font-size="6.5" fill="#7a7f99" text-anchor="middle">Image attach · Wardrobe pick</text>
+    <text x="550" y="435" font-size="6.5" fill="#7a7f99" text-anchor="middle">Stage narration (QnA)</text>
+
+    <rect x="660" y="386" width="140" height="56" rx="6" fill="#c46a9e18" stroke="#c46a9e" stroke-width=".7"/>
+    <text x="730" y="400" font-size="9" font-weight="700" fill="#c46a9e" text-anchor="middle">Wardrobe UI</text>
+    <text x="730" y="410" font-size="6.5" fill="#7a7f99" text-anchor="middle">Closet Studio</text>
+    <text x="730" y="424" font-size="6.5" fill="#7a7f99" text-anchor="middle">Search · Category · Color</text>
+    <text x="730" y="435" font-size="6.5" fill="#7a7f99" text-anchor="middle">Edit modal · Delete</text>
+
+    <rect x="815" y="386" width="130" height="56" rx="6" fill="#c46a9e18" stroke="#c46a9e" stroke-width=".7"/>
+    <text x="880" y="400" font-size="9" font-weight="700" fill="#c46a9e" text-anchor="middle">Profile UI</text>
+    <text x="880" y="410" font-size="6.5" fill="#7a7f99" text-anchor="middle">Style Code · Palette</text>
+    <text x="880" y="424" font-size="6.5" fill="#7a7f99" text-anchor="middle">Inline edit toggle</text>
+    <text x="880" y="435" font-size="6.5" fill="#7a7f99" text-anchor="middle">Color chips (B/A/A)</text>
+
+    <!-- Output arrows -->
+    <line x1="240" y1="414" x2="260" y2="414" stroke="#c46a9e" stroke-width=".7" opacity=".45"/>
+    <polygon points="260,414 255,411.5 255,416.5" fill="#c46a9e" opacity=".45"/>
+    <line x1="440" y1="414" x2="460" y2="414" stroke="#c46a9e" stroke-width=".7" opacity=".45"/>
+    <polygon points="460,414 455,411.5 455,416.5" fill="#c46a9e" opacity=".45"/>
+
+    <!-- ═══ SAFETY & TRUST ═══ -->
+    <rect x="60"  y="466" width="180" height="66" rx="6" fill="#c4b86a18" stroke="#c4b86a" stroke-width=".7"/>
+    <text x="150" y="480" font-size="9" font-weight="700" fill="#c4b86a" text-anchor="middle">Image Moderation</text>
+    <text x="150" y="490" font-size="6.5" fill="#7a7f99" text-anchor="middle">Dual-layer</text>
+    <text x="150" y="504" font-size="6.5" fill="#7a7f99" text-anchor="middle">Heuristic blocklist</text>
+    <text x="150" y="515" font-size="6.5" fill="#7a7f99" text-anchor="middle">Vision API check</text>
+    <text x="150" y="526" font-size="6.5" fill="#7a7f99" text-anchor="middle">Restricted categories</text>
+
+    <rect x="260" y="466" width="180" height="66" rx="6" fill="#c4b86a18" stroke="#c4b86a" stroke-width=".7"/>
+    <text x="350" y="480" font-size="9" font-weight="700" fill="#c4b86a" text-anchor="middle">Policy Engine</text>
+    <text x="350" y="490" font-size="6.5" fill="#7a7f99" text-anchor="middle">Fail-closed guardrails</text>
+    <text x="350" y="504" font-size="6.5" fill="#7a7f99" text-anchor="middle">Nudity / minors block</text>
+    <text x="350" y="515" font-size="6.5" fill="#7a7f99" text-anchor="middle">Lingerie exclusion</text>
+    <text x="350" y="526" font-size="6.5" fill="#7a7f99" text-anchor="middle">Try-on quality gate</text>
+
+    <rect x="460" y="466" width="180" height="66" rx="6" fill="#c4b86a18" stroke="#c4b86a" stroke-width=".7"/>
+    <text x="550" y="480" font-size="9" font-weight="700" fill="#c4b86a" text-anchor="middle">Comfort Learning</text>
+    <text x="550" y="490" font-size="6.5" fill="#7a7f99" text-anchor="middle">Behavioral refinement</text>
+    <text x="550" y="504" font-size="6.5" fill="#7a7f99" text-anchor="middle">Outfit like signals</text>
+    <text x="550" y="515" font-size="6.5" fill="#7a7f99" text-anchor="middle">Seasonal palette update</text>
+    <text x="550" y="526" font-size="6.5" fill="#7a7f99" text-anchor="middle">Threshold: 5 high-intent</text>
+
+    <rect x="660" y="466" width="140" height="66" rx="6" fill="#c4b86a18" stroke="#c4b86a" stroke-width=".7"/>
+    <text x="730" y="480" font-size="9" font-weight="700" fill="#c4b86a" text-anchor="middle">Feedback Loop</text>
+    <text x="730" y="490" font-size="6.5" fill="#7a7f99" text-anchor="middle">Per-outfit capture</text>
+    <text x="730" y="504" font-size="6.5" fill="#7a7f99" text-anchor="middle">Like / Dislike + notes</text>
+    <text x="730" y="515" font-size="6.5" fill="#7a7f99" text-anchor="middle">Turn-level correlation</text>
+    <text x="730" y="526" font-size="6.5" fill="#7a7f99" text-anchor="middle">Comfort learning input</text>
+
+    <rect x="815" y="466" width="130" height="66" rx="6" fill="#c4b86a18" stroke="#c4b86a" stroke-width=".7"/>
+    <text x="880" y="480" font-size="9" font-weight="700" fill="#c4b86a" text-anchor="middle">Dependency Inst.</text>
+    <text x="880" y="490" font-size="6.5" fill="#7a7f99" text-anchor="middle">First-50 validation</text>
+    <text x="880" y="504" font-size="6.5" fill="#7a7f99" text-anchor="middle">Turn-completion events</text>
+    <text x="880" y="515" font-size="6.5" fill="#7a7f99" text-anchor="middle">Cohort anchors</text>
+    <text x="880" y="526" font-size="6.5" fill="#7a7f99" text-anchor="middle">Memory-input lift</text>
+
+    <!-- ═══ DATA STORES ═══ -->
+    <rect x="30"  y="558" width="150" height="80" rx="4" fill="#9e8bc410" stroke="#9e8bc4" stroke-width=".5" stroke-dasharray="3,2"/>
+    <text x="105" y="570" font-size="7.5" font-weight="600" fill="#9e8bc4" text-anchor="middle">User Data</text>
+    <text x="105" y="582" font-size="6" fill="#7a7f99" text-anchor="middle">onboarding_profiles</text>
+    <text x="105" y="592" font-size="6" fill="#7a7f99" text-anchor="middle">onboarding_images</text>
+    <text x="105" y="602" font-size="6" fill="#7a7f99" text-anchor="middle">analysis + interpretations</text>
+    <text x="105" y="612" font-size="6" fill="#7a7f99" text-anchor="middle">style_preference</text>
+    <text x="105" y="622" font-size="6" fill="#7a7f99" text-anchor="middle">effective_seasonal_groups</text>
+
+    <rect x="195" y="558" width="150" height="80" rx="4" fill="#9e8bc410" stroke="#9e8bc4" stroke-width=".5" stroke-dasharray="3,2"/>
+    <text x="270" y="570" font-size="7.5" font-weight="600" fill="#9e8bc4" text-anchor="middle">Conversations</text>
+    <text x="270" y="582" font-size="6" fill="#7a7f99" text-anchor="middle">conversations (+ title)</text>
+    <text x="270" y="592" font-size="6" fill="#7a7f99" text-anchor="middle">conversation_turns</text>
+    <text x="270" y="602" font-size="6" fill="#7a7f99" text-anchor="middle">session_context_json</text>
+    <text x="270" y="612" font-size="6" fill="#7a7f99" text-anchor="middle">feedback_events</text>
+
+    <rect x="360" y="558" width="150" height="80" rx="4" fill="#9e8bc410" stroke="#9e8bc4" stroke-width=".5" stroke-dasharray="3,2"/>
+    <text x="435" y="570" font-size="7.5" font-weight="600" fill="#9e8bc4" text-anchor="middle">Wardrobe</text>
+    <text x="435" y="582" font-size="6" fill="#7a7f99" text-anchor="middle">user_wardrobe_items</text>
+    <text x="435" y="592" font-size="6" fill="#7a7f99" text-anchor="middle">46 enrichment attributes</text>
+    <text x="435" y="602" font-size="6" fill="#7a7f99" text-anchor="middle">is_active soft delete</text>
+    <text x="435" y="612" font-size="6" fill="#7a7f99" text-anchor="middle">image_url + image_path</text>
+
+    <rect x="525" y="558" width="150" height="80" rx="4" fill="#9e8bc410" stroke="#9e8bc4" stroke-width=".5" stroke-dasharray="3,2"/>
+    <text x="600" y="570" font-size="7.5" font-weight="600" fill="#9e8bc4" text-anchor="middle">Catalog</text>
+    <text x="600" y="582" font-size="6" fill="#7a7f99" text-anchor="middle">catalog_enriched (50+ attr)</text>
+    <text x="600" y="592" font-size="6" fill="#7a7f99" text-anchor="middle">catalog_item_embeddings</text>
+    <text x="600" y="602" font-size="6" fill="#7a7f99" text-anchor="middle">pgvector 1536d cosine</text>
+    <text x="600" y="612" font-size="6" fill="#7a7f99" text-anchor="middle">catalog_jobs</text>
+
+    <rect x="690" y="558" width="150" height="80" rx="4" fill="#9e8bc410" stroke="#9e8bc4" stroke-width=".5" stroke-dasharray="3,2"/>
+    <text x="765" y="570" font-size="7.5" font-weight="600" fill="#9e8bc4" text-anchor="middle">Try-On &amp; Media</text>
+    <text x="765" y="582" font-size="6" fill="#7a7f99" text-anchor="middle">virtual_tryon_images</text>
+    <text x="765" y="592" font-size="6" fill="#7a7f99" text-anchor="middle">Disk: data/tryon/images/</text>
+    <text x="765" y="602" font-size="6" fill="#7a7f99" text-anchor="middle">Cache by garment ID set</text>
+    <text x="765" y="612" font-size="6" fill="#7a7f99" text-anchor="middle">quality_score_pct</text>
+
+    <rect x="855" y="558" width="105" height="80" rx="4" fill="#9e8bc410" stroke="#9e8bc4" stroke-width=".5" stroke-dasharray="3,2"/>
+    <text x="907" y="570" font-size="7.5" font-weight="600" fill="#9e8bc4" text-anchor="middle">Telemetry</text>
+    <text x="907" y="582" font-size="6" fill="#7a7f99" text-anchor="middle">model_calls</text>
+    <text x="907" y="592" font-size="6" fill="#7a7f99" text-anchor="middle">tool_traces</text>
+    <text x="907" y="602" font-size="6" fill="#7a7f99" text-anchor="middle">policy_event_log</text>
+    <text x="907" y="612" font-size="6" fill="#7a7f99" text-anchor="middle">dependency_validation</text>
+
+    <!-- ═══ CROSS-LAYER ARROWS ═══ -->
+    <!-- Entry → Intelligence -->
+    <line x1="160" y1="94" x2="175" y2="118" stroke="#6a9ec4" stroke-width=".7" opacity=".35"/>
+    <text x="155" y="108" font-size="5.5" fill="#4a4e66" text-anchor="middle">analyze</text>
+    <!-- Intelligence → Runtime -->
+    <line x1="410" y1="196" x2="350" y2="220" stroke="#8bc46a" stroke-width=".7" opacity=".35"/>
+    <text x="370" y="210" font-size="5.5" fill="#4a4e66" text-anchor="middle">context</text>
+    <!-- Runtime → Output -->
+    <line x1="150" y1="360" x2="150" y2="386" stroke="#c46a9e" stroke-width=".7" opacity=".35"/>
+    <text x="160" y="375" font-size="5.5" fill="#4a4e66">format</text>
+    <!-- Safety → Runtime -->
+    <line x1="150" y1="466" x2="150" y2="360" stroke="#c4b86a" stroke-width=".7" opacity=".25" stroke-dasharray="3,2"/>
+    <text x="160" y="430" font-size="5.5" fill="#4a4e66">guard</text>
+    <!-- Runtime → Data -->
+    <line x1="270" y1="360" x2="270" y2="558" stroke="#9e8bc4" stroke-width=".7" opacity=".25" stroke-dasharray="3,2"/>
+    <text x="280" y="470" font-size="5.5" fill="#4a4e66">persist</text>
+    <line x1="435" y1="360" x2="435" y2="558" stroke="#9e8bc4" stroke-width=".7" opacity=".25" stroke-dasharray="3,2"/>
+    <line x1="600" y1="360" x2="600" y2="558" stroke="#9e8bc4" stroke-width=".7" opacity=".25" stroke-dasharray="3,2"/>
+
+    <!-- ═══ LEGEND ═══ -->
+    <rect x="60"  y="660" width="10" height="10" rx="2" fill="#c49a6a" opacity=".5"/>
+    <text x="76"  y="669" font-size="7.5" fill="#7a7f99">Entry Surfaces</text>
+    <rect x="200" y="660" width="10" height="10" rx="2" fill="#6a9ec4" opacity=".5"/>
+    <text x="216" y="669" font-size="7.5" fill="#7a7f99">User Intelligence</text>
+    <rect x="360" y="660" width="10" height="10" rx="2" fill="#8bc46a" opacity=".5"/>
+    <text x="376" y="669" font-size="7.5" fill="#7a7f99">Intent Runtime</text>
+    <rect x="510" y="660" width="10" height="10" rx="2" fill="#c46a9e" opacity=".5"/>
+    <text x="526" y="669" font-size="7.5" fill="#7a7f99">Output &amp; Experience</text>
+    <rect x="690" y="660" width="10" height="10" rx="2" fill="#c4b86a" opacity=".5"/>
+    <text x="706" y="669" font-size="7.5" fill="#7a7f99">Safety &amp; Trust</text>
+    <rect x="840" y="660" width="10" height="10" rx="2" fill="#9e8bc4" opacity=".5"/>
+    <text x="856" y="669" font-size="7.5" fill="#7a7f99">Data Stores</text>
+
+  </svg>
+
+  <div class="footer">
+    <span class="c1">Models:</span> gpt-5.4 (planner/architect/evaluator/analysis) · gpt-5-mini (catalog enrichment) · text-embedding-3-small (1536d) · gemini-3.1-flash-image-preview (try-on)
+    <br/>
+    <span class="c2">Stack:</span> Python · FastAPI · Supabase (PostgreSQL + pgvector) · Server-rendered HTML/CSS/JS (no framework)
+    <br/>
+    <span class="c3">Stats:</span> 35 migrations · 264 tests · 11 intents · 7 follow-up types · 50+ catalog attributes · 46 wardrobe attributes
+  </div>
+</div>
+</body>
+</html>

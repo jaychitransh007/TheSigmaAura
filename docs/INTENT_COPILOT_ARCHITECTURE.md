@@ -1,13 +1,13 @@
 # Intent-Driven Fashion Copilot Architecture
 
-Last updated: March 30, 2026
+Last updated: April 5, 2026
 
 ## Purpose
 
 This document describes the target architecture for the system we want to build next:
 
 - website for onboarding and discovery
-- WhatsApp for repeat usage and retention
+- WhatsApp for repeat usage and retention (target — not yet implemented; code was removed and will be rebuilt)
 - mandatory onboarding before chat
 - intent-driven chat after onboarding
 - optional wardrobe onboarding, but full wardrobe support in the system
