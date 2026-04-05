@@ -91,7 +91,8 @@ Success means users come back before real decisions: should I buy this, what goe
 - wardrobe ingestion with vision-API enrichment and image moderation
 - wardrobe retrieval and wardrobe-first occasion response
 - virtual try-on via Gemini with quality gate
-- 3-column PDP outfit cards with Buy Now, radar chart, progress bars, feedback CTAs
+- 3-column PDP outfit cards with Buy Now, dual radar charts (archetypes + confidence-weighted evaluation), icon feedback (save/like/dislike)
+- `analysis_confidence_pct` — attribute-level analysis confidence (average LLM confidence across all profile attributes); used to scale evaluation radar chart scores at render time; fetched once per page load, applied consistently to all cards including history
 - unified profile page with inline editing, style code card, and color palette card
 - wardrobe add-item modal from wardrobe page
 - wardrobe edit modal (all metadata fields) and per-card delete with confirmation
@@ -457,7 +458,7 @@ Current UI behavior (implemented):
 - desktop: 3-column grid (`80px | flex | 40%`)
   - Col 1: vertical thumbnail rail (product images + try-on, 64×64px, active accent border)
   - Col 2: hero image viewer (full height, default to try-on when present)
-  - Col 3: info panel (rank, title, per-product title + price + Buy Now button, style archetype radar chart, 8 criteria progress bars, feedback CTAs)
+  - Col 3: info panel (title, stylist summary ≤100 chars, product specs with Rs. price + Buy Now, style archetype radar chart, evaluation criteria radar chart scaled by analysis_confidence_pct, icon feedback buttons)
 - mobile (`max-width: 900px`): hero image → horizontal thumbnail strip → info panel
 
 Thumbnail ordering:
@@ -572,7 +573,7 @@ Main weak spots:
 - wardrobe-first occasion response (wardrobe retrieval + selection for occasion intents)
 - wardrobe item save from chat with moderation
 - virtual try-on via Gemini (gemini-3.1-flash-image-preview), parallel generation, quality gate, persistent disk + DB storage with cache reuse
-- 3-column PDP outfit cards with Buy Now, radar chart (8 style archetypes), 8 evaluation criteria progress bars
+- 3-column PDP outfit cards with Buy Now, dual radar charts (8 archetypes + confidence-weighted evaluation), icon feedback
 - per-outfit feedback capture (Like / Didn't Like with notes)
 - follow-up turns with 7 follow-up intent types (increase boldness, change color, similar, etc.)
 - color palette system: base/accent/avoid colors derived from seasonal group, passed to planner, architect, and outfit check agents

@@ -46,6 +46,7 @@ class ProfileConfidenceFactor(BaseModel):
 
 class ProfileConfidence(BaseModel):
     score_pct: int = 0
+    analysis_confidence_pct: int = 0
     satisfied_factors: List[str] = Field(default_factory=list)
     missing_factors: List[str] = Field(default_factory=list)
     improvement_actions: List[str] = Field(default_factory=list)

@@ -87,12 +87,32 @@ def evaluate_profile_confidence(
     earned = sum(item.score for item in factors)
     score_pct = int(round((earned / total) * 100))
 
+    # Compute attribute-level analysis confidence (average of individual attribute confidences)
+    conf_total = 0.0
+    conf_count = 0
+    attributes = dict(analysis_status.get("attributes") or {})
+    for _attr_name, attr_val in attributes.items():
+        if isinstance(attr_val, dict):
+            c = attr_val.get("confidence")
+            if isinstance(c, (int, float)):
+                conf_total += float(c)
+                conf_count += 1
+    derived = dict(analysis_status.get("derived_interpretations") or {})
+    for _interp_name, interp_val in derived.items():
+        if isinstance(interp_val, dict):
+            c = interp_val.get("confidence")
+            if isinstance(c, (int, float)):
+                conf_total += float(c)
+                conf_count += 1
+    analysis_confidence_pct = int(round((conf_total / conf_count) * 100)) if conf_count > 0 else score_pct
+
     satisfied = [item.factor for item in factors if item.satisfied]
     missing = [item.factor for item in factors if not item.satisfied]
     improvement_actions = _dedupe(item.improvement_action for item in factors if not item.satisfied and item.improvement_action)
 
     return ProfileConfidence(
         score_pct=score_pct,
+        analysis_confidence_pct=analysis_confidence_pct,
         satisfied_factors=satisfied,
         missing_factors=missing,
         improvement_actions=improvement_actions,

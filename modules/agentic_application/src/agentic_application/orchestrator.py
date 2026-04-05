@@ -774,7 +774,7 @@ class AgenticOrchestrator:
             user_context=user_context,
             conversation_history=conversation_history,
             previous_context=previous_context,
-            profile_confidence_pct=profile_confidence.score_pct,
+            profile_confidence_pct=profile_confidence.analysis_confidence_pct,
             has_person_image=has_person_image,
             has_attached_image=bool(image_data),
         )
@@ -1203,7 +1203,7 @@ class AgenticOrchestrator:
                 turn_id=turn_id,
                 source_channel=channel,
                 confidence_type="profile",
-                score_pct=int(profile_confidence.score_pct),
+                score_pct=int(profile_confidence.analysis_confidence_pct),
                 factors_json=[factor.model_dump() for factor in profile_confidence.factors],
                 metadata_json={
                     "primary_intent": primary_intent,
@@ -1232,7 +1232,7 @@ class AgenticOrchestrator:
         retrieved_product_count = sum(len(getattr(rs, "products", []) or []) for rs in retrieved_sets)
         return evaluate_recommendation_confidence(
             answer_mode=answer_mode,
-            profile_confidence_score_pct=profile_confidence.score_pct,
+            profile_confidence_score_pct=profile_confidence.analysis_confidence_pct,
             intent_confidence=float(intent.confidence),
             top_match_score=top_match_score,
             second_match_score=second_match_score,
@@ -1469,7 +1469,7 @@ class AgenticOrchestrator:
         answer_components = self._summarize_answer_components([outfit_card])
         recommendation_confidence = evaluate_recommendation_confidence(
             answer_mode="wardrobe_first",
-            profile_confidence_score_pct=profile_confidence.score_pct,
+            profile_confidence_score_pct=profile_confidence.analysis_confidence_pct,
             intent_confidence=float(intent.confidence),
             top_match_score=0.9,
             second_match_score=0.0,
@@ -1618,6 +1618,7 @@ class AgenticOrchestrator:
                 "request_summary": message.strip(),
                 "occasion": occasion,
                 "style_goal": "wardrobe_first",
+                "profile_confidence_pct": profile_confidence.analysis_confidence_pct,
             },
             "filters_applied": {},
             "outfits": [outfit_card.model_dump()],
@@ -1840,7 +1841,7 @@ class AgenticOrchestrator:
         answer_components = self._summarize_answer_components(outfit_cards)
         recommendation_confidence = evaluate_recommendation_confidence(
             answer_mode="wardrobe_first",
-            profile_confidence_score_pct=profile_confidence.score_pct,
+            profile_confidence_score_pct=profile_confidence.analysis_confidence_pct,
             intent_confidence=float(intent.confidence),
             top_match_score=0.88,
             second_match_score=0.74 if catalog_items else 0.0,
@@ -2036,6 +2037,7 @@ class AgenticOrchestrator:
                 "request_summary": message.strip(),
                 "occasion": live_context.occasion_signal or "",
                 "style_goal": "wardrobe_first_pairing",
+                "profile_confidence_pct": profile_confidence.analysis_confidence_pct,
             },
             "filters_applied": {},
             "outfits": [outfit.model_dump() for outfit in outfit_cards],
@@ -2120,7 +2122,7 @@ class AgenticOrchestrator:
         )
         recommendation_confidence = evaluate_recommendation_confidence(
             answer_mode="catalog_pipeline",
-            profile_confidence_score_pct=profile_confidence.score_pct,
+            profile_confidence_score_pct=profile_confidence.analysis_confidence_pct,
             intent_confidence=float(intent.confidence),
             top_match_score=0.86,
             second_match_score=0.72 if len(catalog_items) > 1 else 0.0,
@@ -2195,6 +2197,7 @@ class AgenticOrchestrator:
                 "request_summary": message.strip(),
                 "occasion": live_context.occasion_signal or "",
                 "style_goal": "catalog_image_pairing",
+                "profile_confidence_pct": profile_confidence.analysis_confidence_pct,
             },
             "filters_applied": {},
             "outfits": [outfit_card.model_dump()],
@@ -2604,6 +2607,7 @@ class AgenticOrchestrator:
                 for row in evaluated
             ],
             "response_metadata": response_metadata,
+            "profile_confidence_pct": int(profile_confidence.get("score_pct", 0)) if isinstance(profile_confidence, dict) else int(getattr(profile_confidence, "score_pct", 0)),
             "outfits": [o.model_dump() if hasattr(o, "model_dump") else dict(o) for o in (outfits or [])],
         }
 
@@ -2912,9 +2916,9 @@ class AgenticOrchestrator:
             if primary:
                 parts.append(f"Style-wise, stay anchored in your {primary}{f' + {secondary}' if secondary else ''} blend.")
 
-        if profile_confidence.score_pct >= 85:
+        if profile_confidence.analysis_confidence_pct >= 85:
             parts.append("I’m fairly confident in this because your profile evidence is strong.")
-        elif profile_confidence.score_pct >= 65:
+        elif profile_confidence.analysis_confidence_pct >= 65:
             parts.append("This is a solid read, but it would sharpen further with a bit more profile evidence.")
         else:
             parts.append("This is a directional read for now, and it may sharpen as I learn more about your profile.")
@@ -3510,6 +3514,7 @@ class AgenticOrchestrator:
                 "request_summary": message.strip(),
                 "occasion": str(plan_result.resolved_context.occasion_signal or ""),
                 "style_goal": plan_result.resolved_context.style_goal or "capsule_or_trip_planning",
+                "profile_confidence_pct": profile_confidence.analysis_confidence_pct,
             },
             "filters_applied": {},
             "outfits": [outfit.model_dump() for outfit in outfits],
@@ -3981,6 +3986,7 @@ class AgenticOrchestrator:
                     if effective_live_context.specific_needs
                     else ""
                 ),
+                "profile_confidence_pct": profile_confidence.analysis_confidence_pct,
             },
             "filters_applied": self._flatten_applied_filters(retrieved_sets) or hard_filters,
             "outfits": [card.model_dump() for card in response.outfits],
@@ -4012,7 +4018,7 @@ class AgenticOrchestrator:
                 user_context=user_context,
                 outfit_description=message,
                 occasion_signal=occasion_signal,
-                profile_confidence_pct=int(profile_confidence.score_pct),
+                profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
                 image_path=image_path,
             )
         except Exception as exc:
@@ -4043,7 +4049,7 @@ class AgenticOrchestrator:
             request_json={
                 "message": message,
                 "occasion_signal": occasion_signal,
-                "profile_confidence_pct": profile_confidence.score_pct,
+                "profile_confidence_pct": profile_confidence.analysis_confidence_pct,
             },
             response_json=check.to_dict(),
             reasoning_notes=[],
@@ -4123,9 +4129,9 @@ class AgenticOrchestrator:
             occasion_signal=occasion_signal,
         )
         assistant_parts: List[str] = [check.overall_note.strip()]
-        if profile_confidence.score_pct < 70:
+        if profile_confidence.analysis_confidence_pct < 70:
             assistant_parts.append(
-                f"My confidence is moderate here because your profile confidence is {profile_confidence.score_pct}%."
+                f"My confidence is moderate here because your profile confidence is {profile_confidence.analysis_confidence_pct}%."
             )
         if strengths:
             assistant_parts.append("What works: " + " ".join(strengths))
@@ -4290,6 +4296,7 @@ class AgenticOrchestrator:
                 "request_summary": message.strip(),
                 "occasion": occasion_signal or "",
                 "style_goal": "outfit_check",
+                "profile_confidence_pct": profile_confidence.analysis_confidence_pct,
             },
             "filters_applied": {},
             "outfits": [outfit_card.model_dump()],
@@ -4515,7 +4522,7 @@ class AgenticOrchestrator:
                 detected_garments=detected_garments,
                 detected_colors=detected_colors,
                 occasion_signal=occasion_signal,
-                profile_confidence_pct=int(profile_confidence.score_pct),
+                profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
                 wardrobe_overlap=overlap,
                 pairing_suggestions=pairing_suggestions,
             )
@@ -4579,9 +4586,9 @@ class AgenticOrchestrator:
             assistant_parts.append(
                 "The bigger wardrobe gap is " + ", ".join(list(wardrobe_gap_analysis.get("gap_items") or [])[:2]) + "."
             )
-        if profile_confidence.score_pct < 70:
+        if profile_confidence.analysis_confidence_pct < 70:
             assistant_parts.append(
-                f"My confidence is moderated by your profile confidence being {profile_confidence.score_pct}%."
+                f"My confidence is moderated by your profile confidence being {profile_confidence.analysis_confidence_pct}%."
             )
         assistant_message = " ".join(part for part in assistant_parts if str(part).strip()).strip()
 
@@ -5102,6 +5109,7 @@ class AgenticOrchestrator:
             "occasion": "",
             "style_goal": "product_browse",
             "handler": Intent.PRODUCT_BROWSE,
+            "profile_confidence_pct": profile_confidence.analysis_confidence_pct,
         }
 
         self.repo.finalize_turn(

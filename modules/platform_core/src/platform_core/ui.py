@@ -402,14 +402,16 @@ def get_web_ui_html(
     .rationale-note strong { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 2px; }
     .rationale-note p { margin: 0; color: var(--ink); }
     .outfit-feedback { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
-    .btn-like, .btn-dislike, .outfit-feedback .secondary {
-      padding: 7px 16px; border-radius: 999px; font-size: 12px; font-weight: 700;
-      cursor: pointer; border: 1px solid var(--line); transition: all 120ms ease;
+    .fb-icon-btn {
+      width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line);
+      background: var(--surface); cursor: pointer; font-size: 18px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 120ms ease;
     }
-    .btn-like { background: rgba(95, 106, 82, 0.10); color: var(--wardrobe); border-color: rgba(95, 106, 82, 0.2); }
-    .btn-like:hover { background: rgba(95, 106, 82, 0.18); }
-    .btn-dislike { background: rgba(198, 40, 40, 0.06); color: #c62828; border-color: rgba(198, 40, 40, 0.15); }
-    .btn-dislike:hover { background: rgba(198, 40, 40, 0.12); }
+    .fb-icon-btn:hover { border-color: var(--accent-soft); background: var(--surface-alt); }
+    .fb-icon-btn.fb-like:hover { background: rgba(95, 106, 82, 0.12); }
+    .fb-icon-btn.fb-dislike:hover { background: rgba(198, 40, 40, 0.08); }
+    .product-price { font-size: 12px; font-weight: 700; color: var(--accent); white-space: nowrap; }
     .outfit-feedback .secondary { background: var(--surface); color: var(--muted); }
     .outfit-feedback .secondary:hover { border-color: var(--accent-soft); color: var(--ink); }
     .dislike-form { display: none; padding: 10px 0; }
@@ -1106,6 +1108,7 @@ def get_web_ui_html(
   var wardrobeItemsById = {{}};
   var styleCodeData = null;
   var conversationId = INIT_CONV_ID;
+  var userAnalysisConfidencePct = 70;
   var allResults = [];
   var activeResultTab = "all";
   var activeResultSource = "all";
@@ -1227,21 +1230,21 @@ def get_web_ui_html(
       || String(responseMetadata && responseMetadata.answer_source || "").toLowerCase().indexOf("outfit_check") !== -1;
     if (isOutfitCheck) {{
       return [
-        {{ key: "body_harmony_pct", label: "Body Harmony" }},
-        {{ key: "color_suitability_pct", label: "Color Suitability" }},
-        {{ key: "style_fit_pct", label: "Style Fit" }},
+        {{ key: "body_harmony_pct", label: "Body" }},
+        {{ key: "color_suitability_pct", label: "Color" }},
+        {{ key: "style_fit_pct", label: "Style" }},
         {{ key: "pairing_coherence_pct", label: "Pairing" }},
         {{ key: "occasion_pct", label: "Occasion" }},
       ];
     }}
     return [
-      {{ key: "body_harmony_pct", label: "Body Harmony" }},
-      {{ key: "color_suitability_pct", label: "Color Suitability" }},
-      {{ key: "style_fit_pct", label: "Style Fit" }},
-      {{ key: "risk_tolerance_pct", label: "Risk Tolerance" }},
+      {{ key: "body_harmony_pct", label: "Body" }},
+      {{ key: "color_suitability_pct", label: "Color" }},
+      {{ key: "style_fit_pct", label: "Style" }},
+      {{ key: "risk_tolerance_pct", label: "Risk" }},
       {{ key: "occasion_pct", label: "Occasion" }},
       {{ key: "comfort_boundary_pct", label: "Comfort" }},
-      {{ key: "specific_needs_pct", label: "Specific Needs" }},
+      {{ key: "specific_needs_pct", label: "Needs" }},
       {{ key: "pairing_coherence_pct", label: "Pairing" }},
     ];
   }}
@@ -1550,28 +1553,10 @@ def get_web_ui_html(
     info.className = "outfit-info";
     var outfitSource = inferOutfitSource(outfit, responseMetadata);
     var summaryText = buildStylistSummary(outfit);
+    // Use the globally-fetched analysis confidence (consistent for all cards, old and new)
+    var profileConfPct = userAnalysisConfidencePct || 70;
 
-    if (outfit.rank != null) {{
-      var rank = document.createElement("div");
-      rank.className = "outfit-rank";
-      rank.textContent = "#" + outfit.rank + " Recommendation";
-      info.appendChild(rank);
-    }}
-
-    var sourceRow = document.createElement("div");
-    sourceRow.className = "outfit-source-row";
-    var sourcePill = document.createElement("span");
-    sourcePill.className = "source-pill " + sourceBadgeClass(outfitSource);
-    sourcePill.textContent = sourceBadgeLabel(outfitSource);
-    sourceRow.appendChild(sourcePill);
-    if (outfit.tryon_image) {{
-      var tryOnPill = document.createElement("span");
-      tryOnPill.className = "source-pill hybrid";
-      tryOnPill.textContent = "Try-On Preview";
-      sourceRow.appendChild(tryOnPill);
-    }}
-    info.appendChild(sourceRow);
-
+    // 1. Outfit title (no rank badge, no source pills)
     if (outfit.title) {{
       var title = document.createElement("div");
       title.className = "outfit-title";
@@ -1579,39 +1564,33 @@ def get_web_ui_html(
       info.appendChild(title);
     }}
 
+    // 2. Stylist summary (no label, max 100 chars)
+    var trimmedSummary = summaryText.length > 100 ? summaryText.substring(0, 97) + "..." : summaryText;
     var summaryCard = document.createElement("div");
     summaryCard.className = "outfit-summary";
-    summaryCard.innerHTML = '<div class="outfit-summary-label">Stylist Summary</div>' +
-      '<p class="outfit-summary-text">' + escapeHtml(summaryText) + '</p>';
+    summaryCard.innerHTML = '<p class="outfit-summary-text">' + escapeHtml(trimmedSummary) + '</p>';
     info.appendChild(summaryCard);
 
+    // 3. Product specifications (no image, no source/role pills)
     for (var pi = 0; pi < items.length; pi++) {{
       var item = items[pi];
       var prod = document.createElement("div");
       prod.className = "outfit-product";
       var pTitle = item.title || item.product_id || "Untitled";
       var url = item.product_url || item.url || "";
-      var itemImg = firstImageUrl(item);
-      var itemSource = normalizeSourceToken(item.source) || outfitSource;
-      var html = '<div class="product-header" style="display:flex;align-items:center;gap:8px;">';
-      if (itemImg) {{
-        html += '<img src="' + escapeHtml(itemImg) + '" alt="" style="width:40px;height:40px;border-radius:6px;object-fit:cover;" />';
-      }} else if (item.primary_color) {{
-        html += '<span style="display:inline-block;width:40px;height:40px;border-radius:6px;background:' + escapeHtml(item.primary_color) + ';border:1px solid var(--line);flex-shrink:0;"></span>';
-      }}
+      var priceStr = String(item.price || "").trim();
+      var hasPrice = priceStr && priceStr !== "0" && priceStr.toLowerCase() !== "n/a";
+      var hasBuyLink = !!url;
+      var html = '<div class="product-header">';
       html += '<span class="outfit-product-title">' + escapeHtml(pTitle) + '</span>';
-      if (url) html += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer" class="btn-buy">Buy Now</a>';
+      if (hasPrice) html += '<span class="product-price">Rs. ' + escapeHtml(priceStr.replace(/^Rs\.?\s*/i, "")) + '</span>';
+      if (hasBuyLink && hasPrice) html += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer" class="btn-buy">Buy Now</a>';
       html += '</div>';
-      html += '<div class="outfit-item-source"><span class="source-mini-pill ' + escapeHtml(sourceBadgeClass(itemSource)) + '">' + escapeHtml(sourceBadgeLabel(itemSource)) + '</span>';
-      if (item.garment_category) html += '<span class="chip">' + escapeHtml(item.garment_category) + '</span>';
-      if (item.role && item.role !== item.garment_category) html += '<span class="chip">' + escapeHtml(item.role) + '</span>';
-      html += '</div>';
-      if (item.price) html += '<div style="margin-bottom:4px;color:#666;">' + escapeHtml(item.price) + '</div>';
       prod.innerHTML = html;
       info.appendChild(prod);
     }}
 
-    // Radar chart
+    // 4. Radar chart for style archetypes
     var archetypes = [
       {{ key: "classic_pct", label: "Classic" }}, {{ key: "dramatic_pct", label: "Dramatic" }},
       {{ key: "romantic_pct", label: "Romantic" }}, {{ key: "natural_pct", label: "Natural" }},
@@ -1622,14 +1601,14 @@ def get_web_ui_html(
     radarDiv.className = "outfit-radar";
     var canvas = document.createElement("canvas");
     canvas.setAttribute("role", "img");
-    var size = 240, dpr = window.devicePixelRatio || 1;
+    var size = 200, dpr = window.devicePixelRatio || 1;
     canvas.width = size * dpr; canvas.height = size * dpr;
     canvas.style.width = size + "px"; canvas.style.height = size + "px";
     radarDiv.appendChild(canvas);
     info.appendChild(radarDiv);
     var ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
-    var cx = size / 2, cy = size / 2, maxR = size / 2 - 30, n = archetypes.length;
+    var cx = size / 2, cy = size / 2, maxR = size / 2 - 40, n = archetypes.length;
     var step = (2 * Math.PI) / n, startAngle = -Math.PI / 2;
     function pointAt(i, r) {{
       var a = startAngle + i * step;
@@ -1648,58 +1627,56 @@ def get_web_ui_html(
     ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.fillStyle = "rgba(139, 92, 246, 1)";
     for (var ppi = 0; ppi < n; ppi++) {{ var pp = pointAt(ppi, maxR * values[ppi] / 100); ctx.beginPath(); ctx.arc(pp.x, pp.y, 3, 0, 2 * Math.PI); ctx.fill(); }}
-    ctx.fillStyle = "#222"; ctx.font = "600 11px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    for (var li = 0; li < n; li++) {{ var lp = pointAt(li, maxR + 16); ctx.fillText(archetypes[li].label, lp.x, lp.y); }}
+    ctx.fillStyle = "#222"; ctx.font = "600 9px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (var li = 0; li < n; li++) {{ var lp = pointAt(li, maxR + 14); ctx.fillText(archetypes[li].label, lp.x, lp.y); }}
 
-    // Evaluation criteria bars
+    // 5. Evaluation criteria as radar chart (scores × profile confidence)
     var criteria = buildEvaluationCriteria(outfit, responseMetadata);
-    var criteriaDiv = document.createElement("div");
-    criteriaDiv.className = "outfit-criteria";
-    for (var ci = 0; ci < criteria.length; ci++) {{
-      var c = criteria[ci];
-      var pct = outfit[c.key] || 0;
-      var barColor = pct >= 80 ? "#2e7d32" : pct >= 60 ? "#f9a825" : "#c62828";
-      var row = document.createElement("div");
-      row.className = "criteria-row";
-      row.innerHTML = '<span class="criteria-label">' + escapeHtml(c.label) + '</span>' +
-        '<div class="criteria-track"><div class="criteria-fill" style="width:' + pct + '%;background:' + barColor + ';"></div></div>' +
-        '<span class="criteria-pct">' + pct + '%</span>';
-      criteriaDiv.appendChild(row);
+    var hasCriteriaData = criteria.some(function(c) {{ return (outfit[c.key] || 0) > 0; }});
+    if (hasCriteriaData) {{
+      var criteriaRadarDiv = document.createElement("div");
+      criteriaRadarDiv.className = "outfit-radar";
+      var cCanvas = document.createElement("canvas");
+      cCanvas.setAttribute("role", "img");
+      cCanvas.setAttribute("aria-label", "Evaluation criteria radar chart");
+      var cSize = 200;
+      cCanvas.width = cSize * dpr; cCanvas.height = cSize * dpr;
+      cCanvas.style.width = cSize + "px"; cCanvas.style.height = cSize + "px";
+      criteriaRadarDiv.appendChild(cCanvas);
+      info.appendChild(criteriaRadarDiv);
+      var cCtx = cCanvas.getContext("2d");
+      cCtx.scale(dpr, dpr);
+      var cCx = cSize / 2, cCy = cSize / 2, cMaxR = cSize / 2 - 40, cN = criteria.length;
+      var cStep = (2 * Math.PI) / cN, cStart = -Math.PI / 2;
+      function cPointAt(i, r) {{
+        var a = cStart + i * cStep;
+        return {{ x: cCx + r * Math.cos(a), y: cCy + r * Math.sin(a) }};
+      }}
+      cCtx.strokeStyle = "#ddd"; cCtx.lineWidth = 0.5;
+      for (var cRing = 1; cRing <= 4; cRing++) {{
+        cCtx.beginPath(); var cRr = cMaxR * cRing / 4;
+        for (var cGi = 0; cGi < cN; cGi++) {{ var cGp = cPointAt(cGi, cRr); if (cGi === 0) cCtx.moveTo(cGp.x, cGp.y); else cCtx.lineTo(cGp.x, cGp.y); }}
+        cCtx.closePath(); cCtx.stroke();
+      }}
+      for (var cAi = 0; cAi < cN; cAi++) {{ var cAp = cPointAt(cAi, cMaxR); cCtx.beginPath(); cCtx.moveTo(cCx, cCy); cCtx.lineTo(cAp.x, cAp.y); cCtx.stroke(); }}
+      var confFactor = profileConfPct / 100;
+      var cValues = criteria.map(function(c) {{ return Math.round((outfit[c.key] || 0) * confFactor); }});
+      cCtx.beginPath(); cCtx.fillStyle = "rgba(111, 47, 69, 0.22)"; cCtx.strokeStyle = "rgba(111, 47, 69, 0.85)"; cCtx.lineWidth = 2;
+      for (var cDi = 0; cDi < cN; cDi++) {{ var cDp = cPointAt(cDi, cMaxR * cValues[cDi] / 100); if (cDi === 0) cCtx.moveTo(cDp.x, cDp.y); else cCtx.lineTo(cDp.x, cDp.y); }}
+      cCtx.closePath(); cCtx.fill(); cCtx.stroke();
+      cCtx.fillStyle = "rgba(111, 47, 69, 1)";
+      for (var cPi = 0; cPi < cN; cPi++) {{ var cPp = cPointAt(cPi, cMaxR * cValues[cPi] / 100); cCtx.beginPath(); cCtx.arc(cPp.x, cPp.y, 3, 0, 2 * Math.PI); cCtx.fill(); }}
+      cCtx.fillStyle = "#222"; cCtx.font = "600 9px system-ui, sans-serif"; cCtx.textAlign = "center"; cCtx.textBaseline = "middle";
+      for (var cLi = 0; cLi < cN; cLi++) {{ var cLp = cPointAt(cLi, cMaxR + 14); cCtx.fillText(criteria[cLi].label, cLp.x, cLp.y); }}
     }}
-    info.appendChild(criteriaDiv);
 
-    // Rationale
-    var rationale = document.createElement("details");
-    rationale.className = "outfit-rationale";
-    var rationaleSummary = document.createElement("summary");
-    rationaleSummary.textContent = "Why It Works";
-    rationale.appendChild(rationaleSummary);
-    var rationaleBody = document.createElement("div");
-    rationaleBody.className = "outfit-rationale-body";
-    [{{ l: "Body", v: outfit.body_note }}, {{ l: "Color", v: outfit.color_note }}, {{ l: "Style", v: outfit.style_note }}, {{ l: "Occasion", v: outfit.occasion_note }}].forEach(function(entry) {{
-      var val = String(entry.v || "").trim();
-      if (!val) return;
-      var note = document.createElement("div");
-      note.className = "rationale-note";
-      note.innerHTML = '<strong>' + escapeHtml(entry.l) + '</strong><p>' + escapeHtml(val) + '</p>';
-      rationaleBody.appendChild(note);
-    }});
-    if (!rationaleBody.children.length) {{
-      var note = document.createElement("div");
-      note.className = "rationale-note";
-      note.innerHTML = '<strong>Styling Direction</strong><p>' + escapeHtml(summaryText) + '</p>';
-      rationaleBody.appendChild(note);
-    }}
-    rationale.appendChild(rationaleBody);
-    info.appendChild(rationale);
-
-    // Feedback
+    // 6. Feedback icons (save, thumbs up, thumbs down)
     var fbWrap = document.createElement("div");
     fbWrap.className = "outfit-feedback";
-    var likeBtn = document.createElement("button"); likeBtn.className = "btn-like"; likeBtn.textContent = "Like This";
-    var saveBtn = document.createElement("button"); saveBtn.className = "secondary"; saveBtn.textContent = "Save Look";
-    var dislikeBtn = document.createElement("button"); dislikeBtn.className = "btn-dislike"; dislikeBtn.textContent = "Didn't Like This";
-    fbWrap.appendChild(likeBtn); fbWrap.appendChild(saveBtn); fbWrap.appendChild(dislikeBtn);
+    var saveBtn = document.createElement("button"); saveBtn.className = "fb-icon-btn"; saveBtn.innerHTML = "&#128278;"; saveBtn.title = "Save Look";
+    var likeBtn = document.createElement("button"); likeBtn.className = "fb-icon-btn fb-like"; likeBtn.innerHTML = "&#128077;"; likeBtn.title = "Like This";
+    var dislikeBtn = document.createElement("button"); dislikeBtn.className = "fb-icon-btn fb-dislike"; dislikeBtn.innerHTML = "&#128078;"; dislikeBtn.title = "Didn't Like This";
+    fbWrap.appendChild(saveBtn); fbWrap.appendChild(likeBtn); fbWrap.appendChild(dislikeBtn);
     info.appendChild(fbWrap);
 
     var dislikeForm = document.createElement("div");
@@ -2889,6 +2866,28 @@ def get_web_ui_html(
   // ══════════════════════════════════════════════
   // INIT
   // ══════════════════════════════════════════════
+
+  // Fetch user analysis confidence (used to scale evaluation radar charts)
+  if (USER_ID) {{
+    fetch("/v1/onboarding/analysis/" + encodeURIComponent(USER_ID))
+      .then(function(r) {{ return r.ok ? r.json() : null; }})
+      .then(function(data) {{
+        if (!data) return;
+        var grouped = {{}};
+        ["body_type_analysis", "color_analysis_headshot", "other_details_analysis"].forEach(function(agent) {{
+          var raw = data[agent] || data["profile"] && data["profile"][agent] || {{}};
+          if (typeof raw === "object") grouped[agent] = raw;
+        }});
+        // Flatten attributes if they come as a flat dict
+        var attrs = data.attributes || {{}};
+        if (Object.keys(grouped).length === 0 && Object.keys(attrs).length > 0) {{
+          grouped["_flat"] = attrs;
+        }}
+        var derived = data.derived_interpretations || {{}};
+        userAnalysisConfidencePct = computeAnalysisConfidence(grouped, derived);
+      }})
+      .catch(function() {{}});
+  }}
 
   // Load conversation history
   if (ACTIVE_VIEW === "chat") {{
