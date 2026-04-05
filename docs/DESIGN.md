@@ -26,6 +26,7 @@ Key UI patterns implemented:
 - **Wardrobe edit modal**: Full metadata edit form (title, description, category, subtype, colors, pattern, formality, occasion, brand, notes) with image preview. Calls PATCH endpoint.
 - **Wardrobe delete**: Per-card delete button with confirmation dialog. Soft-deletes via is_active=false.
 - **Wardrobe filters**: Search bar (title/description/brand/category), category chips (All, Tops, Bottoms, Shoes, Dresses, Outerwear, Accessories, Occasion-ready), color filter row (11 colors), and localStorage persistence across page loads.
+- **Outfit PDP card**: Full-width header (title + like/dislike icons + stylist summary) above 3-column body (thumbnails | hero | products + radars). Products show title / Rs. price / Buy Now + wishlist heart — or "From your wardrobe" for owned items. Dual radar charts: style archetypes (purple) + evaluation criteria × analysis_confidence_pct (burgundy). Virtual try-on images in 2:3 aspect ratio.
 - **Results grid**: 2-column card grid with outfit preview thumbnails, user message, occasion chips, and relative timestamps.
 
 Related docs:

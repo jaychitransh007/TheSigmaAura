@@ -42,6 +42,9 @@ Implemented now:
 - per-outfit feedback capture with turn-level correlation
 - wardrobe ingestion from chat with vision-API enrichment and dual-layer image moderation
 - wardrobe-first occasion, pairing, outfit-check follow-through, and capsule/trip support
+- pairing request image gate: asks user for garment image when message references "this shirt" but no image attached
+- anchor_garment on LiveContext: uploaded garment passed to architect with full enrichment attributes; architect skips anchor's role; anchor injected as sole item for its role before assembly
+- **P0 open: pairing pipeline end-to-end fix still needed** — anchor injection + role stripping code exists but deployment issues prevent validation; see `docs/CURRENT_STATE.md` for details
 - explicit source selection metadata: wardrobe-first, catalog-only, or hybrid
 - digital draping integration: effective seasonal groups overlaid onto user context
 - color palette system: base/accent/avoid colors derived from seasonal group, passed to copilot planner, outfit architect, and outfit check agents
@@ -1520,40 +1523,44 @@ This section describes the current chat UI outfit rendering, implemented in `mod
 
 #### Layout
 
-Desktop — 3-column grid per outfit card (`grid-template-columns: 80px 1fr 40%`):
+Full-width header row + 3-column body grid (`grid-template-rows: auto 1fr; grid-template-columns: 80px 1fr 40%`):
 
-| Column | Content | Behavior |
+| Section | Content | Behavior |
 |---|---|---|
-| **Thumbnail rail** (80px) | Vertical stack of 72×72 clickable thumbnails | Click swaps Col 2 hero; active thumb gets accent border |
-| **Hero image** (flex) | Full-height display of selected thumbnail | Default: virtual try-on when present, else first garment |
-| **Info panel** (~40%) | PDP-style product detail + feedback CTAs | Scrollable if content overflows |
+| **Header** (full width, `grid-column: 1/-1`) | Outfit title (left) + like/dislike icons (right) + stylist summary (≤200 chars, no background) | Spans all columns above the 3-column body |
+| **Thumbnail rail** (80px) | Vertical stack of 64×64 clickable thumbnails | Click swaps hero; active thumb gets accent border |
+| **Hero image** (flex) | Full-height display of selected thumbnail (`object-fit: contain`, `max-height: 520px`) | Default: virtual try-on when present, else first garment |
+| **Info panel** (~40%) | Products + radar charts | Scrollable if content overflows |
 
-Mobile (`max-width: 900px`) — single column: hero image → horizontal thumbnail strip → info panel.
+Mobile (`max-width: 900px`) — single column: header → hero image → thumbnails → info panel.
 
-#### Thumbnail ordering
+#### Info panel content (right column)
 
-- Paired outfit: topwear image, bottomwear image, virtual try-on
-- Single-piece direction (e.g. Direction A complete): garment image, virtual try-on
-- If no try-on image exists, thumbnails are garment images only and the first one is the default hero
+Per-product block (3-row layout per garment):
+- Row 1: product title
+- Row 2: `Rs. X` price (or "From your wardrobe" for wardrobe items in wardrobe green)
+- Row 3: `Buy Now` button + wishlist heart icon (hidden for wardrobe items)
+- Per-product wishlist: `POST /v1/products/{product_id}/wishlist` → persists to `catalog_interaction_history` with `interaction_type="save"`, heart fills on click
 
-#### Info panel content
+Style archetype radar chart (Canvas, 200px, 8 axes, purple fill):
+- Classic, Dramatic, Romantic, Natural, Minimalist, Creative, Sporty, Edgy
 
-- Rank label (`#1`, `#2`, `#3`) and outfit title
-- Per-product block: title and price
-- Style archetype radar chart (Canvas-rendered, 200px, 8 axes: Classic, Dramatic, Romantic, Natural, Minimalist, Creative, Sporty, Edgy)
-  - Grid rings at 25%, 50%, 75%, 100%
-  - Purple fill polygon with data points
-- Evaluation criteria radar chart (Canvas-rendered, 200px, burgundy fill, axes: Body, Color, Style, Risk, Occasion, Comfort, Needs, Pairing — scores × analysis_confidence_pct at render time)
-- Icon feedback buttons: save (bookmark), like (thumbs up), dislike (thumbs down) — 36px circular
-  - Color-coded: green ≥80%, yellow ≥60%, red <60%
-- Feedback CTAs: `Like This` and `Didn't Like This`
+Evaluation criteria radar chart (Canvas, 200px, burgundy fill):
+- Body, Color, Style, Risk, Occasion, Comfort, Needs, Pairing
+- Scores multiplied by `analysis_confidence_pct` at render time (fetched once per page load from `/v1/onboarding/analysis/`)
 
 #### Feedback behavior
 
-- `Like This` — sends `event_type: "like"` immediately
-- `Didn't Like This` — expands a textarea + Submit; sends `event_type: "dislike"` with freeform `notes`
+- Like (thumbs up icon) — sends `event_type: "like"` immediately
+- Dislike (thumbs down icon) — expands textarea + reaction chips + Submit
+- Icons are bare (no borders/circles), greyscale by default, full color on hover
 - Cancel closes the textarea without sending
 - Loading spinner and error state on submission
+
+#### Virtual try-on images
+
+- Generated via Gemini `gemini-3.1-flash-image-preview` with `aspect_ratio="2:3"` (`ImageConfig`)
+- Hero container: `max-height: 520px; object-fit: contain` — no stretching
 
 #### Feedback persistence strategy
 
