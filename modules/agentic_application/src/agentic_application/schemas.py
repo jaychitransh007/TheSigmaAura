@@ -4,6 +4,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from .intent_registry import Action, Intent
+
 
 # --- Request ---
 
@@ -75,7 +77,7 @@ class OnboardingGateResult(BaseModel):
 
 
 class IntentClassification(BaseModel):
-    primary_intent: str = "occasion_recommendation"
+    primary_intent: str = Intent.OCCASION_RECOMMENDATION
     confidence: float = 0.0
     secondary_intents: List[str] = Field(default_factory=list)
     reason_codes: List[str] = Field(default_factory=list)
@@ -273,9 +275,9 @@ class CopilotActionParameters(BaseModel):
 
 
 class CopilotPlanResult(BaseModel):
-    intent: str = "occasion_recommendation"
+    intent: str = Intent.OCCASION_RECOMMENDATION
     intent_confidence: float = 0.0
-    action: str = "respond_directly"
+    action: str = Action.RESPOND_DIRECTLY
     context_sufficient: bool = True
     assistant_message: str = ""
     follow_up_suggestions: List[str] = Field(default_factory=list)

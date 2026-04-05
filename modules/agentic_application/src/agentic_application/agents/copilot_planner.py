@@ -10,6 +10,7 @@ from openai import OpenAI
 
 from user_profiler.config import get_api_key
 
+from ..intent_registry import Action, Intent, intent_enum_values, action_enum_values
 from ..schemas import (
     CopilotActionParameters,
     CopilotPlanResult,
@@ -51,33 +52,12 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
         "properties": {
             "intent": {
                 "type": "string",
-                "enum": [
-                    "occasion_recommendation",
-                    "style_discovery",
-                    "explanation_request",
-                    "shopping_decision",
-                    "pairing_request",
-                    "outfit_check",
-                    "garment_on_me_request",
-                    "capsule_or_trip_planning",
-                    "wardrobe_ingestion",
-                    "feedback_submission",
-                    "virtual_tryon_request",
-                ],
+                "enum": intent_enum_values(),
             },
             "intent_confidence": {"type": "number"},
             "action": {
                 "type": "string",
-                "enum": [
-                    "run_recommendation_pipeline",
-                    "run_outfit_check",
-                    "run_shopping_decision",
-                    "respond_directly",
-                    "ask_clarification",
-                    "run_virtual_tryon",
-                    "save_wardrobe_item",
-                    "save_feedback",
-                ],
+                "enum": action_enum_values(),
             },
             "context_sufficient": {"type": "boolean"},
             "assistant_message": {"type": "string"},
@@ -278,9 +258,9 @@ class CopilotPlanner:
         )
 
         return CopilotPlanResult(
-            intent=str(raw.get("intent") or "occasion_recommendation"),
+            intent=str(raw.get("intent") or Intent.OCCASION_RECOMMENDATION),
             intent_confidence=float(raw.get("intent_confidence") or 0.0),
-            action=str(raw.get("action") or "respond_directly"),
+            action=str(raw.get("action") or Action.RESPOND_DIRECTLY),
             context_sufficient=bool(raw.get("context_sufficient", True)),
             assistant_message=str(raw.get("assistant_message") or ""),
             follow_up_suggestions=list(raw.get("follow_up_suggestions") or []),

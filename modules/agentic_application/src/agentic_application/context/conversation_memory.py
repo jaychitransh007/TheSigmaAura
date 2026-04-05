@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List
 
+from ..intent_registry import FollowUpIntent
 from ..schemas import ConversationMemory, LiveContext
 
 
@@ -84,9 +85,9 @@ def build_conversation_memory(
         plan_type = previous_context.get("last_plan_type")
         followup_count = prior.followup_count
 
-    if live_context.followup_intent == "increase_formality":
+    if live_context.followup_intent == FollowUpIntent.INCREASE_FORMALITY:
         formality_hint = _shift_formality(formality_hint, delta=1)
-    elif live_context.followup_intent == "decrease_formality":
+    elif live_context.followup_intent == FollowUpIntent.DECREASE_FORMALITY:
         formality_hint = _shift_formality(formality_hint, delta=-1)
 
     recent_intents = _dedupe_preserve_order([*prior.recent_intents, str(current_intent or "").strip()])

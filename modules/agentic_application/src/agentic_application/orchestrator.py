@@ -24,6 +24,7 @@ from .agents.response_formatter import ResponseFormatter
 from .context.conversation_memory import build_conversation_memory
 from .context.user_context_builder import build_user_context, validate_minimum_profile
 from .filters import build_global_hard_filters
+from .intent_registry import Action, FollowUpIntent, Intent
 from .onboarding_gate import evaluate as evaluate_onboarding_gate
 from .recommendation_confidence import evaluate_recommendation_confidence
 from .services.catalog_retrieval_gateway import ApplicationCatalogRetrievalGateway
@@ -317,9 +318,9 @@ class AgenticOrchestrator:
         if not normalized:
             return ""
         if any(token in normalized for token in ("smarter", "more polished", "more polish", "sharper", "dressier", "more refined")):
-            return "increase_formality"
+            return FollowUpIntent.INCREASE_FORMALITY
         if any(token in normalized for token in ("more casual", "less dressy", "more relaxed")):
-            return "decrease_formality"
+            return FollowUpIntent.DECREASE_FORMALITY
         return ""
 
     def _message_references_prior_context(self, *, message: str) -> bool:
@@ -356,12 +357,12 @@ class AgenticOrchestrator:
         intent: IntentClassification,
         live_context: LiveContext,
     ) -> bool:
-        if intent.primary_intent != "occasion_recommendation":
+        if intent.primary_intent != Intent.OCCASION_RECOMMENDATION:
             return False
         if self._message_requests_targeted_item_suggestions(message=message):
             return True
         followup_intent = str(live_context.followup_intent or "").strip()
-        if followup_intent in {"increase_formality", "decrease_formality"} and self._message_references_prior_context(message=message):
+        if followup_intent in {FollowUpIntent.INCREASE_FORMALITY, FollowUpIntent.DECREASE_FORMALITY} and self._message_references_prior_context(message=message):
             return True
         return False
 
@@ -470,7 +471,7 @@ class AgenticOrchestrator:
         followup_override = self._infer_followup_intent_override(message=message)
         if followup_override:
             plan_result.resolved_context.followup_intent = followup_override
-            if followup_override == "increase_formality":
+            if followup_override == FollowUpIntent.INCREASE_FORMALITY:
                 plan_result.resolved_context.formality_hint = (
                     plan_result.resolved_context.formality_hint or "smart_casual"
                 )
@@ -478,10 +479,10 @@ class AgenticOrchestrator:
                 override_reasons.append("followup_phrase_override")
 
         if self._message_requests_targeted_item_suggestions(message=message):
-            if plan_result.intent not in {"occasion_recommendation", "pairing_request"}:
-                plan_result.intent = "occasion_recommendation"
-            if plan_result.action != "run_recommendation_pipeline":
-                plan_result.action = "run_recommendation_pipeline"
+            if plan_result.intent not in {Intent.OCCASION_RECOMMENDATION, Intent.PAIRING_REQUEST}:
+                plan_result.intent = Intent.OCCASION_RECOMMENDATION
+            if plan_result.action != Action.RUN_RECOMMENDATION_PIPELINE:
+                plan_result.action = Action.RUN_RECOMMENDATION_PIPELINE
             if "targeted_item_refinement" not in plan_result.resolved_context.specific_needs:
                 plan_result.resolved_context.specific_needs.append("targeted_item_refinement")
             normalized = self._normalize_text_token(message)
@@ -497,11 +498,11 @@ class AgenticOrchestrator:
 
         if self._message_requests_pairing(message=message, has_attached_image=has_attached_image):
             attached = dict(attached_item or {})
-            if plan_result.intent != "pairing_request":
-                plan_result.intent = "pairing_request"
-                plan_result.action = "run_recommendation_pipeline"
+            if plan_result.intent != Intent.PAIRING_REQUEST:
+                plan_result.intent = Intent.PAIRING_REQUEST
+                plan_result.action = Action.RUN_RECOMMENDATION_PIPELINE
             if not str(plan_result.resolved_context.style_goal or "").strip():
-                plan_result.resolved_context.style_goal = "pairing_request"
+                plan_result.resolved_context.style_goal = Intent.PAIRING_REQUEST
             if "pairing_request_override" not in override_reasons:
                 override_reasons.append("pairing_request_override")
             if not str(plan_result.action_parameters.target_piece or "").strip():
@@ -512,11 +513,11 @@ class AgenticOrchestrator:
                     plan_result.action_parameters.target_piece = anchor_title
 
         if self._message_requests_outfit_check(message=message):
-            if plan_result.intent != "outfit_check":
-                plan_result.intent = "outfit_check"
-                plan_result.action = "run_outfit_check"
+            if plan_result.intent != Intent.OUTFIT_CHECK:
+                plan_result.intent = Intent.OUTFIT_CHECK
+                plan_result.action = Action.RUN_OUTFIT_CHECK
             if not str(plan_result.resolved_context.style_goal or "").strip():
-                plan_result.resolved_context.style_goal = "outfit_check"
+                plan_result.resolved_context.style_goal = Intent.OUTFIT_CHECK
             if "outfit_check_override" not in override_reasons:
                 override_reasons.append("outfit_check_override")
 
@@ -918,7 +919,7 @@ class AgenticOrchestrator:
         )
 
         # Dispatch on action
-        if plan_result.action == "respond_directly":
+        if plan_result.action == Action.RESPOND_DIRECTLY:
             return self._handle_direct_response(
                 plan_result=plan_result,
                 intent=intent,
@@ -931,7 +932,7 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence,
 
             )
-        elif plan_result.action == "ask_clarification":
+        elif plan_result.action == Action.ASK_CLARIFICATION:
             return self._handle_clarification(
                 plan_result=plan_result,
                 intent=intent,
@@ -944,7 +945,7 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence,
 
             )
-        elif plan_result.action == "run_recommendation_pipeline":
+        elif plan_result.action == Action.RUN_RECOMMENDATION_PIPELINE:
             return self._handle_planner_pipeline(
                 plan_result=plan_result,
                 intent=intent,
@@ -964,7 +965,7 @@ class AgenticOrchestrator:
                 source_preference=source_preference,
                 emit=emit,
             )
-        elif plan_result.action == "run_outfit_check":
+        elif plan_result.action == Action.RUN_OUTFIT_CHECK:
             return self._handle_outfit_check(
                 plan_result=plan_result,
                 intent=intent,
@@ -978,7 +979,7 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence,
                 attached_item=attached_item,
             )
-        elif plan_result.action == "run_shopping_decision":
+        elif plan_result.action == Action.RUN_SHOPPING_DECISION:
             return self._handle_shopping_decision(
                 plan_result=plan_result,
                 intent=intent,
@@ -992,7 +993,7 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence,
 
             )
-        elif plan_result.action == "run_virtual_tryon":
+        elif plan_result.action == Action.RUN_VIRTUAL_TRYON:
             return self._handle_planner_virtual_tryon(
                 plan_result=plan_result,
                 intent=intent,
@@ -1005,7 +1006,7 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence,
 
             )
-        elif plan_result.action == "save_wardrobe_item":
+        elif plan_result.action == Action.SAVE_WARDROBE_ITEM:
             return self._handle_planner_wardrobe_save(
                 plan_result=plan_result,
                 intent=intent,
@@ -1018,7 +1019,7 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence,
 
             )
-        elif plan_result.action == "save_feedback":
+        elif plan_result.action == Action.SAVE_FEEDBACK:
             return self._handle_planner_feedback(
                 plan_result=plan_result,
                 intent=intent,
@@ -1466,7 +1467,7 @@ class AgenticOrchestrator:
 
         anchored_item_id: str = "",
     ) -> Dict[str, Any] | None:
-        if intent.primary_intent != "occasion_recommendation":
+        if intent.primary_intent != Intent.OCCASION_RECOMMENDATION:
             return None
         occasion = str(live_context.occasion_signal or "").strip()
         wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
@@ -1493,7 +1494,7 @@ class AgenticOrchestrator:
         reasoning = f"Built from your saved wardrobe for {occasion.replace('_', ' ')}."
         catalog_upsell = self._build_catalog_upsell(
             rationale="Your wardrobe covers the occasion first, but I can also show stronger catalog options if you want a more elevated or optimized version.",
-            entry_intent="occasion_recommendation",
+            entry_intent=Intent.OCCASION_RECOMMENDATION,
         )
         source_selection = self._build_source_selection(
             preferred_source="wardrobe" if "wardrobe_first" in list(live_context.specific_needs or []) else "",
@@ -1680,7 +1681,7 @@ class AgenticOrchestrator:
         profile_confidence: ProfileConfidence,
 
     ) -> Dict[str, Any] | None:
-        if intent.primary_intent != "occasion_recommendation":
+        if intent.primary_intent != Intent.OCCASION_RECOMMENDATION:
             return None
         if "wardrobe_first" not in list(live_context.specific_needs or []):
             return None
@@ -1705,7 +1706,7 @@ class AgenticOrchestrator:
             )
         catalog_upsell = self._build_catalog_upsell(
             rationale="Your saved wardrobe does not fully cover this occasion yet.",
-            entry_intent="occasion_recommendation",
+            entry_intent=Intent.OCCASION_RECOMMENDATION,
         )
         source_selection = self._build_source_selection(
             preferred_source="wardrobe",
@@ -1794,7 +1795,7 @@ class AgenticOrchestrator:
 
         target_piece: str = "",
     ) -> Dict[str, Any] | None:
-        if intent.primary_intent != "pairing_request":
+        if intent.primary_intent != Intent.PAIRING_REQUEST:
             return None
         wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
         if not wardrobe_items:
@@ -1855,7 +1856,7 @@ class AgenticOrchestrator:
         reasoning = f"Started with your wardrobe and paired your {str(target_item.get('title') or 'piece').strip()} with saved items that work around it."
         catalog_upsell = self._build_catalog_upsell(
             rationale="Your wardrobe already gives you workable pairings. If you want, I can also suggest catalog options to expand the look.",
-            entry_intent="pairing_request",
+            entry_intent=Intent.PAIRING_REQUEST,
         )
         outfit_card = OutfitCard(
             rank=1,
@@ -2098,7 +2099,7 @@ class AgenticOrchestrator:
 
         attached_item: Dict[str, Any] | None,
     ) -> Dict[str, Any] | None:
-        if intent.primary_intent != "pairing_request":
+        if intent.primary_intent != Intent.PAIRING_REQUEST:
             return None
         item = dict(attached_item or {})
         if self._normalize_text_token(item.get("attachment_source")) != "catalog image":
@@ -2685,7 +2686,7 @@ class AgenticOrchestrator:
         profile_confidence: ProfileConfidence,
 
     ) -> Dict[str, Any]:
-        if intent.primary_intent == "style_discovery":
+        if intent.primary_intent == Intent.STYLE_DISCOVERY:
             return self._handle_style_discovery(
                 plan_result=plan_result,
                 intent=intent,
@@ -2698,7 +2699,7 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence,
 
             )
-        if intent.primary_intent == "explanation_request":
+        if intent.primary_intent == Intent.EXPLANATION_REQUEST:
             return self._handle_explanation_request(
                 plan_result=plan_result,
                 intent=intent,
@@ -2711,7 +2712,7 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence,
 
             )
-        if intent.primary_intent == "capsule_or_trip_planning":
+        if intent.primary_intent == Intent.CAPSULE_OR_TRIP_PLANNING:
             return self._handle_capsule_or_trip_planning(
                 plan_result=plan_result,
                 intent=intent,
@@ -3032,7 +3033,7 @@ class AgenticOrchestrator:
                 "profile_confidence": profile_confidence.model_dump(),
 
                 "response_metadata": metadata,
-                "handler": "style_discovery",
+                "handler": Intent.STYLE_DISCOVERY,
                 "channel": channel,
             },
         )
@@ -3141,7 +3142,7 @@ class AgenticOrchestrator:
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
 
-                "handler": "explanation_request",
+                "handler": Intent.EXPLANATION_REQUEST,
                 "channel": channel,
             },
         )
@@ -3259,7 +3260,7 @@ class AgenticOrchestrator:
                     "intent_classification": intent.model_dump(),
                     "profile_confidence": profile_confidence.model_dump(),
     
-                    "handler": "capsule_or_trip_planning",
+                    "handler": Intent.CAPSULE_OR_TRIP_PLANNING,
                     "channel": channel,
                 },
             )
@@ -3508,7 +3509,7 @@ class AgenticOrchestrator:
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
 
-                "handler": "capsule_or_trip_planning",
+                "handler": Intent.CAPSULE_OR_TRIP_PLANNING,
                 "handler_payload": dict(metadata.get("capsule_plan") or {}),
                 "channel": channel,
             },
@@ -4078,7 +4079,7 @@ class AgenticOrchestrator:
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
-            call_type="outfit_check",
+            call_type=Intent.OUTFIT_CHECK,
             model="gpt-5.4",
             request_json={
                 "message": message,
@@ -4215,7 +4216,7 @@ class AgenticOrchestrator:
                 if gap_items
                 else "I can also show catalog options that solve the same styling tweak."
             ),
-            entry_intent="outfit_check",
+            entry_intent=Intent.OUTFIT_CHECK,
         )
         live_context = LiveContext(
             user_need=message.strip(),
@@ -4225,7 +4226,7 @@ class AgenticOrchestrator:
             specific_needs=_dedupe_values(
                 [
                     *(list(plan_result.resolved_context.specific_needs or [])),
-                    "outfit_check",
+                    Intent.OUTFIT_CHECK,
                 ]
             ),
             is_followup=bool(plan_result.resolved_context.is_followup),
@@ -4279,7 +4280,7 @@ class AgenticOrchestrator:
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
                 "response_metadata": metadata,
-                "handler": "outfit_check",
+                "handler": Intent.OUTFIT_CHECK,
                 "handler_payload": handler_payload,
                 "channel": channel,
                 "outfits": [outfit_card_data],
@@ -4582,7 +4583,7 @@ class AgenticOrchestrator:
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
-            call_type="shopping_decision",
+            call_type=Intent.SHOPPING_DECISION,
             model="gpt-5.4",
             request_json={
                 "message": message,
@@ -4652,7 +4653,7 @@ class AgenticOrchestrator:
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
 
-                "handler": "shopping_decision",
+                "handler": Intent.SHOPPING_DECISION,
                 "handler_payload": handler_payload,
                 "channel": channel,
             },
@@ -4741,7 +4742,7 @@ class AgenticOrchestrator:
                 turn_id=turn_id,
                 channel=channel,
                 policy_event_type="virtual_tryon_guardrail",
-                input_class="virtual_tryon_request",
+                input_class=Intent.VIRTUAL_TRYON_REQUEST,
                 reason_code="quality_gate_passed",
                 decision="allowed",
                 metadata_json={
@@ -4756,7 +4757,7 @@ class AgenticOrchestrator:
                 turn_id=turn_id,
                 channel=channel,
                 policy_event_type="virtual_tryon_guardrail",
-                input_class="virtual_tryon_request",
+                input_class=Intent.VIRTUAL_TRYON_REQUEST,
                 reason_code=str(tryon_result["quality_gate"].get("reason_code") or "quality_gate_failed"),
                 metadata_json={
                     "quality_gate": dict(tryon_result.get("quality_gate") or {}),

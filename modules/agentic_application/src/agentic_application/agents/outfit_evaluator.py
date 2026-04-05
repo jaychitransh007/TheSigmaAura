@@ -8,6 +8,7 @@ from openai import OpenAI
 
 from user_profiler.config import get_api_key
 
+from ..intent_registry import FollowUpIntent
 from ..schemas import (
     CombinedContext,
     EvaluatedRecommendation,
@@ -201,7 +202,7 @@ def _followup_reasoning_defaults(
     style_note = ""
     occasion_note = ""
 
-    if intent == "change_color":
+    if intent == FollowUpIntent.CHANGE_COLOR:
         new_colors = list(delta.get("new_colors") or [])
         shared_colors = list(delta.get("shared_colors") or [])
         reasoning = "Compared against the previous recommendation to find a meaningful color shift."
@@ -230,7 +231,7 @@ def _followup_reasoning_defaults(
         if style_parts:
             style_note = f"Preserves {', '.join(style_parts)} while shifting colors."
 
-    elif intent == "similar_to_previous":
+    elif intent == FollowUpIntent.SIMILAR_TO_PREVIOUS:
         preserved = []
         if delta.get("candidate_type_matches_previous"):
             preserved.append("outfit structure")
@@ -384,7 +385,7 @@ def _fallback_evaluations(
         color_note = ""
         style_note = ""
         occasion_note = ""
-        if combined_context.live.followup_intent == "change_color":
+        if combined_context.live.followup_intent == FollowUpIntent.CHANGE_COLOR:
             if delta["new_colors"]:
                 color_note = f"Introduces a new color direction with {', '.join(delta['new_colors'])}."
             elif delta["shared_colors"]:
@@ -408,7 +409,7 @@ def _fallback_evaluations(
                 fb_style_parts.append(f"volume ({', '.join(delta['shared_volumes'])})")
             if fb_style_parts:
                 style_note = f"Preserves {', '.join(fb_style_parts)} while shifting colors."
-        elif combined_context.live.followup_intent == "similar_to_previous":
+        elif combined_context.live.followup_intent == FollowUpIntent.SIMILAR_TO_PREVIOUS:
             preserved = []
             if delta["candidate_type_matches_previous"]:
                 preserved.append("same outfit structure")

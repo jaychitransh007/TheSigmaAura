@@ -14,6 +14,7 @@ This document describes the target architecture for the system we want to build 
 - profile-aware, memory-backed shopping and dressing intelligence
 
 For user-facing product framing, personas, journey, and stories, see `docs/PRODUCT.md`.
+For detailed step-by-step execution flows for all 11 intents, see `knowledge/workflow_reference.md`.
 
 The architecture below is broader than the current recommendation-only runtime. It is the target system design.
 
@@ -783,6 +784,8 @@ Stores:
 - advocacy / referral events
 
 ## Intent-to-Agent Map
+
+All intent identifiers below are defined as `StrEnum` constants in `agentic_application/intent_registry.py`. The registry is the single source of truth — the copilot planner JSON schema, orchestrator dispatch, and all agent code import from it.
 
 | Intent | Primary agent | Typical tools | Typical memory read | Typical memory write |
 |---|---|---|---|---|

@@ -6,6 +6,8 @@ from typing import Any, Dict, Iterable, List
 
 from platform_core.supabase_rest import SupabaseRestClient
 
+from ..intent_registry import Intent
+
 
 def _parse_ts(value: str) -> datetime:
     text = str(value or "").strip()
@@ -145,7 +147,7 @@ def build_dependency_report(
         str(row.get("user_id") or "").strip()
         for row in dependency_events
         if str(row.get("event_type") or "") == "turn_completed"
-        and str(row.get("primary_intent") or "") == "feedback_submission"
+        and str(row.get("primary_intent") or "") == Intent.FEEDBACK_SUBMISSION
     }
     catalog_users = {str(row.get("user_id") or "").strip() for row in catalog_interactions}
 

@@ -29,9 +29,10 @@ Key UI patterns implemented:
 - **Results grid**: 2-column card grid with outfit preview thumbnails, user message, occasion chips, and relative timestamps.
 
 Related docs:
-- [`docs/PRODUCT.md`](/Users/mj/Projects/TheSigmaProject/Aura/docs/PRODUCT.md)
-- [`docs/APPLICATION_SPECS.md`](/Users/mj/Projects/TheSigmaProject/Aura/docs/APPLICATION_SPECS.md)
-- [`docs/CURRENT_STATE.md`](/Users/mj/Projects/TheSigmaProject/Aura/docs/CURRENT_STATE.md)
+- [`docs/PRODUCT.md`](PRODUCT.md)
+- [`docs/APPLICATION_SPECS.md`](APPLICATION_SPECS.md)
+- [`docs/CURRENT_STATE.md`](CURRENT_STATE.md)
+- [`knowledge/workflow_reference.md`](../knowledge/workflow_reference.md) — step-by-step execution flows for all 11 intents
 
 ## Product Design Goal
 

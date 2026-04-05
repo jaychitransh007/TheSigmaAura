@@ -351,6 +351,7 @@ The product succeeds in this phase if users:
 
 ## Relationship To Other Docs
 
-- [`docs/CURRENT_STATE.md`](/Users/mj/Projects/TheSigmaProject/Aura/docs/CURRENT_STATE.md): implementation state and execution checklist
-- [`docs/APPLICATION_SPECS.md`](/Users/mj/Projects/TheSigmaProject/Aura/docs/APPLICATION_SPECS.md): runtime and implementation contract
-- [`docs/INTENT_COPILOT_ARCHITECTURE.md`](/Users/mj/Projects/TheSigmaProject/Aura/docs/INTENT_COPILOT_ARCHITECTURE.md): system design and boundaries
+- [`docs/CURRENT_STATE.md`](CURRENT_STATE.md): implementation state and execution checklist
+- [`docs/APPLICATION_SPECS.md`](APPLICATION_SPECS.md): runtime and implementation contract
+- [`docs/INTENT_COPILOT_ARCHITECTURE.md`](INTENT_COPILOT_ARCHITECTURE.md): system design and boundaries
+- [`knowledge/workflow_reference.md`](../knowledge/workflow_reference.md): step-by-step execution flows for all 11 intents

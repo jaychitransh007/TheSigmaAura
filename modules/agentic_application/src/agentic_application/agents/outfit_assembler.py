@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 from uuid import uuid4
 
+from ..intent_registry import FollowUpIntent
 from ..schemas import (
     CombinedContext,
     OutfitCandidate,
@@ -54,13 +55,13 @@ def _followup_pair_adjustment(
     adj = 0.0
     notes: list[str] = []
 
-    if intent == "change_color":
+    if intent == FollowUpIntent.CHANGE_COLOR:
         overlapping = [c for c in pair_colors if c in prev_colors]
         if overlapping:
             penalty = 0.10 * len(overlapping)
             adj += penalty
             notes.append(f"followup penalty +{penalty:.2f}: color overlap {overlapping} with previous")
-    elif intent == "similar_to_previous":
+    elif intent == FollowUpIntent.SIMILAR_TO_PREVIOUS:
         matching_occasions = [o for o in pair_occasions if o in prev_occasions]
         if matching_occasions:
             adj -= 0.05
@@ -100,13 +101,13 @@ def _followup_complete_adjustment(
     adj = 0.0
     notes: list[str] = []
 
-    if intent == "change_color":
+    if intent == FollowUpIntent.CHANGE_COLOR:
         overlapping = [c for c in item_colors if c in prev_colors]
         if overlapping:
             penalty = 0.10 * len(overlapping)
             adj += penalty
             notes.append(f"followup penalty +{penalty:.2f}: color overlap {overlapping} with previous")
-    elif intent == "similar_to_previous":
+    elif intent == FollowUpIntent.SIMILAR_TO_PREVIOUS:
         matching_occasions = [o for o in item_occasions if o in prev_occasions]
         if matching_occasions:
             adj -= 0.05

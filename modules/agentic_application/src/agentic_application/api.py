@@ -39,6 +39,7 @@ from platform_core.ui import get_web_ui_html
 
 from pydantic import BaseModel
 
+from .intent_registry import Intent
 from .orchestrator import AgenticOrchestrator
 from .services.comfort_learning import ComfortLearningService
 from .services.dependency_reporting import DependencyReportingService
@@ -409,7 +410,7 @@ def create_app() -> FastAPI:
                     )
                 log_policy_event(
                     policy_event_type="virtual_tryon_guardrail",
-                    input_class="virtual_tryon_request",
+                    input_class=Intent.VIRTUAL_TRYON_REQUEST,
                     reason_code="quality_gate_passed",
                     decision="allowed",
                     user_id=payload.user_id,
@@ -420,7 +421,7 @@ def create_app() -> FastAPI:
         except (ValueError, FileNotFoundError, RuntimeError) as exc:
             log_policy_event(
                 policy_event_type="virtual_tryon_guardrail",
-                input_class="virtual_tryon_request",
+                input_class=Intent.VIRTUAL_TRYON_REQUEST,
                 reason_code=reason_code or (
                     "missing_person_image"
                     if "No full-body onboarding image found" in str(exc)
@@ -450,7 +451,7 @@ def create_app() -> FastAPI:
                 if not target_turn:
                     log_policy_event(
                         policy_event_type="feedback_guardrail",
-                        input_class="feedback_submission",
+                        input_class=Intent.FEEDBACK_SUBMISSION,
                         reason_code="turn_not_found",
                         user_id=external_uid,
                         conversation_id=conversation_id,
@@ -461,7 +462,7 @@ def create_app() -> FastAPI:
                 if str(target_turn.get("conversation_id") or "") != conversation_id:
                     log_policy_event(
                         policy_event_type="feedback_guardrail",
-                        input_class="feedback_submission",
+                        input_class=Intent.FEEDBACK_SUBMISSION,
                         reason_code="turn_conversation_mismatch",
                         user_id=external_uid,
                         conversation_id=conversation_id,
@@ -489,7 +490,7 @@ def create_app() -> FastAPI:
                 if invalid_item_ids:
                     log_policy_event(
                         policy_event_type="feedback_guardrail",
-                        input_class="feedback_submission",
+                        input_class=Intent.FEEDBACK_SUBMISSION,
                         reason_code="item_outside_selected_outfit",
                         user_id=external_uid,
                         conversation_id=conversation_id,
@@ -507,7 +508,7 @@ def create_app() -> FastAPI:
             if not item_ids:
                 log_policy_event(
                     policy_event_type="feedback_guardrail",
-                    input_class="feedback_submission",
+                    input_class=Intent.FEEDBACK_SUBMISSION,
                     reason_code="unresolved_feedback_items",
                     user_id=external_uid,
                     conversation_id=conversation_id,

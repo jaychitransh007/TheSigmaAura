@@ -2,6 +2,7 @@
 
 import pytest
 
+from agentic_application.intent_registry import Action, FollowUpIntent, Intent
 from agentic_application.qna_messages import generate_stage_message
 
 
@@ -60,7 +61,7 @@ class TestContextBuilderCompleted:
 class TestIntentRouterCompleted:
     def test_returns_primary_intent(self):
         msg = generate_stage_message("intent_router", "completed", {
-            "primary_intent": "style_discovery",
+            "primary_intent": Intent.STYLE_DISCOVERY,
         })
         assert "style discovery" in msg
 

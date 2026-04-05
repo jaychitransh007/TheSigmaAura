@@ -45,6 +45,7 @@ from agentic_application.product_links import resolve_product_url
 from agentic_application.services.dependency_reporting import build_dependency_report
 from agentic_application.services.tryon_quality_gate import TryonQualityGate
 from agentic_application.agents.response_formatter import _build_zero_result_fallback
+from agentic_application.intent_registry import Action, FollowUpIntent, Intent
 from agentic_application.schemas import (
     CombinedContext,
     ConversationMemory,
@@ -133,7 +134,7 @@ class AgenticApplicationTests(unittest.TestCase):
                     "user_id": "user-1",
                     "event_type": "turn_completed",
                     "source_channel": "web",
-                    "primary_intent": "occasion_recommendation",
+                    "primary_intent": Intent.OCCASION_RECOMMENDATION,
                     "metadata_json": {"memory_sources_read": ["user_profile", "wardrobe_memory"]},
                     "created_at": "2026-03-01T10:00:00+00:00",
                 },
@@ -141,7 +142,7 @@ class AgenticApplicationTests(unittest.TestCase):
                     "user_id": "user-1",
                     "event_type": "turn_completed",
                     "source_channel": "web",
-                    "primary_intent": "pairing_request",
+                    "primary_intent": Intent.PAIRING_REQUEST,
                     "metadata_json": {"memory_sources_read": ["wardrobe_memory"]},
                     "created_at": "2026-03-03T10:00:00+00:00",
                 },
@@ -149,7 +150,7 @@ class AgenticApplicationTests(unittest.TestCase):
                     "user_id": "user-1",
                     "event_type": "turn_completed",
                     "source_channel": "web",
-                    "primary_intent": "pairing_request",
+                    "primary_intent": Intent.PAIRING_REQUEST,
                     "metadata_json": {"memory_sources_read": ["wardrobe_memory"]},
                     "created_at": "2026-03-10T10:00:00+00:00",
                 },
@@ -157,7 +158,7 @@ class AgenticApplicationTests(unittest.TestCase):
                     "user_id": "user-2",
                     "event_type": "turn_completed",
                     "source_channel": "web",
-                    "primary_intent": "style_discovery",
+                    "primary_intent": Intent.STYLE_DISCOVERY,
                     "metadata_json": {"memory_sources_read": ["user_profile"]},
                     "created_at": "2026-03-02T09:00:00+00:00",
                 },
@@ -175,7 +176,7 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual(1, report["overview"]["second_session_within_14d_count"])
         self.assertEqual(1, report["overview"]["third_session_within_30d_count"])
         self.assertEqual("instagram", report["acquisition_sources"][0]["key"])
-        self.assertEqual("pairing_request", report["recurring_anchor_intents_by_cohort"]["instagram"][0]["key"])
+        self.assertEqual(Intent.PAIRING_REQUEST, report["recurring_anchor_intents_by_cohort"]["instagram"][0]["key"])
         wardrobe_lift = next(item for item in report["memory_input_retention_lift"] if item["memory_input"] == "wardrobe_items")
         self.assertGreater(wardrobe_lift["lift_pct_points"], 0)
 
@@ -228,7 +229,7 @@ class AgenticApplicationTests(unittest.TestCase):
         live_context = LiveContext(
             user_need="Show me something bolder",
             is_followup=True,
-            followup_intent="increase_boldness",
+            followup_intent=FollowUpIntent.INCREASE_BOLDNESS,
         )
         memory = build_conversation_memory(previous_context, live_context)
         effective = apply_conversation_memory(live_context, memory)
@@ -242,7 +243,7 @@ class AgenticApplicationTests(unittest.TestCase):
     def test_conversation_memory_tracks_intent_channel_and_wardrobe(self) -> None:
         previous_context = {
             "memory": {
-                "recent_intents": ["shopping_decision"],
+                "recent_intents": [Intent.SHOPPING_DECISION],
                 "recent_channels": ["web"],
                 "wardrobe_item_count": 1,
                 "wardrobe_memory_enabled": True,
@@ -253,12 +254,12 @@ class AgenticApplicationTests(unittest.TestCase):
         memory = build_conversation_memory(
             previous_context,
             live_context,
-            current_intent="occasion_recommendation",
+            current_intent=Intent.OCCASION_RECOMMENDATION,
             channel="web",
             wardrobe_item_count=3,
         )
 
-        self.assertEqual(["shopping_decision", "occasion_recommendation"], memory.recent_intents)
+        self.assertEqual([Intent.SHOPPING_DECISION, Intent.OCCASION_RECOMMENDATION], memory.recent_intents)
         self.assertEqual(["web"], memory.recent_channels)
         self.assertEqual("Need help for office tomorrow", memory.last_user_need)
         self.assertEqual(3, memory.wardrobe_item_count)
@@ -627,7 +628,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 occasion_signal="wedding",
                 formality_hint="formal",
                 is_followup=True,
-                followup_intent="increase_boldness",
+                followup_intent=FollowUpIntent.INCREASE_BOLDNESS,
             ),
         )
         analysis_payload = {
@@ -687,7 +688,7 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("complete", session_context["last_recommendations"][0]["candidate_type"])
         self.assertEqual(["wedding"], session_context["last_recommendations"][0]["occasion_fits"])
         self.assertEqual(["formal"], session_context["last_recommendations"][0]["formality_levels"])
-        self.assertEqual(["occasion_recommendation"], session_context["memory"]["recent_intents"])
+        self.assertEqual([Intent.OCCASION_RECOMMENDATION], session_context["memory"]["recent_intents"])
         self.assertEqual(["web"], session_context["memory"]["recent_channels"])
         self.assertEqual("Show me something bolder", session_context["memory"]["last_user_need"])
         self.assertFalse(session_context["memory"]["wardrobe_memory_enabled"])
@@ -703,7 +704,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 "outfit_rank": 1,
                 "item_position": 1,
                 "item_role": "",
-                "primary_intent": "occasion_recommendation",
+                "primary_intent": Intent.OCCASION_RECOMMENDATION,
                 "title": "Evening Dress",
             },
         )
@@ -786,7 +787,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(
                 user_need="Show me something similar",
                 is_followup=True,
-                followup_intent="similar_to_previous",
+                followup_intent=FollowUpIntent.SIMILAR_TO_PREVIOUS,
             ),
             hard_filters={"gender_expression": "feminine"},
             conversation_memory=ConversationMemory(
@@ -853,7 +854,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(
                 user_need="Show me a different color",
                 is_followup=True,
-                followup_intent="change_color",
+                followup_intent=FollowUpIntent.CHANGE_COLOR,
             ),
             previous_recommendations=[
                 {
@@ -898,7 +899,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(
                 user_need="Show me something similar",
                 is_followup=True,
-                followup_intent="similar_to_previous",
+                followup_intent=FollowUpIntent.SIMILAR_TO_PREVIOUS,
             ),
             previous_recommendations=[
                 {
@@ -981,7 +982,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(
                 user_need="Show me something similar",
                 is_followup=True,
-                followup_intent="similar_to_previous",
+                followup_intent=FollowUpIntent.SIMILAR_TO_PREVIOUS,
             ),
             previous_recommendations=[
                 {
@@ -1266,7 +1267,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(
                 user_need="Show me something bolder",
                 is_followup=True,
-                followup_intent="increase_boldness",
+                followup_intent=FollowUpIntent.INCREASE_BOLDNESS,
             ),
             previous_recommendations=[
                 {
@@ -1346,7 +1347,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(
                 user_need="Show me something bolder",
                 is_followup=True,
-                followup_intent="increase_boldness",
+                followup_intent=FollowUpIntent.INCREASE_BOLDNESS,
             ),
             previous_recommendations=[
                 {
@@ -1405,7 +1406,7 @@ class AgenticApplicationTests(unittest.TestCase):
         )
 
         delta = payload["candidate_deltas"][0]
-        self.assertEqual("increase_boldness", delta["followup_intent"])
+        self.assertEqual(FollowUpIntent.INCREASE_BOLDNESS, delta["followup_intent"])
         self.assertIn("animal_print", delta["new_patterns"])
         self.assertIn("oversized", delta["new_volumes"])
         self.assertIn("slim", delta["shared_volumes"])
@@ -1417,7 +1418,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(
                 user_need="Make it more formal",
                 is_followup=True,
-                followup_intent="increase_formality",
+                followup_intent=FollowUpIntent.INCREASE_FORMALITY,
             ),
             previous_recommendations=[
                 {
@@ -1471,7 +1472,7 @@ class AgenticApplicationTests(unittest.TestCase):
             )
         )
         self.assertEqual("casual\u2192formal", payload_inc["candidate_deltas"][0]["formality_shift"])
-        self.assertEqual("increase_formality", payload_inc["candidate_deltas"][0]["followup_intent"])
+        self.assertEqual(FollowUpIntent.INCREASE_FORMALITY, payload_inc["candidate_deltas"][0]["followup_intent"])
 
         # Now test decrease_formality (formal → casual)
         context_decrease = CombinedContext(
@@ -1479,7 +1480,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(
                 user_need="Make it more casual",
                 is_followup=True,
-                followup_intent="decrease_formality",
+                followup_intent=FollowUpIntent.DECREASE_FORMALITY,
             ),
             previous_recommendations=[
                 {
@@ -1533,7 +1534,7 @@ class AgenticApplicationTests(unittest.TestCase):
             )
         )
         self.assertEqual("formal\u2192casual", payload_dec["candidate_deltas"][0]["formality_shift"])
-        self.assertEqual("decrease_formality", payload_dec["candidate_deltas"][0]["followup_intent"])
+        self.assertEqual(FollowUpIntent.DECREASE_FORMALITY, payload_dec["candidate_deltas"][0]["followup_intent"])
 
     def test_candidate_signature_includes_all_eight_signals(self) -> None:
         from agentic_application.agents.outfit_evaluator import _candidate_signature
@@ -1598,7 +1599,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(
                 user_need="Show me a different color",
                 is_followup=True,
-                followup_intent="change_color",
+                followup_intent=FollowUpIntent.CHANGE_COLOR,
             ),
             previous_recommendations=[
                 {
@@ -1658,7 +1659,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(
                 user_need="Show me something similar",
                 is_followup=True,
-                followup_intent="similar_to_previous",
+                followup_intent=FollowUpIntent.SIMILAR_TO_PREVIOUS,
             ),
             previous_recommendations=[
                 {
@@ -1722,7 +1723,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(
                 user_need="Show me a different color",
                 is_followup=True,
-                followup_intent="change_color",
+                followup_intent=FollowUpIntent.CHANGE_COLOR,
             ),
         )
         evaluated = [
@@ -1754,7 +1755,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(
                 user_need="Show me something similar",
                 is_followup=True,
-                followup_intent="similar_to_previous",
+                followup_intent=FollowUpIntent.SIMILAR_TO_PREVIOUS,
             ),
         )
         evaluated = [
@@ -1777,7 +1778,7 @@ class AgenticApplicationTests(unittest.TestCase):
     def test_evaluator_defaults_preserve_non_color_for_change_color(self) -> None:
         """style_note should mention preserved non-color attributes for change_color."""
         delta = {
-            "followup_intent": "change_color",
+            "followup_intent": FollowUpIntent.CHANGE_COLOR,
             "new_colors": ["burgundy"],
             "shared_colors": [],
             "preserves_occasion": True,
@@ -1796,7 +1797,7 @@ class AgenticApplicationTests(unittest.TestCase):
     def test_evaluator_defaults_include_all_shared_for_similar_to_previous(self) -> None:
         """style_note should mention shared colors/patterns/volume/fit/silhouette."""
         delta = {
-            "followup_intent": "similar_to_previous",
+            "followup_intent": FollowUpIntent.SIMILAR_TO_PREVIOUS,
             "candidate_type_matches_previous": True,
             "preserves_occasion": True,
             "preserves_roles": True,
@@ -1965,7 +1966,7 @@ class AgenticApplicationTests(unittest.TestCase):
             )
 
         architect_cls.return_value.plan.assert_not_called()
-        self.assertEqual("virtual_tryon_request", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.VIRTUAL_TRYON_REQUEST, result["metadata"]["primary_intent"])
         self.assertEqual([], result["outfits"])
         resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
         self.assertTrue(resolved_context["handler_payload"]["success"])
@@ -2019,7 +2020,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 message="Show this on me https://store.example/item.jpg",
             )
 
-        self.assertEqual("virtual_tryon_request", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.VIRTUAL_TRYON_REQUEST, result["metadata"]["primary_intent"])
         self.assertIn("cleaner product image", result["assistant_message"].lower())
         resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
         self.assertFalse(resolved_context["handler_payload"]["success"])
@@ -2070,7 +2071,7 @@ class AgenticApplicationTests(unittest.TestCase):
             )
 
         architect_cls.return_value.plan.assert_not_called()
-        self.assertEqual("virtual_tryon_request", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.VIRTUAL_TRYON_REQUEST, result["metadata"]["primary_intent"])
         self.assertIn("full-body photo", result["assistant_message"].lower())
         resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
         self.assertFalse(resolved_context["handler_payload"]["success"])
@@ -2121,7 +2122,7 @@ class AgenticApplicationTests(unittest.TestCase):
             )
 
         architect_cls.return_value.plan.assert_not_called()
-        self.assertEqual("occasion_recommendation", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.OCCASION_RECOMMENDATION, result["metadata"]["primary_intent"])
         self.assertEqual("wardrobe_first", result["metadata"]["answer_source"])
         self.assertEqual("wardrobe", result["metadata"]["answer_components"]["primary_source"])
         self.assertIn("recommendation_confidence", result["metadata"])
@@ -2170,9 +2171,9 @@ class AgenticApplicationTests(unittest.TestCase):
         planner_mock = Mock()
         from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.95,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me build that.",
             follow_up_suggestions=["Show me more"],
@@ -2252,9 +2253,9 @@ class AgenticApplicationTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.95,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me refine that.",
             follow_up_suggestions=["Show me more"],
@@ -2263,7 +2264,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 formality_hint="smart_casual",
                 specific_needs=["polish", "refined_minimalism"],
                 is_followup=True,
-                followup_intent="increase_formality",
+                followup_intent=FollowUpIntent.INCREASE_FORMALITY,
             ),
             action_parameters=CopilotActionParameters(),
         )
@@ -2286,7 +2287,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 formality_hint="smart_casual",
                 specific_needs=["polish", "refined_minimalism"],
                 is_followup=True,
-                followup_intent="increase_formality",
+                followup_intent=FollowUpIntent.INCREASE_FORMALITY,
             ),
         )
 
@@ -2307,7 +2308,7 @@ class AgenticApplicationTests(unittest.TestCase):
                     message="Catalog pipeline took over.",
                     outfits=[OutfitCard(rank=1, title="Catalog Look", reasoning="Polished upgrade.", items=[])],
                     follow_up_suggestions=["Show me more"],
-                    metadata={"answer_source": "catalog_only", "primary_intent": "occasion_recommendation"},
+                    metadata={"answer_source": "catalog_only", "primary_intent": Intent.OCCASION_RECOMMENDATION},
                 )
             )
 
@@ -2395,9 +2396,9 @@ class AgenticApplicationTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.93,
-            action="respond_directly",
+            action=Action.RESPOND_DIRECTLY,
             context_sufficient=True,
             assistant_message="I’ll pull subtle printed shirt options for you.",
             follow_up_suggestions=["Show me more"],
@@ -2428,7 +2429,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 formality_hint="smart_casual",
                 specific_needs=["targeted_item_refinement", "targeted_shirts", "subtle_prints"],
                 is_followup=True,
-                followup_intent="more_options",
+                followup_intent=FollowUpIntent.MORE_OPTIONS,
             ),
         )
 
@@ -2449,7 +2450,7 @@ class AgenticApplicationTests(unittest.TestCase):
                     message="Here are subtle printed shirt directions.",
                     outfits=[OutfitCard(rank=1, title="Printed Shirt Direction", reasoning="Targeted refinement.", items=[])],
                     follow_up_suggestions=["Show me more"],
-                    metadata={"answer_source": "catalog_only", "primary_intent": "occasion_recommendation"},
+                    metadata={"answer_source": "catalog_only", "primary_intent": Intent.OCCASION_RECOMMENDATION},
                 )
             )
 
@@ -2486,7 +2487,7 @@ class AgenticApplicationTests(unittest.TestCase):
                     "formality_hint": "casual",
                     "specific_needs": ["minimal", "clean"],
                     "is_followup": True,
-                    "followup_intent": "more_options",
+                    "followup_intent": FollowUpIntent.MORE_OPTIONS,
                 },
             },
         }
@@ -2547,9 +2548,9 @@ class AgenticApplicationTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.95,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me sharpen that up.",
             follow_up_suggestions=["Show me more"],
@@ -2558,7 +2559,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 formality_hint="smart_casual",
                 specific_needs=["polish"],
                 is_followup=True,
-                followup_intent="increase_boldness",
+                followup_intent=FollowUpIntent.INCREASE_BOLDNESS,
             ),
             action_parameters=CopilotActionParameters(),
         )
@@ -2581,7 +2582,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 formality_hint="smart_casual",
                 specific_needs=["polish", "refined_minimalism"],
                 is_followup=True,
-                followup_intent="increase_formality",
+                followup_intent=FollowUpIntent.INCREASE_FORMALITY,
             ),
         )
 
@@ -2602,7 +2603,7 @@ class AgenticApplicationTests(unittest.TestCase):
                     message="Here are sharper options.",
                     outfits=[OutfitCard(rank=1, title="Sharper Look", reasoning="Polished follow-up.", items=[])],
                     follow_up_suggestions=["Show me more"],
-                    metadata={"answer_source": "catalog_only", "primary_intent": "occasion_recommendation"},
+                    metadata={"answer_source": "catalog_only", "primary_intent": Intent.OCCASION_RECOMMENDATION},
                 )
             )
 
@@ -2614,7 +2615,7 @@ class AgenticApplicationTests(unittest.TestCase):
 
         architect_cls.return_value.plan.assert_called_once()
         architect_context = architect_cls.return_value.plan.call_args.args[0]
-        self.assertEqual("increase_formality", architect_context.live.followup_intent)
+        self.assertEqual(FollowUpIntent.INCREASE_FORMALITY, architect_context.live.followup_intent)
         self.assertIn("Follow-up anchor context:", architect_context.live.user_need)
         self.assertIn("Cream Shirt", architect_context.live.user_need)
         self.assertEqual("Here are sharper options.", result["assistant_message"])
@@ -2650,9 +2651,9 @@ class AgenticApplicationTests(unittest.TestCase):
         planner_mock = Mock()
         from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.95,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me build that.",
             follow_up_suggestions=[],
@@ -2712,9 +2713,9 @@ class AgenticApplicationTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.97,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me find catalog options.",
             follow_up_suggestions=["Show me more"],
@@ -2906,9 +2907,9 @@ class CopilotPlannerTests(unittest.TestCase):
         gw = self._standard_onboarding_gateway()
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="style_discovery",
+            intent=Intent.STYLE_DISCOVERY,
             intent_confidence=0.95,
-            action="respond_directly",
+            action=Action.RESPOND_DIRECTLY,
             context_sufficient=True,
             assistant_message="As an Autumn with high contrast, warm earthy tones and bold pairings are your strongest direction.",
             follow_up_suggestions=["What colors should I avoid?", "Show me outfits for work"],
@@ -2923,14 +2924,14 @@ class CopilotPlannerTests(unittest.TestCase):
         )
 
         planner_mock.plan.assert_called_once()
-        self.assertEqual("style_discovery", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.STYLE_DISCOVERY, result["metadata"]["primary_intent"])
         self.assertEqual("style_discovery_handler", result["metadata"]["answer_source"])
         self.assertIn("Autumn", result["assistant_message"])
         self.assertIn("confident", result["assistant_message"].lower())
         self.assertEqual("recommendation", result["response_type"])
         self.assertEqual([], result["outfits"])
         self.assertIn("What colors should I avoid?", result["follow_up_suggestions"])
-        self.assertEqual("color", result["metadata"]["style_discovery"]["advice_topic"])
+        self.assertEqual("color", result["metadata"][Intent.STYLE_DISCOVERY]["advice_topic"])
         persisted_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
         self.assertEqual("style_discovery_handler", persisted_context["response_metadata"]["answer_source"])
 
@@ -2940,13 +2941,13 @@ class CopilotPlannerTests(unittest.TestCase):
         gw = self._standard_onboarding_gateway()
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="style_discovery",
+            intent=Intent.STYLE_DISCOVERY,
             intent_confidence=0.95,
-            action="respond_directly",
+            action=Action.RESPOND_DIRECTLY,
             context_sufficient=True,
             assistant_message="I’ll break down the best collar direction for you.",
             follow_up_suggestions=["What necklines suit me?", "Show me shirt ideas"],
-            resolved_context=CopilotResolvedContext(style_goal="style_discovery"),
+            resolved_context=CopilotResolvedContext(style_goal=Intent.STYLE_DISCOVERY),
             action_parameters=CopilotActionParameters(),
         )
         orchestrator = self._build_orchestrator(repo, gw, planner_mock)
@@ -2958,7 +2959,7 @@ class CopilotPlannerTests(unittest.TestCase):
         )
 
         self.assertEqual("style_discovery_handler", result["metadata"]["answer_source"])
-        self.assertEqual("collar", result["metadata"]["style_discovery"]["advice_topic"])
+        self.assertEqual("collar", result["metadata"][Intent.STYLE_DISCOVERY]["advice_topic"])
         self.assertIn("open, elongated shape", result["assistant_message"])
         self.assertIn("hourglass", result["assistant_message"].lower())
 
@@ -2968,13 +2969,13 @@ class CopilotPlannerTests(unittest.TestCase):
         gw = self._standard_onboarding_gateway()
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="style_discovery",
+            intent=Intent.STYLE_DISCOVERY,
             intent_confidence=0.94,
-            action="respond_directly",
+            action=Action.RESPOND_DIRECTLY,
             context_sufficient=True,
             assistant_message="I’ll break down patterns for you.",
             follow_up_suggestions=["What colors suit me?", "Show me printed pieces"],
-            resolved_context=CopilotResolvedContext(style_goal="style_discovery"),
+            resolved_context=CopilotResolvedContext(style_goal=Intent.STYLE_DISCOVERY),
             action_parameters=CopilotActionParameters(),
         )
         orchestrator = self._build_orchestrator(repo, gw, planner_mock)
@@ -2985,7 +2986,7 @@ class CopilotPlannerTests(unittest.TestCase):
             message="What patterns work on me?",
         )
 
-        self.assertEqual("pattern", result["metadata"]["style_discovery"]["advice_topic"])
+        self.assertEqual("pattern", result["metadata"][Intent.STYLE_DISCOVERY]["advice_topic"])
         self.assertIn("medium-scale patterns", result["assistant_message"])
         self.assertIn("classic", result["assistant_message"].lower())
         self.assertIn("romantic", result["assistant_message"].lower())
@@ -2996,13 +2997,13 @@ class CopilotPlannerTests(unittest.TestCase):
         gw = self._standard_onboarding_gateway()
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="style_discovery",
+            intent=Intent.STYLE_DISCOVERY,
             intent_confidence=0.94,
-            action="respond_directly",
+            action=Action.RESPOND_DIRECTLY,
             context_sufficient=True,
             assistant_message="I’ll explain the best silhouettes for you.",
             follow_up_suggestions=["What collars suit me?", "Show me outfit ideas"],
-            resolved_context=CopilotResolvedContext(style_goal="style_discovery"),
+            resolved_context=CopilotResolvedContext(style_goal=Intent.STYLE_DISCOVERY),
             action_parameters=CopilotActionParameters(),
         )
         orchestrator = self._build_orchestrator(repo, gw, planner_mock)
@@ -3013,7 +3014,7 @@ class CopilotPlannerTests(unittest.TestCase):
             message="What silhouette works best on me?",
         )
 
-        self.assertEqual("silhouette", result["metadata"]["style_discovery"]["advice_topic"])
+        self.assertEqual("silhouette", result["metadata"][Intent.STYLE_DISCOVERY]["advice_topic"])
         self.assertIn("waist definition", result["assistant_message"].lower())
         self.assertIn("boxy", result["assistant_message"].lower())
 
@@ -3023,13 +3024,13 @@ class CopilotPlannerTests(unittest.TestCase):
         gw = self._standard_onboarding_gateway()
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="style_discovery",
+            intent=Intent.STYLE_DISCOVERY,
             intent_confidence=0.94,
-            action="respond_directly",
+            action=Action.RESPOND_DIRECTLY,
             context_sufficient=True,
             assistant_message="I’ll explain your archetype blend.",
             follow_up_suggestions=["What colors suit me?", "Show me outfits for work"],
-            resolved_context=CopilotResolvedContext(style_goal="style_discovery"),
+            resolved_context=CopilotResolvedContext(style_goal=Intent.STYLE_DISCOVERY),
             action_parameters=CopilotActionParameters(),
         )
         orchestrator = self._build_orchestrator(repo, gw, planner_mock)
@@ -3040,7 +3041,7 @@ class CopilotPlannerTests(unittest.TestCase):
             message="Which style archetypes fit me?",
         )
 
-        self.assertEqual("archetype", result["metadata"]["style_discovery"]["advice_topic"])
+        self.assertEqual("archetype", result["metadata"][Intent.STYLE_DISCOVERY]["advice_topic"])
         self.assertIn("classic", result["assistant_message"].lower())
         self.assertIn("romantic", result["assistant_message"].lower())
         self.assertIn("accent", result["assistant_message"].lower())
@@ -3075,9 +3076,9 @@ class CopilotPlannerTests(unittest.TestCase):
         gw = self._standard_onboarding_gateway()
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="explanation_request",
+            intent=Intent.EXPLANATION_REQUEST,
             intent_confidence=0.94,
-            action="respond_directly",
+            action=Action.RESPOND_DIRECTLY,
             context_sufficient=True,
             assistant_message="I’ll break down why that recommendation worked.",
             follow_up_suggestions=["Show me something bolder", "Explain another option"],
@@ -3091,7 +3092,7 @@ class CopilotPlannerTests(unittest.TestCase):
             message="Why did you recommend that?",
         )
 
-        self.assertEqual("explanation_request", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.EXPLANATION_REQUEST, result["metadata"]["primary_intent"])
         self.assertEqual("explanation_handler", result["metadata"]["answer_source"])
         self.assertIn("Elegant Wedding Look", result["assistant_message"])
         self.assertIn("confidence", result["assistant_message"].lower())
@@ -3103,9 +3104,9 @@ class CopilotPlannerTests(unittest.TestCase):
         gw = self._standard_onboarding_gateway()
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.6,
-            action="ask_clarification",
+            action=Action.ASK_CLARIFICATION,
             context_sufficient=False,
             assistant_message="What's the occasion? That'll help me nail the right direction for you.",
             follow_up_suggestions=["Date night", "Office meeting", "Casual weekend", "Wedding guest"],
@@ -3133,9 +3134,9 @@ class CopilotPlannerTests(unittest.TestCase):
         gw = self._standard_onboarding_gateway()
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.95,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me find some wedding options with your Autumn palette in mind.",
             follow_up_suggestions=["Show me something bolder", "Different color direction"],
@@ -3201,7 +3202,7 @@ class CopilotPlannerTests(unittest.TestCase):
 
         planner_mock.plan.assert_called_once()
         architect_cls.return_value.plan.assert_called_once()
-        self.assertEqual("occasion_recommendation", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.OCCASION_RECOMMENDATION, result["metadata"]["primary_intent"])
 
     def test_planner_save_feedback(self):
         from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
@@ -3219,9 +3220,9 @@ class CopilotPlannerTests(unittest.TestCase):
         gw = self._standard_onboarding_gateway()
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="feedback_submission",
+            intent=Intent.FEEDBACK_SUBMISSION,
             intent_confidence=0.92,
-            action="save_feedback",
+            action=Action.SAVE_FEEDBACK,
             context_sufficient=True,
             assistant_message="Got it — I'll steer away from that direction next time.",
             follow_up_suggestions=["Show me something different", "What should I try next?"],
@@ -3235,7 +3236,7 @@ class CopilotPlannerTests(unittest.TestCase):
             message="I don't like this outfit",
         )
 
-        self.assertEqual("feedback_submission", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.FEEDBACK_SUBMISSION, result["metadata"]["primary_intent"])
         self.assertIn("steer away", result["assistant_message"])
         # Verify feedback was persisted
         repo.create_feedback_event.assert_called()
@@ -3247,9 +3248,9 @@ class CopilotPlannerTests(unittest.TestCase):
         gw.save_chat_wardrobe_item.return_value = {"id": "w-new", "title": "Navy Blazer"}
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="wardrobe_ingestion",
+            intent=Intent.WARDROBE_INGESTION,
             intent_confidence=0.9,
-            action="save_wardrobe_item",
+            action=Action.SAVE_WARDROBE_ITEM,
             context_sufficient=True,
             assistant_message="I've saved your navy blazer to your wardrobe.",
             follow_up_suggestions=["What goes with this piece?", "Save another item"],
@@ -3267,7 +3268,7 @@ class CopilotPlannerTests(unittest.TestCase):
             message="Add my navy blazer to wardrobe",
         )
 
-        self.assertEqual("wardrobe_ingestion", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.WARDROBE_INGESTION, result["metadata"]["primary_intent"])
         self.assertIn("saved", result["assistant_message"].lower())
         gw.save_chat_wardrobe_item.assert_called_once()
 
@@ -3297,9 +3298,9 @@ class CopilotPlannerTests(unittest.TestCase):
         }
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="pairing_request",
+            intent=Intent.PAIRING_REQUEST,
             intent_confidence=0.94,
-            action="respond_directly",
+            action=Action.RESPOND_DIRECTLY,
             context_sufficient=True,
             assistant_message="Use a cream trouser or dark denim bottom.",
             follow_up_suggestions=["Show me options"],
@@ -3314,7 +3315,7 @@ class CopilotPlannerTests(unittest.TestCase):
             image_data="data:image/png;base64,AAAA",
         )
 
-        self.assertEqual("pairing_request", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.PAIRING_REQUEST, result["metadata"]["primary_intent"])
         gw.save_uploaded_chat_wardrobe_item.assert_called_once()
         planner_message = planner_mock.plan.call_args.args[0]["user_message"]
         self.assertIn("Attached garment context:", planner_message)
@@ -3369,9 +3370,9 @@ class CopilotPlannerTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.97,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me put together options.",
             follow_up_suggestions=["Show me more"],
@@ -3391,7 +3392,7 @@ class CopilotPlannerTests(unittest.TestCase):
             image_data="data:image/png;base64,AAAA",
         )
 
-        self.assertEqual("pairing_request", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.PAIRING_REQUEST, result["metadata"]["primary_intent"])
         self.assertEqual("pairing_request_wardrobe_first", repo.finalize_turn.call_args.kwargs["resolved_context"]["handler"])
         self.assertIn("White Shirt", result["assistant_message"])
         self.assertIn("Navy Trousers", result["assistant_message"])
@@ -3433,9 +3434,9 @@ class CopilotPlannerTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.88,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me think about that.",
             follow_up_suggestions=["Show me more"],
@@ -3454,7 +3455,7 @@ class CopilotPlannerTests(unittest.TestCase):
             message="What shoes would work best with this?",
         )
 
-        self.assertEqual("pairing_request", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.PAIRING_REQUEST, result["metadata"]["primary_intent"])
         self.assertEqual("pairing_request_wardrobe_first", repo.finalize_turn.call_args.kwargs["resolved_context"]["handler"])
         self.assertIn("Brown Co Ord Set", result["assistant_message"])
         self.assertIn("Tan Loafers", result["assistant_message"])
@@ -3496,9 +3497,9 @@ class CopilotPlannerTests(unittest.TestCase):
         }
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.96,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me build around it.",
             follow_up_suggestions=["Show me more"],
@@ -3518,7 +3519,7 @@ class CopilotPlannerTests(unittest.TestCase):
             image_data="data:image/png;base64,AAAA",
         )
 
-        self.assertEqual("pairing_request", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.PAIRING_REQUEST, result["metadata"]["primary_intent"])
         self.assertEqual("catalog_image_pairing", result["metadata"]["answer_source"])
         self.assertEqual("catalog", result["metadata"]["source_selection"]["preferred_source"])
         self.assertEqual("catalog", result["metadata"]["source_selection"]["fulfilled_source"])
@@ -3563,9 +3564,9 @@ class CopilotPlannerTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.99,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me find better options.",
             follow_up_suggestions=["Show me more"],
@@ -3664,7 +3665,7 @@ class CopilotPlannerTests(unittest.TestCase):
                     "time_hint": None,
                     "specific_needs": ["versatility", "polished_minimalism"],
                     "is_followup": True,
-                    "followup_intent": "more_options",
+                    "followup_intent": FollowUpIntent.MORE_OPTIONS,
                 },
                 "last_response_metadata": {
                     "answer_source": "wardrobe_first",
@@ -3689,9 +3690,9 @@ class CopilotPlannerTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.99,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me find stronger catalog options.",
             follow_up_suggestions=["Show me more"],
@@ -3776,15 +3777,15 @@ class CopilotPlannerTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="outfit_check",
+            intent=Intent.OUTFIT_CHECK,
             intent_confidence=0.96,
-            action="run_outfit_check",
+            action=Action.RUN_OUTFIT_CHECK,
             context_sufficient=True,
             assistant_message="Let me assess this look.",
             follow_up_suggestions=["What would improve this look?", "Use my wardrobe first"],
             resolved_context=CopilotResolvedContext(
                 occasion_signal="office",
-                style_goal="outfit_check",
+                style_goal=Intent.OUTFIT_CHECK,
             ),
             action_parameters=CopilotActionParameters(),
         )
@@ -3830,7 +3831,7 @@ class CopilotPlannerTests(unittest.TestCase):
             message="Outfit check this navy blazer with white tee and trousers",
         )
 
-        self.assertEqual("outfit_check", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.OUTFIT_CHECK, result["metadata"]["primary_intent"])
         self.assertEqual("outfit_check_handler", result["metadata"]["answer_source"])
         self.assertEqual(1, len(result["outfits"]))
         self.assertEqual(82, result["outfits"][0]["body_harmony_pct"])
@@ -3841,14 +3842,14 @@ class CopilotPlannerTests(unittest.TestCase):
         self.assertIn("From your wardrobe, try:", result["assistant_message"])
         self.assertEqual(1, result["assistant_message"].lower().count("your tan loafers"))
         self.assertNotIn("Wardrobe gap to close next:", result["assistant_message"])
-        self.assertIn("wardrobe_gap_analysis", result["metadata"]["outfit_check"])
-        self.assertTrue(result["metadata"]["outfit_check"]["wardrobe_suggestions"])
-        self.assertEqual("your tan loafers", result["metadata"]["outfit_check"]["wardrobe_suggestions"][0]["title"])
+        self.assertIn("wardrobe_gap_analysis", result["metadata"][Intent.OUTFIT_CHECK])
+        self.assertTrue(result["metadata"][Intent.OUTFIT_CHECK]["wardrobe_suggestions"])
+        self.assertEqual("your tan loafers", result["metadata"][Intent.OUTFIT_CHECK]["wardrobe_suggestions"][0]["title"])
         self.assertTrue(result["metadata"]["catalog_upsell"]["available"])
-        self.assertEqual("outfit_check", result["metadata"]["catalog_upsell"]["entry_intent"])
+        self.assertEqual(Intent.OUTFIT_CHECK, result["metadata"]["catalog_upsell"]["entry_intent"])
         self.assertIn("Show me better options from the catalog", result["follow_up_suggestions"])
         persisted_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
-        self.assertEqual("outfit_check", persisted_context["response_metadata"]["primary_intent"])
+        self.assertEqual(Intent.OUTFIT_CHECK, persisted_context["response_metadata"]["primary_intent"])
         self.assertEqual("outfit_check_handler", persisted_context["response_metadata"]["answer_source"])
         session_context = repo.update_conversation_context.call_args.kwargs["session_context"]
         self.assertEqual(
@@ -3857,7 +3858,7 @@ class CopilotPlannerTests(unittest.TestCase):
         )
         self.assertEqual(
             "good_with_tweaks",
-            result["metadata"]["outfit_check"]["overall_verdict"],
+            result["metadata"][Intent.OUTFIT_CHECK]["overall_verdict"],
         )
         repo.log_model_call.assert_called()
 
@@ -3924,15 +3925,15 @@ class CopilotPlannerTests(unittest.TestCase):
         gw = self._standard_onboarding_gateway()
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.92,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me think about that look.",
             follow_up_suggestions=["Show me more"],
             resolved_context=CopilotResolvedContext(
                 occasion_signal="dinner",
-                style_goal="occasion_recommendation",
+                style_goal=Intent.OCCASION_RECOMMENDATION,
             ),
             action_parameters=CopilotActionParameters(),
         )
@@ -3958,9 +3959,9 @@ class CopilotPlannerTests(unittest.TestCase):
             message="Rate my outfit for dinner tonight",
         )
 
-        self.assertEqual("outfit_check", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.OUTFIT_CHECK, result["metadata"]["primary_intent"])
         self.assertIn("outfit_check_override", result["metadata"]["intent_reason_codes"])
-        self.assertEqual("outfit_check", repo.finalize_turn.call_args.kwargs["resolved_context"]["handler"])
+        self.assertEqual(Intent.OUTFIT_CHECK, repo.finalize_turn.call_args.kwargs["resolved_context"]["handler"])
 
     def test_outfit_check_attaches_anchor_wardrobe_item_for_preview(self):
         from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
@@ -3980,15 +3981,15 @@ class CopilotPlannerTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="outfit_check",
+            intent=Intent.OUTFIT_CHECK,
             intent_confidence=0.98,
-            action="run_outfit_check",
+            action=Action.RUN_OUTFIT_CHECK,
             context_sufficient=True,
             assistant_message="Let me assess this look.",
             follow_up_suggestions=["What would improve this look?"],
             resolved_context=CopilotResolvedContext(
                 occasion_signal="date_night",
-                style_goal="outfit_check",
+                style_goal=Intent.OUTFIT_CHECK,
             ),
             action_parameters=CopilotActionParameters(),
         )
@@ -4038,7 +4039,7 @@ class CopilotPlannerTests(unittest.TestCase):
                     "occasion_signal": "dinner",
                     "formality_hint": None,
                     "time_hint": None,
-                    "specific_needs": ["outfit_check"],
+                    "specific_needs": [Intent.OUTFIT_CHECK],
                     "is_followup": False,
                     "followup_intent": None,
                 },
@@ -4046,7 +4047,7 @@ class CopilotPlannerTests(unittest.TestCase):
                     "answer_source": "outfit_check_handler",
                     "catalog_upsell": {
                         "available": True,
-                        "entry_intent": "outfit_check",
+                        "entry_intent": Intent.OUTFIT_CHECK,
                         "cta": "Show me better options from the catalog",
                     },
                 },
@@ -4055,15 +4056,15 @@ class CopilotPlannerTests(unittest.TestCase):
         gw = self._standard_onboarding_gateway()
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="occasion_recommendation",
+            intent=Intent.OCCASION_RECOMMENDATION,
             intent_confidence=0.94,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me find stronger options.",
             follow_up_suggestions=["Show me more"],
             resolved_context=CopilotResolvedContext(
                 occasion_signal="dinner",
-                style_goal="occasion_recommendation",
+                style_goal=Intent.OCCASION_RECOMMENDATION,
             ),
             action_parameters=CopilotActionParameters(),
         )
@@ -4087,7 +4088,7 @@ class CopilotPlannerTests(unittest.TestCase):
             ],
             resolved_context=ResolvedContextBlock(
                 occasion_signal="dinner",
-                specific_needs=["outfit_check", "catalog_followup"],
+                specific_needs=[Intent.OUTFIT_CHECK, "catalog_followup"],
                 followup_intent="catalog_followup",
             ),
         )
@@ -4160,15 +4161,15 @@ class CopilotPlannerTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="shopping_decision",
+            intent=Intent.SHOPPING_DECISION,
             intent_confidence=0.97,
-            action="run_shopping_decision",
+            action=Action.RUN_SHOPPING_DECISION,
             context_sufficient=True,
             assistant_message="Let me evaluate this against your profile and wardrobe.",
             follow_up_suggestions=["What goes with this?", "Show me better options"],
             resolved_context=CopilotResolvedContext(
                 occasion_signal="office",
-                style_goal="shopping_decision",
+                style_goal=Intent.SHOPPING_DECISION,
             ),
             action_parameters=CopilotActionParameters(
                 detected_garments=["blazer"],
@@ -4207,14 +4208,14 @@ class CopilotPlannerTests(unittest.TestCase):
             message="Should I buy this navy blazer? https://store.example/navy-blazer",
         )
 
-        self.assertEqual("shopping_decision", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.SHOPPING_DECISION, result["metadata"]["primary_intent"])
         self.assertEqual("shopping_decision_handler", result["metadata"]["answer_source"])
         self.assertIn("My verdict: SKIP.", result["assistant_message"])
         self.assertIn("You already own something similar", result["assistant_message"])
-        self.assertEqual("skip", result["metadata"]["shopping_decision"]["verdict"])
+        self.assertEqual("skip", result["metadata"][Intent.SHOPPING_DECISION]["verdict"])
         self.assertEqual(
             ["https://store.example/navy-blazer"],
-            result["metadata"]["shopping_decision"]["product_urls"],
+            result["metadata"][Intent.SHOPPING_DECISION]["product_urls"],
         )
         repo.log_model_call.assert_called()
 
@@ -4275,13 +4276,13 @@ class CopilotPlannerTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="pairing_request",
+            intent=Intent.PAIRING_REQUEST,
             intent_confidence=0.95,
-            action="run_recommendation_pipeline",
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
             context_sufficient=True,
             assistant_message="Let me find great pairings for your blazer.",
             follow_up_suggestions=["Show me more from my wardrobe", "Show me catalog alternatives"],
-            resolved_context=CopilotResolvedContext(style_goal="pairing_request"),
+            resolved_context=CopilotResolvedContext(style_goal=Intent.PAIRING_REQUEST),
             action_parameters=CopilotActionParameters(target_piece="navy blazer"),
         )
         orchestrator = self._build_orchestrator(repo, gw, planner_mock)
@@ -4293,7 +4294,7 @@ class CopilotPlannerTests(unittest.TestCase):
             message="What goes with my navy blazer?",
         )
 
-        self.assertEqual("pairing_request", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.PAIRING_REQUEST, result["metadata"]["primary_intent"])
         self.assertEqual("wardrobe_first_pairing_hybrid", result["metadata"]["answer_source"])
         self.assertIn("wardrobe_gap_analysis", result["metadata"])
         self.assertEqual(2, len(result["outfits"]))
@@ -4348,9 +4349,9 @@ class CopilotPlannerTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="capsule_or_trip_planning",
+            intent=Intent.CAPSULE_OR_TRIP_PLANNING,
             intent_confidence=0.93,
-            action="respond_directly",
+            action=Action.RESPOND_DIRECTLY,
             context_sufficient=True,
             assistant_message="Let me map out a compact workweek capsule.",
             follow_up_suggestions=["Build a shopping list", "Show me catalog gap fillers"],
@@ -4364,7 +4365,7 @@ class CopilotPlannerTests(unittest.TestCase):
             message="Plan me a 3-day work trip capsule",
         )
 
-        self.assertEqual("capsule_or_trip_planning", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.CAPSULE_OR_TRIP_PLANNING, result["metadata"]["primary_intent"])
         self.assertEqual("capsule_planning_handler", result["metadata"]["answer_source"])
         self.assertIn("wardrobe_gap_analysis", result["metadata"])
         self.assertGreaterEqual(len(result["outfits"]), 3)
@@ -4373,7 +4374,7 @@ class CopilotPlannerTests(unittest.TestCase):
         self.assertGreaterEqual(len(result["metadata"]["capsule_plan"]["packing_list"]), 1)
         self.assertIn("look", result["assistant_message"].lower())
         self.assertTrue(result["metadata"]["capsule_plan"]["contexts"])
-        self.assertEqual("capsule_or_trip_planning", repo.finalize_turn.call_args.kwargs["resolved_context"]["handler"])
+        self.assertEqual(Intent.CAPSULE_OR_TRIP_PLANNING, repo.finalize_turn.call_args.kwargs["resolved_context"]["handler"])
 
     def test_planner_capsule_or_trip_planning_scales_output_for_multi_day_trip(self):
         from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
@@ -4437,9 +4438,9 @@ class CopilotPlannerTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="capsule_or_trip_planning",
+            intent=Intent.CAPSULE_OR_TRIP_PLANNING,
             intent_confidence=0.93,
-            action="respond_directly",
+            action=Action.RESPOND_DIRECTLY,
             context_sufficient=True,
             assistant_message="Let me map out the trip.",
             follow_up_suggestions=["Build a shopping list", "Show me catalog gap fillers"],
@@ -4507,9 +4508,9 @@ class CopilotPlannerTests(unittest.TestCase):
         ]
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="capsule_or_trip_planning",
+            intent=Intent.CAPSULE_OR_TRIP_PLANNING,
             intent_confidence=0.93,
-            action="respond_directly",
+            action=Action.RESPOND_DIRECTLY,
             context_sufficient=True,
             assistant_message="Let me map out a compact workweek capsule.",
             follow_up_suggestions=["Build a shopping list", "Show me catalog gap fillers"],
@@ -4537,9 +4538,9 @@ class CopilotPlannerTests(unittest.TestCase):
         gw.get_person_image_path.return_value = "/fake/person.png"
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="virtual_tryon_request",
+            intent=Intent.VIRTUAL_TRYON_REQUEST,
             intent_confidence=0.97,
-            action="run_virtual_tryon",
+            action=Action.RUN_VIRTUAL_TRYON,
             context_sufficient=True,
             assistant_message="Let me generate a try-on preview for you.",
             follow_up_suggestions=["Should I buy this?", "What would pair with it?"],
@@ -4557,7 +4558,7 @@ class CopilotPlannerTests(unittest.TestCase):
             message="Try this on me https://store.example/blazer",
         )
 
-        self.assertEqual("virtual_tryon_request", result["metadata"]["primary_intent"])
+        self.assertEqual(Intent.VIRTUAL_TRYON_REQUEST, result["metadata"]["primary_intent"])
 
     def test_planner_error_fallback(self):
         repo = self._standard_repo()
@@ -4577,9 +4578,9 @@ class CopilotPlannerTests(unittest.TestCase):
     def test_copilot_plan_result_schema(self):
         from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
         plan = CopilotPlanResult(
-            intent="style_discovery",
+            intent=Intent.STYLE_DISCOVERY,
             intent_confidence=0.95,
-            action="respond_directly",
+            action=Action.RESPOND_DIRECTLY,
             context_sufficient=True,
             assistant_message="Your Autumn palette means warm tones are your best friend.",
             follow_up_suggestions=["Show me outfits", "What should I avoid?"],
@@ -4587,7 +4588,7 @@ class CopilotPlannerTests(unittest.TestCase):
             action_parameters=CopilotActionParameters(detected_colors=["navy", "burgundy"]),
         )
         dumped = plan.model_dump()
-        self.assertEqual("style_discovery", dumped["intent"])
+        self.assertEqual(Intent.STYLE_DISCOVERY, dumped["intent"])
         self.assertEqual(["navy", "burgundy"], dumped["action_parameters"]["detected_colors"])
         self.assertEqual("color_direction", dumped["resolved_context"]["style_goal"])
 
@@ -4608,7 +4609,7 @@ class CopilotPlannerTests(unittest.TestCase):
             message="What colors suit me?",
             user_context=user_context,
             conversation_history=[],
-            previous_context={"last_intent": "style_discovery"},
+            previous_context={"last_intent": Intent.STYLE_DISCOVERY},
             profile_confidence_pct=85,
             has_person_image=True,
         )
@@ -4619,7 +4620,7 @@ class CopilotPlannerTests(unittest.TestCase):
         self.assertEqual(1, result["wardrobe_summary"]["count"])
         self.assertEqual(85, result["profile_confidence_pct"])
         self.assertTrue(result["has_person_image"])
-        self.assertEqual("style_discovery", result["previous_intent"])
+        self.assertEqual(Intent.STYLE_DISCOVERY, result["previous_intent"])
 
 
     @patch("agentic_application.services.outfit_decomposition.OpenAI")
@@ -4688,9 +4689,9 @@ class CopilotPlannerTests(unittest.TestCase):
         gw.get_wardrobe_items.return_value = []
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="outfit_check",
+            intent=Intent.OUTFIT_CHECK,
             intent_confidence=0.96,
-            action="run_outfit_check",
+            action=Action.RUN_OUTFIT_CHECK,
             context_sufficient=True,
             assistant_message="Let me assess this look.",
             resolved_context=CopilotResolvedContext(occasion_signal="office"),
@@ -4738,9 +4739,9 @@ class CopilotPlannerTests(unittest.TestCase):
         gw.get_wardrobe_items.return_value = []
         planner_mock = Mock()
         planner_mock.plan.return_value = CopilotPlanResult(
-            intent="outfit_check",
+            intent=Intent.OUTFIT_CHECK,
             intent_confidence=0.96,
-            action="run_outfit_check",
+            action=Action.RUN_OUTFIT_CHECK,
             context_sufficient=True,
             assistant_message="Let me assess this look.",
             resolved_context=CopilotResolvedContext(occasion_signal="office"),

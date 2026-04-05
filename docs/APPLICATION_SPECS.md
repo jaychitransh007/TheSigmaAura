@@ -1,6 +1,6 @@
 # Application Layer — Implementation Specification
 
-Last updated: April 5, 2026
+Last updated: April 5, 2026 (intent registry)
 
 ## Product Positioning
 
@@ -16,9 +16,11 @@ This document serves two purposes:
 
 For the user-facing product summary, personas, journeys, and stories, see `docs/PRODUCT.md`.
 For the current project state, gap analysis, and file layout, see `docs/CURRENT_STATE.md`.
+For detailed step-by-step execution flows for all 11 intents, see `knowledge/workflow_reference.md`.
 
 Implemented now:
-- copilot planner (gpt-5.4) — intent classification across 11 intents, action routing (`run_recommendation_pipeline`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`)
+- **intent registry** (`intent_registry.py`): StrEnum-based single source of truth for all 11 intents (`Intent`), 8 actions (`Action`), and 7 follow-up intents (`FollowUpIntent`) — with metadata registries and JSON schema helpers; consumed by planner, orchestrator, agents, API, and tests
+- copilot planner (gpt-5.4) — intent classification across 11 intents, 8 action dispatch (JSON schema enums generated from registry)
 - active runtime entrypoint in `agentic_application/api.py` with `AgenticOrchestrator`
 - saved user-context loading from onboarding/profile-analysis/style-preference persistence
 - server-side conversation-memory carry-forward across follow-up turns

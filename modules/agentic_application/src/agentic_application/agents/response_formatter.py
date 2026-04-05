@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from ..intent_registry import FollowUpIntent
 from ..schemas import (
     CombinedContext,
     EvaluatedRecommendation,
@@ -291,9 +292,9 @@ class ResponseFormatter:
         plan: RecommendationPlan | None = None,
     ) -> str:
         intent = (ctx.live.followup_intent or "").strip()
-        if intent == "change_color":
+        if intent == FollowUpIntent.CHANGE_COLOR:
             opening = f"Here are {len(outfits)} outfit recommendations with a fresh color direction"
-        elif intent == "similar_to_previous":
+        elif intent == FollowUpIntent.SIMILAR_TO_PREVIOUS:
             opening = f"Here are {len(outfits)} outfit recommendations in a similar style"
         else:
             opening = f"Here are {len(outfits)} outfit recommendations"
@@ -329,7 +330,7 @@ class ResponseFormatter:
         intent = (ctx.live.followup_intent or "").strip()
 
         # Intent-specific chips take priority
-        if intent == "change_color":
+        if intent == FollowUpIntent.CHANGE_COLOR:
             return [
                 "Show me something similar to these",
                 "Try a completely different style",
@@ -337,7 +338,7 @@ class ResponseFormatter:
                 "Show me more options",
                 "Something completely different",
             ][:5]
-        if intent == "similar_to_previous":
+        if intent == FollowUpIntent.SIMILAR_TO_PREVIOUS:
             return [
                 "Show me a different color direction",
                 "Show me something bolder",

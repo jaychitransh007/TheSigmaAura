@@ -6,9 +6,7 @@ For people who want to dress better every day, Aura is a personal fashion copilo
 
 ## System Architecture
 
-Open [`docs/fashion-ai-architecture.html`](docs/fashion-ai-architecture.html) in any browser for the full interactive diagram.
-
-![Architecture Overview](docs/fashion-ai-architecture.html)
+> **[Open Architecture Diagram](docs/fashion-ai-architecture.html)** — download and open in any browser for the full interactive SVG diagram.
 
 The system is organized in six layers:
 
@@ -16,7 +14,7 @@ The system is organized in six layers:
 |-------|---------|
 | **Entry Surfaces** | Web app (onboarding, chat, wardrobe, profile), chat management, wardrobe studio, catalog admin |
 | **User Intelligence** | Onboarding, 3-agent analysis pipeline, interpretations, digital draping, style profile, confidence engines |
-| **Intent Runtime** | Copilot planner (11 intents), orchestrator, dedicated handlers, recommendation pipeline (architect → search → assemble → evaluate), wardrobe engine, virtual try-on |
+| **Intent Runtime** | Intent registry (StrEnum, 11 intents, 8 actions), copilot planner, orchestrator, dedicated handlers, recommendation pipeline (architect → search → assemble → evaluate), wardrobe engine, virtual try-on |
 | **Output & Experience** | Response formatter, 3-column PDP cards, chat UI, wardrobe UI, profile UI |
 | **Safety & Trust** | Image moderation (dual-layer), policy engine, comfort learning, feedback loop, dependency instrumentation |
 | **Data Stores** | User data, conversations, wardrobe, catalog (pgvector), try-on media, telemetry |
@@ -60,7 +58,7 @@ python3 -m pytest tests/ -v
 
 - 35 Supabase migrations
 - 264 tests
-- 11 intent types, 7 follow-up types
+- 11 intent types, 8 action types, 7 follow-up types (StrEnum registry)
 - 50+ catalog enrichment attributes
 - 46 wardrobe enrichment attributes
 
@@ -73,6 +71,7 @@ python3 -m pytest tests/ -v
 | [`docs/APPLICATION_SPECS.md`](docs/APPLICATION_SPECS.md) | Implementation spec, phase plan, build priorities |
 | [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) | Project state, gap analysis, execution checklist |
 | [`docs/INTENT_COPILOT_ARCHITECTURE.md`](docs/INTENT_COPILOT_ARCHITECTURE.md) | Target system architecture, component boundaries |
+| [`knowledge/workflow_reference.md`](knowledge/workflow_reference.md) | Step-by-step execution flows for all 11 intents |
 | [`docs/fashion-ai-architecture.html`](docs/fashion-ai-architecture.html) | Visual architecture diagram (open in browser) |
 
 ## Module Structure
