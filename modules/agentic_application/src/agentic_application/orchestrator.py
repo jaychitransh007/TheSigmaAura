@@ -3846,6 +3846,19 @@ class AgenticOrchestrator:
             "conversation_memory": conversation_memory,
         })
 
+        # When anchor garment exists, strip queries for the anchor's role from the plan
+        # BEFORE search — don't waste embedding calls on a role the user already fills.
+        # Then inject the anchor as the sole item for that role after search.
+        anchor = combined_context.live.anchor_garment
+        anchor_role = ""
+        if anchor and plan.plan_type == "paired_only":
+            anchor_category = str(anchor.get("garment_category") or "").lower()
+            anchor_role = "top" if anchor_category in ("top", "shirt", "blouse") else "bottom" if anchor_category in ("bottom", "trouser", "pant") else "complete"
+            for direction in plan.directions:
+                direction.queries = [q for q in direction.queries if q.role != anchor_role]
+            plan.directions = [d for d in plan.directions if d.queries]
+            _log.info("Stripped %s queries from plan — anchor fills this role", anchor_role)
+
         # Stages 4-8: Search → Assemble → Evaluate → Format → TryOn
         emit("catalog_search", "started")
         t0 = time.monotonic()
@@ -3865,13 +3878,8 @@ class AgenticOrchestrator:
             "set_count": len(retrieved_sets),
         })
 
-        # Inject anchor garment and remove competing catalog items for the anchor's role
-        anchor = combined_context.live.anchor_garment
-        if anchor and plan.plan_type == "paired_only":
-            anchor_category = str(anchor.get("garment_category") or "").lower()
-            anchor_role = "top" if anchor_category in ("top", "shirt", "blouse") else "bottom" if anchor_category in ("bottom", "trouser", "pant") else "complete"
-            # Remove all catalog retrieved sets for the anchor's role — the user's piece is the ONLY item for this role
-            retrieved_sets = [rs for rs in retrieved_sets if rs.role != anchor_role]
+        # Inject anchor as the sole item for its role
+        if anchor and anchor_role:
             anchor_product = RetrievedProduct(
                 product_id=str(anchor.get("id") or anchor.get("product_id") or "anchor_wardrobe"),
                 similarity=1.0,
@@ -3887,7 +3895,8 @@ class AgenticOrchestrator:
                     applied_filters={"source": "wardrobe_anchor"},
                 )
             )
-            _log.info("Injected anchor garment as role=%s, removed %d competing catalog sets for same role", anchor_role, sum(1 for _ in []))
+            _log.info("Injected anchor as sole %s — assembler will pair with %d complementary items",
+                       anchor_role, sum(len(rs.products) for rs in retrieved_sets if rs.role != anchor_role))
 
         emit("outfit_assembly", "started")
         candidates = self.outfit_assembler.assemble(retrieved_sets, plan, combined_context)
