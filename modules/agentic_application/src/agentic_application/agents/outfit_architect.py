@@ -169,6 +169,8 @@ def _build_user_payload(ctx: CombinedContext) -> str:
         ),
         "catalog_inventory": ctx.catalog_inventory,
     }
+    if ctx.live.anchor_garment:
+        payload["anchor_garment"] = ctx.live.anchor_garment
     return json.dumps(payload, indent=2, default=str)
 
 

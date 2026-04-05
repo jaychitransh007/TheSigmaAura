@@ -95,6 +95,7 @@ class LiveContext(BaseModel):
     specific_needs: List[str] = Field(default_factory=list)
     is_followup: bool = False
     followup_intent: Optional[str] = None
+    anchor_garment: Optional[Dict[str, Any]] = None
 
 
 # --- Conversation Memory ---

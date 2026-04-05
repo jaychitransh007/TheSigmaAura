@@ -87,7 +87,7 @@ Success means users come back before real decisions: should I buy this, what goe
 - onboarding flow (OTP, profile, images, analysis, draping, style prefs)
 - catalog enrichment and embedding retrieval pipeline
 - copilot planner with intent classification and action routing (12 intents recognized)
-- recommendation pipeline (architect → search → assemble → evaluate → format → try-on)
+- recommendation pipeline (architect → search → assemble → evaluate → format → try-on) — used for both occasion and pairing requests (pairing always runs full pipeline including try-on)
 - wardrobe ingestion with vision-API enrichment and image moderation
 - wardrobe retrieval and wardrobe-first occasion response
 - virtual try-on via Gemini with quality gate

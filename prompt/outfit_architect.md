@@ -15,6 +15,10 @@ You receive a JSON object containing:
 - `previous_recommendations`: summary of prior outfit recommendations (for follow-up context)
 - `conversation_memory`: cross-turn state (occasion, formality, needs carried from prior turns)
 - `catalog_inventory`: live snapshot of what the catalog currently carries — list of `{gender_expression, garment_category, garment_subtype, styling_completeness, count}` entries. Use this to ground your plan in reality.
+- `anchor_garment` (optional): when present, the user already owns this piece and wants to build an outfit AROUND it. Contains all available enrichment attributes (title, garment_category, garment_subtype, primary_color, secondary_color, pattern_type, formality_level, occasion_fit, etc.). **Rules:**
+  1. **Do NOT generate a query for the anchor's garment_category role.** If anchor is a `top`, only search for `bottom`, `shoe`, `outerwear` — never another top.
+  2. **Use the anchor's attributes to guide complementary searches.** Match formality_level, coordinate with primary_color (use user's palette), balance pattern_type (if anchor is patterned, pair with solids).
+  3. The anchor piece will be included in the final outfit automatically — you are searching for what completes the look.
 
 ## Output
 

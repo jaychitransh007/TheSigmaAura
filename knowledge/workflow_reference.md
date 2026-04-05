@@ -38,7 +38,12 @@ User message
    ├── Extracts: occasion_signal, formality_hint, time_hint, style_goal
    └── DB: repo.log_model_call(call_type="copilot_planner")
 
-2. Planner Overrides via _apply_planner_overrides()
+2. Image Requirement Gate [deterministic — runs before dispatch for ALL intents]
+   ├── If message references "this shirt/piece/garment" but no image and no previous anchor:
+   │   └── Force ask_clarification (see Pairing workflow step 2 for details)
+   └── Otherwise: proceed
+
+3. Planner Overrides via _apply_planner_overrides()
    │  Deterministic keyword checks that CORRECT the LLM planner's classification
    │  when phrase signals are more reliable than the model's output.
    │
@@ -46,10 +51,8 @@ User message
    │   └── "show me catalog options" after wardrobe answer → forces followup_intent="catalog_followup"
    ├── Follow-up intent phrase override
    │   └── Formality/boldness phrases → overrides followup_intent + sets formality_hint
-   ├── Targeted item override
-   │   └── "show me shirts" → overrides intent→OCCASION_RECOMMENDATION, action→RUN_RECOMMENDATION_PIPELINE
    ├── Pairing request override
-   │   └── "what goes with this" + attached image → overrides intent→PAIRING_REQUEST, extracts anchor piece
+   │   └── "what goes with this" + attached image/previous anchor → overrides intent→PAIRING_REQUEST
    ├── Outfit check override
    │   └── "how does this look" → overrides intent→OUTFIT_CHECK, action→RUN_OUTFIT_CHECK
    └── Source preference
@@ -149,43 +152,60 @@ User message
 1. Copilot Planner [gpt-5.4]
    └── May classify as occasion_recommendation initially
 
-2. Planner Override: _message_requests_pairing() [corrects LLM misclassification]
-   ├── Keyword match: "goes with", "pair with", "style this", "complete the outfit"
-   ├── If match + planner said something else: override intent → PAIRING_REQUEST, action → RUN_RECOMMENDATION_PIPELINE
+2. Image Requirement Gate [deterministic — before dispatch]
+   ├── Detects demonstrative references: "this shirt", "with this", "pair this", "style this"
+   ├── Checks: has_attached_image? has_previous_anchor? (from prior turn's "Attached garment context:")
+   ├── If demonstrative reference + NO image + NO previous anchor:
+   │   ├── Force action → ASK_CLARIFICATION
+   │   ├── Response: "Could you attach a photo of the garment you'd like me to build an outfit around?"
+   │   ├── Suggestions: ["Upload a photo", "Pick from my wardrobe", "Show me office outfits instead"]
+   │   └── STOP — do not proceed to pipeline
+   └── If image attached OR previous anchor exists: proceed to step 3
+
+3. Planner Override: _message_requests_pairing() [corrects LLM misclassification]
+   ├── Demonstrative phrases ("with this", "pair this"): require attached image OR previous anchor
+   ├── Wardrobe phrases ("what goes with my"): always trigger without image
+   ├── Generic phrases ("complete the outfit"): always trigger without image
+   ├── If triggered: override intent → PAIRING_REQUEST, action → RUN_RECOMMENDATION_PIPELINE
    ├── Extract anchor piece title from attached item or previous context
    └── Common case: planner classifies as occasion_recommendation, override corrects to pairing_request
 
-3. Route Selection (3 paths):
+4. Full Pipeline (same 6 stages as occasion recommendation — no short-circuit paths)
+   │
+   ├── Stage 1: Outfit Architect [gpt-5.4]
+   │   ├── Receives anchor_garment in LiveContext (title, category, subtype, color, source)
+   │   ├── Architect prompt instructs: "Do NOT generate a query for the anchor's role"
+   │   ├── Only searches for complementary roles (e.g., anchor=top → search bottom, shoes)
+   │   └── Plans directions around the anchor, not replacing it
+   │
+   ├── Stage 2: Catalog Search [pgvector]
+   │   └── Retrieves items for complementary roles (bottom if anchor is top, etc.)
+   │
+   ├── Stage 2.5: Anchor Injection [deterministic]
+   │   ├── If anchor_garment exists + plan is paired_only:
+   │   │   inject anchor as synthetic RetrievedProduct with role matching its category
+   │   └── e.g., anchor is a top → inject as role=top so assembler can pair with retrieved bottoms
+   │
+   ├── Stage 3: Outfit Assembly [deterministic]
+   │   └── Pairs anchor (top) with retrieved complementary items (bottoms)
+   │
+   ├── Stage 4: Outfit Evaluation [gpt-5.4]
+   │   └── Scores all candidates (8 criteria + 8 archetypes)
+   │
+   ├── Stage 5: Response Formatting
+   │   └── Max 3 outfit cards with source labeling
+   │
+   └── Stage 6: Virtual Try-On [gemini-3.1-flash-image-preview]
+       └── Generates try-on image for each outfit (2:3 aspect ratio)
 
-   Path A: Catalog-Image Pairing
-   ├── Condition: attachment_source == "catalog_image"
-   ├── Extract anchor from catalog item metadata
-   ├── Determine complementary roles (top→bottom, bottom→top, etc.)
-   ├── Select catalog pairings via _select_catalog_items()
-   ├── Build outfit card: [anchor + 2 catalog pairings]
-   └── Return immediately
-
-   Path B: Wardrobe-First Pairing
-   ├── Condition: wardrobe items exist + target piece identifiable
-   ├── _find_target_wardrobe_piece() — fuzzy match on message keywords
-   ├── _select_wardrobe_pairings()
-   │   └── Score by: role complementarity (4pts), occasion match (2pts)
-   ├── _select_catalog_items() — 2 catalog alternatives
-   ├── Build two outfit cards:
-   │   ├── Rank 1: [target + wardrobe pairings] (source: wardrobe)
-   │   └── Rank 2: [target + catalog alternatives] (source: catalog)
-   └── Return immediately
-
-   Path C: Full Catalog Pipeline
-   ├── Condition: neither wardrobe path matches
-   ├── Target piece becomes anchor constraint for architect
-   └── Runs full 6-stage pipeline (same as occasion_recommendation)
+5. Persist: finalize_turn, update_conversation_context, recommendation_confidence, catalog_interactions
 ```
 
 ### Key Difference from Occasion
-- Wardrobe-first pairing produces **hybrid outfits** (wardrobe anchor + catalog fillers)
+- The architect receives `target_piece` as the anchor constraint
 - Searches are constrained to **complementary roles** relative to the anchor garment
 - Anchor piece is never echoed back as the full answer
+- Full evaluation and try-on are always performed (no short-circuit paths)
 
 ---
 

@@ -581,6 +581,25 @@ def create_app() -> FastAPI:
         except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/v1/products/{product_id}/wishlist")
+    def wishlist_product(product_id: str, user_id: str = "", conversation_id: str = ""):
+        try:
+            if not user_id:
+                raise HTTPException(status_code=400, detail="user_id is required")
+            repo.create_catalog_interaction(
+                user_id=user_id,
+                product_id=product_id,
+                interaction_type="save",
+                conversation_id=conversation_id or None,
+                source_channel="web",
+                source_surface="product_wishlist",
+            )
+            return {"ok": True, "product_id": product_id}
+        except HTTPException:
+            raise
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     # -- UI listing endpoints --------------------------------------------------
 
     @app.get("/v1/users/{user_id}/conversations", response_model=ConversationListResponse)

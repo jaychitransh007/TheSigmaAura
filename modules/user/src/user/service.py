@@ -492,6 +492,7 @@ class OnboardingService:
                 occasion_fit=occasion_fit,
             )
         except Exception as exc:
+            _log.warning("Wardrobe enrichment failed for %s: %s", user_id, exc)
             metadata_json["catalog_attribute_extraction_status"] = "error"
             metadata_json["catalog_attribute_error"] = str(exc)
         return self._repo.insert_wardrobe_item(

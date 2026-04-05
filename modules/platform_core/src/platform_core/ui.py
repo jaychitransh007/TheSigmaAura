@@ -331,10 +331,20 @@ def get_web_ui_html(
     /* ===== Outfit Cards ===== */
     .outfit-card {
       display: grid; grid-template-columns: 80px 1fr 40%;
+      grid-template-rows: auto 1fr;
       gap: 0; border-radius: 16px; border: 1px solid var(--line);
       background: var(--surface); overflow: hidden; margin-bottom: 16px;
       box-shadow: 0 4px 24px rgba(54, 32, 24, 0.06);
     }
+    .outfit-header {
+      grid-column: 1 / -1; padding: 16px 18px 10px;
+      display: flex; flex-direction: column; gap: 4px;
+      border-bottom: 1px solid var(--line);
+    }
+    .outfit-header-top {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .outfit-header-top .outfit-feedback { margin: 0; }
     .outfit-thumbs {
       display: flex; flex-direction: column; gap: 4px;
       padding: 10px 6px; overflow-y: auto; max-height: 480px;
@@ -347,9 +357,9 @@ def get_web_ui_html(
     .outfit-thumbs img:hover { border-color: var(--accent-soft); }
     .outfit-main-img {
       display: flex; align-items: center; justify-content: center;
-      background: var(--surface-alt); min-height: 200px;
+      background: var(--surface-alt); min-height: 200px; max-height: 520px; overflow: hidden;
     }
-    .outfit-main-img img { max-width: 100%; max-height: 480px; object-fit: contain; }
+    .outfit-main-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
     .outfit-info {
       padding: 16px 18px; overflow-y: auto; max-height: 520px;
       display: flex; flex-direction: column; gap: 10px;
@@ -368,18 +378,24 @@ def get_web_ui_html(
     .source-mini-pill.catalog { background: rgba(111, 47, 69, 0.08); color: var(--accent); }
     .source-mini-pill.hybrid { background: rgba(176, 138, 78, 0.10); color: var(--gold); }
     .outfit-title { font-family: "Cormorant Garamond", Georgia, serif; font-size: 20px; font-weight: 600; line-height: 1.2; }
-    .outfit-summary { background: var(--surface-alt); border-radius: 10px; padding: 12px 14px; }
+    .outfit-summary { padding: 0; }
     .outfit-summary-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-soft); margin-bottom: 4px; }
     .outfit-summary-text { font-size: 13px; color: var(--ink); line-height: 1.5; margin: 0; }
-    .outfit-product { padding: 8px 0; border-bottom: 1px solid var(--line); }
+    .outfit-product { padding: 10px 0; border-bottom: 1px solid var(--line); }
     .outfit-product:last-of-type { border-bottom: none; }
-    .product-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .outfit-product-title { font-weight: 600; font-size: 13px; }
-    .btn-buy {
-      padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700;
-      background: var(--accent); color: #fff; text-decoration: none; white-space: nowrap;
+    .outfit-product-title { font-weight: 600; font-size: 13px; display: block; margin-bottom: 2px; }
+    .product-price { font-size: 13px; font-weight: 700; color: var(--accent); display: block; margin-bottom: 6px; }
+    .product-cta { display: flex; gap: 6px; }
+    .btn-buy, .btn-wishlist {
+      padding: 6px 14px; border-radius: 8px; font-size: 11px; font-weight: 700;
+      text-decoration: none; white-space: nowrap; cursor: pointer;
+      border: 1px solid var(--line); text-align: center;
     }
+    .btn-buy { background: var(--accent); color: #fff; border-color: var(--accent); }
     .btn-buy:hover { opacity: 0.88; text-decoration: none; }
+    .btn-wishlist { background: var(--surface); color: var(--muted); }
+    .btn-wishlist:hover { border-color: var(--accent-soft); color: var(--ink); }
+    .btn-wishlist.wishlisted { color: var(--accent); border-color: var(--accent); }
     .outfit-item-source { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
     .chip { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: var(--surface-deep); color: var(--muted); font-weight: 600; }
     .outfit-radar { text-align: center; padding: 8px 0; }
@@ -403,15 +419,10 @@ def get_web_ui_html(
     .rationale-note p { margin: 0; color: var(--ink); }
     .outfit-feedback { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
     .fb-icon-btn {
-      width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line);
-      background: var(--surface); cursor: pointer; font-size: 18px; line-height: 1;
-      display: flex; align-items: center; justify-content: center;
-      transition: all 120ms ease;
+      border: none; background: none; cursor: pointer; font-size: 18px; line-height: 1;
+      padding: 4px; filter: grayscale(1) opacity(0.5); transition: filter 120ms ease;
     }
-    .fb-icon-btn:hover { border-color: var(--accent-soft); background: var(--surface-alt); }
-    .fb-icon-btn.fb-like:hover { background: rgba(95, 106, 82, 0.12); }
-    .fb-icon-btn.fb-dislike:hover { background: rgba(198, 40, 40, 0.08); }
-    .product-price { font-size: 12px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+    .fb-icon-btn:hover { filter: grayscale(0) opacity(1); }
     .outfit-feedback .secondary { background: var(--surface); color: var(--muted); }
     .outfit-feedback .secondary:hover { border-color: var(--accent-soft); color: var(--ink); }
     .dislike-form { display: none; padding: 10px 0; }
@@ -1548,30 +1559,43 @@ def get_web_ui_html(
       thumbs.appendChild(thumb);
     }});
 
-    // Col 3: Info panel
-    var info = document.createElement("div");
-    info.className = "outfit-info";
+    // ── Card header (full-width row above the 3 columns) ──
     var outfitSource = inferOutfitSource(outfit, responseMetadata);
     var summaryText = buildStylistSummary(outfit);
-    // Use the globally-fetched analysis confidence (consistent for all cards, old and new)
     var profileConfPct = userAnalysisConfidencePct || 70;
 
-    // 1. Outfit title (no rank badge, no source pills)
-    if (outfit.title) {{
-      var title = document.createElement("div");
-      title.className = "outfit-title";
-      title.textContent = outfit.title;
-      info.appendChild(title);
-    }}
+    var header = document.createElement("div");
+    header.className = "outfit-header";
 
-    // 2. Stylist summary (no label, max 100 chars)
-    var trimmedSummary = summaryText.length > 100 ? summaryText.substring(0, 97) + "..." : summaryText;
+    // Top row: title on left, feedback icons on right
+    var headerTop = document.createElement("div");
+    headerTop.className = "outfit-header-top";
+    var titleEl = document.createElement("div");
+    titleEl.className = "outfit-title";
+    titleEl.textContent = outfit.title || "Styled Look";
+    headerTop.appendChild(titleEl);
+
+    // Feedback icons in header
+    var fbWrap = document.createElement("div");
+    fbWrap.className = "outfit-feedback";
+    var likeBtn = document.createElement("button"); likeBtn.className = "fb-icon-btn fb-like"; likeBtn.innerHTML = "&#128077;"; likeBtn.title = "Like This";
+    var dislikeBtn = document.createElement("button"); dislikeBtn.className = "fb-icon-btn fb-dislike"; dislikeBtn.innerHTML = "&#128078;"; dislikeBtn.title = "Didn't Like This";
+    fbWrap.appendChild(likeBtn); fbWrap.appendChild(dislikeBtn);
+    headerTop.appendChild(fbWrap);
+    header.appendChild(headerTop);
+
+    // Summary row
+    var trimmedSummary = summaryText.length > 200 ? summaryText.substring(0, 197) + "..." : summaryText;
     var summaryCard = document.createElement("div");
     summaryCard.className = "outfit-summary";
     summaryCard.innerHTML = '<p class="outfit-summary-text">' + escapeHtml(trimmedSummary) + '</p>';
-    info.appendChild(summaryCard);
+    header.appendChild(summaryCard);
 
-    // 3. Product specifications (no image, no source/role pills)
+    // ── Col 3: Info panel (products + radars only) ──
+    var info = document.createElement("div");
+    info.className = "outfit-info";
+
+    // Product specifications (3-row layout: title, price, CTAs)
     for (var pi = 0; pi < items.length; pi++) {{
       var item = items[pi];
       var prod = document.createElement("div");
@@ -1581,14 +1605,43 @@ def get_web_ui_html(
       var priceStr = String(item.price || "").trim();
       var hasPrice = priceStr && priceStr !== "0" && priceStr.toLowerCase() !== "n/a";
       var hasBuyLink = !!url;
-      var html = '<div class="product-header">';
-      html += '<span class="outfit-product-title">' + escapeHtml(pTitle) + '</span>';
-      if (hasPrice) html += '<span class="product-price">Rs. ' + escapeHtml(priceStr.replace(/^Rs\.?\s*/i, "")) + '</span>';
-      if (hasBuyLink && hasPrice) html += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer" class="btn-buy">Buy Now</a>';
-      html += '</div>';
+      var itemSource = normalizeSourceToken(item.source);
+      var isWardrobe = itemSource === "wardrobe";
+      var html = '<span class="outfit-product-title">' + escapeHtml(pTitle) + '</span>';
+      if (isWardrobe) {{
+        html += '<span class="product-price" style="color:var(--wardrobe);">From your wardrobe</span>';
+      }} else if (hasPrice) {{
+        html += '<span class="product-price">Rs. ' + escapeHtml(priceStr.replace(/^Rs\.?\s*/i, "")) + '</span>';
+      }}
+      var productId = item.product_id || "";
+      if (!isWardrobe) {{
+        html += '<div class="product-cta">';
+        if (hasBuyLink) html += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer" class="btn-buy">Buy Now</a>';
+        html += '<button type="button" class="btn-wishlist" data-product-id="' + escapeHtml(productId) + '" title="Add to Wishlist">&#9825;</button>';
+        html += '</div>';
+      }}
       prod.innerHTML = html;
       info.appendChild(prod);
     }}
+
+    // Wishlist button handler (event delegation)
+    info.addEventListener("click", function(e) {{
+      var wishBtn = e.target.closest(".btn-wishlist");
+      if (!wishBtn || wishBtn.classList.contains("wishlisted")) return;
+      var pid = wishBtn.getAttribute("data-product-id") || "";
+      if (!pid) return;
+      wishBtn.disabled = true;
+      fetch("/v1/products/" + encodeURIComponent(pid) + "/wishlist?user_id=" + encodeURIComponent(USER_ID) + "&conversation_id=" + encodeURIComponent(conversationId || ""), {{ method: "POST" }})
+        .then(function(r) {{
+          if (!r.ok) throw new Error("Failed");
+          wishBtn.innerHTML = "&#9829;";
+          wishBtn.classList.add("wishlisted");
+          wishBtn.title = "Wishlisted";
+        }})
+        .catch(function() {{
+          wishBtn.disabled = false;
+        }});
+    }});
 
     // 4. Radar chart for style archetypes
     var archetypes = [
@@ -1670,15 +1723,7 @@ def get_web_ui_html(
       for (var cLi = 0; cLi < cN; cLi++) {{ var cLp = cPointAt(cLi, cMaxR + 14); cCtx.fillText(criteria[cLi].label, cLp.x, cLp.y); }}
     }}
 
-    // 6. Feedback icons (save, thumbs up, thumbs down)
-    var fbWrap = document.createElement("div");
-    fbWrap.className = "outfit-feedback";
-    var saveBtn = document.createElement("button"); saveBtn.className = "fb-icon-btn"; saveBtn.innerHTML = "&#128278;"; saveBtn.title = "Save Look";
-    var likeBtn = document.createElement("button"); likeBtn.className = "fb-icon-btn fb-like"; likeBtn.innerHTML = "&#128077;"; likeBtn.title = "Like This";
-    var dislikeBtn = document.createElement("button"); dislikeBtn.className = "fb-icon-btn fb-dislike"; dislikeBtn.innerHTML = "&#128078;"; dislikeBtn.title = "Didn't Like This";
-    fbWrap.appendChild(saveBtn); fbWrap.appendChild(likeBtn); fbWrap.appendChild(dislikeBtn);
-    info.appendChild(fbWrap);
-
+    // Dislike form (stays in info panel, expands when thumbs-down clicked)
     var dislikeForm = document.createElement("div");
     dislikeForm.className = "dislike-form";
     var reactionRow = document.createElement("div");
@@ -1707,12 +1752,11 @@ def get_web_ui_html(
     var outfitRank = outfit.rank || 0;
     var itemIds = items.map(function(i) {{ return i.product_id || ""; }}).filter(Boolean);
     likeBtn.addEventListener("click", function() {{ sendFeedback(convId, outfitRank, "like", "", itemIds, fbStatus, fbWrap, dislikeForm); }});
-    saveBtn.addEventListener("click", function() {{ fbStatus.textContent = "Look saved."; fbStatus.className = "feedback-status success"; }});
     dislikeBtn.addEventListener("click", function() {{ dislikeForm.classList.add("open"); }});
     cancelBtn.addEventListener("click", function() {{ dislikeForm.classList.remove("open"); ta.value = ""; }});
     submitBtn.addEventListener("click", function() {{ sendFeedback(convId, outfitRank, "dislike", ta.value.trim(), itemIds, fbStatus, fbWrap, dislikeForm); }});
 
-    card.appendChild(thumbs); card.appendChild(heroWrap); card.appendChild(info);
+    card.appendChild(header); card.appendChild(thumbs); card.appendChild(heroWrap); card.appendChild(info);
     return card;
   }}
 
@@ -1941,16 +1985,21 @@ def get_web_ui_html(
 
       if (action === "delete") {{
         if (!confirm("Delete this conversation?")) return;
+        // Immediately remove from sidebar for instant feedback
+        var histItem = actionEl.closest(".history-item");
+        if (histItem) histItem.remove();
+        if (conversationId === convId) {{
+          conversationId = null;
+          feed.innerHTML = "";
+          stageBar.textContent = "";
+        }}
         try {{
           var res = await fetch("/v1/conversations/" + encodeURIComponent(convId), {{ method: "DELETE" }});
           if (!res.ok) {{ var err = await res.json(); throw new Error(err.detail || "Delete failed"); }}
-          if (conversationId === convId) {{
-            conversationId = null;
-            feed.innerHTML = "";
-            stageBar.textContent = "";
-          }}
           loadConversationHistory();
         }} catch(ex) {{
+          // Restore sidebar if delete failed
+          loadConversationHistory();
           alert(ex.message || "Failed to delete conversation.");
         }}
       }}

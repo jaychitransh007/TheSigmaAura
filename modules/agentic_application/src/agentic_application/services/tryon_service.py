@@ -139,6 +139,7 @@ class TryonService:
             contents=contents,
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(aspect_ratio="2:3"),
             ),
         )
 

@@ -41,6 +41,8 @@ from .schemas import (
     OutfitCard,
     ProfileConfidence,
     RecommendationConfidence,
+    RetrievedProduct,
+    RetrievedSet,
 )
 
 _log = logging.getLogger(__name__)
@@ -250,19 +252,26 @@ class AgenticOrchestrator:
             return "catalog_image"
         return "wardrobe_image"
 
-    def _message_requests_pairing(self, *, message: str, has_attached_image: bool) -> bool:
+    def _message_requests_pairing(self, *, message: str, has_attached_image: bool, has_previous_anchor: bool = False) -> bool:
         normalized = self._normalize_text_token(message)
         if not normalized:
             return False
-        pairing_phrases = (
+        # Phrases that work with or without an image (reference "my" wardrobe)
+        wardrobe_pairing_phrases = (
+            "what goes with my",
+            "build an outfit around",
+        )
+        if any(phrase in normalized for phrase in wardrobe_pairing_phrases):
+            return True
+        # Phrases that reference "this" — require an attached image OR previous anchor
+        has_anchor = has_attached_image or has_previous_anchor
+        demonstrative_pairing_phrases = (
             "pair this",
             "pairing for this",
             "what goes with this",
-            "what goes with my",
             "goes with this",
             "go with this",
-            "complete the outfit",
-            "build an outfit around",
+            "complete the outfit with this",
             "outfit with this",
             "wear with this",
             "style this",
@@ -271,12 +280,34 @@ class AgenticOrchestrator:
             "which shoes would work best with this",
             "what shoes with this",
             "which shoes with this",
+            "with this shirt",
+            "with this piece",
+            "with this garment",
+            "with this blazer",
+            "with this top",
         )
-        if any(phrase in normalized for phrase in pairing_phrases):
-            return True
-        if has_attached_image and ("with this shirt" in normalized or "with this piece" in normalized or "with this garment" in normalized):
+        if any(phrase in normalized for phrase in demonstrative_pairing_phrases):
+            return has_anchor
+        # Generic pairing without demonstrative
+        generic_pairing_phrases = (
+            "complete the outfit",
+            "complete outfit",
+        )
+        if any(phrase in normalized for phrase in generic_pairing_phrases):
             return True
         return False
+
+    def _message_needs_image_for_pairing(self, *, message: str, has_attached_image: bool) -> bool:
+        """Returns True if the message references a specific piece ('this shirt') but no image is attached."""
+        if has_attached_image:
+            return False
+        normalized = self._normalize_text_token(message)
+        demonstrative_refs = (
+            "this shirt", "this piece", "this garment", "this blazer", "this top",
+            "this dress", "this jacket", "this trouser", "this skirt",
+            "with this", "pair this", "style this",
+        )
+        return any(phrase in normalized for phrase in demonstrative_refs)
 
     def _infer_followup_intent_override(self, *, message: str) -> str:
         normalized = self._normalize_text_token(message)
@@ -441,7 +472,11 @@ class AgenticOrchestrator:
             if "followup_phrase_override" not in override_reasons:
                 override_reasons.append("followup_phrase_override")
 
-        if self._message_requests_pairing(message=message, has_attached_image=has_attached_image):
+        _has_prev_anchor = bool(
+            str((previous_context.get("last_live_context") or {}).get("user_need") or "").find("Attached garment context:") != -1
+            or str(previous_context.get("last_user_message") or "").find("Attached garment context:") != -1
+        )
+        if self._message_requests_pairing(message=message, has_attached_image=has_attached_image, has_previous_anchor=_has_prev_anchor):
             attached = dict(attached_item or {})
             if plan_result.intent != Intent.PAIRING_REQUEST:
                 plan_result.intent = Intent.PAIRING_REQUEST
@@ -651,7 +686,9 @@ class AgenticOrchestrator:
                     description=message.strip(),
                     notes="Captured from chat image attachment.",
                 )
+                _log.info("Attached item saved: %s", {k: str(v)[:50] for k, v in (attached_item or {}).items()} if attached_item else None)
             except Exception:
+                _log.exception("Failed to save attached item — attached_item will be None")
                 attached_item = None
             attachment_source = self._uploaded_image_anchor_source(message=message)
             if attached_item is not None:
@@ -846,6 +883,26 @@ class AgenticOrchestrator:
             attached_item=attached_item,
             has_attached_image=bool(image_data),
         )
+
+        # Check: pairing references a specific piece but no image attached — ask for it
+        # Skip if previous context already has an attached garment (follow-up turn)
+        has_previous_anchor = bool(
+            str((previous_context.get("last_live_context") or {}).get("user_need") or "").find("Attached garment context:") != -1
+            or str(previous_context.get("last_user_message") or "").find("Attached garment context:") != -1
+        )
+        if not has_previous_anchor and self._message_needs_image_for_pairing(message=effective_message, has_attached_image=bool(image_data)):
+            plan_result.action = Action.ASK_CLARIFICATION
+            plan_result.assistant_message = (
+                "I'd love to help you pair that piece! Could you attach a photo of the garment "
+                "you'd like me to build an outfit around?"
+            )
+            plan_result.follow_up_suggestions = [
+                "Upload a photo",
+                "Pick from my wardrobe",
+                "Show me office outfits instead",
+            ]
+            if "image_required_for_pairing" not in override_reasons:
+                override_reasons.append("image_required_for_pairing")
 
         # Build intent classification for metadata compatibility
         intent = IntentClassification(
@@ -3619,6 +3676,15 @@ class AgenticOrchestrator:
             previous_context=previous_context,
             force_catalog_followup=force_catalog_followup,
         )
+        # Set anchor garment for pairing requests so the architect knows what NOT to search for.
+        # Pass all available attributes (enrichment fields, colors, formality, etc.) so the
+        # architect can plan complementary pieces with full context.
+        _log.info("Anchor check: intent=%s attached_item=%s", intent.primary_intent, bool(attached_item))
+        if intent.primary_intent == Intent.PAIRING_REQUEST and attached_item:
+            anchor = {k: v for k, v in dict(attached_item).items() if v and str(v).strip()}
+            anchor["source"] = anchor.get("source") or "wardrobe"
+            initial_live_context.anchor_garment = anchor
+            _log.info("Anchor garment set: title=%s cat=%s", anchor.get("title"), anchor.get("garment_category"))
         conversation_memory = build_conversation_memory(
             previous_context,
             initial_live_context,
@@ -3648,47 +3714,14 @@ class AgenticOrchestrator:
             catalog_inventory=self._catalog_inventory or None,
         )
 
-        catalog_image_pairing = self._build_catalog_anchor_pairing_response(
-            message=message,
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            channel=channel,
-            intent=intent,
-            previous_context=previous_context,
-            live_context=initial_live_context,
-            conversation_memory=conversation_memory.model_dump(),
-            profile_confidence=profile_confidence,
-            attached_item=attached_item,
-        )
-        if catalog_image_pairing is not None:
-            return catalog_image_pairing
-
         richer_refinement_path = self._message_requires_richer_refinement_path(
             message=message,
             intent=intent,
             live_context=initial_live_context,
         )
 
-        # Wardrobe-first check
+        # Wardrobe-first check (occasion only — pairing always runs full pipeline)
         if not force_catalog_followup and source_preference != "catalog":
-            wardrobe_first_pairing = self._build_wardrobe_first_pairing_response(
-                external_user_id=external_user_id,
-                message=message,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                channel=channel,
-                intent=intent,
-                previous_context=previous_context,
-                user_context=user_context,
-                live_context=initial_live_context,
-                conversation_memory=conversation_memory.model_dump(),
-                profile_confidence=profile_confidence,
-
-                target_piece=str(plan_result.action_parameters.target_piece or ""),
-            )
-            if wardrobe_first_pairing is not None:
-                return wardrobe_first_pairing
-
             if not richer_refinement_path:
                 wardrobe_first_response = self._build_wardrobe_first_occasion_response(
                     external_user_id=external_user_id,
@@ -3830,6 +3863,28 @@ class AgenticOrchestrator:
             "product_count": sum(len(rs.products) for rs in retrieved_sets),
             "set_count": len(retrieved_sets),
         })
+
+        # Inject anchor garment as a synthetic retrieved product for paired assembly
+        anchor = combined_context.live.anchor_garment
+        if anchor and plan.plan_type == "paired_only":
+            anchor_category = str(anchor.get("garment_category") or "").lower()
+            anchor_role = "top" if anchor_category in ("top", "shirt", "blouse") else "bottom" if anchor_category in ("bottom", "trouser", "pant") else "complete"
+            anchor_product = RetrievedProduct(
+                product_id=str(anchor.get("id") or anchor.get("product_id") or "anchor_wardrobe"),
+                similarity=1.0,
+                metadata={},
+                enriched_data=anchor,
+            )
+            retrieved_sets.append(
+                RetrievedSet(
+                    direction_id=plan.directions[0].direction_id if plan.directions else "anchor",
+                    query_id="anchor",
+                    role=anchor_role,
+                    products=[anchor_product],
+                    applied_filters={"source": "wardrobe_anchor"},
+                )
+            )
+            _log.info("Injected anchor garment as role=%s for paired assembly", anchor_role)
 
         emit("outfit_assembly", "started")
         candidates = self.outfit_assembler.assemble(retrieved_sets, plan, combined_context)
