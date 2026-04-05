@@ -3806,6 +3806,7 @@ class AgenticOrchestrator:
                 specific_needs=resolved.specific_needs,
                 is_followup=resolved.is_followup,
                 followup_intent=resolved.followup_intent,
+                anchor_garment=initial_live_context.anchor_garment,
             )
         else:
             effective_live_context = initial_live_context
