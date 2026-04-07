@@ -141,9 +141,19 @@ _TEMP_COMPAT: Dict[str, set] = {
 MAX_PAIRED_CANDIDATES = 30
 
 # Cross-outfit diversity cap: a single product_id may appear in at most this
-# many of the assembled candidates. Prevents one top-scoring item from filling
-# every recommendation slot when the user explicitly wants variety.
-MAX_PRODUCT_REPEAT_PER_RUN = 2
+# many of the assembled candidates that are returned to the evaluator and,
+# ultimately, the user. Set to 1 so each garment shows up in exactly one
+# recommended outfit — the one where it pairs best. Candidates that would
+# exceed this cap are *dropped* (not deferred), so the evaluator never sees
+# duplicates and cannot promote a duplicate into the final 3.
+#
+# This rule applies to the main catalog pipeline only. It does NOT apply to:
+#   - wardrobe-first pairing (anchor is structural, appears in both the
+#     wardrobe and catalog-alternatives cards by design)
+#   - capsule/trip planning (pieces are *meant* to recur across dayparts —
+#     that's what "capsule" means). The capsule handler has its own
+#     diversity model in orchestrator._handle_capsule_or_trip_planning.
+MAX_PRODUCT_REPEAT_PER_RUN = 1
 
 
 def _get_attr(product: RetrievedProduct, key: str) -> str:
@@ -233,13 +243,19 @@ class OutfitAssembler:
     def _enforce_cross_outfit_diversity(
         candidates: List[OutfitCandidate],
     ) -> List[OutfitCandidate]:
-        """Cap product_id repetition across the candidate list.
+        """Enforce "each garment appears in at most one recommendation".
 
-        Walks candidates in score order and accepts each only if no item in it
-        has already appeared in MAX_PRODUCT_REPEAT_PER_RUN previously-accepted
-        candidates. Rejected candidates are appended at the tail in their
-        original order so the assembler still returns at least the same count
-        when no diverse alternative exists.
+        Walks candidates in assembly-score order (highest first) and accepts
+        each only if none of its items has already been used by a
+        previously-accepted candidate. Because we walk in score order, the
+        first time a given product_id appears is by definition its
+        *highest-scoring pairing* — the pair where it fits best. Every
+        later candidate containing that product is dropped.
+
+        Rejected candidates are **not** returned. The evaluator sees only
+        the diverse set. This is the final-state invariant: if a product
+        is suppressed here, it cannot sneak back into the response via a
+        high evaluation score on a duplicate candidate.
         """
         if not candidates:
             return candidates
@@ -248,37 +264,39 @@ class OutfitAssembler:
             key=lambda c: float(getattr(c, "assembly_score", 0.0) or 0.0),
             reverse=True,
         )
-        usage: Dict[str, int] = {}
+        used: set[str] = set()
         accepted: List[OutfitCandidate] = []
-        deferred: List[OutfitCandidate] = []
+        dropped_count = 0
         for candidate in ordered:
             item_ids = [
                 str(item.get("product_id") or "").strip()
                 for item in (candidate.items or [])
             ]
             item_ids = [pid for pid in item_ids if pid]
-            if any(usage.get(pid, 0) >= MAX_PRODUCT_REPEAT_PER_RUN for pid in item_ids):
-                deferred.append(candidate)
+            if any(pid in used for pid in item_ids):
+                dropped_count += 1
                 continue
             for pid in item_ids:
-                usage[pid] = usage.get(pid, 0) + 1
-            note = f"diversity: accepted (product usage so far: {{', '.join(item_ids)}})"
+                used.add(pid)
             try:
                 candidate.assembly_notes = list(candidate.assembly_notes or []) + [
-                    "diversity_pass: accepted under product-repetition cap "
-                    f"({MAX_PRODUCT_REPEAT_PER_RUN}/run)"
+                    "diversity_pass: accepted (best pairing for its items, "
+                    "no repeat allowed across outfits)"
                 ]
             except Exception:  # noqa: BLE001 — defensive on pydantic model attrs
                 pass
             accepted.append(candidate)
-        for candidate in deferred:
+        if dropped_count and accepted:
+            # Stamp a counter on the highest-scoring accepted candidate so
+            # logs and turn artifacts show how many duplicates were dropped.
             try:
-                candidate.assembly_notes = list(candidate.assembly_notes or []) + [
-                    "diversity_pass: deferred — product appeared too many times"
+                accepted[0].assembly_notes = list(accepted[0].assembly_notes or []) + [
+                    f"diversity_pass: dropped {dropped_count} duplicate candidate(s) "
+                    "that would have re-used an already-accepted product"
                 ]
             except Exception:  # noqa: BLE001
                 pass
-        return accepted + deferred
+        return accepted
 
     def _assemble_complete(
         self, direction_id: str, sets: List[RetrievedSet], combined_context: CombinedContext | None = None,

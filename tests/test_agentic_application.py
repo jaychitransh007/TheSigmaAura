@@ -1874,14 +1874,17 @@ class AgenticApplicationTests(unittest.TestCase):
 
     # ------------------------------------------------------------------
     # P1: Cross-outfit diversity enforcement
+    #
+    # Contract: every product_id appears in AT MOST ONE accepted candidate,
+    # and that candidate is the one where the product scored highest
+    # ("the best it pairs with"). Over-cap candidates are DROPPED, not
+    # deferred — the evaluator must never see duplicates.
     # ------------------------------------------------------------------
 
-    def test_assembler_caps_product_id_repetition_across_candidates(self) -> None:
-        """A single top-scoring product must not appear in more than 2 of N candidates."""
-        from agentic_application.agents.outfit_assembler import (
-            MAX_PRODUCT_REPEAT_PER_RUN,
-            OutfitAssembler,
-        )
+    def test_assembler_caps_product_id_to_single_accepted_candidate(self) -> None:
+        """Each product_id appears in at most one accepted candidate, and it's
+        the highest-scoring pairing for that product."""
+        from agentic_application.agents.outfit_assembler import OutfitAssembler
 
         context = CombinedContext(
             user=UserContext(user_id="u1", gender="female"),
@@ -1900,18 +1903,21 @@ class AgenticApplicationTests(unittest.TestCase):
             ],
         )
 
-        # One dominant top + several different bottoms — naive scoring would
-        # put the same top in *every* candidate.
+        # One dominant top + several different bottoms of varying similarity.
+        # Naive scoring would put the same top in every candidate; the
+        # diversity pass should drop all but the highest-scoring pair.
         dominant_top = RetrievedProduct(
             product_id="dominant_top",
             similarity=0.99,
             enriched_data={"primary_color": "navy", "occasion_fit": "office"},
             metadata={},
         )
+        # Give the bottoms different similarities so we can verify the
+        # accepted candidate is the one that pairs *best* (highest score).
         bottoms = [
             RetrievedProduct(
                 product_id=f"bottom_{i}",
-                similarity=0.85,
+                similarity=0.90 - (i * 0.05),  # 0.90, 0.85, 0.80, 0.75, 0.70
                 enriched_data={"primary_color": "cream", "occasion_fit": "office"},
                 metadata={},
             )
@@ -1926,38 +1932,33 @@ class AgenticApplicationTests(unittest.TestCase):
         assembler = OutfitAssembler()
         candidates = assembler.assemble(retrieved_sets, plan, context)
 
-        self.assertGreater(len(candidates), 0)
-        # Count how many times "dominant_top" appears in the *accepted* prefix
-        # (the first N candidates where N == max accepted before deferral).
-        # The diversity pass tags accepted candidates with a specific note;
-        # use that to find the accepted slice.
-        accepted = [
-            c for c in candidates
-            if any("diversity_pass: accepted" in note for note in c.assembly_notes)
-        ]
-        deferred = [
-            c for c in candidates
-            if any("diversity_pass: deferred" in note for note in c.assembly_notes)
-        ]
-        # Some accepted slice must exist
-        self.assertGreater(len(accepted), 0)
-        # Dominant top should appear in at most MAX_PRODUCT_REPEAT_PER_RUN accepted candidates
-        dominant_count = sum(
-            1
-            for c in accepted
-            if any(item.get("product_id") == "dominant_top" for item in c.items)
+        # With 1 dominant top and 5 bottoms, there are 5 raw pairings but
+        # each re-uses dominant_top. The diversity pass must collapse to 1
+        # accepted candidate — the best pairing.
+        self.assertEqual(
+            1, len(candidates),
+            f"expected exactly 1 accepted candidate (dominant_top pairs with "
+            f"best bottom only), got {len(candidates)}",
         )
-        self.assertLessEqual(
-            dominant_count,
-            MAX_PRODUCT_REPEAT_PER_RUN,
-            f"dominant_top appeared in {dominant_count} accepted candidates "
-            f"(cap is {MAX_PRODUCT_REPEAT_PER_RUN})",
+        accepted = candidates[0]
+        # The accepted candidate must pair dominant_top with bottom_0
+        # (similarity 0.90, the highest-scoring bottom).
+        item_ids = sorted(str(item.get("product_id") or "") for item in accepted.items)
+        self.assertEqual(
+            ["bottom_0", "dominant_top"],
+            item_ids,
+            f"expected dominant_top × bottom_0 (best pairing), got {item_ids}",
         )
-        # And the over-cap candidates should be deferred (still present, just at the tail)
-        self.assertGreater(len(deferred), 0, "expected at least one deferred candidate")
+        # The assembly notes should record that 4 duplicates were dropped
+        self.assertTrue(
+            any("dropped 4 duplicate" in note for note in accepted.assembly_notes),
+            f"expected drop counter in assembly_notes, got {accepted.assembly_notes}",
+        )
 
-    def test_assembler_diversity_pass_is_noop_when_no_repetition(self) -> None:
-        """If every candidate uses unique products, diversity pass accepts all."""
+    def test_assembler_diversity_rule_applies_symmetrically_to_both_items(self) -> None:
+        """With 3 tops × 3 bottoms (9 raw pairings), the diversity rule
+        forces each product to appear in exactly one outfit. With 3 of each
+        role the maximum diverse set is min(tops, bottoms) = 3 outfits."""
         from agentic_application.agents.outfit_assembler import OutfitAssembler
 
         context = CombinedContext(
@@ -1979,7 +1980,7 @@ class AgenticApplicationTests(unittest.TestCase):
         tops = [
             RetrievedProduct(
                 product_id=f"top_{i}",
-                similarity=0.85,
+                similarity=0.90 - (i * 0.02),  # 0.90, 0.88, 0.86
                 enriched_data={"primary_color": "navy", "occasion_fit": "office"},
                 metadata={},
             )
@@ -1988,7 +1989,7 @@ class AgenticApplicationTests(unittest.TestCase):
         bottoms = [
             RetrievedProduct(
                 product_id=f"bottom_{i}",
-                similarity=0.85,
+                similarity=0.90 - (i * 0.02),
                 enriched_data={"primary_color": "cream", "occasion_fit": "office"},
                 metadata={},
             )
@@ -2000,22 +2001,81 @@ class AgenticApplicationTests(unittest.TestCase):
         ]
         assembler = OutfitAssembler()
         candidates = assembler.assemble(retrieved_sets, plan, context)
-        # Every single product appears in many pairings (3*3 = 9 candidates from
-        # 3 tops × 3 bottoms), but each individual product still appears in 3
-        # pairings — above the cap of 2 — so diversity pass *will* defer some.
-        # The non-trivial guarantee is that the cap is never exceeded across
-        # the accepted prefix.
-        accepted = [
-            c for c in candidates
-            if any("diversity_pass: accepted" in note for note in c.assembly_notes)
-        ]
+
+        # The diversity rule can produce at most min(#tops, #bottoms) = 3
+        # non-overlapping pairings. It may produce fewer if score ordering
+        # forces a top to pair with its same-ranked bottom first.
+        self.assertLessEqual(len(candidates), 3)
+        self.assertGreater(len(candidates), 0)
+        # Each product appears in exactly one accepted candidate.
         usage: Dict[str, int] = {}
-        for c in accepted:
+        for c in candidates:
             for item in c.items:
                 pid = str(item.get("product_id") or "")
                 usage[pid] = usage.get(pid, 0) + 1
         for pid, count in usage.items():
-            self.assertLessEqual(count, 2, f"product {pid} used {count} times in accepted set")
+            self.assertEqual(
+                1, count,
+                f"product {pid} used {count} times in accepted set — must be exactly 1",
+            )
+
+    def test_assembler_diversity_pass_is_noop_when_no_repetition_possible(self) -> None:
+        """If every candidate has fully unique products (disjoint pairings),
+        the diversity pass doesn't drop anything."""
+        from agentic_application.agents.outfit_assembler import OutfitAssembler
+
+        context = CombinedContext(
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="Office look"),
+        )
+        plan = RecommendationPlan(
+            plan_type="paired_only",
+            retrieval_count=8,
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="paired",
+                    label="test",
+                    queries=[],
+                )
+            ],
+        )
+        # Two disjoint "lanes": (top_0, bottom_0) and (top_1, bottom_1).
+        # There are 4 raw pairings but only 2 are truly disjoint.
+        tops = [
+            RetrievedProduct(
+                product_id=f"top_{i}",
+                similarity=0.90,
+                enriched_data={"primary_color": "navy", "occasion_fit": "office"},
+                metadata={},
+            )
+            for i in range(2)
+        ]
+        bottoms = [
+            RetrievedProduct(
+                product_id=f"bottom_{i}",
+                similarity=0.90,
+                enriched_data={"primary_color": "cream", "occasion_fit": "office"},
+                metadata={},
+            )
+            for i in range(2)
+        ]
+        retrieved_sets = [
+            RetrievedSet(direction_id="A", query_id="q1", role="top", products=tops),
+            RetrievedSet(direction_id="A", query_id="q2", role="bottom", products=bottoms),
+        ]
+        assembler = OutfitAssembler()
+        candidates = assembler.assemble(retrieved_sets, plan, context)
+        # Maximum matching on a 2×2 complete bipartite graph is 2 outfits.
+        self.assertLessEqual(len(candidates), 2)
+        self.assertGreater(len(candidates), 0)
+        # Verify no product_id repeats.
+        seen: set[str] = set()
+        for c in candidates:
+            for item in c.items:
+                pid = str(item.get("product_id") or "")
+                self.assertNotIn(pid, seen, f"{pid} appeared in 2 candidates")
+                seen.add(pid)
 
     # ------------------------------------------------------------------
     # P1: Disliked product suppression
