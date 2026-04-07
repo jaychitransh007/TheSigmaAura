@@ -230,6 +230,8 @@ def get_web_ui_html(
     .bubble.agent {
       margin-right: auto; background: transparent; font-size: 12px;
       color: var(--muted); padding: 4px 16px;
+      opacity: 1;
+      transition: opacity 360ms ease;
     }
     .bubble.agent .dot {
       display: inline-block; width: 6px; height: 6px; border-radius: 50%;
@@ -237,6 +239,10 @@ def get_web_ui_html(
       animation: pulse 1.2s infinite ease-in-out;
     }
     .bubble.agent.done .dot { animation: none; background: var(--wardrobe); }
+    .bubble.agent.fading { opacity: 0; pointer-events: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .bubble.agent { transition: none; }
+    }
     .bubble.meta { font-size: 11px; color: var(--muted-soft); text-align: center; max-width: 100%; background: none; padding: 4px 0; }
     @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 
@@ -1878,14 +1884,23 @@ def get_web_ui_html(
     feed.scrollTop = feed.scrollHeight;
   }}
 
-  function renderStages(stages) {{
-    stageBar.innerHTML = "";
-    for (var i = 0; i < (stages || []).length; i++) {{
+  // Return the most recent stage that has a non-empty, human-facing
+  // message. Deliberately ignores stages whose template resolved to an
+  // empty string — those are intent-signalled "don't show this" events
+  // (e.g. user_context_completed, outfit_assembly_completed).
+  function latestVisibleStage(stages) {{
+    if (!stages || !stages.length) return null;
+    for (var i = stages.length - 1; i >= 0; i--) {{
       var s = stages[i];
-      var text = s.message || (s.stage + (s.detail ? " " + s.detail : ""));
-      if (i < stages.length - 1) continue; // only show latest
-      stageBar.textContent = text;
+      var msg = s && s.message;
+      if (msg && String(msg).trim()) return s;
     }}
+    return null;
+  }}
+
+  function renderStages(stages) {{
+    var latest = latestVisibleStage(stages);
+    stageBar.textContent = latest ? latest.message : "";
   }}
 
   // ══════════════════════════════════════════════
@@ -1906,27 +1921,60 @@ def get_web_ui_html(
     return conversationId;
   }}
 
+  // Fade out and remove a thinking bubble. Safe to call with null.
+  function fadeOutThinkingBubble(bubble) {{
+    if (!bubble) return;
+    bubble.classList.add("fading");
+    // Match the 360ms opacity transition in the .bubble.agent CSS rule.
+    setTimeout(function() {{ if (bubble.parentNode) bubble.parentNode.removeChild(bubble); }}, 400);
+  }}
+
   async function pollJob(convId, jobId) {{
-    var renderedCount = 0;
-    var agentBubbles = [];
-    while (true) {{
-      var res = await fetch("/v1/conversations/" + convId + "/turns/" + jobId + "/status");
-      var data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Polling failed");
-      renderStages(data.stages || []);
-      var stages = data.stages || [];
-      for (var i = renderedCount; i < stages.length; i++) {{
-        var msg = stages[i].message;
-        if (msg) agentBubbles.push(addAgentBubble(msg));
+    // Single in-place "thinking" bubble per turn. Updates its text as new
+    // stages arrive, fades out on completion/failure. Matches modern
+    // chatbot UX (ChatGPT, Claude, Gemini) instead of stacking one bubble
+    // per stage. The subtle .stage-bar at the bottom remains as a
+    // secondary progress indicator for users who have scrolled up.
+    var thinkingBubble = null;
+    var lastStageText = "";
+    try {{
+      while (true) {{
+        var res = await fetch("/v1/conversations/" + convId + "/turns/" + jobId + "/status");
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Polling failed");
+        var stages = data.stages || [];
+        renderStages(stages);
+        // Update or create the single thinking bubble from the latest
+        // *visible* stage (skipping the deliberately-silent ones).
+        var latest = latestVisibleStage(stages);
+        var latestMsg = latest ? latest.message : "";
+        if (latestMsg && latestMsg !== lastStageText) {{
+          if (!thinkingBubble) {{
+            thinkingBubble = addAgentBubble(latestMsg);
+          }} else {{
+            // The bubble contains [dot, textNode]. Update the text node only.
+            if (thinkingBubble.lastChild) {{
+              thinkingBubble.lastChild.textContent = latestMsg;
+            }} else {{
+              thinkingBubble.appendChild(document.createTextNode(latestMsg));
+            }}
+            // Keep it in view when new stages arrive.
+            feed.scrollTop = feed.scrollHeight;
+          }}
+          lastStageText = latestMsg;
+        }}
+        if (data.status === "completed") {{
+          fadeOutThinkingBubble(thinkingBubble);
+          stageBar.textContent = "";
+          return data.result;
+        }}
+        if (data.status === "failed") throw new Error(data.error || "Turn failed");
+        await new Promise(function(resolve) {{ setTimeout(resolve, 800); }});
       }}
-      renderedCount = stages.length;
-      if (data.status === "completed") {{
-        for (var j = 0; j < agentBubbles.length; j++) agentBubbles[j].classList.add("done");
-        stageBar.textContent = "";
-        return data.result;
-      }}
-      if (data.status === "failed") throw new Error(data.error || "Turn failed");
-      await new Promise(function(resolve) {{ setTimeout(resolve, 800); }});
+    }} catch (exc) {{
+      fadeOutThinkingBubble(thinkingBubble);
+      stageBar.textContent = "";
+      throw exc;
     }}
   }}
 

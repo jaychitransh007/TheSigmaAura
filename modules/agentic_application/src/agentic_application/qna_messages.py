@@ -5,37 +5,37 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 _PLAN_TYPE_DESCRIPTIONS = {
-    "paired_only": "coordinated top + bottom",
-    "complete_only": "complete one-piece outfits",
-    "mixed": "a mix of complete and paired outfits",
+    "paired_only": "a coordinated top + bottom look",
+    "complete_only": "complete one-piece looks",
+    "mixed": "a mix of complete and paired looks",
 }
 
 _TEMPLATES: Dict[str, str] = {
-    "validate_request_started": "Checking your request...",
-    "onboarding_gate_started": "Checking whether your profile is ready for chat...",
+    "validate_request_started": "Reading your request…",
+    "onboarding_gate_started": "Getting your profile ready…",
     "onboarding_gate_blocked": "Complete your profile setup before chat can continue.",
-    "onboarding_gate_completed": "Your profile is ready for chat.",
-    "user_context_started": "Loading your style profile...",
-    "user_context_completed": "Profile loaded — {richness} detail available.",
-    "context_builder_started": "Reviewing conversation context...",
-    "context_builder_completed": "Context loaded.",
-    "copilot_planner_started": "Understanding what you need help with...",
+    "onboarding_gate_completed": "",  # silent — don't interrupt the flow
+    "user_context_started": "Pulling up your style profile…",
+    "user_context_completed": "",  # silent — "Profile loaded" is noise
+    "context_builder_started": "Thinking about what you asked…",
+    "context_builder_completed": "",  # silent
+    "copilot_planner_started": "Thinking about what you asked…",
     "copilot_planner_completed": "",  # dynamic
     "copilot_planner_error": "Sorry, I'm having trouble understanding that right now. Please try again.",
-    "outfit_architect_started": "Planning outfit directions...",
+    "outfit_architect_started": "Sketching outfit directions…",
     "outfit_architect_completed": "",  # dynamic
-    "catalog_search_started": "Searching the catalog...",
+    "catalog_search_started": "Pulling matching pieces from the catalog…",
     "catalog_search_completed": "",  # dynamic
-    "catalog_search_blocked": "Catalog data isn't loaded in this environment — can't put together recommendations right now.",
-    "outfit_assembly_started": "Assembling outfit combinations...",
-    "outfit_assembly_completed": "Assembled {candidate_count} outfit candidates.",
+    "catalog_search_blocked": "The catalog isn't loaded in this environment — I can't put together recommendations right now.",
+    "outfit_assembly_started": "Building outfit combinations…",
+    "outfit_assembly_completed": "",  # silent — raw candidate count is noise
     "outfit_evaluation_started": "",  # dynamic
-    "outfit_evaluation_completed": "Top outfits selected.",
-    "response_formatting_started": "Preparing your outfit recommendations...",
-    "response_formatting_completed": "Your {outfit_count} outfit recommendations are ready.",
+    "outfit_evaluation_completed": "Picking the best looks…",
+    "response_formatting_started": "Putting your recommendations together…",
+    "response_formatting_completed": "",  # silent — the answer is about to appear
     "response_formatting_error": "Sorry, I wasn't able to put together recommendations this time. Please try again.",
-    "virtual_tryon_started": "Generating virtual try-on previews...",
-    "virtual_tryon_completed": "Try-on images ready.",
+    "virtual_tryon_started": "Generating try-on previews…",
+    "virtual_tryon_completed": "",  # silent — the images appear inline
     "outfit_architect_error": "Sorry, I couldn't process your request right now. Please try again.",
 }
 

@@ -7,7 +7,13 @@ from agentic_application.qna_messages import generate_stage_message
 
 
 class TestStaticTemplates:
-    """All static template keys return non-empty strings with minimal context."""
+    """All user-facing static template keys return non-empty strings.
+
+    Some `*_completed` templates are deliberately empty strings — that is a
+    product signal meaning "don't surface this stage in the UI" (see
+    TestIntentionallySilentStages below). Those are excluded from this
+    parametrize list.
+    """
 
     @pytest.mark.parametrize(
         "stage,detail",
@@ -15,7 +21,6 @@ class TestStaticTemplates:
             ("validate_request", "started"),
             ("onboarding_gate", "started"),
             ("onboarding_gate", "blocked"),
-            ("onboarding_gate", "completed"),
             ("copilot_planner", "started"),
             ("user_context", "started"),
             ("context_builder", "started"),
@@ -25,7 +30,6 @@ class TestStaticTemplates:
             ("outfit_evaluation", "completed"),
             ("response_formatting", "started"),
             ("virtual_tryon", "started"),
-            ("virtual_tryon", "completed"),
             ("outfit_architect", "error"),
         ],
     )
@@ -41,21 +45,32 @@ class TestStaticTemplates:
         assert generate_stage_message("validate_request", "unknown_detail") == ""
 
 
-class TestUserContextCompleted:
-    def test_with_richness(self):
-        msg = generate_stage_message("user_context", "completed", {"richness": "full"})
-        assert "full" in msg
+class TestIntentionallySilentStages:
+    """Product contract: these stages deliberately return an empty message so
+    the UI's `latestVisibleStage` helper skips them and the stage bar /
+    thinking bubble don't churn on every micro-transition. Changing any of
+    these to non-empty text is a UX regression — it brings back the
+    "15 stacked bubbles per turn" problem."""
 
-    def test_without_richness_degrades(self):
-        msg = generate_stage_message("user_context", "completed")
-        assert msg  # should not crash
+    SILENT_STAGES = [
+        ("onboarding_gate", "completed"),
+        ("user_context", "completed"),
+        ("context_builder", "completed"),
+        ("outfit_assembly", "completed"),
+        ("response_formatting", "completed"),
+        ("virtual_tryon", "completed"),
+    ]
 
+    @pytest.mark.parametrize("stage,detail", SILENT_STAGES)
+    def test_silent_stage_returns_empty(self, stage, detail):
+        assert generate_stage_message(stage, detail) == ""
 
-class TestContextBuilderCompleted:
-    def test_returns_static_message(self):
-        msg = generate_stage_message("context_builder", "completed")
-        assert msg
-        assert isinstance(msg, str)
+    def test_silent_stages_degrade_with_context(self):
+        """Passing context to a silent stage must still return empty, not
+        crash or leak raw keys."""
+        assert generate_stage_message("user_context", "completed", {"richness": "full"}) == ""
+        assert generate_stage_message("outfit_assembly", "completed", {"candidate_count": 15}) == ""
+        assert generate_stage_message("response_formatting", "completed", {"outfit_count": 3}) == ""
 
 
 class TestCopilotPlannerCompleted:
@@ -75,8 +90,8 @@ class TestOutfitArchitectCompleted:
         "plan_type,expected_fragment",
         [
             ("paired_only", "coordinated top + bottom"),
-            ("complete_only", "complete one-piece outfits"),
-            ("mixed", "a mix of complete and paired outfits"),
+            ("complete_only", "complete one-piece looks"),
+            ("mixed", "a mix of complete and paired looks"),
         ],
     )
     def test_plan_types_produce_distinct_descriptions(self, plan_type, expected_fragment):
@@ -91,7 +106,7 @@ class TestOutfitArchitectCompleted:
         msg = generate_stage_message("outfit_architect", "completed", {
             "plan_type": "mixed",
         })
-        assert "a mix of complete and paired outfits" in msg
+        assert "a mix of complete and paired looks" in msg
         assert "across" not in msg
 
     def test_empty_context(self):
@@ -118,18 +133,6 @@ class TestCatalogSearchCompleted:
 
     def test_empty_context(self):
         msg = generate_stage_message("catalog_search", "completed")
-        assert msg
-
-
-class TestOutfitAssemblyCompleted:
-    def test_with_count(self):
-        msg = generate_stage_message("outfit_assembly", "completed", {
-            "candidate_count": 15,
-        })
-        assert "15" in msg
-
-    def test_empty_context_degrades(self):
-        msg = generate_stage_message("outfit_assembly", "completed")
         assert msg
 
 
@@ -164,13 +167,3 @@ class TestOutfitEvaluationStarted:
         assert "overall fit and style" in msg
 
 
-class TestResponseFormattingCompleted:
-    def test_with_count(self):
-        msg = generate_stage_message("response_formatting", "completed", {
-            "outfit_count": 3,
-        })
-        assert "3" in msg
-
-    def test_empty_context_degrades(self):
-        msg = generate_stage_message("response_formatting", "completed")
-        assert msg
