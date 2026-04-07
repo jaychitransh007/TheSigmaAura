@@ -1,6 +1,19 @@
 # Application Layer — Implementation Specification
 
-Last updated: April 5, 2026 (intent registry)
+Last updated: April 8, 2026 (deprecation banner)
+
+> **⚠️ Partially deprecated.** Sections of this document still describe the
+> *legacy* routing layer (`intent_router.py`, `intent_handlers.py`,
+> `context_gate.py`, `context/occasion_resolver.py`) which has been **deleted**
+> from the codebase and replaced by the LLM copilot planner inlined into
+> `process_turn`. See `docs/CURRENT_STATE.md` § "Completed work (March 20,
+> 2026)" for the teardown record.
+>
+> When this file and `docs/CURRENT_STATE.md` disagree, **`CURRENT_STATE.md`
+> is the source of truth**. The accurate parts of this file are the agent
+> prompt structure, evaluator schema, and step-by-step pipeline narration.
+> Anything that names the deleted modules above is stale and should be
+> read as historical context only.
 
 ## Product Positioning
 
@@ -16,7 +29,7 @@ This document serves two purposes:
 
 For the user-facing product summary, personas, journeys, and stories, see `docs/PRODUCT.md`.
 For the current project state, gap analysis, and file layout, see `docs/CURRENT_STATE.md`.
-For detailed step-by-step execution flows for all 12 intents, see `knowledge/workflow_reference.md`.
+For detailed step-by-step execution flows for all 12 intents, see `docs/WORKFLOW_REFERENCE.md`.
 
 Implemented now:
 - **intent registry** (`intent_registry.py`): StrEnum-based single source of truth for all 12 intents (`Intent`), 9 actions (`Action`), and 7 follow-up intents (`FollowUpIntent`) — with metadata registries and JSON schema helpers; consumed by planner, orchestrator, agents, API, and tests

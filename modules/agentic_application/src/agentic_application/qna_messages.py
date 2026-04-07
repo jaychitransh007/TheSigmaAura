@@ -15,25 +15,25 @@ _TEMPLATES: Dict[str, str] = {
     "onboarding_gate_started": "Checking whether your profile is ready for chat...",
     "onboarding_gate_blocked": "Complete your profile setup before chat can continue.",
     "onboarding_gate_completed": "Your profile is ready for chat.",
-    "intent_router_started": "Understanding what you need help with...",
-    "intent_router_completed": "",  # dynamic
     "user_context_started": "Loading your style profile...",
     "user_context_completed": "Profile loaded — {richness} detail available.",
     "context_builder_started": "Reviewing conversation context...",
     "context_builder_completed": "Context loaded.",
-    "context_gate_started": "Understanding your style needs...",
-    "context_gate_sufficient": "Got enough context — proceeding with recommendations.",
-    "context_gate_insufficient": "Need a bit more information to find the best options for you.",
+    "copilot_planner_started": "Understanding what you need help with...",
+    "copilot_planner_completed": "",  # dynamic
+    "copilot_planner_error": "Sorry, I'm having trouble understanding that right now. Please try again.",
     "outfit_architect_started": "Planning outfit directions...",
     "outfit_architect_completed": "",  # dynamic
     "catalog_search_started": "Searching the catalog...",
     "catalog_search_completed": "",  # dynamic
+    "catalog_search_blocked": "Catalog data isn't loaded in this environment — can't put together recommendations right now.",
     "outfit_assembly_started": "Assembling outfit combinations...",
     "outfit_assembly_completed": "Assembled {candidate_count} outfit candidates.",
     "outfit_evaluation_started": "",  # dynamic
     "outfit_evaluation_completed": "Top outfits selected.",
     "response_formatting_started": "Preparing your outfit recommendations...",
     "response_formatting_completed": "Your {outfit_count} outfit recommendations are ready.",
+    "response_formatting_error": "Sorry, I wasn't able to put together recommendations this time. Please try again.",
     "virtual_tryon_started": "Generating virtual try-on previews...",
     "virtual_tryon_completed": "Try-on images ready.",
     "outfit_architect_error": "Sorry, I couldn't process your request right now. Please try again.",
@@ -72,7 +72,7 @@ def _outfit_evaluation_started(ctx: Dict[str, Any]) -> str:
     return "Evaluating outfits for overall fit and style..."
 
 
-def _intent_router_completed(ctx: Dict[str, Any]) -> str:
+def _copilot_planner_completed(ctx: Dict[str, Any]) -> str:
     primary = str(ctx.get("primary_intent") or "").replace("_", " ").strip()
     if primary:
         return f"Intent understood — routing this as {primary}."
@@ -80,7 +80,7 @@ def _intent_router_completed(ctx: Dict[str, Any]) -> str:
 
 
 _DYNAMIC_HANDLERS = {
-    "intent_router_completed": _intent_router_completed,
+    "copilot_planner_completed": _copilot_planner_completed,
     "outfit_architect_completed": _outfit_architect_completed,
     "catalog_search_completed": _catalog_search_completed,
     "outfit_evaluation_started": _outfit_evaluation_started,

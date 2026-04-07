@@ -175,7 +175,31 @@ def get_web_ui_html(
       font-size: 28px; font-weight: 600; line-height: 1.15; margin-bottom: 8px; color: var(--ink);
     }
     .feed-welcome p { font-size: 14px; color: var(--muted); max-width: 420px; margin: 0 auto 24px; line-height: 1.5; }
-    .prompt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 480px; margin: 0 auto; }
+    /* Primary action — one dominant entry point for first-time users */
+    .prompt-primary {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 16px 28px; border-radius: 999px; border: 0;
+      background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+      color: #fff; font-size: 15px; font-weight: 600; letter-spacing: 0.01em;
+      cursor: pointer; box-shadow: 0 6px 22px rgba(111, 47, 69, 0.20);
+      transition: transform 140ms ease, box-shadow 140ms ease;
+    }
+    .prompt-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(111, 47, 69, 0.26); }
+    .prompt-more-toggle {
+      display: inline-block; margin-top: 14px; padding: 6px 10px;
+      background: transparent; border: 0; cursor: pointer;
+      font-size: 12px; color: var(--muted); letter-spacing: 0.04em;
+    }
+    .prompt-more-toggle:hover { color: var(--accent); }
+    .prompt-more-toggle .chev { display: inline-block; transition: transform 160ms ease; }
+    .prompt-more-toggle.open .chev { transform: rotate(180deg); }
+    .prompt-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 480px;
+      margin: 12px auto 0;
+      max-height: 0; overflow: hidden; opacity: 0;
+      transition: max-height 220ms ease, opacity 200ms ease, margin 200ms ease;
+    }
+    .prompt-grid.open { max-height: 320px; opacity: 1; margin: 16px auto 0; }
     .prompt-card {
       padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line);
       background: var(--surface); cursor: pointer; text-align: left;
@@ -183,6 +207,9 @@ def get_web_ui_html(
       transition: border-color 120ms ease, box-shadow 120ms ease;
     }
     .prompt-card:hover { border-color: var(--accent-soft); box-shadow: 0 2px 12px rgba(111, 47, 69, 0.08); }
+    @media (prefers-reduced-motion: reduce) {
+      .prompt-grid, .prompt-more-toggle .chev, .prompt-primary { transition: none; }
+    }
 
     /* Bubbles */
     .bubble {
@@ -811,12 +838,18 @@ def get_web_ui_html(
     <div class="feed-welcome" id="feedWelcome">
       <div class="eyebrow">Your Stylist Is Ready</div>
       <h2>What are we styling today?</h2>
-      <p>Ask me to dress you for an occasion, check an outfit, pair a garment, plan a trip wardrobe, or explore your style.</p>
-      <div class="prompt-grid">
-        <button class="prompt-card" data-prompt="Dress me for a dinner date using my wardrobe.">Dress me for a dinner date</button>
+      <p>Start with one ask. I'll style you from your wardrobe first, and pull from the catalog when there's a gap.</p>
+      <button class="prompt-primary prompt-card" data-prompt="Dress me for tonight using my wardrobe.">Dress me for tonight</button>
+      <div>
+        <button type="button" class="prompt-more-toggle" id="promptMoreToggle" aria-expanded="false" aria-controls="promptMoreGrid">
+          More ways to style <span class="chev">&#9662;</span>
+        </button>
+      </div>
+      <div class="prompt-grid" id="promptMoreGrid">
         <button class="prompt-card" data-prompt="Find me a complete office look from the catalog.">Office look from catalog</button>
         <button class="prompt-card" data-prompt="What goes well with this?">Pair a garment I have</button>
         <button class="prompt-card" data-prompt="Plan my wardrobe for a 5-day beach vacation.">Plan a trip wardrobe</button>
+        <button class="prompt-card" data-prompt="How does this outfit look on me?">Check an outfit I'm wearing</button>
       </div>
     </div>
   </div>
@@ -1798,27 +1831,40 @@ def get_web_ui_html(
     feed.scrollTop = feed.scrollHeight;
   }}
 
-  function renderQuickReplies(suggestions) {{
-    if (!suggestions || !suggestions.length) return;
+  function renderQuickReplies(suggestions, structuredGroups) {{
+    if ((!suggestions || !suggestions.length) && (!structuredGroups || !structuredGroups.length)) return;
     var wrap = document.createElement("div");
     wrap.className = "followup-groups";
-    var grouped = {{ "Improve It": [], "Show Alternatives": [], "Explain Why": [], "Shop The Gap": [], "Save For Later": [] }};
-    function bucketFor(text) {{
-      var n = String(text || "").toLowerCase();
-      if (n.indexOf("explain") !== -1 || n.indexOf("why") !== -1) return "Explain Why";
-      if (n.indexOf("save") !== -1 || n.indexOf("later") !== -1) return "Save For Later";
-      if (n.indexOf("catalog") !== -1 || n.indexOf("shop") !== -1 || n.indexOf("buy") !== -1) return "Shop The Gap";
-      if (n.indexOf("more") !== -1 || n.indexOf("different") !== -1 || n.indexOf("alternative") !== -1) return "Show Alternatives";
-      return "Improve It";
+
+    // Prefer structured groups emitted by the response_formatter (label + suggestions).
+    // Fall back to the legacy substring bucketing only when no structured payload exists.
+    var groupsToRender = [];
+    if (structuredGroups && structuredGroups.length) {{
+      structuredGroups.forEach(function(g) {{
+        var items = (g && g.suggestions) || [];
+        if (items.length) groupsToRender.push({{ label: g.label || "Suggestions", items: items }});
+      }});
+    }} else {{
+      var grouped = {{ "Improve It": [], "Show Alternatives": [], "Explain Why": [], "Shop The Gap": [], "Save For Later": [] }};
+      function bucketFor(text) {{
+        var n = String(text || "").toLowerCase();
+        if (n.indexOf("explain") !== -1 || n.indexOf("why") !== -1) return "Explain Why";
+        if (n.indexOf("save") !== -1 || n.indexOf("later") !== -1) return "Save For Later";
+        if (n.indexOf("catalog") !== -1 || n.indexOf("shop") !== -1 || n.indexOf("buy") !== -1) return "Shop The Gap";
+        if (n.indexOf("more") !== -1 || n.indexOf("different") !== -1 || n.indexOf("alternative") !== -1) return "Show Alternatives";
+        return "Improve It";
+      }}
+      for (var i = 0; i < suggestions.length; i++) grouped[bucketFor(suggestions[i])].push(suggestions[i]);
+      Object.entries(grouped).forEach(function(entry) {{
+        if (entry[1].length) groupsToRender.push({{ label: entry[0], items: entry[1] }});
+      }});
     }}
-    for (var i = 0; i < suggestions.length; i++) grouped[bucketFor(suggestions[i])].push(suggestions[i]);
-    Object.entries(grouped).forEach(function(entry) {{
-      var label = entry[0], items = entry[1];
-      if (!items.length) return;
+
+    groupsToRender.forEach(function(g) {{
       var section = document.createElement("div"); section.className = "followup-group";
-      var title = document.createElement("strong"); title.textContent = label;
+      var title = document.createElement("strong"); title.textContent = g.label;
       var row = document.createElement("div"); row.className = "followup-row";
-      items.forEach(function(text) {{
+      g.items.forEach(function(text) {{
         var btn = document.createElement("button");
         btn.className = "secondary";
         btn.style.cssText = "font-size:13px;padding:6px 14px;border-radius:999px;";
@@ -1911,11 +1957,13 @@ def get_web_ui_html(
       if (!res.ok) throw new Error(job.detail || "Failed to start turn");
       var result = await pollJob(convId, job.job_id);
       addBubble(result.assistant_message || "", "assistant");
+      var __md = result.metadata || {{}};
+      var __groups = (__md && __md.follow_up_groups) || [];
       if (result.response_type === "clarification") {{
-        renderQuickReplies(result.follow_up_suggestions || []);
+        renderQuickReplies(result.follow_up_suggestions || [], __groups);
       }} else {{
-        renderOutfits(result.outfits || [], convId, result.metadata || {{}});
-        renderQuickReplies(result.follow_up_suggestions || []);
+        renderOutfits(result.outfits || [], convId, __md);
+        renderQuickReplies(result.follow_up_suggestions || [], __groups);
       }}
       // Refresh sidebar
       loadConversationHistory();
@@ -1938,6 +1986,17 @@ def get_web_ui_html(
       send();
     }});
   }});
+
+  // Progressive disclosure: "More ways to style" reveals secondary prompts
+  var promptMoreToggle = document.getElementById("promptMoreToggle");
+  var promptMoreGrid = document.getElementById("promptMoreGrid");
+  if (promptMoreToggle && promptMoreGrid) {{
+    promptMoreToggle.addEventListener("click", function() {{
+      var isOpen = promptMoreGrid.classList.toggle("open");
+      promptMoreToggle.classList.toggle("open", isOpen);
+      promptMoreToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    }});
+  }}
 
   // ══════════════════════════════════════════════
   // CHAT HISTORY SIDEBAR
@@ -2149,17 +2208,39 @@ def get_web_ui_html(
   // WARDROBE VIEW
   // ══════════════════════════════════════════════
 
+  // Recognized occasion tags from catalog enrichment metadata. Used by the
+  // "Occasion-ready" filter so we match against the structured field instead
+  // of doing keyword scans against item titles.
+  var OCCASION_READY_TAGS = [
+    "wedding", "cocktail_party", "cocktail", "date_night",
+    "office", "work_meeting", "business", "interview",
+    "semi_formal", "formal", "evening", "party",
+    "festive", "ceremony", "gala"
+  ];
+  var OCCASION_READY_FORMALITY = [
+    "smart_casual", "business_casual", "semi_formal", "formal", "ultra_formal"
+  ];
+
   function wardrobeFilterMatches(item, filter) {{
     if (filter === "all") return true;
     var category = String(item.garment_category || "").toLowerCase();
-    var occasionFit = String(item.occasion_fit || "").toLowerCase();
     if (filter === "tops") return ["top", "shirt", "blouse", "tee", "tshirt", "sweater", "knit"].some(function(t) {{ return category.indexOf(t) !== -1; }});
     if (filter === "bottoms") return ["pant", "trouser", "jean", "skirt", "short"].some(function(t) {{ return category.indexOf(t) !== -1; }});
     if (filter === "shoes") return ["shoe", "heel", "boot", "loafer", "sandal", "sneaker"].some(function(t) {{ return category.indexOf(t) !== -1; }});
     if (filter === "dresses") return ["dress", "gown", "romper", "jumpsuit"].some(function(t) {{ return category.indexOf(t) !== -1; }});
     if (filter === "outerwear") return ["jacket", "blazer", "coat", "parka", "hoodie", "cardigan"].some(function(t) {{ return category.indexOf(t) !== -1; }});
     if (filter === "accessories") return ["bag", "belt", "scarf", "watch", "jewelry", "hat", "accessory", "sunglasses", "tie", "bracelet", "necklace", "earring", "ring"].some(function(t) {{ return category.indexOf(t) !== -1; }});
-    if (filter === "occasion") return occasionFit.length > 0 && occasionFit !== "everyday";
+    if (filter === "occasion") {{
+      // Occasion-ready uses the enrichment metadata fields (occasion_fit and
+      // formality_level), matched against a recognized tag set, instead of
+      // brittle "non-empty / not everyday" string checks against item names.
+      var occasionFit = String(item.occasion_fit || "").toLowerCase().trim().replace(/[\\s]+/g, "_");
+      var formalityLevel = String(item.formality_level || "").toLowerCase().trim().replace(/[\\s]+/g, "_");
+      if (!occasionFit && !formalityLevel) return false;
+      var occasionMatch = OCCASION_READY_TAGS.some(function(tag) {{ return occasionFit.indexOf(tag) !== -1; }});
+      var formalityMatch = OCCASION_READY_FORMALITY.indexOf(formalityLevel) !== -1;
+      return occasionMatch || formalityMatch;
+    }}
     return true;
   }}
 

@@ -600,6 +600,59 @@ def create_app() -> FastAPI:
         except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # -- Saved looks (server-side persistence) ---------------------------------
+
+    class SavedLookCreateRequest(BaseModel):
+        user_id: str
+        conversation_id: str = ""
+        turn_id: str = ""
+        outfit_rank: int = 1
+        title: str = ""
+        item_ids: List[str] = []
+        snapshot_json: Dict[str, Any] = {}
+        notes: str = ""
+
+    @app.post("/v1/users/{user_id}/saved-looks")
+    def create_saved_look(user_id: str, payload: SavedLookCreateRequest):
+        try:
+            user = repo.get_or_create_user(user_id)
+            internal_uid = str(user["id"])
+            row = repo.create_saved_look(
+                user_id=internal_uid,
+                conversation_id=payload.conversation_id or None,
+                turn_id=payload.turn_id or None,
+                outfit_rank=payload.outfit_rank,
+                title=payload.title,
+                item_ids=payload.item_ids,
+                snapshot_json=payload.snapshot_json,
+                notes=payload.notes,
+            )
+            return {"ok": True, "saved_look": row}
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/v1/users/{user_id}/saved-looks")
+    def list_saved_looks(user_id: str, limit: int = 50):
+        try:
+            user = repo.get_or_create_user(user_id)
+            internal_uid = str(user["id"])
+            rows = repo.list_saved_looks_for_user(internal_uid, limit=limit)
+            return {"user_id": user_id, "saved_looks": rows or []}
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.delete("/v1/users/{user_id}/saved-looks/{saved_look_id}")
+    def delete_saved_look(user_id: str, saved_look_id: str):
+        try:
+            row = repo.archive_saved_look(saved_look_id)
+            if not row:
+                raise HTTPException(status_code=404, detail="saved look not found")
+            return {"ok": True}
+        except HTTPException:
+            raise
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     # -- UI listing endpoints --------------------------------------------------
 
     @app.get("/v1/users/{user_id}/conversations", response_model=ConversationListResponse)

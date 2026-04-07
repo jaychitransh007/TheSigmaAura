@@ -743,6 +743,7 @@ class AgenticOrchestrator:
                 resolved_context={
                     "request_summary": message.strip(),
                     "onboarding_gate": onboarding_gate.model_dump(),
+                    "response_metadata": metadata,
                     "channel": channel,
                 },
             )
@@ -1500,37 +1501,120 @@ class AgenticOrchestrator:
         if not outfit:
             return None
         outfit_roles = {self._normalize_text_token(item.get("role") or "") for item in outfit}
-        if len(outfit) <= 1 and "one piece" not in outfit_roles and "one_piece" not in outfit_roles:
-            return None
+        has_one_piece = "one_piece" in outfit_roles or "one piece" in outfit_roles
+
+        # ── Wardrobe-First Success Guardrails ──
+        # A single non-one-piece item is not a usable outfit. Determine which
+        # required outfit roles are still uncovered, then attempt a hybrid
+        # pivot (wardrobe anchor + catalog gap-fill) before giving up.
+        required_roles_for_complete = [] if has_one_piece else ["top", "bottom"]
+        missing_required_roles = [
+            role for role in required_roles_for_complete if role not in outfit_roles
+        ]
+        has_shoe = "shoe" in outfit_roles
+        wardrobe_completeness_pct = int(wardrobe_gap_analysis.get("completeness_score_pct") or 0)
+        wardrobe_is_complete = (
+            (has_one_piece or not missing_required_roles)
+            and wardrobe_completeness_pct >= 40
+        )
+
+        catalog_gap_fillers: List[Dict[str, Any]] = []
+        hybrid_used = False
+        hybrid_fill_roles: List[str] = []
+        if not wardrobe_is_complete:
+            # Try hybrid: pivot to catalog to fill the missing roles instead of
+            # claiming a one-item wardrobe answer is the full result.
+            fill_roles = list(missing_required_roles)
+            if not has_shoe and "shoe" not in fill_roles:
+                fill_roles.append("shoe")
+            if not fill_roles:
+                # Wardrobe gave us *something* but coverage is still thin —
+                # fall back to filling the second core role from catalog.
+                fill_roles = ["bottom" if "top" in outfit_roles else "top", "shoe"]
+            catalog_gap_fillers = self._select_catalog_items(
+                desired_roles=fill_roles,
+                occasion=occasion,
+                preferred_colors=[
+                    str(item.get("primary_color") or "")
+                    for item in outfit
+                    if str(item.get("primary_color") or "").strip()
+                ],
+                limit=max(2, len(fill_roles)),
+            )
+            if catalog_gap_fillers:
+                hybrid_used = True
+                hybrid_fill_roles = fill_roles
+            else:
+                # No usable hybrid answer — let the main pipeline try.
+                return None
+
         anchor_id = str(anchored_item_id or "").strip()
         selected_ids = [str(item.get("product_id") or "") for item in outfit if str(item.get("product_id") or "").strip()]
-        if anchor_id and len(selected_ids) <= 1 and selected_ids == [anchor_id]:
+        if anchor_id and len(selected_ids) <= 1 and selected_ids == [anchor_id] and not hybrid_used:
             return None
 
-        reasoning = f"Built from your saved wardrobe for {occasion.replace('_', ' ')}."
+        def _piece_label(item: Dict[str, Any]) -> str:
+            title = str(item.get("title") or "").strip()
+            if title:
+                return title
+            color = str(item.get("primary_color") or "").strip()
+            cat = str(item.get("garment_subtype") or item.get("garment_category") or "piece").strip()
+            return f"{color} {cat}".strip() if color else cat
+
+        if hybrid_used:
+            outfit_for_card = list(outfit) + list(catalog_gap_fillers)
+            answer_source = "wardrobe_first_hybrid"
+            gap_label = ", ".join(hybrid_fill_roles) if hybrid_fill_roles else "missing pieces"
+            wardrobe_piece_names = [_piece_label(it) for it in outfit][:2]
+            catalog_piece_names = [_piece_label(it) for it in catalog_gap_fillers][:2]
+            reasoning = (
+                f"Started with your "
+                + " and ".join(wardrobe_piece_names)
+                + f" for {occasion.replace('_', ' ')}, then added "
+                + ", ".join(catalog_piece_names)
+                + f" from the catalog to fill the {gap_label} you were missing."
+            )
+            handler_label = "occasion_recommendation_wardrobe_first_hybrid"
+            outfit_card_title = f"Hybrid {occasion.replace('_', ' ').title()} look"
+        else:
+            outfit_for_card = outfit
+            answer_source = "wardrobe_first"
+            piece_names = [_piece_label(it) for it in outfit][:3]
+            reasoning = (
+                f"For {occasion.replace('_', ' ')}, your "
+                + " and ".join(piece_names)
+                + " from your saved wardrobe is the strongest fit — "
+                + ("matching the occasion formality and your color story." if len(piece_names) > 1 else "anchored to the occasion formality and your color story.")
+            )
+            handler_label = "occasion_recommendation_wardrobe_first"
+            outfit_card_title = f"Wardrobe-first {occasion.replace('_', ' ').title()} look"
         catalog_upsell = self._build_catalog_upsell(
-            rationale="Your wardrobe covers the occasion first, but I can also show stronger catalog options if you want a more elevated or optimized version.",
+            rationale=(
+                "Your wardrobe gave us the anchor; the catalog can extend or upgrade it."
+                if hybrid_used
+                else "Your wardrobe covers the occasion first, but I can also show stronger catalog options if you want a more elevated or optimized version."
+            ),
             entry_intent=Intent.OCCASION_RECOMMENDATION,
         )
         source_selection = self._build_source_selection(
             preferred_source="wardrobe" if "wardrobe_first" in list(live_context.specific_needs or []) else "",
-            fulfilled_source="wardrobe",
+            fulfilled_source="hybrid" if hybrid_used else "wardrobe",
         )
         outfit_card = OutfitCard(
             rank=1,
-            title=f"Wardrobe-first {occasion.replace('_', ' ').title()} look",
+            title=outfit_card_title,
             reasoning=reasoning,
             occasion_note=reasoning,
-            items=outfit,
+            items=outfit_for_card,
         )
         answer_components = self._summarize_answer_components([outfit_card])
         recommendation_confidence = evaluate_recommendation_confidence(
-            answer_mode="wardrobe_first",
+            answer_mode="wardrobe_first_hybrid" if hybrid_used else "wardrobe_first",
             profile_confidence_score_pct=profile_confidence.analysis_confidence_pct,
             intent_confidence=float(intent.confidence),
-            top_match_score=0.9,
+            top_match_score=0.88 if hybrid_used else 0.9,
             second_match_score=0.0,
-            retrieved_product_count=0,
+            retrieved_product_count=len(catalog_gap_fillers),
             candidate_count=1,
             response_outfit_count=1,
             wardrobe_items_used=len(outfit),
@@ -1556,7 +1640,7 @@ class AgenticOrchestrator:
             intent=intent,
             profile_confidence=profile_confidence,
             extra={
-                "answer_source": "wardrobe_first",
+                "answer_source": answer_source,
                 "answer_components": answer_components,
                 "source_selection": source_selection,
                 "catalog_upsell": catalog_upsell,
@@ -1564,6 +1648,9 @@ class AgenticOrchestrator:
                 "restricted_item_exclusion_count": len(blocked_terms),
                 "wardrobe_gap_analysis": wardrobe_gap_analysis,
                 "routing_metadata": routing_metadata,
+                "hybrid_fill_roles": hybrid_fill_roles,
+                "wardrobe_completeness_pct": wardrobe_completeness_pct,
+                "completion_status": "hybrid" if hybrid_used else "wardrobe_complete",
             },
         )
         resolved_context = {
@@ -1576,10 +1663,14 @@ class AgenticOrchestrator:
                 "profile_confidence": profile_confidence.model_dump(),
 
                 "response_metadata": metadata,
-                "handler": "occasion_recommendation_wardrobe_first",
+                "handler": handler_label,
                 "handler_payload": {
-                    "answer_source": "wardrobe_first",
-                    "selected_item_ids": [str(item.get("product_id") or "") for item in outfit],
+                    "answer_source": answer_source,
+                    "selected_item_ids": [str(item.get("product_id") or "") for item in outfit_for_card],
+                    "wardrobe_anchor_ids": [str(item.get("product_id") or "") for item in outfit],
+                    "catalog_fill_ids": [str(item.get("product_id") or "") for item in catalog_gap_fillers],
+                    "hybrid_fill_roles": hybrid_fill_roles,
+                    "wardrobe_completeness_pct": wardrobe_completeness_pct,
                     "answer_components": answer_components,
                 "source_selection": source_selection,
                 "catalog_upsell": catalog_upsell,
@@ -1591,19 +1682,28 @@ class AgenticOrchestrator:
             "routing_metadata": routing_metadata,
             "recommendations": [
                 {
-                    "candidate_id": "wardrobe-first-1",
+                    "candidate_id": ("hybrid-wardrobe-first-1" if hybrid_used else "wardrobe-first-1"),
                     "rank": 1,
                     "title": outfit_card.title,
-                    "item_ids": [str(item.get("product_id") or "") for item in outfit],
-                    "match_score": 0.9,
+                    "item_ids": [str(item.get("product_id") or "") for item in outfit_for_card],
+                    "match_score": 0.88 if hybrid_used else 0.9,
                     "reasoning": reasoning,
                 }
             ],
             "channel": channel,
         }
+        if hybrid_used:
+            assistant_message = (
+                reasoning
+                + " The pieces I added from the catalog cover what your wardrobe was missing for this occasion."
+            )
+        else:
+            assistant_message = (
+                reasoning + " If you want, I can also show better catalog options for this occasion."
+            )
         self.repo.finalize_turn(
             turn_id=turn_id,
-            assistant_message=reasoning + " If you want, I can also show better catalog options for this occasion.",
+            assistant_message=assistant_message,
             resolved_context=resolved_context,
         )
         self._persist_recommendation_confidence(
@@ -1613,7 +1713,7 @@ class AgenticOrchestrator:
             channel=channel,
             primary_intent=intent.primary_intent,
             recommendation_confidence=recommendation_confidence,
-            metadata_json={"answer_mode": "wardrobe_first"},
+            metadata_json={"answer_mode": "wardrobe_first_hybrid" if hybrid_used else "wardrobe_first"},
         )
         session_context = {
             **previous_context,
@@ -1621,25 +1721,25 @@ class AgenticOrchestrator:
             "last_occasion": occasion,
             "last_live_context": live_context.model_dump(),
             "last_response_metadata": metadata,
-            "last_assistant_message": reasoning + " If you want, I can also show better catalog options for this occasion.",
+            "last_assistant_message": assistant_message,
             "last_user_message": message,
             "last_channel": channel,
             "last_intent": intent.primary_intent,
             "consecutive_gate_blocks": 0,
             "last_recommendations": [
                 {
-                    "candidate_id": "wardrobe-first-1",
+                    "candidate_id": ("hybrid-wardrobe-first-1" if hybrid_used else "wardrobe-first-1"),
                     "rank": 1,
                     "title": outfit_card.title,
-                    "item_ids": [str(item.get("product_id") or "") for item in outfit],
-                    "candidate_type": "wardrobe",
-                    "direction_id": "wardrobe",
-                    "primary_colors": [str(item.get("primary_color") or "") for item in outfit if str(item.get("primary_color") or "").strip()],
-                    "garment_categories": [str(item.get("garment_category") or "") for item in outfit if str(item.get("garment_category") or "").strip()],
-                    "garment_subtypes": [str(item.get("garment_subtype") or "") for item in outfit if str(item.get("garment_subtype") or "").strip()],
-                    "roles": [str(item.get("role") or "") for item in outfit if str(item.get("role") or "").strip()],
+                    "item_ids": [str(item.get("product_id") or "") for item in outfit_for_card],
+                    "candidate_type": "hybrid" if hybrid_used else "wardrobe",
+                    "direction_id": "hybrid" if hybrid_used else "wardrobe",
+                    "primary_colors": [str(item.get("primary_color") or "") for item in outfit_for_card if str(item.get("primary_color") or "").strip()],
+                    "garment_categories": [str(item.get("garment_category") or "") for item in outfit_for_card if str(item.get("garment_category") or "").strip()],
+                    "garment_subtypes": [str(item.get("garment_subtype") or "") for item in outfit_for_card if str(item.get("garment_subtype") or "").strip()],
+                    "roles": [str(item.get("role") or "") for item in outfit_for_card if str(item.get("role") or "").strip()],
                     "occasion_fits": [occasion],
-                    "formality_levels": [str(item.get("formality_level") or "") for item in outfit if str(item.get("formality_level") or "").strip()],
+                    "formality_levels": [str(item.get("formality_level") or "") for item in outfit_for_card if str(item.get("formality_level") or "").strip()],
                     "pattern_types": [],
                     "volume_profiles": [],
                     "fit_types": [],
@@ -1659,27 +1759,41 @@ class AgenticOrchestrator:
             primary_intent=intent.primary_intent,
             response_type="recommendation",
             metadata_json={
-                "answer_source": "wardrobe_first",
+                "answer_source": answer_source,
                 "memory_sources_read": list(routing_metadata.get("memory_sources_read") or []),
                 "memory_sources_written": list(routing_metadata.get("memory_sources_written") or []),
                 "recommendation_confidence_score_pct": recommendation_confidence.score_pct,
                 "wardrobe_gap_count": len(list(wardrobe_gap_analysis.get("gap_items") or [])),
+                "wardrobe_completeness_pct": wardrobe_completeness_pct,
+                "hybrid_fill_roles": hybrid_fill_roles,
             },
         )
+        if hybrid_used:
+            follow_up_suggestions = [
+                "Show me more catalog options to fill the gap",
+                "Save these catalog picks to my wardrobe",
+                str(catalog_upsell["cta"]),
+            ]
+        else:
+            follow_up_suggestions = [
+                "Show me more from my wardrobe",
+                "Show me catalog alternatives",
+                str(catalog_upsell["cta"]),
+            ]
         return {
             "conversation_id": conversation_id,
             "turn_id": turn_id,
-            "assistant_message": reasoning + " If you want, I can also show better catalog options for this occasion.",
+            "assistant_message": assistant_message,
             "response_type": "recommendation",
             "resolved_context": {
                 "request_summary": message.strip(),
                 "occasion": occasion,
-                "style_goal": "wardrobe_first",
+                "style_goal": answer_source,
                 "profile_confidence_pct": profile_confidence.analysis_confidence_pct,
             },
             "filters_applied": {},
             "outfits": [outfit_card.model_dump()],
-            "follow_up_suggestions": ["Show me more from my wardrobe", "Show me catalog alternatives", str(catalog_upsell["cta"])],
+            "follow_up_suggestions": follow_up_suggestions,
             "metadata": metadata,
         }
 
@@ -1710,16 +1824,24 @@ class AgenticOrchestrator:
             required_roles=["top", "bottom", "shoe"],
         )
         gap_items = [str(item).strip() for item in list(wardrobe_gap_analysis.get("gap_items") or []) if str(item).strip()]
+        occasion_label = occasion.replace('_', ' ') if occasion else 'this occasion'
         if wardrobe_items:
+            missing_clause = (
+                f" To make this work end-to-end you're still missing {', '.join(gap_items[:2])}."
+                if gap_items
+                else ""
+            )
             assistant_message = (
-                f"I can't build a complete {occasion.replace('_', ' ') if occasion else 'occasion'} outfit purely from your saved wardrobe yet."
-                + (f" You're still missing {', '.join(gap_items[:2])}." if gap_items else "")
-                + " If you want, I can show catalog options to fill those gaps."
+                f"Your saved wardrobe doesn't fully cover {occasion_label} yet."
+                + missing_clause
+                + " You can either: (1) let me show catalog picks to fill the gap, "
+                "(2) see hybrid looks that combine your wardrobe with a couple of catalog pieces, "
+                "or (3) save more wardrobe items and try again."
             )
         else:
             assistant_message = (
-                "I don't have enough saved wardrobe pieces yet to build this outfit from your wardrobe."
-                " Add a few staples first, or I can show catalog options for the occasion."
+                f"I don't have enough saved wardrobe pieces yet to build a {occasion_label} outfit from your wardrobe."
+                " You can either save a few staples first, or I can show catalog options now."
             )
         catalog_upsell = self._build_catalog_upsell(
             rationale="Your saved wardrobe does not fully cover this occasion yet.",
@@ -1791,7 +1913,12 @@ class AgenticOrchestrator:
             },
             "filters_applied": {},
             "outfits": [],
-            "follow_up_suggestions": ["Save wardrobe staples", str(catalog_upsell["cta"])],
+            "follow_up_suggestions": [
+                "Show me catalog picks to fill the gap",
+                "Show me hybrid wardrobe + catalog looks",
+                "Save more wardrobe staples",
+                str(catalog_upsell["cta"]),
+            ],
             "metadata": metadata,
         }
 
@@ -1957,6 +2084,7 @@ class AgenticOrchestrator:
             "conversation_memory": conversation_memory,
             "intent_classification": intent.model_dump(),
             "profile_confidence": profile_confidence.model_dump(),
+            "response_metadata": metadata,
             "handler": "pairing_request_wardrobe_first",
             "handler_payload": {
                 "answer_source": hybrid_answer_source,
@@ -2217,7 +2345,7 @@ class AgenticOrchestrator:
                 "conversation_memory": conversation_memory,
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-
+                "response_metadata": metadata,
                 "handler": "pairing_request_catalog_image",
                 "handler_payload": {
                     "answer_source": "catalog_image_pairing",
@@ -2758,7 +2886,7 @@ class AgenticOrchestrator:
                 "request_summary": message.strip(),
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-
+                "response_metadata": metadata,
                 "handler": "copilot_planner_direct",
                 "channel": channel,
             },
@@ -3161,7 +3289,7 @@ class AgenticOrchestrator:
                 "request_summary": message.strip(),
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-
+                "response_metadata": metadata,
                 "handler": Intent.EXPLANATION_REQUEST,
                 "channel": channel,
             },
@@ -3279,7 +3407,7 @@ class AgenticOrchestrator:
                     "request_summary": message.strip(),
                     "intent_classification": intent.model_dump(),
                     "profile_confidence": profile_confidence.model_dump(),
-    
+                    "response_metadata": metadata,
                     "handler": Intent.CAPSULE_OR_TRIP_PLANNING,
                     "channel": channel,
                 },
@@ -3345,16 +3473,53 @@ class AgenticOrchestrator:
                     items.append(shoes[(top_index + bottom_index) % len(shoes)])
                 add_candidate(items)
 
+        # Capsule/trip diversity at architect level: each new outfit should
+        # introduce different garment subtypes and color families from the
+        # outfits already selected, so a 5-day trip plan does not collapse
+        # into "navy shirt + chinos × 5".
         usage_count: Dict[str, int] = {}
+        used_subtypes: Dict[str, int] = {}
+        used_colors: Dict[str, int] = {}
+
+        def _norm(value: Any) -> str:
+            return self._normalize_text_token(value)
+
+        def _candidate_subtypes(items: List[Dict[str, Any]]) -> set[str]:
+            return {
+                _norm(item.get("garment_subtype") or item.get("garment_category"))
+                for item in items
+                if _norm(item.get("garment_subtype") or item.get("garment_category"))
+            }
+
+        def _candidate_colors(items: List[Dict[str, Any]]) -> set[str]:
+            return {
+                _norm(item.get("primary_color"))
+                for item in items
+                if _norm(item.get("primary_color"))
+            }
+
         selected_sets: List[List[Dict[str, Any]]] = []
         remaining_candidates = list(candidate_sets)
         while remaining_candidates and len(selected_sets) < min(target_outfit_count, len(candidate_sets)):
             best_index = 0
-            best_score = -999
+            best_score = -999.0
             for index, items in enumerate(remaining_candidates):
-                novelty = sum(max(0, 3 - usage_count.get(str(item.get("id") or item.get("product_id") or ""), 0)) for item in items)
+                novelty = sum(
+                    max(0, 3 - usage_count.get(str(item.get("id") or item.get("product_id") or ""), 0))
+                    for item in items
+                )
                 role_variety = len({role_of(item) for item in items})
-                score = novelty + role_variety
+                # Subtype diversity: penalize candidates whose subtypes already
+                # appear in selected outfits.
+                cand_subtypes = _candidate_subtypes(items)
+                subtype_overlap = sum(used_subtypes.get(s, 0) for s in cand_subtypes)
+                subtype_bonus = -1.5 * subtype_overlap + 1.0 * len(cand_subtypes - set(used_subtypes.keys()))
+                # Color family diversity: same idea for primary_color.
+                cand_colors = _candidate_colors(items)
+                color_overlap = sum(used_colors.get(c, 0) for c in cand_colors)
+                color_bonus = -1.0 * color_overlap + 0.75 * len(cand_colors - set(used_colors.keys()))
+
+                score = novelty + role_variety + subtype_bonus + color_bonus
                 if score > best_score:
                     best_score = score
                     best_index = index
@@ -3363,6 +3528,10 @@ class AgenticOrchestrator:
             for item in chosen:
                 item_id = str(item.get("id") or item.get("product_id") or "")
                 usage_count[item_id] = usage_count.get(item_id, 0) + 1
+            for subtype in _candidate_subtypes(chosen):
+                used_subtypes[subtype] = used_subtypes.get(subtype, 0) + 1
+            for color in _candidate_colors(chosen):
+                used_colors[color] = used_colors.get(color, 0) + 1
 
         for rank, items in enumerate(selected_sets, start=1):
             context_label = context_labels[rank - 1]
@@ -3528,7 +3697,7 @@ class AgenticOrchestrator:
                 "request_summary": message.strip(),
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-
+                "response_metadata": metadata,
                 "handler": Intent.CAPSULE_OR_TRIP_PLANNING,
                 "handler_payload": dict(metadata.get("capsule_plan") or {}),
                 "channel": channel,
@@ -3608,7 +3777,7 @@ class AgenticOrchestrator:
                 "gate_blocked": True,
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-
+                "response_metadata": metadata,
                 "channel": channel,
             },
         )
@@ -3703,7 +3872,95 @@ class AgenticOrchestrator:
                 _log.warning("Failed to load catalog inventory", exc_info=True)
                 self._catalog_inventory = []
 
+        # Local environment guardrail: if catalog data / embeddings are not
+        # loaded (e.g. running locally without a synced staging DB), the
+        # recommendation pipeline will silently produce zero results. Detect
+        # that state up front and return a clear, actionable message instead
+        # of running an empty pipeline. The wardrobe-first short-circuit above
+        # will already have returned by this point if the user has wardrobe
+        # items, so this only fires when we *need* the catalog and it isn't
+        # there.
+        if not self._catalog_inventory:
+            _log.error(
+                "Catalog/embeddings missing — pipeline cannot run. "
+                "Run catalog enrichment + embedding sync, or point at a "
+                "staging Supabase instance with seeded catalog data."
+            )
+            guardrail_message = (
+                "I can't put together catalog recommendations right now — the "
+                "catalog and embeddings aren't loaded in this environment. "
+                "Run the catalog enrichment + embedding sync, or switch to a "
+                "staging database with seeded catalog data, and try again."
+            )
+            self.repo.finalize_turn(
+                turn_id=turn_id,
+                assistant_message=guardrail_message,
+                resolved_context={
+                    "request_summary": message.strip(),
+                    "error": "catalog_unavailable",
+                    "stage": "planner_pipeline_preflight",
+                    "channel": channel,
+                },
+            )
+            emit("catalog_search", "blocked")
+            return {
+                "conversation_id": conversation_id,
+                "turn_id": turn_id,
+                "assistant_message": guardrail_message,
+                "response_type": "error",
+                "resolved_context": {
+                    "request_summary": message.strip(),
+                    "error": "catalog_unavailable",
+                },
+                "filters_applied": hard_filters,
+                "outfits": [],
+                "follow_up_suggestions": [],
+                "metadata": {
+                    "error": True,
+                    "error_stage": "catalog_unavailable",
+                    "guardrail": "local_environment_catalog_missing",
+                    "primary_intent": intent.primary_intent,
+                },
+            }
+
         previous_recs = previous_context.get("last_recommendations")
+
+        # Load disliked product_ids from feedback_events so retrieval can
+        # suppress items the user already rejected. Merge with anything we
+        # persisted in session_context for cross-turn continuity (the
+        # session_context copy is what survives between turns even if the
+        # feedback_events query is slow or fails).
+        disliked_from_session = [
+            str(pid).strip()
+            for pid in list(previous_context.get("disliked_product_ids") or [])
+            if str(pid or "").strip()
+        ]
+        try:
+            internal_user_id = str(self.repo.get_or_create_user(external_user_id).get("id") or external_user_id)
+        except Exception:
+            internal_user_id = external_user_id
+        try:
+            raw_disliked = self.repo.list_disliked_product_ids_for_user(
+                user_id=internal_user_id,
+                conversation_id=conversation_id,
+                limit=200,
+            )
+            disliked_from_db = list(raw_disliked) if isinstance(raw_disliked, (list, tuple)) else []
+        except Exception:
+            _log.warning("Failed to load disliked product_ids — proceeding without exclusion", exc_info=True)
+            disliked_from_db = []
+        disliked_product_ids: List[str] = []
+        seen_disliked: set[str] = set()
+        for pid in (disliked_from_db + disliked_from_session):
+            if pid and pid not in seen_disliked:
+                seen_disliked.add(pid)
+                disliked_product_ids.append(pid)
+        if disliked_product_ids:
+            _log.info(
+                "Loaded %d disliked product_ids for suppression (db=%d, session=%d)",
+                len(disliked_product_ids), len(disliked_from_db), len(disliked_from_session),
+            )
+
         combined_context = CombinedContext(
             user=user_context,
             live=initial_live_context,
@@ -3712,6 +3969,7 @@ class AgenticOrchestrator:
             conversation_memory=conversation_memory,
             conversation_history=conversation_history,
             catalog_inventory=self._catalog_inventory or None,
+            disliked_product_ids=disliked_product_ids,
         )
 
         richer_refinement_path = self._message_requires_richer_refinement_path(
@@ -3860,109 +4118,162 @@ class AgenticOrchestrator:
             _log.info("Stripped %s queries from plan — anchor fills this role", anchor_role)
 
         # Stages 4-8: Search → Assemble → Evaluate → Format → TryOn
-        emit("catalog_search", "started")
-        t0 = time.monotonic()
-        retrieved_sets = self.catalog_search_agent.search(plan, combined_context)
-        search_ms = int((time.monotonic() - t0) * 1000)
-        for rs in retrieved_sets:
+        # Wrap the entire mid-pipeline in a guard so any unhandled failure
+        # surfaces as a graceful user-facing message instead of an empty turn.
+        try:
+            emit("catalog_search", "started")
+            t0 = time.monotonic()
+            retrieved_sets = self.catalog_search_agent.search(plan, combined_context)
+            search_ms = int((time.monotonic() - t0) * 1000)
+            for rs in retrieved_sets:
+                self.repo.log_tool_trace(
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    tool_name="catalog_search_agent",
+                    input_json={"direction_id": rs.direction_id, "query_id": rs.query_id, "role": rs.role, "applied_filters": rs.applied_filters},
+                    output_json={"result_count": len(rs.products)},
+                    latency_ms=search_ms,
+                )
+            emit("catalog_search", "completed", ctx={
+                "product_count": sum(len(rs.products) for rs in retrieved_sets),
+                "set_count": len(retrieved_sets),
+            })
+
+            # Inject anchor as the sole item for its role
+            if anchor and anchor_role:
+                anchor_product = RetrievedProduct(
+                    product_id=str(anchor.get("id") or anchor.get("product_id") or "anchor_wardrobe"),
+                    similarity=1.0,
+                    metadata={},
+                    enriched_data=anchor,
+                )
+                retrieved_sets.append(
+                    RetrievedSet(
+                        direction_id=plan.directions[0].direction_id if plan.directions else "anchor",
+                        query_id="anchor",
+                        role=anchor_role,
+                        products=[anchor_product],
+                        applied_filters={"source": "wardrobe_anchor"},
+                    )
+                )
+                _log.info("Injected anchor as sole %s — assembler will pair with %d complementary items",
+                           anchor_role, sum(len(rs.products) for rs in retrieved_sets if rs.role != anchor_role))
+
+            emit("outfit_assembly", "started")
+            candidates = self.outfit_assembler.assemble(retrieved_sets, plan, combined_context)
+            emit("outfit_assembly", "completed", ctx={"candidate_count": len(candidates)})
+
+            emit("outfit_evaluation", "started")
+            t0 = time.monotonic()
+            evaluated = self.outfit_evaluator.evaluate(candidates, combined_context, plan)
+            evaluator_ms = int((time.monotonic() - t0) * 1000)
+            self.repo.log_model_call(
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                service="agentic_application",
+                call_type="outfit_evaluator",
+                model="gpt-5.4",
+                request_json={"candidate_count": len(candidates)},
+                response_json={"evaluation_count": len(evaluated)},
+                reasoning_notes=[],
+                latency_ms=evaluator_ms,
+            )
+            emit("outfit_evaluation", "completed")
+
+            emit("response_formatting", "started")
+            response = self.response_formatter.format(
+                evaluated,
+                combined_context,
+                plan,
+                candidates,
+                planner_message=plan_result.assistant_message or None,
+                planner_suggestions=plan_result.follow_up_suggestions[:5] if plan_result.follow_up_suggestions else None,
+            )
+
+            restricted_item_exclusion_count = int(response.metadata.get("restricted_item_exclusion_count") or 0)
+            recommendation_confidence = self._build_recommendation_confidence(
+                answer_mode="catalog_pipeline",
+                profile_confidence=profile_confidence,
+                intent=intent,
+                evaluated=evaluated,
+                retrieved_sets=retrieved_sets,
+                candidate_count=len(candidates),
+                response_outfit_count=len(response.outfits),
+                restricted_item_exclusion_count=restricted_item_exclusion_count,
+                wardrobe_items_used=0,
+            )
+            answer_components = dict(response.metadata.get("answer_components") or {})
+            derived_answer_source = self._derive_answer_source_from_components(
+                answer_components,
+                preferred_source=source_preference,
+            )
+            response.metadata.update(
+                self._build_response_metadata(
+                    channel=channel,
+                    intent=intent,
+                    profile_confidence=profile_confidence,
+                    extra={
+                        "recommendation_confidence": recommendation_confidence.model_dump(),
+                        "answer_source": derived_answer_source,
+                        "source_selection": self._build_source_selection(
+                            preferred_source=source_preference,
+                            fulfilled_source=str(answer_components.get("primary_source") or ""),
+                        ),
+                    },
+                )
+            )
+            response.metadata["turn_id"] = turn_id
+            emit("response_formatting", "completed", ctx={"outfit_count": min(len(evaluated), 3)})
+        except Exception as exc:
+            stage_ms = int((time.monotonic() - t0) * 1000)
+            _log.error("Pipeline stage failed between architect and formatter: %s", exc, exc_info=True)
             self.repo.log_tool_trace(
                 conversation_id=conversation_id,
                 turn_id=turn_id,
-                tool_name="catalog_search_agent",
-                input_json={"direction_id": rs.direction_id, "query_id": rs.query_id, "role": rs.role, "applied_filters": rs.applied_filters},
-                output_json={"result_count": len(rs.products)},
-                latency_ms=search_ms,
+                tool_name="planner_pipeline",
+                input_json={"stage": "search_to_format"},
+                output_json={"error": str(exc)},
+                latency_ms=stage_ms,
             )
-        emit("catalog_search", "completed", ctx={
-            "product_count": sum(len(rs.products) for rs in retrieved_sets),
-            "set_count": len(retrieved_sets),
-        })
-
-        # Inject anchor as the sole item for its role
-        if anchor and anchor_role:
-            anchor_product = RetrievedProduct(
-                product_id=str(anchor.get("id") or anchor.get("product_id") or "anchor_wardrobe"),
-                similarity=1.0,
-                metadata={},
-                enriched_data=anchor,
+            emit("response_formatting", "error")
+            fallback_message = (
+                "I wasn't able to put together recommendations this time — "
+                "try rephrasing or adjusting your request."
             )
-            retrieved_sets.append(
-                RetrievedSet(
-                    direction_id=plan.directions[0].direction_id if plan.directions else "anchor",
-                    query_id="anchor",
-                    role=anchor_role,
-                    products=[anchor_product],
-                    applied_filters={"source": "wardrobe_anchor"},
-                )
-            )
-            _log.info("Injected anchor as sole %s — assembler will pair with %d complementary items",
-                       anchor_role, sum(len(rs.products) for rs in retrieved_sets if rs.role != anchor_role))
-
-        emit("outfit_assembly", "started")
-        candidates = self.outfit_assembler.assemble(retrieved_sets, plan, combined_context)
-        emit("outfit_assembly", "completed", ctx={"candidate_count": len(candidates)})
-
-        emit("outfit_evaluation", "started")
-        t0 = time.monotonic()
-        evaluated = self.outfit_evaluator.evaluate(candidates, combined_context, plan)
-        evaluator_ms = int((time.monotonic() - t0) * 1000)
-        self.repo.log_model_call(
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            service="agentic_application",
-            call_type="outfit_evaluator",
-            model="gpt-5.4",
-            request_json={"candidate_count": len(candidates)},
-            response_json={"evaluation_count": len(evaluated)},
-            reasoning_notes=[],
-            latency_ms=evaluator_ms,
-        )
-        emit("outfit_evaluation", "completed")
-
-        emit("response_formatting", "started")
-        response = self.response_formatter.format(
-            evaluated,
-            combined_context,
-            plan,
-            candidates,
-            planner_message=plan_result.assistant_message or None,
-            planner_suggestions=plan_result.follow_up_suggestions[:5] if plan_result.follow_up_suggestions else None,
-        )
-
-        restricted_item_exclusion_count = int(response.metadata.get("restricted_item_exclusion_count") or 0)
-        recommendation_confidence = self._build_recommendation_confidence(
-            answer_mode="catalog_pipeline",
-            profile_confidence=profile_confidence,
-            intent=intent,
-            evaluated=evaluated,
-            retrieved_sets=retrieved_sets,
-            candidate_count=len(candidates),
-            response_outfit_count=len(response.outfits),
-            restricted_item_exclusion_count=restricted_item_exclusion_count,
-            wardrobe_items_used=0,
-        )
-        answer_components = dict(response.metadata.get("answer_components") or {})
-        derived_answer_source = self._derive_answer_source_from_components(
-            answer_components,
-            preferred_source=source_preference,
-        )
-        response.metadata.update(
-            self._build_response_metadata(
-                channel=channel,
-                intent=intent,
-                profile_confidence=profile_confidence,
-                extra={
-                    "recommendation_confidence": recommendation_confidence.model_dump(),
-                    "answer_source": derived_answer_source,
-                    "source_selection": self._build_source_selection(
-                        preferred_source=source_preference,
-                        fulfilled_source=str(answer_components.get("primary_source") or ""),
-                    ),
+            self.repo.finalize_turn(
+                turn_id=turn_id,
+                assistant_message=fallback_message,
+                resolved_context={
+                    "error": str(exc),
+                    "request_summary": message.strip(),
+                    "stage": "planner_pipeline",
                 },
             )
-        )
-        response.metadata["turn_id"] = turn_id
-        emit("response_formatting", "completed", ctx={"outfit_count": min(len(evaluated), 3)})
+            return {
+                "conversation_id": conversation_id,
+                "turn_id": turn_id,
+                "assistant_message": fallback_message,
+                "response_type": "error",
+                "resolved_context": {"request_summary": message.strip()},
+                "filters_applied": hard_filters,
+                "outfits": [],
+                "follow_up_suggestions": [],
+                "metadata": {"error": True, "error_stage": "planner_pipeline"},
+            }
+
+        # Post-pipeline guard: an empty assistant_message means a downstream
+        # stage silently produced nothing — surface a graceful fallback so the
+        # user never sees a blank turn.
+        if not str(getattr(response, "message", "") or "").strip():
+            _log.warning(
+                "Empty assistant_message after pipeline (turn_id=%s, outfits=%d) — using fallback copy",
+                turn_id,
+                len(response.outfits),
+            )
+            response.message = (
+                "I wasn't able to put together recommendations this time — "
+                "try rephrasing or adjusting your request."
+            )
 
         emit("virtual_tryon", "started")
         self._attach_tryon_images(response.outfits, external_user_id, conversation_id=conversation_id, turn_id=turn_id)
@@ -4021,7 +4332,7 @@ class AgenticOrchestrator:
                 "last_user_message": message,
                 "last_channel": channel,
                 "last_intent": plan_result.intent,
-
+                "disliked_product_ids": disliked_product_ids,
                 "consecutive_gate_blocks": 0,
             },
         )
@@ -4685,7 +4996,7 @@ class AgenticOrchestrator:
                 "style_goal": "shopping_decision",
                 "intent_classification": intent.model_dump(),
                 "profile_confidence": profile_confidence.model_dump(),
-
+                "response_metadata": metadata,
                 "handler": Intent.SHOPPING_DECISION,
                 "handler_payload": handler_payload,
                 "channel": channel,
@@ -4810,6 +5121,7 @@ class AgenticOrchestrator:
             resolved_context={
                 "request_summary": message.strip(),
                 "intent_classification": intent.model_dump(),
+                "response_metadata": metadata,
                 "handler": "copilot_planner_tryon",
                 "handler_payload": handler_payload,
                 "channel": channel,
@@ -4878,6 +5190,7 @@ class AgenticOrchestrator:
             resolved_context={
                 "request_summary": message.strip(),
                 "intent_classification": intent.model_dump(),
+                "response_metadata": metadata,
                 "handler": "copilot_planner_wardrobe_save",
                 "saved_item_id": str((saved_item or {}).get("id") or ""),
                 "channel": channel,
@@ -4968,6 +5281,7 @@ class AgenticOrchestrator:
             resolved_context={
                 "request_summary": message.strip(),
                 "intent_classification": intent.model_dump(),
+                "response_metadata": metadata,
                 "handler": "copilot_planner_feedback",
                 "handler_payload": handler_payload,
                 "feedback_summary": feedback_summary,

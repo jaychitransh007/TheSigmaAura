@@ -140,6 +140,11 @@ _TEMP_COMPAT: Dict[str, set] = {
 
 MAX_PAIRED_CANDIDATES = 30
 
+# Cross-outfit diversity cap: a single product_id may appear in at most this
+# many of the assembled candidates. Prevents one top-scoring item from filling
+# every recommendation slot when the user explicitly wants variety.
+MAX_PRODUCT_REPEAT_PER_RUN = 2
+
 
 def _get_attr(product: RetrievedProduct, key: str) -> str:
     """Get a normalized attribute from enriched data or metadata."""
@@ -221,7 +226,59 @@ class OutfitAssembler:
                     self._assemble_paired(direction.direction_id, direction_sets, combined_context)
                 )
 
+        candidates = self._enforce_cross_outfit_diversity(candidates)
         return candidates
+
+    @staticmethod
+    def _enforce_cross_outfit_diversity(
+        candidates: List[OutfitCandidate],
+    ) -> List[OutfitCandidate]:
+        """Cap product_id repetition across the candidate list.
+
+        Walks candidates in score order and accepts each only if no item in it
+        has already appeared in MAX_PRODUCT_REPEAT_PER_RUN previously-accepted
+        candidates. Rejected candidates are appended at the tail in their
+        original order so the assembler still returns at least the same count
+        when no diverse alternative exists.
+        """
+        if not candidates:
+            return candidates
+        ordered = sorted(
+            candidates,
+            key=lambda c: float(getattr(c, "assembly_score", 0.0) or 0.0),
+            reverse=True,
+        )
+        usage: Dict[str, int] = {}
+        accepted: List[OutfitCandidate] = []
+        deferred: List[OutfitCandidate] = []
+        for candidate in ordered:
+            item_ids = [
+                str(item.get("product_id") or "").strip()
+                for item in (candidate.items or [])
+            ]
+            item_ids = [pid for pid in item_ids if pid]
+            if any(usage.get(pid, 0) >= MAX_PRODUCT_REPEAT_PER_RUN for pid in item_ids):
+                deferred.append(candidate)
+                continue
+            for pid in item_ids:
+                usage[pid] = usage.get(pid, 0) + 1
+            note = f"diversity: accepted (product usage so far: {{', '.join(item_ids)}})"
+            try:
+                candidate.assembly_notes = list(candidate.assembly_notes or []) + [
+                    "diversity_pass: accepted under product-repetition cap "
+                    f"({MAX_PRODUCT_REPEAT_PER_RUN}/run)"
+                ]
+            except Exception:  # noqa: BLE001 — defensive on pydantic model attrs
+                pass
+            accepted.append(candidate)
+        for candidate in deferred:
+            try:
+                candidate.assembly_notes = list(candidate.assembly_notes or []) + [
+                    "diversity_pass: deferred — product appeared too many times"
+                ]
+            except Exception:  # noqa: BLE001
+                pass
+        return accepted + deferred
 
     def _assemble_complete(
         self, direction_id: str, sets: List[RetrievedSet], combined_context: CombinedContext | None = None,

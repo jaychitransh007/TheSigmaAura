@@ -268,7 +268,12 @@ class ResponseFormatter:
             )
 
         message = planner_message if planner_message else self._build_message(combined_context, outfits, plan)
-        suggestions = planner_suggestions if planner_suggestions else self._build_follow_up_suggestions(combined_context, plan)
+        if planner_suggestions:
+            suggestions = planner_suggestions
+            follow_up_groups: List[Dict[str, Any]] = []
+        else:
+            follow_up_groups = self._build_follow_up_groups(combined_context, plan)
+            suggestions = self._flatten_follow_up_groups(follow_up_groups)
 
         return RecommendationResponse(
             success=True,
@@ -282,8 +287,21 @@ class ResponseFormatter:
                 "outfit_count": len(outfits),
                 "restricted_item_exclusion_count": blocked_item_count,
                 "answer_components": _summarize_answer_components(outfits),
+                "follow_up_groups": follow_up_groups,
             },
         )
+
+    @staticmethod
+    def _flatten_follow_up_groups(groups: List[Dict[str, Any]]) -> List[str]:
+        """Stable, deduped flatten of grouped suggestions, capped at 5."""
+        out: List[str] = []
+        for group in groups:
+            for s in group.get("suggestions") or []:
+                if s and s not in out:
+                    out.append(s)
+                if len(out) >= 5:
+                    return out
+        return out[:5]
 
     def _build_message(
         self,
@@ -324,43 +342,85 @@ class ResponseFormatter:
 
         return ", ".join(parts) + "."
 
+    # Stable bucket labels — UI groups quick-replies under these. Keep in sync
+    # with the renderer in modules/platform_core/.../ui.py.
+    _BUCKET_IMPROVE = "Improve It"
+    _BUCKET_ALTERNATIVES = "Show Alternatives"
+    _BUCKET_EXPLAIN = "Explain Why"
+    _BUCKET_SHOP_GAP = "Shop The Gap"
+    _BUCKET_SAVE = "Save For Later"
+
     def _build_follow_up_suggestions(
         self, ctx: CombinedContext, plan: RecommendationPlan
     ) -> List[str]:
-        intent = (ctx.live.followup_intent or "").strip()
+        groups = self._build_follow_up_groups(ctx, plan)
+        flat: List[str] = []
+        for group in groups:
+            for s in group["suggestions"]:
+                if s not in flat:
+                    flat.append(s)
+                if len(flat) >= 5:
+                    return flat
+        return flat[:5]
 
-        # Intent-specific chips take priority
+    def _build_follow_up_groups(
+        self, ctx: CombinedContext, plan: RecommendationPlan
+    ) -> List[Dict[str, Any]]:
+        """Return follow-up suggestions grouped by intent bucket.
+
+        Each entry is `{"label": str, "bucket": str, "suggestions": [str]}`.
+        Consumers (UI, response formatter, tests) read structured buckets
+        instead of substring-matching the raw suggestion text.
+        """
+        intent = (ctx.live.followup_intent or "").strip()
+        improve: List[str] = []
+        alternatives: List[str] = []
+        shop_gap: List[str] = []
+
         if intent == FollowUpIntent.CHANGE_COLOR:
-            return [
+            improve.extend(["Show me bolder options"])
+            alternatives.extend([
                 "Show me something similar to these",
                 "Try a completely different style",
-                "Show me bolder options",
                 "Show me more options",
                 "Something completely different",
-            ][:5]
-        if intent == FollowUpIntent.SIMILAR_TO_PREVIOUS:
-            return [
+            ])
+        elif intent == FollowUpIntent.SIMILAR_TO_PREVIOUS:
+            improve.extend(["Show me something bolder"])
+            alternatives.extend([
                 "Show me a different color direction",
-                "Show me something bolder",
                 "Show me more options",
                 "Something completely different",
-                "Show me top and bottom pairings instead" if plan.plan_type != "paired_only" else "Show me complete outfit alternatives",
-            ][:5]
+                (
+                    "Show me top and bottom pairings instead"
+                    if plan.plan_type != "paired_only"
+                    else "Show me complete outfit alternatives"
+                ),
+            ])
+        else:
+            if ctx.live.formality_hint in {"formal", "semi_formal", "ultra_formal"}:
+                improve.append("Show me something less formal")
+            elif ctx.live.formality_hint in {"casual", "smart_casual"}:
+                improve.append("Show me something more formal")
+            improve.append("Show me bolder options")
 
-        suggestions: List[str] = []
+            if plan.plan_type == "complete_only":
+                alternatives.append("Show me top and bottom pairings instead")
+            elif plan.plan_type == "paired_only":
+                alternatives.append("Show me complete outfit alternatives")
+            alternatives.append("Show me more options")
+            alternatives.append("Something completely different")
 
-        if ctx.live.formality_hint in {"formal", "semi_formal", "ultra_formal"}:
-            suggestions.append("Show me something less formal")
-        elif ctx.live.formality_hint in {"casual", "smart_casual"}:
-            suggestions.append("Show me something more formal")
+        # Catalog upsell only when wardrobe-first or hybrid is dominant
+        components = _summarize_answer_components([])  # placeholder; outfits passed elsewhere
+        if "wardrobe" in str(components.get("primary_source") or ""):
+            shop_gap.append("Show me catalog options to fill the gap")
 
-        if plan.plan_type == "complete_only":
-            suggestions.append("Show me top and bottom pairings instead")
-        elif plan.plan_type == "paired_only":
-            suggestions.append("Show me complete outfit alternatives")
-
-        suggestions.append("Show me bolder options")
-        suggestions.append("Show me more options")
-        suggestions.append("Something completely different")
-
-        return suggestions[:5]
+        groups: List[Dict[str, Any]] = []
+        if improve:
+            groups.append({"bucket": "improve", "label": self._BUCKET_IMPROVE, "suggestions": improve})
+        if alternatives:
+            groups.append({"bucket": "alternatives", "label": self._BUCKET_ALTERNATIVES, "suggestions": alternatives})
+        if shop_gap:
+            groups.append({"bucket": "shop_gap", "label": self._BUCKET_SHOP_GAP, "suggestions": shop_gap})
+        return groups

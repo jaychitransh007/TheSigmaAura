@@ -1,6 +1,6 @@
 # Design System And Experience Principles
 
-Last updated: April 5, 2026
+Last updated: April 8, 2026
 
 ## Purpose
 
@@ -21,19 +21,24 @@ The design system is now applied uniformly across all surfaces: onboarding, prof
 Key UI patterns implemented:
 - **Unified profile page**: Single page with inline edit toggle — view mode shows read-only fields, edit mode switches to inputs/selects in place. Includes style code card and personalized color palette card (base/accent/avoid chips).
 - **Chat composer**: `+` button opens a popover with "Upload image" (file picker) and "Select from wardrobe" (modal with wardrobe grid). Supports drag-drop and paste.
+- **Chat welcome screen with progressive disclosure**: The chat homepage leads with **one dominant primary CTA** (`Dress me for tonight`) and tucks the four secondary prompts behind a `More ways to style` toggle. Accessible `aria-expanded` and `prefers-reduced-motion` support.
 - **Chat management**: Conversation sidebar with hover-reveal rename (inline edit) and delete (archive with confirmation) actions per history item. Title column on conversations table.
 - **Wardrobe add-item modal**: Photo upload with preview, auto-enrichment (46 attributes via vision API).
 - **Wardrobe edit modal**: Full metadata edit form (title, description, category, subtype, colors, pattern, formality, occasion, brand, notes) with image preview. Calls PATCH endpoint.
 - **Wardrobe delete**: Per-card delete button with confirmation dialog. Soft-deletes via is_active=false.
-- **Wardrobe filters**: Search bar (title/description/brand/category), category chips (All, Tops, Bottoms, Shoes, Dresses, Outerwear, Accessories, Occasion-ready), color filter row (11 colors), and localStorage persistence across page loads.
+- **Wardrobe filters**: Search bar (title/description/brand/category), category chips (All, Tops, Bottoms, Shoes, Dresses, Outerwear, Accessories, Occasion-ready), color filter row (11 colors), and localStorage persistence across page loads. The `Occasion-ready` chip now matches against the enrichment metadata tag set (`wedding`, `cocktail_party`, `office`, `semi_formal` + formality `smart_casual` and above) instead of "any non-empty `occasion_fit`".
 - **Outfit PDP card**: Full-width header (title + like/dislike icons + stylist summary) above 3-column body (thumbnails | hero | products + radars). Products show title / Rs. price / Buy Now + wishlist heart — or "From your wardrobe" for owned items. Dual radar charts: style archetypes (purple) + evaluation criteria × analysis_confidence_pct (burgundy). Virtual try-on images in 2:3 aspect ratio.
+- **Follow-up suggestions as labelled groups**: Quick-reply chips are rendered under bucket headers (`Improve It`, `Show Alternatives`, `Shop The Gap`), driven by the `follow_up_groups` field on response metadata emitted by `response_formatter.py`. The UI prefers the structured payload and only falls back to substring bucketing if it's absent.
+- **Wardrobe-first copy**: Wardrobe-first occasion responses name the selected pieces and explain *why* they fit ("For office, your Navy Blazer and Cream Trousers from your saved wardrobe is the strongest fit…"). The stock "Built from your saved wardrobe for X" line has been removed. Hybrid responses name both the wardrobe anchors *and* the catalog gap-fillers explicitly.
 - **Results grid**: 2-column card grid with outfit preview thumbnails, user message, occasion chips, and relative timestamps.
 
 Related docs:
-- [`docs/PRODUCT.md`](PRODUCT.md)
-- [`docs/APPLICATION_SPECS.md`](APPLICATION_SPECS.md)
-- [`docs/CURRENT_STATE.md`](CURRENT_STATE.md)
-- [`knowledge/workflow_reference.md`](../knowledge/workflow_reference.md) — step-by-step execution flows for all 12 intents
+- [`docs/PRODUCT.md`](PRODUCT.md) — product definition and user journey
+- [`docs/CURRENT_STATE.md`](CURRENT_STATE.md) — **source of truth** for implementation state
+- [`docs/RELEASE_READINESS.md`](RELEASE_READINESS.md) — 4-gate release checklist
+- [`docs/DESIGN_SYSTEM_VALIDATION.md`](DESIGN_SYSTEM_VALIDATION.md) — manual QA checklist a designer must complete before the design gate goes green
+- [`docs/APPLICATION_SPECS.md`](APPLICATION_SPECS.md) — runtime contract (⚠️ *partially deprecated*)
+- [`docs/WORKFLOW_REFERENCE.md`](WORKFLOW_REFERENCE.md) — human-facing per-intent execution flows (not loaded at runtime)
 
 ## Product Design Goal
 

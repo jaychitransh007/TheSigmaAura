@@ -44,9 +44,14 @@ class CatalogSearchAgent:
         """Execute retrieval for every QuerySpec across all directions."""
         results: List[RetrievedSet] = []
         relaxed_keys = {str(key or "").strip() for key in relaxed_filter_keys}
+        disliked_ids: set[str] = {
+            str(pid).strip()
+            for pid in list(getattr(combined_context, "disliked_product_ids", []) or [])
+            if str(pid or "").strip()
+        }
         _log.info(
-            "CatalogSearch: starting search for %d direction(s), retrieval_count=%d",
-            len(plan.directions), plan.retrieval_count,
+            "CatalogSearch: starting search for %d direction(s), retrieval_count=%d, disliked_excluded=%d",
+            len(plan.directions), plan.retrieval_count, len(disliked_ids),
         )
         for direction in plan.directions:
             for query in direction.queries:
@@ -122,21 +127,30 @@ class CatalogSearchAgent:
                 t2 = time.monotonic()
                 products = self._hydrate_matches(matches)
                 hydrate_ms = int((time.monotonic() - t2) * 1000)
+                pre_dislike = len(products)
+                if disliked_ids:
+                    products = [p for p in products if str(p.product_id or "") not in disliked_ids]
+                disliked_excluded = pre_dislike - len(products)
                 _log.info(
-                    "CatalogSearch: hydrated %d → %d products in %dms (blocked %d by restricted policy)",
-                    len(matches), len(products), hydrate_ms, len(matches) - len(products),
+                    "CatalogSearch: hydrated %d → %d products in %dms (blocked %d by restricted policy, excluded %d disliked)",
+                    len(matches), len(products), hydrate_ms,
+                    len(matches) - pre_dislike, disliked_excluded,
                 )
 
+                applied_filters_meta = {
+                    **filters,
+                    "restricted_category_policy": "excluded",
+                }
+                if disliked_ids:
+                    applied_filters_meta["disliked_product_policy"] = "excluded"
+                    applied_filters_meta["disliked_excluded_count"] = str(disliked_excluded)
                 results.append(
                     RetrievedSet(
                         direction_id=direction.direction_id,
                         query_id=query.query_id,
                         role=query.role,
                         products=products,
-                        applied_filters={
-                            **filters,
-                            "restricted_category_policy": "excluded",
-                        },
+                        applied_filters=applied_filters_meta,
                     )
                 )
         _log.info(

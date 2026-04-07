@@ -206,6 +206,97 @@ class ConversationRepository:
             payload["outfit_rank"] = outfit_rank
         return self.client.insert_one("feedback_events", payload)
 
+    def list_disliked_product_ids_for_user(
+        self,
+        user_id: str,
+        *,
+        conversation_id: Optional[str] = None,
+        limit: Optional[int] = 100,
+    ) -> List[str]:
+        """Return product_ids the user has disliked, newest first.
+
+        Used at turn start to suppress previously disliked items from the
+        retrieval/assembly pipeline so the same product does not keep showing
+        up after a user has rejected it.
+        """
+        filters: Dict[str, str] = {
+            "user_id": f"eq.{user_id}",
+            "event_type": "eq.dislike",
+        }
+        if conversation_id:
+            filters["conversation_id"] = f"eq.{conversation_id}"
+        try:
+            rows = self.client.select_many(
+                "feedback_events",
+                filters=filters,
+                order="created_at.desc",
+                limit=limit,
+            )
+        except Exception:
+            return []
+        seen: set[str] = set()
+        result: List[str] = []
+        for row in rows or []:
+            pid = str(row.get("garment_id") or "").strip()
+            if pid and pid not in seen:
+                seen.add(pid)
+                result.append(pid)
+        return result
+
+    # -- saved_looks ---------------------------------------------------------
+
+    def create_saved_look(
+        self,
+        *,
+        user_id: str,
+        conversation_id: Optional[str] = None,
+        turn_id: Optional[str] = None,
+        outfit_rank: int = 1,
+        title: str = "",
+        item_ids: Optional[List[str]] = None,
+        snapshot_json: Optional[Dict[str, Any]] = None,
+        notes: str = "",
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "user_id": user_id,
+            "outfit_rank": int(outfit_rank or 1),
+            "title": title or "",
+            "item_ids": list(item_ids or []),
+            "snapshot_json": snapshot_json or {},
+            "notes": notes or "",
+            "is_active": True,
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        }
+        if conversation_id:
+            payload["conversation_id"] = conversation_id
+        if turn_id:
+            payload["turn_id"] = turn_id
+        return self.client.insert_one("saved_looks", payload)
+
+    def list_saved_looks_for_user(
+        self,
+        user_id: str,
+        *,
+        limit: Optional[int] = 50,
+    ) -> List[Dict[str, Any]]:
+        return self.client.select_many(
+            "saved_looks",
+            filters={
+                "user_id": f"eq.{user_id}",
+                "is_active": "eq.true",
+            },
+            order="created_at.desc",
+            limit=limit,
+        )
+
+    def archive_saved_look(self, saved_look_id: str) -> Optional[Dict[str, Any]]:
+        return self.client.update_one(
+            "saved_looks",
+            filters={"id": f"eq.{saved_look_id}"},
+            patch={"is_active": False, "updated_at": _now_iso()},
+        )
+
     # -- catalog_interaction_history ----------------------------------------
 
     def create_catalog_interaction(

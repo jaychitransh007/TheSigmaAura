@@ -56,22 +56,28 @@ python3 -m pytest tests/ -v
 
 ## Project Stats
 
-- 35 Supabase migrations
-- 264 tests
+- 36 Supabase migrations
+- 268 tests (92 agentic + 38 qna + 138 other)
 - 12 intent types, 9 action types, 7 follow-up types (StrEnum registry)
 - 50+ catalog enrichment attributes
 - 46 wardrobe enrichment attributes
 
 ## Documentation
 
+**Source of truth:** `docs/CURRENT_STATE.md`. When any doc below disagrees
+with it, `CURRENT_STATE.md` wins.
+
 | Document | Purpose |
 |----------|---------|
+| [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) | **Source of truth.** Project state, gap analysis, execution checklist, parked architectural decisions |
 | [`docs/PRODUCT.md`](docs/PRODUCT.md) | Product definition, personas, user journey, stories |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | Design system, visual language, UX patterns, component rules |
-| [`docs/APPLICATION_SPECS.md`](docs/APPLICATION_SPECS.md) | Implementation spec, phase plan, build priorities |
-| [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) | Project state, gap analysis, execution checklist |
-| [`docs/INTENT_COPILOT_ARCHITECTURE.md`](docs/INTENT_COPILOT_ARCHITECTURE.md) | Target system architecture, component boundaries |
-| [`knowledge/workflow_reference.md`](knowledge/workflow_reference.md) | Step-by-step execution flows for all 12 intents |
+| [`docs/RELEASE_READINESS.md`](docs/RELEASE_READINESS.md) | 4-gate release checklist (functional / data / observability / product-UX) |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | 8 dashboard panels + SQL queries for the first-50 rollout |
+| [`docs/DESIGN_SYSTEM_VALIDATION.md`](docs/DESIGN_SYSTEM_VALIDATION.md) | Manual design QA checklist (9 device journeys + tone audit) |
+| [`docs/APPLICATION_SPECS.md`](docs/APPLICATION_SPECS.md) | Implementation spec (⚠️ *partially deprecated* — see banner at top) |
+| [`docs/INTENT_COPILOT_ARCHITECTURE.md`](docs/INTENT_COPILOT_ARCHITECTURE.md) | Target system architecture (⚠️ *pre-planner-inlining era* — some sections stale) |
+| [`docs/WORKFLOW_REFERENCE.md`](docs/WORKFLOW_REFERENCE.md) | Human-facing reference for per-intent execution flows (not loaded at runtime) |
 | [`docs/fashion-ai-architecture.html`](docs/fashion-ai-architecture.html) | Visual architecture diagram (open in browser) |
 
 ## Module Structure

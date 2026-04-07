@@ -15,7 +15,6 @@ ROOT = _discover_repo_root()
 for p in (
     ROOT,
     ROOT / "modules" / "catalog" / "src",
-    ROOT / "modules" / "style_engine" / "src",
     ROOT / "modules" / "user_profiler" / "src",
 ):
     sp = str(p)

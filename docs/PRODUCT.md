@@ -1,6 +1,15 @@
 # Product Overview
 
-Last updated: April 5, 2026
+Last updated: April 8, 2026
+
+> **What is live today vs. aspirational:** This document describes the
+> **target** product, including personas and surfaces that are not yet
+> built. The currently live surfaces are **web** (onboarding, chat,
+> wardrobe, profile, admin catalog) only. WhatsApp inbound is *not* in
+> the live system — the runtime was deliberately removed and is being
+> rebuilt as a separate workstream. Treat every mention of WhatsApp
+> below as roadmap, not production. For the authoritative "what
+> actually works right now" view, see `docs/CURRENT_STATE.md`.
 
 ## Purpose
 
@@ -351,7 +360,11 @@ The product succeeds in this phase if users:
 
 ## Relationship To Other Docs
 
-- [`docs/CURRENT_STATE.md`](CURRENT_STATE.md): implementation state and execution checklist
-- [`docs/APPLICATION_SPECS.md`](APPLICATION_SPECS.md): runtime and implementation contract
-- [`docs/INTENT_COPILOT_ARCHITECTURE.md`](INTENT_COPILOT_ARCHITECTURE.md): system design and boundaries
-- [`knowledge/workflow_reference.md`](../knowledge/workflow_reference.md): step-by-step execution flows for all 12 intents
+- [`docs/CURRENT_STATE.md`](CURRENT_STATE.md): **source of truth** — implementation state, execution checklist, parked architectural decisions
+- [`docs/DESIGN.md`](DESIGN.md): design system, visual language, component rules
+- [`docs/RELEASE_READINESS.md`](RELEASE_READINESS.md): 4-gate release checklist
+- [`docs/OPERATIONS.md`](OPERATIONS.md): dashboards and SQL for the first-50 rollout
+- [`docs/DESIGN_SYSTEM_VALIDATION.md`](DESIGN_SYSTEM_VALIDATION.md): manual design QA checklist
+- [`docs/APPLICATION_SPECS.md`](APPLICATION_SPECS.md): runtime contract (⚠️ *partially deprecated*)
+- [`docs/INTENT_COPILOT_ARCHITECTURE.md`](INTENT_COPILOT_ARCHITECTURE.md): target system design (pre-planner-inlining era)
+- [`docs/WORKFLOW_REFERENCE.md`](WORKFLOW_REFERENCE.md): human-facing per-intent execution flows (not loaded at runtime)

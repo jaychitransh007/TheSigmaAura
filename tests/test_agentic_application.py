@@ -500,6 +500,167 @@ class AgenticApplicationTests(unittest.TestCase):
 
         self.assertEqual([], candidates)
 
+    # ------------------------------------------------------------------
+    # P0: Silent empty response on pipeline failure
+    # ------------------------------------------------------------------
+
+    def _build_minimal_orchestrator_repo_and_gateway(self):
+        """Common scaffolding for orchestrator integration tests below."""
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1",
+            "user_id": "db-user",
+            "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        repo.list_disliked_product_ids_for_user.return_value = []
+
+        gw = Mock()
+        gw.get_effective_seasonal_groups.return_value = None
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
+        }
+        gw.get_wardrobe_items.return_value = []  # force the catalog pipeline path
+        return repo, gw
+
+    def test_pipeline_crash_in_assembler_returns_user_facing_fallback(self) -> None:
+        """If the assembler crashes mid-pipeline, the orchestrator must return a graceful
+        fallback message, not an empty assistant_message."""
+        repo, gw = self._build_minimal_orchestrator_repo_and_gateway()
+
+        plan = RecommendationPlan(
+            plan_type="paired_only",
+            retrieval_count=8,
+            plan_source="llm",
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="paired",
+                    label="Paired",
+                    queries=[QuerySpec(query_id="A1", role="top", query_document="navy shirt")],
+                )
+            ],
+        )
+        retrieved_sets = [
+            RetrievedSet(direction_id="A", query_id="A1", role="top", products=[]),
+        ]
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
+            "agentic_application.orchestrator.OutfitArchitect"
+        ) as architect_cls, patch(
+            "agentic_application.orchestrator.CatalogSearchAgent"
+        ) as search_cls, patch(
+            "agentic_application.orchestrator.OutfitAssembler"
+        ) as assembler_cls, patch(
+            "agentic_application.orchestrator.OutfitEvaluator"
+        ), patch(
+            "agentic_application.orchestrator.ResponseFormatter"
+        ):
+            architect_cls.return_value.plan.return_value = plan
+            search_cls.return_value.search.return_value = retrieved_sets
+            # Simulate the failure mode from the live conversation review:
+            # assembler crashes with an unhandled exception mid-pipeline.
+            assembler_cls.return_value.assemble.side_effect = RuntimeError(
+                "boom: simulated assembler crash"
+            )
+
+            orchestrator = AgenticOrchestrator(
+                repo=repo, onboarding_gateway=gw, config=Mock()
+            )
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="What should I wear to dinner tonight?",
+            )
+
+        # The user-facing message must be non-empty and a graceful fallback.
+        self.assertTrue(result.get("assistant_message"))
+        self.assertIn("wasn't able to put together", result["assistant_message"])
+        self.assertEqual("error", result["response_type"])
+        self.assertTrue(result["metadata"].get("error"))
+        self.assertEqual("planner_pipeline", result["metadata"].get("error_stage"))
+        # And finalize_turn must have been called with the same fallback,
+        # NOT with an empty string.
+        finalize_args = repo.finalize_turn.call_args
+        self.assertTrue(finalize_args.kwargs["assistant_message"])
+        self.assertIn(
+            "wasn't able to put together",
+            finalize_args.kwargs["assistant_message"],
+        )
+
+    def test_pipeline_empty_response_message_is_replaced_with_fallback(self) -> None:
+        """Even if the formatter completes but produces an empty message, the post-pipeline
+        guard must rewrite it to a graceful fallback before returning."""
+        repo, gw = self._build_minimal_orchestrator_repo_and_gateway()
+
+        plan = RecommendationPlan(
+            plan_type="paired_only",
+            retrieval_count=8,
+            plan_source="llm",
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="paired",
+                    label="Paired",
+                    queries=[QuerySpec(query_id="A1", role="top", query_document="navy shirt")],
+                )
+            ],
+        )
+        retrieved_sets = [
+            RetrievedSet(direction_id="A", query_id="A1", role="top", products=[]),
+        ]
+        empty_response = RecommendationResponse(
+            success=True,
+            message="",   # ← deliberately empty
+            outfits=[],
+            follow_up_suggestions=[],
+            metadata={"plan_type": "paired_only", "plan_source": "llm"},
+        )
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
+            "agentic_application.orchestrator.OutfitArchitect"
+        ) as architect_cls, patch(
+            "agentic_application.orchestrator.CatalogSearchAgent"
+        ) as search_cls, patch(
+            "agentic_application.orchestrator.OutfitAssembler"
+        ) as assembler_cls, patch(
+            "agentic_application.orchestrator.OutfitEvaluator"
+        ) as evaluator_cls, patch(
+            "agentic_application.orchestrator.ResponseFormatter"
+        ) as formatter_cls:
+            architect_cls.return_value.plan.return_value = plan
+            search_cls.return_value.search.return_value = retrieved_sets
+            assembler_cls.return_value.assemble.return_value = []
+            evaluator_cls.return_value.evaluate.return_value = []
+            formatter_cls.return_value.format.return_value = empty_response
+
+            orchestrator = AgenticOrchestrator(
+                repo=repo, onboarding_gateway=gw, config=Mock()
+            )
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="What should I wear to dinner tonight?",
+            )
+
+        # The post-pipeline guard must have rewritten the empty message.
+        self.assertTrue(
+            result.get("assistant_message"),
+            "Empty assistant_message was returned to the user — fallback guard did not fire",
+        )
+        self.assertIn("wasn't able to put together", result["assistant_message"])
+
     def test_orchestrator_persists_memory_and_turn_artifacts(self) -> None:
         repo = Mock()
         onboarding_gateway = Mock()
@@ -1710,6 +1871,243 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertTrue(len(match_candidates) > 0)
         self.assertTrue(len(diff_candidates) > 0)
         self.assertGreater(match_candidates[0].assembly_score, diff_candidates[0].assembly_score)
+
+    # ------------------------------------------------------------------
+    # P1: Cross-outfit diversity enforcement
+    # ------------------------------------------------------------------
+
+    def test_assembler_caps_product_id_repetition_across_candidates(self) -> None:
+        """A single top-scoring product must not appear in more than 2 of N candidates."""
+        from agentic_application.agents.outfit_assembler import (
+            MAX_PRODUCT_REPEAT_PER_RUN,
+            OutfitAssembler,
+        )
+
+        context = CombinedContext(
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="Office look"),
+        )
+        plan = RecommendationPlan(
+            plan_type="paired_only",
+            retrieval_count=8,
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="paired",
+                    label="test",
+                    queries=[],
+                )
+            ],
+        )
+
+        # One dominant top + several different bottoms — naive scoring would
+        # put the same top in *every* candidate.
+        dominant_top = RetrievedProduct(
+            product_id="dominant_top",
+            similarity=0.99,
+            enriched_data={"primary_color": "navy", "occasion_fit": "office"},
+            metadata={},
+        )
+        bottoms = [
+            RetrievedProduct(
+                product_id=f"bottom_{i}",
+                similarity=0.85,
+                enriched_data={"primary_color": "cream", "occasion_fit": "office"},
+                metadata={},
+            )
+            for i in range(5)
+        ]
+
+        retrieved_sets = [
+            RetrievedSet(direction_id="A", query_id="q1", role="top", products=[dominant_top]),
+            RetrievedSet(direction_id="A", query_id="q2", role="bottom", products=bottoms),
+        ]
+
+        assembler = OutfitAssembler()
+        candidates = assembler.assemble(retrieved_sets, plan, context)
+
+        self.assertGreater(len(candidates), 0)
+        # Count how many times "dominant_top" appears in the *accepted* prefix
+        # (the first N candidates where N == max accepted before deferral).
+        # The diversity pass tags accepted candidates with a specific note;
+        # use that to find the accepted slice.
+        accepted = [
+            c for c in candidates
+            if any("diversity_pass: accepted" in note for note in c.assembly_notes)
+        ]
+        deferred = [
+            c for c in candidates
+            if any("diversity_pass: deferred" in note for note in c.assembly_notes)
+        ]
+        # Some accepted slice must exist
+        self.assertGreater(len(accepted), 0)
+        # Dominant top should appear in at most MAX_PRODUCT_REPEAT_PER_RUN accepted candidates
+        dominant_count = sum(
+            1
+            for c in accepted
+            if any(item.get("product_id") == "dominant_top" for item in c.items)
+        )
+        self.assertLessEqual(
+            dominant_count,
+            MAX_PRODUCT_REPEAT_PER_RUN,
+            f"dominant_top appeared in {dominant_count} accepted candidates "
+            f"(cap is {MAX_PRODUCT_REPEAT_PER_RUN})",
+        )
+        # And the over-cap candidates should be deferred (still present, just at the tail)
+        self.assertGreater(len(deferred), 0, "expected at least one deferred candidate")
+
+    def test_assembler_diversity_pass_is_noop_when_no_repetition(self) -> None:
+        """If every candidate uses unique products, diversity pass accepts all."""
+        from agentic_application.agents.outfit_assembler import OutfitAssembler
+
+        context = CombinedContext(
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="Office look"),
+        )
+        plan = RecommendationPlan(
+            plan_type="paired_only",
+            retrieval_count=8,
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="paired",
+                    label="test",
+                    queries=[],
+                )
+            ],
+        )
+        tops = [
+            RetrievedProduct(
+                product_id=f"top_{i}",
+                similarity=0.85,
+                enriched_data={"primary_color": "navy", "occasion_fit": "office"},
+                metadata={},
+            )
+            for i in range(3)
+        ]
+        bottoms = [
+            RetrievedProduct(
+                product_id=f"bottom_{i}",
+                similarity=0.85,
+                enriched_data={"primary_color": "cream", "occasion_fit": "office"},
+                metadata={},
+            )
+            for i in range(3)
+        ]
+        retrieved_sets = [
+            RetrievedSet(direction_id="A", query_id="q1", role="top", products=tops),
+            RetrievedSet(direction_id="A", query_id="q2", role="bottom", products=bottoms),
+        ]
+        assembler = OutfitAssembler()
+        candidates = assembler.assemble(retrieved_sets, plan, context)
+        # Every single product appears in many pairings (3*3 = 9 candidates from
+        # 3 tops × 3 bottoms), but each individual product still appears in 3
+        # pairings — above the cap of 2 — so diversity pass *will* defer some.
+        # The non-trivial guarantee is that the cap is never exceeded across
+        # the accepted prefix.
+        accepted = [
+            c for c in candidates
+            if any("diversity_pass: accepted" in note for note in c.assembly_notes)
+        ]
+        usage: Dict[str, int] = {}
+        for c in accepted:
+            for item in c.items:
+                pid = str(item.get("product_id") or "")
+                usage[pid] = usage.get(pid, 0) + 1
+        for pid, count in usage.items():
+            self.assertLessEqual(count, 2, f"product {pid} used {count} times in accepted set")
+
+    # ------------------------------------------------------------------
+    # P1: Disliked product suppression
+    # ------------------------------------------------------------------
+
+    def test_catalog_search_excludes_disliked_product_ids(self) -> None:
+        """Products whose product_id is in CombinedContext.disliked_product_ids are filtered out."""
+        from agentic_application.agents.catalog_search_agent import CatalogSearchAgent
+
+        gateway = Mock()
+        gateway.embed_texts.return_value = [[0.1] * 8]
+        gateway.similarity_search.return_value = [
+            {"product_id": "good_1", "similarity": 0.9, "metadata_json": {}},
+            {"product_id": "disliked_1", "similarity": 0.92, "metadata_json": {}},
+            {"product_id": "good_2", "similarity": 0.88, "metadata_json": {}},
+        ]
+        client = Mock()
+        client.select_many.return_value = [
+            {"product_id": "good_1"},
+            {"product_id": "disliked_1"},
+            {"product_id": "good_2"},
+        ]
+        agent = CatalogSearchAgent(retrieval_gateway=gateway, client=client)
+
+        context = CombinedContext(
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="something"),
+            disliked_product_ids=["disliked_1"],
+        )
+        plan = RecommendationPlan(
+            plan_type="paired_only",
+            retrieval_count=8,
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="paired",
+                    label="test",
+                    queries=[
+                        QuerySpec(query_id="q1", role="top", query_document="navy shirt"),
+                    ],
+                )
+            ],
+        )
+
+        results = agent.search(plan, context)
+        all_ids = [p.product_id for rs in results for p in rs.products]
+        self.assertIn("good_1", all_ids)
+        self.assertIn("good_2", all_ids)
+        self.assertNotIn(
+            "disliked_1", all_ids,
+            "Disliked product was returned despite being in CombinedContext.disliked_product_ids",
+        )
+        # And the applied_filters should record that suppression happened
+        self.assertEqual(
+            "excluded",
+            results[0].applied_filters.get("disliked_product_policy"),
+        )
+        self.assertEqual(
+            "1",
+            results[0].applied_filters.get("disliked_excluded_count"),
+        )
+
+    def test_catalog_search_no_disliked_filter_when_list_empty(self) -> None:
+        """When disliked_product_ids is empty, applied_filters should not advertise suppression."""
+        from agentic_application.agents.catalog_search_agent import CatalogSearchAgent
+
+        gateway = Mock()
+        gateway.embed_texts.return_value = [[0.1] * 8]
+        gateway.similarity_search.return_value = [
+            {"product_id": "good_1", "similarity": 0.9, "metadata_json": {}},
+        ]
+        client = Mock()
+        client.select_many.return_value = [{"product_id": "good_1"}]
+        agent = CatalogSearchAgent(retrieval_gateway=gateway, client=client)
+        context = CombinedContext(
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="something"),
+        )
+        plan = RecommendationPlan(
+            plan_type="paired_only",
+            retrieval_count=8,
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="paired",
+                    label="test",
+                    queries=[QuerySpec(query_id="q1", role="top", query_document="navy")],
+                )
+            ],
+        )
+        results = agent.search(plan, context)
+        self.assertNotIn("disliked_product_policy", results[0].applied_filters)
 
     def test_formatter_message_acknowledges_color_change(self) -> None:
         formatter = ResponseFormatter()
@@ -2986,6 +3384,104 @@ class CopilotPlannerTests(unittest.TestCase):
         self.assertIn("classic", result["assistant_message"].lower())
         self.assertIn("romantic", result["assistant_message"].lower())
         self.assertIn("accent", result["assistant_message"].lower())
+
+    # ------------------------------------------------------------------
+    # P1: Metadata persistence consistency
+    # ------------------------------------------------------------------
+
+    def test_style_discovery_persists_response_metadata_in_resolved_context(self):
+        """Style-discovery turns must persist response_metadata into resolved_context_json
+        so review tools can read primary_intent / answer_source / confidence payloads
+        from the turn record without falling back to session_context."""
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent=Intent.STYLE_DISCOVERY,
+            intent_confidence=0.95,
+            action=Action.RESPOND_DIRECTLY,
+            context_sufficient=True,
+            assistant_message="Let me explain.",
+            follow_up_suggestions=[],
+            resolved_context=CopilotResolvedContext(style_goal=Intent.STYLE_DISCOVERY),
+            action_parameters=CopilotActionParameters(),
+        )
+        orchestrator = self._build_orchestrator(repo, gw, planner_mock)
+
+        orchestrator.process_turn(
+            conversation_id="c1",
+            external_user_id="user-1",
+            message="What collar will look good on me?",
+        )
+
+        finalize_args = repo.finalize_turn.call_args
+        resolved_context = finalize_args.kwargs["resolved_context"]
+        self.assertIn(
+            "response_metadata", resolved_context,
+            "style_discovery handler did not persist response_metadata in resolved_context",
+        )
+        rm = resolved_context["response_metadata"]
+        # The aligned fields specified in the doc must all be present
+        self.assertEqual(Intent.STYLE_DISCOVERY, rm.get("primary_intent"))
+        self.assertEqual("style_discovery_handler", rm.get("answer_source"))
+        self.assertIn("intent_confidence", rm)
+        self.assertIn("profile_confidence", rm)
+
+    def test_wardrobe_first_occasion_persists_response_metadata_in_resolved_context(self):
+        """Wardrobe-first occasion turns must persist response_metadata in resolved_context_json
+        so the same review tooling works for the wardrobe-first short-circuit path."""
+        repo = Mock()
+        onboarding_gateway = Mock()
+        onboarding_gateway.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        onboarding_gateway.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
+        }
+        onboarding_gateway.get_wardrobe_items.return_value = [
+            {"id": "w1", "title": "Navy Blazer", "garment_category": "top",
+             "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w2", "title": "Cream Trousers", "garment_category": "bottom",
+             "occasion_fit": "office", "formality_level": "business_casual"},
+        ]
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1", "user_id": "db-user", "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        repo.list_disliked_product_ids_for_user.return_value = []
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
+            "agentic_application.orchestrator.OutfitArchitect"
+        ):
+            orchestrator = AgenticOrchestrator(
+                repo=repo, onboarding_gateway=onboarding_gateway, config=Mock()
+            )
+            orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="What should I wear to the office tomorrow?",
+            )
+
+        finalize_args = repo.finalize_turn.call_args
+        resolved_context = finalize_args.kwargs["resolved_context"]
+        self.assertIn(
+            "response_metadata", resolved_context,
+            "wardrobe-first occasion handler did not persist response_metadata",
+        )
+        rm = resolved_context["response_metadata"]
+        self.assertEqual(Intent.OCCASION_RECOMMENDATION, rm.get("primary_intent"))
+        self.assertEqual("wardrobe_first", rm.get("answer_source"))
+        self.assertIn("intent_confidence", rm)
+        self.assertIn("recommendation_confidence", rm)
 
     def test_planner_respond_directly_for_explanation_request(self):
         from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters

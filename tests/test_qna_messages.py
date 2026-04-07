@@ -16,7 +16,7 @@ class TestStaticTemplates:
             ("onboarding_gate", "started"),
             ("onboarding_gate", "blocked"),
             ("onboarding_gate", "completed"),
-            ("intent_router", "started"),
+            ("copilot_planner", "started"),
             ("user_context", "started"),
             ("context_builder", "started"),
             ("outfit_architect", "started"),
@@ -58,12 +58,16 @@ class TestContextBuilderCompleted:
         assert isinstance(msg, str)
 
 
-class TestIntentRouterCompleted:
+class TestCopilotPlannerCompleted:
     def test_returns_primary_intent(self):
-        msg = generate_stage_message("intent_router", "completed", {
+        msg = generate_stage_message("copilot_planner", "completed", {
             "primary_intent": Intent.STYLE_DISCOVERY,
         })
         assert "style discovery" in msg
+
+    def test_without_primary_intent(self):
+        msg = generate_stage_message("copilot_planner", "completed")
+        assert msg  # falls back to "Intent understood."
 
 
 class TestOutfitArchitectCompleted:

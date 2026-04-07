@@ -1,12 +1,19 @@
 # Workflow Reference — Intent Execution Flows
 
-Last updated: April 5, 2026
+Last updated: April 8, 2026
 
-> **Runtime role:** This is the system's canonical execution plan reference. After the copilot planner classifies a user message into one of the 12 intents, the orchestrator follows the workflow defined here to produce a response. Every handler, branching condition, database operation, and LLM call is documented. This file is the authoritative source for how each intent is executed — agents and planners should stick to these flows.
+> **What this is (and isn't):** This is **reference documentation for humans
+> reading the codebase**. It describes how each of the 12 intents is executed
+> by the orchestrator so you can navigate the code without tracing every
+> branch yourself. It is **not loaded at runtime** by any agent, planner, or
+> handler — no Python file in `modules/` reads this markdown. The runtime
+> behavior is defined entirely by `modules/agentic_application/src/agentic_application/orchestrator.py`
+> and the per-handler methods it dispatches to. **If this document and the
+> code disagree, the code wins.** When you change a handler, update this
+> file to match; when you read this file, verify against the code before
+> relying on it for anything load-bearing.
 
-**Registry:** All intent identifiers are defined as `StrEnum` constants in `agentic_application/intent_registry.py`. The copilot planner JSON schema, orchestrator dispatch, and all agent code import from this single source of truth.
-
-**Canonical location:** `knowledge/workflow_reference.md` (mirrored to `docs/WORKFLOW_REFERENCE.md` for documentation navigation).
+**Registry:** All intent identifiers are defined as `StrEnum` constants in `agentic_application/intent_registry.py`. The copilot planner JSON schema, orchestrator dispatch, and all agent code import from this single source of truth — that enum, not this document, is the authoritative intent list.
 
 **Common Entry Flow:** Every user message follows this path before intent-specific handling:
 

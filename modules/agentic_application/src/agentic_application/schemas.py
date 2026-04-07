@@ -127,6 +127,10 @@ class CombinedContext(BaseModel):
     conversation_memory: Optional[ConversationMemory] = None
     conversation_history: Optional[List[Dict[str, str]]] = None
     catalog_inventory: Optional[List[Dict[str, Any]]] = None
+    # Product IDs the user has previously disliked. Loaded from feedback_events
+    # at turn start and used by catalog_search_agent to exclude these items
+    # from retrieval results so disliked products do not reappear across turns.
+    disliked_product_ids: List[str] = Field(default_factory=list)
 
 
 # --- Outfit Architect output ---

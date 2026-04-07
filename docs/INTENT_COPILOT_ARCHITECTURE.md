@@ -1,6 +1,15 @@
 # Intent-Driven Fashion Copilot Architecture
 
-Last updated: April 5, 2026
+Last updated: April 8, 2026
+
+> **⚠️ Target-state document.** This file describes the *aspirational*
+> architecture (web + WhatsApp, cross-channel identity, full intent
+> taxonomy). Parts of it describe pieces that **do not exist in the live
+> system today** — most notably the WhatsApp inbound runtime (deliberately
+> removed) and some earlier routing layer details that were replaced by
+> the inlined copilot planner. For the authoritative "what is running
+> right now" view, always defer to `docs/CURRENT_STATE.md`. When this
+> document and `CURRENT_STATE.md` disagree, `CURRENT_STATE.md` wins.
 
 ## Purpose
 
@@ -14,7 +23,7 @@ This document describes the target architecture for the system we want to build 
 - profile-aware, memory-backed shopping and dressing intelligence
 
 For user-facing product framing, personas, journey, and stories, see `docs/PRODUCT.md`.
-For detailed step-by-step execution flows for all 12 intents, see `knowledge/workflow_reference.md`.
+For detailed step-by-step execution flows for all 12 intents, see `docs/WORKFLOW_REFERENCE.md`.
 
 The architecture below is broader than the current recommendation-only runtime. It is the target system design.
 
