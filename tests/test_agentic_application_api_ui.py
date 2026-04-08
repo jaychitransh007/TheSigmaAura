@@ -321,6 +321,48 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertNotIn("tryon-label", html)
         self.assertNotIn("renderRecommendations", html)
 
+    def test_ui_html_renders_split_polar_bar_chart(self) -> None:
+        """Phase 12B follow-up (April 9 2026): the two stacked radar
+        charts (style archetype + evaluation criteria) were merged into
+        a single Nightingale-style split polar bar chart. Top semicircle
+        owns the 8-axis archetype profile, bottom owns the dynamic 5-9
+        axis fit profile, separated by a dashed horizontal divider.
+
+        Verify the new structure is in place and the old two-radar
+        scaffolding is fully removed."""
+        app, _, _, _, _ = self._patched_app("completed")
+        client = TestClient(app)
+        resp = client.get("/?user=user_ready")
+        html = resp.text
+        # ── New structure must be present ──
+        self.assertIn("drawProfile", html, "split polar bar drawProfile function missing")
+        self.assertIn("CONTEXT_GATED_KEYS", html, "context-gating filter missing")
+        # Top + bottom semicircle calls (start angles π and 0, both spanning π)
+        self.assertIn("// start at 9 o'clock", html)
+        self.assertIn("// start at 3 o'clock", html)
+        # Both colors present (purple for archetype, burgundy for fit)
+        self.assertIn("rgba(127, 119, 221, 0.38)", html, "archetype fill colour missing")
+        self.assertIn("rgba(139, 48, 85, 0.35)", html, "fit fill colour missing")
+        self.assertIn("#7F77DD", html, "archetype stroke colour missing")
+        self.assertIn("#8B3055", html, "fit stroke colour missing")
+        # Legend labels
+        self.assertIn("Style profile", html)
+        self.assertIn("Fit profile", html)
+        # Dashed divider markers
+        self.assertIn("setLineDash([4, 4])", html, "dashed divider missing")
+        # Layout constants from the spec (78px outer, 98px label radius)
+        self.assertIn("pMaxR = 78", html)
+        self.assertIn("pLabelR = 98", html)
+        # ── Old two-radar scaffolding must be GONE ──
+        self.assertNotIn("var values = archetypes.map", html,
+                         "old archetype radar polygon code still present")
+        self.assertNotIn("rgba(139, 92, 246, 0.85)", html,
+                         "old purple stroke (legacy archetype radar) still present")
+        self.assertNotIn("rgba(111, 47, 69, 0.85)", html,
+                         "old burgundy stroke (legacy criteria radar) still present")
+        self.assertNotIn("criteriaRadarDiv", html,
+                         "old separate criteria radar div still present")
+
     def test_ui_html_routes_pairing_through_chat_attachment_surface(self) -> None:
         app, _, _, _, _ = self._patched_app("completed")
         client = TestClient(app)

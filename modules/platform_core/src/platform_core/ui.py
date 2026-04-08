@@ -1682,115 +1682,176 @@ def get_web_ui_html(
         }});
     }});
 
-    // 4. Radar chart for style archetypes
-    var archetypes = [
-      {{ key: "classic_pct", label: "Classic" }}, {{ key: "dramatic_pct", label: "Dramatic" }},
-      {{ key: "romantic_pct", label: "Romantic" }}, {{ key: "natural_pct", label: "Natural" }},
-      {{ key: "minimalist_pct", label: "Minimalist" }}, {{ key: "creative_pct", label: "Creative" }},
-      {{ key: "sporty_pct", label: "Sporty" }}, {{ key: "edgy_pct", label: "Edgy" }},
-    ];
-    var radarDiv = document.createElement("div");
-    radarDiv.className = "outfit-radar";
-    var canvas = document.createElement("canvas");
-    canvas.setAttribute("role", "img");
-    var size = 200, dpr = window.devicePixelRatio || 1;
-    canvas.width = size * dpr; canvas.height = size * dpr;
-    canvas.style.width = size + "px"; canvas.style.height = size + "px";
-    radarDiv.appendChild(canvas);
-    info.appendChild(radarDiv);
-    var ctx = canvas.getContext("2d");
-    ctx.scale(dpr, dpr);
-    var cx = size / 2, cy = size / 2, maxR = size / 2 - 40, n = archetypes.length;
-    var step = (2 * Math.PI) / n, startAngle = -Math.PI / 2;
-    function pointAt(i, r) {{
-      var a = startAngle + i * step;
-      return {{ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }};
-    }}
-    ctx.strokeStyle = "#ddd"; ctx.lineWidth = 0.5;
-    for (var ring = 1; ring <= 4; ring++) {{
-      ctx.beginPath(); var rr = maxR * ring / 4;
-      for (var gi = 0; gi < n; gi++) {{ var gp = pointAt(gi, rr); if (gi === 0) ctx.moveTo(gp.x, gp.y); else ctx.lineTo(gp.x, gp.y); }}
-      ctx.closePath(); ctx.stroke();
-    }}
-    for (var ai = 0; ai < n; ai++) {{ var ap = pointAt(ai, maxR); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ap.x, ap.y); ctx.stroke(); }}
-    var values = archetypes.map(function(a) {{ return outfit[a.key] || 0; }});
-    ctx.beginPath(); ctx.fillStyle = "rgba(139, 92, 246, 0.25)"; ctx.strokeStyle = "rgba(139, 92, 246, 0.85)"; ctx.lineWidth = 2;
-    for (var di = 0; di < n; di++) {{ var dp = pointAt(di, maxR * values[di] / 100); if (di === 0) ctx.moveTo(dp.x, dp.y); else ctx.lineTo(dp.x, dp.y); }}
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = "rgba(139, 92, 246, 1)";
-    for (var ppi = 0; ppi < n; ppi++) {{ var pp = pointAt(ppi, maxR * values[ppi] / 100); ctx.beginPath(); ctx.arc(pp.x, pp.y, 3, 0, 2 * Math.PI); ctx.fill(); }}
-    ctx.fillStyle = "#222"; ctx.font = "600 9px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    for (var li = 0; li < n; li++) {{ var lp = pointAt(li, maxR + 14); ctx.fillText(archetypes[li].label, lp.x, lp.y); }}
-
-    // 5. Evaluation criteria as radar chart (scores × profile confidence)
-    // Phase 12B follow-ups (April 9 2026): drop dimensions whose value is
-    // null OR (for the 4 context-gated dimensions specifically) zero.
-    // The 4 context-gated dimensions (pairing_coherence_pct, occasion_pct,
-    // weather_time_pct, specific_needs_pct) come back as null when their
-    // gating condition isn't met — pairing is null when intent is
-    // garment_evaluation / style_discovery / explanation_request, the
-    // other 3 are null when their live_context inputs are absent.
+    // 4. Split polar bar chart — Nightingale-style merge of the
+    // archetype radar and the evaluation criteria radar.
     //
-    // Defensive zero-fallback: if a context-gated dimension somehow
-    // arrives as 0 instead of null (stale data from before the schema
-    // migration, an older render path, the model ignoring the prompt
-    // rule, etc.), we still drop it from the radar. Real model scores
-    // are virtually always in the 30-95 range; an exact 0 on these 4
-    // fields means "not actually evaluated" in practice. The 5
-    // always-evaluated dimensions are NOT subject to the zero-fallback —
-    // a genuine 0 there is a meaningful signal worth showing.
+    // Top semicircle (9 → 12 → 3 o'clock): style archetype profile,
+    // always 8 axes, purple. Bottom semicircle (3 → 6 → 9 o'clock): fit /
+    // evaluation profile, dynamic 5-9 axes after the context-gated filter,
+    // burgundy. A dashed horizontal line through the centre separates
+    // them. Both profiles share the same 0-100 grid rings.
     //
-    // Filtering BEFORE the geometry calculation lets the chart vertex
-    // count adapt (4/5/6/7/8/9 axes depending on what was scored).
+    // Phase 12B follow-ups (April 9 2026) preserved here:
+    //   - drop dimensions whose value is null or undefined
+    //   - drop dimensions where the value is exactly 0 IF the key is
+    //     one of the 4 context-gated dimensions (pairing_coherence_pct,
+    //     occasion_pct, weather_time_pct, specific_needs_pct). The 5
+    //     always-evaluated dimensions are NOT subject to the zero-drop —
+    //     a genuine 0 there is a meaningful signal worth showing.
+    //
+    // The bottom-semicircle values are still multiplied by
+    // profileConfPct / 100 to preserve the Phase 12B confidence scaling.
+    // The top-semicircle archetype values are NOT confidence-scaled —
+    // archetypes describe the OUTFIT's aesthetic profile, not how
+    // confident we are about the user's profile.
     var CONTEXT_GATED_KEYS = {{
       "pairing_coherence_pct": true,
       "occasion_pct": true,
       "weather_time_pct": true,
       "specific_needs_pct": true,
     }};
+
+    // ── Top semicircle data: archetypes (always 8) ──
+    var archetypes = [
+      {{ key: "classic_pct", label: "Classic" }}, {{ key: "dramatic_pct", label: "Dramatic" }},
+      {{ key: "romantic_pct", label: "Romantic" }}, {{ key: "natural_pct", label: "Natural" }},
+      {{ key: "minimalist_pct", label: "Minimalist" }}, {{ key: "creative_pct", label: "Creative" }},
+      {{ key: "sporty_pct", label: "Sporty" }}, {{ key: "edgy_pct", label: "Edgy" }},
+    ];
+    var archetypeValues = archetypes.map(function(a) {{ return outfit[a.key] || 0; }});
+
+    // ── Bottom semicircle data: filtered evaluation criteria (5-9) ──
     var criteria = buildEvaluationCriteria(outfit, responseMetadata).filter(function(c) {{
       var v = outfit[c.key];
       if (v === null || v === undefined) return false;
       if (CONTEXT_GATED_KEYS[c.key] && v === 0) return false;
       return true;
     }});
-    var hasCriteriaData = criteria.length > 0 && criteria.some(function(c) {{ return (outfit[c.key] || 0) > 0; }});
-    if (hasCriteriaData) {{
-      var criteriaRadarDiv = document.createElement("div");
-      criteriaRadarDiv.className = "outfit-radar";
-      var cCanvas = document.createElement("canvas");
-      cCanvas.setAttribute("role", "img");
-      cCanvas.setAttribute("aria-label", "Evaluation criteria radar chart");
-      var cSize = 200;
-      cCanvas.width = cSize * dpr; cCanvas.height = cSize * dpr;
-      cCanvas.style.width = cSize + "px"; cCanvas.style.height = cSize + "px";
-      criteriaRadarDiv.appendChild(cCanvas);
-      info.appendChild(criteriaRadarDiv);
-      var cCtx = cCanvas.getContext("2d");
-      cCtx.scale(dpr, dpr);
-      var cCx = cSize / 2, cCy = cSize / 2, cMaxR = cSize / 2 - 40, cN = criteria.length;
-      var cStep = (2 * Math.PI) / cN, cStart = -Math.PI / 2;
-      function cPointAt(i, r) {{
-        var a = cStart + i * cStep;
-        return {{ x: cCx + r * Math.cos(a), y: cCy + r * Math.sin(a) }};
-      }}
-      cCtx.strokeStyle = "#ddd"; cCtx.lineWidth = 0.5;
-      for (var cRing = 1; cRing <= 4; cRing++) {{
-        cCtx.beginPath(); var cRr = cMaxR * cRing / 4;
-        for (var cGi = 0; cGi < cN; cGi++) {{ var cGp = cPointAt(cGi, cRr); if (cGi === 0) cCtx.moveTo(cGp.x, cGp.y); else cCtx.lineTo(cGp.x, cGp.y); }}
-        cCtx.closePath(); cCtx.stroke();
-      }}
-      for (var cAi = 0; cAi < cN; cAi++) {{ var cAp = cPointAt(cAi, cMaxR); cCtx.beginPath(); cCtx.moveTo(cCx, cCy); cCtx.lineTo(cAp.x, cAp.y); cCtx.stroke(); }}
-      var confFactor = profileConfPct / 100;
-      var cValues = criteria.map(function(c) {{ return Math.round((outfit[c.key] || 0) * confFactor); }});
-      cCtx.beginPath(); cCtx.fillStyle = "rgba(111, 47, 69, 0.22)"; cCtx.strokeStyle = "rgba(111, 47, 69, 0.85)"; cCtx.lineWidth = 2;
-      for (var cDi = 0; cDi < cN; cDi++) {{ var cDp = cPointAt(cDi, cMaxR * cValues[cDi] / 100); if (cDi === 0) cCtx.moveTo(cDp.x, cDp.y); else cCtx.lineTo(cDp.x, cDp.y); }}
-      cCtx.closePath(); cCtx.fill(); cCtx.stroke();
-      cCtx.fillStyle = "rgba(111, 47, 69, 1)";
-      for (var cPi = 0; cPi < cN; cPi++) {{ var cPp = cPointAt(cPi, cMaxR * cValues[cPi] / 100); cCtx.beginPath(); cCtx.arc(cPp.x, cPp.y, 3, 0, 2 * Math.PI); cCtx.fill(); }}
-      cCtx.fillStyle = "#222"; cCtx.font = "600 9px system-ui, sans-serif"; cCtx.textAlign = "center"; cCtx.textBaseline = "middle";
-      for (var cLi = 0; cLi < cN; cLi++) {{ var cLp = cPointAt(cLi, cMaxR + 14); cCtx.fillText(criteria[cLi].label, cLp.x, cLp.y); }}
+    var confFactor = profileConfPct / 100;
+    var criteriaValues = criteria.map(function(c) {{
+      return Math.round((outfit[c.key] || 0) * confFactor);
+    }});
+    var hasCriteriaData = criteria.length > 0 && criteriaValues.some(function(v) {{ return v > 0; }});
+
+    // ── Canvas setup ──
+    var radarDiv = document.createElement("div");
+    radarDiv.className = "outfit-radar";
+    var polarCanvas = document.createElement("canvas");
+    polarCanvas.setAttribute("role", "img");
+    polarCanvas.setAttribute("aria-label", "Style + fit profile chart");
+    var W = 300, H = 272, dpr = window.devicePixelRatio || 1;
+    polarCanvas.width = W * dpr; polarCanvas.height = H * dpr;
+    polarCanvas.style.width = W + "px"; polarCanvas.style.height = H + "px";
+    polarCanvas.style.display = "block";
+    polarCanvas.style.margin = "0 auto";
+    polarCanvas.style.maxWidth = "100%";
+    radarDiv.appendChild(polarCanvas);
+    info.appendChild(radarDiv);
+    var pCtx = polarCanvas.getContext("2d");
+    pCtx.scale(dpr, dpr);
+
+    // ── Layout constants ──
+    var pCx = W / 2, pCy = H / 2;
+    var pMaxR = 78;     // outer ring radius
+    var pLabelR = 98;   // axis label radius (outside the outer ring)
+    var pMaxValue = 100;
+
+    // ── Grid rings (4 concentric circles at 25/50/75/100) ──
+    pCtx.strokeStyle = "rgba(0, 0, 0, 0.08)";
+    pCtx.lineWidth = 0.5;
+    for (var pRing = 1; pRing <= 4; pRing++) {{
+      pCtx.beginPath();
+      pCtx.arc(pCx, pCy, (pRing / 4) * pMaxR, 0, 2 * Math.PI);
+      pCtx.stroke();
     }}
+
+    // ── Dashed horizontal divider through the centre ──
+    pCtx.save();
+    pCtx.beginPath();
+    pCtx.moveTo(pCx - pMaxR - 10, pCy);
+    pCtx.lineTo(pCx + pMaxR + 10, pCy);
+    pCtx.strokeStyle = "rgba(0, 0, 0, 0.14)";
+    pCtx.lineWidth = 0.75;
+    pCtx.setLineDash([4, 4]);
+    pCtx.stroke();
+    pCtx.restore();
+
+    // ── drawProfile: one filled arc sector per axis ──
+    // axes = [{{key, label}}, ...], values = [int, ...] aligned to axes
+    function drawProfile(axes, values, color, fillColor, startAngle, span) {{
+      var n = axes.length;
+      if (n === 0) return;
+      var sector = span / n;
+      var gap = Math.min(0.09, sector * 0.15);
+      for (var i = 0; i < n; i++) {{
+        var midAngle = startAngle + (i + 0.5) * sector;
+        var arcRadius = Math.max((values[i] / pMaxValue) * pMaxR, 4);
+
+        // Arc sector (filled wedge from centre)
+        pCtx.beginPath();
+        pCtx.moveTo(pCx, pCy);
+        pCtx.arc(pCx, pCy, arcRadius, midAngle - sector / 2 + gap / 2, midAngle + sector / 2 - gap / 2);
+        pCtx.closePath();
+        pCtx.fillStyle = fillColor;
+        pCtx.fill();
+        pCtx.strokeStyle = color;
+        pCtx.lineWidth = 1.5;
+        pCtx.stroke();
+
+        // Tip dot at the arc midpoint
+        pCtx.beginPath();
+        pCtx.arc(pCx + Math.cos(midAngle) * arcRadius, pCy + Math.sin(midAngle) * arcRadius, 2.5, 0, 2 * Math.PI);
+        pCtx.fillStyle = color;
+        pCtx.fill();
+
+        // Axis label (color-coded so the legend is reinforcement, not load-bearing)
+        var lx = pCx + Math.cos(midAngle) * pLabelR;
+        var ly = pCy + Math.sin(midAngle) * pLabelR;
+        var ca = Math.cos(midAngle);
+        var sa = Math.sin(midAngle);
+        pCtx.textAlign = Math.abs(ca) < 0.28 ? "center" : (ca > 0 ? "left" : "right");
+        pCtx.textBaseline = Math.abs(sa) < 0.28 ? "middle" : (sa > 0 ? "top" : "bottom");
+        pCtx.font = "600 9.5px system-ui, sans-serif";
+        pCtx.fillStyle = color;
+        pCtx.fillText(axes[i].label, lx, ly);
+      }}
+    }}
+
+    // ── Top semicircle: style archetypes (always 8 axes) ──
+    drawProfile(
+      archetypes,
+      archetypeValues,
+      "#7F77DD",                       // stroke + label colour
+      "rgba(127, 119, 221, 0.38)",     // fill
+      Math.PI,                         // start at 9 o'clock
+      Math.PI                          // span the top semicircle
+    );
+
+    // ── Bottom semicircle: filtered evaluation criteria ──
+    if (hasCriteriaData) {{
+      drawProfile(
+        criteria,
+        criteriaValues,
+        "#8B3055",
+        "rgba(139, 48, 85, 0.35)",
+        0,                             // start at 3 o'clock
+        Math.PI                        // span the bottom semicircle
+      );
+    }}
+
+    // ── Legend (below the canvas) ──
+    var legend = document.createElement("div");
+    legend.style.cssText = "display:flex; gap:20px; justify-content:center; margin-top:8px; flex-wrap:wrap;";
+    legend.innerHTML = ''
+      + '<span style="font-size:12px; font-weight:500; color:#7F77DD; display:flex; align-items:center; gap:5px;">'
+      +   '<span style="width:10px; height:10px; background:rgba(127,119,221,0.45); border:1.5px solid #7F77DD; border-radius:2px; display:inline-block;"></span>'
+      +   'Style profile'
+      + '</span>'
+      + '<span style="font-size:12px; font-weight:500; color:#8B3055; display:flex; align-items:center; gap:5px;">'
+      +   '<span style="width:10px; height:10px; background:rgba(139,48,85,0.4); border:1.5px solid #8B3055; border-radius:2px; display:inline-block;"></span>'
+      +   'Fit profile'
+      + '</span>';
+    radarDiv.appendChild(legend);
 
     // Dislike form (stays in info panel, expands when thumbs-down clicked)
     var dislikeForm = document.createElement("div");

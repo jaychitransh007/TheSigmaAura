@@ -100,7 +100,7 @@ Success means users come back before real decisions: should I buy this, what goe
 - wardrobe ingestion with vision-API enrichment and image moderation
 - wardrobe retrieval and wardrobe-first occasion response
 - virtual try-on via Gemini with quality gate
-- 3-column PDP outfit cards with Buy Now, dual radar charts (archetypes + confidence-weighted evaluation), icon feedback (save/like/dislike)
+- 3-column PDP outfit cards with Buy Now, single split polar bar chart (top semicircle: 8 archetypes in purple; bottom semicircle: dynamic 5-9 fit dimensions in burgundy × analysis_confidence_pct; dashed horizontal divider), icon feedback (save/like/dislike)
 - `analysis_confidence_pct` — attribute-level analysis confidence (average LLM confidence across all profile attributes); used to scale evaluation radar chart scores at render time; fetched once per page load, applied consistently to all cards including history
 - unified profile page with inline editing, style code card, and color palette card
 - wardrobe add-item modal from wardrobe page
@@ -583,7 +583,7 @@ Main weak spots:
 - wardrobe-first occasion response (wardrobe retrieval + selection for occasion intents)
 - wardrobe item save from chat with moderation
 - virtual try-on via Gemini (gemini-3.1-flash-image-preview), parallel generation, quality gate, persistent disk + DB storage with cache reuse
-- 3-column PDP outfit cards with Buy Now, dual radar charts (8 archetypes + confidence-weighted evaluation), icon feedback
+- 3-column PDP outfit cards with Buy Now, single split polar bar chart (8 archetypes top + dynamic 5-9 fit dimensions bottom), icon feedback
 - per-outfit feedback capture (Like / Didn't Like with notes)
 - follow-up turns with 7 follow-up intent types (increase boldness, change color, similar, etc.)
 - color palette system: base/accent/avoid colors derived from seasonal group, passed to planner, architect, and outfit check agents
@@ -1017,6 +1017,80 @@ Success criteria:
 - we can say with evidence whether users are forming a real pre-buy / pre-dress dependency on the system
 
 ## Immediate Next Item
+
+### ✅ CLOSED — Merge style + evaluation radar charts into one split polar bar chart (April 9 2026)
+
+Shipped April 9, 2026. The two stacked radar charts on each PDP card have been replaced with a single Nightingale-style split polar bar chart. Top semicircle = 8-axis style archetype profile (purple `#7F77DD`); bottom semicircle = dynamic 5-9 axis fit/evaluation profile (burgundy `#8B3055`, scaled by `analysis_confidence_pct`); dashed horizontal divider through the centre; shared 0-100 grid rings; color-coded legend below the canvas. Test count: **322 passing** (was 321, +1 new smoke test).
+
+Files touched (Step 7 close-out):
+- `modules/platform_core/src/platform_core/ui.py` — `buildOutfitCard` had two stacked radar render blocks (~lines 1685-1793 in the prior version). Both removed and replaced with a single 300×272 canvas + `drawProfile(axes, values, color, fillColor, startAngle, span)` function + two calls (top semicircle: archetypes / `Math.PI` start / `Math.PI` span; bottom semicircle: filtered criteria / `0` start / `Math.PI` span). The bottom-semicircle path preserves all of `bef671a`'s context-gating logic verbatim (drop null, drop zero for the 4 context-gated keys). The bottom values are still multiplied by `profileConfPct / 100` so Phase 12B confidence scaling carries through. A small color-coded legend `<div>` is appended below the canvas.
+- `tests/test_agentic_application_api_ui.py` — added `test_ui_html_renders_split_polar_bar_chart` smoke test that asserts the new structure is present (`drawProfile`, `CONTEXT_GATED_KEYS`, both semicircle start angles, both colours, legend labels, `setLineDash`, layout constants `pMaxR=78`/`pLabelR=98`) and that the old two-radar scaffolding is fully removed (no `var values = archetypes.map`, no legacy purple `rgba(139, 92, 246, 0.85)`, no legacy burgundy `rgba(111, 47, 69, 0.85)`, no `criteriaRadarDiv`).
+- `docs/CURRENT_STATE.md` — this close-out + the executive status line at the top now describes the single chart instead of "dual radar charts".
+- `docs/APPLICATION_SPECS.md` — every prior reference to "dual radar charts" / "8 evaluation criteria" / "200px" / two separate canvas blocks has been updated to the split polar bar chart language. The 9 evaluation dimensions (5 always + 4 context-gated) and the per-semicircle layout are now documented in both the "Recommendation Output" and the "PDP Card Layout" sections.
+- `docs/DESIGN.md` — the **Outfit PDP card** entry rewritten to describe the split polar bar chart with the actual hex colours (`#7F77DD` / `#8B3055`).
+
+**Risk callouts (none materialised):**
+- Canvas width vs PDP card on mobile — chose 300×272 per the spec; verified the rendered HTML contains `max-width: 100%` on the canvas style so it scales down on narrow viewports. If clipping shows up in real testing, fall back to `260×232`.
+- Label collisions — at the maximum 9 axes in the bottom semicircle the spec's `gap = Math.min(0.09, sector * 0.15)` keeps adjacent sectors visually distinct. Will revisit if a real turn shows visible crowding.
+- Confidence scaling — preserved verbatim (`var confFactor = profileConfPct / 100; criteriaValues = criteria.map(... * confFactor)`).
+- Empty bottom semicircle — handled. If `hasCriteriaData` is false, the bottom-semicircle `drawProfile` call is skipped; the top semicircle and the dashed divider still render.
+
+**No backend changes.** The OutfitCard schema, visual evaluator prompt, context-gating rules, and purchase verdict logic from prior fixes are all unchanged. This is purely a rendering-layer change.
+
+**On verifying the new chart:** as before, **hard refresh** (Cmd+Shift+R) any open browser tabs after restarting the staging app — the JS is inlined in the HTML, so already-open tabs keep running the old two-radar code until they re-fetch the page.
+
+---
+
+### P0 — Merge style + evaluation radar charts into one split polar bar chart (April 9 2026) — historical plan retained for reference
+
+**Goal:** replace the two stacked radar charts on each PDP card with a single Nightingale-style split polar bar chart. The top semicircle owns the **style archetype profile** (8 fixed axes); the bottom semicircle owns the **fit / evaluation profile** (5–9 dynamic axes per the existing context-gating rules). A dashed horizontal divider separates them. One canvas, one rendering pass, no toggles or overlays.
+
+**Why:** the two stacked radars take vertical space, force the eye to compare two webs separately, and don't visually relate the user-facing profile (archetypes) to the per-turn evaluation (fit dimensions). One chart with two semicircles makes that relationship explicit, saves vertical space on the PDP card, and aligns the visual language with how a stylist would present "this is how the outfit reads aesthetically vs. how it scores on the technical fit checklist".
+
+**Current state (`platform_core/ui.py:1685-1793`):**
+- **Chart A — Style archetype radar** (lines 1685-1723): always 8 axes, purple stroke `rgba(139, 92, 246, 0.85)`, fill `rgba(139, 92, 246, 0.25)`. Reads `classic_pct`, `dramatic_pct`, `romantic_pct`, `natural_pct`, `minimalist_pct`, `creative_pct`, `sporty_pct`, `edgy_pct` from the OutfitCard. Renders into a 200×200 canvas inside an `outfit-radar` div appended to the `info` panel.
+- **Chart B — Evaluation criteria radar** (lines 1725-1793): 5-9 axes after the context-gated filter from `bef671a`, burgundy stroke `rgba(111, 47, 69, 0.85)`, fill `rgba(111, 47, 69, 0.22)`. Reads via `buildEvaluationCriteria` (which returns 5 always-evaluated + 4 context-gated dimensions). Multiplies values by `profileConfPct / 100` (Phase 12B confidence scaling). Renders into a second 200×200 canvas appended to the same `info` panel below the first.
+
+**Target state — one canvas, two semicircles:**
+
+| Region | Profile | Axis count | Color | Data source |
+|---|---|---|---|---|
+| Top semicircle (9→12→3 o'clock) | Style archetypes | always 8 | Purple `#7F77DD` stroke / `rgba(127, 119, 221, 0.38)` fill | Same 8 archetype `_pct` fields |
+| Bottom semicircle (3→6→9 o'clock) | Fit / evaluation | dynamic 5-9 | Burgundy `#8B3055` stroke / `rgba(139, 48, 85, 0.35)` fill | Same `buildEvaluationCriteria(...).filter(...)` chain, with the same null + context-gated-zero drop rules from `bef671a` |
+| Center | Dashed horizontal divider | n/a | `rgba(0,0,0,0.14)` 0.75px dashed | n/a |
+| Background | Concentric grid rings (0/25/50/75/100) | 4 rings | `rgba(0,0,0,0.08)` 0.5px | n/a |
+| Below canvas | Color-coded legend | n/a | Two colored chips + labels "Style profile" / "Fit profile" | n/a |
+
+Both profiles are on the same 0-100 scale, so the grid rings are shared. Bottom-semicircle values still get multiplied by `profileConfPct / 100` to preserve Phase 12B confidence scaling.
+
+**Implementation plan (Steps 1-7):**
+
+- **Step 1 — Audit (no code).** Confirm: top is always 8 axes; bottom is 5-9 dynamic; both share the 0-100 scale; the only Python-side change is removing two radar canvas blocks; backend OutfitCard schema is unchanged. Done in this plan section.
+- **Step 2 — Replace the two radar canvases with one.** In `ui.py` `buildOutfitCard`, delete both existing radar render blocks (lines 1685-1723 and 1725-1793) and replace with a single `<canvas>` of dimensions `300×272` (per the spec's recommendation for 9-10px labels) wrapped in an `outfit-radar` div. The 300px width is wider than the current 200px — verify it still fits the PDP card's `info` panel width on desktop and mobile; if not, drop to `260×232` and tighten `labelR` accordingly.
+- **Step 3 — Layout constants + grid + divider.** Compute `cx = W/2`, `cy = H/2`, `maxR = 78`, `labelR = 98`. Draw 4 concentric grid rings (steps 25/50/75/100 of `maxR`) with `rgba(0,0,0,0.08)` 0.5px stroke. Draw the dashed horizontal divider through `cy` from `cx - maxR - 10` to `cx + maxR + 10` with `setLineDash([4, 4])` and reset the dash pattern with `ctx.save()` / `ctx.restore()`.
+- **Step 4 — `drawProfile` function.** Translate the spec's `drawProfile(axes, values, color, fillColor, startAngle, span)` into the inlined JS string. Per axis: compute `midAngle`, draw a filled arc sector from `cx,cy` out to `(value/100) * maxR` (with a 4px floor so empty axes are still visible), draw a 2.5px tip dot, and place a 9.5px label at `labelR` with text alignment derived from `cos`/`sin` of the angle. The label color matches the profile's stroke color so the legend isn't strictly necessary (but we'll add one for accessibility).
+- **Step 5 — Wire up data.** Top semicircle call: hardcoded 8-archetype list, values from `outfit[archetype.key] || 0`, color `#7F77DD`, fill `rgba(127, 119, 221, 0.38)`, `startAngle = Math.PI`, `span = Math.PI`. Bottom semicircle call: re-use the existing `buildEvaluationCriteria(...).filter(...)` chain (preserving the null + zero context-gated drops from `bef671a`), multiply each value by `profileConfPct / 100` for confidence scaling, color `#8B3055`, fill `rgba(139, 48, 85, 0.35)`, `startAngle = 0`, `span = Math.PI`. If the filtered criteria array is empty (no fit dimensions to show), skip the bottom-semicircle call entirely — the top still renders alone. The dashed divider is always drawn.
+- **Step 6 — Legend.** Append a small legend `<div>` below the canvas inside the `outfit-radar` container. Two color chips with `display: flex`, `gap: 20px`, `justify-content: center`. Use the same colors as the strokes/fills.
+- **Step 7 — Tests + docs.** No backend tests change. Add a small smoke test that calls `get_web_ui_html()` and asserts the rendered HTML contains `drawProfile`, `CONTEXT_GATED_KEYS`, and that the old archetype radar code (`var archetypes = [`) is gone (so we know the migration is complete). Update `WORKFLOW_REFERENCE.md` if it mentions the two-chart layout. Close out this P0 in `CURRENT_STATE.md`.
+
+**Files touched:**
+- `modules/platform_core/src/platform_core/ui.py` — primary surgery in `buildOutfitCard` between lines ~1685 and ~1793. Net code is roughly the same length but consolidated into one chart.
+- `tests/test_agentic_application_api_ui.py` — add a smoke test asserting the new `drawProfile` function string is present and the old `var archetypes = [` block is gone.
+- `docs/CURRENT_STATE.md` — close-out.
+- `docs/WORKFLOW_REFERENCE.md` — only if it explicitly mentions "two radar charts" anywhere (will grep during Step 7).
+
+**Risk callouts:**
+- **Canvas width vs PDP card width.** The current radars are 200px each; the new canvas is 300px. The PDP card's `info` panel is constrained — need to verify on mobile (~360px viewport) that the chart still fits without overflow. Fallback: use 260×232 with `maxR = 70`, `labelR = 90`.
+- **Label collisions in the bottom semicircle.** When the dynamic axis count is 5 (the minimum), the bottom labels are well-spaced. When it's 9 (the maximum, which would happen on a turn with full live_context — occasion + weather + needs + a pairing-capable intent), the labels can crowd. The spec's `gap = Math.min(0.09, sector * 0.15)` already handles this by tightening sector gaps; if labels still collide we can drop the font from 9.5px to 9px, or shorten labels (e.g. "Pair" instead of "Pairing").
+- **Confidence scaling gotcha.** The current evaluation radar multiplies by `profileConfPct / 100` BEFORE the 0-100 normalization. The new code must do the same — otherwise users with low profile confidence will see the bottom semicircle "deflate" inconsistently with the existing behavior.
+- **Empty bottom semicircle case.** If the user has zero filtered fit dimensions (theoretically impossible because the 5 always-evaluated dimensions should always be present, but defensive), the bottom semicircle should be skipped without leaving a half-empty divided canvas. Solution: skip the divider and the bottom-semicircle call when filtered criteria length is 0; the top semicircle renders against the full circle as before.
+- **No CSS changes needed.** The existing `.outfit-radar { text-align: center; padding: 8px 0; }` class still works for the new container.
+
+**Test count after this lands:** unchanged (321), unless the new smoke test counts (322).
+
+**This does NOT change:** any backend code, the OutfitCard schema, the visual evaluator prompt, the context-gating rules from the previous fixes. The fix is purely in `ui.py`'s rendering layer.
+
+---
 
 ### ✅ CLOSED — Pairing dimension is intent-gated (April 9 2026)
 
