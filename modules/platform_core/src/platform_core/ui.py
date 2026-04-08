@@ -433,10 +433,11 @@ def get_web_ui_html(
     .chip { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: var(--surface-deep); color: var(--muted); font-weight: 600; }
     /* Split polar bar chart — sits at the bottom of the .outfit-info
        column (right column of the PDP card). The canvas is sized to
-       fit the column's usable width (~260-280px after padding) and
-       uses aspect-ratio + max-width: 100% so it scales DOWN
-       proportionally on narrower viewports without squishing the
-       rings into ellipses. */
+       fit the column's usable width (~280px after padding) and uses
+       aspect-ratio + max-width: 100% so it scales DOWN proportionally
+       on narrower viewports without squishing the rings into ellipses.
+       Labels are arranged on a single circle (no staggering) for a
+       cleaner, more orderly visual rhythm. */
     .outfit-radar {
       text-align: center;
       padding: 8px 0 4px;
@@ -445,7 +446,7 @@ def get_web_ui_html(
     .outfit-radar canvas {
       display: block; margin: 0 auto;
       max-width: 100%; height: auto;
-      aspect-ratio: 260 / 280;
+      aspect-ratio: 290 / 320;
     }
     .outfit-criteria { display: flex; flex-direction: column; gap: 6px; }
     .criteria-row { display: flex; align-items: center; gap: 8px; }
@@ -1755,22 +1756,20 @@ def get_web_ui_html(
     var hasCriteriaData = criteria.length > 0 && criteriaValues.some(function(v) {{ return v > 0; }});
 
     // ── Canvas setup ──
-    // Width 260 × Height 280: the chart lives at the bottom of the
-    // .outfit-info column (the 40% right column of the PDP card),
-    // sized to fit the column's usable width (~276px after padding).
-    // Native pixel size matches the column width so there's no CSS
-    // scaling on desktop and the rings render as actual circles.
-    // On narrow viewports the aspect-ratio CSS rule scales the chart
-    // down proportionally rather than squishing the rings into
-    // ellipses. The chart is appended AFTER the products list and
-    // BEFORE the dislike form so it sits at the bottom of the column
-    // where we have empty space.
+    // Width 290 × Height 320: the chart lives at the bottom of the
+    // .outfit-info column (40% right column of the PDP card). 290px
+    // is slightly wider than the column's ~280px usable width so the
+    // canvas CSS-scales down by ~5% via aspect-ratio: 290/320 +
+    // max-width: 100% — proportional scaling that keeps the rings
+    // perfectly circular. The wider native canvas + the taller height
+    // give the labels enough horizontal space to sit on a SINGLE ring
+    // without colliding, while the polygon stays prominent.
     var radarDiv = document.createElement("div");
     radarDiv.className = "outfit-radar";
     var polarCanvas = document.createElement("canvas");
     polarCanvas.setAttribute("role", "img");
     polarCanvas.setAttribute("aria-label", "Style + fit profile chart");
-    var W = 260, H = 280, dpr = window.devicePixelRatio || 1;
+    var W = 290, H = 320, dpr = window.devicePixelRatio || 1;
     polarCanvas.width = W * dpr; polarCanvas.height = H * dpr;
     polarCanvas.style.width = W + "px"; polarCanvas.style.height = H + "px";
     radarDiv.appendChild(polarCanvas);
@@ -1779,15 +1778,17 @@ def get_web_ui_html(
     pCtx.scale(dpr, dpr);
 
     // ── Layout constants ──
-    // pMaxR=72 keeps the polygon prominent in the narrower 260-wide
-    // canvas. pLabelR=88 base + 14 staggered (odd-indexed labels at
-    // 102) — adjacent labels sit at different radii so they don't
-    // collide when the bottom semicircle has up to 7 axes or the top
-    // semicircle has 8.
+    // pMaxR=85 polygon radius. pLabelR=115 single-ring label radius —
+    // labels for ALL axes sit at this exact distance from the centre,
+    // forming a clean circular orbit. The previous staggered double-
+    // ring pattern was visually noisy; the single ring reads as a
+    // proper radar chart. With 8 archetype labels in 180°, the two
+    // centermost labels (Natural at i=3, Minimalist at i=4) have
+    // ~45px horizontal separation at this radius, just enough to fit
+    // their bounding boxes side by side at the 9px font size.
     var pCx = W / 2, pCy = H / 2;
-    var pMaxR = 72;      // outer ring radius
-    var pLabelR = 88;    // base axis label radius; odd-indexed labels use pLabelR + 14
-    var pLabelOffset = 14;
+    var pMaxR = 85;      // outer ring radius
+    var pLabelR = 115;   // single-ring axis label radius (no staggering)
     var pMaxValue = 100;
 
     // ── Grid rings (4 concentric circles at 25/50/75/100) ──
@@ -1813,14 +1814,10 @@ def get_web_ui_html(
     // ── drawProfile: one filled arc sector per axis ──
     // axes = [{{key, label}}, ...], values = [int, ...] aligned to axes
     //
-    // Label staggering: even-indexed labels are placed at pLabelR;
-    // odd-indexed labels are pushed out by pLabelOffset (12px). This
-    // creates a "double ring" pattern that prevents adjacent labels
-    // from colliding when many axes share a semicircle. Without this,
-    // 8 archetypes in 180° gives Natural and Minimalist (both near 12
-    // o'clock, only ~38px horizontal separation at the inner radius)
-    // overlapping each other; the offset gives them ~14px of vertical
-    // separation, enough that their bounding boxes no longer intersect.
+    // All labels sit on a SINGLE circular ring at pLabelR. The previous
+    // staggered double-ring pattern was visually noisy — the eye read
+    // it as random rather than orderly. The single-ring layout looks
+    // like a proper radar chart and reads as a clean circular orbit.
     function drawProfile(axes, values, color, fillColor, startAngle, span) {{
       var n = axes.length;
       if (n === 0) return;
@@ -1847,12 +1844,10 @@ def get_web_ui_html(
         pCtx.fillStyle = color;
         pCtx.fill();
 
-        // Axis label (color-coded so the legend is reinforcement, not load-bearing)
-        // Stagger label radii: odd-indexed labels are pushed out by pLabelOffset
-        // so adjacent labels don't share the same arc and collide.
-        var useLabelR = pLabelR + (i % 2) * pLabelOffset;
-        var lx = pCx + Math.cos(midAngle) * useLabelR;
-        var ly = pCy + Math.sin(midAngle) * useLabelR;
+        // Axis label — all labels on a single circle at pLabelR for
+        // a clean, orderly orbit around the chart.
+        var lx = pCx + Math.cos(midAngle) * pLabelR;
+        var ly = pCy + Math.sin(midAngle) * pLabelR;
         var ca = Math.cos(midAngle);
         var sa = Math.sin(midAngle);
         pCtx.textAlign = Math.abs(ca) < 0.28 ? "center" : (ca > 0 ? "left" : "right");

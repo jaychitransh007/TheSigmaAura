@@ -350,19 +350,21 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertIn("Fit profile", html)
         # Dashed divider markers
         self.assertIn("setLineDash([4, 4])", html, "dashed divider missing")
-        # Layout constants — pMaxR=72 outer in a 260×280 canvas sized
-        # to fit inside the .outfit-info column (40% width column of
-        # the PDP card, ~276px usable width). pLabelR=88 base + 14
-        # staggered. The chart sits at the bottom of the info column,
+        # Layout constants — pMaxR=85 outer in a 290×320 canvas sized
+        # to fit inside the .outfit-info column. All labels sit on a
+        # SINGLE ring at pLabelR=115 — the previous staggered double-
+        # ring pattern was visually noisy and read as random rather
+        # than orderly. The chart sits at the bottom of the info column,
         # below the products list, where there's empty space.
-        self.assertIn("pMaxR = 72", html)
-        self.assertIn("pLabelR = 88", html)
-        self.assertIn("pLabelOffset = 14", html)
-        # Label staggering must be present in drawProfile
-        self.assertIn("(i % 2) * pLabelOffset", html)
+        self.assertIn("pMaxR = 85", html)
+        self.assertIn("pLabelR = 115", html)
+        # Single-ring layout — pLabelOffset must be GONE; labels must
+        # use pLabelR directly, not a staggered useLabelR.
+        self.assertNotIn("pLabelOffset", html)
+        self.assertNotIn("(i % 2)", html)
         # Chart canvas must fit inside the info column with proportional
         # CSS scaling for narrow viewports
-        self.assertIn("aspect-ratio: 260 / 280", html)
+        self.assertIn("aspect-ratio: 290 / 320", html)
         # The chart div is appended to info, not the card directly
         self.assertIn("info.appendChild(radarDiv)", html)
         # style_fit_pct must NOT appear as a Fit-profile axis — it's
