@@ -350,16 +350,25 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertIn("Fit profile", html)
         # Dashed divider markers
         self.assertIn("setLineDash([4, 4])", html, "dashed divider missing")
-        # Layout constants — pMaxR=95 outer (polygon fills the canvas
-        # rather than feeling compressed), pLabelR=110 base label radius,
-        # pLabelOffset=14 for the staggered odd-indexed labels (the
-        # double-ring pattern that prevents adjacent label collisions
-        # like Natural / Minimalist in the top semicircle).
-        self.assertIn("pMaxR = 95", html)
-        self.assertIn("pLabelR = 110", html)
-        self.assertIn("pLabelOffset = 14", html)
+        # Layout constants — pMaxR=120 outer in a 600×320 canvas. The
+        # chart lives in its own full-width PDP-card row (grid-column:
+        # 1/-1) instead of the narrow info column, so the polygon has
+        # horizontal room to render at native size without CSS-shrinking
+        # the rings into ellipses.
+        self.assertIn("pMaxR = 120", html)
+        self.assertIn("pLabelR = 140", html)
+        self.assertIn("pLabelOffset = 16", html)
         # Label staggering must be present in drawProfile
         self.assertIn("(i % 2) * pLabelOffset", html)
+        # Chart row must be full-width via grid-column: 1 / -1, sit
+        # below the 3-column body, and use aspect-ratio so narrow
+        # viewports scale proportionally instead of squishing the rings
+        self.assertIn("grid-column: 1 / -1", html)
+        self.assertIn("aspect-ratio: 600 / 320", html)
+        # The card now has a 3-row grid (header / body / chart) instead of 2
+        self.assertIn("grid-template-rows: auto 1fr auto", html)
+        # The chart div is appended to the card, not the info panel
+        self.assertIn("card.appendChild(radarDiv)", html)
         # style_fit_pct must NOT appear as a Fit-profile axis — it's
         # already double-counted by the 8 archetype scores in the top
         # semicircle. The backend field is still scored and still used

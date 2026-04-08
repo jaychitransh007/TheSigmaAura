@@ -364,7 +364,7 @@ def get_web_ui_html(
     /* ===== Outfit Cards ===== */
     .outfit-card {
       display: grid; grid-template-columns: 80px 1fr 40%;
-      grid-template-rows: auto 1fr;
+      grid-template-rows: auto 1fr auto;
       gap: 0; border-radius: 16px; border: 1px solid var(--line);
       background: var(--surface); overflow: hidden; margin-bottom: 16px;
       box-shadow: 0 4px 24px rgba(54, 32, 24, 0.06);
@@ -431,7 +431,23 @@ def get_web_ui_html(
     .btn-wishlist.wishlisted { color: var(--accent); border-color: var(--accent); }
     .outfit-item-source { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
     .chip { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: var(--surface-deep); color: var(--muted); font-weight: 600; }
-    .outfit-radar { text-align: center; padding: 4px 0; }
+    /* Split polar bar chart row — full-width across the PDP card so
+       the 8-axis archetype + 5-9 axis fit profile have horizontal room
+       to render at native canvas size without CSS-shrinking
+       non-uniformly inside the narrow .outfit-info column. Chart sits
+       below the 3-column body row. */
+    .outfit-radar {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 12px 16px 14px;
+      border-top: 1px solid var(--line);
+      background: var(--surface);
+    }
+    .outfit-radar canvas {
+      display: block; margin: 0 auto;
+      max-width: 100%; height: auto;
+      aspect-ratio: 600 / 320;
+    }
     .outfit-criteria { display: flex; flex-direction: column; gap: 6px; }
     .criteria-row { display: flex; align-items: center; gap: 8px; }
     .criteria-label { font-size: 11px; font-weight: 600; color: var(--muted); width: 100px; flex-shrink: 0; }
@@ -1740,40 +1756,37 @@ def get_web_ui_html(
     var hasCriteriaData = criteria.length > 0 && criteriaValues.some(function(v) {{ return v > 0; }});
 
     // ── Canvas setup ──
-    // Width 380 gives generous horizontal room for the leftmost and
-    // rightmost labels in both semicircles. Height 280 lets the polygon
-    // fill the canvas — the previous 230×340 footprint with pMaxR=70
-    // left a lot of empty space and made the chart feel compressed.
-    // The total chart vertical (canvas + tight padding + legend)
-    // still fits inside the .outfit-info max-height: 520px window for
-    // typical PDP content above.
+    // Width 600 × Height 320: the chart now lives in its own
+    // full-width row at the bottom of the PDP card (grid-column: 1/-1)
+    // instead of being squeezed into the narrow info column. With
+    // ~600px of horizontal room the labels have plenty of space, so
+    // the polygon and labels can both render at comfortable sizes.
+    // The CSS sets aspect-ratio: 600/320 + max-width: 100%, so on
+    // narrow viewports the canvas scales down PROPORTIONALLY rather
+    // than squishing the rings into ellipses (which is what the
+    // previous version did when forced into the 40%-width info
+    // column).
     var radarDiv = document.createElement("div");
     radarDiv.className = "outfit-radar";
     var polarCanvas = document.createElement("canvas");
     polarCanvas.setAttribute("role", "img");
     polarCanvas.setAttribute("aria-label", "Style + fit profile chart");
-    var W = 380, H = 280, dpr = window.devicePixelRatio || 1;
+    var W = 600, H = 320, dpr = window.devicePixelRatio || 1;
     polarCanvas.width = W * dpr; polarCanvas.height = H * dpr;
     polarCanvas.style.width = W + "px"; polarCanvas.style.height = H + "px";
-    polarCanvas.style.display = "block";
-    polarCanvas.style.margin = "0 auto";
-    polarCanvas.style.maxWidth = "100%";
     radarDiv.appendChild(polarCanvas);
-    info.appendChild(radarDiv);
     var pCtx = polarCanvas.getContext("2d");
     pCtx.scale(dpr, dpr);
 
     // ── Layout constants ──
-    // pMaxR=95 makes the polygon roughly fill the canvas height — much
-    // more visually prominent than the previous 70. pLabelR=110 keeps
-    // labels outside the polygon, with the staggered odd-indexed labels
-    // pushed out to 124. The label staggering pattern (every other
-    // label at a different radius) prevents adjacent labels from
-    // colliding when many axes share a semicircle.
+    // pMaxR=120 makes the polygon prominent in the wider canvas.
+    // pLabelR=140 base + 16px stagger keeps labels well outside the
+    // polygon, with each adjacent label at a different radius so they
+    // don't collide.
     var pCx = W / 2, pCy = H / 2;
-    var pMaxR = 95;      // outer ring radius (polygon fills the canvas)
-    var pLabelR = 110;   // base axis label radius; odd-indexed labels use pLabelR + 14
-    var pLabelOffset = 14;
+    var pMaxR = 120;     // outer ring radius (polygon fills the canvas height)
+    var pLabelR = 140;   // base axis label radius; odd-indexed labels use pLabelR + 16
+    var pLabelOffset = 16;
     var pMaxValue = 100;
 
     // ── Grid rings (4 concentric circles at 25/50/75/100) ──
@@ -1920,7 +1933,7 @@ def get_web_ui_html(
     cancelBtn.addEventListener("click", function() {{ dislikeForm.classList.remove("open"); ta.value = ""; }});
     submitBtn.addEventListener("click", function() {{ sendFeedback(convId, outfitRank, "dislike", ta.value.trim(), itemIds, fbStatus, fbWrap, dislikeForm); }});
 
-    card.appendChild(header); card.appendChild(thumbs); card.appendChild(heroWrap); card.appendChild(info);
+    card.appendChild(header); card.appendChild(thumbs); card.appendChild(heroWrap); card.appendChild(info); card.appendChild(radarDiv);
     return card;
   }}
 
