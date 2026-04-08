@@ -360,6 +360,17 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertIn("pLabelOffset = 14", html)
         # Label staggering must be present in drawProfile
         self.assertIn("(i % 2) * pLabelOffset", html)
+        # style_fit_pct must NOT appear as a Fit-profile axis — it's
+        # already double-counted by the 8 archetype scores in the top
+        # semicircle. The backend field is still scored and still used
+        # by the purchase verdict; we just don't render it as a Fit
+        # axis on the bottom semicircle.
+        self.assertNotIn(
+            '"style_fit_pct", label: "Style"',
+            html,
+            "style_fit_pct should not be in the Fit profile criteria — "
+            "it duplicates the top semicircle's archetype scores",
+        )
         # ── Old two-radar scaffolding must be GONE ──
         self.assertNotIn("var values = archetypes.map", html,
                          "old archetype radar polygon code still present")
