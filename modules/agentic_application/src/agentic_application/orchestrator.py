@@ -4473,19 +4473,27 @@ class AgenticOrchestrator:
                 "metadata": {"error": True},
             }
 
-        # Compute overall_score_pct from the 5 outfit-relevant dimensions for
+        # Compute overall_score_pct from the outfit-relevant dimensions for
         # backwards compatibility with the old OutfitCheckResult.overall_score_pct
         # property used by downstream metadata + UI.
-        overall_score_pct = int(
-            (
-                check.body_harmony_pct
-                + check.color_suitability_pct
-                + check.style_fit_pct
-                + check.pairing_coherence_pct
-                + check.occasion_pct
-            )
-            / 5
-        )
+        #
+        # Phase 12B follow-ups (April 9 2026): pairing_coherence_pct and
+        # occasion_pct are now context-gated (Optional[int]). For
+        # outfit_check turns pairing should always be present (the user IS
+        # wearing a multi-piece outfit), but occasion may be null when the
+        # user didn't name one. Average only the dimensions that were
+        # actually scored — coercing None to 0 here would re-introduce the
+        # phantom-default bug we fixed for the radar chart and verdict.
+        outfit_check_scores = [
+            check.body_harmony_pct,
+            check.color_suitability_pct,
+            check.style_fit_pct,
+        ]
+        if check.pairing_coherence_pct is not None:
+            outfit_check_scores.append(check.pairing_coherence_pct)
+        if check.occasion_pct is not None:
+            outfit_check_scores.append(check.occasion_pct)
+        overall_score_pct = int(sum(outfit_check_scores) / len(outfit_check_scores))
 
         self.repo.log_model_call(
             conversation_id=conversation_id,

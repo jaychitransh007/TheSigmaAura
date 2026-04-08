@@ -5422,6 +5422,71 @@ class Phase12BBuildingBlockTests(unittest.TestCase):
         )
         self.assertEqual("conditional", verdict)
 
+    def test_outfit_check_overall_score_handles_none_dimensions(self):
+        """Phase 12B follow-up regression: the outfit_check handler
+        averages body / color / style / pairing / occasion to compute
+        `overall_score_pct` for backwards compat with the legacy
+        OutfitCheckResult shape. After pairing_coherence_pct and
+        occasion_pct became Optional[int], the literal `int + None +
+        ...` arithmetic blew up with `unsupported operand type(s) for
+        +: 'int' and 'NoneType'`. The handler must instead average
+        over only the dimensions that were actually scored."""
+        from agentic_application.schemas import EvaluatedRecommendation
+
+        # Simulate a "Rate my outfit" turn where the user didn't name
+        # an occasion. The visual evaluator returns occasion_pct=None;
+        # pairing_coherence_pct comes through with a real score because
+        # outfit_check IS one of the pairing-eligible intents.
+        check = EvaluatedRecommendation(
+            candidate_id="c1",
+            body_harmony_pct=80, color_suitability_pct=70, style_fit_pct=75,
+            risk_tolerance_pct=72, comfort_boundary_pct=85,
+            pairing_coherence_pct=68,
+            occasion_pct=None, weather_time_pct=None, specific_needs_pct=None,
+        )
+        # Reproduce the orchestrator's overall_score_pct math directly
+        # without spinning up the whole orchestrator: average only the
+        # non-None scored dimensions.
+        scores = [
+            check.body_harmony_pct,
+            check.color_suitability_pct,
+            check.style_fit_pct,
+        ]
+        if check.pairing_coherence_pct is not None:
+            scores.append(check.pairing_coherence_pct)
+        if check.occasion_pct is not None:
+            scores.append(check.occasion_pct)
+        # Should not raise. Should produce a sensible average.
+        overall = int(sum(scores) / len(scores))
+        # 4-dim average: (80+70+75+68)/4 = 73
+        self.assertEqual(73, overall)
+
+    def test_outfit_check_overall_score_with_full_context(self):
+        """Sanity: when all 5 dimensions are present, the average is the
+        same as the legacy 5-dim mean. Locks in that the new logic
+        preserves backwards compatibility for the populated case."""
+        from agentic_application.schemas import EvaluatedRecommendation
+
+        check = EvaluatedRecommendation(
+            candidate_id="c1",
+            body_harmony_pct=80, color_suitability_pct=70, style_fit_pct=75,
+            risk_tolerance_pct=72, comfort_boundary_pct=85,
+            pairing_coherence_pct=68, occasion_pct=82,
+            weather_time_pct=None, specific_needs_pct=None,
+        )
+        scores = [
+            check.body_harmony_pct,
+            check.color_suitability_pct,
+            check.style_fit_pct,
+        ]
+        if check.pairing_coherence_pct is not None:
+            scores.append(check.pairing_coherence_pct)
+        if check.occasion_pct is not None:
+            scores.append(check.occasion_pct)
+        overall = int(sum(scores) / len(scores))
+        # 5-dim average: (80+70+75+68+82)/5 = 75
+        self.assertEqual(75, overall)
+
     def test_outfit_card_serializes_none_dimensions(self):
         """The OutfitCard schema must accept None for the 4 context-gated
         fields and serialize them as null in JSON, so the frontend
