@@ -5629,6 +5629,269 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
         # to have made it through _product_to_item.
         self.assertEqual(3, len(result))
 
+    def test_compute_wardrobe_overlap_excludes_attached_item_id(self):
+        """Phase 12D follow-up regression: _compute_wardrobe_overlap must
+        skip the attached item itself even if it appears in
+        wardrobe_items (e.g. because the upload was persisted before the
+        check ran). Without this, a self-match produces a false positive
+        "your wardrobe already has X" line on the user's first upload of
+        a piece they don't own."""
+        from agentic_application.orchestrator import AgenticOrchestrator
+
+        attached = {
+            "id": "wardrobe-row-just-saved",
+            "garment_category": "bottom",
+            "garment_subtype": "jeans",
+            "primary_color": "charcoal",
+            "title": "Charcoal Jeans",
+        }
+        wardrobe = [
+            # The just-saved row, identical to the upload — this should
+            # be skipped, not matched.
+            {
+                "id": "wardrobe-row-just-saved",
+                "garment_category": "bottom",
+                "garment_subtype": "jeans",
+                "primary_color": "charcoal",
+                "title": "Charcoal Jeans",
+            },
+        ]
+        result = AgenticOrchestrator._compute_wardrobe_overlap(
+            attached_item=attached,
+            wardrobe_items=wardrobe,
+        )
+        self.assertFalse(result["has_duplicate"])
+        self.assertEqual("none", result["overlap_level"])
+        self.assertIsNone(result["duplicate_detail"])
+
+    def test_compute_wardrobe_overlap_still_finds_real_duplicates(self):
+        """Sanity: a genuinely separate wardrobe row with the same
+        category + subtype + color should still be reported as a
+        duplicate. The Phase 12D follow-up exclusion only covers the
+        attached item's OWN id."""
+        from agentic_application.orchestrator import AgenticOrchestrator
+
+        attached = {
+            "id": "upload-pending",
+            "garment_category": "bottom",
+            "garment_subtype": "jeans",
+            "primary_color": "charcoal",
+            "title": "Charcoal Jeans",
+        }
+        wardrobe = [
+            {
+                "id": "old-wardrobe-row",
+                "garment_category": "bottom",
+                "garment_subtype": "jeans",
+                "primary_color": "charcoal",
+                "title": "Old Charcoal Jeans",
+            },
+        ]
+        result = AgenticOrchestrator._compute_wardrobe_overlap(
+            attached_item=attached,
+            wardrobe_items=wardrobe,
+        )
+        self.assertTrue(result["has_duplicate"])
+        self.assertEqual("strong", result["overlap_level"])
+
+    def test_attached_item_to_outfit_item_uses_browser_safe_image_url(self):
+        """Phase 12D follow-up regression: the PDP card thumbnail of an
+        uploaded garment must use a URL the browser can fetch. Wardrobe
+        rows store the file at a relative `image_path` (e.g.
+        `data/onboarding/images/wardrobe/abc.jpg`); without the
+        `_browser_safe_image_url` wrapper, the `<img>` tag tries to load
+        the relative path as a URL and the thumbnail breaks."""
+        from agentic_application.orchestrator import AgenticOrchestrator
+
+        attached = {
+            "id": "upload-1",
+            "title": "Charcoal Jeans",
+            "image_url": "",
+            "image_path": "data/onboarding/images/wardrobe/abc123.jpg",
+            "garment_category": "bottom",
+        }
+        item = AgenticOrchestrator._attached_item_to_outfit_item(attached)
+        self.assertTrue(
+            item["image_url"].startswith("/v1/onboarding/images/local?path="),
+            f"expected browser-safe URL, got {item['image_url']!r}",
+        )
+        self.assertIn("data/onboarding/images/wardrobe/abc123.jpg", item["image_url"])
+
+    def test_garment_evaluation_does_not_persist_uploaded_item(self):
+        """Phase 12D follow-up regression: an upload paired with a
+        `garment_evaluation` ("Should I buy this?") turn must NOT be
+        written to user_wardrobe_items. The user is asking about a piece
+        they don't own. Verifies the orchestrator calls
+        save_uploaded_chat_wardrobe_item with persist=False and never
+        promotes the pending dict to a real row."""
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1",
+            "user_id": "db-user",
+            "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Autumn"}},
+        }
+        gw.get_wardrobe_items.return_value = []
+        gw.get_person_image_path.return_value = "/tmp/person.jpg"
+        # The "pending" dict shape returned by save_uploaded_chat_wardrobe_item
+        # when persist=False — note id=None and the _pending_persist marker.
+        gw.save_uploaded_chat_wardrobe_item.return_value = {
+            "id": None,
+            "title": "Charcoal Jeans",
+            "image_path": "data/onboarding/images/wardrobe/abc.jpg",
+            "garment_category": "bottom",
+            "garment_subtype": "jeans",
+            "primary_color": "charcoal",
+            "enrichment_status": "ok",
+            "_pending_persist": True,
+        }
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent=Intent.GARMENT_EVALUATION,
+            intent_confidence=0.95,
+            action=Action.RUN_GARMENT_EVALUATION,
+            context_sufficient=True,
+            assistant_message="",
+            follow_up_suggestions=[],
+            resolved_context=CopilotResolvedContext(),
+            action_parameters=CopilotActionParameters(purchase_intent=True),
+        )
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
+             patch("agentic_application.orchestrator.OutfitArchitect"), \
+             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
+             patch("agentic_application.orchestrator.VisualEvaluatorAgent") as ve_cls, \
+             patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            ve_inst = ve_cls.return_value
+            ve_inst.evaluate_candidate.return_value = Mock(
+                body_harmony_pct=80, color_suitability_pct=70, style_fit_pct=75,
+                pairing_coherence_pct=70, occasion_pct=60, weather_time_pct=70,
+                classic_pct=60, dramatic_pct=10, romantic_pct=20, natural_pct=40,
+                minimalist_pct=70, creative_pct=15, sporty_pct=10, edgy_pct=10,
+                overall_note="These would work with caveats.",
+                overall_verdict="good_with_tweaks",
+                body_note="", color_note="", style_note="", occasion_note="",
+                strengths=[], improvements=[], reasoning="",
+            )
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Should I buy these jeans?",
+                image_data="data:image/jpeg;base64,/9j/4AAQ",
+            )
+
+        # Critical assertion: the orchestrator must have called the save
+        # function with persist=False.
+        save_call = gw.save_uploaded_chat_wardrobe_item.call_args
+        self.assertIsNotNone(save_call)
+        self.assertEqual(False, save_call.kwargs.get("persist"),
+                         "garment_evaluation upload must be enriched without persisting")
+        # And it must NEVER have called persist_pending_wardrobe_item.
+        gw.persist_pending_wardrobe_item.assert_not_called()
+
+    def test_pairing_request_persists_uploaded_item(self):
+        """Phase 12D follow-up regression: pairing_request is one of the
+        two intents allowed to write the upload to user_wardrobe_items
+        (the other is outfit_check). Without persistence, the anchor
+        injection in `_handle_planner_pipeline` has no real wardrobe row
+        id to use as the anchor product_id."""
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1",
+            "user_id": "db-user",
+            "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Autumn"}},
+        }
+        gw.get_wardrobe_items.return_value = []
+        gw.get_person_image_path.return_value = None
+        gw.save_uploaded_chat_wardrobe_item.return_value = {
+            "id": None,
+            "title": "Pullover",
+            "image_path": "data/onboarding/images/wardrobe/xyz.jpg",
+            "garment_category": "top",
+            "garment_subtype": "sweater",
+            "primary_color": "brown",
+            "enrichment_status": "ok",
+            "_pending_persist": True,
+        }
+        gw.persist_pending_wardrobe_item.return_value = {
+            "id": "real-row-uuid",
+            "title": "Pullover",
+            "image_path": "data/onboarding/images/wardrobe/xyz.jpg",
+            "garment_category": "top",
+            "garment_subtype": "sweater",
+            "primary_color": "brown",
+            "enrichment_status": "ok",
+        }
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent=Intent.PAIRING_REQUEST,
+            intent_confidence=0.95,
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
+            context_sufficient=True,
+            assistant_message="",
+            follow_up_suggestions=[],
+            resolved_context=CopilotResolvedContext(),
+            action_parameters=CopilotActionParameters(target_piece="this pullover"),
+        )
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
+             patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
+             patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            architect_cls.return_value.plan.side_effect = RuntimeError("stop after persist check")
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            try:
+                orchestrator.process_turn(
+                    conversation_id="c1",
+                    external_user_id="user-1",
+                    message="What goes with this?",
+                    image_data="data:image/jpeg;base64,/9j/4AAQ",
+                )
+            except Exception:
+                pass
+
+        # The save must have been called with persist=False…
+        save_call = gw.save_uploaded_chat_wardrobe_item.call_args
+        self.assertEqual(False, save_call.kwargs.get("persist"))
+        # …and the pending dict must have been promoted to a real row
+        # because the planner classified the intent as pairing_request.
+        gw.persist_pending_wardrobe_item.assert_called_once()
+
 
 class Phase12EStageEmissionTests(unittest.TestCase):
     """Phase 12E end-to-end stage emission tests.

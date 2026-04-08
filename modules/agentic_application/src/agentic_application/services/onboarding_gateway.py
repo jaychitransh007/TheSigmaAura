@@ -91,6 +91,7 @@ class ApplicationUserGateway:
         title: str = "",
         description: str = "",
         notes: str = "",
+        persist: bool = True,
     ) -> Optional[dict]:
         existing = self._repo.get_profile_by_user_id(user_id)
         if not existing:
@@ -101,6 +102,25 @@ class ApplicationUserGateway:
             title=title,
             description=description,
             notes=notes,
+            persist=persist,
+        )
+
+    def persist_pending_wardrobe_item(
+        self,
+        *,
+        user_id: str,
+        pending: dict,
+    ) -> Optional[dict]:
+        """Promote a previously enriched-but-unpersisted wardrobe upload
+        to a real wardrobe row. Called by the orchestrator after the
+        planner classifies an upload turn as one of the wardrobe-write
+        intents (`pairing_request` / `outfit_check`)."""
+        existing = self._repo.get_profile_by_user_id(user_id)
+        if not existing:
+            return None
+        return self._service.persist_pending_wardrobe_item(
+            user_id=user_id,
+            pending=pending,
         )
 
     def save_chat_wardrobe_item(

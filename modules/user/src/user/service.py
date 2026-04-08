@@ -247,6 +247,7 @@ class OnboardingService:
         title: str = "",
         description: str = "",
         notes: str = "",
+        persist: bool = True,
     ) -> Optional[dict]:
         file_data, content_type, filename = self._decode_data_url_image(image_data)
         return self.save_wardrobe_item(
@@ -258,6 +259,7 @@ class OnboardingService:
             title=title,
             description=description,
             notes=notes,
+            persist=persist,
         )
 
     def set_policy_logger(self, policy_logger: Optional[Callable[..., None]]) -> None:
@@ -444,6 +446,7 @@ class OnboardingService:
         occasion_fit: str = "",
         brand: str = "",
         notes: str = "",
+        persist: bool = True,
     ) -> Optional[dict]:
         if self._repo is None:
             return None
@@ -563,6 +566,42 @@ class OnboardingService:
             metadata_json["catalog_attribute_error"] = enrichment_error_message
             metadata_json["catalog_attribute_attempts"] = 2
 
+        # Phase 12D follow-up (April 9 2026): the orchestrator now defers
+        # the DB insert until *after* the planner classifies the intent,
+        # so it can drop wardrobe writes for `garment_evaluation` and
+        # `style_discovery` turns where the user is asking about a piece
+        # they don't own. When persist=False we still write the image to
+        # disk + run enrichment (the planner needs the attributes), but
+        # we return a "pending" dict carrying everything `_repo.insert_wardrobe_item`
+        # would need. The orchestrator promotes the pending dict to a real
+        # row via `persist_pending_wardrobe_item` only when the intent
+        # warrants it.
+        if not persist:
+            pending = {
+                "id": None,
+                "user_id": user_id,
+                "source": source,
+                "title": projected["title"],
+                "description": projected["description"],
+                "image_path": str(dest),
+                "image_url": "",
+                "garment_category": projected["garment_category"],
+                "garment_subtype": projected["garment_subtype"],
+                "primary_color": projected["primary_color"],
+                "secondary_color": projected["secondary_color"],
+                "pattern_type": projected["pattern_type"],
+                "formality_level": projected["formality_level"],
+                "occasion_fit": projected["occasion_fit"],
+                "brand": brand,
+                "notes": notes,
+                "metadata_json": metadata_json,
+                "enrichment_status": enrichment_status,
+                "_pending_persist": True,
+            }
+            if enrichment_error_message:
+                pending["enrichment_error"] = enrichment_error_message
+            return pending
+
         inserted = self._repo.insert_wardrobe_item(
             user_id=user_id,
             source=source,
@@ -589,6 +628,48 @@ class OnboardingService:
             inserted["enrichment_status"] = enrichment_status
             if enrichment_error_message:
                 inserted["enrichment_error"] = enrichment_error_message
+        return inserted
+
+    def persist_pending_wardrobe_item(
+        self,
+        *,
+        user_id: str,
+        pending: dict,
+    ) -> Optional[dict]:
+        """Promote a `persist=False` pending dict to a real wardrobe row.
+
+        Used by the orchestrator after the planner classifies an upload
+        as `pairing_request` or `outfit_check` (the only intents allowed
+        to write to the user's wardrobe). For `garment_evaluation` /
+        `style_discovery` etc., the pending dict is consumed in-memory
+        for the response and never persisted.
+        """
+        if self._repo is None or not pending:
+            return None
+        if not pending.get("_pending_persist"):
+            return pending  # already persisted, no-op
+        inserted = self._repo.insert_wardrobe_item(
+            user_id=user_id,
+            source=str(pending.get("source") or "chat"),
+            title=str(pending.get("title") or ""),
+            description=str(pending.get("description") or ""),
+            image_path=str(pending.get("image_path") or ""),
+            garment_category=str(pending.get("garment_category") or ""),
+            garment_subtype=str(pending.get("garment_subtype") or ""),
+            primary_color=str(pending.get("primary_color") or ""),
+            secondary_color=str(pending.get("secondary_color") or ""),
+            pattern_type=str(pending.get("pattern_type") or ""),
+            formality_level=str(pending.get("formality_level") or ""),
+            occasion_fit=str(pending.get("occasion_fit") or ""),
+            brand=str(pending.get("brand") or ""),
+            notes=str(pending.get("notes") or ""),
+            metadata_json=dict(pending.get("metadata_json") or {}),
+        )
+        if isinstance(inserted, dict):
+            inserted = dict(inserted)
+            inserted["enrichment_status"] = pending.get("enrichment_status") or "ok"
+            if pending.get("enrichment_error"):
+                inserted["enrichment_error"] = pending["enrichment_error"]
         return inserted
 
     def list_wardrobe_items(self, user_id: str) -> dict:

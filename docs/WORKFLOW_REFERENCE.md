@@ -54,8 +54,29 @@ The Phase 12 re-architecture (Phases 12A–12E, completed April 2026) consolidat
 | `purchase_intent: bool` | 12A | New `CopilotActionParameters` field. Replaces the legacy `verdict` string. Controls whether the `garment_evaluation` formatter renders the buy/skip verdict block. |
 | `is_anchor` flag on candidate items | 12D | Set by orchestrator anchor injection; consumed by `_enforce_cross_outfit_diversity` to exempt anchor products from the "no repeats" rule. Fixes the pre-existing bug where pairing turns collapsed to 1 outfit. |
 | Wardrobe-anchor image resolution | 12D follow-up (April 8, 2026) | `_product_to_item` now resolves `image_url` from `enriched_data["image_path"]` and tags wardrobe rows with `source="wardrobe"`. `tryon_service.generate_tryon_outfit` dispatches HTTP(S) URLs to `_download_image` and local `data/...` paths to `_load_local_image`. Without this, the visual-eval try-on render path silently dropped wardrobe-anchor garments because their `image_url` was empty, and Gemini hallucinated a stand-in instead of using the user's uploaded photo. |
+| Wardrobe-write gating by intent | 12D follow-up (April 9, 2026) | Wardrobe persistence is now gated on intent. The orchestrator calls `save_uploaded_chat_wardrobe_item(persist=False)` for ALL uploads (so the planner can read the 46-attribute enrichment in its prompt context), then conditionally promotes the pending dict to a real `user_wardrobe_items` row via `persist_pending_wardrobe_item` ONLY when the planner classifies the turn as `pairing_request` or `outfit_check`. `garment_evaluation` ("should I buy this?") and `style_discovery` uploads are consumed in-memory for the response and discarded — the user is asking about a piece they don't own, so persisting it would pollute their wardrobe and produce a self-match in `_compute_wardrobe_overlap`. The overlap check now also defensively skips any wardrobe row whose id matches the attached item's id. |
+| Browser-safe image URL on attached items | 12D follow-up (April 9, 2026) | `_attached_item_to_outfit_item` now wraps `image_url` / `image_path` in `_browser_safe_image_url`, matching `_wardrobe_item_to_outfit_item`. Without this, the PDP card thumbnail of an uploaded garment fails to load (the browser tries to fetch a relative `data/...` path as a URL) and only the try-on render is visible. |
 | `enrichment_status` on saved wardrobe rows | 12D | New top-level field on the dict returned by `save_wardrobe_item` so the orchestrator can detect failed enrichment without parsing nested JSON. The orchestrator returns a clarification asking for a clearer photo when this is `"failed"`. |
 | Tryon over-generation metrics | 12E | `tryon_attempted_count`, `tryon_succeeded_count`, `tryon_quality_gate_failures`, `tryon_overgeneration_used`, `evaluator_path` surfaced in `response.metadata` and `dependency_validation_events.metadata_json` for the operations dashboard. |
+
+### No-occasion handling (frequently asked)
+
+When a user asks "Should I buy this?" or any other question without
+naming an occasion, no part of the system invents a default occasion.
+Different stages handle the absence differently:
+
+| Stage | Behavior when `occasion_signal` is null |
+|---|---|
+| **Planner** | For `occasion_recommendation` requests it MAY default to `"general"` / `"everyday"` so the architect has something to plan against. For `garment_evaluation`, `pairing_request`, `style_discovery`, and browse-by-category requests it leaves `occasion_signal` explicitly null. (See `prompt/copilot_planner.md:65,186`.) |
+| **Architect** | If weather/time-of-day are present, factors those in; otherwise leans on the user's profile (preferred archetypes, formality lean) — never a fictional occasion. (See `prompt/outfit_architect.md:41`.) |
+| **Visual evaluator (multi-outfit `recommendation` mode)** | `occasion_pct` is **scored 0** when there's no occasion, so it doesn't push or pull the ranking. (See `prompt/visual_evaluator.md:41`.) |
+| **Visual evaluator (`single_garment` mode — `garment_evaluation` turns)** | `occasion_pct` is scored on the garment's **general versatility**, not on a fictional default occasion. (See `prompt/visual_evaluator.md:98`.) |
+| **Weather / time-of-day** | When neither is set, `weather_time_pct` defaults to ~65-75 (neutral) and the evaluator is told "do NOT manufacture context." (See `prompt/visual_evaluator.md:81`.) |
+
+In short: for "Should I buy this?" turns the evaluator grades the
+garment on general versatility, not against an invented occasion. If
+the user later replies with an occasion, the follow-up turn re-grades
+against that occasion via the standard pipeline.
 
 ### What stays the same
 

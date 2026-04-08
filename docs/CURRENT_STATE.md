@@ -1018,6 +1018,56 @@ Success criteria:
 
 ## Immediate Next Item
 
+### ✅ CLOSED — Wardrobe ingestion gated by intent + duplicate-check + PDP thumbnail fix (April 9 2026)
+
+Shipped April 9, 2026 in a single coordinated commit. Test count: 313 passing (was 308, +5 new regression tests). Verification of the next staging "Should I buy this?" turn should show:
+- The uploaded garment does NOT appear in `user_wardrobe_items` for `user_03026279ecd6`.
+- The assistant message has no "Heads up — your wardrobe already has X" line.
+- The PDP card thumbnail of the uploaded garment renders correctly (the image_url starts with `/v1/onboarding/images/local?path=`).
+- A `pairing_request` or `outfit_check` upload still persists to the wardrobe (preserves Phase 12D anchor injection).
+
+Files touched:
+- `modules/user/src/user/service.py` — added `persist: bool = True` parameter to `save_wardrobe_item` / `save_chat_wardrobe_image`; new `persist_pending_wardrobe_item` method that promotes a pending dict to a real row.
+- `modules/agentic_application/src/agentic_application/services/onboarding_gateway.py` — propagates `persist` and exposes `persist_pending_wardrobe_item`.
+- `modules/agentic_application/src/agentic_application/orchestrator.py`:
+  - Upload now calls `save_uploaded_chat_wardrobe_item(persist=False)` (orchestrator.py:667-705).
+  - After the planner returns, conditionally calls `persist_pending_wardrobe_item` only when `intent in {pairing_request, outfit_check}` (orchestrator.py:945-985).
+  - `_compute_wardrobe_overlap` now skips any wardrobe row whose id matches `attached_item["id"]` (orchestrator.py:5095-5115).
+  - `_attached_item_to_outfit_item` wraps `image_url`/`image_path` with `_browser_safe_image_url` (orchestrator.py:5260-5285).
+- `tests/test_agentic_application.py` — 5 new regression tests in `Phase12DAnchorAndEnrichmentTests`:
+  1. `test_compute_wardrobe_overlap_excludes_attached_item_id`
+  2. `test_compute_wardrobe_overlap_still_finds_real_duplicates`
+  3. `test_attached_item_to_outfit_item_uses_browser_safe_image_url`
+  4. `test_garment_evaluation_does_not_persist_uploaded_item`
+  5. `test_pairing_request_persists_uploaded_item`
+- `docs/WORKFLOW_REFERENCE.md` — added "No-occasion handling" subsection under garment_evaluation.
+
+---
+
+### P0 — Wardrobe ingestion gated by intent + duplicate-check + PDP thumbnail fix (April 9 2026)
+
+Discovered April 9, 2026 from manual staging test of `user_03026279ecd6` conversation `db5f01ea-d553-4faf-af6f-08f8c3b6d0cb` ("Should I buy this?" with a charcoal jeans upload). Three independent bugs surfaced from one turn:
+
+1. **Wardrobe ingestion happens unconditionally for any image upload.**
+   `orchestrator.process_turn` calls `save_uploaded_chat_wardrobe_item` at lines 667-704 *before* the planner runs, so every upload — including `garment_evaluation` ("should I buy this?") and `style_discovery` turns — gets persisted to `user_wardrobe_items`. The user is asking if they should *buy* the jeans; they don't own them yet, but the row is in their wardrobe by the time the response renders.
+2. **False-positive "your wardrobe already has X" duplicate message.**
+   `_compute_wardrobe_overlap` at `orchestrator.py:5065` walks `user_context.wardrobe_items` (loaded fresh from the DB after the upload was persisted), finds the just-saved row, and matches it against `attached_item` — i.e. against itself. The user sees "Heads up — your wardrobe already has your Charcoal Jeans" on the very first upload.
+3. **PDP card thumbnail of the uploaded garment fails to render.**
+   `_attached_item_to_outfit_item` at `orchestrator.py:5229` returns the raw `image_path` (e.g. `data/onboarding/images/wardrobe/abc.jpg`) for the OutfitCard's `image_url`, while the parallel `_wardrobe_item_to_outfit_item` at line 2554 wraps the same value in `_browser_safe_image_url(...)` (which rewrites to `/v1/onboarding/images/local?path=...`). The browser tries to fetch a relative repo path as a URL, fails, and only the try-on render shows.
+
+**Implementation plan (Steps 1-6, this commit):**
+
+- **Step 1 — Split enrich vs persist in the wardrobe gateway.** Add a `persist: bool` parameter (default `True` for backward compat) to `OnboardingGateway.save_uploaded_chat_wardrobe_item` and the underlying `user.service` save path. When `persist=False`: still write the image bytes to disk, still run the 46-attribute enrichment, still return the same dict shape — but skip the `user_wardrobe_items` insert and return `id=None`. In `orchestrator.process_turn`, always call with `persist=False` initially; after the planner returns a `plan_result`, conditionally call a new `OnboardingGateway.persist_chat_wardrobe_item(enriched_dict)` only when `plan_result.intent in {Intent.PAIRING_REQUEST, Intent.OUTFIT_CHECK}`.
+- **Step 2 — Defensive overlap exclusion.** `_compute_wardrobe_overlap` now takes `attached_item_id` and skips any wardrobe row whose `id` matches. Belt-and-braces in case a future code path persists before evaluating.
+- **Step 3 — Browser-safe image URL on attached items.** `_attached_item_to_outfit_item` wraps `image_url`/`image_path` with `AgenticOrchestrator._browser_safe_image_url(...)`, matching `_wardrobe_item_to_outfit_item`.
+- **Step 4 — Regression tests.** Cover (a) `garment_evaluation` with upload does NOT persist + has no "already has" line + has a browser-safe image URL; (b) `pairing_request` and `outfit_check` with upload still persist (preserves Phase 12D anchor injection); (c) `_compute_wardrobe_overlap` excludes the attached item's id.
+- **Step 5 — SKIPPED.** A "no occasion specified — graded on general versatility" note in the assistant message would be a UX nice-to-have but is out of scope for this bug fix and would require prompt changes.
+- **Step 6 — Docs.** Close out this action item in `CURRENT_STATE.md`, add a "no occasion handling" note to `WORKFLOW_REFERENCE.md` documenting the answer to "what occasion does the evaluator use when none is specified?" (short answer: none — single_garment mode grades on general versatility; recommendation mode scores `occasion_pct=0`; `weather_time_pct` defaults to neutral 65-75).
+
+This is a Phase 12D / Phase 12B follow-up: Phase 12D split intent registry into 7 advisory intents but did not gate wardrobe persistence by intent; Phase 12B's `garment_evaluation_handler` inherited the unconditional save and added the duplicate check on top, producing the cascading false positive; the PDP image bug was latent since the Phase 12D wardrobe-anchor work added `_attached_item_to_outfit_item` without the browser-safe URL helper.
+
+---
+
 ### ✅ CLOSED — Wardrobe-anchor try-on now includes the user's uploaded image (Phase 12D follow-up, April 8 2026)
 
 Discovered April 8, 2026 from manual staging test of `user_03026279ecd6` turn `9dff6f7e-9146-4d66-a277-a835e484334d` ("What goes with this pullover for casual night out?" with a chocolate brown pullover upload). The pullover was correctly ingested + enriched and was injected into every paired candidate as the anchor, but the **image** never reached Gemini — `garment_source` on all 3 try-on rows was `"catalog"` and the renders showed a hallucinated brown sweater rather than the user's actual photo.

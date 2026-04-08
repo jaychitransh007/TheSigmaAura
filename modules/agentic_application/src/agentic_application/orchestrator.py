@@ -666,13 +666,24 @@ class AgenticOrchestrator:
         effective_message = message
         if image_data:
             try:
+                # Phase 12D follow-up (April 9 2026): enrich the uploaded
+                # garment but do NOT persist it to user_wardrobe_items yet.
+                # The planner needs the 46 attributes in its prompt context
+                # to classify intent, but persistence should only happen
+                # for intents that legitimately mean "save this to my
+                # wardrobe" — pairing_request and outfit_check. For
+                # garment_evaluation ("should I buy this?") and
+                # style_discovery turns, the user is asking about a piece
+                # they don't own, so we keep the enriched dict in memory
+                # for the response and discard it after the turn.
                 attached_item = self.onboarding_gateway.save_uploaded_chat_wardrobe_item(
                     user_id=external_user_id,
                     image_data=image_data,
                     description=message.strip(),
                     notes="Captured from chat image attachment.",
+                    persist=False,
                 )
-                _log.info("Attached item saved: %s", {k: str(v)[:50] for k, v in (attached_item or {}).items()} if attached_item else None)
+                _log.info("Attached item enriched (pending persist): %s", {k: str(v)[:50] for k, v in (attached_item or {}).items()} if attached_item else None)
             except Exception:
                 _log.exception("Failed to save attached item — attached_item will be None")
                 attached_item = None
@@ -939,6 +950,46 @@ class AgenticOrchestrator:
             confidence=plan_result.intent_confidence,
             reason_codes=["copilot_planner", *override_reasons],
         )
+
+        # Phase 12D follow-up (April 9 2026): wardrobe persistence is
+        # gated on intent. Only `pairing_request` and `outfit_check` are
+        # allowed to write the uploaded garment to `user_wardrobe_items`,
+        # because those are the only intents where "save this to my
+        # closet" matches the user's actual ask. `garment_evaluation`
+        # ("should I buy this?") asks about a piece the user does NOT
+        # own; persisting it produces a false-positive duplicate hit
+        # downstream and pollutes the user's wardrobe with items they
+        # only considered. The pending dict from the enrichment step is
+        # promoted to a real row here.
+        if (
+            attached_item
+            and attached_item.get("_pending_persist")
+            and plan_result.intent in (Intent.PAIRING_REQUEST, Intent.OUTFIT_CHECK)
+        ):
+            try:
+                persisted = self.onboarding_gateway.persist_pending_wardrobe_item(
+                    user_id=external_user_id,
+                    pending=attached_item,
+                )
+                if persisted:
+                    # Carry forward any flags the orchestrator already set
+                    # on the pending dict (attachment_source, enrichment_failed)
+                    # that the post-enrichment block above attached.
+                    for key in ("attachment_source", "enrichment_failed"):
+                        if key in attached_item and key not in persisted:
+                            persisted[key] = attached_item[key]
+                    attached_item = persisted
+                    _log.info(
+                        "Promoted pending wardrobe upload to row %s for intent %s",
+                        attached_item.get("id"),
+                        plan_result.intent,
+                    )
+            except Exception:
+                _log.exception(
+                    "Failed to promote pending wardrobe upload for intent %s",
+                    plan_result.intent,
+                )
+
         self._persist_profile_confidence(
             external_user_id=external_user_id,
             conversation_id=conversation_id,
@@ -5069,6 +5120,14 @@ class AgenticOrchestrator:
     ) -> Dict[str, Any]:
         """Deterministic check: does the user already own a similar piece?
 
+        Phase 12D follow-up (April 9 2026): excludes any wardrobe row
+        whose `id` matches `attached_item["id"]`. Even though the
+        orchestrator no longer persists garment_evaluation uploads, this
+        is belt-and-braces in case any future code path persists the
+        upload before this check runs — without it, the loop will match
+        the just-saved row against itself and produce a false-positive
+        "your wardrobe already has X" message.
+
         Strong overlap: same garment_category + similar primary_color.
         Moderate overlap: same garment_category + different color.
         None: different category, no overlap.
@@ -5085,9 +5144,15 @@ class AgenticOrchestrator:
         if not target_category and not target_subtype:
             return {"has_duplicate": False, "duplicate_detail": None, "overlap_level": "none"}
 
+        attached_id = str(item.get("id") or "").strip()
         strong_match: Optional[Dict[str, Any]] = None
         moderate_match: Optional[Dict[str, Any]] = None
         for w_item in wardrobe_items:
+            # Skip the attached item itself if it has somehow already been
+            # persisted — without this guard the loop matches the just-saved
+            # upload against itself and reports it as a duplicate.
+            if attached_id and str(w_item.get("id") or "").strip() == attached_id:
+                continue
             w_category = str(w_item.get("garment_category") or "").strip().lower()
             w_subtype = str(w_item.get("garment_subtype") or "").strip().lower()
             w_color = str(w_item.get("primary_color") or "").strip().lower()
@@ -5228,10 +5293,22 @@ class AgenticOrchestrator:
     @staticmethod
     def _attached_item_to_outfit_item(attached_item: Dict[str, Any] | None) -> Dict[str, Any]:
         item = dict(attached_item or {})
+        # Phase 12D follow-up (April 9 2026): wardrobe rows store the
+        # uploaded image at `image_path` (relative repo path) and leave
+        # `image_url` empty. The browser can't fetch a relative path
+        # directly — `_browser_safe_image_url` rewrites it to
+        # `/v1/onboarding/images/local?path=...` which the FastAPI route
+        # serves. Without this, the PDP card thumbnail of the uploaded
+        # garment fails to load and only the try-on render is visible.
+        # `_wardrobe_item_to_outfit_item` already does this; this method
+        # was missing the wrapper, which is why the bug only surfaced
+        # for chat-uploaded garments shown via the garment_evaluation
+        # card.
+        raw_image = item.get("image_url") or item.get("image_path") or ""
         return {
             "product_id": str(item.get("id") or item.get("product_id") or ""),
             "title": str(item.get("title") or "Uploaded garment"),
-            "image_url": str(item.get("image_url") or item.get("image_path") or ""),
+            "image_url": AgenticOrchestrator._browser_safe_image_url(raw_image),
             "garment_category": str(item.get("garment_category") or ""),
             "garment_subtype": str(item.get("garment_subtype") or ""),
             "primary_color": str(item.get("primary_color") or ""),
