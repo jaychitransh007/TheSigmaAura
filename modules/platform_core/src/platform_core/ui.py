@@ -1367,17 +1367,16 @@ def get_web_ui_html(
   }}
 
   // Parse assistant text into paragraphs + bullet lists. Bullets are
-  // recognized by lines starting with •, -, or *. Paragraph breaks are
-  // blank lines (\n\n). The result is a DocumentFragment of <p> and
-  // <ul><li> nodes, all created via textContent so user-provided text
-  // is escaped automatically (no XSS risk).
+  // recognized by lines starting with bullet glyphs. Paragraph breaks
+  // are blank lines (double newline). The result is a DocumentFragment
+  // of paragraph and unordered-list nodes, all created via textContent
+  // so user-provided text is escaped automatically (no XSS risk).
   //
   // The StyleAdvisor and explanation_request handlers return a flat
-  // string of the form:
-  //   "Prose answer...\n\n• bullet 1\n• bullet 2\n• bullet 3"
-  // Without this parser the chat bubble's default white-space: normal
-  // collapses the newlines and the bullets read as a single concatenated
-  // sentence. With the parser we get a semantic <p> + <ul> tree.
+  // string with prose then a blank line then bulleted lines. Without
+  // this parser the chat bubble default white-space rule collapses the
+  // newlines and the bullets read as a single concatenated sentence.
+  // With the parser we get a semantic p and ul tree.
   function renderAssistantMarkup(text) {{
     var frag = document.createDocumentFragment();
     if (!text) return frag;

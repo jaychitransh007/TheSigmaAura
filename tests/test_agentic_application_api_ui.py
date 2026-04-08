@@ -326,6 +326,61 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertNotIn("tryon-label", html)
         self.assertNotIn("renderRecommendations", html)
 
+    def test_ui_html_inline_javascript_parses_cleanly(self) -> None:
+        """The chat UI's inline <script> block is built via Python
+        f-string interpolation, which has bitten us twice now: JS regex
+        literals like /\\r\\n/g and JS comments containing literal
+        backslash-n characters get corrupted because Python interprets
+        single-escaped sequences as actual control characters. Substring
+        assertions in the other smoke tests can't catch this — the
+        affected substrings still appear in the output, just with
+        broken syntax around them.
+
+        Fix: shell out to `node --check` (when available) to actually
+        parse the rendered JS. If node isn't installed, skip the test
+        rather than fail — the test exists as a defence-in-depth check
+        for development environments, not as a hard CI requirement."""
+        import shutil
+        import subprocess
+        import re
+        import tempfile
+        if not shutil.which("node"):
+            self.skipTest("node not installed; skipping JS parse check")
+        app, _, _, _, _ = self._patched_app("completed")
+        client = TestClient(app)
+        resp = client.get("/?user=user_ready")
+        html = resp.text
+        match = re.search(r"<script>(.*?)</script>", html, re.DOTALL)
+        self.assertIsNotNone(match, "no inline <script> block in chat UI HTML")
+        js_source = match.group(1)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=False) as fh:
+            fh.write(js_source)
+            tmp_path = fh.name
+        try:
+            result = subprocess.run(
+                ["node", "--check", tmp_path],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        finally:
+            import os as _os
+            try:
+                _os.unlink(tmp_path)
+            except OSError:
+                pass
+        if result.returncode != 0:
+            self.fail(
+                "Inline chat UI JS failed to parse with `node --check`. "
+                "This usually means a JS regex literal or string in ui.py's "
+                "f-string was written with single-escaped sequences (e.g. "
+                "`\\r\\n`, `\\n`) that Python interpreted as actual control "
+                "characters before the JS reached the browser. Use "
+                "double-escaped sequences (`\\\\r\\\\n`, `\\\\n`) inside the "
+                "f-string so the rendered JS receives the correct escape.\n"
+                "node stderr:\n" + result.stderr.strip()
+            )
+
     def test_ui_html_renders_split_polar_bar_chart(self) -> None:
         """Phase 12B follow-up (April 9 2026): the two stacked radar
         charts (style archetype + evaluation criteria) were merged into
