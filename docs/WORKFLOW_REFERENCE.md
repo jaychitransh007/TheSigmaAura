@@ -75,7 +75,7 @@ The visual evaluator scores **5 dimensions for every candidate** and **4 dimensi
 | | `weather_time_pct` | `live_context.weather_context` OR `time_of_day` non-empty |
 | | `specific_needs_pct` | `live_context.specific_needs` non-empty |
 
-**The contract:** when a context-gated dimension's input is absent, the visual evaluator returns `null` for that field — not 0, not a neutral default. `null` propagates all the way through to the OutfitCard. The frontend filters null dimensions out of the radar chart before rendering, so the chart vertex count adapts to 5/6/7/8 axes based on what was actually evaluated. The purchase verdict averages only the dimensions that were actually scored.
+**The contract:** when a context-gated dimension's input is absent, the visual evaluator returns `null` for that field — not 0, not a neutral default. `null` propagates all the way through to the OutfitCard. The frontend filters null dimensions out of the **bottom semicircle of the split polar bar chart** before rendering, so the chart vertex count adapts to 4-7 fit-profile axes based on what was actually evaluated (Body, Color, Risk, Comfort always; Pairing / Occasion / Needs only when their gating condition is met; `style_fit_pct` is intentionally excluded from the bottom semicircle because the 8 archetype scores in the **top semicircle** already convey style aesthetically). The purchase verdict averages only the dimensions that were actually scored.
 
 **No-occasion handling at each stage:**
 

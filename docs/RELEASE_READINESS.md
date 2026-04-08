@@ -21,9 +21,10 @@ The companion artifacts are:
 The pipeline must produce a usable answer for every primary intent without
 manual intervention.
 
-- [ ] All 308 tests across `tests/` pass against the current branch
-      (113 in `test_agentic_application.py` plus 195 in the bounded-context
-      suites; verified April 8, 2026 after the wardrobe-anchor try-on fix).
+- [ ] All 323 tests across `tests/` pass against the current branch
+      (130+ in `test_agentic_application.py` plus the bounded-context suites;
+      verified April 9, 2026 after the contextual-evaluation + split polar
+      bar chart + assistant-markup-renderer landings).
 - [ ] `ops/scripts/validate_dependency_report.py` runs to completion with
       zero failed assertions.
 - [ ] `ops/scripts/smoke_test_full_flow.sh` runs to completion against a

@@ -80,10 +80,11 @@ Always use `python3 -m pip` (not bare `pip`) to guarantee the install lands in t
 ## Project Stats
 
 - 36 Supabase migrations
-- 308 tests
+- 323 tests
 - 8 intents (7 advisory + silent wardrobe_ingestion), 7 action types, 7 follow-up types (StrEnum registry, post-Phase 12A consolidation)
 - 50+ catalog enrichment attributes
 - 46 wardrobe enrichment attributes
+- 9 visual evaluator dimensions: 5 always-evaluated (body, color, style, risk, comfort) + 4 context-gated (pairing, occasion, weather/time, specific needs)
 
 ## Documentation
 

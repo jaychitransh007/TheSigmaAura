@@ -114,7 +114,7 @@ For each viewport, walk the journey and confirm every box.
       welcome screen and outfit cards.
 - [ ] Tab order through the homepage hits primary CTA → "More ways to
       style" toggle → secondary cards in order.
-- [ ] Outfit card radar chart has a text alternative for screen readers.
+- [ ] Outfit card split polar bar chart (Nightingale-style: 8 archetype axes top + 4-7 fit profile axes bottom) has a `role="img"` + `aria-label` so screen readers can interpret it.
 - [ ] All interactive elements have visible focus rings.
 
 ---

@@ -100,7 +100,7 @@ Success means users come back before real decisions: should I buy this, what goe
 - wardrobe ingestion with vision-API enrichment and image moderation
 - wardrobe retrieval and wardrobe-first occasion response
 - virtual try-on via Gemini with quality gate
-- 3-column PDP outfit cards with Buy Now, single split polar bar chart (top semicircle: 8 archetypes in purple; bottom semicircle: dynamic 5-9 fit dimensions in burgundy × analysis_confidence_pct; dashed horizontal divider), icon feedback (save/like/dislike)
+- 3-column PDP outfit cards with Buy Now, single Nightingale-style split polar bar chart (top semicircle: 8 archetypes in purple `#7F77DD` on a single circular ring; bottom semicircle: dynamic 4-7 fit dimensions in burgundy `#8B3055` × `analysis_confidence_pct` — body/color/risk/comfort always plus pairing/occasion/needs when their gating condition is met; dashed horizontal divider; chart sits at the bottom of the info column), icon feedback (save/like/dislike)
 - `analysis_confidence_pct` — attribute-level analysis confidence (average LLM confidence across all profile attributes); used to scale evaluation radar chart scores at render time; fetched once per page load, applied consistently to all cards including history
 - unified profile page with inline editing, style code card, and color palette card
 - wardrobe add-item modal from wardrobe page
@@ -583,7 +583,7 @@ Main weak spots:
 - wardrobe-first occasion response (wardrobe retrieval + selection for occasion intents)
 - wardrobe item save from chat with moderation
 - virtual try-on via Gemini (gemini-3.1-flash-image-preview), parallel generation, quality gate, persistent disk + DB storage with cache reuse
-- 3-column PDP outfit cards with Buy Now, single split polar bar chart (8 archetypes top + dynamic 5-9 fit dimensions bottom), icon feedback
+- 3-column PDP outfit cards with Buy Now, single split polar bar chart (8 archetypes top + dynamic 4-7 fit dimensions bottom), icon feedback
 - per-outfit feedback capture (Like / Didn't Like with notes)
 - follow-up turns with 7 follow-up intent types (increase boldness, change color, similar, etc.)
 - color palette system: base/accent/avoid colors derived from seasonal group, passed to planner, architect, and outfit check agents
@@ -1017,6 +1017,31 @@ Success criteria:
 - we can say with evidence whether users are forming a real pre-buy / pre-dress dependency on the system
 
 ## Immediate Next Item
+
+### ✅ CLOSED — Polar bar chart polish + assistant markup parser (April 9 2026, late-day rollup)
+
+Six small follow-up commits after the initial split polar bar chart landing, all in `modules/platform_core/src/platform_core/ui.py`:
+
+1. **`b76a604`** — Removed `style_fit_pct` from the bottom-semicircle Fit profile criteria. The 8 archetype scores in the top semicircle already convey the style dimension visually, so a separate "Style" axis on the bottom was double-counting. The backend still scores `style_fit_pct` (it informs `match_score` and the purchase verdict average); only the radar rendering drops it.
+2. **`3d53115` → `f1fa0ae` → `5d8f056`** — Sized the chart canvas to fit inside the `.outfit-info` column's ~280px usable width (260×280, then 290×320 native) instead of stretching a wider canvas non-uniformly via `max-width: 100%`. The non-uniform CSS scaling was the root cause of the "compressed and elliptical rings" complaint — once the canvas width matched the column, rings rendered as true circles. `aspect-ratio: 290 / 320 + max-width: 100%` handles narrow viewports proportionally.
+3. **`955e31c`** — Replaced the staggered double-ring label pattern with a single circular ring at `pLabelR=115`. The staggering had been a workaround for the centermost-label collision (Natural / Minimalist in the 8-axis top semicircle) but read as visually noisy / random. Single ring + a slightly larger canvas + a slightly larger labelR makes the labels orbit cleanly.
+4. **`ed4589b`** — Added a `labelXNudge` of ±9px for labels with `0 < |cos| < 0.28` so the two centermost labels of each semicircle (Natural at `i=3`, Minimalist at `i=4` in the top semicircle) sit visibly apart instead of reading as a single concatenated phrase ("Natural Minimalist"). The nudge only fires for labels straddling the vertical centre; all other labels keep their natural positions.
+5. **`8cf07ce`** — Removed the "Style profile" / "Fit profile" legend below the canvas. The axis labels themselves are already color-coded (purple `#7F77DD` for archetypes, burgundy `#8B3055` for fit dimensions), so a separate caption was redundant.
+6. **`52a6ede` → `7a4b3ca` → `1ac51a0`** — Added `renderAssistantMarkup` parser so assistant chat bubbles render `\n\n`-delimited paragraphs and `• `-prefixed bullet lines as proper `<p>` and `<ul><li>` HTML. Previously the StyleAdvisor responses for `style_discovery` / `explanation_request` came back as a wall of text with bullets inline (the `.bubble` CSS default `white-space: normal` was collapsing the newlines). The fix added two follow-up commits because the JS lives inside an f-string and Python was eating the single-escaped `\n` / `\r\n` in JS regex literals AND in JS comments — both required double-escaping (`\\n`, `\\r\\n`) before the rendered JS parsed cleanly. Defence-in-depth: new `test_ui_html_inline_javascript_parses_cleanly` test that pipes the rendered `<script>` block through `node --check` so this entire class of bug fails fast in the future.
+
+**Test count: 323 passing** (was 322, +1 from the new JS parse test).
+
+After all six commits, the PDP card chart looks like this:
+- Top semicircle: 8 archetype labels (Classic / Dramatic / Romantic / Natural / Minimalist / Creative / Sporty / Edgy) on a single ring at `pLabelR=115`, with Natural / Minimalist nudged 9px apart for breathing room. Purple polygon arcs, no confidence scaling.
+- Bottom semicircle: 4-7 fit profile axes (Body / Color / Risk / Comfort always; Pairing / Occasion / Needs when their gating condition is met; `style_fit_pct` excluded). Burgundy polygon arcs, values scaled by `profileConfPct / 100`.
+- Dashed horizontal divider through the centre.
+- Shared 0-100 grid rings (4 concentric circles).
+- No legend below — axis labels are color-coded.
+- Canvas 290 × 320 native, sized to fit inside the `.outfit-info` column without horizontal CSS scaling.
+
+And the chat bubbles render assistant text as proper HTML paragraphs and lists for any handler that uses the `\n\n` paragraph + `• ` bullet convention (StyleAdvisor today; future structured advisors automatically too).
+
+---
 
 ### ✅ CLOSED — Merge style + evaluation radar charts into one split polar bar chart (April 9 2026)
 
