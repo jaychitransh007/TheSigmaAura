@@ -1381,20 +1381,20 @@ def get_web_ui_html(
   function renderAssistantMarkup(text) {{
     var frag = document.createDocumentFragment();
     if (!text) return frag;
-    var normalized = String(text).replace(/\r\n/g, "\n");
-    var blocks = normalized.split(/\n\n+/);
+    var normalized = String(text).replace(/\\r\\n/g, "\\n");
+    var blocks = normalized.split(/\\n\\n+/);
     for (var bi = 0; bi < blocks.length; bi++) {{
       var block = blocks[bi].trim();
       if (!block) continue;
-      var lines = block.split("\n");
+      var lines = block.split("\\n");
       var isBulletList = lines.length > 0 && lines.every(function(line) {{
-        return /^\s*[•\-*]\s+/.test(line);
+        return /^\\s*[•\\-*]\\s+/.test(line);
       }});
       if (isBulletList) {{
         var ul = document.createElement("ul");
         for (var li = 0; li < lines.length; li++) {{
           var item = document.createElement("li");
-          item.textContent = lines[li].replace(/^\s*[•\-*]\s+/, "").trim();
+          item.textContent = lines[li].replace(/^\\s*[•\\-*]\\s+/, "").trim();
           ul.appendChild(item);
         }}
         frag.appendChild(ul);
