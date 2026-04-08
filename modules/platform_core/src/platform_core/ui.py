@@ -431,7 +431,7 @@ def get_web_ui_html(
     .btn-wishlist.wishlisted { color: var(--accent); border-color: var(--accent); }
     .outfit-item-source { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
     .chip { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: var(--surface-deep); color: var(--muted); font-weight: 600; }
-    .outfit-radar { text-align: center; padding: 8px 0; }
+    .outfit-radar { text-align: center; padding: 4px 0; }
     .outfit-criteria { display: flex; flex-direction: column; gap: 6px; }
     .criteria-row { display: flex; align-items: center; gap: 8px; }
     .criteria-label { font-size: 11px; font-weight: 600; color: var(--muted); width: 100px; flex-shrink: 0; }
@@ -1734,12 +1734,16 @@ def get_web_ui_html(
     var hasCriteriaData = criteria.length > 0 && criteriaValues.some(function(v) {{ return v > 0; }});
 
     // ── Canvas setup ──
+    // Width 340 (was 300) gives more horizontal room for the leftmost
+    // and rightmost labels in both semicircles. Height 230 (was 272)
+    // shrinks the chart's vertical footprint so the legend below it
+    // sits above the .outfit-info max-height: 520px scroll threshold.
     var radarDiv = document.createElement("div");
     radarDiv.className = "outfit-radar";
     var polarCanvas = document.createElement("canvas");
     polarCanvas.setAttribute("role", "img");
     polarCanvas.setAttribute("aria-label", "Style + fit profile chart");
-    var W = 300, H = 272, dpr = window.devicePixelRatio || 1;
+    var W = 340, H = 230, dpr = window.devicePixelRatio || 1;
     polarCanvas.width = W * dpr; polarCanvas.height = H * dpr;
     polarCanvas.style.width = W + "px"; polarCanvas.style.height = H + "px";
     polarCanvas.style.display = "block";
@@ -1751,9 +1755,15 @@ def get_web_ui_html(
     pCtx.scale(dpr, dpr);
 
     // ── Layout constants ──
+    // Smaller maxR + smaller base labelR than the original spec because
+    // the canvas is now shorter (230px vs 272px). The labelR offset for
+    // odd-indexed labels (see drawProfile) creates the "double ring"
+    // pattern that prevents adjacent label collisions like Natural /
+    // Minimalist in the top semicircle.
     var pCx = W / 2, pCy = H / 2;
-    var pMaxR = 78;     // outer ring radius
-    var pLabelR = 98;   // axis label radius (outside the outer ring)
+    var pMaxR = 70;     // outer ring radius
+    var pLabelR = 88;   // axis label radius (outside the outer ring); odd-indexed labels use pLabelR + 12
+    var pLabelOffset = 12;
     var pMaxValue = 100;
 
     // ── Grid rings (4 concentric circles at 25/50/75/100) ──
@@ -1778,6 +1788,15 @@ def get_web_ui_html(
 
     // ── drawProfile: one filled arc sector per axis ──
     // axes = [{{key, label}}, ...], values = [int, ...] aligned to axes
+    //
+    // Label staggering: even-indexed labels are placed at pLabelR;
+    // odd-indexed labels are pushed out by pLabelOffset (12px). This
+    // creates a "double ring" pattern that prevents adjacent labels
+    // from colliding when many axes share a semicircle. Without this,
+    // 8 archetypes in 180° gives Natural and Minimalist (both near 12
+    // o'clock, only ~38px horizontal separation at the inner radius)
+    // overlapping each other; the offset gives them ~14px of vertical
+    // separation, enough that their bounding boxes no longer intersect.
     function drawProfile(axes, values, color, fillColor, startAngle, span) {{
       var n = axes.length;
       if (n === 0) return;
@@ -1805,13 +1824,16 @@ def get_web_ui_html(
         pCtx.fill();
 
         // Axis label (color-coded so the legend is reinforcement, not load-bearing)
-        var lx = pCx + Math.cos(midAngle) * pLabelR;
-        var ly = pCy + Math.sin(midAngle) * pLabelR;
+        // Stagger label radii: odd-indexed labels are pushed out by pLabelOffset
+        // so adjacent labels don't share the same arc and collide.
+        var useLabelR = pLabelR + (i % 2) * pLabelOffset;
+        var lx = pCx + Math.cos(midAngle) * useLabelR;
+        var ly = pCy + Math.sin(midAngle) * useLabelR;
         var ca = Math.cos(midAngle);
         var sa = Math.sin(midAngle);
         pCtx.textAlign = Math.abs(ca) < 0.28 ? "center" : (ca > 0 ? "left" : "right");
         pCtx.textBaseline = Math.abs(sa) < 0.28 ? "middle" : (sa > 0 ? "top" : "bottom");
-        pCtx.font = "600 9.5px system-ui, sans-serif";
+        pCtx.font = "600 9px system-ui, sans-serif";
         pCtx.fillStyle = color;
         pCtx.fillText(axes[i].label, lx, ly);
       }}
@@ -1840,15 +1862,17 @@ def get_web_ui_html(
     }}
 
     // ── Legend (below the canvas) ──
+    // Tight margin-top + smaller font so the legend sits inside the
+    // .outfit-info max-height: 520px window without forcing a scrollbar.
     var legend = document.createElement("div");
-    legend.style.cssText = "display:flex; gap:20px; justify-content:center; margin-top:8px; flex-wrap:wrap;";
+    legend.style.cssText = "display:flex; gap:18px; justify-content:center; margin-top:2px; flex-wrap:wrap;";
     legend.innerHTML = ''
-      + '<span style="font-size:12px; font-weight:500; color:#7F77DD; display:flex; align-items:center; gap:5px;">'
-      +   '<span style="width:10px; height:10px; background:rgba(127,119,221,0.45); border:1.5px solid #7F77DD; border-radius:2px; display:inline-block;"></span>'
+      + '<span style="font-size:11px; font-weight:500; color:#7F77DD; display:flex; align-items:center; gap:5px;">'
+      +   '<span style="width:9px; height:9px; background:rgba(127,119,221,0.45); border:1.5px solid #7F77DD; border-radius:2px; display:inline-block;"></span>'
       +   'Style profile'
       + '</span>'
-      + '<span style="font-size:12px; font-weight:500; color:#8B3055; display:flex; align-items:center; gap:5px;">'
-      +   '<span style="width:10px; height:10px; background:rgba(139,48,85,0.4); border:1.5px solid #8B3055; border-radius:2px; display:inline-block;"></span>'
+      + '<span style="font-size:11px; font-weight:500; color:#8B3055; display:flex; align-items:center; gap:5px;">'
+      +   '<span style="width:9px; height:9px; background:rgba(139,48,85,0.4); border:1.5px solid #8B3055; border-radius:2px; display:inline-block;"></span>'
       +   'Fit profile'
       + '</span>';
     radarDiv.appendChild(legend);
