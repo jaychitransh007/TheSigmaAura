@@ -233,14 +233,19 @@ class ResponseFormatter:
                     color_note=rec.color_note,
                     style_note=rec.style_note,
                     occasion_note=rec.occasion_note,
+                    # 6 always-evaluated dimensions
                     body_harmony_pct=rec.body_harmony_pct,
                     color_suitability_pct=rec.color_suitability_pct,
                     style_fit_pct=rec.style_fit_pct,
                     risk_tolerance_pct=rec.risk_tolerance_pct,
-                    occasion_pct=rec.occasion_pct,
                     comfort_boundary_pct=rec.comfort_boundary_pct,
-                    specific_needs_pct=rec.specific_needs_pct,
                     pairing_coherence_pct=rec.pairing_coherence_pct,
+                    # 3 context-gated dimensions — pass None straight
+                    # through; the OutfitCard schema accepts Optional[int]
+                    # and the frontend drops null radar slices.
+                    occasion_pct=rec.occasion_pct,
+                    specific_needs_pct=rec.specific_needs_pct,
+                    weather_time_pct=rec.weather_time_pct,
                     classic_pct=rec.classic_pct,
                     dramatic_pct=rec.dramatic_pct,
                     romantic_pct=rec.romantic_pct,

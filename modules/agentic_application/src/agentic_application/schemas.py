@@ -210,17 +210,26 @@ class EvaluatedRecommendation(BaseModel):
     color_note: str = ""
     style_note: str = ""
     occasion_note: str = ""
+    # 6 always-evaluated dimensions — these are graded for every
+    # candidate because their inputs are present once onboarding is
+    # complete (body shape, palette, style preference, etc.).
     body_harmony_pct: int = 0
     color_suitability_pct: int = 0
     style_fit_pct: int = 0
     risk_tolerance_pct: int = 0
-    occasion_pct: int = 0
     comfort_boundary_pct: int = 0
-    specific_needs_pct: int = 0
     pairing_coherence_pct: int = 0
-    # Phase 12B: ninth scoring dimension — weather/time-of-day appropriateness.
-    # Defaults to 0 so legacy text-only OutfitEvaluator output still validates.
-    weather_time_pct: int = 0
+    # Phase 12B follow-up (April 9 2026): the 3 context-gated dimensions
+    # are Optional. The visual evaluator returns None when the relevant
+    # input is absent in live_context (no occasion / no weather / no
+    # specific needs). Coercing None to 0 would re-introduce the bug
+    # where the holistic match_score and the PDP card radar chart show
+    # phantom defaults instead of "not evaluated this turn". The legacy
+    # text-only OutfitEvaluator still emits 0; that path is retired in
+    # Phase 12E and is fine to keep coercing to 0 there.
+    occasion_pct: Optional[int] = None
+    specific_needs_pct: Optional[int] = None
+    weather_time_pct: Optional[int] = None
     classic_pct: int = 0
     dramatic_pct: int = 0
     romantic_pct: int = 0
@@ -268,16 +277,20 @@ class OutfitCard(BaseModel):
     color_note: str = ""
     style_note: str = ""
     occasion_note: str = ""
+    # 6 always-evaluated dimensions
     body_harmony_pct: int = 0
     color_suitability_pct: int = 0
     style_fit_pct: int = 0
     risk_tolerance_pct: int = 0
-    occasion_pct: int = 0
     comfort_boundary_pct: int = 0
-    specific_needs_pct: int = 0
     pairing_coherence_pct: int = 0
-    # Phase 12B: ninth scoring dimension — weather / time-of-day appropriateness
-    weather_time_pct: int = 0
+    # 3 context-gated dimensions — None means "not evaluated this turn"
+    # because the relevant input was absent in live_context (no occasion
+    # signal / no weather or time-of-day / no specific needs). The
+    # frontend drops these from the radar chart when null.
+    occasion_pct: Optional[int] = None
+    specific_needs_pct: Optional[int] = None
+    weather_time_pct: Optional[int] = None
     classic_pct: int = 0
     dramatic_pct: int = 0
     romantic_pct: int = 0

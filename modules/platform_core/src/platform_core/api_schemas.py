@@ -69,15 +69,20 @@ class OutfitCard(BaseModel):
     color_note: str = ""
     style_note: str = ""
     occasion_note: str = ""
+    # 6 always-evaluated dimensions
     body_harmony_pct: int = 0
     color_suitability_pct: int = 0
     style_fit_pct: int = 0
     risk_tolerance_pct: int = 0
-    occasion_pct: int = 0
     comfort_boundary_pct: int = 0
-    specific_needs_pct: int = 0
     pairing_coherence_pct: int = 0
-    weather_time_pct: int = 0  # Phase 12B: weather + time-of-day appropriateness
+    # 3 context-gated dimensions — Optional[int] mirrors the application
+    # OutfitCard schema. None means "not evaluated this turn" because
+    # the relevant input was absent in live_context. See Phase 12B
+    # follow-up (April 9 2026) in docs/CURRENT_STATE.md.
+    occasion_pct: Optional[int] = None
+    specific_needs_pct: Optional[int] = None
+    weather_time_pct: Optional[int] = None
     classic_pct: int = 0
     dramatic_pct: int = 0
     romantic_pct: int = 0

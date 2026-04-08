@@ -92,15 +92,24 @@ _EVAL_JSON_SCHEMA: Dict[str, Any] = {
             "color_note": {"type": "string"},
             "style_note": {"type": "string"},
             "occasion_note": {"type": "string"},
+            # Phase 12B follow-up (April 9 2026): the 6 always-evaluated
+            # dimensions stay strict integers. The 3 context-gated
+            # dimensions (occasion_pct, weather_time_pct, specific_needs_pct)
+            # are nullable — the model returns null when their inputs
+            # (occasion_signal / weather+time / specific_needs) are
+            # absent in live_context. OpenAI structured-outputs strict
+            # mode requires every property in `required`, so optionality
+            # is expressed via the `["integer", "null"]` union here
+            # rather than dropping the keys.
             "body_harmony_pct": {"type": "integer"},
             "color_suitability_pct": {"type": "integer"},
             "style_fit_pct": {"type": "integer"},
             "risk_tolerance_pct": {"type": "integer"},
-            "occasion_pct": {"type": "integer"},
+            "occasion_pct": {"type": ["integer", "null"]},
             "comfort_boundary_pct": {"type": "integer"},
-            "specific_needs_pct": {"type": "integer"},
+            "specific_needs_pct": {"type": ["integer", "null"]},
             "pairing_coherence_pct": {"type": "integer"},
-            "weather_time_pct": {"type": "integer"},
+            "weather_time_pct": {"type": ["integer", "null"]},
             "classic_pct": {"type": "integer"},
             "dramatic_pct": {"type": "integer"},
             "romantic_pct": {"type": "integer"},
@@ -336,6 +345,27 @@ def _to_evaluated_recommendation(
     def _clamp_pct(key: str) -> int:
         return max(0, min(100, int(raw.get(key, 0) or 0)))
 
+    def _optional_pct(key: str) -> Optional[int]:
+        """Return clamped int if present + non-null, else None.
+
+        Phase 12B follow-up (April 9 2026): the 3 context-gated dimensions
+        (occasion_pct, weather_time_pct, specific_needs_pct) are nullable
+        in the JSON schema. When the model returns null (because the
+        relevant input was absent in live_context), we preserve None all
+        the way through to the OutfitCard so the frontend can drop the
+        radar slice and the purchase verdict can skip it in the average.
+        Coercing null → 0 here would re-introduce the bug we're fixing.
+        """
+        if key not in raw:
+            return None
+        value = raw.get(key)
+        if value is None:
+            return None
+        try:
+            return max(0, min(100, int(value)))
+        except (TypeError, ValueError):
+            return None
+
     valid_item_ids = {str(item.get("product_id", "")) for item in candidate.items if item.get("product_id")}
     raw_item_ids = [str(iid) for iid in (raw.get("item_ids") or []) if iid]
     validated_item_ids = [iid for iid in raw_item_ids if iid in valid_item_ids]
@@ -356,11 +386,11 @@ def _to_evaluated_recommendation(
         color_suitability_pct=_clamp_pct("color_suitability_pct"),
         style_fit_pct=_clamp_pct("style_fit_pct"),
         risk_tolerance_pct=_clamp_pct("risk_tolerance_pct"),
-        occasion_pct=_clamp_pct("occasion_pct"),
+        occasion_pct=_optional_pct("occasion_pct"),
         comfort_boundary_pct=_clamp_pct("comfort_boundary_pct"),
-        specific_needs_pct=_clamp_pct("specific_needs_pct"),
+        specific_needs_pct=_optional_pct("specific_needs_pct"),
         pairing_coherence_pct=_clamp_pct("pairing_coherence_pct"),
-        weather_time_pct=_clamp_pct("weather_time_pct"),
+        weather_time_pct=_optional_pct("weather_time_pct"),
         classic_pct=_clamp_pct("classic_pct"),
         dramatic_pct=_clamp_pct("dramatic_pct"),
         romantic_pct=_clamp_pct("romantic_pct"),

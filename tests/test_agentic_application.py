@@ -5260,6 +5260,182 @@ class Phase12BBuildingBlockTests(unittest.TestCase):
         self.assertEqual("none", result["rating"])
         self.assertEqual(0, result["compatible_count"])
 
+    # ── Phase 12B follow-up (April 9 2026): contextual evaluation ──
+    #
+    # The visual evaluator must score 6 dimensions always and 3 dimensions
+    # only when their inputs are present in live_context. The 3
+    # context-gated dimensions (occasion_pct, weather_time_pct,
+    # specific_needs_pct) are nullable in the JSON schema and propagate
+    # as None all the way through to the OutfitCard.
+
+    def test_evaluator_omits_occasion_when_no_occasion_signal(self):
+        """When the model returns null for occasion_pct (because the
+        live_context had no occasion_signal), `_to_evaluated_recommendation`
+        must preserve None on the EvaluatedRecommendation. Coercing it
+        to 0 would re-introduce the phantom-default bug this fix is
+        targeting."""
+        from agentic_application.agents.visual_evaluator_agent import _to_evaluated_recommendation
+        from agentic_application.schemas import OutfitCandidate
+
+        candidate = OutfitCandidate(
+            candidate_id="c1", direction_id="A", candidate_type="single_garment",
+            items=[{"product_id": "p1", "title": "Jeans"}],
+        )
+        raw = {
+            "candidate_id": "c1",
+            "match_score": 0.74,
+            "title": "Jeans",
+            "reasoning": "ok",
+            "body_note": "", "color_note": "", "style_note": "", "occasion_note": "",
+            "body_harmony_pct": 80, "color_suitability_pct": 65, "style_fit_pct": 75,
+            "risk_tolerance_pct": 85, "comfort_boundary_pct": 90, "pairing_coherence_pct": 78,
+            "occasion_pct": None,
+            "weather_time_pct": None,
+            "specific_needs_pct": None,
+            "classic_pct": 60, "dramatic_pct": 10, "romantic_pct": 5, "natural_pct": 40,
+            "minimalist_pct": 70, "creative_pct": 5, "sporty_pct": 25, "edgy_pct": 15,
+            "item_ids": ["p1"],
+            "overall_verdict": "good_with_tweaks",
+            "overall_note": "",
+            "strengths": [],
+            "improvements": [],
+        }
+        result = _to_evaluated_recommendation(raw, candidate)
+        self.assertIsNone(result.occasion_pct)
+        self.assertIsNone(result.weather_time_pct)
+        self.assertIsNone(result.specific_needs_pct)
+        # 6 always-evaluated dimensions still come through as ints
+        self.assertEqual(80, result.body_harmony_pct)
+        self.assertEqual(85, result.risk_tolerance_pct)
+        self.assertEqual(90, result.comfort_boundary_pct)
+
+    def test_evaluator_keeps_all_three_when_inputs_present(self):
+        """When the model returns integer scores for the 3 context-gated
+        dimensions (because live_context had occasion + weather + specific
+        needs), they propagate through as integers, not None."""
+        from agentic_application.agents.visual_evaluator_agent import _to_evaluated_recommendation
+        from agentic_application.schemas import OutfitCandidate
+
+        candidate = OutfitCandidate(
+            candidate_id="c1", direction_id="A", candidate_type="paired",
+            items=[{"product_id": "p1", "title": "Top"}],
+        )
+        raw = {
+            "candidate_id": "c1",
+            "match_score": 0.92,
+            "title": "Office look",
+            "reasoning": "ok",
+            "body_note": "", "color_note": "", "style_note": "", "occasion_note": "",
+            "body_harmony_pct": 85, "color_suitability_pct": 90, "style_fit_pct": 78,
+            "risk_tolerance_pct": 80, "comfort_boundary_pct": 88, "pairing_coherence_pct": 82,
+            "occasion_pct": 95,
+            "weather_time_pct": 72,
+            "specific_needs_pct": 70,
+            "classic_pct": 75, "dramatic_pct": 20, "romantic_pct": 10, "natural_pct": 30,
+            "minimalist_pct": 60, "creative_pct": 15, "sporty_pct": 5, "edgy_pct": 10,
+            "item_ids": ["p1"],
+            "overall_verdict": "",
+            "overall_note": "",
+            "strengths": [],
+            "improvements": [],
+        }
+        result = _to_evaluated_recommendation(raw, candidate)
+        self.assertEqual(95, result.occasion_pct)
+        self.assertEqual(72, result.weather_time_pct)
+        self.assertEqual(70, result.specific_needs_pct)
+
+    def test_evaluator_handles_missing_context_gated_keys(self):
+        """If the model omits the 3 context-gated keys entirely (rather
+        than returning null), the parser still produces None — same
+        behavior as explicit null. This is defensive: in case a future
+        prompt revision moves to true omission rather than null."""
+        from agentic_application.agents.visual_evaluator_agent import _to_evaluated_recommendation
+        from agentic_application.schemas import OutfitCandidate
+
+        candidate = OutfitCandidate(
+            candidate_id="c1", direction_id="A", candidate_type="single_garment",
+            items=[{"product_id": "p1", "title": "Jeans"}],
+        )
+        raw = {
+            "candidate_id": "c1", "match_score": 0.6, "title": "x", "reasoning": "",
+            "body_note": "", "color_note": "", "style_note": "", "occasion_note": "",
+            "body_harmony_pct": 70, "color_suitability_pct": 70, "style_fit_pct": 70,
+            "risk_tolerance_pct": 70, "comfort_boundary_pct": 70, "pairing_coherence_pct": 70,
+            # occasion_pct / weather_time_pct / specific_needs_pct are absent
+            "classic_pct": 50, "dramatic_pct": 0, "romantic_pct": 0, "natural_pct": 0,
+            "minimalist_pct": 50, "creative_pct": 0, "sporty_pct": 0, "edgy_pct": 0,
+            "item_ids": ["p1"],
+            "overall_verdict": "", "overall_note": "", "strengths": [], "improvements": [],
+        }
+        result = _to_evaluated_recommendation(raw, candidate)
+        self.assertIsNone(result.occasion_pct)
+        self.assertIsNone(result.weather_time_pct)
+        self.assertIsNone(result.specific_needs_pct)
+
+    def test_purchase_verdict_skips_none_dimensions(self):
+        """`_compute_purchase_verdict` averages over only the dimensions
+        that were actually evaluated. With occasion_pct=None and
+        weather_time_pct=None, the average is over body+color+style only;
+        the 3-dim average must be high enough to flip the verdict to
+        'buy' even though the legacy 5-dim average (with synthetic 0s)
+        would have skipped."""
+        from agentic_application.orchestrator import AgenticOrchestrator
+        from agentic_application.schemas import EvaluatedRecommendation
+
+        # Body / color / style all 80 — strong scores. With Nones, the
+        # 3-dim average is 80 → verdict "buy". Under the old code, the
+        # 5-dim average was (80+80+80+0+0)/5 = 48 → "skip".
+        eval_no_context = EvaluatedRecommendation(
+            candidate_id="c1",
+            body_harmony_pct=80, color_suitability_pct=80, style_fit_pct=80,
+            risk_tolerance_pct=70, comfort_boundary_pct=70, pairing_coherence_pct=70,
+            occasion_pct=None, weather_time_pct=None, specific_needs_pct=None,
+        )
+        verdict = AgenticOrchestrator._compute_purchase_verdict(
+            evaluation=eval_no_context,
+            wardrobe_overlap={"overlap_level": "none"},
+        )
+        self.assertEqual("buy", verdict)
+
+    def test_purchase_verdict_with_full_context(self):
+        """When occasion + weather are present, the average is over 5
+        dimensions and reflects all of them."""
+        from agentic_application.orchestrator import AgenticOrchestrator
+        from agentic_application.schemas import EvaluatedRecommendation
+
+        # 5-dim average = (80+80+80+50+50)/5 = 68 → "conditional"
+        eval_full = EvaluatedRecommendation(
+            candidate_id="c1",
+            body_harmony_pct=80, color_suitability_pct=80, style_fit_pct=80,
+            risk_tolerance_pct=70, comfort_boundary_pct=70, pairing_coherence_pct=70,
+            occasion_pct=50, weather_time_pct=50, specific_needs_pct=70,
+        )
+        verdict = AgenticOrchestrator._compute_purchase_verdict(
+            evaluation=eval_full,
+            wardrobe_overlap={"overlap_level": "none"},
+        )
+        self.assertEqual("conditional", verdict)
+
+    def test_outfit_card_serializes_none_dimensions(self):
+        """The OutfitCard schema must accept None for the 3 context-gated
+        fields and serialize them as null in JSON, so the frontend
+        receives the signal to drop the radar slice."""
+        import json
+        from agentic_application.schemas import OutfitCard
+
+        card = OutfitCard(
+            rank=1,
+            title="Test",
+            body_harmony_pct=80, color_suitability_pct=70, style_fit_pct=75,
+            risk_tolerance_pct=85, comfort_boundary_pct=90, pairing_coherence_pct=78,
+            occasion_pct=None, weather_time_pct=None, specific_needs_pct=None,
+        )
+        payload = json.loads(card.model_dump_json())
+        self.assertIsNone(payload["occasion_pct"])
+        self.assertIsNone(payload["weather_time_pct"])
+        self.assertIsNone(payload["specific_needs_pct"])
+        self.assertEqual(80, payload["body_harmony_pct"])
+
 
 class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
     """Phase 12D regression tests:
@@ -5779,9 +5955,19 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
              patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
             ve_inst = ve_cls.return_value
+            # Phase 12B follow-up (April 9 2026): the orchestrator's
+            # garment_evaluation OutfitCard now plumbs through all 6
+            # always-evaluated dimensions plus the 3 context-gated ones.
+            # The mock has to provide every field the OutfitCard schema
+            # requires; for the context-gated ones, simulate "no occasion
+            # / no weather / no specific needs" by returning None — that's
+            # the realistic case for a garment_evaluation turn with
+            # message="Should I buy these jeans?".
             ve_inst.evaluate_candidate.return_value = Mock(
                 body_harmony_pct=80, color_suitability_pct=70, style_fit_pct=75,
-                pairing_coherence_pct=70, occasion_pct=60, weather_time_pct=70,
+                risk_tolerance_pct=85, comfort_boundary_pct=90,
+                pairing_coherence_pct=70,
+                occasion_pct=None, weather_time_pct=None, specific_needs_pct=None,
                 classic_pct=60, dramatic_pct=10, romantic_pct=20, natural_pct=40,
                 minimalist_pct=70, creative_pct=15, sporty_pct=10, edgy_pct=10,
                 overall_note="These would work with caveats.",

@@ -59,24 +59,39 @@ The Phase 12 re-architecture (Phases 12A–12E, completed April 2026) consolidat
 | `enrichment_status` on saved wardrobe rows | 12D | New top-level field on the dict returned by `save_wardrobe_item` so the orchestrator can detect failed enrichment without parsing nested JSON. The orchestrator returns a clarification asking for a clearer photo when this is `"failed"`. |
 | Tryon over-generation metrics | 12E | `tryon_attempted_count`, `tryon_succeeded_count`, `tryon_quality_gate_failures`, `tryon_overgeneration_used`, `evaluator_path` surfaced in `response.metadata` and `dependency_validation_events.metadata_json` for the operations dashboard. |
 
-### No-occasion handling (frequently asked)
+### Contextual evaluation: 6 always + 3 context-gated (Phase 12B follow-up, April 9 2026)
 
-When a user asks "Should I buy this?" or any other question without
-naming an occasion, no part of the system invents a default occasion.
-Different stages handle the absence differently:
+The visual evaluator scores **6 dimensions for every candidate** and **3 dimensions only when their inputs are present in `live_context`**. The always-evaluated set are the dimensions whose inputs are guaranteed by completed onboarding (body shape, palette, style preference, etc.). The context-gated set depends on what the user actually said this turn.
+
+| Always evaluate (6) | Context-gated (3) | Required input |
+|---|---|---|
+| `body_harmony_pct` | | profile (always present) |
+| `color_suitability_pct` | | derived_interpretations (always present) |
+| `style_fit_pct` | | style_preference (always present) |
+| `risk_tolerance_pct` | | style_preference (always present) |
+| `comfort_boundary_pct` | | style_preference (always present) |
+| `pairing_coherence_pct` | | candidate items (always present) |
+| | `occasion_pct` | `live_context.occasion_signal` non-null |
+| | `weather_time_pct` | `live_context.weather_context` OR `time_of_day` non-empty |
+| | `specific_needs_pct` | `live_context.specific_needs` non-empty |
+
+**The contract:** when a context-gated dimension's input is absent, the visual evaluator returns `null` for that field — not 0, not a neutral default. `null` propagates all the way through to the OutfitCard. The frontend filters null dimensions out of the radar chart before rendering, so the chart vertex count adapts to 5/6/7/8 axes based on what was actually evaluated. The purchase verdict averages only the dimensions that were actually scored.
+
+**No-occasion handling at each stage:**
 
 | Stage | Behavior when `occasion_signal` is null |
 |---|---|
-| **Planner** | For `occasion_recommendation` requests it MAY default to `"general"` / `"everyday"` so the architect has something to plan against. For `garment_evaluation`, `pairing_request`, `style_discovery`, and browse-by-category requests it leaves `occasion_signal` explicitly null. (See `prompt/copilot_planner.md:65,186`.) |
-| **Architect** | If weather/time-of-day are present, factors those in; otherwise leans on the user's profile (preferred archetypes, formality lean) — never a fictional occasion. (See `prompt/outfit_architect.md:41`.) |
-| **Visual evaluator (multi-outfit `recommendation` mode)** | `occasion_pct` is **scored 0** when there's no occasion, so it doesn't push or pull the ranking. (See `prompt/visual_evaluator.md:41`.) |
-| **Visual evaluator (`single_garment` mode — `garment_evaluation` turns)** | `occasion_pct` is scored on the garment's **general versatility**, not on a fictional default occasion. (See `prompt/visual_evaluator.md:98`.) |
-| **Weather / time-of-day** | When neither is set, `weather_time_pct` defaults to ~65-75 (neutral) and the evaluator is told "do NOT manufacture context." (See `prompt/visual_evaluator.md:81`.) |
+| **Planner** | For `occasion_recommendation` requests it MAY default to `"general"` / `"everyday"` so the architect has something to plan against. For `garment_evaluation`, `pairing_request`, `style_discovery`, and browse-by-category requests it leaves `occasion_signal` explicitly null. |
+| **Architect** | If weather/time-of-day are present, factors those in; otherwise leans on the user's profile — never a fictional occasion. |
+| **Visual evaluator (any mode)** | Returns `occasion_pct: null`. The PDP card radar drops the slice. |
+| **Purchase verdict** (`_compute_purchase_verdict`) | Averages `[body, color, style] + filter(None, [occasion, weather])`. With no occasion + no weather, the verdict rests on body/color/style alone — three honest signals, not five with synthetic defaults. |
+| **Holistic `match_score`** | The model is instructed to compute it from only the dimensions actually scored. |
 
-In short: for "Should I buy this?" turns the evaluator grades the
-garment on general versatility, not against an invented occasion. If
-the user later replies with an occasion, the follow-up turn re-grades
-against that occasion via the standard pipeline.
+**Example:** "Should I buy these jeans?" with no occasion, no weather, no specific need:
+- Radar chart shows 6 axes: Body / Color / Style / Risk / Comfort / Pairing.
+- `occasion_pct`, `weather_time_pct`, `specific_needs_pct` are all null in the response payload.
+- Buy/skip verdict is `(body + color + style) / 3` against the standard thresholds (>=78 buy, >=60 conditional, else skip).
+- If the user follows up with "Actually, for the office tomorrow when it's 5°C," the next turn re-scores with `occasion_pct` and `weather_time_pct` populated.
 
 ### What stays the same
 

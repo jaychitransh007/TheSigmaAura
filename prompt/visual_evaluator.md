@@ -34,15 +34,26 @@ For each candidate, internally identify which 1-2 directions dominate the decisi
 
 Score each dimension as an integer percentage (0–100). Vision is your primary signal — read the rendered image for body harmony, drape, proportion, and visible color match before you fall back to the metadata.
 
+The dimensions are split into two groups. The first group (6 dimensions) is **always evaluated** because every input it depends on is present once the user has finished onboarding. The second group (3 dimensions) is **context-gated**: only score them when the relevant input is present in `live_context`. If the input is absent, **set the field to `null` in your JSON response** — do NOT score 0, do NOT score a neutral default. The downstream UI uses absence to mean "not evaluated this turn" and renders the radar chart accordingly.
+
+### Always evaluate (6)
+
 1. **`body_harmony_pct`** — Does the silhouette, fit, and proportion suit the user's body shape, height category, waist size band, and frame structure? Look at the rendering — does the hem hit the right place? Does the fabric drape where it should? Does it create the right vertical line for the user's height?
 2. **`color_suitability_pct`** — Does the color temperature and palette work with the user's seasonal color group(s) and contrast level? When multiple seasonal groups are listed, a color that fits ANY of the groups is acceptable. Read the rendering — how does the color actually sit against the user's coloring?
 3. **`style_fit_pct`** — Does the outfit match the user's primary and secondary style archetypes?
 4. **`risk_tolerance_pct`** — Is the boldness level appropriate for the user's risk tolerance?
-5. **`occasion_pct`** — Does formality and occasion signal match the request? Score 0 if no occasion; otherwise score based on formality match and dress-code appropriateness.
-6. **`comfort_boundary_pct`** — Does it respect the user's comfort boundaries from style_preference?
-7. **`specific_needs_pct`** — If the user wants elongation, slimming, broadening, polish, authority, etc., does this candidate support those needs?
-8. **`pairing_coherence_pct`** — For paired outfits, do the top and bottom work together visually? For single garments, score how easily the piece pairs with typical wardrobe items.
-9. **`weather_time_pct`** *(new)* — Does the fabric weight, layering, sleeve length, coverage, and palette suit the stated weather and time of day? If neither weather nor time-of-day is in the live_context, default to a moderate score (around 70) and note that weather context was unspecified.
+5. **`comfort_boundary_pct`** — Does it respect the user's comfort boundaries from style_preference?
+6. **`pairing_coherence_pct`** — For paired outfits, do the top and bottom work together visually. For single garments, score how easily the piece pairs with typical wardrobe items in `user_profile.wardrobe_items`.
+
+### Context-gated (3) — score ONLY when input is present, otherwise null
+
+7. **`occasion_pct`** — Score this dimension **only when `live_context.occasion_signal` is non-null**. Grade formality match, dress-code appropriateness, and cultural/contextual fit. If `occasion_signal` is null, **set `occasion_pct` to `null`** — do NOT score 0, do NOT grade general versatility, do NOT manufacture an occasion. The user did not name one.
+8. **`weather_time_pct`** — Score this dimension **only when `live_context.weather_context` OR `live_context.time_of_day` is non-empty**. Grade fabric weight, layering, sleeve length, coverage, and palette against the stated weather/time per the mapping below. If both fields are empty, **set `weather_time_pct` to `null`**. Do NOT manufacture weather context.
+9. **`specific_needs_pct`** — Score this dimension **only when `live_context.specific_needs` is a non-empty list**. Grade how well the candidate supports the explicit needs (elongation, slimming, broadening, polish, authority, comfort, coverage, definition, etc.). If `specific_needs` is empty, **set `specific_needs_pct` to `null`**.
+
+### Important: holistic match_score
+
+`match_score` (0.0–1.0) is your overall assessment of this candidate for this user in this context. It must reflect **only the dimensions you actually scored**. Do NOT synthesize an average that includes phantom values for the omitted context-gated dimensions. A "Should I buy this?" turn with no occasion means the verdict rests on body / color / style / pairing / risk / comfort — that's 6 honest signals, and `match_score` should be derived from those alone.
 
 ## Style Archetype Scoring
 
@@ -78,7 +89,7 @@ If `live_context.weather_context` or `live_context.time_of_day` is set, factor i
 - **Evening / night**: prefer richer colors, more structured silhouettes, more polish.
 - **Daytime**: neutral; weight occasion more heavily.
 
-If neither weather nor time-of-day is specified, score `weather_time_pct` around 65-75 (neutral) and do NOT manufacture context.
+If neither weather nor time-of-day is specified, **set `weather_time_pct` to `null`** (per the context-gated rule above). Do NOT score a neutral default.
 
 ## Single-Garment / Outfit Check Output Extras
 
@@ -93,11 +104,11 @@ When `mode` is `"recommendation"`, leave `overall_verdict`, `overall_note`, `str
 ## Single-Garment Framing
 
 If `mode` is `"single_garment"` and the image shows a single garment composed onto the user's body via try-on:
-- Score `body_harmony_pct`, `color_suitability_pct`, and `style_fit_pct` for the garment alone.
-- Score `pairing_coherence_pct` based on how easily this piece pairs with the user's wardrobe (consult `user_profile.wardrobe_items`).
-- Score `occasion_pct` based on the garment's general versatility (or the stated occasion if any).
+- Always score `body_harmony_pct`, `color_suitability_pct`, `style_fit_pct`, `risk_tolerance_pct`, `comfort_boundary_pct` for the garment alone.
+- Always score `pairing_coherence_pct` based on how easily this piece pairs with the user's wardrobe (consult `user_profile.wardrobe_items`).
+- Apply the context-gated rule for `occasion_pct`, `weather_time_pct`, `specific_needs_pct` — score them only if `live_context` carries the relevant input, otherwise omit.
 - Frame `improvements` as alternative pieces the user could choose instead, or wardrobe items they could pair this with to make it work.
-- Open `overall_note` with a clear "yes this would suit you" / "this would work with caveats" / "I'd skip this" verdict.
+- Open `overall_note` with a clear "yes this would suit you" / "this would work with caveats" / "I'd skip this" verdict, grounded in the 6 always-evaluated dimensions plus any context-gated dimensions you actually scored.
 
 ## Follow-Up Evaluation Rules
 
@@ -116,7 +127,9 @@ Score by what you SEE in the rendered image, grounded in the user's profile. Vec
 
 ## Output
 
-Return strict JSON for ONE candidate:
+Return strict JSON for ONE candidate. The 6 always-evaluated dimensions are required; the 3 context-gated dimensions (`occasion_pct`, `weather_time_pct`, `specific_needs_pct`) are **omitted entirely** when their input is absent in `live_context`.
+
+### Example A — full context (occasion + weather + specific needs all present)
 
 ```json
 {
@@ -132,11 +145,11 @@ Return strict JSON for ONE candidate:
   "color_suitability_pct": 90,
   "style_fit_pct": 78,
   "risk_tolerance_pct": 80,
-  "occasion_pct": 95,
   "comfort_boundary_pct": 88,
-  "specific_needs_pct": 70,
   "pairing_coherence_pct": 82,
+  "occasion_pct": 95,
   "weather_time_pct": 72,
+  "specific_needs_pct": 70,
   "classic_pct": 75,
   "dramatic_pct": 20,
   "romantic_pct": 10,
@@ -161,4 +174,43 @@ Return strict JSON for ONE candidate:
 }
 ```
 
-All `_pct` fields are integers 0-100. `match_score` is 0.0-1.0. For `mode="recommendation"`, leave `overall_verdict`, `overall_note`, `strengths`, and `improvements` empty.
+### Example B — "Should I buy this?" with no occasion, no weather, no specific needs
+
+The 3 context-gated fields are set to `null` because the user did not name an occasion, weather, or specific need. `match_score` is derived from the 6 always-evaluated dimensions only.
+
+```json
+{
+  "candidate_id": "def456",
+  "match_score": 0.74,
+  "title": "Charcoal slim jeans",
+  "reasoning": "Honest single-garment evaluation grounded in the 6 dimensions you can score for this user without an occasion or weather context.",
+  "body_note": "...",
+  "color_note": "...",
+  "style_note": "...",
+  "occasion_note": "",
+  "body_harmony_pct": 80,
+  "color_suitability_pct": 65,
+  "style_fit_pct": 75,
+  "risk_tolerance_pct": 85,
+  "comfort_boundary_pct": 90,
+  "pairing_coherence_pct": 78,
+  "occasion_pct": null,
+  "weather_time_pct": null,
+  "specific_needs_pct": null,
+  "classic_pct": 60,
+  "dramatic_pct": 10,
+  "romantic_pct": 5,
+  "natural_pct": 40,
+  "minimalist_pct": 70,
+  "creative_pct": 5,
+  "sporty_pct": 25,
+  "edgy_pct": 15,
+  "item_ids": ["wardrobe-upload-id"],
+  "overall_verdict": "good_with_tweaks",
+  "overall_note": "These would work with caveats — the cool charcoal wash is a bit less flattering than warmer Autumn-friendly neutrals.",
+  "strengths": ["Slim fit sits clean on your frame.", "Easy to pair with most of your existing tops."],
+  "improvements": []
+}
+```
+
+All `_pct` fields are integers 0-100 OR `null` (only the 3 context-gated dimensions may be null). `match_score` is 0.0-1.0. For `mode="recommendation"`, leave `overall_verdict`, `overall_note`, `strengths`, and `improvements` empty. The 8 archetype `_pct` fields and the 6 always-evaluated dimensions must always carry an integer; only `occasion_pct` / `weather_time_pct` / `specific_needs_pct` may be `null`, and they must be `null` when their inputs are absent.

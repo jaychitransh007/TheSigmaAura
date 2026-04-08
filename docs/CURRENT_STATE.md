@@ -1018,6 +1018,93 @@ Success criteria:
 
 ## Immediate Next Item
 
+### ✅ CLOSED — Contextual evaluation: omit dimensions when input is absent (April 9 2026)
+
+Shipped April 9, 2026. The visual evaluator now scores 6 dimensions always and 3 dimensions only when their inputs are present in `live_context`. Test count: 319 passing (was 313, +6 new regression tests). Verification of the next "Should I buy this?" turn should show:
+
+- The PDP card radar chart only renders **6 axes** (Body / Color / Style / Risk / Comfort / Pairing), not 8 — `occasion_pct`, `weather_time_pct`, and `specific_needs_pct` are dropped because the user didn't supply those inputs.
+- The buy/skip verdict is computed from 3 dimensions (body / color / style) instead of the legacy 5 (which included synthetic 0 / 70 defaults).
+- The model's `match_score` reflects only the dimensions actually scored.
+- A turn that *does* mention an occasion (e.g. "What should I wear to the office tomorrow?") still shows `occasion_pct` on the radar with a real grade.
+
+Files touched (10 total):
+- `prompt/visual_evaluator.md` — restructured Evaluation Dimensions into "Always evaluate (6)" + "Context-gated (3 — null when input absent)" sections; added explicit `match_score` rule; added Example B showing the no-context case with `null` values.
+- `modules/agentic_application/src/agentic_application/agents/visual_evaluator_agent.py` — `_EVAL_JSON_SCHEMA` uses `["integer", "null"]` union for the 3 fields; new `_optional_pct` parser preserves None instead of coercing to 0.
+- `modules/agentic_application/src/agentic_application/schemas.py` — `EvaluatedRecommendation` and `OutfitCard` fields are `Optional[int] = None`.
+- `modules/platform_core/src/platform_core/api_schemas.py` — mirror `Optional[int]` change.
+- `modules/agentic_application/src/agentic_application/agents/response_formatter.py` — adds `weather_time_pct` to OutfitCard construction (was a pre-existing bug; the formatter never plumbed the field through), passes None through.
+- `modules/agentic_application/src/agentic_application/orchestrator.py`:
+  - `_handle_garment_evaluation` now plumbs `risk_tolerance_pct`, `comfort_boundary_pct`, and `specific_needs_pct` into the OutfitCard (also pre-existing — the garment_evaluation card was only showing 5 of 9 dimensions before).
+  - `_compute_purchase_verdict` averages over `[body, color, style] + filter(None, [occasion, weather])` instead of a fixed 5-dim mean.
+- `modules/platform_core/src/platform_core/ui.py` — `buildEvaluationCriteria` result is filtered to drop dimensions where the OutfitCard value is `null`/`undefined` BEFORE the radar geometry calculation, so the chart's vertex count adapts to 5/6/7/8 axes based on what was actually scored.
+- `tests/test_agentic_application.py` — 6 new regression tests in `Phase12BBuildingBlockTests`:
+  1. `test_evaluator_omits_occasion_when_no_occasion_signal`
+  2. `test_evaluator_keeps_all_three_when_inputs_present`
+  3. `test_evaluator_handles_missing_context_gated_keys`
+  4. `test_purchase_verdict_skips_none_dimensions`
+  5. `test_purchase_verdict_with_full_context`
+  6. `test_outfit_card_serializes_none_dimensions`
+  Plus updated `test_garment_evaluation_does_not_persist_uploaded_item` to mock the new always-on dimensions and the now-Optional context-gated dimensions.
+- `docs/CURRENT_STATE.md` — this close-out.
+- `docs/WORKFLOW_REFERENCE.md` — rewrote the "No-occasion handling" section to reflect the omit-not-default rule.
+
+**Risk callouts that landed cleanly:**
+- OpenAI structured-outputs strict mode does accept the `["integer", "null"]` union when the field is also kept in `required`. No fallback needed.
+- Legacy text-only `OutfitEvaluator` still emits `int = 0` for the now-Optional fields. The Pydantic schema accepts that (Optional[int] allows int values). Marked with a comment in `EvaluatedRecommendation` that this path will be retired in Phase 12E.
+
+---
+
+### P0 — Contextual evaluation: omit dimensions when input is absent (April 9 2026)
+
+The current visual evaluator scores 9 dimensions for every candidate. Three of them are context-gated and only meaningful when the user supplies the relevant input — but the prompt today tells the model to **fall back to a default** when input is absent (`occasion_pct=0`, `weather_time_pct≈70`, `specific_needs_pct` neutral). Three concrete failures from this:
+
+1. **`occasion_pct=0` artificially drags down `match_score`** for any recommendation turn where no occasion was named. The model is told "score 0 if no occasion" — that 0 contributes to the user's mental average even though no real evaluation happened.
+2. **`weather_time_pct≈70` is fake data on the radar chart.** A 70 from "no weather context" looks identical to a 70 the model derived from the rendering. The user can't tell the difference.
+3. **`_compute_purchase_verdict` averages 5 dimensions** including `occasion_pct` and `weather_time_pct`. For a `garment_evaluation` ("should I buy this?") turn with no occasion, two of those five are synthetic neutral defaults — so the buy/skip recommendation is partially built on fake data.
+
+**The right rule:** the evaluator should **always evaluate 6 dimensions** (the user's stable profile signals) and **conditionally evaluate the other 3** only when their inputs are present in `live_context`.
+
+| Dimension | Always or Conditional | Required input |
+|---|---|---|
+| `body_harmony_pct` | always | profile (always present after onboarding) |
+| `color_suitability_pct` | always | derived_interpretations (always present) |
+| `style_fit_pct` | always | style_preference (always present) |
+| `risk_tolerance_pct` | always | style_preference (always present) |
+| `comfort_boundary_pct` | always | style_preference (always present) |
+| `pairing_coherence_pct` | always | candidate items (always present) |
+| `occasion_pct` | **conditional** | `live_context.occasion_signal` non-null |
+| `weather_time_pct` | **conditional** | `live_context.weather_context` OR `time_of_day` non-null |
+| `specific_needs_pct` | **conditional** | `live_context.specific_needs` non-empty |
+
+Conditional dimensions are **omitted from the JSON response when their input is absent** — not scored 0, not scored neutral. The PDP card radar chart drops the slice. The purchase verdict averages over only the dimensions that were actually evaluated.
+
+**Implementation plan (Steps 1-9, this commit):**
+
+- **Step 1 — Prompt** (`prompt/visual_evaluator.md`): restructure the Evaluation Dimensions section into "Always evaluate (6)" and "Context-gated (3)". Replace the current default-scoring rules for the 3 conditional dimensions with explicit "OMIT from your JSON if input is absent". Update the example output to show both modes. Tell the model the holistic `match_score` should only reflect dimensions actually scored.
+- **Step 2 — Agent schema** (`visual_evaluator_agent.py`): drop the 3 fields from `_EVAL_JSON_SCHEMA["schema"]["required"]`; change their property type to a nullable union (verify OpenAI structured-outputs strict mode accepts it; fall back to `anyOf` or full removal from `properties` if needed). New `_optional_pct` helper in `_to_evaluated_recommendation` that returns `None` when the key is missing or null.
+- **Step 3 — Schemas** (`schemas.py`, `platform_core/api_schemas.py`): change `occasion_pct`, `specific_needs_pct`, `weather_time_pct` from `int = 0` to `Optional[int] = None` in `EvaluatedRecommendation`, `OutfitCard`, and the API mirror schema. Other 6 dimensions stay `int = 0`.
+- **Step 4 — Response formatter** (`response_formatter.py:240`): audit the propagation chain for any `int(...)` coercion that would convert `None → 0`; pass through unchanged.
+- **Step 5 — Purchase verdict** (`orchestrator.py:_compute_purchase_verdict`): rebuild the average over a list of `[body_harmony, color_suitability, style_fit] + [v for v in (occasion_pct, weather_time_pct) if v is not None]`. The verdict thresholds (`>=78 buy`, `>=60 conditional`, else skip) stay the same — they now apply to the actually-evaluated mean.
+- **Step 6 — Frontend** (`platform_core/ui.py:buildEvaluationCriteria` + radar render at line 1726): filter the criteria list to drop dimensions where `outfit[c.key] == null` BEFORE the radar geometry calculation. The chart vertex count adapts to 5/6/7/8 dimensions based on what was evaluated. Apply the same filter to both the recommendation branch and the outfit_check branch.
+- **Step 7 — Tests:** 6 new regression tests in `Phase12BBuildingBlockTests`:
+  1. `test_evaluator_omits_occasion_when_no_occasion_signal`
+  2. `test_evaluator_omits_weather_when_no_weather_or_time`
+  3. `test_evaluator_omits_specific_needs_when_empty_list`
+  4. `test_evaluator_keeps_all_three_when_inputs_present`
+  5. `test_purchase_verdict_skips_none_dimensions`
+  6. `test_outfit_card_serializes_none_dimensions`
+  Plus an audit pass over existing tests that hardcoded values for these 3 dimensions on no-occasion turns.
+- **Step 8 — Docs:** close out this P0 with the final file/test list; rewrite the "No-occasion handling" section in `WORKFLOW_REFERENCE.md` to reflect the omit-not-default rule.
+- **Step 9 — Run the full test suite.** 313 baseline → expect ~319 with the new tests, all green.
+
+**Risk callouts:**
+- OpenAI structured-outputs `strict` mode + nullable fields: if `{"type": ["integer", "null"]}` isn't accepted, fall back to dropping the 3 fields from `properties` entirely so the model genuinely omits them. Verified during Step 2.
+- Legacy text-only `OutfitEvaluator` (used as fallback when no person photo) still defaults to `int = 0`. Left as-is with a comment — that path will be retired in Phase 12E reranker calibration.
+
+This is a Phase 12B follow-up: 12B added the visual evaluator with 9 dimensions but did not gate the 3 context-dependent ones on input presence. The fix makes evaluation contextually honest — the user only sees scores for dimensions the model actually evaluated.
+
+---
+
 ### ✅ CLOSED — Wardrobe ingestion gated by intent + duplicate-check + PDP thumbnail fix (April 9 2026)
 
 Shipped April 9, 2026 in a single coordinated commit. Test count: 313 passing (was 308, +5 new regression tests). Verification of the next staging "Should I buy this?" turn should show:

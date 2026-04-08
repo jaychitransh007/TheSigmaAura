@@ -4964,11 +4964,21 @@ class AgenticOrchestrator:
             color_note=evaluation.color_note,
             style_note=evaluation.style_note,
             occasion_note=evaluation.occasion_note,
+            # 6 always-evaluated dimensions — risk_tolerance + comfort_boundary
+            # were missing from this card construction prior to the
+            # April 9 2026 follow-up (only 5 of the 9 dimensions were
+            # being plumbed through to the garment_evaluation PDP card).
             body_harmony_pct=evaluation.body_harmony_pct,
             color_suitability_pct=evaluation.color_suitability_pct,
             style_fit_pct=evaluation.style_fit_pct,
+            risk_tolerance_pct=evaluation.risk_tolerance_pct,
+            comfort_boundary_pct=evaluation.comfort_boundary_pct,
             pairing_coherence_pct=evaluation.pairing_coherence_pct,
+            # 3 context-gated dimensions — None when their inputs are
+            # absent in live_context. The frontend drops these from the
+            # radar chart when null.
             occasion_pct=evaluation.occasion_pct,
+            specific_needs_pct=evaluation.specific_needs_pct,
             weather_time_pct=evaluation.weather_time_pct,
             classic_pct=evaluation.classic_pct,
             dramatic_pct=evaluation.dramatic_pct,
@@ -5268,6 +5278,16 @@ class AgenticOrchestrator:
     ) -> str:
         """Deterministic buy/skip/conditional verdict from evaluator scores.
 
+        Phase 12B follow-up (April 9 2026): the average is computed over
+        only the dimensions that were actually evaluated. The 3
+        always-evaluated dimensions (body / color / style) are always in
+        the average; occasion_pct and weather_time_pct are added only
+        when the model returned a non-null score for them. Previously
+        the average was a fixed 5-dimension mean — when the user didn't
+        name an occasion or weather, two of those five contributed
+        synthetic neutral defaults and the buy/skip recommendation was
+        partially built on fake data.
+
         Phase 12B initial thresholds (calibrate from staging telemetry
         in Phase 12E):
             - strong wardrobe duplicate → skip (overrides scores)
@@ -5277,13 +5297,22 @@ class AgenticOrchestrator:
         """
         if str(wardrobe_overlap.get("overlap_level") or "").lower() == "strong":
             return "skip"
-        avg = (
-            evaluation.body_harmony_pct
-            + evaluation.color_suitability_pct
-            + evaluation.style_fit_pct
-            + evaluation.occasion_pct
-            + evaluation.weather_time_pct
-        ) / 5.0
+        # Always-evaluated dimensions for the verdict — body, color, style.
+        # We deliberately exclude risk_tolerance, comfort_boundary, and
+        # pairing_coherence from the verdict average even though they are
+        # always evaluated, because the verdict is about "is this piece a
+        # good buy on its objective merits?", not about how risky it is or
+        # how easy it pairs. (Those are surfaced separately on the card.)
+        scores: List[int] = [
+            evaluation.body_harmony_pct,
+            evaluation.color_suitability_pct,
+            evaluation.style_fit_pct,
+        ]
+        if evaluation.occasion_pct is not None:
+            scores.append(evaluation.occasion_pct)
+        if evaluation.weather_time_pct is not None:
+            scores.append(evaluation.weather_time_pct)
+        avg = sum(scores) / len(scores)
         if avg >= 78:
             return "buy"
         if avg >= 60:
