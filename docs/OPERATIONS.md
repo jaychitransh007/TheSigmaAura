@@ -455,6 +455,66 @@ on `turn_id` and filter for turns where the planner saw an
 
 ---
 
+## Panel 14 — Non-Garment Image Rate (Phase 12D follow-up)
+
+**Question:** how often are users uploading non-garment images
+(charts, screenshots, landscapes, etc.) on chat upload turns? The
+April 9, 2026 fix added explicit `is_garment_photo` classification
+to the wardrobe enrichment and a `non_garment_image` reason code on
+turns where the orchestrator short-circuited the pipeline. This
+panel tracks the rate so a sustained spike can flag (a) a UX
+problem (users not understanding what to upload), (b) a model
+calibration drift (the vision model misclassifying real garments
+as non-garments), or (c) intentional adversarial uploads.
+
+```sql
+-- non_garment_image_rate_last_7d
+SELECT
+    date_trunc('day', created_at) AS day,
+    COUNT(*) FILTER (
+        WHERE 'non_garment_image' = ANY(
+            ARRAY(
+                SELECT jsonb_array_elements_text(
+                    coalesce(resolved_context_json->'response_metadata'->'intent_reason_codes', '[]'::jsonb)
+                )
+            )
+        )
+    ) AS non_garment_turns,
+    COUNT(*) FILTER (
+        WHERE resolved_context_json->'intent_classification'->>'primary_intent' IN (
+            'pairing_request', 'occasion_recommendation', 'outfit_check'
+        )
+    ) AS image_capable_turns
+FROM conversation_turns
+WHERE created_at >= now() - interval '7 days'
+GROUP BY 1
+ORDER BY 1 DESC;
+```
+
+Healthy: `non_garment_turns / image_capable_turns < 5%` for typical
+production traffic. A sustained spike means one of:
+
+1. **Vision model drift** — gpt-5-mini is calibrating differently
+   than before. Spot-check the rejected images by joining against
+   `user_wardrobe_items` (image_path) for the affected turns. If
+   they're real garments being misclassified, lower the
+   `garment_present_confidence < 0.5` threshold in
+   `orchestrator.py` or revisit the user_text instruction in
+   `wardrobe_enrichment.py`.
+2. **UX issue** — users repeatedly uploading the wrong thing means
+   the chat composer needs clearer guidance about what photos are
+   accepted. Consider an inline hint or a more prominent example.
+3. **Adversarial / spam traffic** — if the rejected images cluster
+   to specific users, treat as abuse and rate-limit or suspend.
+
+Cross-reference with Panel 12 (Wardrobe Enrichment Failure Rate) —
+the two are related but distinct. Enrichment failure means the
+vision API call itself errored or returned empty critical fields;
+non-garment is when the call SUCCEEDED but the model classified
+the image as not-a-garment.
+
+---
+
 ## How to refresh
 
 1. Open Supabase Studio (or your preferred SQL client) connected to staging.

@@ -80,10 +80,10 @@ Always use `python3 -m pip` (not bare `pip`) to guarantee the install lands in t
 ## Project Stats
 
 - 36 Supabase migrations
-- 323 tests
+- 329 tests
 - 8 intents (7 advisory + silent wardrobe_ingestion), 7 action types, 7 follow-up types (StrEnum registry, post-Phase 12A consolidation)
 - 50+ catalog enrichment attributes
-- 46 wardrobe enrichment attributes
+- 46 wardrobe enrichment attributes (plus `is_garment_photo` boolean + `garment_present_confidence` for non-garment image detection on chat uploads)
 - 9 visual evaluator dimensions: 5 always-evaluated (body, color, style, risk, comfort) + 4 context-gated (pairing, occasion, weather/time, specific needs)
 
 ## Documentation
@@ -97,7 +97,7 @@ with it, `CURRENT_STATE.md` wins.
 | [`docs/PRODUCT.md`](docs/PRODUCT.md) | Product definition, personas, user journey, stories |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | Design system, visual language, UX patterns, component rules |
 | [`docs/RELEASE_READINESS.md`](docs/RELEASE_READINESS.md) | 4-gate release checklist (functional / data / observability / product-UX) |
-| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | 13 dashboard panels + SQL queries for the first-50 rollout |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | 14 dashboard panels + SQL queries for the first-50 rollout |
 | [`docs/DESIGN_SYSTEM_VALIDATION.md`](docs/DESIGN_SYSTEM_VALIDATION.md) | Manual design QA checklist (9 device journeys + tone audit) |
 | [`docs/APPLICATION_SPECS.md`](docs/APPLICATION_SPECS.md) | Implementation spec (⚠️ *partially deprecated* — see banner at top) |
 | [`docs/INTENT_COPILOT_ARCHITECTURE.md`](docs/INTENT_COPILOT_ARCHITECTURE.md) | Target system architecture (⚠️ *pre-planner-inlining era* — some sections stale) |
