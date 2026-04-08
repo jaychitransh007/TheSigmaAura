@@ -1724,19 +1724,35 @@ def get_web_ui_html(
 
     // 5. Evaluation criteria as radar chart (scores × profile confidence)
     // Phase 12B follow-ups (April 9 2026): drop dimensions whose value is
-    // null. The 4 context-gated dimensions (pairing_coherence_pct,
-    // occasion_pct, weather_time_pct, specific_needs_pct) come back as null
-    // when their gating condition isn't met — pairing is null when intent
-    // is garment_evaluation / style_discovery / explanation_request, the
+    // null OR (for the 4 context-gated dimensions specifically) zero.
+    // The 4 context-gated dimensions (pairing_coherence_pct, occasion_pct,
+    // weather_time_pct, specific_needs_pct) come back as null when their
+    // gating condition isn't met — pairing is null when intent is
+    // garment_evaluation / style_discovery / explanation_request, the
     // other 3 are null when their live_context inputs are absent.
-    // Including them as 0-spikes would visually pull the radar polygon
-    // inward and mislead the user into thinking the candidate "failed"
-    // those dimensions. Filter BEFORE the geometry calculation so the
-    // chart's vertex count adapts (4/5/6/7/8/9 axes depending on what
-    // was scored).
+    //
+    // Defensive zero-fallback: if a context-gated dimension somehow
+    // arrives as 0 instead of null (stale data from before the schema
+    // migration, an older render path, the model ignoring the prompt
+    // rule, etc.), we still drop it from the radar. Real model scores
+    // are virtually always in the 30-95 range; an exact 0 on these 4
+    // fields means "not actually evaluated" in practice. The 5
+    // always-evaluated dimensions are NOT subject to the zero-fallback —
+    // a genuine 0 there is a meaningful signal worth showing.
+    //
+    // Filtering BEFORE the geometry calculation lets the chart vertex
+    // count adapt (4/5/6/7/8/9 axes depending on what was scored).
+    var CONTEXT_GATED_KEYS = {{
+      "pairing_coherence_pct": true,
+      "occasion_pct": true,
+      "weather_time_pct": true,
+      "specific_needs_pct": true,
+    }};
     var criteria = buildEvaluationCriteria(outfit, responseMetadata).filter(function(c) {{
       var v = outfit[c.key];
-      return v !== null && v !== undefined;
+      if (v === null || v === undefined) return false;
+      if (CONTEXT_GATED_KEYS[c.key] && v === 0) return false;
+      return true;
     }});
     var hasCriteriaData = criteria.length > 0 && criteria.some(function(c) {{ return (outfit[c.key] || 0) > 0; }});
     if (hasCriteriaData) {{
