@@ -48,6 +48,21 @@ def response_format() -> Dict[str, Any]:
     properties: Dict[str, Any] = {}
     required: list[str] = []
 
+    # Phase 12D follow-up (April 9 2026): explicit non-garment detection.
+    # The shared garment_attributes.json config doesn't have these fields
+    # because catalog enrichment is fed clean catalog images that are
+    # always garments. Wardrobe enrichment, in contrast, gets arbitrary
+    # user uploads — including charts, screenshots, landscape photos,
+    # etc. — so we add an explicit `is_garment_photo` boolean and a
+    # `garment_present_confidence` number to the wardrobe response
+    # schema. The model's vision classifies the image first, and the
+    # orchestrator uses these fields to surface a "this isn't a
+    # garment, please upload a clearer photo" clarification before any
+    # downstream pipeline runs.
+    properties["is_garment_photo"] = {"type": "boolean"}
+    properties["garment_present_confidence"] = {"type": "number", "minimum": 0, "maximum": 1}
+    required.extend(["is_garment_photo", "garment_present_confidence"])
+
     for name, enum_values in enum_attributes.items():
         properties[name] = {"anyOf": [{"type": "string", "enum": enum_values}, {"type": "null"}]}
         properties[f"{name}_confidence"] = {"type": "number", "minimum": 0, "maximum": 1}
@@ -96,6 +111,21 @@ def infer_wardrobe_catalog_attributes(
     mime_type = mime_type or "image/jpeg"
 
     user_text = (
+        "FIRST decide whether the image actually shows a wearable garment. "
+        "If the image shows anything else — a chart, screenshot, document, "
+        "landscape, food, animal, person without visible clothing, or any "
+        "non-garment object — set `is_garment_photo` to `false`, set "
+        "`garment_present_confidence` to a low value (≤ 0.3), and return "
+        "null for ALL garment attributes (with their confidence at 0.0). "
+        "Do NOT guess garment attributes for non-garment images. The user "
+        "will be asked to upload a clearer photo.\n"
+        "\n"
+        "If the image DOES show a wearable garment, set `is_garment_photo` "
+        "to `true`, set `garment_present_confidence` to a value reflecting "
+        "how clearly you can see the garment (0.7+ for clear garment "
+        "photos, 0.5-0.7 for partial/unclear), and proceed to extract the "
+        "46 garment attributes per the rules below.\n"
+        "\n"
         "Analyze this single wardrobe garment image and return the required JSON.\n"
         "The output schema must match the global catalog enrichment schema exactly.\n"
         "If user-provided hints conflict with the image, trust the image and lower confidence.\n"

@@ -566,6 +566,20 @@ class OnboardingService:
             metadata_json["catalog_attribute_error"] = enrichment_error_message
             metadata_json["catalog_attribute_attempts"] = 2
 
+        # Phase 12D follow-up (April 9 2026): pull the explicit
+        # non-garment detection signals out of the enrichment response
+        # so the orchestrator can branch on them without re-parsing
+        # the nested catalog_attributes dict. Defaults to the "garment
+        # present" assumption when the flags are absent (e.g. for old
+        # rows pre-dating this fix or when enrichment errored).
+        catalog_attrs_for_gating = dict(metadata_json.get("catalog_attributes") or {})
+        is_garment_photo = catalog_attrs_for_gating.get("is_garment_photo")
+        if is_garment_photo is None:
+            is_garment_photo = True  # default to "garment present" if absent
+        garment_present_confidence = catalog_attrs_for_gating.get("garment_present_confidence")
+        if garment_present_confidence is None:
+            garment_present_confidence = 1.0  # default to "fully confident" if absent
+
         # Phase 12D follow-up (April 9 2026): the orchestrator now defers
         # the DB insert until *after* the planner classifies the intent,
         # so it can drop wardrobe writes for `garment_evaluation` and
@@ -596,6 +610,8 @@ class OnboardingService:
                 "notes": notes,
                 "metadata_json": metadata_json,
                 "enrichment_status": enrichment_status,
+                "is_garment_photo": is_garment_photo,
+                "garment_present_confidence": garment_present_confidence,
                 "_pending_persist": True,
             }
             if enrichment_error_message:
@@ -619,13 +635,16 @@ class OnboardingService:
             notes=notes,
             metadata_json=metadata_json,
         )
-        # Surface the enrichment status as a top-level field on the
-        # returned dict so callers don't have to dig into metadata_json.
-        # The orchestrator uses this to detect the failed-enrichment case
-        # without re-parsing nested JSON.
+        # Surface the enrichment status + non-garment detection signals
+        # as top-level fields on the returned dict so callers don't have
+        # to dig into metadata_json. The orchestrator uses these to
+        # detect (a) the failed-enrichment case and (b) the non-garment
+        # case without re-parsing nested JSON.
         if isinstance(inserted, dict):
             inserted = dict(inserted)
             inserted["enrichment_status"] = enrichment_status
+            inserted["is_garment_photo"] = is_garment_photo
+            inserted["garment_present_confidence"] = garment_present_confidence
             if enrichment_error_message:
                 inserted["enrichment_error"] = enrichment_error_message
         return inserted

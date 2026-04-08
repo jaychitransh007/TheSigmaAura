@@ -6210,6 +6210,276 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
         # because the planner classified the intent as pairing_request.
         gw.persist_pending_wardrobe_item.assert_called_once()
 
+    # ── Phase 12D follow-up (April 9 2026): non-garment image guard ──
+    #
+    # The wardrobe enrichment now returns is_garment_photo +
+    # garment_present_confidence so the orchestrator can short-circuit
+    # the entire pipeline when the user uploads a non-garment image
+    # (chart, screenshot, landscape, etc.). The guard fires before
+    # wardrobe persistence and before the planner pipeline, so:
+    #   - the upload is never written to user_wardrobe_items
+    #   - no recommendation pipeline runs
+    #   - the user gets a clarification asking for a clearer photo
+
+    def _build_non_garment_test_repo_and_gateway(self, *, intent_value):
+        """Helper to wire up a Mock repo + gateway for non-garment tests."""
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+        )
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1", "user_id": "db-user", "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "male", "style_preference": {"primaryArchetype": "natural"}},
+            "attributes": {"BodyShape": {"value": "Trapezoid"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Winter"}},
+        }
+        gw.get_wardrobe_items.return_value = []
+        gw.get_person_image_path.return_value = None
+        planner = Mock()
+        planner.plan.return_value = CopilotPlanResult(
+            intent=intent_value,
+            intent_confidence=0.95,
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
+            context_sufficient=True,
+            assistant_message="",
+            follow_up_suggestions=[],
+            resolved_context=CopilotResolvedContext(),
+            action_parameters=CopilotActionParameters(target_piece="this piece"),
+        )
+        return repo, gw, planner
+
+    def test_non_garment_upload_returns_clarification(self):
+        """When the wardrobe enrichment flags is_garment_photo=False
+        (e.g. a chart, screenshot, landscape photo), the orchestrator
+        must short-circuit to ASK_CLARIFICATION with the
+        non_garment_image reason code, NOT run the planner pipeline,
+        and NOT persist the upload to user_wardrobe_items."""
+        repo, gw, planner = self._build_non_garment_test_repo_and_gateway(
+            intent_value=Intent.PAIRING_REQUEST,
+        )
+        gw.save_uploaded_chat_wardrobe_item.return_value = {
+            "id": None,
+            "title": "",
+            "image_path": "data/onboarding/images/wardrobe/chart.jpg",
+            "garment_category": "",
+            "garment_subtype": "",
+            "primary_color": "",
+            "enrichment_status": "ok",
+            "is_garment_photo": False,             # ← model says NOT a garment
+            "garment_present_confidence": 0.05,
+            "_pending_persist": True,
+        }
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
+             patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
+             patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner):
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Find me a completing outfit from catalog",
+                image_data="data:image/jpeg;base64,/9j/4AAQ",
+            )
+
+        # Architect must NOT have been called — the guard short-circuits
+        # before the recommendation pipeline runs.
+        architect_cls.return_value.plan.assert_not_called()
+        # The pending upload must NOT have been promoted to a real row.
+        gw.persist_pending_wardrobe_item.assert_not_called()
+        # The reason code is set so dashboard panels can track this.
+        self.assertIn(
+            "non_garment_image",
+            result["metadata"]["intent_reason_codes"],
+        )
+        # The user-facing message asks for a clearer garment photo.
+        msg = result["assistant_message"].lower()
+        self.assertTrue(
+            "garment" in msg or "piece" in msg,
+            f"expected clarification copy mentioning garment/piece, got {msg!r}",
+        )
+
+    def test_low_confidence_upload_returns_clarification(self):
+        """Defence-in-depth: even when is_garment_photo=True, if the
+        garment_present_confidence is below 0.5 (model said yes but
+        wasn't sure — typical for ambiguous edge cases like fashion-
+        website screenshots or printed catalog pages) the orchestrator
+        still surfaces the clarification."""
+        repo, gw, planner = self._build_non_garment_test_repo_and_gateway(
+            intent_value=Intent.PAIRING_REQUEST,
+        )
+        gw.save_uploaded_chat_wardrobe_item.return_value = {
+            "id": None,
+            "title": "",
+            "image_path": "data/onboarding/images/wardrobe/screenshot.jpg",
+            "garment_category": "top",  # the model picked something
+            "enrichment_status": "ok",
+            "is_garment_photo": True,              # said yes…
+            "garment_present_confidence": 0.32,    # …but with low confidence
+            "_pending_persist": True,
+        }
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
+             patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
+             patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner):
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="What goes with this?",
+                image_data="data:image/jpeg;base64,/9j/4AAQ",
+            )
+        architect_cls.return_value.plan.assert_not_called()
+        gw.persist_pending_wardrobe_item.assert_not_called()
+        self.assertIn(
+            "non_garment_image",
+            result["metadata"]["intent_reason_codes"],
+        )
+
+    def test_garment_upload_passes_through_when_high_confidence(self):
+        """Happy path: a real garment upload (is_garment_photo=True,
+        confidence ≥ 0.5) must NOT be flagged as non-garment, must
+        persist normally, and the recommendation pipeline must run.
+        Locks in that the new guard doesn't break legitimate uploads."""
+        repo, gw, planner = self._build_non_garment_test_repo_and_gateway(
+            intent_value=Intent.PAIRING_REQUEST,
+        )
+        gw.save_uploaded_chat_wardrobe_item.return_value = {
+            "id": None,
+            "title": "Black Tee",
+            "image_path": "data/onboarding/images/wardrobe/tee.jpg",
+            "garment_category": "top",
+            "garment_subtype": "tee",
+            "primary_color": "black",
+            "enrichment_status": "ok",
+            "is_garment_photo": True,
+            "garment_present_confidence": 0.95,
+            "_pending_persist": True,
+        }
+        gw.persist_pending_wardrobe_item.return_value = {
+            "id": "real-row-uuid",
+            "title": "Black Tee",
+            "image_path": "data/onboarding/images/wardrobe/tee.jpg",
+            "garment_category": "top",
+            "garment_subtype": "tee",
+            "primary_color": "black",
+            "enrichment_status": "ok",
+            "is_garment_photo": True,
+            "garment_present_confidence": 0.95,
+        }
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
+             patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
+             patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner):
+            architect_cls.return_value.plan.side_effect = RuntimeError("stop after persist check")
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            try:
+                result = orchestrator.process_turn(
+                    conversation_id="c1",
+                    external_user_id="user-1",
+                    message="What goes with this?",
+                    image_data="data:image/jpeg;base64,/9j/4AAQ",
+                )
+            except Exception:
+                result = None
+
+        # The non-garment guard must NOT have fired — no
+        # `non_garment_image` reason code, persistence promotion did
+        # happen, and the architect attempt did happen (the RuntimeError
+        # we raised on architect.plan proves we got past the guard
+        # and into the pipeline).
+        gw.persist_pending_wardrobe_item.assert_called_once()
+        if result is not None:
+            self.assertNotIn(
+                "non_garment_image",
+                result.get("metadata", {}).get("intent_reason_codes", []),
+            )
+
+    def test_garment_evaluation_exempt_from_non_garment_guard(self):
+        """garment_evaluation must be exempt from the non-garment guard
+        because the visual evaluator works on image bytes directly and
+        might handle edge cases the enrichment can't (same exemption
+        as the wardrobe_enrichment_failed guard above). The guard
+        check has `intent != GARMENT_EVALUATION` — verify the exemption
+        actually fires by simulating an is_garment_photo=False upload
+        on a garment_evaluation turn and asserting the guard does NOT
+        intervene."""
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+        )
+        repo, gw, _ = self._build_non_garment_test_repo_and_gateway(
+            intent_value=Intent.GARMENT_EVALUATION,
+        )
+        # Override the planner's intent to GARMENT_EVALUATION + the
+        # corresponding action.
+        planner = Mock()
+        planner.plan.return_value = CopilotPlanResult(
+            intent=Intent.GARMENT_EVALUATION,
+            intent_confidence=0.95,
+            action=Action.RUN_GARMENT_EVALUATION,
+            context_sufficient=True,
+            assistant_message="",
+            follow_up_suggestions=[],
+            resolved_context=CopilotResolvedContext(),
+            action_parameters=CopilotActionParameters(purchase_intent=True),
+        )
+        gw.save_uploaded_chat_wardrobe_item.return_value = {
+            "id": None,
+            "title": "",
+            "image_path": "data/onboarding/images/wardrobe/ambiguous.jpg",
+            "enrichment_status": "ok",
+            "is_garment_photo": False,
+            "garment_present_confidence": 0.1,
+            "_pending_persist": True,
+        }
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
+             patch("agentic_application.orchestrator.OutfitArchitect"), \
+             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
+             patch("agentic_application.orchestrator.VisualEvaluatorAgent") as ve_cls, \
+             patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner):
+            ve_cls.return_value.evaluate_candidate.side_effect = RuntimeError("stop")
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            try:
+                result = orchestrator.process_turn(
+                    conversation_id="c1",
+                    external_user_id="user-1",
+                    message="Should I buy this?",
+                    image_data="data:image/jpeg;base64,/9j/4AAQ",
+                )
+            except Exception:
+                result = None
+
+        # If the guard had fired, plan_result.action would be
+        # ASK_CLARIFICATION and we'd never reach the visual evaluator.
+        # The fact that we got a RuntimeError from
+        # ve_cls.evaluate_candidate proves the guard let
+        # garment_evaluation through.
+        ve_cls.return_value.evaluate_candidate.assert_called()
+        if result is not None:
+            self.assertNotIn(
+                "non_garment_image",
+                result.get("metadata", {}).get("intent_reason_codes", []),
+            )
+
 
 class Phase12EStageEmissionTests(unittest.TestCase):
     """Phase 12E end-to-end stage emission tests.

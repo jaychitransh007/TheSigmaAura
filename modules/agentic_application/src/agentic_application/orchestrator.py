@@ -944,6 +944,45 @@ class AgenticOrchestrator:
             if "wardrobe_enrichment_failed" not in override_reasons:
                 override_reasons.append("wardrobe_enrichment_failed")
 
+        # Phase 12D follow-up (April 9 2026): explicit non-garment guard.
+        # The wardrobe enrichment now returns `is_garment_photo` and
+        # `garment_present_confidence` so the model can explicitly say
+        # "this image isn't a garment" instead of being forced to make
+        # up attributes for every upload. Surface a clarification when
+        # the model says the image isn't a garment, OR when the
+        # confidence is below 0.5 (defence-in-depth: catches the case
+        # where the model says yes but isn't sure).
+        #
+        # garment_evaluation is exempt because the visual evaluator
+        # works on image bytes directly and might handle edge cases
+        # the enrichment can't (same exemption as the wardrobe_enrichment_failed
+        # guard above).
+        #
+        # This check fires BEFORE the wardrobe-persistence promotion
+        # block below, so non-garment uploads never reach
+        # `user_wardrobe_items`.
+        if (
+            attached_item
+            and plan_result.intent != Intent.GARMENT_EVALUATION
+            and (
+                attached_item.get("is_garment_photo") is False
+                or float(attached_item.get("garment_present_confidence") or 1.0) < 0.5
+            )
+        ):
+            plan_result.action = Action.ASK_CLARIFICATION
+            plan_result.assistant_message = (
+                "I couldn't see a garment in that photo — it looks like something "
+                "else. Could you upload a clearer photo of the piece you'd like me "
+                "to pair with?"
+            )
+            plan_result.follow_up_suggestions = [
+                "Upload a clearer photo",
+                "Pick from my wardrobe",
+                "Show me outfit ideas instead",
+            ]
+            if "non_garment_image" not in override_reasons:
+                override_reasons.append("non_garment_image")
+
         # Build intent classification for metadata compatibility
         intent = IntentClassification(
             primary_intent=plan_result.intent,
@@ -961,10 +1000,15 @@ class AgenticOrchestrator:
         # downstream and pollutes the user's wardrobe with items they
         # only considered. The pending dict from the enrichment step is
         # promoted to a real row here.
+        #
+        # Also skipped when an earlier override flipped the action to
+        # ASK_CLARIFICATION (non-garment image, failed enrichment, etc.)
+        # — those uploads should NEVER reach the wardrobe.
         if (
             attached_item
             and attached_item.get("_pending_persist")
             and plan_result.intent in (Intent.PAIRING_REQUEST, Intent.OUTFIT_CHECK)
+            and plan_result.action != Action.ASK_CLARIFICATION
         ):
             try:
                 persisted = self.onboarding_gateway.persist_pending_wardrobe_item(

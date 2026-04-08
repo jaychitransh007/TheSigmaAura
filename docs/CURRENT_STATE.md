@@ -1018,6 +1018,109 @@ Success criteria:
 
 ## Immediate Next Item
 
+### ✅ CLOSED — Non-garment image detection on chat upload (April 9 2026)
+
+Shipped April 9, 2026. The wardrobe enrichment now explicitly classifies whether the uploaded image actually shows a wearable garment, and the orchestrator surfaces a clarification before any downstream pipeline runs when it doesn't. Test count: **329 passing** (was 325, +4 new regression tests).
+
+Files touched:
+- `modules/user/src/user/wardrobe_enrichment.py` — added `is_garment_photo: boolean` and `garment_present_confidence: number 0-1` to the wardrobe-specific JSON schema (catalog enrichment unaffected, it uses its own `schema_builder.py`). Added a clear instruction at the top of the user_text telling the model to set `is_garment_photo=false` and null all attributes for non-garment images (chart, screenshot, document, landscape, food, animal, person without clothing).
+- `modules/user/src/user/service.py` — `save_wardrobe_item` pulls `is_garment_photo` and `garment_present_confidence` out of `extracted["attributes"]` and stashes them on both the persisted-row return dict AND the pending dict (used by the orchestrator's deferred-persist path). Default to `True` / `1.0` when absent so old wardrobe rows pre-dating this fix don't get treated as non-garments.
+- `modules/agentic_application/src/agentic_application/orchestrator.py`:
+  - New non-garment guard right after the existing `enrichment_failed` block (~line 947): checks `is_garment_photo is False` OR `garment_present_confidence < 0.5`, sets `Action.ASK_CLARIFICATION` with the "I couldn't see a garment in that photo" copy, appends `non_garment_image` to the override reason codes, exempts `garment_evaluation` (same exemption as the failed-enrichment guard).
+  - The wardrobe-persistence promotion block also now checks `plan_result.action != Action.ASK_CLARIFICATION` so that even if the intent is `pairing_request` / `outfit_check`, a non-garment upload that flipped the action to ASK_CLARIFICATION never reaches `user_wardrobe_items`.
+- `tests/test_agentic_application.py` — 4 new regression tests in `Phase12DAnchorAndEnrichmentTests`:
+  1. `test_non_garment_upload_returns_clarification` — explicit `is_garment_photo=False` short-circuits the pipeline, no wardrobe write, `non_garment_image` reason code present
+  2. `test_low_confidence_upload_returns_clarification` — defence-in-depth: `is_garment_photo=True` but `confidence=0.32` still triggers the clarification
+  3. `test_garment_upload_passes_through_when_high_confidence` — happy path: real garment with `is_garment_photo=True` + `confidence=0.95` proceeds normally and persists
+  4. `test_garment_evaluation_exempt_from_non_garment_guard` — `garment_evaluation` intent reaches the visual evaluator even when `is_garment_photo=False` (the visual evaluator can handle edge cases the enrichment can't)
+
+**Verification on the next staging "Find me a completing outfit from catalog" + chart image upload:**
+- The chart image is enriched, the model returns `is_garment_photo=false` + `garment_present_confidence ≤ 0.3`
+- The orchestrator's non-garment guard fires
+- The user sees: *"I couldn't see a garment in that photo — it looks like something else. Could you upload a clearer photo of the piece you'd like me to pair with?"*
+- No wardrobe row is created
+- No architect / catalog search / evaluator runs
+- The `intent_reason_codes` array in the response metadata contains `non_garment_image`
+
+**Defence-in-depth that ALSO landed:** the wardrobe-persistence promotion block now skips when the action is `ASK_CLARIFICATION`. This means future override paths that flip the action (failed enrichment, non-garment, image-required-for-pairing, etc.) will never accidentally persist to the wardrobe even if the intent is in the allow-list.
+
+---
+
+### P0 — Non-garment image detection on chat upload (April 9 2026) — historical plan retained for reference
+
+Discovered April 9, 2026 from manual staging test. The user uploaded a chart image (not a garment) and typed "Find me a completing outfit from catalog". The expected behaviour was a clarification asking for a real garment photo. Actual behaviour:
+
+1. Image was saved to `user_wardrobe_items` with garbage low-confidence attributes
+2. The architect planned a pairing pipeline against the garbage anchor
+3. Random outfits were recommended "completing" a chart
+
+**Why it happened — three layered gaps:**
+
+1. **No explicit "is this a garment?" check anywhere.** `wardrobe_enrichment.py`'s system prompt opens with "You are a precision garment analyst" — it presumes the input IS a garment. The JSON schema is `strict: True` with every field `required`, so the model is structurally forced to return values for all 46 attributes even on a non-garment image.
+2. **The existing `enrichment_failed` guard is too coarse.** `orchestrator.py:694-704` only fires when ALL three critical fields (`garment_category`, `garment_subtype`, `title`) come back as empty strings. For an ambiguous non-garment image the model usually picks the closest enum value with low-but-nonzero confidence, so the guard sees non-empty strings and concludes "enrichment succeeded".
+3. **The wardrobe-write gate is intent-only.** The Phase 12D follow-up `f979e2a` made wardrobe persistence intent-gated. `pairing_request` is in the gate's allow-list, so a `pairing_request` upload was persisted regardless of whether it was actually a garment.
+
+**Implementation plan (Steps 1-6, this commit):**
+
+- **Step 1 — Enrichment schema + prompt** (`modules/user/src/user/wardrobe_enrichment.py`):
+  - Add two new fields to `response_format()`'s schema: `is_garment_photo: boolean` (required) and `garment_present_confidence: number 0-1` (required). These live alongside the existing 46 attributes; the model is forced to return them.
+  - Catalog enrichment uses its own `schema_builder.py` and is unaffected.
+  - Add a clear instruction to the wardrobe-specific `user_text` (NOT to the shared `system_prompt.txt`, which is also used by catalog enrichment): *"FIRST decide whether the image actually shows a wearable garment. If the image shows anything else — a chart, screenshot, document, landscape, food, animal, person without visible clothing, or any non-garment object — set `is_garment_photo` to `false`, set `garment_present_confidence` to a low value (≤ 0.3), and return null for all garment attributes. Do NOT guess garment attributes for non-garment images. The user will be asked to upload a clearer photo."*
+
+- **Step 2 — Surface the flag on the saved dict** (`modules/user/src/user/service.py`):
+  - In `save_wardrobe_item`, after the enrichment call succeeds, pull `is_garment_photo` and `garment_present_confidence` out of `extracted["attributes"]` and stash them on the returned dict at the top level (alongside the existing `enrichment_status` field).
+  - The pending dict (used by the orchestrator's deferred-persist path) gets the same fields.
+
+- **Step 3 — Orchestrator non-garment guard + clarification** (`modules/agentic_application/src/agentic_application/orchestrator.py`):
+  - After the existing `enrichment_failed` block (lines 917-934) and BEFORE the wardrobe-persistence promotion block (lines 952-995), add a new check:
+    ```python
+    if (
+        attached_item
+        and (
+            attached_item.get("is_garment_photo") is False
+            or (attached_item.get("garment_present_confidence") or 0) < 0.5
+        )
+        and plan_result.intent != Intent.GARMENT_EVALUATION
+    ):
+        plan_result.action = Action.ASK_CLARIFICATION
+        plan_result.assistant_message = (
+            "I couldn't see a garment in that photo — it looks like "
+            "something else. Could you upload a clearer photo of the "
+            "piece you'd like me to pair with?"
+        )
+        plan_result.follow_up_suggestions = [
+            "Upload a clearer photo",
+            "Pick from my wardrobe",
+            "Show me outfit ideas instead",
+        ]
+        if "non_garment_image" not in override_reasons:
+            override_reasons.append("non_garment_image")
+    ```
+  - This must run BEFORE the persistence promotion so non-garment uploads never reach `user_wardrobe_items`. `garment_evaluation` is exempt because the visual evaluator works on image bytes directly and might handle edge cases the enrichment can't (same exemption as the existing `wardrobe_enrichment_failed` guard).
+
+- **Step 4 — Defence-in-depth low-confidence fallback** (same orchestrator block):
+  - The model might occasionally say `is_garment_photo=true` for an ambiguous case (printed catalog page, screenshot of a fashion website, etc.). The OR clause `(garment_present_confidence or 0) < 0.5` already catches "model said yes but wasn't sure" — this is the fallback baked into Step 3's check.
+  - Threshold 0.5 chosen because real garment photos consistently come back ≥ 0.9 in the existing confidence numbers; 0.5 is a wide safety margin.
+
+- **Step 5 — Regression tests** (`tests/test_agentic_application.py`):
+  1. `test_non_garment_upload_returns_clarification` — orchestrator returns clarification + `non_garment_image` reason code when `attached_item.is_garment_photo is False`
+  2. `test_low_confidence_upload_returns_clarification` — same when `garment_present_confidence < 0.5` even if `is_garment_photo=True`
+  3. `test_non_garment_upload_does_not_persist_wardrobe` — `persist_pending_wardrobe_item` is never called when the upload is non-garment
+  4. `test_garment_upload_passes_through_when_high_confidence` — happy path: `is_garment_photo=True` and confidence ≥ 0.5 proceed to the pipeline normally
+
+- **Step 6 — Close-out + tests + push** (`docs/CURRENT_STATE.md`, full suite):
+  - Replace the P0 with a `✅ CLOSED` summary noting file/test list
+  - Run `pytest tests/ -q` and verify the new tests + previous 325 all pass
+
+**Risk callouts:**
+- gpt-5-mini may not always set `is_garment_photo=false` reliably for borderline images. Mitigation: the confidence threshold catches cases where the model says yes but is unsure.
+- Real garment photos that happen to have low confidence (blurry, dark, partial frame) will trigger the clarification — this is the right call; the user can re-upload with a better photo.
+- Existing wardrobe rows (saved before this fix) won't have `is_garment_photo` / `garment_present_confidence` in their `metadata_json`. The check uses `.get(...)` with default behaviour so old rows are treated as garments (no false-positive clarifications on old data).
+
+This is a Phase 12D follow-up: Phase 12D fixed enrichment retry logic and persistence intent-gating but didn't validate that the upload was actually a garment in the first place.
+
+---
+
 ### ✅ CLOSED — Polar bar chart polish + assistant markup parser (April 9 2026, late-day rollup)
 
 Six small follow-up commits after the initial split polar bar chart landing, all in `modules/platform_core/src/platform_core/ui.py`:
