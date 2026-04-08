@@ -5417,7 +5417,7 @@ class Phase12BBuildingBlockTests(unittest.TestCase):
         self.assertEqual("conditional", verdict)
 
     def test_outfit_card_serializes_none_dimensions(self):
-        """The OutfitCard schema must accept None for the 3 context-gated
+        """The OutfitCard schema must accept None for the 4 context-gated
         fields and serialize them as null in JSON, so the frontend
         receives the signal to drop the radar slice."""
         import json
@@ -5427,14 +5427,75 @@ class Phase12BBuildingBlockTests(unittest.TestCase):
             rank=1,
             title="Test",
             body_harmony_pct=80, color_suitability_pct=70, style_fit_pct=75,
-            risk_tolerance_pct=85, comfort_boundary_pct=90, pairing_coherence_pct=78,
+            risk_tolerance_pct=85, comfort_boundary_pct=90,
             occasion_pct=None, weather_time_pct=None, specific_needs_pct=None,
+            pairing_coherence_pct=None,
         )
         payload = json.loads(card.model_dump_json())
         self.assertIsNone(payload["occasion_pct"])
         self.assertIsNone(payload["weather_time_pct"])
         self.assertIsNone(payload["specific_needs_pct"])
+        self.assertIsNone(payload["pairing_coherence_pct"])
         self.assertEqual(80, payload["body_harmony_pct"])
+
+    def test_evaluator_omits_pairing_for_garment_evaluation(self):
+        """Phase 12B follow-up (April 9 2026): pairing_coherence_pct is
+        intent-gated. For garment_evaluation / style_discovery /
+        explanation_request the model should return null because there's
+        no outfit being paired this turn. The parser must preserve None,
+        not coerce to 0."""
+        from agentic_application.agents.visual_evaluator_agent import _to_evaluated_recommendation
+        from agentic_application.schemas import OutfitCandidate
+
+        candidate = OutfitCandidate(
+            candidate_id="c1", direction_id="A", candidate_type="single_garment",
+            items=[{"product_id": "p1", "title": "Jeans"}],
+        )
+        raw = {
+            "candidate_id": "c1", "match_score": 0.7, "title": "Jeans", "reasoning": "ok",
+            "body_note": "", "color_note": "", "style_note": "", "occasion_note": "",
+            "body_harmony_pct": 80, "color_suitability_pct": 70, "style_fit_pct": 75,
+            "risk_tolerance_pct": 85, "comfort_boundary_pct": 90,
+            "pairing_coherence_pct": None,  # ← intent-gated null for garment_evaluation
+            "occasion_pct": None, "weather_time_pct": None, "specific_needs_pct": None,
+            "classic_pct": 60, "dramatic_pct": 10, "romantic_pct": 5, "natural_pct": 40,
+            "minimalist_pct": 70, "creative_pct": 5, "sporty_pct": 25, "edgy_pct": 15,
+            "item_ids": ["p1"],
+            "overall_verdict": "good_with_tweaks", "overall_note": "",
+            "strengths": [], "improvements": [],
+        }
+        result = _to_evaluated_recommendation(raw, candidate)
+        self.assertIsNone(result.pairing_coherence_pct)
+        # The other always-evaluated dimensions still come through
+        self.assertEqual(80, result.body_harmony_pct)
+        self.assertEqual(85, result.risk_tolerance_pct)
+
+    def test_evaluator_keeps_pairing_for_outfit_intents(self):
+        """For occasion_recommendation / pairing_request / outfit_check
+        the model returns an integer score for pairing_coherence_pct,
+        and the parser preserves it."""
+        from agentic_application.agents.visual_evaluator_agent import _to_evaluated_recommendation
+        from agentic_application.schemas import OutfitCandidate
+
+        candidate = OutfitCandidate(
+            candidate_id="c1", direction_id="A", candidate_type="paired",
+            items=[{"product_id": "p1", "title": "Top"}, {"product_id": "p2", "title": "Pant"}],
+        )
+        raw = {
+            "candidate_id": "c1", "match_score": 0.85, "title": "Office look", "reasoning": "ok",
+            "body_note": "", "color_note": "", "style_note": "", "occasion_note": "",
+            "body_harmony_pct": 85, "color_suitability_pct": 90, "style_fit_pct": 78,
+            "risk_tolerance_pct": 80, "comfort_boundary_pct": 88,
+            "pairing_coherence_pct": 82,  # ← real score for a pairing intent
+            "occasion_pct": 95, "weather_time_pct": 72, "specific_needs_pct": 70,
+            "classic_pct": 75, "dramatic_pct": 20, "romantic_pct": 10, "natural_pct": 30,
+            "minimalist_pct": 60, "creative_pct": 15, "sporty_pct": 5, "edgy_pct": 10,
+            "item_ids": ["p1", "p2"],
+            "overall_verdict": "", "overall_note": "",
+            "strengths": [], "improvements": [],
+        }
+        result = _to_evaluated_recommendation(raw, candidate)
+        self.assertEqual(82, result.pairing_coherence_pct)
 
 
 class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
@@ -5955,18 +6016,18 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
              patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
             ve_inst = ve_cls.return_value
-            # Phase 12B follow-up (April 9 2026): the orchestrator's
-            # garment_evaluation OutfitCard now plumbs through all 6
-            # always-evaluated dimensions plus the 3 context-gated ones.
-            # The mock has to provide every field the OutfitCard schema
-            # requires; for the context-gated ones, simulate "no occasion
-            # / no weather / no specific needs" by returning None — that's
-            # the realistic case for a garment_evaluation turn with
-            # message="Should I buy these jeans?".
+            # Phase 12B follow-ups (April 9 2026): the orchestrator's
+            # garment_evaluation OutfitCard plumbs through all 5 always-
+            # evaluated dimensions plus the 4 context-gated ones. For a
+            # garment_evaluation turn ("Should I buy these jeans?") with
+            # no occasion / weather / specific needs, all 4 context-gated
+            # dimensions are None — including pairing_coherence_pct,
+            # which is intent-gated to null for garment_evaluation since
+            # we're not pairing anything.
             ve_inst.evaluate_candidate.return_value = Mock(
                 body_harmony_pct=80, color_suitability_pct=70, style_fit_pct=75,
                 risk_tolerance_pct=85, comfort_boundary_pct=90,
-                pairing_coherence_pct=70,
+                pairing_coherence_pct=None,
                 occasion_pct=None, weather_time_pct=None, specific_needs_pct=None,
                 classic_pct=60, dramatic_pct=10, romantic_pct=20, natural_pct=40,
                 minimalist_pct=70, creative_pct=15, sporty_pct=10, edgy_pct=10,

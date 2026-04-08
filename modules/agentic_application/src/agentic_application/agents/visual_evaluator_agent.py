@@ -92,15 +92,17 @@ _EVAL_JSON_SCHEMA: Dict[str, Any] = {
             "color_note": {"type": "string"},
             "style_note": {"type": "string"},
             "occasion_note": {"type": "string"},
-            # Phase 12B follow-up (April 9 2026): the 6 always-evaluated
-            # dimensions stay strict integers. The 3 context-gated
-            # dimensions (occasion_pct, weather_time_pct, specific_needs_pct)
-            # are nullable — the model returns null when their inputs
-            # (occasion_signal / weather+time / specific_needs) are
-            # absent in live_context. OpenAI structured-outputs strict
-            # mode requires every property in `required`, so optionality
-            # is expressed via the `["integer", "null"]` union here
-            # rather than dropping the keys.
+            # Phase 12B follow-ups (April 9 2026):
+            # - The 5 always-evaluated dimensions stay strict integers.
+            # - 4 dimensions are nullable (`["integer", "null"]`):
+            #   * `occasion_pct` — null when live_context.occasion_signal is null
+            #   * `weather_time_pct` — null when live_context.weather_context AND time_of_day are empty
+            #   * `specific_needs_pct` — null when live_context.specific_needs is empty
+            #   * `pairing_coherence_pct` — null when intent is garment_evaluation /
+            #     style_discovery / explanation_request (no outfit being paired)
+            # OpenAI structured-outputs strict mode requires every property
+            # in `required`, so optionality is expressed via the
+            # `["integer", "null"]` union here rather than dropping keys.
             "body_harmony_pct": {"type": "integer"},
             "color_suitability_pct": {"type": "integer"},
             "style_fit_pct": {"type": "integer"},
@@ -108,7 +110,7 @@ _EVAL_JSON_SCHEMA: Dict[str, Any] = {
             "occasion_pct": {"type": ["integer", "null"]},
             "comfort_boundary_pct": {"type": "integer"},
             "specific_needs_pct": {"type": ["integer", "null"]},
-            "pairing_coherence_pct": {"type": "integer"},
+            "pairing_coherence_pct": {"type": ["integer", "null"]},
             "weather_time_pct": {"type": ["integer", "null"]},
             "classic_pct": {"type": "integer"},
             "dramatic_pct": {"type": "integer"},
@@ -386,10 +388,15 @@ def _to_evaluated_recommendation(
         color_suitability_pct=_clamp_pct("color_suitability_pct"),
         style_fit_pct=_clamp_pct("style_fit_pct"),
         risk_tolerance_pct=_clamp_pct("risk_tolerance_pct"),
-        occasion_pct=_optional_pct("occasion_pct"),
         comfort_boundary_pct=_clamp_pct("comfort_boundary_pct"),
+        # 4 context-gated dimensions — preserve None when the model
+        # returns null. pairing_coherence_pct joined this group when
+        # the intent-gating rule landed (April 9 2026): garment_evaluation,
+        # style_discovery, and explanation_request return null because
+        # there is no outfit being paired in those turns.
+        occasion_pct=_optional_pct("occasion_pct"),
         specific_needs_pct=_optional_pct("specific_needs_pct"),
-        pairing_coherence_pct=_clamp_pct("pairing_coherence_pct"),
+        pairing_coherence_pct=_optional_pct("pairing_coherence_pct"),
         weather_time_pct=_optional_pct("weather_time_pct"),
         classic_pct=_clamp_pct("classic_pct"),
         dramatic_pct=_clamp_pct("dramatic_pct"),

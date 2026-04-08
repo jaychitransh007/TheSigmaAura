@@ -69,20 +69,21 @@ class OutfitCard(BaseModel):
     color_note: str = ""
     style_note: str = ""
     occasion_note: str = ""
-    # 6 always-evaluated dimensions
+    # 5 always-evaluated dimensions
     body_harmony_pct: int = 0
     color_suitability_pct: int = 0
     style_fit_pct: int = 0
     risk_tolerance_pct: int = 0
     comfort_boundary_pct: int = 0
-    pairing_coherence_pct: int = 0
-    # 3 context-gated dimensions — Optional[int] mirrors the application
+    # 4 context-gated dimensions — Optional[int] mirrors the application
     # OutfitCard schema. None means "not evaluated this turn" because
-    # the relevant input was absent in live_context. See Phase 12B
-    # follow-up (April 9 2026) in docs/CURRENT_STATE.md.
+    # the gating condition wasn't met. pairing_coherence_pct is null for
+    # garment_evaluation / style_discovery / explanation_request. See
+    # the Phase 12B follow-ups (April 9 2026) in docs/CURRENT_STATE.md.
     occasion_pct: Optional[int] = None
     specific_needs_pct: Optional[int] = None
     weather_time_pct: Optional[int] = None
+    pairing_coherence_pct: Optional[int] = None
     classic_pct: int = 0
     dramatic_pct: int = 0
     romantic_pct: int = 0

@@ -34,26 +34,26 @@ For each candidate, internally identify which 1-2 directions dominate the decisi
 
 Score each dimension as an integer percentage (0–100). Vision is your primary signal — read the rendered image for body harmony, drape, proportion, and visible color match before you fall back to the metadata.
 
-The dimensions are split into two groups. The first group (6 dimensions) is **always evaluated** because every input it depends on is present once the user has finished onboarding. The second group (3 dimensions) is **context-gated**: only score them when the relevant input is present in `live_context`. If the input is absent, **set the field to `null` in your JSON response** — do NOT score 0, do NOT score a neutral default. The downstream UI uses absence to mean "not evaluated this turn" and renders the radar chart accordingly.
+The dimensions are split into two groups. The first group (5 dimensions) is **always evaluated** because every input it depends on is present once the user has finished onboarding. The second group (4 dimensions) is **context-gated**: only score them when their gating condition is met (an input in `live_context`, or — for `pairing_coherence_pct` — the right intent). If the gating condition is not met, **set the field to `null` in your JSON response** — do NOT score 0, do NOT score a neutral default. The downstream UI uses null to mean "not evaluated this turn" and drops that dimension from the radar chart.
 
-### Always evaluate (6)
+### Always evaluate (5)
 
 1. **`body_harmony_pct`** — Does the silhouette, fit, and proportion suit the user's body shape, height category, waist size band, and frame structure? Look at the rendering — does the hem hit the right place? Does the fabric drape where it should? Does it create the right vertical line for the user's height?
 2. **`color_suitability_pct`** — Does the color temperature and palette work with the user's seasonal color group(s) and contrast level? When multiple seasonal groups are listed, a color that fits ANY of the groups is acceptable. Read the rendering — how does the color actually sit against the user's coloring?
 3. **`style_fit_pct`** — Does the outfit match the user's primary and secondary style archetypes?
 4. **`risk_tolerance_pct`** — Is the boldness level appropriate for the user's risk tolerance?
 5. **`comfort_boundary_pct`** — Does it respect the user's comfort boundaries from style_preference?
-6. **`pairing_coherence_pct`** — For paired outfits, do the top and bottom work together visually. For single garments, score how easily the piece pairs with typical wardrobe items in `user_profile.wardrobe_items`.
 
-### Context-gated (3) — score ONLY when input is present, otherwise null
+### Context-gated (4) — score ONLY when input is present, otherwise null
 
+6. **`pairing_coherence_pct`** — Score this dimension **only when `intent` is one of `occasion_recommendation`, `outfit_check`, or `pairing_request`** — i.e. only when the turn is actually about composing or evaluating a multi-piece outfit. For these intents, score the visual coherence between top + bottom (or between the anchor + companions). For `garment_evaluation` ("should I buy this single piece?"), `style_discovery`, and `explanation_request`, **set `pairing_coherence_pct` to `null`** — there is no outfit being paired this turn, so a "how well does it pair with the wardrobe?" score would be a separate question and is not in scope.
 7. **`occasion_pct`** — Score this dimension **only when `live_context.occasion_signal` is non-null**. Grade formality match, dress-code appropriateness, and cultural/contextual fit. If `occasion_signal` is null, **set `occasion_pct` to `null`** — do NOT score 0, do NOT grade general versatility, do NOT manufacture an occasion. The user did not name one.
 8. **`weather_time_pct`** — Score this dimension **only when `live_context.weather_context` OR `live_context.time_of_day` is non-empty**. Grade fabric weight, layering, sleeve length, coverage, and palette against the stated weather/time per the mapping below. If both fields are empty, **set `weather_time_pct` to `null`**. Do NOT manufacture weather context.
 9. **`specific_needs_pct`** — Score this dimension **only when `live_context.specific_needs` is a non-empty list**. Grade how well the candidate supports the explicit needs (elongation, slimming, broadening, polish, authority, comfort, coverage, definition, etc.). If `specific_needs` is empty, **set `specific_needs_pct` to `null`**.
 
 ### Important: holistic match_score
 
-`match_score` (0.0–1.0) is your overall assessment of this candidate for this user in this context. It must reflect **only the dimensions you actually scored**. Do NOT synthesize an average that includes phantom values for the omitted context-gated dimensions. A "Should I buy this?" turn with no occasion means the verdict rests on body / color / style / pairing / risk / comfort — that's 6 honest signals, and `match_score` should be derived from those alone.
+`match_score` (0.0–1.0) is your overall assessment of this candidate for this user in this context. It must reflect **only the dimensions you actually scored**. Do NOT synthesize an average that includes phantom values for the omitted context-gated dimensions. A "Should I buy this?" turn (`garment_evaluation`, no occasion) means the verdict rests on body / color / style / risk / comfort — that's 5 honest signals, and `match_score` should be derived from those alone (`pairing_coherence_pct` is null for this intent because we are not pairing anything).
 
 ## Style Archetype Scoring
 
@@ -105,10 +105,10 @@ When `mode` is `"recommendation"`, leave `overall_verdict`, `overall_note`, `str
 
 If `mode` is `"single_garment"` and the image shows a single garment composed onto the user's body via try-on:
 - Always score `body_harmony_pct`, `color_suitability_pct`, `style_fit_pct`, `risk_tolerance_pct`, `comfort_boundary_pct` for the garment alone.
-- Always score `pairing_coherence_pct` based on how easily this piece pairs with the user's wardrobe (consult `user_profile.wardrobe_items`).
-- Apply the context-gated rule for `occasion_pct`, `weather_time_pct`, `specific_needs_pct` — score them only if `live_context` carries the relevant input, otherwise omit.
-- Frame `improvements` as alternative pieces the user could choose instead, or wardrobe items they could pair this with to make it work.
-- Open `overall_note` with a clear "yes this would suit you" / "this would work with caveats" / "I'd skip this" verdict, grounded in the 6 always-evaluated dimensions plus any context-gated dimensions you actually scored.
+- **Set `pairing_coherence_pct` to `null`** — single_garment mode is used by `garment_evaluation`, where the user is judging one piece in isolation. We are not pairing anything this turn, so a pairing score is not in scope.
+- Apply the context-gated rule for `occasion_pct`, `weather_time_pct`, `specific_needs_pct` — score them only if `live_context` carries the relevant input, otherwise null.
+- Frame `improvements` as alternative pieces the user could choose instead.
+- Open `overall_note` with a clear "yes this would suit you" / "this would work with caveats" / "I'd skip this" verdict, grounded in the 5 always-evaluated dimensions plus any context-gated dimensions you actually scored.
 
 ## Follow-Up Evaluation Rules
 
@@ -176,14 +176,14 @@ Return strict JSON for ONE candidate. The 6 always-evaluated dimensions are requ
 
 ### Example B — "Should I buy this?" with no occasion, no weather, no specific needs
 
-The 3 context-gated fields are set to `null` because the user did not name an occasion, weather, or specific need. `match_score` is derived from the 6 always-evaluated dimensions only.
+The 4 context-gated fields are set to `null`. `pairing_coherence_pct` is null because `intent` is `garment_evaluation` (single garment in isolation, no outfit being paired); the other 3 are null because the user did not name an occasion, weather, or specific need. `match_score` is derived from the 5 always-evaluated dimensions only.
 
 ```json
 {
   "candidate_id": "def456",
   "match_score": 0.74,
   "title": "Charcoal slim jeans",
-  "reasoning": "Honest single-garment evaluation grounded in the 6 dimensions you can score for this user without an occasion or weather context.",
+  "reasoning": "Honest single-garment evaluation grounded in the 5 dimensions you can score for this user without an occasion or weather context.",
   "body_note": "...",
   "color_note": "...",
   "style_note": "...",
@@ -193,7 +193,7 @@ The 3 context-gated fields are set to `null` because the user did not name an oc
   "style_fit_pct": 75,
   "risk_tolerance_pct": 85,
   "comfort_boundary_pct": 90,
-  "pairing_coherence_pct": 78,
+  "pairing_coherence_pct": null,
   "occasion_pct": null,
   "weather_time_pct": null,
   "specific_needs_pct": null,
@@ -213,4 +213,4 @@ The 3 context-gated fields are set to `null` because the user did not name an oc
 }
 ```
 
-All `_pct` fields are integers 0-100 OR `null` (only the 3 context-gated dimensions may be null). `match_score` is 0.0-1.0. For `mode="recommendation"`, leave `overall_verdict`, `overall_note`, `strengths`, and `improvements` empty. The 8 archetype `_pct` fields and the 6 always-evaluated dimensions must always carry an integer; only `occasion_pct` / `weather_time_pct` / `specific_needs_pct` may be `null`, and they must be `null` when their inputs are absent.
+All `_pct` fields are integers 0-100 OR `null` (only the 4 context-gated dimensions may be null). `match_score` is 0.0-1.0. For `mode="recommendation"`, leave `overall_verdict`, `overall_note`, `strengths`, and `improvements` empty. The 8 archetype `_pct` fields and the 5 always-evaluated dimensions must always carry an integer; `pairing_coherence_pct` / `occasion_pct` / `weather_time_pct` / `specific_needs_pct` may be `null`, and they must be `null` when their gating condition is not met.

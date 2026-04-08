@@ -1018,6 +1018,58 @@ Success criteria:
 
 ## Immediate Next Item
 
+### ✅ CLOSED — Pairing dimension is intent-gated (April 9 2026)
+
+Shipped April 9, 2026. The visual evaluator now scores **5 dimensions always** and **4 dimensions contextually**. Test count: 321 passing (was 319, +2 new tests).
+
+Files touched:
+- `prompt/visual_evaluator.md` — moved `pairing_coherence_pct` from "Always evaluate (6)" to "Context-gated (4)" with the new intent-gating rule. Updated the lead paragraph, single-garment framing, Example B, and the closing constraint paragraph to reflect 5 + 4.
+- `modules/agentic_application/src/agentic_application/agents/visual_evaluator_agent.py` — `pairing_coherence_pct` added to the `["integer", "null"]` union; parser switched from `_clamp_pct` to `_optional_pct`.
+- `modules/agentic_application/src/agentic_application/schemas.py` — `EvaluatedRecommendation.pairing_coherence_pct` and `OutfitCard.pairing_coherence_pct` are now `Optional[int] = None`.
+- `modules/platform_core/src/platform_core/api_schemas.py` — mirror change.
+- `tests/test_agentic_application.py` — 2 new regression tests (`test_evaluator_omits_pairing_for_garment_evaluation`, `test_evaluator_keeps_pairing_for_outfit_intents`); updated `test_outfit_card_serializes_none_dimensions` and the existing garment_evaluation orchestrator mock to use `pairing_coherence_pct=None`.
+- `docs/CURRENT_STATE.md` — this close-out.
+- `docs/WORKFLOW_REFERENCE.md` — updated the contextual evaluation table to 5 always + 4 context-gated.
+
+**No frontend code change needed.** The radar filter from the previous fix already drops null dimensions; `pairing_coherence_pct: null` flows through the existing path.
+
+**On the user-reported "occasion=0 / needs=0 still on radar" symptom:** confirmed during this investigation that the backend is correct — the OutfitCard for staging turn `a4818188-8674-4bdc-8cc1-a8f1f9e001c1` has `occasion_pct: None`, `weather_time_pct: None`, `specific_needs_pct: None` exactly as designed. The user's browser tab almost certainly cached the pre-restart `ui.py` JS (the turn was created 6 minutes after the staging restart, which is enough for the orchestrator to be running new code but not enough for an open browser tab to have re-fetched the inlined JS). **Action for the user: hard refresh (Cmd+Shift+R)** to pick up the new filter and the radar will drop the null axes.
+
+---
+
+### P0 — Pairing dimension is intent-gated (April 9 2026)
+
+Discovered April 9, 2026 from user feedback on conversation `7af3ce39-5768-4ceb-9f12-7583130f065d`. The previous fix correctly made `occasion_pct` / `weather_time_pct` / `specific_needs_pct` nullable based on `live_context` inputs, but `pairing_coherence_pct` remained "always evaluated" — including for `garment_evaluation` ("Should I buy this?") turns where the user is judging a single garment in isolation, not pairing anything.
+
+**The right rule:** `pairing_coherence_pct` is meaningful only for intents that actually involve pairing or composing an outfit:
+
+| Intent | Score `pairing_coherence_pct`? | Why |
+|---|---|---|
+| `occasion_recommendation` | ✅ yes | Multi-piece outfit; pairing coherence is the central question |
+| `pairing_request` | ✅ yes | The whole intent is "what goes with this" |
+| `outfit_check` | ✅ yes | User is wearing a multi-piece outfit; pairing matters |
+| `garment_evaluation` | ❌ no (null) | Single garment in isolation; not pairing anything |
+| `style_discovery` | ❌ no (null) | No outfit candidates |
+| `explanation_request` | ❌ no (null) | No new outfit being scored |
+
+The previous architecture fix gated 3 dimensions on **`live_context` inputs**. This adds a 4th gating dimension based on **intent**. The mechanism is the same — `pairing_coherence_pct` becomes `Optional[int] = None` and the evaluator returns null for the 3 non-pairing intents. The frontend filter already drops null dimensions from the radar chart, so no UI work needed.
+
+**Note on the user-reported "radar still shows occasion=0 and needs=0" symptom:** I investigated the staging turn and confirmed the backend is correct — `occasion_pct: None`, `weather_time_pct: None`, `specific_needs_pct: None` are stored on the OutfitCard exactly as designed. The orchestrator was running the new contextual-evaluation code (verified via the stored values + the fact that the new `risk_tolerance_pct` and `comfort_boundary_pct` are also present on the card, which only the post-fix code path includes). The user's browser tab almost certainly cached the pre-restart `ui.py` JS — a hard refresh (Cmd+Shift+R) will pick up the new filter and drop the null axes from the radar chart. No backend bug.
+
+**Implementation plan (Steps 1-4, this commit):**
+
+- **Step 1 — Prompt** (`prompt/visual_evaluator.md`): move `pairing_coherence_pct` from "Always evaluate (6)" to "Context-gated (4)". Add the rule: "Score this dimension **only when `intent` is one of `occasion_recommendation`, `outfit_check`, `pairing_request`**. For `garment_evaluation`, `style_discovery`, and `explanation_request`, set `pairing_coherence_pct` to `null`." Update Example B to show `pairing_coherence_pct: null`.
+- **Step 2 — Code** (`visual_evaluator_agent.py`, `schemas.py`, `api_schemas.py`):
+  - Add `pairing_coherence_pct` to the `["integer", "null"]` union in `_EVAL_JSON_SCHEMA`.
+  - Switch the parser line from `_clamp_pct("pairing_coherence_pct")` → `_optional_pct("pairing_coherence_pct")`.
+  - Move `pairing_coherence_pct: int = 0` → `pairing_coherence_pct: Optional[int] = None` in `EvaluatedRecommendation`, `OutfitCard` (application), and `OutfitCard` (api mirror).
+  - The orchestrator's `_handle_garment_evaluation` OutfitCard construction passes `evaluation.pairing_coherence_pct` straight through — None will propagate naturally.
+  - The frontend filter already handles null values; no UI work needed.
+- **Step 3 — Tests + docs:** 2 new regression tests asserting (a) the parser preserves None for pairing_coherence_pct when the model returns null, (b) it preserves an int when the model returns a real score. Update `WORKFLOW_REFERENCE.md` contextual-evaluation table to show 5 always + 4 context-gated. Close out this P0 in `CURRENT_STATE.md` with the final file/test list.
+- **Step 4 — Run the full suite.** 319 baseline → expect 321 with the new tests, all green.
+
+---
+
 ### ✅ CLOSED — Contextual evaluation: omit dimensions when input is absent (April 9 2026)
 
 Shipped April 9, 2026. The visual evaluator now scores 6 dimensions always and 3 dimensions only when their inputs are present in `live_context`. Test count: 319 passing (was 313, +6 new regression tests). Verification of the next "Should I buy this?" turn should show:

@@ -210,7 +210,7 @@ class EvaluatedRecommendation(BaseModel):
     color_note: str = ""
     style_note: str = ""
     occasion_note: str = ""
-    # 6 always-evaluated dimensions — these are graded for every
+    # 5 always-evaluated dimensions — these are graded for every
     # candidate because their inputs are present once onboarding is
     # complete (body shape, palette, style preference, etc.).
     body_harmony_pct: int = 0
@@ -218,18 +218,22 @@ class EvaluatedRecommendation(BaseModel):
     style_fit_pct: int = 0
     risk_tolerance_pct: int = 0
     comfort_boundary_pct: int = 0
-    pairing_coherence_pct: int = 0
-    # Phase 12B follow-up (April 9 2026): the 3 context-gated dimensions
-    # are Optional. The visual evaluator returns None when the relevant
-    # input is absent in live_context (no occasion / no weather / no
-    # specific needs). Coercing None to 0 would re-introduce the bug
-    # where the holistic match_score and the PDP card radar chart show
-    # phantom defaults instead of "not evaluated this turn". The legacy
-    # text-only OutfitEvaluator still emits 0; that path is retired in
-    # Phase 12E and is fine to keep coercing to 0 there.
+    # Phase 12B follow-ups (April 9 2026): 4 context-gated dimensions
+    # are Optional. The visual evaluator returns None when the gating
+    # condition is not met:
+    #   - occasion_pct: live_context.occasion_signal is None
+    #   - weather_time_pct: weather_context AND time_of_day are empty
+    #   - specific_needs_pct: specific_needs list is empty
+    #   - pairing_coherence_pct: intent is garment_evaluation /
+    #     style_discovery / explanation_request (no outfit being paired)
+    # Coercing None to 0 would re-introduce the bug where the holistic
+    # match_score and the PDP card radar chart show phantom defaults
+    # instead of "not evaluated this turn". The legacy text-only
+    # OutfitEvaluator still emits 0; that path is retired in Phase 12E.
     occasion_pct: Optional[int] = None
     specific_needs_pct: Optional[int] = None
     weather_time_pct: Optional[int] = None
+    pairing_coherence_pct: Optional[int] = None
     classic_pct: int = 0
     dramatic_pct: int = 0
     romantic_pct: int = 0
@@ -277,20 +281,21 @@ class OutfitCard(BaseModel):
     color_note: str = ""
     style_note: str = ""
     occasion_note: str = ""
-    # 6 always-evaluated dimensions
+    # 5 always-evaluated dimensions
     body_harmony_pct: int = 0
     color_suitability_pct: int = 0
     style_fit_pct: int = 0
     risk_tolerance_pct: int = 0
     comfort_boundary_pct: int = 0
-    pairing_coherence_pct: int = 0
-    # 3 context-gated dimensions — None means "not evaluated this turn"
-    # because the relevant input was absent in live_context (no occasion
-    # signal / no weather or time-of-day / no specific needs). The
-    # frontend drops these from the radar chart when null.
+    # 4 context-gated dimensions — None means "not evaluated this turn".
+    # pairing_coherence_pct is null for garment_evaluation / style_discovery
+    # / explanation_request (no outfit being paired); the other 3 are null
+    # when their live_context inputs are absent. The frontend drops null
+    # dimensions from the radar chart.
     occasion_pct: Optional[int] = None
     specific_needs_pct: Optional[int] = None
     weather_time_pct: Optional[int] = None
+    pairing_coherence_pct: Optional[int] = None
     classic_pct: int = 0
     dramatic_pct: int = 0
     romantic_pct: int = 0

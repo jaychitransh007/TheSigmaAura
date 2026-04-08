@@ -59,18 +59,18 @@ The Phase 12 re-architecture (Phases 12A–12E, completed April 2026) consolidat
 | `enrichment_status` on saved wardrobe rows | 12D | New top-level field on the dict returned by `save_wardrobe_item` so the orchestrator can detect failed enrichment without parsing nested JSON. The orchestrator returns a clarification asking for a clearer photo when this is `"failed"`. |
 | Tryon over-generation metrics | 12E | `tryon_attempted_count`, `tryon_succeeded_count`, `tryon_quality_gate_failures`, `tryon_overgeneration_used`, `evaluator_path` surfaced in `response.metadata` and `dependency_validation_events.metadata_json` for the operations dashboard. |
 
-### Contextual evaluation: 6 always + 3 context-gated (Phase 12B follow-up, April 9 2026)
+### Contextual evaluation: 5 always + 4 context-gated (Phase 12B follow-ups, April 9 2026)
 
-The visual evaluator scores **6 dimensions for every candidate** and **3 dimensions only when their inputs are present in `live_context`**. The always-evaluated set are the dimensions whose inputs are guaranteed by completed onboarding (body shape, palette, style preference, etc.). The context-gated set depends on what the user actually said this turn.
+The visual evaluator scores **5 dimensions for every candidate** and **4 dimensions only when their gating condition is met**. The always-evaluated set are the dimensions whose inputs are guaranteed by completed onboarding (body shape, palette, style preference, etc.). The context-gated set depends on either what the user actually said this turn (`live_context` inputs) or which intent the planner classified.
 
-| Always evaluate (6) | Context-gated (3) | Required input |
+| Always evaluate (5) | Context-gated (4) | Gating condition |
 |---|---|---|
 | `body_harmony_pct` | | profile (always present) |
 | `color_suitability_pct` | | derived_interpretations (always present) |
 | `style_fit_pct` | | style_preference (always present) |
 | `risk_tolerance_pct` | | style_preference (always present) |
 | `comfort_boundary_pct` | | style_preference (always present) |
-| `pairing_coherence_pct` | | candidate items (always present) |
+| | `pairing_coherence_pct` | `intent` is `occasion_recommendation`, `outfit_check`, or `pairing_request` (an outfit is being composed or evaluated). Null for `garment_evaluation` / `style_discovery` / `explanation_request`. |
 | | `occasion_pct` | `live_context.occasion_signal` non-null |
 | | `weather_time_pct` | `live_context.weather_context` OR `time_of_day` non-empty |
 | | `specific_needs_pct` | `live_context.specific_needs` non-empty |
