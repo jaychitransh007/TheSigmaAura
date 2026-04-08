@@ -76,6 +76,10 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     "is_followup",
                     "followup_intent",
                     "style_goal",
+                    "source_preference",
+                    "target_product_type",
+                    "weather_context",
+                    "time_of_day",
                 ],
                 "properties": {
                     "occasion_signal": {"type": ["string", "null"]},
@@ -88,13 +92,20 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     "is_followup": {"type": "boolean"},
                     "followup_intent": {"type": ["string", "null"]},
                     "style_goal": {"type": "string"},
+                    "source_preference": {
+                        "type": "string",
+                        "enum": ["auto", "wardrobe", "catalog"],
+                    },
+                    "target_product_type": {"type": "string"},
+                    "weather_context": {"type": "string"},
+                    "time_of_day": {"type": "string"},
                 },
             },
             "action_parameters": {
                 "type": "object",
                 "additionalProperties": False,
                 "required": [
-                    "verdict",
+                    "purchase_intent",
                     "target_piece",
                     "detected_colors",
                     "detected_garments",
@@ -103,7 +114,7 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     "wardrobe_item_title",
                 ],
                 "properties": {
-                    "verdict": {"type": ["string", "null"]},
+                    "purchase_intent": {"type": "boolean"},
                     "target_piece": {"type": ["string", "null"]},
                     "detected_colors": {
                         "type": "array",
@@ -244,11 +255,15 @@ class CopilotPlanner:
             is_followup=bool(resolved_raw.get("is_followup")),
             followup_intent=resolved_raw.get("followup_intent"),
             style_goal=str(resolved_raw.get("style_goal") or ""),
+            source_preference=str(resolved_raw.get("source_preference") or "auto"),
+            target_product_type=str(resolved_raw.get("target_product_type") or ""),
+            weather_context=str(resolved_raw.get("weather_context") or ""),
+            time_of_day=str(resolved_raw.get("time_of_day") or ""),
         )
 
         params_raw = raw.get("action_parameters") or {}
         action_params = CopilotActionParameters(
-            verdict=params_raw.get("verdict"),
+            purchase_intent=bool(params_raw.get("purchase_intent")),
             target_piece=params_raw.get("target_piece"),
             detected_colors=params_raw.get("detected_colors") or [],
             detected_garments=params_raw.get("detected_garments") or [],

@@ -23,33 +23,43 @@ from enum import StrEnum
 from typing import List
 
 
-# ── Primary Intents (12) ─────────────────────────────────────────────
+# ── Primary Intents (7 advisory + feedback + silent wardrobe_ingestion) ────
+#
+# Phase 12A consolidated the taxonomy from 12 → 7 advisory + feedback +
+# silent wardrobe_ingestion. Removed intents and what replaced them:
+#   - product_browse           → folded into OCCASION_RECOMMENDATION via
+#                                CopilotResolvedContext.target_product_type
+#   - shopping_decision        → absorbed into GARMENT_EVALUATION
+#   - garment_on_me_request    → absorbed into GARMENT_EVALUATION
+#   - virtual_tryon_request    → absorbed into GARMENT_EVALUATION
+#   - capsule_or_trip_planning → deferred (will return in a later phase)
+#
+# WARDROBE_INGESTION is intentionally retained as a silent-save variant for
+# programmatic / bulk upload paths. The planner prompt does NOT classify
+# user messages as wardrobe_ingestion.
 
 class Intent(StrEnum):
     OCCASION_RECOMMENDATION = "occasion_recommendation"
-    PRODUCT_BROWSE = "product_browse"
+    PAIRING_REQUEST = "pairing_request"
+    GARMENT_EVALUATION = "garment_evaluation"
+    OUTFIT_CHECK = "outfit_check"
     STYLE_DISCOVERY = "style_discovery"
     EXPLANATION_REQUEST = "explanation_request"
-    SHOPPING_DECISION = "shopping_decision"
-    PAIRING_REQUEST = "pairing_request"
-    OUTFIT_CHECK = "outfit_check"
-    GARMENT_ON_ME_REQUEST = "garment_on_me_request"
-    CAPSULE_OR_TRIP_PLANNING = "capsule_or_trip_planning"
-    WARDROBE_INGESTION = "wardrobe_ingestion"
     FEEDBACK_SUBMISSION = "feedback_submission"
-    VIRTUAL_TRYON_REQUEST = "virtual_tryon_request"
+    WARDROBE_INGESTION = "wardrobe_ingestion"  # silent-save variant only
 
 
-# ── Actions (9) ──────────────────────────────────────────────────────
+# ── Actions (7) ──────────────────────────────────────────────────────
+#
+# Phase 12A removed RUN_SHOPPING_DECISION, RUN_VIRTUAL_TRYON, and
+# RUN_PRODUCT_BROWSE. RUN_GARMENT_EVALUATION owns the merged intent.
 
 class Action(StrEnum):
     RUN_RECOMMENDATION_PIPELINE = "run_recommendation_pipeline"
-    RUN_PRODUCT_BROWSE = "run_product_browse"
     RUN_OUTFIT_CHECK = "run_outfit_check"
-    RUN_SHOPPING_DECISION = "run_shopping_decision"
+    RUN_GARMENT_EVALUATION = "run_garment_evaluation"
     RESPOND_DIRECTLY = "respond_directly"
     ASK_CLARIFICATION = "ask_clarification"
-    RUN_VIRTUAL_TRYON = "run_virtual_tryon"
     SAVE_WARDROBE_ITEM = "save_wardrobe_item"
     SAVE_FEEDBACK = "save_feedback"
 
@@ -88,16 +98,38 @@ INTENT_REGISTRY: dict[Intent, IntentMeta] = {
     Intent.OCCASION_RECOMMENDATION: IntentMeta(
         name=Intent.OCCASION_RECOMMENDATION,
         label="Outfit Picks",
-        description="User wants outfit suggestions or product recommendations for an occasion",
+        description=(
+            "User wants outfit suggestions for an occasion or wants to see "
+            "specific catalog products (when target_product_type is set)."
+        ),
         default_action=Action.RUN_RECOMMENDATION_PIPELINE,
         handler="occasion_recommendation",
     ),
-    Intent.PRODUCT_BROWSE: IntentMeta(
-        name=Intent.PRODUCT_BROWSE,
-        label="Browse Products",
-        description="User wants to browse or search catalog items by category, color, or attribute without an occasion",
-        default_action=Action.RUN_PRODUCT_BROWSE,
-        handler="product_browse",
+    Intent.PAIRING_REQUEST: IntentMeta(
+        name=Intent.PAIRING_REQUEST,
+        label="Style This",
+        description="User asks what goes with a specific anchor garment",
+        default_action=Action.RUN_RECOMMENDATION_PIPELINE,
+        handler="pairing_request",
+    ),
+    Intent.GARMENT_EVALUATION: IntentMeta(
+        name=Intent.GARMENT_EVALUATION,
+        label="Evaluate This Piece",
+        description=(
+            "User uploads a garment photo and asks whether it suits them, "
+            "whether to buy it, or to try it on. Phase 12B will run a "
+            "tryon → visual evaluator → format pipeline; the Phase 12A shim "
+            "delegates to the existing OutfitCheckAgent path."
+        ),
+        default_action=Action.RUN_GARMENT_EVALUATION,
+        handler="garment_evaluation",
+    ),
+    Intent.OUTFIT_CHECK: IntentMeta(
+        name=Intent.OUTFIT_CHECK,
+        label="Check My Outfit",
+        description="User wants feedback on an outfit they're wearing or considering",
+        default_action=Action.RUN_OUTFIT_CHECK,
+        handler="outfit_check",
     ),
     Intent.STYLE_DISCOVERY: IntentMeta(
         name=Intent.STYLE_DISCOVERY,
@@ -113,48 +145,6 @@ INTENT_REGISTRY: dict[Intent, IntentMeta] = {
         default_action=Action.RESPOND_DIRECTLY,
         handler="explanation_request",
     ),
-    Intent.SHOPPING_DECISION: IntentMeta(
-        name=Intent.SHOPPING_DECISION,
-        label="Should I Buy?",
-        description="User asks whether to buy a specific item",
-        default_action=Action.RUN_SHOPPING_DECISION,
-        handler="shopping_decision",
-    ),
-    Intent.PAIRING_REQUEST: IntentMeta(
-        name=Intent.PAIRING_REQUEST,
-        label="Style This",
-        description="User asks what goes with a specific piece",
-        default_action=Action.RUN_RECOMMENDATION_PIPELINE,
-        handler="pairing_request",
-    ),
-    Intent.OUTFIT_CHECK: IntentMeta(
-        name=Intent.OUTFIT_CHECK,
-        label="Check My Outfit",
-        description="User wants feedback on an outfit they describe or show",
-        default_action=Action.RUN_OUTFIT_CHECK,
-        handler="outfit_check",
-    ),
-    Intent.GARMENT_ON_ME_REQUEST: IntentMeta(
-        name=Intent.GARMENT_ON_ME_REQUEST,
-        label="Try It On Me",
-        description="User asks if a specific garment would suit them",
-        default_action=Action.RESPOND_DIRECTLY,
-        handler="garment_on_me_request",
-    ),
-    Intent.CAPSULE_OR_TRIP_PLANNING: IntentMeta(
-        name=Intent.CAPSULE_OR_TRIP_PLANNING,
-        label="Plan a Trip",
-        description="User wants a capsule wardrobe or packing list",
-        default_action=Action.RESPOND_DIRECTLY,
-        handler="capsule_or_trip_planning",
-    ),
-    Intent.WARDROBE_INGESTION: IntentMeta(
-        name=Intent.WARDROBE_INGESTION,
-        label="Save to Wardrobe",
-        description="User wants to save items to their wardrobe",
-        default_action=Action.SAVE_WARDROBE_ITEM,
-        handler="wardrobe_ingestion",
-    ),
     Intent.FEEDBACK_SUBMISSION: IntentMeta(
         name=Intent.FEEDBACK_SUBMISSION,
         label="Give Feedback",
@@ -162,12 +152,15 @@ INTENT_REGISTRY: dict[Intent, IntentMeta] = {
         default_action=Action.SAVE_FEEDBACK,
         handler="feedback_submission",
     ),
-    Intent.VIRTUAL_TRYON_REQUEST: IntentMeta(
-        name=Intent.VIRTUAL_TRYON_REQUEST,
-        label="Virtual Try-On",
-        description="User wants to virtually try on a garment",
-        default_action=Action.RUN_VIRTUAL_TRYON,
-        handler="virtual_tryon_request",
+    Intent.WARDROBE_INGESTION: IntentMeta(
+        name=Intent.WARDROBE_INGESTION,
+        label="Save to Wardrobe",
+        description=(
+            "Silent-save variant — programmatic / bulk upload path. The "
+            "planner does NOT classify user messages as wardrobe_ingestion."
+        ),
+        default_action=Action.SAVE_WARDROBE_ITEM,
+        handler="wardrobe_ingestion",
     ),
 }
 
@@ -177,20 +170,19 @@ ACTION_REGISTRY: dict[Action, ActionMeta] = {
         label="Show Outfits",
         description="Full recommendation pipeline: architect → search → assemble → evaluate → format",
     ),
-    Action.RUN_PRODUCT_BROWSE: ActionMeta(
-        name=Action.RUN_PRODUCT_BROWSE,
-        label="Browse Catalog",
-        description="Direct catalog search by category/color/attribute constraints, returning individual product cards",
-    ),
     Action.RUN_OUTFIT_CHECK: ActionMeta(
         name=Action.RUN_OUTFIT_CHECK,
         label="Check Outfit",
         description="Evaluate outfit with structured scoring, critique, and improvement suggestions",
     ),
-    Action.RUN_SHOPPING_DECISION: ActionMeta(
-        name=Action.RUN_SHOPPING_DECISION,
-        label="Buy or Skip",
-        description="Buy/skip verdict with wardrobe context and pairing suggestions",
+    Action.RUN_GARMENT_EVALUATION: ActionMeta(
+        name=Action.RUN_GARMENT_EVALUATION,
+        label="Evaluate Garment",
+        description=(
+            "Single-garment evaluation pipeline. Phase 12A: shim that "
+            "reuses the OutfitCheckAgent path. Phase 12B: tryon → visual "
+            "evaluator → response formatter with optional buy/skip verdict."
+        ),
     ),
     Action.RESPOND_DIRECTLY: ActionMeta(
         name=Action.RESPOND_DIRECTLY,
@@ -201,11 +193,6 @@ ACTION_REGISTRY: dict[Action, ActionMeta] = {
         name=Action.ASK_CLARIFICATION,
         label="Clarify",
         description="Ask user for more information when request is too vague",
-    ),
-    Action.RUN_VIRTUAL_TRYON: ActionMeta(
-        name=Action.RUN_VIRTUAL_TRYON,
-        label="Try On",
-        description="Generate virtual try-on image via Gemini",
     ),
     Action.SAVE_WARDROBE_ITEM: ActionMeta(
         name=Action.SAVE_WARDROBE_ITEM,

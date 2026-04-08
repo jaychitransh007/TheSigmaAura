@@ -15,12 +15,14 @@ from platform_core.repositories import ConversationRepository
 
 from .agents.catalog_search_agent import CatalogSearchAgent
 from .agents.copilot_planner import CopilotPlanner, build_planner_input
-from .agents.outfit_check_agent import OutfitCheckAgent
-from .agents.shopping_decision_agent import ShoppingDecisionAgent, extract_urls
+from .agents.outfit_check_agent import OutfitCheckAgent  # legacy fallback during Phase 12B rollout
 from .agents.outfit_architect import OutfitArchitect
 from .agents.outfit_assembler import OutfitAssembler
-from .agents.outfit_evaluator import OutfitEvaluator
+from .agents.outfit_evaluator import OutfitEvaluator  # legacy text-only fallback
+from .agents.reranker import Reranker
 from .agents.response_formatter import ResponseFormatter
+from .agents.style_advisor_agent import StyleAdvice, StyleAdvisorAgent
+from .agents.visual_evaluator_agent import VisualEvaluatorAgent
 from .context.conversation_memory import build_conversation_memory
 from .context.user_context_builder import build_user_context, validate_minimum_profile
 from .filters import build_global_hard_filters
@@ -36,8 +38,10 @@ from .qna_messages import generate_stage_message
 from .schemas import (
     CombinedContext,
     CopilotPlanResult,
+    EvaluatedRecommendation,
     IntentClassification,
     LiveContext,
+    OutfitCandidate,
     OutfitCard,
     ProfileConfidence,
     RecommendationConfidence,
@@ -46,6 +50,19 @@ from .schemas import (
 )
 
 _log = logging.getLogger(__name__)
+
+
+_URL_RE = re.compile(r"https?://\S+")
+
+
+def extract_urls(message: str) -> List[str]:
+    """URL detection helper inlined from the (now-deleted) shopping_decision_agent.
+
+    Used by ``AgenticOrchestrator._uploaded_image_anchor_source`` to flag
+    catalog-style image uploads when the user pastes a product link
+    alongside the image.
+    """
+    return [match.rstrip(").,!?") for match in _URL_RE.findall(str(message or ""))]
 
 
 class AgenticOrchestrator:
@@ -71,14 +88,16 @@ class AgenticOrchestrator:
         self._catalog_rows: Optional[list] = None
 
         self.outfit_architect = OutfitArchitect()
-        self.outfit_check_agent = OutfitCheckAgent()
-        self.shopping_decision_agent = ShoppingDecisionAgent()
+        self.outfit_check_agent = OutfitCheckAgent()  # legacy — kept until tests are migrated off it
+        self.visual_evaluator = VisualEvaluatorAgent()  # Phase 12B vision-grounded evaluator
+        self.style_advisor = StyleAdvisorAgent()  # Phase 12C open-ended discovery + explanation
         self.catalog_search_agent = CatalogSearchAgent(
             retrieval_gateway=self._retrieval_gateway,
             client=repo.client,
         )
         self.outfit_assembler = OutfitAssembler()
-        self.outfit_evaluator = OutfitEvaluator()
+        self.reranker = Reranker()  # Phase 12B explicit pruning step
+        self.outfit_evaluator = OutfitEvaluator()  # legacy text-only fallback
         self.response_formatter = ResponseFormatter()
 
         self._copilot_planner = CopilotPlanner()
@@ -309,16 +328,6 @@ class AgenticOrchestrator:
         )
         return any(phrase in normalized for phrase in demonstrative_refs)
 
-    def _infer_followup_intent_override(self, *, message: str) -> str:
-        normalized = self._normalize_text_token(message)
-        if not normalized:
-            return ""
-        if any(token in normalized for token in ("smarter", "more polished", "more polish", "sharper", "dressier", "more refined")):
-            return FollowUpIntent.INCREASE_FORMALITY
-        if any(token in normalized for token in ("more casual", "less dressy", "more relaxed")):
-            return FollowUpIntent.DECREASE_FORMALITY
-        return ""
-
     def _message_references_prior_context(self, *, message: str) -> bool:
         normalized = self._normalize_text_token(message)
         if not normalized:
@@ -395,22 +404,6 @@ class AgenticOrchestrator:
             return True
         return bool(last_answer_source.startswith("wardrobe first")) and "catalog" in normalized
 
-    def _message_requests_outfit_check(self, *, message: str) -> bool:
-        normalized = self._normalize_text_token(message)
-        if not normalized:
-            return False
-        direct_phrases = (
-            "rate my outfit",
-            "rate this outfit",
-            "how does this look",
-            "outfit check",
-            "review this outfit",
-            "judge my outfit",
-        )
-        if any(phrase in normalized for phrase in direct_phrases):
-            return True
-        return normalized.startswith("is this outfit")
-
     def _message_source_preference(self, *, message: str) -> str:
         normalized = self._normalize_text_token(message)
         if not normalized:
@@ -449,7 +442,14 @@ class AgenticOrchestrator:
         has_attached_image: bool,
     ) -> tuple[CopilotPlanResult, list[str], bool, str]:
         override_reasons: list[str] = []
-        source_preference = self._message_source_preference(message=message)
+
+        # Source preference is now extracted by the planner into resolved_context.source_preference.
+        # Map "auto" → "" for downstream consumers that expect an empty string for "no preference".
+        planner_source_pref = str(plan_result.resolved_context.source_preference or "").strip().lower()
+        source_preference = "" if planner_source_pref in ("", "auto") else planner_source_pref
+
+        # catalog_followup is a state-conditional override (depends on the *previous* turn's
+        # answer source being wardrobe-first), which the planner cannot see. Keep it.
         force_catalog_followup = self._message_requests_catalog_followup(
             message=message,
             previous_context=previous_context,
@@ -462,15 +462,14 @@ class AgenticOrchestrator:
             if not plan_result.resolved_context.followup_intent:
                 plan_result.resolved_context.followup_intent = "catalog_followup"
 
-        followup_override = self._infer_followup_intent_override(message=message)
-        if followup_override:
-            plan_result.resolved_context.followup_intent = followup_override
-            if followup_override == FollowUpIntent.INCREASE_FORMALITY:
-                plan_result.resolved_context.formality_hint = (
-                    plan_result.resolved_context.formality_hint or "smart_casual"
-                )
-            if "followup_phrase_override" not in override_reasons:
-                override_reasons.append("followup_phrase_override")
+        # When the planner classifies an INCREASE_FORMALITY follow-up but does not
+        # propagate a formality_hint, default it to smart_casual so downstream search
+        # has a meaningful constraint to work with.
+        if (
+            plan_result.resolved_context.followup_intent == FollowUpIntent.INCREASE_FORMALITY
+            and not plan_result.resolved_context.formality_hint
+        ):
+            plan_result.resolved_context.formality_hint = "smart_casual"
 
         _has_prev_anchor = bool(
             str((previous_context.get("last_live_context") or {}).get("user_need") or "").find("Attached garment context:") != -1
@@ -492,25 +491,12 @@ class AgenticOrchestrator:
                 if anchor_title:
                     plan_result.action_parameters.target_piece = anchor_title
 
-        if self._message_requests_outfit_check(message=message):
-            if plan_result.intent != Intent.OUTFIT_CHECK:
-                plan_result.intent = Intent.OUTFIT_CHECK
-                plan_result.action = Action.RUN_OUTFIT_CHECK
-            if not str(plan_result.resolved_context.style_goal or "").strip():
-                plan_result.resolved_context.style_goal = Intent.OUTFIT_CHECK
-            if "outfit_check_override" not in override_reasons:
-                override_reasons.append("outfit_check_override")
-
         if source_preference == "wardrobe":
             if "wardrobe_first" not in plan_result.resolved_context.specific_needs:
                 plan_result.resolved_context.specific_needs.append("wardrobe_first")
-            if "wardrobe_source_override" not in override_reasons:
-                override_reasons.append("wardrobe_source_override")
         elif source_preference == "catalog":
             if "catalog_only" not in plan_result.resolved_context.specific_needs:
                 plan_result.resolved_context.specific_needs.append("catalog_only")
-            if "catalog_source_override" not in override_reasons:
-                override_reasons.append("catalog_source_override")
 
         return plan_result, override_reasons, force_catalog_followup, source_preference
 
@@ -694,6 +680,23 @@ class AgenticOrchestrator:
             if attached_item is not None:
                 attached_item = dict(attached_item)
                 attached_item["attachment_source"] = attachment_source
+                # Phase 12D: detect the failed-enrichment case from the
+                # service layer's top-level enrichment_status marker. Also
+                # treat all-empty critical fields as a failed enrichment
+                # for backwards compatibility with rows saved before the
+                # service layer started returning the marker.
+                enrichment_status = str(attached_item.get("enrichment_status") or "").strip().lower()
+                critical_fields_empty = (
+                    not str(attached_item.get("garment_category") or "").strip()
+                    and not str(attached_item.get("garment_subtype") or "").strip()
+                    and not str(attached_item.get("title") or "").strip()
+                )
+                if enrichment_status == "failed" or critical_fields_empty:
+                    attached_item["enrichment_failed"] = True
+                    _log.warning(
+                        "Wardrobe enrichment returned empty/failed for upload %s — flagging on attached_item",
+                        attached_item.get("id"),
+                    )
             attached_context = self._attached_item_context(attached_item)
             if attached_context:
                 effective_message = f"{message.strip()} {attached_context}".strip()
@@ -905,6 +908,31 @@ class AgenticOrchestrator:
             if "image_required_for_pairing" not in override_reasons:
                 override_reasons.append("image_required_for_pairing")
 
+        # Phase 12D: when an upload's enrichment failed, the architect cannot
+        # plan complementary items because it has no anchor attributes to work
+        # with. Surface a clarification asking the user for a clearer photo,
+        # rather than running the pipeline with an empty-attribute anchor.
+        # garment_evaluation is exempt because the visual evaluator works on
+        # the image bytes directly and doesn't need attribute enrichment.
+        if (
+            attached_item
+            and attached_item.get("enrichment_failed")
+            and plan_result.intent != Intent.GARMENT_EVALUATION
+        ):
+            plan_result.action = Action.ASK_CLARIFICATION
+            plan_result.assistant_message = (
+                "I couldn't quite read the piece in that photo — could you try a clearer "
+                "shot, ideally well-lit and showing the full garment? Then I can pair it "
+                "properly."
+            )
+            plan_result.follow_up_suggestions = [
+                "Upload a clearer photo",
+                "Pick from my wardrobe",
+                "Show me outfit ideas instead",
+            ]
+            if "wardrobe_enrichment_failed" not in override_reasons:
+                override_reasons.append("wardrobe_enrichment_failed")
+
         # Build intent classification for metadata compatibility
         intent = IntentClassification(
             primary_intent=plan_result.intent,
@@ -982,8 +1010,8 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence,
                 attached_item=attached_item,
             )
-        elif plan_result.action == Action.RUN_SHOPPING_DECISION:
-            return self._handle_shopping_decision(
+        elif plan_result.action == Action.RUN_GARMENT_EVALUATION:
+            return self._handle_garment_evaluation(
                 plan_result=plan_result,
                 intent=intent,
                 conversation_id=conversation_id,
@@ -994,20 +1022,7 @@ class AgenticOrchestrator:
                 previous_context=previous_context,
                 user_context=user_context,
                 profile_confidence=profile_confidence,
-
-            )
-        elif plan_result.action == Action.RUN_VIRTUAL_TRYON:
-            return self._handle_planner_virtual_tryon(
-                plan_result=plan_result,
-                intent=intent,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                channel=channel,
-                external_user_id=external_user_id,
-                message=message,
-                previous_context=previous_context,
-                profile_confidence=profile_confidence,
-
+                attached_item=attached_item,
             )
         elif plan_result.action == Action.SAVE_WARDROBE_ITEM:
             return self._handle_planner_wardrobe_save(
@@ -1034,20 +1049,6 @@ class AgenticOrchestrator:
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
 
-            )
-        elif plan_result.action == Action.RUN_PRODUCT_BROWSE:
-            return self._handle_product_browse(
-                plan_result=plan_result,
-                intent=intent,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                channel=channel,
-                external_user_id=external_user_id,
-                message=effective_message,
-                previous_context=previous_context,
-                user_context=user_context,
-                profile_confidence=profile_confidence,
-                emit=emit,
             )
         else:
             # Unknown action — fall back to direct response
@@ -2630,61 +2631,6 @@ class AgenticOrchestrator:
             "summary": summary,
         }
 
-    def _run_virtual_tryon_request(
-        self,
-        *,
-        external_user_id: str,
-        message: str,
-    ) -> Dict[str, Any]:
-        urls = re.findall(r"https?://\S+", str(message or "").strip())
-        product_url = urls[0] if urls else ""
-        person_image_path = self.onboarding_gateway.get_person_image_path(external_user_id)
-        if not person_image_path:
-            return {
-                "success": False,
-                "reason_code": "missing_person_image",
-                "error": graceful_policy_message("missing_person_image"),
-                "product_url": product_url,
-            }
-        if not product_url:
-            return {
-                "success": False,
-                "error": "No product image or link found in the request.",
-                "product_url": "",
-            }
-        try:
-            result = self.tryon_service.generate_tryon(
-                person_image_path=person_image_path,
-                product_image_url=product_url,
-            )
-            result["product_url"] = product_url
-            if result.get("success"):
-                quality = self.tryon_quality_gate.evaluate(
-                    person_image_path=person_image_path,
-                    tryon_result=result,
-                )
-                result["quality_gate"] = quality
-                if not quality.get("passed"):
-                    reason_code = str(quality.get("reason_code") or "quality_gate_failed")
-                    result["success"] = False
-                    result["reason_code"] = reason_code
-                    result["error"] = graceful_policy_message(
-                        reason_code,
-                        default=str(quality.get("message") or "Generated try-on output failed quality checks."),
-                    )
-            return result
-        except Exception as exc:
-            return {
-                "success": False,
-                "reason_code": "tryon_request_failed",
-                "error": str(exc),
-                "product_url": product_url,
-            }
-
-    # ------------------------------------------------------------------
-    # Conversation history
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _build_conversation_history(
         previous_context: Dict[str, Any],
@@ -2849,19 +2795,6 @@ class AgenticOrchestrator:
             )
         if intent.primary_intent == Intent.EXPLANATION_REQUEST:
             return self._handle_explanation_request(
-                plan_result=plan_result,
-                intent=intent,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                channel=channel,
-                external_user_id=external_user_id,
-                message=message,
-                previous_context=previous_context,
-                profile_confidence=profile_confidence,
-
-            )
-        if intent.primary_intent == Intent.CAPSULE_OR_TRIP_PLANNING:
-            return self._handle_capsule_or_trip_planning(
                 plan_result=plan_result,
                 intent=intent,
                 conversation_id=conversation_id,
@@ -3140,25 +3073,77 @@ class AgenticOrchestrator:
             message=message,
             style_goal=plan_result.resolved_context.style_goal,
         )
-        assistant_message, evidence = self._build_style_advice_response(
-            topic=advice_topic,
-            user_message=message,
-            seasonal=seasonal,
-            contrast=contrast,
-            frame=frame,
-            height=height,
-            body_shape=body_shape,
-            primary=primary,
-            secondary=secondary,
-            profile_confidence=profile_confidence,
-        )
+
+        # Phase 12C: layered routing.
+        # - Topical questions (collar, neckline, pattern, silhouette,
+        #   archetype, color) use the deterministic, evidence-backed
+        #   profile-grounded helper from Phase 11.
+        # - Open-ended discovery ("general") delegates to the new
+        #   StyleAdvisorAgent which generates LLM-backed advice using the
+        #   four thinking directions.
+        advisor_used = False
+        advisor_payload: Dict[str, Any] | None = None
+        if advice_topic == "general":
+            try:
+                # Build a duck-typed advisor context from the data the
+                # handler already loaded. The advisor reads via getattr on
+                # derived_interpretations / style_preference / analysis_attributes.
+                from types import SimpleNamespace
+                advisor_ctx = SimpleNamespace(
+                    gender=str(profile.get("gender") or ""),
+                    derived_interpretations=derived,
+                    style_preference=style_preference,
+                    analysis_attributes=attributes,
+                )
+                style_advice = self.style_advisor.advise(
+                    mode="discovery",
+                    query=message,
+                    user_context=advisor_ctx,
+                    plan_resolved_context=plan_result.resolved_context,
+                    plan_action_parameters=plan_result.action_parameters,
+                    conversation_memory=dict(previous_context.get("memory") or {}),
+                    profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
+                )
+                assistant_message = style_advice.render_assistant_message()
+                advisor_used = True
+                advisor_payload = style_advice.to_dict()
+                evidence: List[str] = list(style_advice.cited_attributes)
+            except Exception as exc:
+                _log.warning("StyleAdvisorAgent failed; falling back to deterministic helper: %s", exc, exc_info=True)
+                assistant_message, evidence = self._build_style_advice_response(
+                    topic=advice_topic,
+                    user_message=message,
+                    seasonal=seasonal,
+                    contrast=contrast,
+                    frame=frame,
+                    height=height,
+                    body_shape=body_shape,
+                    primary=primary,
+                    secondary=secondary,
+                    profile_confidence=profile_confidence,
+                )
+        else:
+            assistant_message, evidence = self._build_style_advice_response(
+                topic=advice_topic,
+                user_message=message,
+                seasonal=seasonal,
+                contrast=contrast,
+                frame=frame,
+                height=height,
+                body_shape=body_shape,
+                primary=primary,
+                secondary=secondary,
+                profile_confidence=profile_confidence,
+            )
         assistant_message = assistant_message or plan_result.assistant_message
         metadata = self._build_response_metadata(
             channel=channel,
             intent=intent,
             profile_confidence=profile_confidence,
             extra={
-                "answer_source": "style_discovery_handler",
+                "answer_source": (
+                    "style_advisor_agent" if advisor_used else "style_discovery_handler"
+                ),
                 "style_discovery": {
                     "advice_topic": advice_topic,
                     "evidence": evidence,
@@ -3169,6 +3154,8 @@ class AgenticOrchestrator:
                     "body_shape": body_shape,
                     "primary_archetype": primary,
                     "secondary_archetype": secondary,
+                    "advisor_used": advisor_used,
+                    "advisor_payload": advisor_payload,
                 },
             },
         )
@@ -3247,8 +3234,14 @@ class AgenticOrchestrator:
         confidence_explanation = [str(v).strip() for v in list(confidence_payload.get("explanation") or []) if str(v).strip()]
         confidence_band = str(confidence_payload.get("confidence_band") or "").strip()
 
+        # Phase 12C: build the deterministic explanation as a baseline, then
+        # try the StyleAdvisorAgent for a richer response. The advisor
+        # receives the actual prior-turn recommendation summary so it can
+        # reason against real data, not invented context. If the advisor
+        # fails or has nothing to work with (no previous recommendation),
+        # fall back to the deterministic summary.
         explanation_parts: List[str] = []
-        if title:
+        if title and title != "that recommendation":
             explanation_parts.append(f"I picked {title} because it matched the strongest signals in your profile and request.")
         if colors or categories:
             detail_bits = []
@@ -3263,22 +3256,74 @@ class AgenticOrchestrator:
             explanation_parts.append("Confidence-wise, " + " ".join(confidence_explanation[:2]))
         elif confidence_band:
             explanation_parts.append(f"My confidence on that answer was {confidence_band.lower()}.")
-        else:
-            explanation_parts.append("It was the strongest match among the options available at the time.")
+        deterministic_message = " ".join(part for part in explanation_parts if part).strip()
 
-        assistant_message = " ".join(part for part in explanation_parts if part).strip() or plan_result.assistant_message
+        advisor_used = False
+        advisor_payload: Dict[str, Any] | None = None
+        assistant_message = deterministic_message
+        if previous_recommendations:
+            try:
+                analysis_status = self.onboarding_gateway.get_analysis_status(external_user_id) or {}
+                profile = dict(analysis_status.get("profile") or {})
+                from types import SimpleNamespace
+                advisor_ctx = SimpleNamespace(
+                    gender=str(profile.get("gender") or ""),
+                    derived_interpretations=dict(analysis_status.get("derived_interpretations") or {}),
+                    style_preference=dict(profile.get("style_preference") or {}),
+                    analysis_attributes=dict(analysis_status.get("attributes") or {}),
+                )
+                style_advice = self.style_advisor.advise(
+                    mode="explanation",
+                    query=message,
+                    user_context=advisor_ctx,
+                    plan_resolved_context=plan_result.resolved_context,
+                    plan_action_parameters=plan_result.action_parameters,
+                    conversation_memory=dict(previous_context.get("memory") or {}),
+                    previous_recommendation_focus={
+                        "title": title,
+                        "primary_colors": colors,
+                        "garment_categories": categories,
+                        "occasion_fits": occasion_fits,
+                        "recommendation_confidence_band": confidence_band,
+                        "recommendation_confidence_explanation": confidence_explanation,
+                    },
+                    profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
+                )
+                rendered = style_advice.render_assistant_message()
+                if rendered:
+                    assistant_message = rendered
+                    advisor_used = True
+                    advisor_payload = style_advice.to_dict()
+            except Exception as exc:
+                _log.warning(
+                    "StyleAdvisorAgent failed for explanation_request; using deterministic summary: %s",
+                    exc,
+                    exc_info=True,
+                )
+
+        if not assistant_message:
+            assistant_message = (
+                "It was the strongest match among the options available at the time."
+                if not previous_recommendations
+                else plan_result.assistant_message
+            )
+
         metadata = self._build_response_metadata(
             channel=channel,
             intent=intent,
             profile_confidence=profile_confidence,
             extra={
-                "answer_source": "explanation_handler",
+                "answer_source": (
+                    "style_advisor_agent" if advisor_used else "explanation_handler"
+                ),
                 "explanation": {
                     "target_title": title,
                     "target_colors": colors,
                     "target_categories": categories,
                     "target_occasions": occasion_fits,
                     "recommendation_confidence_band": confidence_band,
+                    "advisor_used": advisor_used,
+                    "advisor_payload": advisor_payload,
                 },
             },
         )
@@ -3328,423 +3373,6 @@ class AgenticOrchestrator:
             "filters_applied": {},
             "outfits": [],
             "follow_up_suggestions": plan_result.follow_up_suggestions[:5],
-            "metadata": metadata,
-        }
-
-    def _infer_capsule_target(self, *, message: str, style_goal: str) -> tuple[int, int, list[str]]:
-        normalized_message = self._normalize_text_token(message)
-        normalized_goal = self._normalize_text_token(style_goal)
-        combined = f"{normalized_message} {normalized_goal}".strip()
-        days = 0
-        match = re.search(r"\b(\d+)\s*day\b", combined)
-        if match:
-            days = max(1, int(match.group(1)))
-        elif "workweek" in combined:
-            days = 5
-        elif "weekend" in combined:
-            days = 2
-        elif "trip" in combined or "travel" in combined:
-            days = 3
-
-        if days <= 0:
-            days = 3
-        target = min(10, max(3, days * 2))
-        context_labels = [
-            "travel day",
-            "daytime",
-            "meeting",
-            "dinner",
-            "off duty",
-            "evening",
-            "city walk",
-            "smart casual",
-            "dinner out",
-            "travel return",
-        ]
-        contexts = [context_labels[index % len(context_labels)] for index in range(target)]
-        return days, target, contexts
-
-    def _handle_capsule_or_trip_planning(
-        self,
-        *,
-        plan_result: CopilotPlanResult,
-        intent: IntentClassification,
-        conversation_id: str,
-        turn_id: str,
-        channel: str,
-        external_user_id: str,
-        message: str,
-        previous_context: Dict[str, Any],
-        profile_confidence: ProfileConfidence,
-
-    ) -> Dict[str, Any]:
-        analysis_status = self.onboarding_gateway.get_analysis_status(external_user_id) or {}
-        wardrobe_items = list(self.onboarding_gateway.get_wardrobe_items(external_user_id) or [])
-        wardrobe_gap_analysis = self._build_wardrobe_gap_analysis(
-            wardrobe_items=wardrobe_items,
-            occasion=str(plan_result.resolved_context.occasion_signal or ""),
-            required_roles=["top", "bottom", "shoe"],
-        )
-        if not wardrobe_items:
-            assistant_message = (
-                "I can plan this, but I need a bit more wardrobe depth first. "
-                "Add a few staples and I can turn them into a tighter trip or workweek capsule."
-            )
-            metadata = self._build_response_metadata(
-                channel=channel,
-                intent=intent,
-                profile_confidence=profile_confidence,
-                extra={
-                    "answer_source": "capsule_planning_handler",
-                    "capsule_plan": {"outfit_count": 0, "packing_list": [], "gap_items": []},
-                    "wardrobe_gap_analysis": wardrobe_gap_analysis,
-                },
-            )
-            self.repo.finalize_turn(
-                turn_id=turn_id,
-                assistant_message=assistant_message,
-                resolved_context={
-                    "request_summary": message.strip(),
-                    "intent_classification": intent.model_dump(),
-                    "profile_confidence": profile_confidence.model_dump(),
-                    "response_metadata": metadata,
-                    "handler": Intent.CAPSULE_OR_TRIP_PLANNING,
-                    "channel": channel,
-                },
-            )
-            return {
-                "conversation_id": conversation_id,
-                "turn_id": turn_id,
-                "assistant_message": assistant_message,
-                "response_type": "recommendation",
-                "resolved_context": {
-                    "request_summary": message.strip(),
-                    "occasion": "",
-                    "style_goal": "capsule_or_trip_planning",
-                },
-                "filters_applied": {},
-                "outfits": [],
-                "follow_up_suggestions": ["Save wardrobe staples", "Show me catalog essentials", "Use my wardrobe first"],
-                "metadata": metadata,
-            }
-
-        def role_of(item: Dict[str, Any]) -> str:
-            category = self._normalize_text_token(item.get("garment_category") or item.get("garment_subtype"))
-            if category in {"dress", "jumpsuit", "suit"}:
-                return "one_piece"
-            if category in {"top", "shirt", "blouse", "blazer", "jacket", "coat", "cardigan", "outerwear"}:
-                return "top"
-            if category in {"bottom", "trousers", "pants", "jeans", "skirt"}:
-                return "bottom"
-            if category in {"shoe", "shoes", "sneaker", "heels", "loafer"}:
-                return "shoe"
-            return "other"
-
-        trip_days, target_outfit_count, context_labels = self._infer_capsule_target(
-            message=message,
-            style_goal=plan_result.resolved_context.style_goal or "",
-        )
-        tops = [dict(item, _role="top") for item in wardrobe_items if role_of(item) == "top"]
-        bottoms = [dict(item, _role="bottom") for item in wardrobe_items if role_of(item) == "bottom"]
-        one_pieces = [dict(item, _role="one_piece") for item in wardrobe_items if role_of(item) == "one_piece"]
-        shoes = [dict(item, _role="shoe") for item in wardrobe_items if role_of(item) == "shoe"]
-
-        outfits: List[OutfitCard] = []
-        candidate_sets: List[List[Dict[str, Any]]] = []
-        seen_signatures: set[tuple[str, ...]] = set()
-
-        def add_candidate(items: List[Dict[str, Any]]) -> None:
-            signature = tuple(sorted(str(item.get("id") or item.get("product_id") or "") for item in items if str(item.get("id") or item.get("product_id") or "").strip()))
-            if not signature or signature in seen_signatures:
-                return
-            seen_signatures.add(signature)
-            candidate_sets.append(items)
-
-        for index, item in enumerate(one_pieces):
-            items = [item]
-            if shoes:
-                items.append(shoes[index % len(shoes)])
-            add_candidate(items)
-
-        for top_index, top in enumerate(tops):
-            for bottom_index, bottom in enumerate(bottoms):
-                items = [top, bottom]
-                if shoes:
-                    items.append(shoes[(top_index + bottom_index) % len(shoes)])
-                add_candidate(items)
-
-        # Capsule/trip diversity at architect level: each new outfit should
-        # introduce different garment subtypes and color families from the
-        # outfits already selected, so a 5-day trip plan does not collapse
-        # into "navy shirt + chinos × 5".
-        usage_count: Dict[str, int] = {}
-        used_subtypes: Dict[str, int] = {}
-        used_colors: Dict[str, int] = {}
-
-        def _norm(value: Any) -> str:
-            return self._normalize_text_token(value)
-
-        def _candidate_subtypes(items: List[Dict[str, Any]]) -> set[str]:
-            return {
-                _norm(item.get("garment_subtype") or item.get("garment_category"))
-                for item in items
-                if _norm(item.get("garment_subtype") or item.get("garment_category"))
-            }
-
-        def _candidate_colors(items: List[Dict[str, Any]]) -> set[str]:
-            return {
-                _norm(item.get("primary_color"))
-                for item in items
-                if _norm(item.get("primary_color"))
-            }
-
-        selected_sets: List[List[Dict[str, Any]]] = []
-        remaining_candidates = list(candidate_sets)
-        while remaining_candidates and len(selected_sets) < min(target_outfit_count, len(candidate_sets)):
-            best_index = 0
-            best_score = -999.0
-            for index, items in enumerate(remaining_candidates):
-                novelty = sum(
-                    max(0, 3 - usage_count.get(str(item.get("id") or item.get("product_id") or ""), 0))
-                    for item in items
-                )
-                role_variety = len({role_of(item) for item in items})
-                # Subtype diversity: penalize candidates whose subtypes already
-                # appear in selected outfits.
-                cand_subtypes = _candidate_subtypes(items)
-                subtype_overlap = sum(used_subtypes.get(s, 0) for s in cand_subtypes)
-                subtype_bonus = -1.5 * subtype_overlap + 1.0 * len(cand_subtypes - set(used_subtypes.keys()))
-                # Color family diversity: same idea for primary_color.
-                cand_colors = _candidate_colors(items)
-                color_overlap = sum(used_colors.get(c, 0) for c in cand_colors)
-                color_bonus = -1.0 * color_overlap + 0.75 * len(cand_colors - set(used_colors.keys()))
-
-                score = novelty + role_variety + subtype_bonus + color_bonus
-                if score > best_score:
-                    best_score = score
-                    best_index = index
-            chosen = remaining_candidates.pop(best_index)
-            selected_sets.append(chosen)
-            for item in chosen:
-                item_id = str(item.get("id") or item.get("product_id") or "")
-                usage_count[item_id] = usage_count.get(item_id, 0) + 1
-            for subtype in _candidate_subtypes(chosen):
-                used_subtypes[subtype] = used_subtypes.get(subtype, 0) + 1
-            for color in _candidate_colors(chosen):
-                used_colors[color] = used_colors.get(color, 0) + 1
-
-        for rank, items in enumerate(selected_sets, start=1):
-            context_label = context_labels[rank - 1]
-            outfit_items = [self._wardrobe_item_to_outfit_item(item) for item in items]
-            outfits.append(
-                OutfitCard(
-                    rank=rank,
-                    title=f"{context_label.title()} look",
-                    reasoning=f"Built from your wardrobe for the {context_label} part of the plan while keeping the capsule reusable.",
-                    items=outfit_items,
-                )
-            )
-
-        packing_map: Dict[str, Dict[str, Any]] = {}
-        for outfit in outfits:
-            for item in outfit.items:
-                product_id = str(item.get("product_id") or "")
-                if product_id and product_id not in packing_map:
-                    packing_map[product_id] = item
-        packing_list = list(packing_map.values())
-
-        gap_items: List[str] = []
-        if not bottoms:
-            gap_items.append("a versatile trouser or skirt")
-        if not tops:
-            gap_items.append("an easy top layer")
-        if not shoes:
-            gap_items.append("a flexible shoe option")
-        if len(outfits) < target_outfit_count:
-            gap_items.append("one more mix-and-match staple to make the capsule more reusable")
-        desired_gap_roles = [
-            role
-            for role, count in dict(wardrobe_gap_analysis.get("counts_by_role") or {}).items()
-            if role in {"top", "bottom", "shoe", "outerwear"} and int(count or 0) == 0
-        ]
-        if len(outfits) < target_outfit_count:
-            desired_gap_roles.extend(["top", "bottom"])
-        catalog_gap_fillers = self._select_catalog_items(
-            desired_roles=_dedupe_values(desired_gap_roles or ["top", "bottom", "shoe"]),
-            occasion=str(plan_result.resolved_context.occasion_signal or ""),
-            preferred_colors=[
-                str(item.get("primary_color") or "")
-                for outfit in outfits
-                for item in outfit.items
-                if str(item.get("primary_color") or "").strip()
-            ],
-            limit=3,
-        )
-        hybrid_index = len(outfits)
-        while len(outfits) < target_outfit_count and catalog_gap_fillers:
-            filler = catalog_gap_fillers[(len(outfits) - hybrid_index) % len(catalog_gap_fillers)]
-            filler_role = self._wardrobe_role_of(filler)
-            hybrid_items: List[Dict[str, Any]] = []
-            if filler_role != "top" and tops:
-                hybrid_items.append(self._wardrobe_item_to_outfit_item(tops[len(outfits) % len(tops)]))
-            if filler_role != "bottom" and bottoms:
-                hybrid_items.append(self._wardrobe_item_to_outfit_item(bottoms[len(outfits) % len(bottoms)]))
-            if filler_role != "shoe" and shoes:
-                hybrid_items.append(self._wardrobe_item_to_outfit_item(shoes[len(outfits) % len(shoes)]))
-            hybrid_items.append(filler)
-            deduped_hybrid: List[Dict[str, Any]] = []
-            seen_hybrid_ids: set[str] = set()
-            for item in hybrid_items:
-                item_id = str(item.get("product_id") or "")
-                if item_id and item_id in seen_hybrid_ids:
-                    continue
-                seen_hybrid_ids.add(item_id)
-                deduped_hybrid.append(item)
-            if len(deduped_hybrid) < 2:
-                break
-            context_label = context_labels[len(outfits)]
-            outfits.append(
-                OutfitCard(
-                    rank=len(outfits) + 1,
-                    title=f"{context_label.title()} hybrid look",
-                    reasoning="Extended the capsule with one catalog-supported piece so the trip can cover more moments without overpacking.",
-                    items=deduped_hybrid,
-                )
-            )
-            for item in deduped_hybrid:
-                product_id = str(item.get("product_id") or "")
-                if product_id and product_id not in packing_map:
-                    packing_map[product_id] = item
-        if outfits and len(outfits) < target_outfit_count:
-            repeat_seed = [outfit.model_copy() for outfit in outfits]
-            while len(outfits) < target_outfit_count:
-                base = repeat_seed[len(outfits) % len(repeat_seed)]
-                context_label = context_labels[len(outfits)]
-                repeated_items = [dict(item) for item in base.items]
-                outfits.append(
-                    OutfitCard(
-                        rank=len(outfits) + 1,
-                        title=f"{context_label.title()} repeated capsule look",
-                        reasoning="Reused your strongest capsule base for another part of the trip so you can cover more moments without overpacking.",
-                        items=repeated_items,
-                    )
-                )
-                for item in repeated_items:
-                    product_id = str(item.get("product_id") or "")
-                    if product_id and product_id not in packing_map:
-                        packing_map[product_id] = item
-        packing_list = list(packing_map.values())
-
-        style_preference = dict((analysis_status.get("profile") or {}).get("style_preference") or {})
-        primary = str(style_preference.get("primaryArchetype") or "").strip()
-        assistant_parts = []
-        if outfits:
-            assistant_parts.append(
-                f"I mapped out {len(outfits)} looks across {trip_days} days so the capsule can cover multiple moments of the trip."
-            )
-        if primary:
-            assistant_parts.append(f"I kept the capsule aligned with your {primary} style direction.")
-        if gap_items:
-            assistant_parts.append("The main gaps are " + ", ".join(gap_items[:2]) + ".")
-        if catalog_gap_fillers:
-            assistant_parts.append(
-                "To close them fast, start with "
-                + ", ".join(str(item.get("title") or "a catalog piece").strip() for item in catalog_gap_fillers[:2])
-                + "."
-            )
-        assistant_parts.append(
-            "If you want, I can turn the gaps into a short shopping list next."
-        )
-        assistant_message = " ".join(assistant_parts).strip()
-
-        metadata = self._build_response_metadata(
-            channel=channel,
-            intent=intent,
-            profile_confidence=profile_confidence,
-            extra={
-                "answer_source": "capsule_planning_handler",
-                "capsule_plan": {
-                    "trip_days": trip_days,
-                    "target_outfit_count": target_outfit_count,
-                    "outfit_count": len(outfits),
-                    "contexts": context_labels[:len(outfits)],
-                    "packing_list": [
-                        {
-                            "product_id": str(item.get("product_id") or ""),
-                            "title": str(item.get("title") or ""),
-                            "source": str(item.get("source") or "wardrobe"),
-                        }
-                        for item in packing_list
-                    ],
-                    "gap_items": gap_items,
-                    "catalog_gap_fillers": [
-                        {
-                            "product_id": str(item.get("product_id") or ""),
-                            "title": str(item.get("title") or ""),
-                            "product_url": str(item.get("product_url") or ""),
-                            "source": str(item.get("source") or "catalog"),
-                        }
-                        for item in catalog_gap_fillers
-                    ],
-                },
-                "wardrobe_gap_analysis": wardrobe_gap_analysis,
-            },
-        )
-        self.repo.finalize_turn(
-            turn_id=turn_id,
-            assistant_message=assistant_message,
-            resolved_context={
-                "request_summary": message.strip(),
-                "intent_classification": intent.model_dump(),
-                "profile_confidence": profile_confidence.model_dump(),
-                "response_metadata": metadata,
-                "handler": Intent.CAPSULE_OR_TRIP_PLANNING,
-                "handler_payload": dict(metadata.get("capsule_plan") or {}),
-                "channel": channel,
-            },
-        )
-        self.repo.update_conversation_context(
-            conversation_id=conversation_id,
-            session_context={
-                **previous_context,
-                "last_user_message": message,
-                "last_assistant_message": assistant_message,
-                "last_channel": channel,
-                "last_intent": plan_result.intent,
-
-                "last_response_metadata": metadata,
-            },
-        )
-        self._persist_dependency_turn_event(
-            external_user_id=external_user_id,
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            channel=channel,
-            primary_intent=plan_result.intent,
-            response_type="recommendation",
-            metadata_json={
-                "answer_source": "capsule_planning_handler",
-                "trip_days": trip_days,
-                "target_outfit_count": target_outfit_count,
-                "outfit_count": len(outfits),
-                "gap_item_count": len(gap_items),
-                "catalog_gap_filler_count": len(catalog_gap_fillers),
-            },
-        )
-        return {
-            "conversation_id": conversation_id,
-            "turn_id": turn_id,
-            "assistant_message": assistant_message,
-            "response_type": "recommendation",
-            "resolved_context": {
-                "request_summary": message.strip(),
-                "occasion": str(plan_result.resolved_context.occasion_signal or ""),
-                "style_goal": plan_result.resolved_context.style_goal or "capsule_or_trip_planning",
-                "profile_confidence_pct": profile_confidence.analysis_confidence_pct,
-            },
-            "filters_applied": {},
-            "outfits": [outfit.model_dump() for outfit in outfits],
-            "follow_up_suggestions": plan_result.follow_up_suggestions[:5] or ["Build a shopping list", "Show me catalog gap fillers", "Use my wardrobe first"],
             "metadata": metadata,
         }
 
@@ -4139,13 +3767,19 @@ class AgenticOrchestrator:
                 "set_count": len(retrieved_sets),
             })
 
-            # Inject anchor as the sole item for its role
+            # Inject anchor as the sole item for its role.
+            # Phase 12D: mark with is_anchor=True so the assembler's
+            # cross-outfit diversity pass exempts this product from the
+            # "no repeats" rule. Pairing requests intentionally include
+            # the anchor in every candidate by definition.
             if anchor and anchor_role:
+                anchor_with_flag = dict(anchor)
+                anchor_with_flag["is_anchor"] = True
                 anchor_product = RetrievedProduct(
                     product_id=str(anchor.get("id") or anchor.get("product_id") or "anchor_wardrobe"),
                     similarity=1.0,
                     metadata={},
-                    enriched_data=anchor,
+                    enriched_data=anchor_with_flag,
                 )
                 retrieved_sets.append(
                     RetrievedSet(
@@ -4163,9 +3797,63 @@ class AgenticOrchestrator:
             candidates = self.outfit_assembler.assemble(retrieved_sets, plan, combined_context)
             emit("outfit_assembly", "completed", ctx={"candidate_count": len(candidates)})
 
-            emit("outfit_evaluation", "started")
+            # Phase 12B: rerank → render top-N try-ons → visual evaluator
+            # (per-candidate, parallel) with legacy text evaluator as the
+            # fallback when no person photo is on file or the visual path
+            # raises. Stage emission distinguishes the two paths so the
+            # operator dashboard can track which one ran.
+            emit("reranker", "started")
+            ranked_pool = self.reranker.rerank(candidates)
+            emit("reranker", "completed", ctx={"pool_size": len(ranked_pool)})
+
+            person_image_path = self.onboarding_gateway.get_person_image_path(external_user_id)
+            visual_path_attempted = False
+            evaluator_path = "legacy_text"
             t0 = time.monotonic()
-            evaluated = self.outfit_evaluator.evaluate(candidates, combined_context, plan)
+            evaluated: List[EvaluatedRecommendation] = []
+            tryon_stats: Dict[str, int] = {
+                "tryon_attempted_count": 0,
+                "tryon_succeeded_count": 0,
+                "tryon_quality_gate_failures": 0,
+                "tryon_overgeneration_used": 0,
+                "rendered_with_image_count": 0,
+                "rendered_without_image_count": 0,
+            }
+            if person_image_path and ranked_pool:
+                visual_path_attempted = True
+                try:
+                    emit("visual_evaluation", "started", ctx={"target_count": self.reranker.final_top_n})
+                    rendered, tryon_stats = self._render_candidates_for_visual_eval(
+                        candidates=ranked_pool,
+                        person_image_path=str(person_image_path),
+                        external_user_id=external_user_id,
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        target_count=self.reranker.final_top_n,
+                    )
+                    if rendered:
+                        evaluated = self._evaluate_candidates_visually(
+                            rendered=rendered,
+                            user_context=user_context,
+                            live_context=combined_context.live,
+                            intent=intent.primary_intent,
+                            profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
+                        )
+                        evaluator_path = "visual"
+                    emit("visual_evaluation", "completed", ctx={"evaluated_count": len(evaluated)})
+                except Exception:
+                    _log.warning(
+                        "Phase 12B visual evaluator path failed; falling back to legacy text evaluator",
+                        exc_info=True,
+                    )
+                    emit("visual_evaluation", "error")
+                    evaluated = []
+
+            if not evaluated:
+                emit("outfit_evaluation", "started", ctx={"path": "legacy_text"})
+                evaluated = self.outfit_evaluator.evaluate(candidates, combined_context, plan)
+                emit("outfit_evaluation", "completed")
+
             evaluator_ms = int((time.monotonic() - t0) * 1000)
             self.repo.log_model_call(
                 conversation_id=conversation_id,
@@ -4173,12 +3861,15 @@ class AgenticOrchestrator:
                 service="agentic_application",
                 call_type="outfit_evaluator",
                 model="gpt-5.4",
-                request_json={"candidate_count": len(candidates)},
+                request_json={
+                    "candidate_count": len(candidates),
+                    "evaluator_path": evaluator_path,
+                    "visual_path_attempted": visual_path_attempted,
+                },
                 response_json={"evaluation_count": len(evaluated)},
                 reasoning_notes=[],
                 latency_ms=evaluator_ms,
             )
-            emit("outfit_evaluation", "completed")
 
             emit("response_formatting", "started")
             response = self.response_formatter.format(
@@ -4219,6 +3910,13 @@ class AgenticOrchestrator:
                             preferred_source=source_preference,
                             fulfilled_source=str(answer_components.get("primary_source") or ""),
                         ),
+                        # Phase 12E: surface visual-eval pipeline operational
+                        # signals so the operations dashboard can track
+                        # quality-gate failure rate, over-generation usage,
+                        # and the visual-vs-legacy evaluator path mix.
+                        "evaluator_path": evaluator_path,
+                        "visual_path_attempted": visual_path_attempted,
+                        "tryon_stats": tryon_stats,
                     },
                 )
             )
@@ -4348,6 +4046,10 @@ class AgenticOrchestrator:
                 "outfit_count": len(response.outfits),
                 "recommendation_confidence_score_pct": recommendation_confidence.score_pct,
                 "restricted_item_exclusion_count": restricted_item_exclusion_count,
+                # Phase 12E: dashboard signals for evaluator path mix and
+                # try-on quality gate health.
+                "evaluator_path": evaluator_path,
+                "tryon_stats": tryon_stats,
             },
         )
 
@@ -4372,6 +4074,284 @@ class AgenticOrchestrator:
             "metadata": response.metadata,
         }
 
+    # ------------------------------------------------------------------
+    # Phase 12B: visual evaluator pipeline (rerank → tryon → vision eval)
+    # ------------------------------------------------------------------
+
+    def _render_candidates_for_visual_eval(
+        self,
+        *,
+        candidates: List[OutfitCandidate],
+        person_image_path: str,
+        external_user_id: str,
+        conversation_id: str,
+        turn_id: str,
+        target_count: int,
+    ) -> tuple[List[tuple[OutfitCandidate, str]], Dict[str, int]]:
+        """Render try-on for the top candidates with quality-gate over-generation.
+
+        Walks ``candidates`` (already reranked, top-N to top-pool) and
+        renders try-on for the first ``target_count`` whose quality gate
+        passes. If a render fails the quality gate (or generation
+        errors), pulls from the next position in the over-generation
+        pool. Persists each successful render to disk + DB so the
+        post-format ``_attach_tryon_images`` cache lookup hits.
+
+        Returns:
+            ``(rendered, stats)`` tuple.
+            - ``rendered`` is a list of ``(candidate, tryon_path_or_empty)``
+              tuples in rank order. The tuple's path is empty if every
+              attempt for that slot failed; the orchestrator will still
+              ship the candidate as a text-only outfit in that case
+              rather than dropping it.
+            - ``stats`` is a small dict surfaced to ``response.metadata``
+              for the operations dashboard:
+                ``{
+                    "tryon_attempted_count": int,
+                    "tryon_succeeded_count": int,
+                    "tryon_quality_gate_failures": int,
+                    "tryon_overgeneration_used": bool,
+                    "rendered_with_image_count": int,
+                    "rendered_without_image_count": int,
+                }``
+        """
+        import base64
+        import hashlib
+        from datetime import datetime, timezone
+        from pathlib import Path
+
+        empty_stats: Dict[str, int] = {
+            "tryon_attempted_count": 0,
+            "tryon_succeeded_count": 0,
+            "tryon_quality_gate_failures": 0,
+            "tryon_overgeneration_used": 0,
+            "rendered_with_image_count": 0,
+            "rendered_without_image_count": 0,
+        }
+        if not candidates or not person_image_path:
+            return [], empty_stats
+        tryon_dir = Path("data/tryon/images")
+        tryon_dir.mkdir(parents=True, exist_ok=True)
+
+        # Mutable counters captured by the inner closure so we can track
+        # quality-gate failures vs generation errors separately.
+        stats: Dict[str, int] = dict(empty_stats)
+
+        def _render_one(candidate: OutfitCandidate) -> str:
+            """Render a single candidate via try-on; return file path or ''."""
+            garment_urls: list[tuple[str, str]] = []
+            for item in candidate.items or []:
+                url = str(item.get("image_url") or "").strip()
+                if not url:
+                    continue
+                role = str(item.get("role") or "").strip()
+                garment_urls.append((role or "garment", url))
+            if not garment_urls:
+                return ""
+            garment_ids = sorted(
+                str(item.get("product_id", "")).strip()
+                for item in (candidate.items or [])
+                if str(item.get("product_id", "")).strip()
+            )
+            # Cache lookup — reuse a previously rendered image for the
+            # same garment combination so repeat turns don't re-pay
+            # Gemini latency.
+            if garment_ids:
+                cached = self.repo.find_tryon_image_by_garments(external_user_id, garment_ids)
+                if cached and cached.get("file_path"):
+                    cached_path = Path(cached["file_path"])
+                    if cached_path.exists():
+                        return str(cached_path)
+            stats["tryon_attempted_count"] += 1
+            try:
+                result = self.tryon_service.generate_tryon_outfit(
+                    person_image_path=person_image_path,
+                    garment_urls=garment_urls,
+                )
+                if not result.get("success"):
+                    return ""
+                quality = self.tryon_quality_gate.evaluate(
+                    person_image_path=person_image_path,
+                    tryon_result=result,
+                )
+                if not quality.get("passed"):
+                    stats["tryon_quality_gate_failures"] += 1
+                    _log.info(
+                        "Visual eval try-on failed quality gate for candidate %s: %s",
+                        candidate.candidate_id,
+                        quality.get("reason_code") or "unknown",
+                    )
+                    return ""
+                image_b64 = result.get("image_base64") or ""
+                if not image_b64:
+                    return ""
+                try:
+                    image_bytes = base64.b64decode(image_b64)
+                except Exception:
+                    return ""
+                if not image_bytes:
+                    return ""
+                mime_type = result.get("mime_type") or "image/png"
+                ext = ".png" if "png" in mime_type else ".jpg"
+                ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+                ids_key = "_".join(garment_ids) if garment_ids else ts
+                encrypted = hashlib.sha256(
+                    f"{external_user_id}_visualeval_{ids_key}_{ts}".encode()
+                ).hexdigest()
+                dest = tryon_dir / f"{encrypted}{ext}"
+                dest.write_bytes(image_bytes)
+                try:
+                    self.repo.insert_tryon_image(
+                        user_id=external_user_id,
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        outfit_rank=0,  # rank set by formatter later
+                        garment_ids=garment_ids,
+                        garment_source=self._detect_garment_source(candidate),
+                        person_image_path=person_image_path,
+                        encrypted_filename=encrypted,
+                        file_path=str(dest),
+                        mime_type=mime_type,
+                        file_size_bytes=len(image_bytes),
+                        quality_score_pct=quality.get("quality_score_pct"),
+                    )
+                except Exception:
+                    _log.warning("Failed to persist visual-eval tryon metadata", exc_info=True)
+                stats["tryon_succeeded_count"] += 1
+                return str(dest)
+            except Exception:
+                _log.warning(
+                    "Visual eval try-on raised for candidate %s",
+                    candidate.candidate_id,
+                    exc_info=True,
+                )
+                return ""
+
+        # Walk the pool greedily — render the first `target_count` whose
+        # try-on passes the quality gate. Pull from positions beyond
+        # `target_count` (the over-generation pool) when earlier slots fail.
+        pool = list(candidates)
+        rendered: List[tuple[OutfitCandidate, str]] = []
+        pool_idx = 0
+        attempted_ids: set[str] = set()
+        while len(rendered) < target_count and pool_idx < len(pool):
+            candidate = pool[pool_idx]
+            pool_idx += 1
+            if candidate.candidate_id in attempted_ids:
+                continue
+            attempted_ids.add(candidate.candidate_id)
+            # Phase 12E: detect when we've started pulling from the
+            # over-generation pool (positions beyond target_count). This
+            # is the operational signal that the quality gate forced us
+            # to dig deeper than the natural top-N.
+            if pool_idx > target_count:
+                stats["tryon_overgeneration_used"] = 1
+            tryon_path = _render_one(candidate)
+            if tryon_path:
+                rendered.append((candidate, tryon_path))
+            elif len(rendered) + (len(pool) - pool_idx) < target_count:
+                # Pool exhausted — accept the candidate without a tryon
+                # rather than dropping it. The visual evaluator can still
+                # score the bare items via attribute fallback.
+                rendered.append((candidate, ""))
+        if len(rendered) < target_count and pool_idx >= len(pool):
+            for candidate in pool:
+                if candidate.candidate_id not in attempted_ids:
+                    rendered.append((candidate, ""))
+                if len(rendered) >= target_count:
+                    break
+        rendered = rendered[:target_count]
+        stats["rendered_with_image_count"] = sum(1 for _c, p in rendered if p)
+        stats["rendered_without_image_count"] = sum(1 for _c, p in rendered if not p)
+        return rendered, stats
+
+    @staticmethod
+    def _detect_garment_source(candidate: OutfitCandidate) -> str:
+        sources = set()
+        for item in candidate.items or []:
+            src = str(item.get("source") or "").strip().lower()
+            if src in ("wardrobe", "catalog"):
+                sources.add(src)
+        if len(sources) > 1:
+            return "mixed"
+        return sources.pop() if sources else "catalog"
+
+    def _evaluate_candidates_visually(
+        self,
+        *,
+        rendered: List[tuple[OutfitCandidate, str]],
+        user_context: Any,
+        live_context: Any,
+        intent: str,
+        profile_confidence_pct: int,
+    ) -> List[EvaluatedRecommendation]:
+        """Run VisualEvaluatorAgent for each rendered candidate in parallel.
+
+        Returns the list of ``EvaluatedRecommendation`` in the same
+        order as ``rendered`` (which is rank order). Each result has its
+        ``rank`` field set to its 1-indexed position in the list.
+
+        Failures fall back to a low-fidelity ``EvaluatedRecommendation``
+        constructed from the candidate's assembly_score so the response
+        still ships rather than dropping the slot.
+        """
+        if not rendered:
+            return []
+
+        def _eval_one(payload: tuple[int, OutfitCandidate, str]) -> EvaluatedRecommendation:
+            rank, candidate, image_path = payload
+            try:
+                result = self.visual_evaluator.evaluate_candidate(
+                    candidate=candidate,
+                    image_path=image_path,
+                    user_context=user_context,
+                    live_context=live_context,
+                    intent=intent,
+                    mode="recommendation",
+                    profile_confidence_pct=profile_confidence_pct,
+                )
+                return result.model_copy(update={"rank": rank})
+            except Exception:
+                _log.warning(
+                    "Visual evaluator failed for candidate %s; using assembly_score fallback",
+                    candidate.candidate_id,
+                    exc_info=True,
+                )
+                fallback_pct = max(0, min(100, int(getattr(candidate, "assembly_score", 0.0) * 100)))
+                fallback_item_ids = [
+                    str(item.get("product_id", ""))
+                    for item in (candidate.items or [])
+                    if str(item.get("product_id", ""))
+                ]
+                return EvaluatedRecommendation(
+                    candidate_id=candidate.candidate_id,
+                    rank=rank,
+                    match_score=float(getattr(candidate, "assembly_score", 0.0) or 0.0),
+                    title="",
+                    reasoning="Ranked by retrieval similarity (visual evaluator unavailable).",
+                    body_harmony_pct=fallback_pct,
+                    color_suitability_pct=fallback_pct,
+                    style_fit_pct=fallback_pct,
+                    risk_tolerance_pct=fallback_pct,
+                    occasion_pct=fallback_pct,
+                    comfort_boundary_pct=fallback_pct,
+                    specific_needs_pct=fallback_pct,
+                    pairing_coherence_pct=fallback_pct,
+                    weather_time_pct=fallback_pct,
+                    item_ids=fallback_item_ids,
+                )
+
+        payloads = [(idx + 1, c, p) for idx, (c, p) in enumerate(rendered)]
+        results: List[EvaluatedRecommendation] = [
+            EvaluatedRecommendation(candidate_id="") for _ in payloads
+        ]
+        with ThreadPoolExecutor(max_workers=min(len(payloads), 3)) as pool:
+            futures = {pool.submit(_eval_one, payload): idx for idx, payload in enumerate(payloads)}
+            for future in as_completed(futures):
+                idx = futures[future]
+                results[idx] = future.result()
+        return results
+
     def _handle_outfit_check(
         self,
         *,
@@ -4390,14 +4370,38 @@ class AgenticOrchestrator:
         occasion_signal = str(plan_result.resolved_context.occasion_signal or "").strip() or None
         image_path = str((attached_item or {}).get("image_path") or "").strip()
 
-        # Process 1 (blocking): Vision-based outfit check — agent sees the image directly
+        # Phase 12B: outfit check uses VisualEvaluatorAgent on the user's photo
+        # directly. No try-on (the user is already wearing the outfit in the
+        # image). No architect call (rating what they're wearing, not picking
+        # what to recommend).
+        synthetic_candidate = OutfitCandidate(
+            candidate_id="outfit-check-1",
+            direction_id="outfit_check",
+            candidate_type="user_outfit",
+            items=[],
+            assembly_score=1.0,
+        )
+        live_context_for_eval = LiveContext(
+            user_need=message.strip(),
+            occasion_signal=occasion_signal,
+            formality_hint=plan_result.resolved_context.formality_hint,
+            time_hint=plan_result.resolved_context.time_hint,
+            time_of_day=str(getattr(plan_result.resolved_context, "time_of_day", "") or ""),
+            weather_context=str(getattr(plan_result.resolved_context, "weather_context", "") or ""),
+            specific_needs=list(plan_result.resolved_context.specific_needs or []),
+            is_followup=bool(plan_result.resolved_context.is_followup),
+            followup_intent=plan_result.resolved_context.followup_intent,
+        )
+
         try:
-            check = self.outfit_check_agent.evaluate(
-                user_context=user_context,
-                outfit_description=message,
-                occasion_signal=occasion_signal,
-                profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
+            check = self.visual_evaluator.evaluate_candidate(
+                candidate=synthetic_candidate,
                 image_path=image_path,
+                user_context=user_context,
+                live_context=live_context_for_eval,
+                intent=Intent.OUTFIT_CHECK,
+                mode="outfit_check",
+                profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
             )
         except Exception as exc:
             _log.error("Outfit check evaluation failed: %s", exc, exc_info=True)
@@ -4418,6 +4422,20 @@ class AgenticOrchestrator:
                 "metadata": {"error": True},
             }
 
+        # Compute overall_score_pct from the 5 outfit-relevant dimensions for
+        # backwards compatibility with the old OutfitCheckResult.overall_score_pct
+        # property used by downstream metadata + UI.
+        overall_score_pct = int(
+            (
+                check.body_harmony_pct
+                + check.color_suitability_pct
+                + check.style_fit_pct
+                + check.pairing_coherence_pct
+                + check.occasion_pct
+            )
+            / 5
+        )
+
         self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
@@ -4428,8 +4446,9 @@ class AgenticOrchestrator:
                 "message": message,
                 "occasion_signal": occasion_signal,
                 "profile_confidence_pct": profile_confidence.analysis_confidence_pct,
+                "evaluator": "visual_evaluator",
             },
-            response_json=check.to_dict(),
+            response_json=check.model_dump(),
             reasoning_notes=[],
         )
 
@@ -4473,23 +4492,24 @@ class AgenticOrchestrator:
             rank=1,
             title="Outfit Check",
             reasoning=check.overall_note,
-            body_note=(check.strengths[0] if check.strengths else ""),
-            color_note=(check.strengths[1] if len(check.strengths) > 1 else ""),
-            style_note=(check.strengths[2] if len(check.strengths) > 2 else ""),
-            occasion_note=(check.strengths[3] if len(check.strengths) > 3 else ""),
+            body_note=(check.strengths[0] if check.strengths else check.body_note),
+            color_note=(check.strengths[1] if len(check.strengths) > 1 else check.color_note),
+            style_note=(check.strengths[2] if len(check.strengths) > 2 else check.style_note),
+            occasion_note=(check.strengths[3] if len(check.strengths) > 3 else check.occasion_note),
             body_harmony_pct=check.body_harmony_pct,
             color_suitability_pct=check.color_suitability_pct,
             style_fit_pct=check.style_fit_pct,
             pairing_coherence_pct=check.pairing_coherence_pct,
             occasion_pct=check.occasion_pct,
-            classic_pct=check.style_archetype_read.get("classic_pct", 0),
-            dramatic_pct=check.style_archetype_read.get("dramatic_pct", 0),
-            romantic_pct=check.style_archetype_read.get("romantic_pct", 0),
-            natural_pct=check.style_archetype_read.get("natural_pct", 0),
-            minimalist_pct=check.style_archetype_read.get("minimalist_pct", 0),
-            creative_pct=check.style_archetype_read.get("creative_pct", 0),
-            sporty_pct=check.style_archetype_read.get("sporty_pct", 0),
-            edgy_pct=check.style_archetype_read.get("edgy_pct", 0),
+            weather_time_pct=check.weather_time_pct,
+            classic_pct=check.classic_pct,
+            dramatic_pct=check.dramatic_pct,
+            romantic_pct=check.romantic_pct,
+            natural_pct=check.natural_pct,
+            minimalist_pct=check.minimalist_pct,
+            creative_pct=check.creative_pct,
+            sporty_pct=check.sporty_pct,
+            edgy_pct=check.edgy_pct,
             items=outfit_card_items,
             tryon_image=tryon_image,
         )
@@ -4584,18 +4604,28 @@ class AgenticOrchestrator:
 
         handler_payload = {
             "overall_verdict": check.overall_verdict,
-            "overall_score_pct": check.overall_score_pct,
+            "overall_score_pct": overall_score_pct,
             "scores": {
                 "body_harmony_pct": check.body_harmony_pct,
                 "color_suitability_pct": check.color_suitability_pct,
                 "style_fit_pct": check.style_fit_pct,
                 "pairing_coherence_pct": check.pairing_coherence_pct,
                 "occasion_pct": check.occasion_pct,
+                "weather_time_pct": check.weather_time_pct,
             },
             "strengths": strengths,
             "improvements": improvements,
             "wardrobe_suggestions": wardrobe_suggestions,
-            "style_archetype_read": dict(check.style_archetype_read),
+            "style_archetype_read": {
+                "classic_pct": check.classic_pct,
+                "dramatic_pct": check.dramatic_pct,
+                "romantic_pct": check.romantic_pct,
+                "natural_pct": check.natural_pct,
+                "minimalist_pct": check.minimalist_pct,
+                "creative_pct": check.creative_pct,
+                "sporty_pct": check.sporty_pct,
+                "edgy_pct": check.edgy_pct,
+            },
             "occasion_signal": occasion_signal or "",
             "wardrobe_gap_analysis": wardrobe_gap_analysis,
             "catalog_upsell": catalog_upsell,
@@ -4633,7 +4663,7 @@ class AgenticOrchestrator:
                         "rank": 1,
                         "title": "Outfit Check",
                         "item_ids": outfit_item_ids,
-                        "match_score": check.overall_score_pct / 100.0,
+                        "match_score": overall_score_pct / 100.0,
                         "reasoning": check.overall_note,
                     }
                 ],
@@ -4662,7 +4692,7 @@ class AgenticOrchestrator:
             response_type="recommendation",
             metadata_json={
                 "answer_source": "outfit_check_handler",
-                "overall_score_pct": check.overall_score_pct,
+                "overall_score_pct": overall_score_pct,
             },
         )
         return {
@@ -4680,6 +4710,623 @@ class AgenticOrchestrator:
             "outfits": [outfit_card.model_dump()],
             "follow_up_suggestions": follow_up_suggestions,
             "metadata": metadata,
+        }
+
+    def _handle_garment_evaluation(
+        self,
+        *,
+        plan_result: CopilotPlanResult,
+        intent: IntentClassification,
+        conversation_id: str,
+        turn_id: str,
+        channel: str,
+        external_user_id: str,
+        message: str,
+        previous_context: Dict[str, Any],
+        user_context: Any,
+        profile_confidence: ProfileConfidence,
+        attached_item: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        """Phase 12B garment_evaluation pipeline:
+
+            try-on → VisualEvaluatorAgent → formatter (with optional verdict)
+
+        Inputs: an uploaded garment image (`attached_item.image_path`).
+        The handler renders a try-on of the garment on the user's body,
+        then runs the VisualEvaluatorAgent on the rendered image to
+        score body harmony, color suitability, style fit, occasion,
+        weather/time, and 8 archetype dimensions.
+
+        ``purchase_intent`` (extracted by the planner) controls whether
+        the response formatter renders a buy/skip verdict block. The
+        wardrobe overlap + versatility checks below run regardless of
+        framing because they're useful information for both shopping and
+        suitability questions.
+
+        Graceful fallbacks:
+            - no attached image → ask_clarification
+            - no person photo → degraded response (attribute-only via
+              direct evaluator call without image)
+            - try-on quality gate failure → degraded response with the
+              evaluator scoring the bare garment image
+        """
+        garment_image_path = str((attached_item or {}).get("image_path") or "").strip()
+        if not garment_image_path:
+            assistant_message = (
+                "Upload a photo of the piece you'd like me to evaluate and I'll "
+                "render it on you for a clear take."
+            )
+            metadata = self._build_response_metadata(
+                channel=channel,
+                intent=intent,
+                profile_confidence=profile_confidence,
+                extra={"answer_source": "garment_evaluation_no_image"},
+            )
+            self.repo.finalize_turn(
+                turn_id=turn_id,
+                assistant_message=assistant_message,
+                resolved_context={
+                    "request_summary": message.strip(),
+                    "intent_classification": intent.model_dump(),
+                    "profile_confidence": profile_confidence.model_dump(),
+                    "response_metadata": metadata,
+                    "handler": Intent.GARMENT_EVALUATION,
+                    "channel": channel,
+                },
+            )
+            return {
+                "conversation_id": conversation_id,
+                "turn_id": turn_id,
+                "assistant_message": assistant_message,
+                "response_type": "clarification",
+                "resolved_context": {"request_summary": message.strip()},
+                "filters_applied": {},
+                "outfits": [],
+                "follow_up_suggestions": ["Upload a garment photo", "Rate my outfit instead"],
+                "metadata": metadata,
+            }
+
+        # Stage 1: Try-on render
+        emit = lambda *_args, **_kwargs: None  # noqa: E731 — no progress callback at this layer
+        person_image_path = self.onboarding_gateway.get_person_image_path(external_user_id)
+        tryon_render_path = ""
+        tryon_image_url = ""
+        tryon_quality_passed = False
+        tryon_failure_reason = ""
+        if person_image_path:
+            try:
+                tryon_result = self.tryon_service.generate_tryon(
+                    person_image_path=person_image_path,
+                    product_image_url=garment_image_path,
+                )
+                if tryon_result.get("success"):
+                    quality = self.tryon_quality_gate.evaluate(
+                        person_image_path=person_image_path,
+                        tryon_result=tryon_result,
+                    )
+                    if quality.get("passed"):
+                        tryon_quality_passed = True
+                        tryon_render_path = self._persist_tryon_render(
+                            external_user_id=external_user_id,
+                            conversation_id=conversation_id,
+                            turn_id=turn_id,
+                            garment_image_path=garment_image_path,
+                            tryon_result=tryon_result,
+                            quality=quality,
+                        )
+                        if tryon_render_path:
+                            tryon_image_url = self._tryon_image_url(tryon_render_path)
+                    else:
+                        tryon_failure_reason = str(quality.get("reason_code") or "quality_gate_failed")
+                        _log.info("garment_evaluation tryon failed quality gate: %s", tryon_failure_reason)
+                else:
+                    tryon_failure_reason = "tryon_generation_failed"
+            except Exception as exc:
+                tryon_failure_reason = "tryon_exception"
+                _log.warning("garment_evaluation tryon raised: %s", exc, exc_info=True)
+        else:
+            tryon_failure_reason = "missing_person_image"
+
+        # Stage 2: VisualEvaluatorAgent — score the rendered try-on if we have
+        # one, otherwise fall back to scoring the bare garment image so the
+        # user still gets a meaningful evaluation.
+        evaluation_image_path = tryon_render_path or garment_image_path
+        synthetic_candidate = OutfitCandidate(
+            candidate_id="garment-eval-1",
+            direction_id="garment_evaluation",
+            candidate_type="single_garment",
+            items=[self._attached_item_to_outfit_item(attached_item)],
+            assembly_score=1.0,
+        )
+        live_context_for_eval = LiveContext(
+            user_need=message.strip(),
+            occasion_signal=plan_result.resolved_context.occasion_signal,
+            formality_hint=plan_result.resolved_context.formality_hint,
+            time_hint=plan_result.resolved_context.time_hint,
+            time_of_day=str(getattr(plan_result.resolved_context, "time_of_day", "") or ""),
+            weather_context=str(getattr(plan_result.resolved_context, "weather_context", "") or ""),
+            specific_needs=list(plan_result.resolved_context.specific_needs or []),
+            is_followup=bool(plan_result.resolved_context.is_followup),
+            followup_intent=plan_result.resolved_context.followup_intent,
+        )
+        try:
+            evaluation = self.visual_evaluator.evaluate_candidate(
+                candidate=synthetic_candidate,
+                image_path=evaluation_image_path,
+                user_context=user_context,
+                live_context=live_context_for_eval,
+                intent=Intent.GARMENT_EVALUATION,
+                mode="single_garment",
+                profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
+            )
+        except Exception as exc:
+            _log.error("Garment evaluation failed: %s", exc, exc_info=True)
+            return self._garment_evaluation_error_response(
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                message=message,
+                error=str(exc),
+            )
+
+        self.repo.log_model_call(
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            service="agentic_application",
+            call_type=Intent.GARMENT_EVALUATION,
+            model="gpt-5.4",
+            request_json={
+                "message": message,
+                "tryon_quality_passed": tryon_quality_passed,
+                "tryon_failure_reason": tryon_failure_reason or None,
+                "purchase_intent": bool(plan_result.action_parameters.purchase_intent),
+            },
+            response_json=evaluation.model_dump(),
+            reasoning_notes=[],
+        )
+
+        # Stage 3: Deterministic wardrobe overlap + versatility (no LLM)
+        wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
+        wardrobe_overlap = self._compute_wardrobe_overlap(
+            attached_item=attached_item,
+            wardrobe_items=wardrobe_items,
+        )
+        versatility = self._compute_wardrobe_versatility(
+            attached_item=attached_item,
+            wardrobe_items=wardrobe_items,
+        )
+
+        # Stage 4: Optional buy/skip verdict (only if purchase_intent)
+        purchase_intent = bool(plan_result.action_parameters.purchase_intent)
+        verdict = ""
+        if purchase_intent:
+            verdict = self._compute_purchase_verdict(
+                evaluation=evaluation,
+                wardrobe_overlap=wardrobe_overlap,
+            )
+
+        # Stage 5: Build the response card + assistant message
+        outfit_card = OutfitCard(
+            rank=1,
+            title="Garment Evaluation",
+            reasoning=evaluation.overall_note or evaluation.reasoning,
+            body_note=evaluation.body_note,
+            color_note=evaluation.color_note,
+            style_note=evaluation.style_note,
+            occasion_note=evaluation.occasion_note,
+            body_harmony_pct=evaluation.body_harmony_pct,
+            color_suitability_pct=evaluation.color_suitability_pct,
+            style_fit_pct=evaluation.style_fit_pct,
+            pairing_coherence_pct=evaluation.pairing_coherence_pct,
+            occasion_pct=evaluation.occasion_pct,
+            weather_time_pct=evaluation.weather_time_pct,
+            classic_pct=evaluation.classic_pct,
+            dramatic_pct=evaluation.dramatic_pct,
+            romantic_pct=evaluation.romantic_pct,
+            natural_pct=evaluation.natural_pct,
+            minimalist_pct=evaluation.minimalist_pct,
+            creative_pct=evaluation.creative_pct,
+            sporty_pct=evaluation.sporty_pct,
+            edgy_pct=evaluation.edgy_pct,
+            items=[self._attached_item_to_outfit_item(attached_item)],
+            tryon_image=tryon_image_url or None,
+        )
+
+        assistant_parts: List[str] = []
+        if purchase_intent and verdict:
+            verdict_label = {
+                "buy": "Buy it.",
+                "skip": "I'd skip it.",
+                "conditional": "Buy it with one caveat.",
+            }.get(verdict, "")
+            if verdict_label:
+                assistant_parts.append(verdict_label)
+        if evaluation.overall_note:
+            assistant_parts.append(evaluation.overall_note.strip())
+        if wardrobe_overlap.get("has_duplicate"):
+            duplicate = str(wardrobe_overlap.get("duplicate_detail") or "").strip()
+            if duplicate:
+                assistant_parts.append(f"Heads up — your wardrobe already has {duplicate}.")
+        if not tryon_quality_passed and tryon_failure_reason:
+            if tryon_failure_reason == "missing_person_image":
+                assistant_parts.append(
+                    "I scored this from your profile — upload a full-body photo of yourself "
+                    "and I can render it on you for a richer take next time."
+                )
+            else:
+                assistant_parts.append(
+                    "I couldn't render a clean try-on this round, so I scored the piece "
+                    "from the photo and your profile."
+                )
+        assistant_message = " ".join(part for part in assistant_parts if part).strip()
+        if not assistant_message:
+            assistant_message = "I evaluated this piece against your profile."
+
+        follow_up_suggestions = list(plan_result.follow_up_suggestions[:5] or [])
+        if not follow_up_suggestions:
+            if purchase_intent:
+                follow_up_suggestions = [
+                    "What goes with this?",
+                    "Show me alternatives",
+                    "Save to wardrobe",
+                ]
+            else:
+                follow_up_suggestions = [
+                    "What goes with this?",
+                    "Try on something else",
+                    "Save to wardrobe",
+                ]
+
+        handler_payload = {
+            "evaluator": "visual_evaluator",
+            "tryon_quality_passed": tryon_quality_passed,
+            "tryon_failure_reason": tryon_failure_reason or None,
+            "purchase_intent": purchase_intent,
+            "verdict": verdict or None,
+            "wardrobe_overlap": wardrobe_overlap,
+            "wardrobe_versatility": versatility,
+            "scores": {
+                "body_harmony_pct": evaluation.body_harmony_pct,
+                "color_suitability_pct": evaluation.color_suitability_pct,
+                "style_fit_pct": evaluation.style_fit_pct,
+                "occasion_pct": evaluation.occasion_pct,
+                "weather_time_pct": evaluation.weather_time_pct,
+                "pairing_coherence_pct": evaluation.pairing_coherence_pct,
+            },
+            "strengths": list(evaluation.strengths or []),
+            "improvements": list(evaluation.improvements or []),
+        }
+        metadata = self._build_response_metadata(
+            channel=channel,
+            intent=intent,
+            profile_confidence=profile_confidence,
+            extra={
+                "answer_source": "garment_evaluation_handler",
+                "garment_evaluation": handler_payload,
+            },
+        )
+        self.repo.finalize_turn(
+            turn_id=turn_id,
+            assistant_message=assistant_message,
+            resolved_context={
+                "request_summary": message.strip(),
+                "intent_classification": intent.model_dump(),
+                "profile_confidence": profile_confidence.model_dump(),
+                "response_metadata": metadata,
+                "handler": Intent.GARMENT_EVALUATION,
+                "handler_payload": handler_payload,
+                "channel": channel,
+                "outfits": [outfit_card.model_dump()],
+            },
+        )
+        self.repo.update_conversation_context(
+            conversation_id=conversation_id,
+            session_context={
+                **previous_context,
+                "last_user_message": message,
+                "last_assistant_message": assistant_message,
+                "last_channel": channel,
+                "last_intent": plan_result.intent,
+                "last_response_metadata": metadata,
+                "consecutive_gate_blocks": 0,
+            },
+        )
+        self._persist_dependency_turn_event(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            channel=channel,
+            primary_intent=plan_result.intent,
+            response_type="recommendation",
+            metadata_json={
+                "answer_source": "garment_evaluation_handler",
+                "purchase_intent": purchase_intent,
+                "verdict": verdict or None,
+                "tryon_quality_passed": tryon_quality_passed,
+            },
+        )
+        return {
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "assistant_message": assistant_message,
+            "response_type": "recommendation",
+            "resolved_context": {
+                "request_summary": message.strip(),
+                "occasion": str(plan_result.resolved_context.occasion_signal or ""),
+                "style_goal": Intent.GARMENT_EVALUATION,
+                "purchase_intent": purchase_intent,
+            },
+            "filters_applied": {},
+            "outfits": [outfit_card.model_dump()],
+            "follow_up_suggestions": follow_up_suggestions,
+            "metadata": metadata,
+        }
+
+    @staticmethod
+    def _compute_wardrobe_overlap(
+        *,
+        attached_item: Dict[str, Any] | None,
+        wardrobe_items: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Deterministic check: does the user already own a similar piece?
+
+        Strong overlap: same garment_category + similar primary_color.
+        Moderate overlap: same garment_category + different color.
+        None: different category, no overlap.
+
+        Returns the same shape the legacy ShoppingDecisionAgent prompt
+        produced so downstream metadata + UI consumers see a consistent
+        contract:
+            { has_duplicate, duplicate_detail, overlap_level }
+        """
+        item = dict(attached_item or {})
+        target_category = str(item.get("garment_category") or "").strip().lower()
+        target_subtype = str(item.get("garment_subtype") or "").strip().lower()
+        target_color = str(item.get("primary_color") or "").strip().lower()
+        if not target_category and not target_subtype:
+            return {"has_duplicate": False, "duplicate_detail": None, "overlap_level": "none"}
+
+        strong_match: Optional[Dict[str, Any]] = None
+        moderate_match: Optional[Dict[str, Any]] = None
+        for w_item in wardrobe_items:
+            w_category = str(w_item.get("garment_category") or "").strip().lower()
+            w_subtype = str(w_item.get("garment_subtype") or "").strip().lower()
+            w_color = str(w_item.get("primary_color") or "").strip().lower()
+            category_match = bool(target_category) and w_category == target_category
+            subtype_match = bool(target_subtype) and w_subtype == target_subtype
+            if not (category_match or subtype_match):
+                continue
+            if target_color and w_color and target_color == w_color:
+                strong_match = w_item
+                break
+            if moderate_match is None:
+                moderate_match = w_item
+
+        if strong_match is not None:
+            title = str(strong_match.get("title") or "a similar piece").strip()
+            return {
+                "has_duplicate": True,
+                "duplicate_detail": f"your {title}",
+                "overlap_level": "strong",
+            }
+        if moderate_match is not None:
+            title = str(moderate_match.get("title") or "a similar piece").strip()
+            return {
+                "has_duplicate": True,
+                "duplicate_detail": f"your {title} (different color)",
+                "overlap_level": "moderate",
+            }
+        return {"has_duplicate": False, "duplicate_detail": None, "overlap_level": "none"}
+
+    @staticmethod
+    def _compute_wardrobe_versatility(
+        *,
+        attached_item: Dict[str, Any] | None,
+        wardrobe_items: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Deterministic check: how easily can the user pair this with their wardrobe?
+
+        Counts compatible wardrobe items by complementary category and
+        formality level. The signal is intentionally coarse:
+            - tops pair with bottoms and shoes
+            - bottoms pair with tops and shoes
+            - dresses / one-pieces pair with shoes and outerwear
+            - outerwear pairs with everything
+
+        Returns:
+            {
+                "compatible_count": int,
+                "complement_categories": [str, ...],
+                "rating": "high" | "medium" | "low" | "none",
+            }
+        """
+        item = dict(attached_item or {})
+        category = str(item.get("garment_category") or "").strip().lower()
+        formality = str(item.get("formality_level") or "").strip().lower()
+
+        complement_map: Dict[str, List[str]] = {
+            "top": ["bottom", "shoe"],
+            "shirt": ["bottom", "shoe"],
+            "blouse": ["bottom", "shoe"],
+            "bottom": ["top", "shoe"],
+            "trouser": ["top", "shoe"],
+            "skirt": ["top", "shoe"],
+            "dress": ["shoe", "outerwear"],
+            "one_piece": ["shoe", "outerwear"],
+            "outerwear": ["top", "bottom", "dress"],
+            "shoe": ["top", "bottom", "dress"],
+        }
+        complement_categories = complement_map.get(category, [])
+        if not complement_categories:
+            return {"compatible_count": 0, "complement_categories": [], "rating": "none"}
+
+        compatible: List[Dict[str, Any]] = []
+        for w_item in wardrobe_items:
+            w_category = str(w_item.get("garment_category") or "").strip().lower()
+            w_formality = str(w_item.get("formality_level") or "").strip().lower()
+            if w_category not in complement_categories:
+                continue
+            # Soft formality compatibility — same level or one step apart
+            if formality and w_formality and formality != w_formality:
+                # Use the assembler's same compatibility table indirectly
+                compat_table = {
+                    "casual": {"casual", "smart_casual"},
+                    "smart_casual": {"casual", "smart_casual", "business_casual"},
+                    "business_casual": {"smart_casual", "business_casual", "semi_formal"},
+                    "semi_formal": {"business_casual", "semi_formal", "formal"},
+                    "formal": {"semi_formal", "formal", "ultra_formal"},
+                    "ultra_formal": {"formal", "ultra_formal"},
+                }
+                if w_formality not in compat_table.get(formality, {formality}):
+                    continue
+            compatible.append(w_item)
+
+        count = len(compatible)
+        if count >= 5:
+            rating = "high"
+        elif count >= 2:
+            rating = "medium"
+        elif count >= 1:
+            rating = "low"
+        else:
+            rating = "none"
+        return {
+            "compatible_count": count,
+            "complement_categories": complement_categories,
+            "rating": rating,
+        }
+
+    @staticmethod
+    def _compute_purchase_verdict(
+        *,
+        evaluation: EvaluatedRecommendation,
+        wardrobe_overlap: Dict[str, Any],
+    ) -> str:
+        """Deterministic buy/skip/conditional verdict from evaluator scores.
+
+        Phase 12B initial thresholds (calibrate from staging telemetry
+        in Phase 12E):
+            - strong wardrobe duplicate → skip (overrides scores)
+            - average score >= 78 AND no strong duplicate → buy
+            - average score >= 60 → conditional
+            - else → skip
+        """
+        if str(wardrobe_overlap.get("overlap_level") or "").lower() == "strong":
+            return "skip"
+        avg = (
+            evaluation.body_harmony_pct
+            + evaluation.color_suitability_pct
+            + evaluation.style_fit_pct
+            + evaluation.occasion_pct
+            + evaluation.weather_time_pct
+        ) / 5.0
+        if avg >= 78:
+            return "buy"
+        if avg >= 60:
+            return "conditional"
+        return "skip"
+
+    @staticmethod
+    def _attached_item_to_outfit_item(attached_item: Dict[str, Any] | None) -> Dict[str, Any]:
+        item = dict(attached_item or {})
+        return {
+            "product_id": str(item.get("id") or item.get("product_id") or ""),
+            "title": str(item.get("title") or "Uploaded garment"),
+            "image_url": str(item.get("image_url") or item.get("image_path") or ""),
+            "garment_category": str(item.get("garment_category") or ""),
+            "garment_subtype": str(item.get("garment_subtype") or ""),
+            "primary_color": str(item.get("primary_color") or ""),
+            "formality_level": str(item.get("formality_level") or ""),
+            "occasion_fit": str(item.get("occasion_fit") or ""),
+            "pattern_type": str(item.get("pattern_type") or ""),
+            "fit_type": str(item.get("fit_type") or ""),
+            "volume_profile": str(item.get("volume_profile") or ""),
+            "silhouette_type": str(item.get("silhouette_type") or ""),
+            "source": "wardrobe",
+            "role": "garment",
+        }
+
+    def _persist_tryon_render(
+        self,
+        *,
+        external_user_id: str,
+        conversation_id: str,
+        turn_id: str,
+        garment_image_path: str,
+        tryon_result: Dict[str, Any],
+        quality: Dict[str, Any],
+    ) -> str:
+        """Persist a successful single-garment try-on to disk + DB; return the file path."""
+        import base64
+        import hashlib
+        from datetime import datetime, timezone
+        from pathlib import Path
+
+        image_b64 = tryon_result.get("image_base64") or ""
+        if not image_b64:
+            return ""
+        try:
+            image_bytes = base64.b64decode(image_b64)
+        except Exception:
+            return ""
+        if not image_bytes:
+            return ""
+        mime_type = tryon_result.get("mime_type") or "image/png"
+        ext = ".png" if "png" in mime_type else ".jpg"
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+        encrypted = hashlib.sha256(
+            f"{external_user_id}_garment_eval_{garment_image_path}_{ts}".encode()
+        ).hexdigest()
+        tryon_dir = Path("data/tryon/images")
+        tryon_dir.mkdir(parents=True, exist_ok=True)
+        dest = tryon_dir / f"{encrypted}{ext}"
+        try:
+            dest.write_bytes(image_bytes)
+        except Exception:
+            _log.warning("Failed to persist garment_evaluation tryon image", exc_info=True)
+            return ""
+        try:
+            self.repo.insert_tryon_image(
+                user_id=external_user_id,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                outfit_rank=1,
+                garment_ids=[garment_image_path],
+                garment_source="wardrobe",
+                person_image_path=str(self.onboarding_gateway.get_person_image_path(external_user_id) or ""),
+                encrypted_filename=encrypted,
+                file_path=str(dest),
+                mime_type=mime_type,
+                file_size_bytes=len(image_bytes),
+                quality_score_pct=quality.get("quality_score_pct"),
+            )
+        except Exception:
+            _log.warning("Failed to persist garment_evaluation tryon metadata", exc_info=True)
+        return str(dest)
+
+    def _garment_evaluation_error_response(
+        self,
+        *,
+        conversation_id: str,
+        turn_id: str,
+        message: str,
+        error: str,
+    ) -> Dict[str, Any]:
+        fallback = "I'm having trouble evaluating this piece right now. Please try again."
+        self.repo.finalize_turn(
+            turn_id=turn_id,
+            assistant_message=fallback,
+            resolved_context={"error": error, "request_summary": message.strip()},
+        )
+        return {
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "assistant_message": fallback,
+            "response_type": "error",
+            "resolved_context": {"request_summary": message.strip()},
+            "filters_applied": {},
+            "outfits": [],
+            "follow_up_suggestions": [],
+            "metadata": {"error": True},
         }
 
     def _decompose_and_save_garments(
@@ -4707,96 +5354,6 @@ class AgenticOrchestrator:
     @staticmethod
     def _normalize_text_token(value: Any) -> str:
         return str(value or "").strip().lower().replace("-", " ").replace("_", " ")
-
-    def _compute_wardrobe_overlap(
-        self,
-        *,
-        wardrobe_items: List[Dict[str, Any]],
-        detected_garments: List[str],
-        detected_colors: List[str],
-    ) -> Dict[str, Any]:
-        normalized_garments = {
-            self._normalize_text_token(value)
-            for value in detected_garments
-            if self._normalize_text_token(value)
-        }
-        normalized_colors = {
-            self._normalize_text_token(value)
-            for value in detected_colors
-            if self._normalize_text_token(value)
-        }
-        best_match: Dict[str, Any] | None = None
-        best_score = -1
-        for item in wardrobe_items:
-            item_garments = {
-                self._normalize_text_token(item.get("garment_category")),
-                self._normalize_text_token(item.get("garment_subtype")),
-            }
-            item_colors = {self._normalize_text_token(item.get("primary_color"))}
-            garment_match = bool(normalized_garments and item_garments.intersection(normalized_garments))
-            color_match = bool(normalized_colors and item_colors.intersection(normalized_colors))
-            score = 0
-            if garment_match:
-                score += 2
-            if color_match:
-                score += 1
-            if score > best_score:
-                best_score = score
-                best_match = item
-        if not best_match or best_score <= 0:
-            return {"has_duplicate": False, "duplicate_detail": None, "overlap_level": "none"}
-        if best_score >= 3:
-            level = "strong"
-        else:
-            level = "moderate"
-        return {
-            "has_duplicate": True,
-            "duplicate_detail": str(best_match.get("title") or "").strip() or None,
-            "overlap_level": level,
-        }
-
-    def _build_shopping_pairing_suggestions(
-        self,
-        *,
-        wardrobe_items: List[Dict[str, Any]],
-        detected_garments: List[str],
-        detected_colors: List[str],
-    ) -> List[Dict[str, str]]:
-        target_garments = {self._normalize_text_token(value) for value in detected_garments if self._normalize_text_token(value)}
-        target_colors = {self._normalize_text_token(value) for value in detected_colors if self._normalize_text_token(value)}
-
-        def is_same_category(item: Dict[str, Any]) -> bool:
-            categories = {
-                self._normalize_text_token(item.get("garment_category")),
-                self._normalize_text_token(item.get("garment_subtype")),
-            }
-            return bool(target_garments and categories.intersection(target_garments))
-
-        suggestions: List[Dict[str, str]] = []
-        for item in wardrobe_items:
-            if is_same_category(item):
-                continue
-            title = str(item.get("title") or "").strip()
-            if not title:
-                continue
-            color = str(item.get("primary_color") or "").strip()
-            occasion = str(item.get("occasion_fit") or "").strip().replace("_", " ")
-            note_parts = []
-            if color and target_colors and self._normalize_text_token(color) not in target_colors:
-                note_parts.append(f"The {color} tone adds contrast.")
-            if occasion:
-                note_parts.append(f"It already works for {occasion}.")
-            if not note_parts:
-                note_parts.append("It broadens how often you could wear the piece.")
-            suggestions.append(
-                {
-                    "wardrobe_item": title,
-                    "pairing_note": " ".join(note_parts).strip(),
-                }
-            )
-            if len(suggestions) >= 3:
-                break
-        return suggestions
 
     def _build_outfit_check_wardrobe_suggestions(
         self,
@@ -4855,310 +5412,6 @@ class AgenticOrchestrator:
             if len(suggestions) >= 3:
                 break
         return suggestions[:3]
-
-    def _handle_shopping_decision(
-        self,
-        *,
-        plan_result: CopilotPlanResult,
-        intent: IntentClassification,
-        conversation_id: str,
-        turn_id: str,
-        channel: str,
-        external_user_id: str,
-        message: str,
-        previous_context: Dict[str, Any],
-        user_context: Any,
-        profile_confidence: ProfileConfidence,
-
-    ) -> Dict[str, Any]:
-        params = plan_result.action_parameters
-        product_urls = list(params.product_urls or []) or extract_urls(message)
-        detected_garments = [str(v).strip() for v in list(params.detected_garments or []) if str(v).strip()]
-        detected_colors = [str(v).strip() for v in list(params.detected_colors or []) if str(v).strip()]
-        wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
-        overlap = self._compute_wardrobe_overlap(
-            wardrobe_items=wardrobe_items,
-            detected_garments=detected_garments,
-            detected_colors=detected_colors,
-        )
-        pairing_suggestions = self._build_shopping_pairing_suggestions(
-            wardrobe_items=wardrobe_items,
-            detected_garments=detected_garments,
-            detected_colors=detected_colors,
-        )
-        occasion_signal = str(plan_result.resolved_context.occasion_signal or "").strip() or None
-        wardrobe_gap_analysis = self._build_wardrobe_gap_analysis(
-            wardrobe_items=wardrobe_items,
-            occasion=occasion_signal or "",
-            required_roles=detected_garments or ["top", "bottom", "shoe"],
-        )
-        try:
-            decision = self.shopping_decision_agent.evaluate(
-                user_context=user_context,
-                product_description=message,
-                product_urls=product_urls,
-                detected_garments=detected_garments,
-                detected_colors=detected_colors,
-                occasion_signal=occasion_signal,
-                profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
-                wardrobe_overlap=overlap,
-                pairing_suggestions=pairing_suggestions,
-            )
-        except Exception as exc:
-            _log.error("Shopping decision evaluation failed: %s", exc, exc_info=True)
-            self.repo.finalize_turn(
-                turn_id=turn_id,
-                assistant_message="I'm having trouble evaluating this item right now. Please try again.",
-                resolved_context={"error": str(exc), "request_summary": message.strip()},
-            )
-            return {
-                "conversation_id": conversation_id,
-                "turn_id": turn_id,
-                "assistant_message": "I'm having trouble evaluating this item right now. Please try again.",
-                "response_type": "error",
-                "resolved_context": {"request_summary": message.strip()},
-                "filters_applied": {},
-                "outfits": [],
-                "follow_up_suggestions": [],
-                "metadata": {"error": True},
-            }
-
-        self.repo.log_model_call(
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            service="agentic_application",
-            call_type=Intent.SHOPPING_DECISION,
-            model="gpt-5.4",
-            request_json={
-                "message": message,
-                "product_urls": product_urls,
-                "detected_garments": detected_garments,
-                "detected_colors": detected_colors,
-                "occasion_signal": occasion_signal,
-            },
-            response_json=decision.to_dict(),
-            reasoning_notes=[],
-        )
-
-        verdict_label = decision.verdict.upper()
-        assistant_parts: List[str] = [f"My verdict: {verdict_label}.", decision.verdict_note]
-        if overlap.get("has_duplicate") and overlap.get("duplicate_detail"):
-            assistant_parts.append(
-                f"You already own something similar: {overlap['duplicate_detail']}."
-            )
-        if decision.concerns:
-            assistant_parts.append("Watchouts: " + "; ".join(decision.concerns[:2]) + ".")
-        if decision.pairing_suggestions:
-            pairing_text = " ".join(
-                f"{item['wardrobe_item']}: {item['pairing_note']}"
-                for item in decision.pairing_suggestions[:2]
-                if str(item.get("wardrobe_item") or "").strip()
-            ).strip()
-            if pairing_text:
-                assistant_parts.append("If you buy it: " + pairing_text)
-        if decision.verdict == "skip" and decision.instead_consider:
-            assistant_parts.append(f"Instead, consider {decision.instead_consider}.")
-        elif decision.if_you_buy:
-            assistant_parts.append(decision.if_you_buy)
-        if wardrobe_gap_analysis.get("gap_items"):
-            assistant_parts.append(
-                "The bigger wardrobe gap is " + ", ".join(list(wardrobe_gap_analysis.get("gap_items") or [])[:2]) + "."
-            )
-        if profile_confidence.analysis_confidence_pct < 70:
-            assistant_parts.append(
-                f"My confidence is moderated by your profile confidence being {profile_confidence.analysis_confidence_pct}%."
-            )
-        assistant_message = " ".join(part for part in assistant_parts if str(part).strip()).strip()
-
-        handler_payload = {
-            **decision.to_dict(),
-            "product_urls": product_urls,
-            "detected_garments": detected_garments,
-            "detected_colors": detected_colors,
-            "occasion_signal": occasion_signal or "",
-            "wardrobe_gap_analysis": wardrobe_gap_analysis,
-        }
-        metadata = self._build_response_metadata(
-            channel=channel,
-            intent=intent,
-            profile_confidence=profile_confidence,
-            extra={
-                "answer_source": "shopping_decision_handler",
-                "shopping_decision": handler_payload,
-            },
-        )
-        self.repo.finalize_turn(
-            turn_id=turn_id,
-            assistant_message=assistant_message,
-            resolved_context={
-                "request_summary": message.strip(),
-                "occasion": occasion_signal or "",
-                "style_goal": "shopping_decision",
-                "intent_classification": intent.model_dump(),
-                "profile_confidence": profile_confidence.model_dump(),
-                "response_metadata": metadata,
-                "handler": Intent.SHOPPING_DECISION,
-                "handler_payload": handler_payload,
-                "channel": channel,
-            },
-        )
-        self.repo.update_conversation_context(
-            conversation_id=conversation_id,
-            session_context={
-                **previous_context,
-                "last_user_message": message,
-                "last_assistant_message": assistant_message,
-                "last_channel": channel,
-                "last_intent": plan_result.intent,
-
-                "last_response_metadata": metadata,
-                "consecutive_gate_blocks": 0,
-            },
-        )
-        self._persist_dependency_turn_event(
-            external_user_id=external_user_id,
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            channel=channel,
-            primary_intent=plan_result.intent,
-            response_type="recommendation",
-            metadata_json={
-                "answer_source": "shopping_decision_handler",
-                "verdict": decision.verdict,
-                "verdict_confidence": decision.verdict_confidence,
-            },
-        )
-        return {
-            "conversation_id": conversation_id,
-            "turn_id": turn_id,
-            "assistant_message": assistant_message,
-            "response_type": "recommendation",
-            "resolved_context": {
-                "request_summary": message.strip(),
-                "occasion": occasion_signal or "",
-                "style_goal": "shopping_decision",
-            },
-            "filters_applied": {},
-            "outfits": [],
-            "follow_up_suggestions": (
-                plan_result.follow_up_suggestions[:5]
-                if plan_result.follow_up_suggestions
-                else ["What goes with this?", "Show me better options", "Use my wardrobe first"]
-            ),
-            "metadata": metadata,
-        }
-
-    def _handle_planner_virtual_tryon(
-        self,
-        *,
-        plan_result: CopilotPlanResult,
-        intent: IntentClassification,
-        conversation_id: str,
-        turn_id: str,
-        channel: str,
-        external_user_id: str,
-        message: str,
-        previous_context: Dict[str, Any],
-        profile_confidence: ProfileConfidence,
-
-    ) -> Dict[str, Any]:
-        tryon_result = self._run_virtual_tryon_request(
-            external_user_id=external_user_id,
-            message=message,
-        )
-        assistant_message = plan_result.assistant_message
-        if not tryon_result.get("success"):
-            error_msg = str(tryon_result.get("error") or "")
-            if error_msg:
-                assistant_message = error_msg
-
-        handler_payload: Dict[str, Any] = {
-            "success": tryon_result.get("success"),
-            "product_url": tryon_result.get("product_url", ""),
-        }
-        if tryon_result.get("quality_gate"):
-            handler_payload["quality_gate"] = dict(tryon_result.get("quality_gate") or {})
-        if tryon_result.get("success") and tryon_result.get("data_url"):
-            handler_payload["tryon_image"] = str(tryon_result.get("data_url") or "")
-            self._persist_policy_event(
-                external_user_id=external_user_id,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                channel=channel,
-                policy_event_type="virtual_tryon_guardrail",
-                input_class=Intent.VIRTUAL_TRYON_REQUEST,
-                reason_code="quality_gate_passed",
-                decision="allowed",
-                metadata_json={
-                    "quality_gate": dict(tryon_result.get("quality_gate") or {}),
-                    "product_url": str(tryon_result.get("product_url") or ""),
-                },
-            )
-        elif tryon_result.get("quality_gate") and not tryon_result["quality_gate"].get("passed"):
-            self._persist_policy_event(
-                external_user_id=external_user_id,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                channel=channel,
-                policy_event_type="virtual_tryon_guardrail",
-                input_class=Intent.VIRTUAL_TRYON_REQUEST,
-                reason_code=str(tryon_result["quality_gate"].get("reason_code") or "quality_gate_failed"),
-                metadata_json={
-                    "quality_gate": dict(tryon_result.get("quality_gate") or {}),
-                    "product_url": str(tryon_result.get("product_url") or ""),
-                },
-            )
-
-        metadata = self._build_response_metadata(
-            channel=channel,
-            intent=intent,
-            profile_confidence=profile_confidence,
-            extra={"answer_source": "copilot_planner"},
-        )
-        self.repo.finalize_turn(
-            turn_id=turn_id,
-            assistant_message=assistant_message,
-            resolved_context={
-                "request_summary": message.strip(),
-                "intent_classification": intent.model_dump(),
-                "response_metadata": metadata,
-                "handler": "copilot_planner_tryon",
-                "handler_payload": handler_payload,
-                "channel": channel,
-            },
-        )
-        self.repo.update_conversation_context(
-            conversation_id=conversation_id,
-            session_context={
-                **previous_context,
-                "last_user_message": message,
-                "last_assistant_message": assistant_message,
-                "last_channel": channel,
-                "last_intent": plan_result.intent,
-
-                "last_response_metadata": metadata,
-            },
-        )
-        self._persist_dependency_turn_event(
-            external_user_id=external_user_id,
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            channel=channel,
-            primary_intent=plan_result.intent,
-            response_type="recommendation",
-            metadata_json={"answer_source": "copilot_planner"},
-        )
-        return {
-            "conversation_id": conversation_id,
-            "turn_id": turn_id,
-            "assistant_message": assistant_message,
-            "response_type": "recommendation",
-            "resolved_context": {"request_summary": message.strip()},
-            "filters_applied": {},
-            "outfits": [],
-            "follow_up_suggestions": plan_result.follow_up_suggestions[:5],
-            "metadata": metadata,
-        }
 
     def _handle_planner_wardrobe_save(
         self,
@@ -5320,222 +5573,6 @@ class AgenticOrchestrator:
             "outfits": [],
             "follow_up_suggestions": plan_result.follow_up_suggestions[:5],
             "metadata": metadata,
-        }
-
-    def _handle_product_browse(
-        self,
-        *,
-        plan_result: CopilotPlanResult,
-        intent: IntentClassification,
-        conversation_id: str,
-        turn_id: str,
-        channel: str,
-        external_user_id: str,
-        message: str,
-        previous_context: Dict[str, Any],
-        user_context: Any,
-        profile_confidence: Any,
-        emit: Any,
-    ) -> Dict[str, Any]:
-        """Handle product_browse intent — direct catalog search by category/color/attribute."""
-        from .filters import build_global_hard_filters, merge_filters, resolve_garment_filters
-        from .schemas import (
-            CombinedContext,
-            DirectionSpec,
-            LiveContext,
-            QuerySpec,
-            RecommendationPlan,
-        )
-
-        detected_garments = list(plan_result.action_parameters.detected_garments or [])
-        detected_colors = list(plan_result.action_parameters.detected_colors or [])
-        formality = str(plan_result.resolved_context.formality_hint or "").strip()
-
-        # Build query document from constraints
-        garment_label = detected_garments[0] if detected_garments else "item"
-        color_label = " ".join(detected_colors) if detected_colors else ""
-        profile_hint = ""
-        if hasattr(user_context, "color_palette") and user_context.color_palette:
-            palette = user_context.color_palette
-            if hasattr(palette, "base_colors") and palette.base_colors:
-                profile_hint = f" Profile palette includes {', '.join(palette.base_colors[:3])}."
-        query_parts = ["A"]
-        if color_label:
-            query_parts.append(color_label)
-        query_parts.append(garment_label)
-        if formality:
-            query_parts.append(f"for {formality} wear")
-        query_doc = " ".join(query_parts) + "." + profile_hint
-
-        # Build filters
-        garment_filters = resolve_garment_filters(detected_garments)
-        hard_filters = merge_filters(
-            build_global_hard_filters(user_context),
-            garment_filters,
-        )
-
-        # Build minimal single-direction plan
-        browse_plan = RecommendationPlan(
-            plan_type="complete_only",
-            retrieval_count=12,
-            directions=[
-                DirectionSpec(
-                    direction_id="browse",
-                    direction_type="complete",
-                    label=f"Browse: {garment_label}",
-                    queries=[
-                        QuerySpec(
-                            query_id="browse_q1",
-                            role="complete",
-                            hard_filters=garment_filters,
-                            query_document=query_doc,
-                        ),
-                    ],
-                ),
-            ],
-        )
-
-        live_context = LiveContext(
-            user_need=message,
-            occasion_signal=plan_result.resolved_context.occasion_signal or "",
-            formality_hint=formality,
-            time_hint=plan_result.resolved_context.time_hint or "",
-            specific_needs=list(plan_result.resolved_context.specific_needs or []),
-        )
-
-        combined_context = CombinedContext(
-            user=user_context,
-            live=live_context,
-            hard_filters=hard_filters,
-        )
-
-        # Search catalog via existing agent
-        if emit:
-            emit("search", "catalog_browse", "Searching catalog...")
-        retrieved_sets = self.catalog_search_agent.search(browse_plan, combined_context)
-
-        # Collect all products across sets
-        all_products = []
-        for rs in retrieved_sets:
-            all_products.extend(rs.products)
-
-        # Build individual product cards (1 item per OutfitCard)
-        from .schemas import OutfitCard, OutfitItem
-        outfits = []
-        for i, product in enumerate(all_products[:12]):
-            enriched = dict(product.enriched_data or {})
-            metadata = dict(product.metadata or {})
-            item = OutfitItem(
-                product_id=product.product_id,
-                similarity=product.similarity,
-                title=str(enriched.get("title") or metadata.get("title") or ""),
-                image_url=str(enriched.get("image_urls") or metadata.get("image_url") or ""),
-                price=str(enriched.get("price") or metadata.get("price") or ""),
-                product_url=str(enriched.get("url") or enriched.get("product_url") or ""),
-                garment_category=str(enriched.get("garment_category") or metadata.get("garment_category") or ""),
-                garment_subtype=str(enriched.get("garment_subtype") or metadata.get("garment_subtype") or ""),
-                primary_color=str(enriched.get("primary_color") or metadata.get("primary_color") or ""),
-                role="complete",
-                formality_level=str(enriched.get("formality_level") or metadata.get("formality_level") or ""),
-                occasion_fit=str(enriched.get("occasion_fit") or metadata.get("occasion_fit") or ""),
-                pattern_type=str(enriched.get("pattern_type") or ""),
-                source="catalog",
-            )
-            outfits.append(
-                OutfitCard(
-                    rank=i + 1,
-                    title=item.title or f"{garment_label.title()} Option {i + 1}",
-                    items=[item.model_dump()],
-                )
-            )
-
-        # Follow-up suggestions
-        follow_ups = list(plan_result.follow_up_suggestions or [])
-        if not follow_ups:
-            follow_ups = [
-                "Style this piece",
-                "Show me more like this",
-                "Try this on me",
-                "Show me a different color",
-                "Build an outfit around one of these",
-            ]
-
-        # Response message
-        product_count = len(outfits)
-        if product_count:
-            assistant_message = plan_result.assistant_message or f"Here are {product_count} {garment_label} options from the catalog that suit your profile."
-        else:
-            assistant_message = plan_result.assistant_message or f"I couldn't find {garment_label} options matching those filters right now. Try broadening your search."
-
-        # Build metadata
-        response_metadata = self._build_response_metadata(
-            channel=channel,
-            intent=intent,
-            profile_confidence=profile_confidence,
-            extra={
-                "answer_source": "product_browse_handler",
-                "product_count": product_count,
-                "browse_constraints": {
-                    "garment_label": garment_label,
-                    "colors": detected_colors,
-                    "formality": formality,
-                    "hard_filters": hard_filters,
-                },
-            },
-        )
-
-        # Persist
-        resolved_context_dict = {
-            "request_summary": message,
-            "occasion": "",
-            "style_goal": "product_browse",
-            "handler": Intent.PRODUCT_BROWSE,
-            "profile_confidence_pct": profile_confidence.analysis_confidence_pct,
-        }
-
-        self.repo.finalize_turn(
-            turn_id=turn_id,
-            assistant_message=assistant_message,
-            resolved_context=resolved_context_dict,
-        )
-
-        session_update = {
-            **previous_context,
-            "last_intent": plan_result.intent,
-            "last_live_context": {
-                "occasion_signal": "",
-                "formality_hint": formality,
-                "style_goal": "product_browse",
-            },
-        }
-        self.repo.update_conversation_context(
-            conversation_id=conversation_id,
-            session_context=session_update,
-        )
-
-        self._persist_dependency_turn_event(
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            external_user_id=external_user_id,
-            channel=channel,
-            primary_intent=plan_result.intent,
-            response_type="product_browse",
-            metadata_json={
-                "product_count": product_count,
-                "garment_label": garment_label,
-            },
-        )
-
-        return {
-            "conversation_id": conversation_id,
-            "turn_id": turn_id,
-            "assistant_message": assistant_message,
-            "response_type": "product_browse",
-            "resolved_context": resolved_context_dict,
-            "filters_applied": hard_filters,
-            "outfits": [o.model_dump() if hasattr(o, "model_dump") else dict(o) for o in outfits],
-            "follow_up_suggestions": follow_ups[:5],
-            "metadata": response_metadata,
         }
 
     @staticmethod

@@ -87,8 +87,13 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertEqual(200, resp.status_code)
         html = resp.text
         self.assertIn("Sigma Aura", html)
-        self.assertIn("Agent Processing Stages", html)
+        # Phase 11A: the legacy "Agent Processing Stages" header was
+        # replaced with a subtle stage bar driven by latestVisibleStage
+        # in JS. Assert the new artifacts.
+        self.assertIn("renderStages", html)
+        self.assertIn("latestVisibleStage", html)
         self.assertIn("Logout", html)
+        # Legacy admin/debug controls should NOT appear in the user-facing shell
         self.assertNotIn("Strictness", html)
         self.assertNotIn("Hard Filter Profile", html)
         self.assertNotIn("Rewards", html)
@@ -99,7 +104,16 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         client = TestClient(app)
         resp = client.get("/?user=user_processing")
         self.assertEqual(200, resp.status_code)
-        self.assertIn("Profile processing in progress.", resp.text)
+        # Phase 11A: the dedicated "Profile processing in progress." HTML
+        # page was replaced with the chat shell rendered in profile-view
+        # mode (active_view="profile"). Onboarded users with running
+        # analysis land on the chat shell with the profile view active
+        # so they can monitor analysis progress without leaving the app.
+        html = resp.text
+        self.assertIn("Sigma Aura", html)
+        self.assertIn("view-profile", html)
+        # User_id is plumbed through to the shell's USER_ID const
+        self.assertIn("user_processing", html)
 
     def test_onboard_focus_wardrobe_renders_manager_html(self) -> None:
         app, _, _, onboarding_gateway, _ = self._patched_app("completed")
@@ -312,9 +326,17 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         client = TestClient(app)
         resp = client.get("/?user=user_ready")
         html = resp.text
+        # Legacy dedicated "Pair A Garment" surface should NOT exist —
+        # pairing flows through the chat composer's attachment popover.
         self.assertNotIn("Pair A Garment", html)
         self.assertNotIn("uploadPairBtn", html)
-        self.assertIn("attachImgBtn", html)
+        # Phase 11A: the chat composer's attachment surface uses a "+"
+        # button with a popover that exposes "Upload image" and
+        # "Select from wardrobe" entries (renamed from the legacy
+        # `attachImgBtn`).
+        self.assertIn("plusBtn", html)
+        self.assertIn("uploadImageBtn", html)
+        self.assertIn("selectWardrobeBtn", html)
         self.assertIn("chatImageFile", html)
         self.assertIn("What goes with this? Show me pairing options.", html)
 

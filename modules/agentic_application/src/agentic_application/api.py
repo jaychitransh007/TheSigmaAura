@@ -222,21 +222,41 @@ def create_app() -> FastAPI:
 
     @app.post("/v1/images/convert")
     def convert_image(payload: dict) -> dict:
-        """Convert HEIC/HEIF image data URL to JPEG."""
-        from user.service import _convert_heic_to_jpeg
+        """Convert HEIC/HEIF/AVIF image data URL to JPEG.
+
+        OpenAI's vision API only accepts JPEG/PNG/GIF/WebP. iPhones
+        default to HEIC and modern web tooling defaults to AVIF —
+        both fail wardrobe enrichment with `400 - The image data you
+        provided does not represent a valid image`. The frontend can
+        call this route before posting an upload turn to convert
+        unsupported formats up front. The wardrobe save path also
+        runs the same conversion as a defense-in-depth fallback.
+        """
+        from user.service import _convert_to_jpeg_if_needed
         import base64 as b64
         raw = str(payload.get("image_data") or "").strip()
         if not raw.startswith("data:") or ";base64," not in raw:
             raise HTTPException(status_code=400, detail="Invalid image data URL")
         header, encoded = raw.split(",", 1)
         mime = header.split(";")[0].split(":", 1)[1] if ":" in header else ""
-        if mime not in ("image/heic", "image/heif", ""):
+        # Allowlist of formats we know how to convert to JPEG. Anything
+        # outside this set is passed through unchanged so the frontend
+        # doesn't accidentally re-encode JPEGs that are already valid.
+        if mime not in ("image/heic", "image/heif", "image/avif", ""):
             return {"image_data": raw, "converted": False}
         try:
             file_bytes = b64.b64decode(encoded)
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid base64 data")
-        converted, new_ct, _ = _convert_heic_to_jpeg(file_bytes, "upload.heic")
+        # Pick a filename extension matching the mime so the converter's
+        # extension-based dispatch fires correctly.
+        if mime == "image/avif":
+            filename = "upload.avif"
+        elif mime == "image/heif":
+            filename = "upload.heif"
+        else:
+            filename = "upload.heic"
+        converted, new_ct, _ = _convert_to_jpeg_if_needed(file_bytes, filename)
         if new_ct:
             jpeg_b64 = b64.b64encode(converted).decode("ascii")
             return {"image_data": f"data:image/jpeg;base64,{jpeg_b64}", "converted": True}
@@ -410,7 +430,7 @@ def create_app() -> FastAPI:
                     )
                 log_policy_event(
                     policy_event_type="virtual_tryon_guardrail",
-                    input_class=Intent.VIRTUAL_TRYON_REQUEST,
+                    input_class=Intent.GARMENT_EVALUATION,
                     reason_code="quality_gate_passed",
                     decision="allowed",
                     user_id=payload.user_id,
@@ -421,7 +441,7 @@ def create_app() -> FastAPI:
         except (ValueError, FileNotFoundError, RuntimeError) as exc:
             log_policy_event(
                 policy_event_type="virtual_tryon_guardrail",
-                input_class=Intent.VIRTUAL_TRYON_REQUEST,
+                input_class=Intent.GARMENT_EVALUATION,
                 reason_code=reason_code or (
                     "missing_person_image"
                     if "No full-body onboarding image found" in str(exc)

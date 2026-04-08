@@ -150,9 +150,11 @@ MAX_PAIRED_CANDIDATES = 30
 # This rule applies to the main catalog pipeline only. It does NOT apply to:
 #   - wardrobe-first pairing (anchor is structural, appears in both the
 #     wardrobe and catalog-alternatives cards by design)
-#   - capsule/trip planning (pieces are *meant* to recur across dayparts —
-#     that's what "capsule" means). The capsule handler has its own
-#     diversity model in orchestrator._handle_capsule_or_trip_planning.
+#
+# Note: capsule/trip planning was removed in Phase 12A and will return as a
+# distinct intent in a later phase; when it does, it will need its own
+# diversity model that allows pieces to recur across dayparts (that's what
+# "capsule" means).
 MAX_PRODUCT_REPEAT_PER_RUN = 1
 
 
@@ -243,19 +245,28 @@ class OutfitAssembler:
     def _enforce_cross_outfit_diversity(
         candidates: List[OutfitCandidate],
     ) -> List[OutfitCandidate]:
-        """Enforce "each garment appears in at most one recommendation".
+        """Enforce "each non-anchor garment appears in at most one recommendation".
 
         Walks candidates in assembly-score order (highest first) and accepts
-        each only if none of its items has already been used by a
-        previously-accepted candidate. Because we walk in score order, the
-        first time a given product_id appears is by definition its
+        each only if none of its NON-ANCHOR items has already been used by
+        a previously-accepted candidate. Because we walk in score order,
+        the first time a given product_id appears is by definition its
         *highest-scoring pairing* — the pair where it fits best. Every
         later candidate containing that product is dropped.
 
+        **Phase 12D anchor exemption:** items marked with ``is_anchor=True``
+        are exempt from the "no repeats" rule. Pairing requests inject the
+        user's anchor garment into every paired candidate by definition;
+        without this exemption, the diversity pass would drop all but the
+        first paired candidate, collapsing pairing turns to a single
+        outfit. The orchestrator sets ``enriched_data["is_anchor"] = True``
+        on the synthetic anchor RetrievedProduct it injects, and
+        ``_product_to_item`` propagates that flag to the candidate item.
+
         Rejected candidates are **not** returned. The evaluator sees only
-        the diverse set. This is the final-state invariant: if a product
-        is suppressed here, it cannot sneak back into the response via a
-        high evaluation score on a duplicate candidate.
+        the diverse set. This is the final-state invariant: if a non-anchor
+        product is suppressed here, it cannot sneak back into the response
+        via a high evaluation score on a duplicate candidate.
         """
         if not candidates:
             return candidates
@@ -268,20 +279,24 @@ class OutfitAssembler:
         accepted: List[OutfitCandidate] = []
         dropped_count = 0
         for candidate in ordered:
-            item_ids = [
+            # Anchor products are exempt from the "no repeats" rule —
+            # they're allowed (in fact required) to appear in every paired
+            # candidate of a pairing turn.
+            non_anchor_item_ids = [
                 str(item.get("product_id") or "").strip()
                 for item in (candidate.items or [])
+                if not item.get("is_anchor")
             ]
-            item_ids = [pid for pid in item_ids if pid]
-            if any(pid in used for pid in item_ids):
+            non_anchor_item_ids = [pid for pid in non_anchor_item_ids if pid]
+            if any(pid in used for pid in non_anchor_item_ids):
                 dropped_count += 1
                 continue
-            for pid in item_ids:
+            for pid in non_anchor_item_ids:
                 used.add(pid)
             try:
                 candidate.assembly_notes = list(candidate.assembly_notes or []) + [
                     "diversity_pass: accepted (best pairing for its items, "
-                    "no repeat allowed across outfits)"
+                    "no repeat allowed across outfits except anchors)"
                 ]
             except Exception:  # noqa: BLE001 — defensive on pydantic model attrs
                 pass
@@ -292,7 +307,7 @@ class OutfitAssembler:
             try:
                 accepted[0].assembly_notes = list(accepted[0].assembly_notes or []) + [
                     f"diversity_pass: dropped {dropped_count} duplicate candidate(s) "
-                    "that would have re-used an already-accepted product"
+                    "that would have re-used an already-accepted non-anchor product"
                 ]
             except Exception:  # noqa: BLE001
                 pass
@@ -459,12 +474,22 @@ class OutfitAssembler:
     @staticmethod
     def _product_to_item(product: RetrievedProduct, role: str = "") -> Dict[str, Any]:
         metadata = product.metadata
+        # Catalog rows expose image URLs at images__0__src / primary_image_url.
+        # Wardrobe rows leave image_url empty and store the file under
+        # image_path (relative to the repo root, e.g. "data/onboarding/...").
+        # The visual-eval try-on render path skips items whose image_url is
+        # empty, so a wardrobe-anchor would silently drop out and Gemini
+        # would only see the catalog half of the outfit. Resolve from either
+        # source so wardrobe-anchored pairings include the user's actual
+        # garment in the render.
         image_url = str(
             metadata.get("images__0__src")
             or metadata.get("images_0_src")
             or product.enriched_data.get("images__0__src")
             or product.enriched_data.get("images_0_src")
             or product.enriched_data.get("primary_image_url")
+            or product.enriched_data.get("image_url")
+            or product.enriched_data.get("image_path")
             or ""
         )
         title = str(
@@ -544,6 +569,29 @@ class OutfitAssembler:
                 or metadata.get("SilhouetteType") or ""
             ),
         }
+        # Tag wardrobe-shaped items with source="wardrobe" so the
+        # try-on render path's _detect_garment_source can label the
+        # outfit correctly (wardrobe / catalog / mixed) instead of
+        # falling through to the catalog default. Detection: a wardrobe
+        # row carries image_path but lacks the catalog identifiers
+        # (handle/store). The orchestrator's anchor injection passes
+        # the wardrobe row dict straight into enriched_data, so this
+        # detection runs there too.
+        explicit_source = str(product.enriched_data.get("source") or "").strip().lower()
+        if explicit_source in ("wardrobe", "catalog"):
+            item["source"] = explicit_source
+        elif product.enriched_data.get("image_path") and not (
+            product.enriched_data.get("handle") or product.enriched_data.get("store")
+        ):
+            item["source"] = "wardrobe"
+        # Phase 12D: propagate the is_anchor flag from enriched_data so the
+        # cross-outfit diversity pass can exempt anchor products from the
+        # "no repeats across outfits" rule. The orchestrator sets this on
+        # the synthetic anchor RetrievedProduct it injects for pairing
+        # requests; the anchor MUST appear in all paired candidates by
+        # definition.
+        if product.enriched_data.get("is_anchor"):
+            item["is_anchor"] = True
         if role:
             item["role"] = role
         return item

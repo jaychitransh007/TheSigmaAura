@@ -108,7 +108,15 @@ class TryonService:
 
         garments: List[Tuple[str, bytes, str]] = []
         for role, url in garment_urls:
-            img_bytes, img_mime = self._download_image(url)
+            # Catalog garments arrive as HTTP(S) URLs; wardrobe garments
+            # arrive as repo-relative or absolute filesystem paths (the
+            # wardrobe row stores image_path, never image_url). Dispatch
+            # based on scheme so wardrobe-anchored try-ons don't try to
+            # urlopen() a local path.
+            if url.startswith(("http://", "https://")):
+                img_bytes, img_mime = self._download_image(url)
+            else:
+                img_bytes, img_mime = self._load_local_image(url)
             img_bytes, img_mime = self._maybe_resize(img_bytes, img_mime)
             garments.append((role, img_bytes, img_mime))
 

@@ -270,13 +270,18 @@ class OnboardingTests(unittest.TestCase):
     def test_onboarding_html_contains_modular_step_flow_and_crop_frame(self) -> None:
         html = get_onboarding_html()
         self.assertIn("Step 1 of 10", html)
-        self.assertIn("OTP for local testing", html)
+        # OTP step copy: "the OTP is fixed. Enter <strong>123456</strong>"
+        self.assertIn("the OTP is fixed", html)
+        self.assertIn("123456", html)
         self.assertIn("2:3 frame", html)
-        self.assertIn("Profession", html)
+        # Profession step uses lowercase "profession" throughout
+        self.assertIn("Choose your profession", html)
+        self.assertIn("step-profession", html)
         self.assertIn("uploadHeadshotBtn", html)
         self.assertIn("/v1/onboarding/images/normalize", html)
         self.assertIn("determineResumeDestination", html)
-        self.assertIn("/onboard/processing?user=", html)
+        # Resume destination redirects via "/?user=" + userId, not /onboard/processing
+        self.assertIn('"/?user="', html)
         self.assertIn("Select the outfits that feel like you.", html)
         self.assertIn("/v1/onboarding/style/session/", html)
         self.assertIn("/v1/onboarding/style/complete", html)
@@ -355,7 +360,12 @@ class OnboardingTests(unittest.TestCase):
             "style_preference_complete": True,
             "onboarding_complete": False,
         }
-        repo.get_image_categories.return_value = ["full_body", "headshot"]
+        # Service reads image rows via get_images (each row has category +
+        # file_path), not the legacy get_image_categories list.
+        repo.get_images.return_value = [
+            {"category": "full_body", "file_path": "/tmp/full_body.jpg"},
+            {"category": "headshot", "file_path": "/tmp/headshot.jpg"},
+        ]
         repo.count_wardrobe_items.return_value = 3
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -653,6 +663,73 @@ class OnboardingTests(unittest.TestCase):
         self.assertIn("Wardrobe gap analysis view", html)
         self.assertIn("/v1/onboarding/wardrobe/items/", html)
         self.assertIn("Load Wardrobe", html)
+
+    def test_convert_to_jpeg_handles_avif_uploads(self) -> None:
+        """Phase 12D follow-up: AVIF uploads (default format from many
+        modern web sources) must be converted to JPEG before reaching
+        the OpenAI vision API, which only accepts JPEG/PNG/GIF/WebP.
+        Without this conversion, the wardrobe enrichment retry hits the
+        same 400 twice and the orchestrator surfaces the "I couldn't
+        quite read the piece" clarification — frustrating for users
+        whose photo is actually clear and well-lit.
+
+        Reproduces the staging incident on user_03026279ecd6
+        conversation 3a6365d9-c934-45e4-9721-011f539b4173 turn
+        2378cc05-08e3-42ef-91f8-7ba1c692ea73."""
+        from user.service import _convert_to_jpeg_if_needed
+        try:
+            from PIL import Image
+            import pillow_avif  # noqa: F401 — registers AVIF format
+        except ImportError:
+            self.skipTest("pillow-avif-plugin not installed in this environment")
+
+        # Build a tiny AVIF in memory so the test doesn't depend on a
+        # fixture file. 16×16 brown square — small enough to keep the
+        # test fast, large enough that Pillow's AVIF encoder accepts it.
+        import io
+        src = Image.new("RGB", (16, 16), color=(120, 80, 40))
+        avif_buf = io.BytesIO()
+        try:
+            src.save(avif_buf, format="AVIF", quality=80)
+        except (KeyError, OSError) as exc:
+            self.skipTest(f"AVIF encoder unavailable in this Pillow build: {exc}")
+        avif_bytes = avif_buf.getvalue()
+        self.assertGreater(len(avif_bytes), 0)
+
+        converted_data, converted_ct, converted_name = _convert_to_jpeg_if_needed(
+            avif_bytes, "chat_upload.avif"
+        )
+        # The converter must have actually run (non-empty content_type
+        # signals success — see the helper's contract).
+        self.assertEqual("image/jpeg", converted_ct)
+        self.assertEqual("chat_upload.jpg", converted_name)
+        self.assertNotEqual(avif_bytes, converted_data)
+        # The output must be a Pillow-decodable JPEG so the rest of the
+        # wardrobe save pipeline (and OpenAI vision) can read it.
+        decoded = Image.open(io.BytesIO(converted_data))
+        self.assertEqual("JPEG", decoded.format)
+        self.assertEqual((16, 16), decoded.size)
+
+    def test_convert_to_jpeg_passes_jpeg_through_unchanged(self) -> None:
+        """The converter must NOT re-encode formats the OpenAI vision
+        API already accepts — that would waste cycles and degrade
+        quality. Pass-through is signaled by an empty returned
+        content_type."""
+        from user.service import _convert_to_jpeg_if_needed
+        from PIL import Image
+        import io
+
+        src = Image.new("RGB", (16, 16), color=(120, 80, 40))
+        jpeg_buf = io.BytesIO()
+        src.save(jpeg_buf, format="JPEG", quality=80)
+        jpeg_bytes = jpeg_buf.getvalue()
+
+        converted_data, converted_ct, converted_name = _convert_to_jpeg_if_needed(
+            jpeg_bytes, "chat_upload.jpg"
+        )
+        self.assertEqual("", converted_ct)  # signals "no conversion happened"
+        self.assertEqual("chat_upload.jpg", converted_name)
+        self.assertEqual(jpeg_bytes, converted_data)
 
 
 if __name__ == "__main__":

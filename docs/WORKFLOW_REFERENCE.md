@@ -1,11 +1,11 @@
 # Workflow Reference — Intent Execution Flows
 
-Last updated: April 8, 2026
+Last updated: April 8, 2026 (Phase 12E close-out)
 
 > **What this is (and isn't):** This is **reference documentation for humans
-> reading the codebase**. It describes how each of the 12 intents is executed
-> by the orchestrator so you can navigate the code without tracing every
-> branch yourself. It is **not loaded at runtime** by any agent, planner, or
+> reading the codebase**. It describes how each intent is executed by the
+> orchestrator so you can navigate the code without tracing every branch
+> yourself. It is **not loaded at runtime** by any agent, planner, or
 > handler — no Python file in `modules/` reads this markdown. The runtime
 > behavior is defined entirely by `modules/agentic_application/src/agentic_application/orchestrator.py`
 > and the per-handler methods it dispatches to. **If this document and the
@@ -14,6 +14,58 @@ Last updated: April 8, 2026
 > relying on it for anything load-bearing.
 
 **Registry:** All intent identifiers are defined as `StrEnum` constants in `agentic_application/intent_registry.py`. The copilot planner JSON schema, orchestrator dispatch, and all agent code import from this single source of truth — that enum, not this document, is the authoritative intent list.
+
+---
+
+## Phase 12 Summary (Current State)
+
+The Phase 12 re-architecture (Phases 12A–12E, completed April 2026) consolidated the intent taxonomy from 12 → 7 advisory + feedback + silent wardrobe_ingestion, moved evaluation to a visual-grounded post-tryon position, and split inline planner-text generation into a dedicated `StyleAdvisorAgent`. This summary lists the **current** taxonomy and pipeline shapes; the per-intent sections below contain the historical detail and may reference removed paths — refer to this summary for what runs today.
+
+### Current intent taxonomy (7 advisory + feedback + 1 silent)
+
+| Intent | Action | Pipeline shape |
+|---|---|---|
+| `occasion_recommendation` | `RUN_RECOMMENDATION_PIPELINE` | architect → search → assemble → reranker → tryon (top-3, parallel) → visual_evaluator → format. Legacy text-only `OutfitEvaluator` is the fallback when the user has no full-body photo. Absorbs the old `product_browse` intent via `target_product_type`. |
+| `pairing_request` | `RUN_RECOMMENDATION_PIPELINE` | Same as occasion_recommendation, with `enriched_data["is_anchor"]=True` on the synthetic anchor `RetrievedProduct`. The diversity pass exempts anchors so all 3 outfits survive. |
+| `garment_evaluation` | `RUN_GARMENT_EVALUATION` | tryon → visual_evaluator → format with optional buy/skip verdict. Replaces `shopping_decision`, `garment_on_me_request`, and `virtual_tryon_request`. Photo-only input. `purchase_intent: bool` from the planner controls whether the verdict block renders. |
+| `outfit_check` | `RUN_OUTFIT_CHECK` | visual_evaluator on the user's photo → format → async decomposition. No try-on (the user is already wearing the outfit), no architect call. |
+| `style_discovery` | `RESPOND_DIRECTLY` | Layered: deterministic topical helpers (collar, color, pattern, silhouette, archetype) for matched topics; `StyleAdvisorAgent` LLM fallback in `discovery` mode for open-ended questions. |
+| `explanation_request` | `RESPOND_DIRECTLY` | Layered: `StyleAdvisorAgent` in `explanation` mode when `previous_recommendations` exists; deterministic explanation summary as the fallback. |
+| `feedback_submission` | `SAVE_FEEDBACK` | Pure event capture, no LLM. Drives `comfort_learning` for `like` events. |
+| `wardrobe_ingestion` | `SAVE_WARDROBE_ITEM` | **Silent** — not exposed in the planner prompt's user-facing intent list. Available for programmatic / bulk upload paths only. |
+
+### Removed in Phase 12
+
+- `capsule_or_trip_planning` — handler deleted (Phase 12A); to return in a future phase
+- `product_browse` — folded into `occasion_recommendation` via `CopilotResolvedContext.target_product_type`
+- `virtual_tryon_request` — absorbed into `garment_evaluation`
+- `shopping_decision` — absorbed into `garment_evaluation`
+- `garment_on_me_request` — absorbed into `garment_evaluation`
+
+### Key building blocks added in Phase 12
+
+| Component | Phase | Purpose |
+|---|---|---|
+| `agents/visual_evaluator_agent.py` | 12B | Vision-grounded per-candidate evaluator that replaces text-only `OutfitEvaluator` and `OutfitCheckAgent`. 9 dimension scores (8 existing + new `weather_time_pct`), 8 archetype scores, optional `overall_verdict`/`strengths`/`improvements`. Three modes: `recommendation`, `single_garment`, `outfit_check`. |
+| `agents/reranker.py` | 12B | Deterministic top-N pruning before the expensive try-on stage. `final_top_n=3`, `pool_top_n=5` defaults; the over-generation pool gives the orchestrator headroom when a try-on fails the quality gate. |
+| `agents/style_advisor_agent.py` | 12C | LLM advisor for open-ended `style_discovery` and `explanation_request` (against prior turn artifacts). Returns structured advice with prose answer + bullets + cited attributes + dominant directions. |
+| Four thinking directions | 12C | Reasoning axes propagated through architect / visual evaluator / advisor prompts: physical+color, comfort, occasion, weather/time. NOT fixed weights — the agent identifies which 1-2 dominate per turn. |
+| `weather_context` / `time_of_day` / `target_product_type` | 12A/C | New `CopilotResolvedContext` fields extracted by the planner, consumed by the architect and visual evaluator. |
+| `purchase_intent: bool` | 12A | New `CopilotActionParameters` field. Replaces the legacy `verdict` string. Controls whether the `garment_evaluation` formatter renders the buy/skip verdict block. |
+| `is_anchor` flag on candidate items | 12D | Set by orchestrator anchor injection; consumed by `_enforce_cross_outfit_diversity` to exempt anchor products from the "no repeats" rule. Fixes the pre-existing bug where pairing turns collapsed to 1 outfit. |
+| Wardrobe-anchor image resolution | 12D follow-up (April 8, 2026) | `_product_to_item` now resolves `image_url` from `enriched_data["image_path"]` and tags wardrobe rows with `source="wardrobe"`. `tryon_service.generate_tryon_outfit` dispatches HTTP(S) URLs to `_download_image` and local `data/...` paths to `_load_local_image`. Without this, the visual-eval try-on render path silently dropped wardrobe-anchor garments because their `image_url` was empty, and Gemini hallucinated a stand-in instead of using the user's uploaded photo. |
+| `enrichment_status` on saved wardrobe rows | 12D | New top-level field on the dict returned by `save_wardrobe_item` so the orchestrator can detect failed enrichment without parsing nested JSON. The orchestrator returns a clarification asking for a clearer photo when this is `"failed"`. |
+| Tryon over-generation metrics | 12E | `tryon_attempted_count`, `tryon_succeeded_count`, `tryon_quality_gate_failures`, `tryon_overgeneration_used`, `evaluator_path` surfaced in `response.metadata` and `dependency_validation_events.metadata_json` for the operations dashboard. |
+
+### What stays the same
+
+The architect (`OutfitArchitect`), catalog search agent (`CatalogSearchAgent`), assembler (`OutfitAssembler`), response formatter (`ResponseFormatter`), try-on service (`TryonService`), and try-on quality gate (`TryonQualityGate`) are unchanged in their core responsibilities. Phase 12 added new components alongside them and changed the **order** of pipeline stages, not the per-stage logic.
+
+### How to read the per-intent sections below
+
+The detailed sections that follow describe the **pre-Phase 12** flow per intent. They are still useful as historical context and as a guide to which file holds which logic. **For current behavior, refer to the table above.** The orchestrator code (`process_turn`, `_handle_planner_pipeline`, `_handle_garment_evaluation`, `_handle_outfit_check`, `_handle_style_discovery`, `_handle_explanation_request`) is the authoritative source — this doc is reference, not contract.
+
+---
 
 **Common Entry Flow:** Every user message follows this path before intent-specific handling:
 
@@ -385,8 +437,10 @@ User message
 
 ## 6. Shopping Decision
 
-**Intent:** `Intent.SHOPPING_DECISION`
-**Action:** `Action.RUN_SHOPPING_DECISION`
+> **REMOVED IN PHASE 12A** — `Intent.SHOPPING_DECISION` and `Action.RUN_SHOPPING_DECISION` no longer exist. This intent was absorbed into the merged `garment_evaluation` intent. The planner classifies "should I buy this?" turns as `garment_evaluation` with `action_parameters.purchase_intent=true`. The new pipeline (Phase 12B) is `tryon → visual_evaluator → format`, with the buy/skip verdict computed deterministically by the response formatter from evaluator scores + wardrobe overlap. See the Phase 12 Summary at the top of this document. The detailed flow below is historical and no longer runs.
+
+**Intent:** `Intent.SHOPPING_DECISION` *(removed)*
+**Action:** `Action.RUN_SHOPPING_DECISION` *(removed)*
 **Trigger:** "Should I buy this?", "Is this worth it?", "Buy or skip?"
 
 ### Step-by-Step Flow
@@ -448,8 +502,10 @@ User message
 
 ## 7. Capsule / Trip Planning
 
-**Intent:** `Intent.CAPSULE_OR_TRIP_PLANNING`
-**Action:** `Action.RESPOND_DIRECTLY`
+> **REMOVED IN PHASE 12A** — `Intent.CAPSULE_OR_TRIP_PLANNING` and the `_handle_capsule_or_trip_planning` handler were deleted. Capsule and multi-day planning will return as a dedicated phase later. Today, multi-day requests fall through to `occasion_recommendation` and produce a single recommendation. See the Phase 12 Summary at the top of this document. The detailed flow below is historical and no longer runs.
+
+**Intent:** `Intent.CAPSULE_OR_TRIP_PLANNING` *(removed)*
+**Action:** `Action.RESPOND_DIRECTLY` *(removed for this intent)*
 **Trigger:** "Plan my outfits for a 5-day trip", "Build a workweek capsule", "Pack for a beach weekend"
 
 ### Step-by-Step Flow
@@ -518,8 +574,10 @@ User message
 
 ## 8. Virtual Try-On
 
-**Intent:** `Intent.VIRTUAL_TRYON_REQUEST`
-**Action:** `Action.RUN_VIRTUAL_TRYON`
+> **REMOVED IN PHASE 12A** — `Intent.VIRTUAL_TRYON_REQUEST` and `Action.RUN_VIRTUAL_TRYON` were absorbed into `garment_evaluation`. "Try this on me" requests now classify as `garment_evaluation` with `purchase_intent=false`; the same `tryon → visual_evaluator → format` pipeline runs and the formatter renders the try-on image as the hero of the response card without a buy/skip verdict block. The standalone `/v1/tryon` REST endpoint in `api.py` is unchanged and still serves direct try-on requests for non-chat surfaces. See the Phase 12 Summary at the top of this document. The detailed flow below is historical and no longer runs.
+
+**Intent:** `Intent.VIRTUAL_TRYON_REQUEST` *(removed)*
+**Action:** `Action.RUN_VIRTUAL_TRYON` *(removed)*
 **Trigger:** "Show this on me", "Try this on me", "What would I look like in this?"
 
 ### Step-by-Step Flow
@@ -567,8 +625,10 @@ User message
 
 ## 9. Garment-on-Me Query
 
-**Intent:** `Intent.GARMENT_ON_ME_REQUEST`
-**Action:** `Action.RESPOND_DIRECTLY`
+> **REMOVED IN PHASE 12A** — `Intent.GARMENT_ON_ME_REQUEST` was absorbed into `garment_evaluation`. The merged intent runs `tryon → visual_evaluator → format` regardless of whether the user framed it as suitability ("would this suit me?", `purchase_intent=false`) or purchase ("should I buy this?", `purchase_intent=true`). The visual evaluator scores the rendered try-on against the user's profile, not just attribute-matched signals. See the Phase 12 Summary at the top of this document. The detailed flow below is historical and no longer runs.
+
+**Intent:** `Intent.GARMENT_ON_ME_REQUEST` *(removed)*
+**Action:** `Action.RESPOND_DIRECTLY` *(removed for this intent)*
 **Trigger:** "Would this suit me?", "Is this my style?", "How would this look on me?"
 
 ### Step-by-Step Flow
@@ -683,8 +743,10 @@ User message
 
 ## 12. Product Browse
 
-**Intent:** `Intent.PRODUCT_BROWSE`
-**Action:** `Action.RUN_PRODUCT_BROWSE`
+> **REMOVED IN PHASE 12A** — `Intent.PRODUCT_BROWSE` and `Action.RUN_PRODUCT_BROWSE` were folded into `occasion_recommendation`. Browse-by-category requests ("show me shirts") now classify as `occasion_recommendation` with `CopilotResolvedContext.target_product_type` set to the canonical garment subtype and `occasion_signal` left null. The architect plans a single-garment direction targeting that subtype rather than a full top+bottom outfit, and the rest of the recommendation pipeline runs as normal. See the Phase 12 Summary at the top of this document. The detailed flow below is historical and no longer runs.
+
+**Intent:** `Intent.PRODUCT_BROWSE` *(removed)*
+**Action:** `Action.RUN_PRODUCT_BROWSE` *(removed)*
 **Trigger:** "Show me shirts", "Find me blue dresses", "Browse jackets", "Suggest some trousers"
 
 ### Step-by-Step Flow
@@ -764,31 +826,55 @@ Follow-up intents are detected by the copilot planner via `resolved_context.foll
 
 ## LLM Model Usage Summary
 
+### Phase 12 (Current)
+
 | Component | Model | When Called | Intents |
 |-----------|-------|------------|---------|
-| Copilot Planner | gpt-5.4 | Every turn | All 12 |
-| Outfit Architect | gpt-5.4 | Recommendation pipeline | occasion, pairing |
-| Outfit Evaluator | gpt-5.4 | Recommendation pipeline | occasion, pairing |
-| Outfit Check Agent | gpt-5.4 | Outfit check handler | outfit_check |
-| Shopping Decision Agent | gpt-5.4 | Shopping decision handler | shopping_decision |
-| Virtual Try-On | gemini-3.1-flash-image-preview | Try-on generation | virtual_tryon, occasion (post-pipeline) |
+| Copilot Planner | gpt-5.4 | Every turn | All 7 advisory + feedback + silent wardrobe_ingestion |
+| Outfit Architect | gpt-5.4 | Recommendation pipeline | occasion_recommendation, pairing_request |
+| Visual Evaluator (Phase 12B) | gpt-5.4 (vision) | Per-candidate after try-on; replaces text-only OutfitEvaluator and OutfitCheckAgent | occasion_recommendation, pairing_request, garment_evaluation, outfit_check |
+| Outfit Evaluator (legacy) | gpt-5.4 | Fallback when user has no full-body photo or visual path raises | occasion_recommendation, pairing_request |
+| Style Advisor (Phase 12C) | gpt-5.4 | Open-ended style discovery + explanation against prior recommendations | style_discovery (general topic), explanation_request (when previous_recommendations exists) |
+| Wardrobe Enrichment | gpt-5-mini (vision) | On every chat-uploaded garment image + outfit decomposition | wardrobe_ingestion (silent), pairing_request (when image attached), outfit_check (async decomposition), garment_evaluation (when image attached) |
+| Try-On Service | gemini-3.1-flash-image-preview | Inline before visual evaluator (Phase 12B) for all top-3 candidates in parallel | occasion_recommendation, pairing_request, garment_evaluation |
+| Outfit Check Agent (legacy) | gpt-5.4 | Kept until tests are migrated off it; not called by the Phase 12 outfit_check path | (none in production after Phase 12B rewire) |
 
-**No LLM calls:** style_discovery, explanation_request, capsule_or_trip_planning, garment_on_me (uses planner output), wardrobe_ingestion, feedback_submission, product_browse (uses planner output only — no additional LLM calls beyond the planner).
+**No LLM calls** (deterministic only):
+- `feedback_submission`
+- `style_discovery` topical questions (collar / neckline / pattern / silhouette / archetype / color use the deterministic Phase 11 helpers)
+- `explanation_request` when no `previous_recommendations` exists (uses the deterministic explanation summary)
+- `outfit_check` decomposition save (the actual evaluation is the Visual Evaluator above; the async decomposition pipeline is vision-API but not via the orchestrator's main thread)
+- `wardrobe_ingestion` silent saves (the enrichment vision call is part of the save path; the orchestrator doesn't make additional LLM calls)
+
+### Per-turn LLM call counts (Phase 12)
+
+| Intent | LLM calls | Image generation calls |
+|---|---|---|
+| `occasion_recommendation` (visual path, user has photo) | planner (1) + architect (1) + visual_evaluator (3 parallel) = 5 | tryon ×3 in parallel |
+| `occasion_recommendation` (legacy text path, no photo) | planner (1) + architect (1) + outfit_evaluator (1) = 3 | 0 |
+| `pairing_request` (visual path) | planner (1) + architect (1) + visual_evaluator (3 parallel) = 5 | tryon ×3 |
+| `garment_evaluation` | planner (1) + visual_evaluator (1) = 2 | tryon ×1 |
+| `outfit_check` | planner (1) + visual_evaluator (1) = 2 | 0 (no try-on; user is already in the photo) |
+| `style_discovery` topical | planner (1) = 1 | 0 |
+| `style_discovery` general | planner (1) + style_advisor (1) = 2 | 0 |
+| `explanation_request` with prior context | planner (1) + style_advisor (1) = 2 | 0 |
+| `explanation_request` no prior context | planner (1) = 1 | 0 |
+| `feedback_submission` | planner (1) = 1 | 0 |
 
 ---
 
-## Database Write Summary
+## Database Write Summary (Phase 12)
 
 | Table | Written By | Intents |
 |-------|-----------|---------|
-| `conversation_turns` | `repo.finalize_turn()` | All 12 |
-| `conversations.session_context_json` | `repo.update_conversation_context()` | All 12 |
-| `model_calls` | `repo.log_model_call()` | occasion, pairing, outfit_check, shopping_decision |
+| `conversation_turns` | `repo.finalize_turn()` | All advisory + feedback |
+| `conversations.session_context_json` | `repo.update_conversation_context()` | All advisory + feedback |
+| `model_calls` | `repo.log_model_call()` | occasion_recommendation, pairing_request, outfit_check, garment_evaluation |
 | `feedback_events` | `repo.create_feedback_event()` | feedback_submission |
-| `user_wardrobe_items` | `onboarding_gateway.save_wardrobe_item()` | wardrobe_ingestion, outfit_check (async decomposition) |
-| `virtual_tryon_images` | `repo.insert_tryon_image()` | virtual_tryon, occasion (post-pipeline) |
-| `catalog_interaction_history` | `_persist_catalog_interactions()` | occasion, pairing |
-| `confidence_history` | `_persist_recommendation_confidence()` | occasion, pairing |
-| `policy_event_log` | `_persist_policy_event()` | virtual_tryon, wardrobe_ingestion |
-| `dependency_validation_events` | `_persist_dependency_turn_event()` | All 12 |
+| `user_wardrobe_items` | `onboarding_gateway.save_wardrobe_item()` | pairing_request (anchor upload), garment_evaluation (anchor upload), outfit_check (async decomposition), explicit `wardrobe_ingestion` save |
+| `virtual_tryon_images` | `repo.insert_tryon_image()` | occasion_recommendation, pairing_request (Phase 12B inline), garment_evaluation |
+| `catalog_interaction_history` | `_persist_catalog_interactions()` | occasion_recommendation, pairing_request |
+| `confidence_history` | `_persist_recommendation_confidence()` | occasion_recommendation, pairing_request |
+| `policy_event_log` | `_persist_policy_event()` | wardrobe_ingestion, garment_evaluation (try-on policy events via `/v1/tryon` endpoint) |
+| `dependency_validation_events` | `_persist_dependency_turn_event()` | All advisory + feedback. Now includes Phase 12E `evaluator_path` and `tryon_stats` for the operations dashboard |
 | `user_comfort_learning` | comfort_learning service | feedback_submission (like events) |

@@ -1,0 +1,51 @@
+# Sigma Aura — Python runtime dependencies
+#
+# This file is the source of truth for what `pip install -r requirements.txt`
+# produces. CI (`.github/workflows/pr-eval.yml`) reads it; deploys should
+# read it; new contributors should read it.
+#
+# Versions are pinned exactly to what we know works in production today
+# (April 2026). When you upgrade a package, do it deliberately, run the
+# full test suite, and update this file in the same commit.
+#
+# Discovered by walking modules/, tests/, ops/scripts/ and the launcher
+# scripts via AST and filtering out stdlib + project-internal modules.
+# See README.md "Quick Start" for the install command.
+
+# ── Web framework ─────────────────────────────────────────────────────
+# python-multipart is a transitive requirement that FastAPI marks as
+# optional but the project uses for `File` / `Form` route parameters
+# (catalog admin CSV upload, wardrobe image upload, image conversion
+# routes). Without it, route handlers raise at import time inside
+# FastAPI's dependency resolution and the test suite fails with
+# `RuntimeError: Form data requires "python-multipart" to be installed`.
+# Pin it explicitly so deploys never miss it.
+fastapi==0.115.9
+python-multipart==0.0.24
+uvicorn==0.34.2
+
+# ── Schema / validation ───────────────────────────────────────────────
+pydantic==2.11.4
+
+# ── LLM / vision ──────────────────────────────────────────────────────
+openai==2.14.0
+google-genai==1.56.0
+
+# ── Image handling ────────────────────────────────────────────────────
+# Pillow is the base image library. pillow-heif and pillow-avif-plugin
+# add format support for HEIC/HEIF (iPhone default) and AVIF (modern
+# web default). Without these plugins, the wardrobe upload pipeline
+# fails on either format with a 400 from the OpenAI vision API and the
+# user sees the Phase 12D "I couldn't quite read the piece in that
+# photo" clarification — even when the photo itself is fine. Both
+# plugins register their format handlers as a side effect of import.
+Pillow==11.2.1
+pillow-heif==1.3.0
+pillow-avif-plugin==1.5.5
+
+# ── Test runner ───────────────────────────────────────────────────────
+# pytest is used for @pytest.mark.parametrize decorators in
+# tests/test_qna_messages.py. CI's `unittest discover` ignores the
+# decorators (treating them as no-ops) but the import still has to
+# resolve, so pytest is a hard install requirement at the test layer.
+pytest==9.0.2

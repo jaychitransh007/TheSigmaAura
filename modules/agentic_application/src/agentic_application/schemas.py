@@ -218,6 +218,9 @@ class EvaluatedRecommendation(BaseModel):
     comfort_boundary_pct: int = 0
     specific_needs_pct: int = 0
     pairing_coherence_pct: int = 0
+    # Phase 12B: ninth scoring dimension — weather/time-of-day appropriateness.
+    # Defaults to 0 so legacy text-only OutfitEvaluator output still validates.
+    weather_time_pct: int = 0
     classic_pct: int = 0
     dramatic_pct: int = 0
     romantic_pct: int = 0
@@ -227,6 +230,14 @@ class EvaluatedRecommendation(BaseModel):
     sporty_pct: int = 0
     edgy_pct: int = 0
     item_ids: List[str] = Field(default_factory=list)
+    # Phase 12B: optional fields populated by VisualEvaluatorAgent for the
+    # outfit_check / garment_evaluation single-candidate path. The list
+    # form remains the canonical shape for occasion_recommendation /
+    # pairing_request which use multiple candidates.
+    overall_verdict: str = ""  # great_choice | good_with_tweaks | consider_changes | needs_rethink
+    overall_note: str = ""
+    strengths: List[str] = Field(default_factory=list)
+    improvements: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 # --- Response ---
@@ -265,6 +276,8 @@ class OutfitCard(BaseModel):
     comfort_boundary_pct: int = 0
     specific_needs_pct: int = 0
     pairing_coherence_pct: int = 0
+    # Phase 12B: ninth scoring dimension — weather / time-of-day appropriateness
+    weather_time_pct: int = 0
     classic_pct: int = 0
     dramatic_pct: int = 0
     romantic_pct: int = 0
@@ -285,10 +298,33 @@ class CopilotResolvedContext(BaseModel):
     is_followup: bool = False
     followup_intent: Optional[str] = None
     style_goal: str = ""
+    # "auto" (default), "wardrobe" (user wants only wardrobe items),
+    # or "catalog" (user wants only catalog items). Extracted by the planner
+    # from phrases like "from my wardrobe" or "from the catalog".
+    source_preference: str = "auto"
+    # Phase 12A additions:
+    # When the user asks for a specific garment type without an occasion
+    # ("show me shirts"), `occasion_recommendation` absorbs what used to be
+    # a `product_browse` intent. The architect uses target_product_type to
+    # narrow the catalog search.
+    target_product_type: str = ""
+    # Free-form weather context extracted from the message ("rainy",
+    # "humid", "cold", "summer day", etc.). Phase 12C wires this into the
+    # architect and visual evaluator prompts as a thinking direction.
+    weather_context: str = ""
+    # Free-form time-of-day extracted from the message ("morning",
+    # "evening", "late night"). Distinct from `time_hint` (which is the
+    # legacy daytime/evening enum); both stay until Phase 12C reconciles.
+    time_of_day: str = ""
 
 
 class CopilotActionParameters(BaseModel):
-    verdict: Optional[str] = None
+    # Phase 12A: replaced legacy `verdict` (string buy/skip/conditional)
+    # with `purchase_intent: bool`. The Phase 12B response formatter
+    # computes the buy/skip/conditional verdict deterministically from the
+    # evaluator scores; the planner only needs to flag whether the user is
+    # asking from a commercial framing.
+    purchase_intent: bool = False
     target_piece: Optional[str] = None
     detected_colors: List[str] = Field(default_factory=list)
     detected_garments: List[str] = Field(default_factory=list)

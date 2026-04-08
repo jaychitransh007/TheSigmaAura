@@ -25,29 +25,73 @@ from .wardrobe_enrichment import infer_wardrobe_catalog_attributes
 
 _log = logging.getLogger(__name__)
 
-_HEIC_EXTENSIONS = frozenset((".heic", ".heif"))
+# Image formats that the OpenAI vision API rejects (and so must be
+# converted to JPEG before being sent to wardrobe enrichment) but that
+# Pillow can decode with the right plugins registered. Add new entries
+# here as new device-default formats appear in the wild.
+_CONVERT_TO_JPEG_EXTENSIONS = frozenset((".heic", ".heif", ".avif"))
 
 
-def _convert_heic_to_jpeg(file_data: bytes, filename: str) -> tuple[bytes, str, str]:
-    """Convert HEIC/HEIF images to JPEG. Returns (data, content_type, filename)."""
+def _convert_to_jpeg_if_needed(file_data: bytes, filename: str) -> tuple[bytes, str, str]:
+    """Convert HEIC/HEIF/AVIF images to JPEG. Returns (data, content_type, filename).
+
+    OpenAI's vision API only accepts JPEG/PNG/GIF/WebP. Modern phone
+    cameras and image hosts often hand back HEIC (iPhone) or AVIF
+    (modern web), both of which fail wardrobe enrichment with a
+    `400 - The image data you provided does not represent a valid image`
+    error. We convert them to JPEG up front so the rest of the pipeline
+    sees a supported format.
+
+    Returns the original bytes unchanged if the extension isn't on the
+    convert list, or if the Pillow conversion itself raises (in which
+    case the caller will hit the OpenAI 400 and the Phase 12D
+    enrichment-failed clarification will surface).
+    """
     ext = os.path.splitext(filename)[1].lower()
-    if ext not in _HEIC_EXTENSIONS:
+    if ext not in _CONVERT_TO_JPEG_EXTENSIONS:
         return file_data, "", filename
     try:
         from PIL import Image
-        from pillow_heif import register_heif_opener
-        register_heif_opener()
+        # Register HEIF/HEIC opener.
+        try:
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+        except ImportError:
+            pass
+        # Register AVIF opener. pillow-avif-plugin registers itself on
+        # import as a side effect, so the bare import is what we need.
+        try:
+            import pillow_avif  # noqa: F401 — registers AVIF format
+        except ImportError:
+            pass
         img = Image.open(io.BytesIO(file_data))
-        if img.mode in ("RGBA", "P"):
+        if img.mode in ("RGBA", "P", "LA"):
             img = img.convert("RGB")
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=90)
         new_name = os.path.splitext(filename)[0] + ".jpg"
-        _log.info("Converted %s from HEIC to JPEG (%d → %d bytes)", filename, len(file_data), buf.tell())
+        _log.info(
+            "Converted %s (%s) to JPEG (%d → %d bytes)",
+            filename,
+            ext,
+            len(file_data),
+            buf.tell(),
+        )
         return buf.getvalue(), "image/jpeg", new_name
     except Exception:
-        _log.warning("HEIC conversion failed for %s, keeping original", filename, exc_info=True)
+        _log.warning(
+            "Image conversion failed for %s (ext=%s), keeping original",
+            filename,
+            ext,
+            exc_info=True,
+        )
         return file_data, "", filename
+
+
+# Backwards-compatible alias — `_convert_heic_to_jpeg` is the legacy
+# name still imported from api.py and tests. The behavior is now
+# generalized to handle AVIF as well.
+_convert_heic_to_jpeg = _convert_to_jpeg_if_needed
 
 
 REQUIRED_IMAGE_CATEGORIES = frozenset(("full_body", "headshot"))
@@ -459,43 +503,67 @@ class OnboardingService:
             "formality_level": formality_level,
             "occasion_fit": occasion_fit,
         }
-        try:
-            extracted = infer_wardrobe_catalog_attributes(
-                image_ref=str(dest),
-                title=title,
-                description=description,
-                garment_category=garment_category,
-                garment_subtype=garment_subtype,
-                primary_color=primary_color,
-                secondary_color=secondary_color,
-                pattern_type=pattern_type,
-                formality_level=formality_level,
-                occasion_fit=occasion_fit,
-                brand=brand,
-                notes=notes,
-            )
-            metadata_json["catalog_attribute_extraction_status"] = "ok"
-            metadata_json["catalog_attributes"] = dict(extracted.get("attributes") or {})
-            metadata_json["catalog_attribute_model"] = str(extracted.get("model") or "")
-            metadata_json["catalog_attribute_extracted_at"] = datetime.now(timezone.utc).isoformat()
-            metadata_json["user_supplied_fields"] = dict(projected)
-            projected = self._project_catalog_attributes(
-                extracted=extracted,
-                title=title,
-                description=description,
-                garment_category=garment_category,
-                garment_subtype=garment_subtype,
-                primary_color=primary_color,
-                secondary_color=secondary_color,
-                pattern_type=pattern_type,
-                formality_level=formality_level,
-                occasion_fit=occasion_fit,
-            )
-        except Exception as exc:
-            _log.warning("Wardrobe enrichment failed for %s: %s", user_id, exc)
-            metadata_json["catalog_attribute_extraction_status"] = "error"
-            metadata_json["catalog_attribute_error"] = str(exc)
-        return self._repo.insert_wardrobe_item(
+        # Phase 12D: retry the 46-attribute vision enrichment once on
+        # transient failure (rate limit, network blip, malformed response).
+        # If both attempts fail, persist the row with a clear failure
+        # marker so the orchestrator can detect the empty-attributes state
+        # and surface a clarification to the user instead of pretending the
+        # save succeeded with usable data.
+        enrichment_status = "ok"
+        enrichment_error_message = ""
+        last_exc: Optional[Exception] = None
+        for attempt in (1, 2):
+            try:
+                extracted = infer_wardrobe_catalog_attributes(
+                    image_ref=str(dest),
+                    title=title,
+                    description=description,
+                    garment_category=garment_category,
+                    garment_subtype=garment_subtype,
+                    primary_color=primary_color,
+                    secondary_color=secondary_color,
+                    pattern_type=pattern_type,
+                    formality_level=formality_level,
+                    occasion_fit=occasion_fit,
+                    brand=brand,
+                    notes=notes,
+                )
+                metadata_json["catalog_attribute_extraction_status"] = "ok"
+                metadata_json["catalog_attributes"] = dict(extracted.get("attributes") or {})
+                metadata_json["catalog_attribute_model"] = str(extracted.get("model") or "")
+                metadata_json["catalog_attribute_extracted_at"] = datetime.now(timezone.utc).isoformat()
+                metadata_json["catalog_attribute_attempts"] = attempt
+                metadata_json["user_supplied_fields"] = dict(projected)
+                projected = self._project_catalog_attributes(
+                    extracted=extracted,
+                    title=title,
+                    description=description,
+                    garment_category=garment_category,
+                    garment_subtype=garment_subtype,
+                    primary_color=primary_color,
+                    secondary_color=secondary_color,
+                    pattern_type=pattern_type,
+                    formality_level=formality_level,
+                    occasion_fit=occasion_fit,
+                )
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                _log.warning(
+                    "Wardrobe enrichment attempt %d failed for %s: %s",
+                    attempt,
+                    user_id,
+                    exc,
+                )
+        if last_exc is not None:
+            enrichment_status = "failed"
+            enrichment_error_message = str(last_exc)
+            metadata_json["catalog_attribute_extraction_status"] = "failed"
+            metadata_json["catalog_attribute_error"] = enrichment_error_message
+            metadata_json["catalog_attribute_attempts"] = 2
+
+        inserted = self._repo.insert_wardrobe_item(
             user_id=user_id,
             source=source,
             title=projected["title"],
@@ -512,6 +580,16 @@ class OnboardingService:
             notes=notes,
             metadata_json=metadata_json,
         )
+        # Surface the enrichment status as a top-level field on the
+        # returned dict so callers don't have to dig into metadata_json.
+        # The orchestrator uses this to detect the failed-enrichment case
+        # without re-parsing nested JSON.
+        if isinstance(inserted, dict):
+            inserted = dict(inserted)
+            inserted["enrichment_status"] = enrichment_status
+            if enrichment_error_message:
+                inserted["enrichment_error"] = enrichment_error_message
+        return inserted
 
     def list_wardrobe_items(self, user_id: str) -> dict:
         if self._repo is None:

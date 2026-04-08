@@ -2,14 +2,36 @@
 
 Last updated: April 8, 2026
 
-> **⚠️ Target-state document.** This file describes the *aspirational*
-> architecture (web + WhatsApp, cross-channel identity, full intent
-> taxonomy). Parts of it describe pieces that **do not exist in the live
-> system today** — most notably the WhatsApp inbound runtime (deliberately
-> removed) and some earlier routing layer details that were replaced by
-> the inlined copilot planner. For the authoritative "what is running
-> right now" view, always defer to `docs/CURRENT_STATE.md`. When this
-> document and `CURRENT_STATE.md` disagree, `CURRENT_STATE.md` wins.
+> **⚠️ Target-state document — substantially superseded by Phase 12.** This
+> file describes the *aspirational* architecture (web + WhatsApp,
+> cross-channel identity, the original 12-intent taxonomy). Several large
+> chunks below are now historically inaccurate:
+>
+> 1. **Intent taxonomy is stale.** Phase 12A consolidated the registry from
+>    12 intents → 7 advisory + silent `wardrobe_ingestion`. Anything in
+>    this document that names `shopping_decision`, `garment_on_me_request`,
+>    `virtual_tryon_request`, `product_browse`, or `capsule_or_trip_planning`
+>    as a live intent is **historical only**. The first three were folded
+>    into `garment_evaluation`; `product_browse` was absorbed into
+>    `occasion_recommendation` via `target_product_type`; capsule planning
+>    is deferred. See `intent_registry.py` and `docs/APPLICATION_SPECS.md`
+>    for the live taxonomy.
+> 2. **Evaluation is now visually grounded.** Phase 12B introduced the
+>    `VisualEvaluatorAgent` and a try-on-first render path (`_render_candidates_for_visual_eval`)
+>    that scores candidates from rendered images, not just catalog
+>    attributes. Sections describing attribute-only evaluation are stale.
+> 3. **Pairing anchor pipeline is implemented + fixed.** Phase 12D added
+>    anchor injection with `is_anchor` propagation through `_product_to_item`
+>    and the diversity-pass exemption; the April 8, 2026 follow-up fix
+>    additionally resolves wardrobe `image_path` into `image_url` and
+>    teaches `tryon_service` to dispatch local-path vs HTTPS loaders so
+>    the user's uploaded garment reaches Gemini.
+> 4. **WhatsApp runtime does not exist.** Removed deliberately; will be
+>    rebuilt in a later phase.
+>
+> For the authoritative "what is running right now" view, always defer to
+> `docs/CURRENT_STATE.md`. When this document and `CURRENT_STATE.md`
+> disagree, `CURRENT_STATE.md` wins.
 
 ## Purpose
 
@@ -23,7 +45,7 @@ This document describes the target architecture for the system we want to build 
 - profile-aware, memory-backed shopping and dressing intelligence
 
 For user-facing product framing, personas, journey, and stories, see `docs/PRODUCT.md`.
-For detailed step-by-step execution flows for all 12 intents, see `docs/WORKFLOW_REFERENCE.md`.
+For detailed step-by-step execution flows, see `docs/WORKFLOW_REFERENCE.md` (the 12-intent layout there is also historical — read alongside `intent_registry.py`).
 
 The architecture below is broader than the current recommendation-only runtime. It is the target system design.
 

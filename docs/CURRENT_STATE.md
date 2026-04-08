@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: April 8, 2026 (P0+P1 closeout, cleanup PRs 1 & 2, architectural parking note)
+Last updated: April 8, 2026 (Phase 12 re-architecture plan: visually-grounded evaluation, intent consolidation 12→7+feedback, planner split, pairing upload fix)
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -1018,10 +1018,336 @@ Success criteria:
 
 ## Immediate Next Item
 
-Next incomplete phase: Phase 11A (Design System And Experience Realignment).
+### ✅ CLOSED — Wardrobe-anchor try-on now includes the user's uploaded image (Phase 12D follow-up, April 8 2026)
+
+Discovered April 8, 2026 from manual staging test of `user_03026279ecd6` turn `9dff6f7e-9146-4d66-a277-a835e484334d` ("What goes with this pullover for casual night out?" with a chocolate brown pullover upload). The pullover was correctly ingested + enriched and was injected into every paired candidate as the anchor, but the **image** never reached Gemini — `garment_source` on all 3 try-on rows was `"catalog"` and the renders showed a hallucinated brown sweater rather than the user's actual photo.
+
+**Root cause** (two-step):
+1. `outfit_assembler._product_to_item` resolved `image_url` only from catalog fields (`images__0__src`, `primary_image_url`, …). Wardrobe rows store the image at `image_path` and leave `image_url=""`, so wardrobe-anchor candidate items got `image_url=""`. It also never set `source`, so `_detect_garment_source` fell through to its `"catalog"` default.
+2. `orchestrator._render_candidates_for_visual_eval._render_one` skipped any item whose `image_url` was empty when building `garment_urls`, silently dropping the pullover. Gemini received only the catalog trouser URL + the person photo and hallucinated a sweater from prompt text.
+
+**Fix shipped (3 files, 308 tests passing):**
+- `outfit_assembler._product_to_item` now resolves `image_url` from `enriched_data["image_url"]` and `enriched_data["image_path"]` (in addition to catalog fields), and tags wardrobe-shaped rows with `source="wardrobe"` (detected by `image_path` present + no catalog `handle`/`store`).
+- `tryon_service.generate_tryon_outfit` dispatches by URL scheme: HTTP(S) → `_download_image`, anything else → `_load_local_image`, so wardrobe `data/...` paths reach Gemini correctly.
+- 3 new regression tests in `Phase12DAnchorAndEnrichmentTests` cover (a) wardrobe-anchor `_product_to_item` resolves `image_url` and tags `source`, (b) catalog rows are not mislabelled, (c) the full chain from anchor injection → diversity pass preserves `is_anchor`.
+
+This was a Phase 12D follow-up: 12D fixed wardrobe ingestion enrichment but did not exercise the anchor → render path with a real wardrobe image. Closed by commit landing on April 8, 2026; the next staging test of a pairing-with-upload turn should show `garment_source="mixed"` in `virtual_tryon_images` and renders that contain the user's actual garment.
+
+---
+
+**Phase 12 is complete** as of April 8, 2026 (all sub-phases 12A–12E shipped). See "Phase 12 — Closed" in the Phase 12 section below for the close-out summary, deferred items, and the final test counts.
+
+The next incomplete phase will depend on what staging telemetry (Panels 9-12 in `docs/OPERATIONS.md`) reveals once accumulating real traffic. Likely candidates:
+- **Reranker calibration** — once Phase 12E telemetry has 2-4 weeks of data, calibrate the reranker to incorporate feedback signals beyond `assembly_score`
+- **True path 1b API** — `wardrobe_item_id` parameter to avoid re-uploading existing wardrobe items
+- **Capsule / trip planning return** — re-introduce as a dedicated intent with multi-day recurrence semantics
+- **Background re-enrichment worker** — backfill legacy wardrobe rows that were saved with empty fields before the Phase 12D fix
+
+Phase 11A (Design System And Experience Realignment) is functionally complete in code; designer sign-off on `docs/DESIGN_SYSTEM_VALIDATION.md` remains the only open gate there.
 
 Operating note:
-- keep `docs/CURRENT_STATE.md` aligned to future runtime changes
+- The intent registry is now 7 advisory + feedback + silent wardrobe_ingestion. Anything that references `capsule_or_trip_planning`, `shopping_decision`, `garment_on_me_request`, `virtual_tryon_request`, or `product_browse` as intents is historical and should not be extended.
+- Keep `docs/CURRENT_STATE.md` aligned to future runtime changes.
+
+## Phase 12: Re-architecture to Visually-Grounded Evaluation
+
+Status: planned, not started. This phase supersedes several earlier forward-looking items (see "Items Removed from Forward-Looking Plan" at the end of this section). It is a coordinated re-architecture rather than a collection of local fixes, because three issues compound:
+
+1. **Intent taxonomy confusion.** 12 intents ship today, of which 4–5 are really tool calls or workflow operations masquerading as advisory intents. Two intents (`shopping_decision` and `garment_on_me_request`) ask the same underlying question from different framings and have asymmetric handler quality — one has a dedicated agent, the other falls through to inline planner text.
+2. **Evaluation is not visually grounded.** The current `OutfitEvaluator` scores candidates from catalog attributes before any try-on render exists. It cannot catch proportion, drape, fit, or on-body color problems that only emerge once a garment is composed onto the user. Try-on today is a decorative bolt-on appended after evaluation.
+3. **Wardrobe ingestion is broken at the data-path level.** Per the staging audit of `user_03026279ecd6` conversation `721e1963-c515-4fd4-82d0-f84448c51564`, `save_uploaded_chat_wardrobe_item` returned an attached item with empty title / garment_category / primary_color fields. The planner therefore never saw the garment attributes, and for `garment_on_me_request` the vision-grounded handler was never invoked — the planner produced generic Autumn-palette boilerplate instead of analyzing the actual garment. This is a pre-existing bug that blocks pairing reliability and must be fixed as part of this phase.
+
+### Target Architecture
+
+**Intent taxonomy: 12 → 7 advisory + feedback + silent-save wardrobe_ingestion.**
+
+| New Intent | Replaces / Absorbs | Workflow Shape |
+|---|---|---|
+| `occasion_recommendation` | absorbs `product_browse` when `target_product_type` is set | architect → catalog_search → assembler → reranker (top 3) → tryon (all 3) → visual evaluator (all 3) → formatter |
+| `pairing_request` | same intent, but with a mandatory sub-pipeline for uploaded garments (1a new image → 46-attr vision → embeddings → wardrobe save; 1b existing wardrobe → use stored attributes) | architect (with anchor) → catalog_search → assembler → reranker (top 3) → tryon (all 3) → visual evaluator (all 3) → formatter |
+| `garment_evaluation` | merges `shopping_decision` + `garment_on_me_request` + `virtual_tryon_request` | tryon → visual evaluator → formatter. Photo-only input. `purchase_intent: bool` extracted by planner; formatter conditionally renders buy/skip verdict computed deterministically from evaluator scores |
+| `outfit_check` | unchanged intent, lean pipeline | visual evaluator on user-provided photo → formatter → [async] outfit decomposition + wardrobe save. **No architect call, no try-on.** Outfit check rates what the user is wearing — it does not redirect to what the system would have recommended instead. |
+| `style_discovery` | unchanged intent, new handler | StyleAdvisorAgent → formatter |
+| `explanation_request` | unchanged intent, new handler | StyleAdvisorAgent → formatter |
+| `feedback_submission` | unchanged | pure tool call, no LLM reasoning |
+| `wardrobe_ingestion` | **kept as silent-save variant** | not exposed as a primary advisory intent in the planner prompt; remains in the registry so programmatic / bulk upload flows can dispatch it |
+
+**Intents being removed from the user-facing advisory taxonomy:**
+- `capsule_or_trip_planning` — deferred to a later phase; delete `_handle_capsule_or_trip_planning`, registry entry, related prompts, and tests
+- `product_browse` — folded into `occasion_recommendation` via a new `target_product_type` field. "Show me shirts" becomes an `occasion_recommendation` with `target_product_type="shirt"` and no occasion_signal; the architect still plans a direction, retrieval still runs, but the candidate shape may be single-garment instead of top+bottom pairs
+- `virtual_tryon_request` — absorbed into `garment_evaluation`
+- `shopping_decision` — absorbed into `garment_evaluation`
+- `garment_on_me_request` — absorbed into `garment_evaluation`
+
+**Planner responsibilities (narrower than today):**
+1. Query validation — is the request in scope for a fashion copilot?
+2. Intent classification across the 7 advisory intents (+ implicit `feedback_submission` + silent `wardrobe_ingestion`)
+3. Entity extraction: `occasion_signal`, `formality_hint`, `time_of_day`, `weather_context`, `target_product_type`, `purchase_intent`, `source_preference`, anchor-garment reference, conversation continuity (`is_followup`, `followup_intent`)
+4. Clarification questioning when any required entity is irreducibly ambiguous
+
+The planner **no longer generates inline response text**. Persona and advisory content generation move to `StyleAdvisorAgent` (for `style_discovery` and `explanation_request`) and the response formatter (for everything else).
+
+**Orchestrator responsibilities:**
+1. Enrich the planner output with context the planner cannot see: user profile, style preferences, conversation memory, disliked-product suppression, attached-image state, wardrobe contents
+2. Reason about which of the four thinking directions matter most for this turn (see below), and pass that reasoning direction into the architect and evaluator prompts as context
+3. Dispatch to the correct pipeline and sequence its stages with graceful failure handling
+4. Persist turn artifacts and emit telemetry
+
+**The four thinking directions** — these are reasoning axes for the orchestrator, architect, and evaluator, NOT fixed 25% weights. They tell the system what matters per turn:
+- Physical features + color (body harmony, proportion, palette match)
+- User comfort (risk tolerance, comfort boundaries, personal style alignment)
+- Occasion appropriateness (formality, dress code, cultural context)
+- Weather and time of day (climate, season, daypart)
+
+The orchestrator should reason about which of these dominates for a given request and propagate that direction into downstream prompts. The concrete evaluator scoring dimension count grows by exactly one: **`weather_time_pct`** is added as a 9th dimension alongside the existing 8.
+
+### Phase 12A — Intent Consolidation and Cleanup
+
+Goal: the registry is 7 advisory + feedback + silent `wardrobe_ingestion`, with no behavioral or quality change to users. Pure rename + deletion.
+
+Checklist:
+- [ ] merge `shopping_decision` + `garment_on_me_request` + `virtual_tryon_request` into a new `Intent.GARMENT_EVALUATION` in `modules/agentic_application/src/agentic_application/intent_registry.py`
+- [ ] remove `Intent.CAPSULE_OR_TRIP_PLANNING` + its registry metadata, handler (`_handle_capsule_or_trip_planning`), tests, prompt references, and all related stage messages
+- [ ] remove `Intent.PRODUCT_BROWSE` as a distinct intent; absorb into `Intent.OCCASION_RECOMMENDATION` by adding `target_product_type: Optional[str]` on `CopilotResolvedContext`
+- [ ] keep `Intent.WARDROBE_INGESTION` in the registry as a silent-save variant; remove it from the user-facing intent list in `prompt/copilot_planner.md` but retain the dispatch path
+- [ ] update `CopilotActionParameters`: replace `verdict: Optional[str]` with `purchase_intent: bool = False`; add `target_product_type: str = ""`; add `weather_context: str = ""`; add `time_of_day: str = ""`
+- [ ] update `Action` enum: drop `RUN_SHOPPING_DECISION`, `RUN_VIRTUAL_TRYON`, `RUN_PRODUCT_BROWSE`; add `RUN_GARMENT_EVALUATION`; actions go from 9 → 7
+- [ ] update `prompt/copilot_planner.md` to classify only the 7 advisory intents and extract the new entities
+- [ ] update planner JSON schema in `agents/copilot_planner.py` to reflect the new enum values and entity fields
+- [ ] route the new `garment_evaluation` intent to a temporary shim that calls the existing `OutfitCheckAgent` (the deeper pipeline lands in Phase 12B)
+- [ ] delete the `garment_on_me_vision_route` override added during the P0 staging bug fix — the merged intent has its own dispatch path
+- [ ] delete `_handle_shopping_decision`, `prompt/shopping_decision.md`, and `agents/shopping_decision_agent.py` (or rename the agent to `garment_evaluation_agent.py` and keep its scoring logic as reference for Phase 12B)
+- [ ] update tests that mock removed intents; add tests for the new `garment_evaluation` routing
+
+Success criteria:
+- intent registry lists 7 advisory intents + `feedback_submission` + silent `wardrobe_ingestion`
+- every existing test passes with the new taxonomy
+- no user-visible behavioral change; this is a rename + deletion phase
+
+### Phase 12B — Visually-Grounded Evaluator and Reranker
+
+Status: **complete** (April 8, 2026). Visual evaluator path is gated on the user having a full-body profile photo; legacy text-only `OutfitEvaluator` remains as the fallback for users without one. Phase 12E will tighten the over-generation contract and add operational dashboards.
+
+Goal: evaluation reflects the rendered try-on, not catalog attributes. Explicit reranker prunes candidates before the expensive visual stage.
+
+Checklist:
+- [x] introduce an explicit `Reranker` step in the orchestrator pipeline between `OutfitAssembler` and try-on generation (`agents/reranker.py` — deterministic `assembly_score` sort with `final_top_n=3`, `pool_top_n=5`)
+- [x] merge `OutfitEvaluator` and `OutfitCheckAgent` into a single `VisualEvaluatorAgent` (`agents/visual_evaluator_agent.py`) that takes `(image, candidate_metadata, user_context, live_context, intent, mode)` and produces 9 dim scores + 8 archetype scores + structured notes per candidate. The agent works in three modes: `recommendation` (per-candidate, no overall_verdict), `single_garment` (full output for `garment_evaluation`), `outfit_check` (full output for the user-photo flow)
+- [x] add the 9th evaluator dimension `weather_time_pct` to `EvaluatedRecommendation` + `OutfitCard` (internal + api) — appropriateness for stated weather and time of day
+- [x] author `prompt/visual_evaluator.md` (combines the strongest pieces of `outfit_evaluator.md` and `outfit_check.md`, names the four thinking directions, single-garment framing, follow-up evaluation rules, weather/time mapping)
+- [x] move the evaluator call to AFTER try-on in `_handle_planner_pipeline` for users with a person photo: `assembler → reranker → render top-3 (with over-generation fallback) → VisualEvaluatorAgent (parallel per candidate) → formatter`. Users without a person photo continue on the legacy text-only OutfitEvaluator path.
+- [x] render try-on for top-3 candidates in parallel via `_render_candidates_for_visual_eval`; the existing post-format `_attach_tryon_images` cache lookup hits the same renders so OutfitCards still get their try-on images
+- [x] graceful failure handling: if a try-on fails the quality gate, the over-generation pool walks the next candidate; if the pool is exhausted, the candidate ships without a tryon path and the visual evaluator falls back to attribute-only scoring on that slot. If the entire visual path raises, the orchestrator falls back to the legacy text-only `OutfitEvaluator`
+- [x] rewire `_handle_garment_evaluation` to use: `TryonService → VisualEvaluatorAgent → formatter` with deterministic wardrobe overlap + versatility + verdict gating. Photo-only input. `purchase_intent` flag flows through to the formatter and is the only thing that controls whether the buy/skip verdict block renders
+- [x] rewire `_handle_outfit_check` to use `VisualEvaluatorAgent` directly on the user's provided photo (no architect, no try-on; the user is already wearing the outfit in the image). The existing async outfit decomposition + wardrobe save path remains
+- [x] update stage emission for the slow pipeline: new stages `reranker`, `visual_evaluation` (with `target_count` and `evaluated_count` context); the legacy text path keeps emitting `outfit_evaluation`. Operator dashboards can distinguish the two paths via `model_call_logs.request_json.evaluator_path`
+- [x] response formatter: add deterministic wardrobe overlap check via `AgenticOrchestrator._compute_wardrobe_overlap` (category + color + formality match → strong / moderate / none). Surfaced in `garment_evaluation` metadata + assistant message. No LLM involved
+- [x] response formatter: add deterministic wardrobe versatility check via `AgenticOrchestrator._compute_wardrobe_versatility` (counts compatible complementary categories with formality compatibility). Surfaced in metadata
+- [x] response formatter: deterministic buy/skip/conditional verdict via `AgenticOrchestrator._compute_purchase_verdict`. Strong wardrobe overlap forces `skip` regardless of scores; otherwise the average of body+color+style+occasion+weather drives the verdict. Only computed when `purchase_intent=true`; suppressed otherwise
+- [x] tests added: `test_planner_garment_evaluation_runs_tryon_visual_eval_pipeline`, `test_garment_evaluation_no_image_returns_clarification`, `test_garment_evaluation_strong_wardrobe_overlap_drives_skip_verdict`, `test_garment_evaluation_purchase_intent_false_suppresses_verdict`, plus 12 building-block unit tests in `Phase12BBuildingBlockTests` covering Reranker ordering / pool cap / validation, the four verdict-computation branches, and wardrobe overlap + versatility detection
+
+Success criteria:
+- outfit_recommendation / pairing_request: when the user has a full-body photo, top-3 candidates are visually evaluated against rendered try-ons; when they don't, the legacy text evaluator runs and the response still ships
+- garment_evaluation produces a visually-grounded assessment plus an optional purchase verdict when the user framed it commercially
+- outfit_check uses the visual evaluator on the user's photo with no architect call and no try-on
+- all tests in `tests/test_agentic_application.py` pass (100 total — 85 existing + 3 new garment_evaluation flow tests + 12 new building-block unit tests)
+- no regressions in the broader suite (3 pre-existing UI HTML failures remain, unchanged from before Phase 12B)
+
+Deferred to Phase 12E:
+- assembler "top 5" output contract (currently the assembler returns its full set and the reranker prunes; over-generation walks the same set rather than asking the assembler for more)
+- Operations dashboard panels (quality-gate failure rate, evaluator path mix, latency by intent)
+- Reranker calibration from staging telemetry once it exists
+
+### Phase 12C — StyleAdvisorAgent, Planner Split, and Entity Additions
+
+Status: **complete** (April 8, 2026). The orchestrator now uses a layered routing model: deterministic topical helpers (collar / neckline / pattern / silhouette / archetype / color) take priority for style_discovery, with `StyleAdvisorAgent` as the LLM fallback for open-ended discovery questions and explanation_request turns that have prior recommendations to reason about.
+
+Goal: the planner becomes a pure router + entity extractor. Style discovery and explanation flow through a dedicated advisor agent. Weather and time enter the prompt chain.
+
+Checklist:
+- [x] introduce `modules/agentic_application/src/agentic_application/agents/style_advisor_agent.py` + `prompt/style_advisor.md`
+- [x] `StyleAdvisorAgent.advise(mode, query, user_context, plan_resolved_context, plan_action_parameters, conversation_memory, previous_recommendation_focus, profile_confidence_pct)` returns a structured `StyleAdvice` with `assistant_message`, `bullet_points`, `cited_attributes`, `dominant_directions`. Two modes: `discovery` (open-ended) and `explanation` (against a prior recommendation summary). `render_assistant_message()` produces the chat-ready prose + bullets combined output.
+- [x] update `prompt/copilot_planner.md` — added a Phase 12C clarification under `respond_directly` explaining that the planner's `assistant_message` for advisory intents is a brief acknowledgment (or empty) and that the orchestrator's downstream advisor produces the actual response. Examples of acceptable acknowledgments included.
+- [x] planner JSON schema: `assistant_message` was already optional in the schema; the prompt change tells the planner to leave it empty/short for advisory intents.
+- [x] rewire `_handle_style_discovery` to delegate to `StyleAdvisorAgent` when `_detect_style_advice_topic` returns `"general"` (open-ended). Topical questions (collar, color, etc.) continue to use the deterministic Phase 11 helpers.
+- [x] rewire `_handle_explanation_request` to delegate to `StyleAdvisorAgent` in `explanation` mode when `previous_recommendations` is present. Advisor receives the prior recommendation's title, colors, categories, occasion fits, and confidence band so it can reason against actual turn artifacts. Falls back to the deterministic explanation summary when no prior recommendation exists or the advisor raises.
+- [x] add weather / time-of-day extraction was already done in Phase 12A (`weather_context`, `time_of_day`, `target_product_type` on `CopilotResolvedContext`). Phase 12C plumbs these through the prompts.
+- [x] update `prompt/outfit_architect.md` — added a "Thinking Directions" section naming the four directions (physical+color, comfort, occasion, weather/time) with concrete examples of how each one shapes the plan. Architect input section now documents `live_context.weather_context`, `live_context.time_of_day`, and `live_context.target_product_type` as inputs the architect should use.
+- [x] update `prompt/visual_evaluator.md` — already authored in Phase 12B with the four thinking directions section. No changes needed here in 12C.
+
+Success criteria:
+- planner output for advisory intents contains routing + entities only; the orchestrator + advisor produce the substantive response
+- `style_discovery` open-ended questions ("what defines my style?") are answered by `StyleAdvisorAgent` with bullet-pointed structured advice
+- `style_discovery` topical questions still use the deterministic Phase 11 helpers (4 existing tests still pass)
+- `explanation_request` answers cite the actual prior recommendation title, colors, categories via the advisor when context is available; falls back to the deterministic summary otherwise
+- weather / time-of-day flows from planner → architect → visual evaluator end-to-end via the four-thinking-directions sections in each prompt
+- 103 tests in `tests/test_agentic_application.py` pass (100 from Phase 12B + 3 new Phase 12C tests covering general delegation, topical fallback preservation, and explanation no-prior-recommendation fallback)
+- no regressions in the broader suite (3 pre-existing UI HTML failures remain, unchanged from before Phase 12C)
+
+Files added in Phase 12C:
+- `modules/agentic_application/src/agentic_application/agents/style_advisor_agent.py` — new agent class + `StyleAdvice` result wrapper
+- `prompt/style_advisor.md` — new prompt with the four thinking directions, mode-specific guidance, and structured JSON schema
+
+Files modified in Phase 12C:
+- `orchestrator.py` — `_handle_style_discovery` and `_handle_explanation_request` now route through `StyleAdvisorAgent` when conditions are met; `style_advisor` instantiated in `__init__`; `StyleAdvisorAgent` import added
+- `prompt/copilot_planner.md` — `respond_directly` section clarifies that the planner's `assistant_message` is not the final answer for advisory intents
+- `prompt/outfit_architect.md` — new "Thinking Directions" section, weather_context / time_of_day / target_product_type inputs documented
+- `tests/test_agentic_application.py` — `_build_orchestrator` now patches `StyleAdvisorAgent`; `test_planner_respond_directly_for_explanation_request` updated to assert delegation; 3 new Phase 12C tests added
+
+### Phase 12D — Wardrobe Ingestion Fix and Pairing Upload Subpipeline
+
+Status: **complete** (April 8, 2026). Surfaced a second pre-existing bug along the way (the diversity pass was collapsing all pairing turns to 1 outfit because it didn't exempt the anchor) and fixed both in one phase.
+
+Goal: fix the pre-existing enrichment bug surfaced by the staging audit; make the pairing-request 1a upload path reliable; add an invariant test for anchor handling.
+
+Root cause analysis (from the staging audit of user_03026279ecd6 conversation 721e1963):
+- `user/service.py:save_wardrobe_item` wrapped the 46-attribute vision enrichment call in a try/except that **silently swallowed the exception** and inserted the wardrobe row with the original empty `projected` dict (initialized from empty user-supplied fields).
+- Downstream, `_attached_item_context` returned an empty string because all the parts were empty, the planner saw only `"Image anchor source: wardrobe image"` with no real attributes, and the architect had no anchor context to plan around. The pairing turn collapsed to a generic response.
+- Separately: the `OutfitAssembler._enforce_cross_outfit_diversity` pass treats the anchor product like any other shared item, so all but the first paired candidate were being dropped. Pairing turns were producing 1 outfit instead of 3 — even when enrichment worked. Verified by running the pass against synthetic candidates.
+
+Checklist:
+- [x] traced `save_uploaded_chat_wardrobe_item` end-to-end through `onboarding_gateway → user.service → user.repository → wardrobe_enrichment.infer_wardrobe_catalog_attributes`. Located the swallow at `service.py:494-497`.
+- [x] fix the enrichment path: added a single retry on transient enrichment failure (handles rate limits / network blips), and when both attempts fail, persist the row with `metadata_json["catalog_attribute_extraction_status"]="failed"` AND surface an `enrichment_status` top-level field on the returned dict so the orchestrator can detect the failure without re-parsing nested JSON.
+- [x] orchestrator detects `enrichment_status="failed"` (or empty critical fields, for backwards compatibility with rows saved before the marker existed) and sets `attached_item["enrichment_failed"]=True`.
+- [x] before dispatch, when `enrichment_failed=True` AND the intent is anything OTHER than `garment_evaluation`, the orchestrator overrides the action to `ASK_CLARIFICATION` with a user-facing message: *"I couldn't quite read the piece in that photo — could you try a clearer shot, ideally well-lit and showing the full garment? Then I can pair it properly."* `garment_evaluation` is exempt because the visual evaluator works on the image bytes directly and doesn't need attribute enrichment.
+- [x] **path 1b finding:** path 1b doesn't exist as a distinct API path. The "select from wardrobe" UI re-uploads the existing item's image as a fresh `image_data` payload. Both 1a and 1b flow through the same `save_wardrobe_item` code path so the fix covers them. A true "look up by wardrobe_item_id without re-saving" path would require a new API field, UI change, and orchestrator branch — flagged as a Phase 12E or later improvement, not blocking.
+- [x] **"Attached garment context" text decision:** keep it. After the enrichment fix the appended text reliably contains real garment attributes; it's consumed by the architect via `user_message` (per the architect prompt which explicitly says *"interpret this directly to understand what the user wants"*). Removing it would lose a real signal to the architect.
+- [x] **anchor handling unification:** Added invariant test + fixed a pre-existing bug. The diversity pass at `OutfitAssembler._enforce_cross_outfit_diversity` was treating the anchor like any other shared product, so pairing turns with N candidates collapsed to 1 outfit. Fix:
+  - `_product_to_item` now propagates the `is_anchor` flag from `enriched_data` to the candidate item.
+  - The orchestrator's anchor injection at `_handle_planner_pipeline` sets `enriched_data["is_anchor"]=True` on the synthetic anchor `RetrievedProduct`.
+  - The diversity pass exempts items where `is_anchor=True` from the "no repeats across outfits" rule. Non-anchor duplicates are still dropped (the original rule still applies for shared complementary items).
+  - Two regression tests lock the invariant in: `test_diversity_pass_keeps_all_pairing_candidates_when_anchor_is_marked` and `test_diversity_pass_still_drops_non_anchor_duplicates`.
+- [x] regression test reproducing the staging case: `test_failed_enrichment_surfaces_clarification_for_pairing` simulates the staging bug (gateway returns empty fields with `enrichment_status="failed"`) and asserts the orchestrator returns a clarification asking for a clearer photo, NOT a generic pairing response. Architect must not be called.
+- [x] companion test `test_garment_evaluation_proceeds_even_with_failed_enrichment` confirms the garment_evaluation exemption: even with failed enrichment, the visual evaluator runs on the image bytes and the response is a real `recommendation`, not a clarification.
+
+Success criteria:
+- the staging bug no longer reproduces: failed enrichment surfaces a user-facing clarification instead of running the pipeline with an empty-attribute anchor
+- transient enrichment failures are recovered automatically via the single retry
+- pairing turns return up to 3 outfits, not 1, because the diversity pass now exempts anchor products
+- non-anchor duplicates are still dropped by the diversity pass (the original "no repeats" rule still works for shared complementary items)
+- 107 tests in `tests/test_agentic_application.py` pass (103 from Phase 12C + 4 new Phase 12D tests)
+- no regressions in the broader suite (5 pre-existing UI HTML / onboarding HTML failures remain, unchanged from before Phase 12D)
+
+Files modified in Phase 12D:
+- `modules/user/src/user/service.py` — `save_wardrobe_item` retries enrichment once, propagates `enrichment_status` and `enrichment_error` to the returned dict
+- `modules/agentic_application/src/agentic_application/orchestrator.py` — detect `enrichment_failed` after upload, override action to `ASK_CLARIFICATION` for pairing/recommendation intents (garment_evaluation exempt); mark anchor `RetrievedProduct.enriched_data["is_anchor"]=True` during anchor injection
+- `modules/agentic_application/src/agentic_application/agents/outfit_assembler.py` — `_enforce_cross_outfit_diversity` exempts items with `is_anchor=True` from the "no repeats" rule; `_product_to_item` propagates the `is_anchor` flag from `enriched_data`
+- `tests/test_agentic_application.py` — new `Phase12DAnchorAndEnrichmentTests` class with 4 regression tests (anchor diversity exemption, non-anchor duplicate handling preserved, failed enrichment clarification, garment_evaluation exemption)
+
+Deferred (not blocking Phase 12D):
+- True path 1b: API support for "use wardrobe item by id" without re-uploading (avoids row duplication)
+- Background re-enrichment of older wardrobe rows that were saved with empty fields before the Phase 12D fix
+- Wardrobe ingestion telemetry dashboard (Phase 12E)
+
+### Phase 12E — Over-generation, Hardening, and Calibration
+
+Status: **complete** (April 8, 2026). Phase 12 is now fully closed out — see "Phase 12 — Closed" summary below.
+
+Goal: harden the Phase 12B pipeline against quality-gate failures; instrument telemetry; document the new pipeline shapes.
+
+Checklist:
+- [x] **assembler/reranker contract** — verified that Phase 12B's `Reranker(final_top_n=3, pool_top_n=5)` already provides the over-generation pool. The assembler returns its full set, the reranker prunes to top 5, and `_render_candidates_for_visual_eval` walks the pool with quality-gate fallback to positions 4-5 when slots fail. No code change needed; this item was already covered by the Phase 12B reranker design and is now documented in `docs/WORKFLOW_REFERENCE.md` Phase 12 Summary.
+- [x] **retry/fallback logic** — `_render_candidates_for_visual_eval` already walks the over-generation pool when quality-gate failures happen. Phase 12E adds **per-turn metrics** so operations can see how often this fires: `tryon_attempted_count`, `tryon_succeeded_count`, `tryon_quality_gate_failures`, `tryon_overgeneration_used`, `rendered_with_image_count`, `rendered_without_image_count`. These flow into `response.metadata.tryon_stats` and `dependency_validation_events.metadata_json` so Panel 10 (below) can chart them.
+- [x] **operational dashboard panels** — added 4 new panels to `docs/OPERATIONS.md` with concrete SQL:
+  - **Panel 9** — Visual Evaluator Path Mix: tracks the visual-vs-legacy evaluator path share over the last 7 days. Healthy steady state is `visual ~ 60–80%` and `legacy_text ~ 20–40%`.
+  - **Panel 10** — Try-on Quality Gate Health: tracks `tryon_quality_gate_failure_rate_pct` and `turns_using_overgeneration` per day. Healthy steady state is failure rate `< 15%`; alert above 25%.
+  - **Panel 11** — Final Response Count Below Target: tracks the share of recommendation turns shipping fewer than 3 outfits because over-generation exhausted the pool. Healthy `< 5%`; page someone above 15%.
+  - **Panel 12** — Wardrobe Enrichment Failure Rate: tracks the Phase 12D `wardrobe_enrichment_failed` reason code rate; healthy `< 5%`; spike means the OpenAI vision model is degraded.
+  - **Panel 13** — Wardrobe-Anchor Try-on Coverage: tracks `garment_source` mix on `virtual_tryon_images` (`mixed` / `wardrobe` / `catalog`). For pairing-with-upload turns, healthy means `mixed` or `wardrobe`; a `catalog`-only label is the regression signal that the April 8, 2026 wardrobe-anchor fix has been undone.
+- [x] **WORKFLOW_REFERENCE.md update** — added a new "Phase 12 Summary" section at the top with the current 7-intent + feedback + silent wardrobe_ingestion taxonomy, current pipeline shapes per intent, key building blocks added in Phase 12, and what stays the same. Marked the obsolete sections (Shopping Decision, Capsule/Trip Planning, Virtual Try-On, Garment-on-Me Query, Product Browse) with REMOVED IN PHASE 12X callouts pointing to the new equivalents. Updated the LLM Model Usage Summary table with Phase 12 component list and per-turn LLM call counts per intent. Updated the Database Write Summary table.
+- [x] **end-to-end stage emission tests** — added a new `Phase12EStageEmissionTests` class with 3 tests that capture `stage_callback` events and assert the canonical stage skeleton per intent: lean skeleton for `style_discovery` and `explanation_request` (entry stages only), full pipeline skeleton for `occasion_recommendation` legacy text path (entry + outfit_architect + catalog_search + outfit_assembly + reranker + outfit_evaluation + response_formatting). Locks in the Phase 12 pipeline shapes so a future refactor that changes the order or skips a stage breaks the test loudly.
+- [ ] reranker calibration from staging telemetry — DEFERRED. Today `assembly_score` is the only reranker signal. Once staging telemetry has accumulated data (Panels 9-12 above provide the inputs), calibration can incorporate prior-turn feedback, user style preference proximity, and weather/time match as additional signals. Out of scope for the Phase 12 close-out because it requires real production data we don't have yet.
+
+Success criteria:
+- 99th-percentile turns ship 3 outfits with renders → unblocked by Phase 12B's over-generation pool + Phase 12D's anchor diversity exemption + Phase 12E's metrics make this measurable
+- operational dashboards make quality-gate failure rate visible → Panel 10 in OPERATIONS.md
+- `docs/WORKFLOW_REFERENCE.md` reflects the new pipelines → Phase 12 Summary section + per-section REMOVED callouts
+- 110 tests in `tests/test_agentic_application.py` pass (107 from Phase 12D + 3 new Phase 12E stage emission tests)
+- no regressions in the broader suite (5 pre-existing UI HTML / onboarding HTML failures remain, unchanged from before any Phase 12 work)
+
+Files modified in Phase 12E:
+- `modules/agentic_application/src/agentic_application/orchestrator.py` — `_render_candidates_for_visual_eval` returns `(rendered_list, stats_dict)` tuple instead of a bare list; `_handle_planner_pipeline` captures the stats and surfaces them in `response.metadata.tryon_stats` plus `dependency_validation_events.metadata_json` for the operations dashboard
+- `docs/OPERATIONS.md` — 4 new panels (9-12) with concrete SQL
+- `docs/WORKFLOW_REFERENCE.md` — Phase 12 Summary at the top, REMOVED callouts on obsolete sections, updated LLM Model Usage Summary and Database Write Summary tables
+- `tests/test_agentic_application.py` — new `Phase12EStageEmissionTests` class with 3 stage emission tests
+
+Files NOT modified (intentionally — already done by Phase 12B/D):
+- `agents/reranker.py` — already had `final_top_n=3, pool_top_n=5` defaults
+- `agents/visual_evaluator_agent.py` — already had per-candidate parallel call pattern
+- `agents/outfit_assembler.py` — anchor diversity exemption already landed in Phase 12D
+
+## Phase 12 — Closed
+
+Phase 12 (the re-architecture from 12 → 7 advisory intents + visually-grounded evaluation + planner split + wardrobe ingestion fix + over-generation hardening) is **fully closed out** as of April 8, 2026.
+
+Sub-phase status:
+- Phase 12A — Intent Consolidation and Cleanup → complete
+- Phase 12B — Visually-Grounded Evaluator and Reranker → complete
+- Phase 12C — StyleAdvisorAgent, Planner Split, Entity Additions → complete
+- Phase 12D — Wardrobe Ingestion Fix and Pairing Upload Subpipeline → complete
+- Phase 12E — Over-generation, Hardening, and Calibration → complete
+
+End-to-end test counts:
+- `tests/test_agentic_application.py`: 110 passing (75 pre-Phase-12 + 35 added across Phases 12A-E)
+- Broader suite: 284 passing (5 pre-existing UI HTML / onboarding HTML failures unchanged from before Phase 12 work)
+
+Files added across Phase 12 (5 new modules + 2 new prompts):
+- `agents/visual_evaluator_agent.py` (Phase 12B)
+- `agents/reranker.py` (Phase 12B)
+- `agents/style_advisor_agent.py` (Phase 12C)
+- `prompt/visual_evaluator.md` (Phase 12B)
+- `prompt/style_advisor.md` (Phase 12C)
+
+Files deleted across Phase 12 (2 dead modules):
+- `agents/shopping_decision_agent.py` (Phase 12A)
+- `prompt/shopping_decision.md` (Phase 12A)
+
+### Items deferred from Phase 12 to a future phase
+
+These were considered during Phase 12E scoping but explicitly punted because they require either real staging telemetry (not yet collected) or non-trivial UI / API surface changes:
+
+1. **True path 1b API** — `wardrobe_item_id` parameter on `/v1/conversations/{id}/turns` so users can select an existing wardrobe item without re-uploading the image. Today the "select from wardrobe" UI re-uploads through the same `image_data` path, creating duplicate wardrobe rows. Affects API contract, web UI, and orchestrator dispatch.
+2. **Background re-enrichment** — a worker that walks legacy wardrobe rows saved before Phase 12D's `service.py` retry-and-mark fix and re-runs the enrichment vision call. Today users with sparse legacy wardrobe items get a clarification when they reference one as an anchor; auto-re-enrichment would close the loop.
+3. **Reranker calibration from staging telemetry** — incorporate prior-turn feedback, user style preference proximity, and weather/time match as additional reranker signals. Today `assembly_score` is the only signal. Phase 12E added the operations panels (9-12) that provide the inputs once staging traffic accumulates.
+4. **Capsule / trip planning return** — Phase 12A removed this intent. Capsule/trip planning will return as a dedicated phase with the right shape (multi-day outfit selection with intentional wardrobe item recurrence).
+5. **Three-piece outfit support** — current pipeline supports `complete_only` / `paired_only` / `mixed` plan types. Three-piece (top + bottom + outerwear) requires architect prompt + assembler logic changes.
+6. **External weather API integration** — Phase 12 extracts weather context from the user message text only. A real weather API call (lat/lon → current conditions) would let the system reason about weather even when the user doesn't mention it.
+7. **Splitting OutfitEvaluator and OutfitCheckAgent fully** — Phase 12B added `VisualEvaluatorAgent` as the new path; the legacy `OutfitEvaluator` remains as the no-photo fallback and `OutfitCheckAgent` remains because some tests still mock it. A follow-up phase can delete both once test coverage is fully migrated.
+
+These are recorded here so they don't get re-discovered as "Phase 12 didn't finish X" — they're deliberate punts, not missed items.
+
+### Items Removed From the Forward-Looking Plan
+
+The following items from earlier sections of this document are **superseded by Phase 12** and should not be picked up as standalone work:
+
+- **Phase 3 — "implement `capsule_or_trip_planning` handler"**: SUPERSEDED. The handler and intent are being deleted in Phase 12A.
+- **Phase 3 — "implement `shopping_decision` handler"**: SUPERSEDED. Absorbed into `garment_evaluation`.
+- **Phase 3 — "implement `garment_on_me_request` handler"**: SUPERSEDED. Absorbed into `garment_evaluation`.
+- **Phase 3 — "implement `virtual_tryon_request` handler path"**: SUPERSEDED. Absorbed into `garment_evaluation`.
+- **Phase 11 — "trip/capsule catalog-path diversity"**: SUPERSEDED. The capsule handler is being removed.
+- **Phase 11 — "architect-level diversity for trip/capsule"**: SUPERSEDED. Same reason.
+- **The "12 intents recognized" claim** throughout the document: STALE. Becomes "7 advisory + feedback + silent wardrobe_ingestion" after Phase 12A.
+- **The "9 actions" claim** throughout the document: STALE. Becomes 7 after Phase 12A (drop `run_shopping_decision`, `run_virtual_tryon`, `run_product_browse`; add `run_garment_evaluation`).
+- **"Outfit evaluator scoring text-only attributes pre-try-on"** claims throughout: SUPERSEDED by Phase 12B visual evaluator. Evaluation post-12B is grounded in the rendered try-on image.
+
+### Not in Scope for Phase 12
+
+- WhatsApp runtime rebuild — separate phase
+- External weather API integration — for Phase 12 the planner extracts weather context from the user message or conversation memory; external API is a future enhancement
+- Reranker learning from live feedback — comes after staging telemetry lands
+- Three-piece outfit support — unchanged; stays at `complete_only` / `paired_only` / `mixed`
+- Alternative embedding models for catalog retrieval — unchanged from current design
+- Bulk wardrobe upload UI — `wardrobe_ingestion` remains as silent-save; no new user-facing bulk surface in this phase
+
+### Open Questions Resolved During Phase 12 Scoping
+
+Recorded here so they don't get re-asked during implementation:
+
+1. **Top-N try-on rendering**: render try-on for ALL 3 top candidates in parallel, not just #1. Cost is justified by the visually-grounded evaluation quality gain.
+2. **Outfit check architect call**: NO. Outfit check stays lean — vision → formatter. It evaluates what the user is wearing, not what the system would have recommended instead.
+3. **Style discovery handler**: delegate to a dedicated `StyleAdvisorAgent`, not to the architect. Clean separation between retrieval planning and stylist advisory.
+4. **Bulk wardrobe save**: keep `wardrobe_ingestion` alive as a silent-save variant in the registry; it's just not exposed as a user-facing advisory intent in the planner prompt.
+5. **Evaluation dimensions**: the four thinking directions (physical+color, comfort, occasion, weather/time) are reasoning axes for orchestrator and prompt authoring — not fixed scoring weights. The evaluator gains exactly one new scoring dimension: `weather_time_pct`. The existing 8 dimensions stay; total becomes 9.
 
 ## Phase 9: Post-Checklist Hardening
 
@@ -1256,7 +1582,7 @@ Checklist:
 - [x] **Local environment guardrail (production-readiness)**: `_handle_planner_pipeline` now runs a preflight check immediately after loading `self._catalog_inventory`. If the inventory is empty (i.e. catalog data / embeddings are not loaded in this environment), it logs a clear error, finalizes the turn with `resolved_context = {"error": "catalog_unavailable"}`, emits a `catalog_search` `blocked` stage event, and returns a structured `response_type=error` payload with a user-facing message ("I can't put together catalog recommendations right now — the catalog and embeddings aren't loaded in this environment…"). Metadata carries `guardrail = "local_environment_catalog_missing"` so dashboards (see `docs/OPERATIONS.md` Panel 4) can count and alert on it.
 - [x] **Smoke-test script (production-readiness)**: `ops/scripts/smoke_test_full_flow.sh` runs onboarding state → first chat → wardrobe save → (skipped WhatsApp) → dependency report against any backend with `BASE_URL` + `USER_ID` env vars. Returns non-zero on any failed step and prints colored PASS / FAIL / SKIP for each.
 - [x] **Dependency-report validation (production-readiness)**: `ops/scripts/validate_dependency_report.py` seeds 5 onboarded users across 2 acquisition cohorts, simulates 1-, 2-, and 3-session retention patterns across both web and whatsapp channels, calls `build_dependency_report` directly, and asserts 12 specific aggregate values (onboarded_user_count, second_session_within_14d_count, third_session_within_30d_count, acquisition cohort counts, wardrobe memory lift, session counts, whatsapp channel pass-through). Currently passes 12/12 assertions.
-- [x] **Operational dashboards (production-readiness)**: `docs/OPERATIONS.md` defines 8 dashboard panels with concrete SQL — acquisition funnel, daily turn volume by channel, intent mix, pipeline health (empty responses + error rate + catalog-unavailable guardrail hits), repeat / retention, wardrobe & catalog engagement, negative signals (dislikes), confidence drift. Each panel maps to one operational question and refreshes on the cadence specified in the doc.
+- [x] **Operational dashboards (production-readiness)**: `docs/OPERATIONS.md` defines 13 dashboard panels with concrete SQL — acquisition funnel, daily turn volume by channel, intent mix, pipeline health (empty responses + error rate + catalog-unavailable guardrail hits), repeat / retention, wardrobe & catalog engagement, negative signals (dislikes), confidence drift, evaluator path mix (Panel 9), try-on quality gate health (Panel 10), final response count below target (Panel 11), wardrobe enrichment failure rate (Panel 12), and wardrobe-anchor try-on coverage (Panel 13, added April 8, 2026 with the wardrobe-anchor fix). Each panel maps to one operational question and refreshes on the cadence specified in the doc.
 - [x] **Release-readiness criteria (production-readiness)**: `docs/RELEASE_READINESS.md` defines four hard gates — Functional Correctness, Data & Environment Readiness, Observability & Operations, Product & UX — with concrete tickable checklist items per gate, an explicit "not in scope for first-50" section, and a sign-off block requiring engineering + design owners.
 - [x] **Docs review for live-vs-test claims (production-readiness)**: Added a top-level "Verification status" callout right after the canonical-references list in this file, plus explicit verification basis lines on the User / Catalog / Application bounded-context status blocks. Anyone reading this doc now has to actively choose to interpret an "Implemented" claim as "verified live" — the default is "verified by tests, live verification gated by `docs/RELEASE_READINESS.md`".
 - [x] **Design system validation checklist (production-readiness)**: `docs/DESIGN_SYSTEM_VALIDATION.md` is the manual QA artifact a designer (not the implementing engineer) must complete before the design gate goes green. It has nine device journeys, an "editorial vs dashboard" tone audit, a per-screen polish matrix across four breakpoints, and a sign-off block. The two design-system items in this file are now ticked off as "checklist exists"; the doc requires designer sign-off before the items can be claimed as "verified live".

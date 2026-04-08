@@ -77,6 +77,7 @@ class OutfitCard(BaseModel):
     comfort_boundary_pct: int = 0
     specific_needs_pct: int = 0
     pairing_coherence_pct: int = 0
+    weather_time_pct: int = 0  # Phase 12B: weather + time-of-day appropriateness
     classic_pct: int = 0
     dramatic_pct: int = 0
     romantic_pct: int = 0

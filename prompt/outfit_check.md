@@ -18,6 +18,15 @@ Evaluate the described outfit against the user's profile and provide:
 3. What could be improved and why
 4. Specific swap suggestions — from wardrobe first, then catalog
 
+### Single-garment input ("would this suit me?")
+
+If the image shows a single garment (not a person wearing a complete outfit) — e.g., a flat-lay or hanger shot of one piece — evaluate that garment alone for individual suitability against the user's profile:
+- Score `body_harmony_pct`, `color_suitability_pct`, and `style_fit_pct` for the garment itself.
+- Score `pairing_coherence_pct` based on how easily this piece pairs with the user's wardrobe.
+- Score `occasion_pct` based on the garment's general versatility (or the stated occasion if any).
+- Frame `improvements` as alternative pieces the user could choose instead, or wardrobe items they could pair this with to make it work.
+- Open `overall_note` with a clear "yes this would suit you" / "this would work with caveats" / "I'd skip this" verdict, then explain why in profile-grounded terms.
+
 ## Evaluation Dimensions
 
 Score each dimension as an integer percentage (0–100):

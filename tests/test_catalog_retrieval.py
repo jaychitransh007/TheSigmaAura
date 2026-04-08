@@ -17,7 +17,7 @@ for p in (
 
 from catalog.retrieval.config import CatalogEmbeddingConfig
 from catalog.retrieval.document_builder import build_catalog_document, iter_catalog_documents
-from catalog.retrieval.repository import build_catalog_enriched_rows, build_catalog_item_rows
+from catalog.retrieval.repository import build_catalog_enriched_rows
 from catalog.retrieval.schemas import CatalogEmbeddingRecord
 from catalog.retrieval.vector_store import SupabaseVectorStore
 from catalog.admin_service import CatalogAdminService
@@ -150,29 +150,9 @@ class CatalogRetrievalTests(unittest.TestCase):
         self.assertEqual(2, len(docs))
         self.assertEqual(["a", "b"], [doc.product_id for doc in docs])
 
-    def test_build_catalog_item_rows_maps_catalog_for_upsert(self) -> None:
-        rows = [
-            {
-                "": "7",
-                "id": "sku_7",
-                "title": "Oxford Shirt",
-                "description": "desc",
-                "price": "1999.0",
-                "images__0__src": "https://img/1.jpg",
-                "images__1__src": "https://img/2.jpg",
-                "url": "https://example.com/sku_7",
-                "row_status": "ok",
-                "error_reason": "",
-                "GarmentCategory": "top",
-            }
-        ]
-        built = build_catalog_item_rows(rows)
-        self.assertEqual(1, len(built))
-        self.assertEqual("sku_7", built[0]["product_id"])
-        self.assertEqual("Oxford Shirt", built[0]["title"])
-        self.assertEqual(1999.0, built[0]["price"])
-        self.assertEqual("ok", built[0]["row_status"])
-        self.assertEqual("top", built[0]["metadata_json"]["GarmentCategory"])
+    # test_build_catalog_item_rows_maps_catalog_for_upsert removed:
+    # the `catalog_items` table was dropped and superseded by
+    # `catalog_enriched`. `build_catalog_item_rows` no longer exists.
 
     def test_vector_store_uses_upsert_for_catalog_items_and_embeddings(self) -> None:
         client = Mock()

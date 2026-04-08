@@ -29,11 +29,11 @@ This document serves two purposes:
 
 For the user-facing product summary, personas, journeys, and stories, see `docs/PRODUCT.md`.
 For the current project state, gap analysis, and file layout, see `docs/CURRENT_STATE.md`.
-For detailed step-by-step execution flows for all 12 intents, see `docs/WORKFLOW_REFERENCE.md`.
+For detailed step-by-step execution flows, see `docs/WORKFLOW_REFERENCE.md`.
 
 Implemented now:
-- **intent registry** (`intent_registry.py`): StrEnum-based single source of truth for all 12 intents (`Intent`), 9 actions (`Action`), and 7 follow-up intents (`FollowUpIntent`) — with metadata registries and JSON schema helpers; consumed by planner, orchestrator, agents, API, and tests
-- copilot planner (gpt-5.4) — intent classification across 12 intents, 8 action dispatch (JSON schema enums generated from registry)
+- **intent registry** (`intent_registry.py`): StrEnum-based single source of truth for the post-Phase 12A taxonomy — 7 advisory intents + silent `wardrobe_ingestion` (8 total `Intent` members), 7 actions (`Action`), and 7 follow-up intents (`FollowUpIntent`) — with metadata registries and JSON schema helpers; consumed by planner, orchestrator, agents, API, and tests. Phase 12A folded `shopping_decision` / `garment_on_me_request` / `virtual_tryon_request` into `garment_evaluation`, `product_browse` into `occasion_recommendation` (via `target_product_type`), and deferred `capsule_or_trip_planning`.
+- copilot planner (gpt-5.4) — intent classification across the 7 advisory intents + feedback, 7-action dispatch (JSON schema enums generated from registry)
 - active runtime entrypoint in `agentic_application/api.py` with `AgenticOrchestrator`
 - saved user-context loading from onboarding/profile-analysis/style-preference persistence
 - server-side conversation-memory carry-forward across follow-up turns
@@ -209,24 +209,25 @@ These are not onboarding inputs for a first-time user, but they are mandatory fo
 
 ### Intent Taxonomy
 
-The system should route every incoming message into one primary intent and optional secondary intents.
+The system routes every incoming message into one primary intent and optional follow-up intents.
 
-Primary intent taxonomy:
+Primary intent taxonomy (post-Phase 12A: 7 advisory + silent wardrobe_ingestion):
 
 | Intent ID | User job | Typical inputs | Core data sources | Core outputs |
 |---|---|---|---|---|
-| `shopping_decision` | "Should I buy this?" | product URL, screenshot, description | user profile, past preferences, catalog, chat history | buy / skip, why, pairings, alternatives |
-| `capsule_or_trip_planning` | "Plan my outfits for daily life or travel." | trip plan, date range, workweek brief | user profile, wardrobe, catalog, past chats | bounded set of outfits / packing list / gaps |
+| `occasion_recommendation` | "What should I wear for this occasion?" / "Show me items matching X" (when `target_product_type` is set) | occasion, formality, weather/trip/work context, optional product type | wardrobe, profile, catalog, history | wardrobe-first outfit(s), optional catalog upsell, or single-product cards |
+| `pairing_request` | "What goes with this piece?" | wardrobe item image, product link, text | wardrobe, catalog, preferences, history | pairings from wardrobe first, then catalog; uploaded garment becomes the anchor in every paired candidate |
+| `garment_evaluation` | "Should I buy this?" / "How will this look on me?" / "Try this on me." | garment image / product link + user image context | profile, body/color interpretation, catalog, try-on, visual evaluator | tryon-grounded verdict, fit/proportion critique, optional buy/skip |
 | `outfit_check` | "How does what I'm wearing look?" | current outfit image(s) | profile, analysis, preferences, past feedback | outfit assessment, improvement suggestions, confidence |
-| `garment_on_me_request` | "How will this look on me?" | garment image / link + user image context | profile, body/color interpretation, catalog, try-on capability | qualitative fit assessment, try-on if safe |
-| `pairing_request` | "What goes with this piece?" | wardrobe item image, product link, text | wardrobe, catalog, preferences, history | pairings from wardrobe first, then catalog |
-| `wardrobe_ingestion` | "Save this into my wardrobe." | item image(s), link, text | profile, moderation, memory store | wardrobe item saved + metadata |
-| `occasion_recommendation` | "What should I wear for this occasion?" | occasion, formality, weather/trip/work context | wardrobe, profile, catalog, history | wardrobe-first outfit(s), optional catalog upsell |
 | `style_discovery` | "What style suits me?" | text question, profile, images | analysis, interpretations, preferences | style explanation, archetype rationale, next actions |
 | `explanation_request` | "Why did you recommend this?" | reference to prior answer | prior chats, recommendation history, confidence state | transparent explanation |
 | `feedback_submission` | "I liked / disliked this." | explicit feedback | recommendation history, wardrobe, comfort learning | stored feedback + learning update |
-| `virtual_tryon_request` | "Show this on me." | garment input + user image context | profile, moderation, try-on pipeline | try-on result or safe failure |
-| `product_browse` | "Show me items matching these constraints." | category, color, attribute keywords | user profile, catalog | individual product cards with profile-appropriate filtering |
+| `wardrobe_ingestion` | (silent) "Save this into my wardrobe." | item image(s), link, text | profile, moderation, wardrobe store | wardrobe item saved + 46-attribute enrichment. **Not** classified by the planner from user messages — programmatic / bulk-upload path only. |
+
+Removed in Phase 12A (do not extend):
+- `shopping_decision`, `garment_on_me_request`, `virtual_tryon_request` → folded into `garment_evaluation` (visually-grounded evaluator pipeline)
+- `product_browse` → folded into `occasion_recommendation` via `target_product_type`
+- `capsule_or_trip_planning` → deferred (will return as a multi-day intent in a later phase)
 
 Intent routing requirements:
 - each turn must have exactly one primary intent

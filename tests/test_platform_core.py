@@ -212,7 +212,7 @@ class PlatformCoreTests(unittest.TestCase):
             turn_id="turn-1",
             source_channel="web",
             factors_json=[{"factor": "profile_complete", "score": 20}],
-            metadata_json={"primary_intent": "shopping_decision"},
+            metadata_json={"primary_intent": "garment_evaluation"},
         )
 
         self.assertEqual({"id": "c1"}, out)

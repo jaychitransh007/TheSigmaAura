@@ -43,22 +43,45 @@ The system is organized in six layers:
 ## Quick Start
 
 ```bash
-# Configure environment
-cp .env.example .env.local
-# Fill in: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GEMINI_API_KEY
+# 1. Python dependencies (pinned in requirements.txt; verified to install
+#    cleanly + pass the full test suite in a fresh venv)
+python3 -m pip install -r requirements.txt
 
-# Start the app
+# 2. Configure environment
+cp .env.example .env.local
+# Fill in: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GEMINI_API_KEY, OPENAI_API_KEY
+
+# 3. Start the app (must be run from the repo root — some tests + the
+#    launcher use cwd-relative paths)
 APP_ENV=local python3 run_agentic_application.py --reload --port 8010
 
-# Run tests
+# 4. Run tests (also from the repo root)
 python3 -m pytest tests/ -v
 ```
+
+**Reproducibility:** `requirements.txt` is the source of truth for what's installed in production. CI (`.github/workflows/pr-eval.yml`) reads it on every PR. When you upgrade a package, do it deliberately: bump the pin, run `python3 -m pytest tests/` locally, commit both the dependency change and any code changes in the same PR.
+
+**Image format note:** the wardrobe upload pipeline accepts JPEG/PNG/GIF/WebP (OpenAI vision API requirement) plus HEIC/HEIF (iPhone default) and AVIF (modern web default). HEIC/AVIF are converted to JPEG up front via `pillow-heif` and `pillow-avif-plugin`, both of which are listed in `requirements.txt`. If either plugin is missing in your environment, the corresponding format falls through to the OpenAI vision API and fails with a `400` — surfaced to the user as the Phase 12D "I couldn't quite read the piece in that photo" clarification. The pinned `requirements.txt` keeps both plugins installed, but watch for it on any environment where you `pip install` packages individually instead of from the manifest.
+
+### Installing on a non-local environment
+
+If staging is a separate machine, SSH there, navigate to the repo, and run the same `python3 -m pip install -r requirements.txt` against the Python interpreter that actually serves the app. To find that interpreter:
+
+```bash
+# On the staging machine
+which python3                                  # find the binary
+python3 -c "import sys; print(sys.executable)"  # confirm
+python3 -m pip install -r requirements.txt     # install into THAT python
+python3 -c "import pillow_avif; print('avif OK')"  # verify the plugin loads
+```
+
+Always use `python3 -m pip` (not bare `pip`) to guarantee the install lands in the same interpreter that runs the app. If you have a venv, activate it first.
 
 ## Project Stats
 
 - 36 Supabase migrations
-- 268 tests (92 agentic + 38 qna + 138 other)
-- 12 intent types, 9 action types, 7 follow-up types (StrEnum registry)
+- 308 tests
+- 8 intents (7 advisory + silent wardrobe_ingestion), 7 action types, 7 follow-up types (StrEnum registry, post-Phase 12A consolidation)
 - 50+ catalog enrichment attributes
 - 46 wardrobe enrichment attributes
 
@@ -73,7 +96,7 @@ with it, `CURRENT_STATE.md` wins.
 | [`docs/PRODUCT.md`](docs/PRODUCT.md) | Product definition, personas, user journey, stories |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | Design system, visual language, UX patterns, component rules |
 | [`docs/RELEASE_READINESS.md`](docs/RELEASE_READINESS.md) | 4-gate release checklist (functional / data / observability / product-UX) |
-| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | 8 dashboard panels + SQL queries for the first-50 rollout |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | 13 dashboard panels + SQL queries for the first-50 rollout |
 | [`docs/DESIGN_SYSTEM_VALIDATION.md`](docs/DESIGN_SYSTEM_VALIDATION.md) | Manual design QA checklist (9 device journeys + tone audit) |
 | [`docs/APPLICATION_SPECS.md`](docs/APPLICATION_SPECS.md) | Implementation spec (⚠️ *partially deprecated* — see banner at top) |
 | [`docs/INTENT_COPILOT_ARCHITECTURE.md`](docs/INTENT_COPILOT_ARCHITECTURE.md) | Target system architecture (⚠️ *pre-planner-inlining era* — some sections stale) |
