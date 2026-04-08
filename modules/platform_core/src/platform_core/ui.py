@@ -1723,14 +1723,17 @@ def get_web_ui_html(
     for (var li = 0; li < n; li++) {{ var lp = pointAt(li, maxR + 14); ctx.fillText(archetypes[li].label, lp.x, lp.y); }}
 
     // 5. Evaluation criteria as radar chart (scores × profile confidence)
-    // Phase 12B follow-up (April 9 2026): drop dimensions whose value is
-    // null. The 3 context-gated dimensions (occasion_pct, weather_time_pct,
-    // specific_needs_pct) come back as null when the user didn't supply
-    // their input (no occasion, no weather, no specific need). Including
-    // them as 0-spikes would visually pull the radar polygon inward and
-    // mislead the user into thinking the candidate "failed" those
-    // dimensions. Filter BEFORE the geometry calculation so the chart's
-    // vertex count adapts (5/6/7/8 axes depending on what was scored).
+    // Phase 12B follow-ups (April 9 2026): drop dimensions whose value is
+    // null. The 4 context-gated dimensions (pairing_coherence_pct,
+    // occasion_pct, weather_time_pct, specific_needs_pct) come back as null
+    // when their gating condition isn't met — pairing is null when intent
+    // is garment_evaluation / style_discovery / explanation_request, the
+    // other 3 are null when their live_context inputs are absent.
+    // Including them as 0-spikes would visually pull the radar polygon
+    // inward and mislead the user into thinking the candidate "failed"
+    // those dimensions. Filter BEFORE the geometry calculation so the
+    // chart's vertex count adapts (4/5/6/7/8/9 axes depending on what
+    // was scored).
     var criteria = buildEvaluationCriteria(outfit, responseMetadata).filter(function(c) {{
       var v = outfit[c.key];
       return v !== null && v !== undefined;

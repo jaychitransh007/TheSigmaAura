@@ -233,16 +233,19 @@ class ResponseFormatter:
                     color_note=rec.color_note,
                     style_note=rec.style_note,
                     occasion_note=rec.occasion_note,
-                    # 6 always-evaluated dimensions
+                    # 5 always-evaluated dimensions
                     body_harmony_pct=rec.body_harmony_pct,
                     color_suitability_pct=rec.color_suitability_pct,
                     style_fit_pct=rec.style_fit_pct,
                     risk_tolerance_pct=rec.risk_tolerance_pct,
                     comfort_boundary_pct=rec.comfort_boundary_pct,
+                    # 4 context-gated dimensions — pass None straight through;
+                    # the OutfitCard schema accepts Optional[int] and the
+                    # frontend drops null radar slices. pairing_coherence_pct
+                    # arrives as None for garment_evaluation / style_discovery /
+                    # explanation_request (intent-gated), as a real int for
+                    # the pairing-capable intents.
                     pairing_coherence_pct=rec.pairing_coherence_pct,
-                    # 3 context-gated dimensions — pass None straight
-                    # through; the OutfitCard schema accepts Optional[int]
-                    # and the frontend drops null radar slices.
                     occasion_pct=rec.occasion_pct,
                     specific_needs_pct=rec.specific_needs_pct,
                     weather_time_pct=rec.weather_time_pct,

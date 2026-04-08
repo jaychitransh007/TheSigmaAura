@@ -127,7 +127,7 @@ Score by what you SEE in the rendered image, grounded in the user's profile. Vec
 
 ## Output
 
-Return strict JSON for ONE candidate. The 6 always-evaluated dimensions are required; the 3 context-gated dimensions (`occasion_pct`, `weather_time_pct`, `specific_needs_pct`) are **omitted entirely** when their input is absent in `live_context`.
+Return strict JSON for ONE candidate. The 5 always-evaluated dimensions must always carry an integer; the 4 context-gated dimensions (`pairing_coherence_pct`, `occasion_pct`, `weather_time_pct`, `specific_needs_pct`) must be `null` when their gating condition is not met.
 
 ### Example A — full context (occasion + weather + specific needs all present)
 

@@ -350,10 +350,13 @@ def _to_evaluated_recommendation(
     def _optional_pct(key: str) -> Optional[int]:
         """Return clamped int if present + non-null, else None.
 
-        Phase 12B follow-up (April 9 2026): the 3 context-gated dimensions
-        (occasion_pct, weather_time_pct, specific_needs_pct) are nullable
-        in the JSON schema. When the model returns null (because the
-        relevant input was absent in live_context), we preserve None all
+        Phase 12B follow-ups (April 9 2026): the 4 context-gated dimensions
+        (pairing_coherence_pct, occasion_pct, weather_time_pct,
+        specific_needs_pct) are nullable in the JSON schema. When the
+        model returns null because the gating condition isn't met
+        (occasion_signal absent, weather/time absent, specific_needs
+        empty, or — for pairing — intent is garment_evaluation /
+        style_discovery / explanation_request), we preserve None all
         the way through to the OutfitCard so the frontend can drop the
         radar slice and the purchase verdict can skip it in the average.
         Coercing null → 0 here would re-introduce the bug we're fixing.

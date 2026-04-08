@@ -5260,13 +5260,16 @@ class Phase12BBuildingBlockTests(unittest.TestCase):
         self.assertEqual("none", result["rating"])
         self.assertEqual(0, result["compatible_count"])
 
-    # ── Phase 12B follow-up (April 9 2026): contextual evaluation ──
+    # ── Phase 12B follow-ups (April 9 2026): contextual evaluation ──
     #
-    # The visual evaluator must score 6 dimensions always and 3 dimensions
-    # only when their inputs are present in live_context. The 3
-    # context-gated dimensions (occasion_pct, weather_time_pct,
+    # The visual evaluator must score 5 dimensions always and 4 dimensions
+    # only when their gating condition is met. The 4 context-gated
+    # dimensions (pairing_coherence_pct, occasion_pct, weather_time_pct,
     # specific_needs_pct) are nullable in the JSON schema and propagate
     # as None all the way through to the OutfitCard.
+    # pairing_coherence_pct is intent-gated (null for garment_evaluation /
+    # style_discovery / explanation_request); the other 3 are gated on
+    # live_context inputs.
 
     def test_evaluator_omits_occasion_when_no_occasion_signal(self):
         """When the model returns null for occasion_pct (because the
@@ -5304,15 +5307,16 @@ class Phase12BBuildingBlockTests(unittest.TestCase):
         self.assertIsNone(result.occasion_pct)
         self.assertIsNone(result.weather_time_pct)
         self.assertIsNone(result.specific_needs_pct)
-        # 6 always-evaluated dimensions still come through as ints
+        # 5 always-evaluated dimensions still come through as ints
         self.assertEqual(80, result.body_harmony_pct)
         self.assertEqual(85, result.risk_tolerance_pct)
         self.assertEqual(90, result.comfort_boundary_pct)
 
     def test_evaluator_keeps_all_three_when_inputs_present(self):
-        """When the model returns integer scores for the 3 context-gated
+        """When the model returns integer scores for the 3 live-context-gated
         dimensions (because live_context had occasion + weather + specific
-        needs), they propagate through as integers, not None."""
+        needs), they propagate through as integers, not None.
+        pairing_coherence_pct is intent-gated and tested separately."""
         from agentic_application.agents.visual_evaluator_agent import _to_evaluated_recommendation
         from agentic_application.schemas import OutfitCandidate
 
@@ -5345,7 +5349,7 @@ class Phase12BBuildingBlockTests(unittest.TestCase):
         self.assertEqual(70, result.specific_needs_pct)
 
     def test_evaluator_handles_missing_context_gated_keys(self):
-        """If the model omits the 3 context-gated keys entirely (rather
+        """If the model omits the 4 context-gated keys entirely (rather
         than returning null), the parser still produces None — same
         behavior as explicit null. This is defensive: in case a future
         prompt revision moves to true omission rather than null."""
@@ -5360,14 +5364,16 @@ class Phase12BBuildingBlockTests(unittest.TestCase):
             "candidate_id": "c1", "match_score": 0.6, "title": "x", "reasoning": "",
             "body_note": "", "color_note": "", "style_note": "", "occasion_note": "",
             "body_harmony_pct": 70, "color_suitability_pct": 70, "style_fit_pct": 70,
-            "risk_tolerance_pct": 70, "comfort_boundary_pct": 70, "pairing_coherence_pct": 70,
-            # occasion_pct / weather_time_pct / specific_needs_pct are absent
+            "risk_tolerance_pct": 70, "comfort_boundary_pct": 70,
+            # All 4 context-gated keys absent: pairing_coherence_pct,
+            # occasion_pct, weather_time_pct, specific_needs_pct
             "classic_pct": 50, "dramatic_pct": 0, "romantic_pct": 0, "natural_pct": 0,
             "minimalist_pct": 50, "creative_pct": 0, "sporty_pct": 0, "edgy_pct": 0,
             "item_ids": ["p1"],
             "overall_verdict": "", "overall_note": "", "strengths": [], "improvements": [],
         }
         result = _to_evaluated_recommendation(raw, candidate)
+        self.assertIsNone(result.pairing_coherence_pct)
         self.assertIsNone(result.occasion_pct)
         self.assertIsNone(result.weather_time_pct)
         self.assertIsNone(result.specific_needs_pct)

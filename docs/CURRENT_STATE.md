@@ -1072,7 +1072,7 @@ The previous architecture fix gated 3 dimensions on **`live_context` inputs**. T
 
 ### ✅ CLOSED — Contextual evaluation: omit dimensions when input is absent (April 9 2026)
 
-Shipped April 9, 2026. The visual evaluator now scores 6 dimensions always and 3 dimensions only when their inputs are present in `live_context`. Test count: 319 passing (was 313, +6 new regression tests). Verification of the next "Should I buy this?" turn should show:
+Shipped April 9, 2026. The visual evaluator initially scored 6 dimensions always and 3 dimensions only when their inputs are present in `live_context`. (A subsequent follow-up the same day moved `pairing_coherence_pct` to context-gated, making it 5 + 4 — see the next closed P0 below.) Test count after this fix: 319 passing (was 313, +6 new regression tests). Verification of the next "Should I buy this?" turn should show:
 
 - The PDP card radar chart only renders **6 axes** (Body / Color / Style / Risk / Comfort / Pairing), not 8 — `occasion_pct`, `weather_time_pct`, and `specific_needs_pct` are dropped because the user didn't supply those inputs.
 - The buy/skip verdict is computed from 3 dimensions (body / color / style) instead of the legacy 5 (which included synthetic 0 / 70 defaults).

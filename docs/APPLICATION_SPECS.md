@@ -1587,14 +1587,15 @@ Evaluation criteria radar chart (Canvas, 200px, burgundy fill):
 #### Shared response contract (implemented)
 
 - `platform_core.api_schemas.OutfitCard.tryon_image: str = ""`
-- `platform_core.api_schemas.OutfitCard.body_harmony_pct: int = 0`
-- `platform_core.api_schemas.OutfitCard.color_suitability_pct: int = 0`
-- `platform_core.api_schemas.OutfitCard.style_fit_pct: int = 0`
-- `platform_core.api_schemas.OutfitCard.risk_tolerance_pct: int = 0`
-- `platform_core.api_schemas.OutfitCard.occasion_pct: int = 0`
-- `platform_core.api_schemas.OutfitCard.comfort_boundary_pct: int = 0`
-- `platform_core.api_schemas.OutfitCard.specific_needs_pct: int = 0`
-- `platform_core.api_schemas.OutfitCard.pairing_coherence_pct: int = 0`
+- `platform_core.api_schemas.OutfitCard.body_harmony_pct: int = 0` *(always-evaluated)*
+- `platform_core.api_schemas.OutfitCard.color_suitability_pct: int = 0` *(always-evaluated)*
+- `platform_core.api_schemas.OutfitCard.style_fit_pct: int = 0` *(always-evaluated)*
+- `platform_core.api_schemas.OutfitCard.risk_tolerance_pct: int = 0` *(always-evaluated)*
+- `platform_core.api_schemas.OutfitCard.comfort_boundary_pct: int = 0` *(always-evaluated)*
+- `platform_core.api_schemas.OutfitCard.occasion_pct: Optional[int] = None` *(context-gated on `live_context.occasion_signal`; Phase 12B follow-up April 9 2026)*
+- `platform_core.api_schemas.OutfitCard.weather_time_pct: Optional[int] = None` *(context-gated on `weather_context` / `time_of_day`)*
+- `platform_core.api_schemas.OutfitCard.specific_needs_pct: Optional[int] = None` *(context-gated on `specific_needs`)*
+- `platform_core.api_schemas.OutfitCard.pairing_coherence_pct: Optional[int] = None` *(intent-gated: null for `garment_evaluation` / `style_discovery` / `explanation_request`)*
 - `platform_core.api_schemas.OutfitCard.classic_pct: int = 0`
 - `platform_core.api_schemas.OutfitCard.dramatic_pct: int = 0`
 - `platform_core.api_schemas.OutfitCard.romantic_pct: int = 0`

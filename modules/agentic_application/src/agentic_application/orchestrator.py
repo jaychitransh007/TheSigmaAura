@@ -4964,7 +4964,7 @@ class AgenticOrchestrator:
             color_note=evaluation.color_note,
             style_note=evaluation.style_note,
             occasion_note=evaluation.occasion_note,
-            # 6 always-evaluated dimensions — risk_tolerance + comfort_boundary
+            # 5 always-evaluated dimensions — risk_tolerance + comfort_boundary
             # were missing from this card construction prior to the
             # April 9 2026 follow-up (only 5 of the 9 dimensions were
             # being plumbed through to the garment_evaluation PDP card).
@@ -4973,10 +4973,13 @@ class AgenticOrchestrator:
             style_fit_pct=evaluation.style_fit_pct,
             risk_tolerance_pct=evaluation.risk_tolerance_pct,
             comfort_boundary_pct=evaluation.comfort_boundary_pct,
+            # 4 context-gated dimensions — None when their gating condition
+            # is not met. pairing_coherence_pct is null for garment_evaluation
+            # (this handler) because we're judging a single piece in
+            # isolation, not pairing anything. The other 3 are null when
+            # their live_context inputs are absent. The frontend drops these
+            # from the radar chart when null.
             pairing_coherence_pct=evaluation.pairing_coherence_pct,
-            # 3 context-gated dimensions — None when their inputs are
-            # absent in live_context. The frontend drops these from the
-            # radar chart when null.
             occasion_pct=evaluation.occasion_pct,
             specific_needs_pct=evaluation.specific_needs_pct,
             weather_time_pct=evaluation.weather_time_pct,
