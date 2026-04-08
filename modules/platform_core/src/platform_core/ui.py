@@ -390,11 +390,11 @@ def get_web_ui_html(
     .outfit-thumbs img:hover { border-color: var(--accent-soft); }
     .outfit-main-img {
       display: flex; align-items: center; justify-content: center;
-      background: var(--surface-alt); min-height: 200px; max-height: 520px; overflow: hidden;
+      background: var(--surface-alt); min-height: 200px; max-height: 620px; overflow: hidden;
     }
     .outfit-main-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
     .outfit-info {
-      padding: 16px 18px; overflow-y: auto; max-height: 520px;
+      padding: 16px 18px; overflow-y: auto; max-height: 620px;
       display: flex; flex-direction: column; gap: 10px;
     }
     .outfit-rank { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
@@ -1734,16 +1734,19 @@ def get_web_ui_html(
     var hasCriteriaData = criteria.length > 0 && criteriaValues.some(function(v) {{ return v > 0; }});
 
     // ── Canvas setup ──
-    // Width 340 (was 300) gives more horizontal room for the leftmost
-    // and rightmost labels in both semicircles. Height 230 (was 272)
-    // shrinks the chart's vertical footprint so the legend below it
-    // sits above the .outfit-info max-height: 520px scroll threshold.
+    // Width 380 gives generous horizontal room for the leftmost and
+    // rightmost labels in both semicircles. Height 280 lets the polygon
+    // fill the canvas — the previous 230×340 footprint with pMaxR=70
+    // left a lot of empty space and made the chart feel compressed.
+    // The total chart vertical (canvas + tight padding + legend)
+    // still fits inside the .outfit-info max-height: 520px window for
+    // typical PDP content above.
     var radarDiv = document.createElement("div");
     radarDiv.className = "outfit-radar";
     var polarCanvas = document.createElement("canvas");
     polarCanvas.setAttribute("role", "img");
     polarCanvas.setAttribute("aria-label", "Style + fit profile chart");
-    var W = 340, H = 230, dpr = window.devicePixelRatio || 1;
+    var W = 380, H = 280, dpr = window.devicePixelRatio || 1;
     polarCanvas.width = W * dpr; polarCanvas.height = H * dpr;
     polarCanvas.style.width = W + "px"; polarCanvas.style.height = H + "px";
     polarCanvas.style.display = "block";
@@ -1755,15 +1758,16 @@ def get_web_ui_html(
     pCtx.scale(dpr, dpr);
 
     // ── Layout constants ──
-    // Smaller maxR + smaller base labelR than the original spec because
-    // the canvas is now shorter (230px vs 272px). The labelR offset for
-    // odd-indexed labels (see drawProfile) creates the "double ring"
-    // pattern that prevents adjacent label collisions like Natural /
-    // Minimalist in the top semicircle.
+    // pMaxR=95 makes the polygon roughly fill the canvas height — much
+    // more visually prominent than the previous 70. pLabelR=110 keeps
+    // labels outside the polygon, with the staggered odd-indexed labels
+    // pushed out to 124. The label staggering pattern (every other
+    // label at a different radius) prevents adjacent labels from
+    // colliding when many axes share a semicircle.
     var pCx = W / 2, pCy = H / 2;
-    var pMaxR = 70;     // outer ring radius
-    var pLabelR = 88;   // axis label radius (outside the outer ring); odd-indexed labels use pLabelR + 12
-    var pLabelOffset = 12;
+    var pMaxR = 95;      // outer ring radius (polygon fills the canvas)
+    var pLabelR = 110;   // base axis label radius; odd-indexed labels use pLabelR + 14
+    var pLabelOffset = 14;
     var pMaxValue = 100;
 
     // ── Grid rings (4 concentric circles at 25/50/75/100) ──
@@ -1833,7 +1837,7 @@ def get_web_ui_html(
         var sa = Math.sin(midAngle);
         pCtx.textAlign = Math.abs(ca) < 0.28 ? "center" : (ca > 0 ? "left" : "right");
         pCtx.textBaseline = Math.abs(sa) < 0.28 ? "middle" : (sa > 0 ? "top" : "bottom");
-        pCtx.font = "600 9px system-ui, sans-serif";
+        pCtx.font = "600 9.5px system-ui, sans-serif";
         pCtx.fillStyle = color;
         pCtx.fillText(axes[i].label, lx, ly);
       }}

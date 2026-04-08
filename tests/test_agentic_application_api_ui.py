@@ -350,13 +350,14 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertIn("Fit profile", html)
         # Dashed divider markers
         self.assertIn("setLineDash([4, 4])", html, "dashed divider missing")
-        # Layout constants — pMaxR=70 outer, pLabelR=88 base label radius,
-        # pLabelOffset=12 for the staggered odd-indexed labels (the
+        # Layout constants — pMaxR=95 outer (polygon fills the canvas
+        # rather than feeling compressed), pLabelR=110 base label radius,
+        # pLabelOffset=14 for the staggered odd-indexed labels (the
         # double-ring pattern that prevents adjacent label collisions
         # like Natural / Minimalist in the top semicircle).
-        self.assertIn("pMaxR = 70", html)
-        self.assertIn("pLabelR = 88", html)
-        self.assertIn("pLabelOffset = 12", html)
+        self.assertIn("pMaxR = 95", html)
+        self.assertIn("pLabelR = 110", html)
+        self.assertIn("pLabelOffset = 14", html)
         # Label staggering must be present in drawProfile
         self.assertIn("(i % 2) * pLabelOffset", html)
         # ── Old two-radar scaffolding must be GONE ──
