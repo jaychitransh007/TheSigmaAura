@@ -362,6 +362,10 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         # use pLabelR directly, not a staggered useLabelR.
         self.assertNotIn("pLabelOffset", html)
         self.assertNotIn("(i % 2)", html)
+        # Centermost-label horizontal nudge — pushes the two labels
+        # straddling the vertical centre of a semicircle further apart
+        # (e.g. Natural and Minimalist in the 8-axis top semicircle).
+        self.assertIn("labelXNudge", html)
         # Chart canvas must fit inside the info column with proportional
         # CSS scaling for narrow viewports
         self.assertIn("aspect-ratio: 290 / 320", html)

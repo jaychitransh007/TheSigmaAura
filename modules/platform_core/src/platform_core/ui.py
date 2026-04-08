@@ -1846,10 +1846,27 @@ def get_web_ui_html(
 
         // Axis label — all labels on a single circle at pLabelR for
         // a clean, orderly orbit around the chart.
-        var lx = pCx + Math.cos(midAngle) * pLabelR;
-        var ly = pCy + Math.sin(midAngle) * pLabelR;
+        //
+        // Centermost-label nudge: when two labels straddle the vertical
+        // centre of a semicircle (e.g. Natural at i=3 and Minimalist at
+        // i=4 in the 8-axis top semicircle), their natural trig
+        // positions sit only ~45px apart at pLabelR=115 — enough that
+        // their bounding boxes barely have a 1px gap and they read as a
+        // single concatenated phrase. The nudge pushes them ~9px
+        // further apart in the direction of their cos sign, giving
+        // ~18px of additional horizontal breathing room without
+        // resizing the canvas or affecting any other label. The check
+        // `0 < |ca| < 0.28` only fires for the two centermost labels in
+        // a semicircle; labels exactly at 12/6 o'clock (`ca === 0`,
+        // which happens with odd-axis-count semicircles) get no nudge.
         var ca = Math.cos(midAngle);
         var sa = Math.sin(midAngle);
+        var labelXNudge = 0;
+        if (Math.abs(ca) > 0 && Math.abs(ca) < 0.28) {{
+          labelXNudge = ca > 0 ? 9 : -9;
+        }}
+        var lx = pCx + ca * pLabelR + labelXNudge;
+        var ly = pCy + sa * pLabelR;
         pCtx.textAlign = Math.abs(ca) < 0.28 ? "center" : (ca > 0 ? "left" : "right");
         pCtx.textBaseline = Math.abs(sa) < 0.28 ? "middle" : (sa > 0 ? "top" : "bottom");
         pCtx.font = "600 9px system-ui, sans-serif";
