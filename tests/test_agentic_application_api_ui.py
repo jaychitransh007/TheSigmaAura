@@ -316,6 +316,11 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertIn("sendFeedback", html)
         self.assertIn("buildOutfitCard", html)
         self.assertIn("renderOutfits", html)
+        # Assistant bubble markup parser — StyleAdvisor / explanation
+        # responses arrive as a flat string with `\n\n` paragraph breaks
+        # and `• `-prefixed bullet lines. The parser turns those into
+        # semantic <p> + <ul><li> instead of a wall of text.
+        self.assertIn("renderAssistantMarkup", html)
         # Old classes should be gone
         self.assertNotIn("tryon-section", html)
         self.assertNotIn("tryon-label", html)

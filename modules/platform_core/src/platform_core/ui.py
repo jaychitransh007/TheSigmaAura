@@ -216,6 +216,15 @@ def get_web_ui_html(
       max-width: 85%; padding: 12px 16px; border-radius: 18px;
       font-size: 14px; line-height: 1.55; margin-bottom: 8px; word-wrap: break-word;
     }
+    /* Assistant bubble structured content (paragraphs + bullet lists)
+       — used by renderAssistantMarkup() to render StyleAdvisor /
+       explanation_request responses with proper semantic HTML. */
+    .bubble p { margin: 0 0 8px 0; }
+    .bubble p:last-child { margin-bottom: 0; }
+    .bubble ul { margin: 0 0 8px 0; padding-left: 20px; }
+    .bubble ul:last-child { margin-bottom: 0; }
+    .bubble li { margin-bottom: 4px; }
+    .bubble li:last-child { margin-bottom: 0; }
     .bubble.user {
       margin-left: auto;
       background: linear-gradient(135deg, rgba(111, 47, 69, 0.10), rgba(184, 139, 150, 0.16));
@@ -1357,6 +1366,49 @@ def get_web_ui_html(
     if (feedWelcome) {{ feedWelcome.style.display = "none"; }}
   }}
 
+  // Parse assistant text into paragraphs + bullet lists. Bullets are
+  // recognized by lines starting with •, -, or *. Paragraph breaks are
+  // blank lines (\n\n). The result is a DocumentFragment of <p> and
+  // <ul><li> nodes, all created via textContent so user-provided text
+  // is escaped automatically (no XSS risk).
+  //
+  // The StyleAdvisor and explanation_request handlers return a flat
+  // string of the form:
+  //   "Prose answer...\n\n• bullet 1\n• bullet 2\n• bullet 3"
+  // Without this parser the chat bubble's default white-space: normal
+  // collapses the newlines and the bullets read as a single concatenated
+  // sentence. With the parser we get a semantic <p> + <ul> tree.
+  function renderAssistantMarkup(text) {{
+    var frag = document.createDocumentFragment();
+    if (!text) return frag;
+    var normalized = String(text).replace(/\r\n/g, "\n");
+    var blocks = normalized.split(/\n\n+/);
+    for (var bi = 0; bi < blocks.length; bi++) {{
+      var block = blocks[bi].trim();
+      if (!block) continue;
+      var lines = block.split("\n");
+      var isBulletList = lines.length > 0 && lines.every(function(line) {{
+        return /^\s*[•\-*]\s+/.test(line);
+      }});
+      if (isBulletList) {{
+        var ul = document.createElement("ul");
+        for (var li = 0; li < lines.length; li++) {{
+          var item = document.createElement("li");
+          item.textContent = lines[li].replace(/^\s*[•\-*]\s+/, "").trim();
+          ul.appendChild(item);
+        }}
+        frag.appendChild(ul);
+      }} else {{
+        var p = document.createElement("p");
+        // Single newlines inside a paragraph become spaces (not <br>)
+        // so wrapped sentences read naturally.
+        p.textContent = lines.map(function(l) {{ return l.trim(); }}).join(" ");
+        frag.appendChild(p);
+      }}
+    }}
+    return frag;
+  }}
+
   function addBubble(text, kind, imageDataUrl) {{
     dismissFeedWelcome();
     var div = document.createElement("div");
@@ -1368,7 +1420,14 @@ def get_web_ui_html(
       img.onerror = function() {{ this.style.display = "none"; }};
       div.appendChild(img);
     }}
-    div.appendChild(document.createTextNode(text));
+    if (kind === "assistant" && text) {{
+      // Render assistant messages with paragraph + bullet structure so
+      // StyleAdvisor / explanation_request responses display as proper
+      // bulleted lists instead of a wall of text with inline • chars.
+      div.appendChild(renderAssistantMarkup(text));
+    }} else {{
+      div.appendChild(document.createTextNode(text));
+    }}
     feed.appendChild(div);
     feed.scrollTop = feed.scrollHeight;
     return div;
