@@ -345,9 +345,11 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertIn("rgba(139, 48, 85, 0.35)", html, "fit fill colour missing")
         self.assertIn("#7F77DD", html, "archetype stroke colour missing")
         self.assertIn("#8B3055", html, "fit stroke colour missing")
-        # Legend labels
-        self.assertIn("Style profile", html)
-        self.assertIn("Fit profile", html)
+        # Legend was removed — the axis labels themselves are already
+        # color-coded, so the "Style profile" / "Fit profile" caption
+        # below the chart is redundant. Make sure it stays gone.
+        self.assertNotIn("Style profile", html)
+        self.assertNotIn("Fit profile", html)
         # Dashed divider markers
         self.assertIn("setLineDash([4, 4])", html, "dashed divider missing")
         # Layout constants — pMaxR=85 outer in a 290×320 canvas sized

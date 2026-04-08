@@ -1897,21 +1897,11 @@ def get_web_ui_html(
       );
     }}
 
-    // ── Legend (below the canvas) ──
-    // Tight margin-top + smaller font so the legend sits inside the
-    // .outfit-info max-height: 520px window without forcing a scrollbar.
-    var legend = document.createElement("div");
-    legend.style.cssText = "display:flex; gap:18px; justify-content:center; margin-top:2px; flex-wrap:wrap;";
-    legend.innerHTML = ''
-      + '<span style="font-size:11px; font-weight:500; color:#7F77DD; display:flex; align-items:center; gap:5px;">'
-      +   '<span style="width:9px; height:9px; background:rgba(127,119,221,0.45); border:1.5px solid #7F77DD; border-radius:2px; display:inline-block;"></span>'
-      +   'Style profile'
-      + '</span>'
-      + '<span style="font-size:11px; font-weight:500; color:#8B3055; display:flex; align-items:center; gap:5px;">'
-      +   '<span style="width:9px; height:9px; background:rgba(139,48,85,0.4); border:1.5px solid #8B3055; border-radius:2px; display:inline-block;"></span>'
-      +   'Fit profile'
-      + '</span>';
-    radarDiv.appendChild(legend);
+    // No legend — the axis labels are already color-coded (purple
+    // archetypes on top, burgundy fit dimensions on bottom) so a
+    // separate caption underneath would be redundant. Removing it
+    // also frees a few pixels of vertical room inside the
+    // .outfit-info column.
 
     // Dislike form (stays in info panel, expands when thumbs-down clicked)
     var dislikeForm = document.createElement("div");
