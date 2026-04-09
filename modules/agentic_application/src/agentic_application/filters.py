@@ -76,13 +76,13 @@ def extract_query_document_filters(document: str) -> Dict[str, str]:
     return filters
 
 
-def build_directional_filters(direction_type: str, role: str) -> Dict[str, str]:
+def build_directional_filters(direction_type: str, role: str) -> Dict[str, Any]:
     if direction_type == "complete" or role == "complete":
         return {"styling_completeness": "complete"}
     if role == "top":
-        return {"styling_completeness": "needs_bottomwear"}
+        return {"styling_completeness": ["needs_bottomwear", "needs_innerwear"]}
     if role == "bottom":
-        return {"styling_completeness": "needs_topwear"}
+        return {"styling_completeness": ["needs_topwear", "needs_innerwear"]}
     if direction_type == "paired":
         return {}
     return {}

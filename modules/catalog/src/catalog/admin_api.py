@@ -4,6 +4,7 @@ from platform_core.supabase_rest import SupabaseError
 from .admin_service import CatalogAdminService
 from .schemas import (
     CatalogAdminStatusResponse,
+    CatalogResyncRequest,
     CatalogSyncRequest,
     CatalogSyncResponse,
     CatalogUploadResponse,
@@ -72,5 +73,25 @@ def create_catalog_admin_router(service: CatalogAdminService | None = None) -> A
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Embedding sync failed: {exc}") from exc
+
+    @router.post("/embeddings/resync", response_model=CatalogSyncResponse)
+    def resync_catalog_embeddings(payload: CatalogResyncRequest) -> CatalogSyncResponse:
+        """Re-generate embeddings from catalog_enriched database.
+
+        Reads the current enriched state from the DB (not CSV) and upserts
+        embeddings — including items that already have embeddings. Use after
+        a re-enrichment batch to refresh vectors and filter columns.
+        """
+        try:
+            result = get_service().resync_catalog_embeddings(
+                product_id_prefix=payload.product_id_prefix,
+                max_rows=payload.max_rows,
+                include_incomplete=payload.include_incomplete,
+            )
+            return CatalogSyncResponse(**result)
+        except SupabaseError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Embedding resync failed: {exc}") from exc
 
     return router

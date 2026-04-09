@@ -328,6 +328,15 @@ def get_catalog_admin_html() -> str:
             <div class="btns">
               <button id="syncEmbeddingsBtn">Sync Embeddings</button>
             </div>
+            <h3 style="margin-top:14px;">Re-sync from Database</h3>
+            <p>Re-generate embeddings from <code>catalog_enriched</code> (database) instead of CSV. Use after re-enrichment to refresh vectors and filter columns for items that already have embeddings.</p>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+              <label style="font-size:13px;">Product ID prefix:</label>
+              <input id="resyncPrefix" type="text" placeholder="e.g. VASTRAMAY" style="width:180px;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
+            </div>
+            <div class="btns">
+              <button id="resyncEmbeddingsBtn" style="background:#b45309;">Re-sync Embeddings from DB</button>
+            </div>
           </div>
 
           <div class="step">
@@ -516,6 +525,24 @@ def get_catalog_admin_html() -> str:
       await refreshStatus();
     }
 
+    async function resyncEmbeddings() {
+      const prefix = (document.getElementById('resyncPrefix').value || '').trim();
+      const label = prefix ? 'prefix=' + prefix : 'all items';
+      setStatus('Re-syncing embeddings from database (' + label + ')...');
+      const res = await fetch('/v1/admin/catalog/embeddings/resync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id_prefix: prefix,
+          max_rows: parseInt(maxRowsEl.value || '0', 10),
+          include_incomplete: document.getElementById('includeIncomplete').checked
+        })
+      });
+      const data = await parseResponse(res);
+      setStatus('Re-sync complete (' + label + '). Processed ' + data.processed_rows + ' rows, saved ' + data.saved_rows + '.');
+      await refreshStatus();
+    }
+
     async function runFullPipeline() {
       try {
         await syncItems();
@@ -539,6 +566,9 @@ def get_catalog_admin_html() -> str:
     });
     document.getElementById('syncEmbeddingsBtn').addEventListener('click', async () => {
       try { await syncEmbeddings(); } catch (error) { setStatus(error.message || String(error)); }
+    });
+    document.getElementById('resyncEmbeddingsBtn').addEventListener('click', async () => {
+      try { await resyncEmbeddings(); } catch (error) { setStatus(error.message || String(error)); }
     });
     document.getElementById('syncAllBtn').addEventListener('click', runFullPipeline);
 

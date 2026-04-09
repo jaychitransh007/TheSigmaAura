@@ -1019,6 +1019,43 @@ Success criteria:
 
 ## Immediate Next Item
 
+### P0 — Re-embed Vastramay/Powerlook/CampusSutra from database (April 10 2026)
+
+**Status:** Code shipped. Awaiting manual execution from admin UI.
+
+~1,862 items from Vastramay (826), Powerlook (831), CampusSutra (205) have enrichment attributes in `catalog_enriched` but their embeddings in `catalog_item_embeddings` have null filter columns and weak vectors (generated before enrichment). They are invisible to all filtered searches.
+
+**What was built:**
+- `POST /v1/admin/catalog/embeddings/resync` endpoint — reads from `catalog_enriched` (database), no skip-already-embedded check, supports `product_id_prefix` filter
+- Admin UI: "Re-sync Embeddings from DB" button with prefix input field
+- Fixes also shipped: silent row_status filtering now logs warnings, skip count log is accurate
+
+**To execute:**
+1. Start the app server
+2. Go to Catalog Admin → Step 4
+3. Enter `VASTRAMAY` in the prefix field, click "Re-sync Embeddings from DB"
+4. Repeat for `POWERLOOK` and `CAMPUSSUTRA`
+5. Verify: wedding engagement query should now return Vastramay kurta_sets and festive items
+
+**Cost:** ~1,862 OpenAI embedding API calls (text-embedding-3-small). One-time.
+
+---
+
+### P1 — Verify remaining 6 Shopify store domains for product URLs (April 10 2026)
+
+7 stores verified, 6 remain unmapped (~152 products with empty Buy Now links). Research task — try domain variations against known product handles.
+
+| CDN shop ID | Products | Candidate domain |
+|---|---|---|
+| `0267/2394/2570` | 30 | jaypore? |
+| `0383/1771/9684` | 27 | labelreyya? |
+| `0636/0134/4666` | 30 | ritukumar? |
+| `0859/4217/3988` | 20 | pantaloons? |
+| `0625/1797/files` | 13 | unknown |
+| `0752/6435/files` | 27 | rare rabbit? |
+
+---
+
 ### ✅ CLOSED — Outfit diversity: multi-direction, reranker round-robin, previous-exclusion, URL fix (April 9 2026)
 
 Shipped April 9, 2026. Five changes across the pipeline:

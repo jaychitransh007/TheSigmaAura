@@ -169,11 +169,13 @@ class CatalogAdminService:
             if max_rows > 0:
                 rows = rows[:max_rows]
             existing_ids = self.vector_store.embedded_product_ids()
+            pre_filter_count = len(rows)
             rows = [
                 row for row in rows
                 if str(row.get("product_id") or row.get("id") or "").strip() not in existing_ids
             ]
-            logger.info("Skipped %d already-embedded products, %d remaining", len(existing_ids), len(rows))
+            skipped_count = pre_filter_count - len(rows)
+            logger.info("Skipped %d already-embedded products (of %d), %d remaining", skipped_count, pre_filter_count, len(rows))
             config = CatalogEmbeddingConfig(
                 input_csv_path=input_csv_path,
                 max_rows=max_rows,
@@ -191,6 +193,75 @@ class CatalogAdminService:
                 "processed_rows": len(documents),
                 "saved_rows": len(saved),
                 "mode": "catalog_embeddings",
+                "job_id": job_id,
+            }
+        except Exception:
+            self.vector_store.fail_job(job_id, _format_exc())
+            raise
+
+    def resync_catalog_embeddings(
+        self,
+        *,
+        product_id_prefix: str = "",
+        max_rows: int = 0,
+        include_incomplete: bool = False,
+    ) -> Dict[str, int | str]:
+        """Re-generate embeddings from catalog_enriched (database).
+
+        Unlike ``sync_catalog_embeddings`` which reads from a CSV and skips
+        already-embedded products, this method reads the current enriched
+        state from the database and **upserts** embeddings for items that
+        already exist.  Use this after running a re-enrichment batch to
+        refresh vectors and filter columns.
+        """
+        params: Dict[str, Any] = {
+            "product_id_prefix": product_id_prefix,
+            "max_rows": max_rows,
+            "include_incomplete": include_incomplete,
+        }
+        job = self.vector_store.create_job("embeddings_resync", params)
+        job_id = str(job.get("id") or "")
+        try:
+            filters: Dict[str, str] = {}
+            if product_id_prefix:
+                filters["product_id"] = f"like.{product_id_prefix}*"
+            limit = max_rows if max_rows > 0 else None
+            rows = self.vector_store.client.select_many(
+                "catalog_enriched",
+                filters=filters or None,
+                limit=limit,
+            )
+            logger.info(
+                "resync_catalog_embeddings: fetched %d rows from catalog_enriched (prefix=%r)",
+                len(rows), product_id_prefix or "(all)",
+            )
+            config = CatalogEmbeddingConfig(
+                require_complete_rows_only=not include_incomplete,
+            )
+            documents = list(iter_catalog_documents(rows, config))
+            logger.info(
+                "resync_catalog_embeddings: %d documents after row_status filter (from %d rows)",
+                len(documents), len(rows),
+            )
+            if not documents:
+                self.vector_store.complete_job(job_id, processed_rows=0, saved_rows=0)
+                return {
+                    "input_csv_path": "catalog_enriched",
+                    "processed_rows": 0,
+                    "saved_rows": 0,
+                    "mode": "embeddings_resync",
+                    "job_id": job_id,
+                }
+            embeddings = CatalogEmbedder(config).embed_documents(documents)
+            saved = self.vector_store.insert_embeddings(embeddings)
+            self.vector_store.complete_job(
+                job_id, processed_rows=len(documents), saved_rows=len(saved),
+            )
+            return {
+                "input_csv_path": "catalog_enriched",
+                "processed_rows": len(documents),
+                "saved_rows": len(saved),
+                "mode": "embeddings_resync",
                 "job_id": job_id,
             }
         except Exception:

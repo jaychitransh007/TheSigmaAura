@@ -11,6 +11,12 @@ class CatalogSyncRequest(BaseModel):
     include_incomplete: bool = False
 
 
+class CatalogResyncRequest(BaseModel):
+    product_id_prefix: str = ""  # e.g. "VASTRAMAY" — empty = all items
+    max_rows: int = Field(default=0, ge=0)
+    include_incomplete: bool = False
+
+
 class CatalogSyncResponse(BaseModel):
     input_csv_path: str
     processed_rows: int

@@ -1,9 +1,12 @@
+import logging
 from typing import Dict, Iterable, List, Tuple
 
 from .config import CatalogEmbeddingConfig
 from .confidence_policy import confidence_aware_value, normalize_confidence
 from .normalizers import clean_text, safe_text
 from .schemas import CatalogDocument
+
+_log = logging.getLogger(__name__)
 
 
 ATTRIBUTE_SECTIONS: List[Tuple[str, List[str]]] = [
@@ -70,10 +73,19 @@ def build_catalog_document(row: Dict[str, str], row_index: int, config: CatalogE
 
 def iter_catalog_documents(rows: Iterable[Dict[str, str]], config: CatalogEmbeddingConfig) -> Iterable[CatalogDocument]:
     count = 0
+    skipped_status = 0
+    total = 0
     for idx, row in enumerate(rows):
+        total += 1
         if config.require_complete_rows_only and str(row.get("row_status") or "").strip().lower() not in EMBEDDABLE_ROW_STATUS:
+            skipped_status += 1
             continue
         yield build_catalog_document(row, idx, config)
         count += 1
         if config.max_rows > 0 and count >= config.max_rows:
             break
+    if skipped_status:
+        _log.warning(
+            "iter_catalog_documents: skipped %d/%d rows (row_status not in %s)",
+            skipped_status, total, EMBEDDABLE_ROW_STATUS,
+        )
