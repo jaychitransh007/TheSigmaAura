@@ -1603,6 +1603,7 @@ def get_web_ui_html(
             // fetching the image as base64. The backend loads the existing
             // item directly — no re-enrichment, no duplicate wardrobe row.
             pendingWardrobeItemId = item.id || "";
+            console.log("[AURA] Wardrobe picker click: pendingWardrobeItemId =", pendingWardrobeItemId, "title =", item.title);
             // Show the wardrobe item's image as a preview chip so the
             // user sees what they selected, but DON'T set pendingImageData
             // (that would trigger a full re-upload on the backend).
@@ -2195,6 +2196,7 @@ def get_web_ui_html(
       var convId = await ensureConversation();
       var attachedImage = pendingImageData;
       var attachedWardrobeItemId = pendingWardrobeItemId;
+      console.log("[AURA] Send: attachedImage =", !!attachedImage, "attachedWardrobeItemId =", attachedWardrobeItemId);
       addBubble(message, "user", attachedImage);
       messageEl.value = "";
       messageEl.style.height = "auto";
