@@ -79,12 +79,17 @@ def extract_query_document_filters(document: str) -> Dict[str, str]:
 def build_directional_filters(direction_type: str, role: str) -> Dict[str, Any]:
     if direction_type == "complete" or role == "complete":
         return {"styling_completeness": "complete"}
-    if role == "top":
-        return {"styling_completeness": ["needs_bottomwear", "needs_innerwear"]}
-    if role == "bottom":
-        return {"styling_completeness": ["needs_topwear", "needs_innerwear"]}
     if role == "outerwear":
         return {"styling_completeness": ["needs_innerwear"]}
+    if role == "top":
+        # In paired directions, include needs_innerwear so nehru jackets
+        # are discoverable as the "top" layer. In three_piece directions,
+        # outerwear has its own role — don't overlap.
+        if direction_type == "three_piece":
+            return {"styling_completeness": "needs_bottomwear"}
+        return {"styling_completeness": ["needs_bottomwear", "needs_innerwear"]}
+    if role == "bottom":
+        return {"styling_completeness": "needs_topwear"}
     if direction_type in ("paired", "three_piece"):
         return {}
     return {}

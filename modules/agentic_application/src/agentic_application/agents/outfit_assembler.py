@@ -448,10 +448,16 @@ class OutfitAssembler:
         scored: List[Tuple[float, List[str], RetrievedProduct, RetrievedProduct, RetrievedProduct]] = []
         for top in tops:
             for bottom in bottoms:
+                # Skip if same product in both roles
+                if top.product_id == bottom.product_id:
+                    continue
                 pair_score, pair_notes = self._evaluate_pair(top, bottom, combined_context)
                 if pair_score <= 0:
                     continue
                 for outer in outerwear:
+                    # Skip if outerwear duplicates top or bottom
+                    if outer.product_id in (top.product_id, bottom.product_id):
+                        continue
                     outer_score, outer_notes = self._evaluate_pair(top, outer, combined_context)
                     if outer_score <= 0:
                         continue
