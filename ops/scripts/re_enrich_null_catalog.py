@@ -31,10 +31,9 @@ from catalog.enrichment.config import PipelineConfig
 
 # Load config
 config = load_config()
-client = SupabaseRestClient(
-    url=os.environ.get("SUPABASE_URL") or config.get("SUPABASE_URL", ""),
-    key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or config.get("SUPABASE_SERVICE_ROLE_KEY", ""),
-)
+_sb_url = os.environ.get("SUPABASE_URL") or config.get("SUPABASE_URL", "")
+_sb_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or config.get("SUPABASE_SERVICE_ROLE_KEY", "")
+client = SupabaseRestClient(rest_url=_sb_url, service_role_key=_sb_key)
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or config.get("OPENAI_API_KEY", "")
 MODEL = "gpt-5-mini"
