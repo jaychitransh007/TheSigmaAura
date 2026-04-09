@@ -20,7 +20,7 @@ The design system is now applied uniformly across all surfaces: onboarding, prof
 
 Key UI patterns implemented:
 - **Unified profile page**: Single page with inline edit toggle — view mode shows read-only fields, edit mode switches to inputs/selects in place. Includes style code card and personalized color palette card (base/accent/avoid chips).
-- **Chat composer**: `+` button opens a popover with "Upload image" (file picker) and "Select from wardrobe" (modal with wardrobe grid). Supports drag-drop and paste.
+- **Chat composer**: `+` button opens a popover with "Upload image" (file picker), "Select from wardrobe" (modal with wardrobe grid), and "Select from wishlist" (modal with wishlisted catalog products). Supports drag-drop and paste.
 - **Chat welcome screen with progressive disclosure**: The chat homepage leads with **one dominant primary CTA** (`Dress me for tonight`) and tucks the four secondary prompts behind a `More ways to style` toggle. Accessible `aria-expanded` and `prefers-reduced-motion` support.
 - **Chat management**: Conversation sidebar with hover-reveal rename (inline edit) and delete (archive with confirmation) actions per history item. Title column on conversations table.
 - **Wardrobe add-item modal**: Photo upload with preview, auto-enrichment (46 attributes via vision API).
@@ -30,7 +30,8 @@ Key UI patterns implemented:
 - **Outfit PDP card**: Full-width header (title + like/dislike icons + stylist summary) above 3-column body (thumbnails | hero | products + chart). Products show title / Rs. price / Buy Now + wishlist heart — or "From your wardrobe" for owned items. **Split polar bar chart** (Nightingale-style): top semicircle = 8-axis style archetype profile (purple `#7F77DD`), bottom semicircle = dynamic 5-9 axis fit/evaluation profile (burgundy `#8B3055`, scaled by `analysis_confidence_pct`), dashed horizontal divider through the centre, shared 0-100 grid rings, color-coded legend below the canvas. Virtual try-on images in 2:3 aspect ratio.
 - **Follow-up suggestions as labelled groups**: Quick-reply chips are rendered under bucket headers (`Improve It`, `Show Alternatives`, `Shop The Gap`), driven by the `follow_up_groups` field on response metadata emitted by `response_formatter.py`. The UI prefers the structured payload and only falls back to substring bucketing if it's absent.
 - **Wardrobe-first copy**: Wardrobe-first occasion responses name the selected pieces and explain *why* they fit ("For office, your Navy Blazer and Cream Trousers from your saved wardrobe is the strongest fit…"). The stock "Built from your saved wardrobe for X" line has been removed. Hybrid responses name both the wardrobe anchors *and* the catalog gap-fillers explicitly.
-- **Results grid**: 2-column card grid with outfit preview thumbnails, user message, occasion chips, and relative timestamps.
+- **Wishlist tab**: grid of wishlisted catalog garments (product images, not try-on composites) with title, price, Buy Now link. Data from `catalog_interaction_history` hydrated with `catalog_enriched`.
+- **Trial Room tab**: gallery of virtual try-on renders (2:3 aspect ratio, gradient timestamp overlay, hover lift) with click-to-open-full-size. Data from `virtual_tryon_images`.
 
 Related docs:
 - [`docs/PRODUCT.md`](PRODUCT.md) — product definition and user journey

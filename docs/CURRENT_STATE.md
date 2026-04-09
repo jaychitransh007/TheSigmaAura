@@ -41,14 +41,15 @@ Project status:
 - wardrobe: ingestion, enrichment, retrieval, wardrobe-first occasion response, full CRUD UI (add/edit/delete), enhanced filters (search, category, color), and completeness scoring implemented
 - WhatsApp: removed from current codebase (previously had formatting and deep linking; runtime was never built)
 - safety: dual-layer image moderation (heuristic + vision), restricted category exclusion, try-on quality gate implemented
-- web UI: modern chat-first interface with unified warm/burgundy design across onboarding, profile analysis, main app, and admin
+- web UI: modern chat-first interface with unified warm/burgundy design across onboarding, profile analysis, main app, and admin; 4-tab layout (Chat / Wardrobe / Wishlist / Trial Room)
 - profile: unified view + edit page with inline editing toggle, style code card, and personalized color palette card (base/accent/avoid)
 - wardrobe: seamless "+Add Item" modal — photo-only upload with auto-enrichment (46 attributes via vision API); edit modal for all metadata fields; per-card delete with confirmation
 - wardrobe filters: search bar (title/description/brand/category), category chips (8 including Dresses, Outerwear, Accessories), color filter row (11 colors), localStorage persistence
 - chat management: conversation rename (inline edit) and delete (archive) with hover-reveal sidebar actions; `title` column on conversations table
 - virtual try-on: persistent storage with cache reuse — images saved to disk + `virtual_tryon_images` table, mapped by user + garment IDs + source; same garment combination returns cached result without re-generation
 - chat composer: `+` button popover with "Upload image" and "Select from wardrobe" options; drag-drop and paste support
-- results: previous results grid with outfit preview thumbnails extracted from outfits[].items[].image_url
+- wishlist: wishlisted catalog garments with product images, title, price, Buy Now — data from `catalog_interaction_history` hydrated with `catalog_enriched`
+- trial room: virtual try-on render gallery (2:3 aspect ratio, gradient timestamp overlay) — data from `virtual_tryon_images`
 - catalog admin: pipeline with upload, enrichment sync, embedding generation, URL backfill, include-incomplete toggle, skip-already-embedded optimization
 
 The system is a working recommendation engine with supporting infrastructure. The next phase is evolving it from a shopping-first tool into a lifestyle stylist — wardrobe-first across all intents, dedicated handlers for non-recommendation intents (outfit check, shopping decision, pairing, capsule planning), and WhatsApp as a live retention surface.

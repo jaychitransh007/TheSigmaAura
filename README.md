@@ -12,7 +12,7 @@ The system is organized in six layers:
 
 | Layer | Purpose |
 |-------|---------|
-| **Entry Surfaces** | Web app (onboarding, chat, wardrobe, profile), chat management, wardrobe studio, catalog admin |
+| **Entry Surfaces** | Web app (onboarding, chat, wardrobe, wishlist, trial room, profile), chat management, wardrobe studio, catalog admin |
 | **User Intelligence** | Onboarding, 3-agent analysis pipeline, interpretations, digital draping, style profile, confidence engines |
 | **Intent Runtime** | Intent registry (StrEnum, 8 intents, 7 actions), copilot planner, orchestrator, dedicated handlers, recommendation pipeline (architect → search → assemble → rerank → tryon → visual evaluate → format), wardrobe engine, virtual try-on |
 | **Output & Experience** | Response formatter, 3-column PDP cards, chat UI, wardrobe UI, profile UI |
@@ -79,7 +79,7 @@ Always use `python3 -m pip` (not bare `pip`) to guarantee the install lands in t
 
 ## Project Stats
 
-- 36 Supabase migrations
+- 38 Supabase migrations
 - 318 tests
 - 8 intents (7 advisory + silent wardrobe_ingestion), 7 action types, 7 follow-up types (StrEnum registry, post-Phase 12A consolidation)
 - 50+ catalog enrichment attributes

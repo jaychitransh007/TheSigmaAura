@@ -155,7 +155,8 @@ Quick visual checks. Each row is one screen × one viewport.
 | `/` homepage (chat)               | [ ]        | [ ]        | [ ]        | [ ]          |
 | `/?view=wardrobe`                 | [ ]        | [ ]        | [ ]        | [ ]          |
 | `/?view=profile` (style code)     | [ ]        | [ ]        | [ ]        | [ ]          |
-| `/?view=results`                  | [ ]        | [ ]        | [ ]        | [ ]          |
+| `/?view=wishlist`                 | [ ]        | [ ]        | [ ]        | [ ]          |
+| `/?view=trialroom`                | [ ]        | [ ]        | [ ]        | [ ]          |
 | Outfit check response             | [ ]        | [ ]        | [ ]        | [ ]          |
 | Trip planner response             | [ ]        | [ ]        | [ ]        | [ ]          |
 | Wardrobe Add Item modal           | [ ]        | [ ]        | [ ]        | [ ]          |
