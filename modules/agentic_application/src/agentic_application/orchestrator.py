@@ -4059,7 +4059,7 @@ class AgenticOrchestrator:
                     emit("visual_evaluation", "completed", ctx={"evaluated_count": len(evaluated)})
                 except Exception:
                     _log.warning(
-                        "Phase 12B visual evaluator path failed; falling back to legacy text evaluator",
+                        "Visual evaluator path failed; will fall back to assembly_score promotion",
                         exc_info=True,
                     )
                     emit("visual_evaluation", "error")
@@ -4067,19 +4067,48 @@ class AgenticOrchestrator:
 
             if not evaluated:
                 # The visual evaluator either wasn't attempted or failed.
-                # Photo upload is mandatory, so the only way we get here is
-                # a transient visual-evaluator exception (Gemini/OpenAI
-                # outage, timeout, etc.). Rather than falling back to a
-                # legacy text-only evaluator with a different scoring shape
-                # (which produces inconsistent quality signals), we let the
-                # downstream empty-response formatter handle it — it returns
-                # a friendly "I couldn't return safe outfit recommendations
-                # for this request" message. Clean, consistent, retryable.
+                # Rather than returning zero outfits (which the user sees
+                # as a broken response), promote the top candidates by
+                # assembly_score with neutral evaluation scores. This is a
+                # lightweight inline fallback — NOT the deleted 540-line
+                # legacy OutfitEvaluator. The candidates already have
+                # catalog attributes; we just don't have vision-grounded
+                # dimension scores for them. The response will look
+                # reasonable (real products, real images) but won't have
+                # the per-candidate body/color/style analysis.
                 _log.warning(
                     "Visual evaluator produced zero results for turn %s; "
-                    "returning empty outfits (graceful degradation)",
+                    "promoting top candidates by assembly_score (inline fallback)",
                     turn_id,
                 )
+                evaluator_path = "assembly_score_fallback"
+                top_n = self.reranker.final_top_n
+                fallback_candidates = sorted(
+                    ranked_pool,
+                    key=lambda c: float(getattr(c, "assembly_score", 0.0) or 0.0),
+                    reverse=True,
+                )[:top_n]
+                fallback_pct = 65  # neutral score — better than 0, not as good as visual
+                for rank, candidate in enumerate(fallback_candidates, 1):
+                    evaluated.append(
+                        EvaluatedRecommendation(
+                            candidate_id=candidate.candidate_id,
+                            rank=rank,
+                            match_score=float(getattr(candidate, "assembly_score", 0.5) or 0.5),
+                            title=f"Outfit {rank}",
+                            reasoning="Scored by catalog compatibility (visual evaluator unavailable this turn).",
+                            body_harmony_pct=fallback_pct,
+                            color_suitability_pct=fallback_pct,
+                            style_fit_pct=fallback_pct,
+                            risk_tolerance_pct=fallback_pct,
+                            comfort_boundary_pct=fallback_pct,
+                            item_ids=sorted(
+                                str(item.get("product_id", ""))
+                                for item in (candidate.items or [])
+                                if item.get("product_id")
+                            ),
+                        )
+                    )
 
             evaluator_ms = int((time.monotonic() - t0) * 1000)
             self.repo.log_model_call(
