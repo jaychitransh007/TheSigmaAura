@@ -23,6 +23,7 @@ from .agents.reranker import Reranker
 from .agents.response_formatter import ResponseFormatter
 from .agents.style_advisor_agent import StyleAdvice, StyleAdvisorAgent
 from .agents.visual_evaluator_agent import VisualEvaluatorAgent
+from .tracing import TurnTraceBuilder
 from .context.conversation_memory import build_conversation_memory
 from .context.user_context_builder import build_user_context, validate_minimum_profile
 from .filters import build_global_hard_filters
@@ -651,8 +652,35 @@ class AgenticOrchestrator:
                 msg = generate_stage_message(stage, detail, ctx)
                 stage_callback(stage, detail, msg)
 
+        # ── Trace-aware emit: feeds both the SSE bubble and the trace ──
+        _step_t0: dict[str, float] = {}
+
+        def trace_start(step: str, *, model: str | None = None, input_summary: str = "") -> None:
+            """Mark the start of a pipeline step for latency measurement."""
+            _step_t0[step] = time.monotonic()
+            # Store model + input_summary so trace_end can use them.
+            _step_t0[f"_model_{step}"] = model  # type: ignore[assignment]
+            _step_t0[f"_input_{step}"] = input_summary  # type: ignore[assignment]
+
+        def trace_end(step: str, *, output_summary: str = "", status: str = "ok", error: str | None = None) -> None:
+            """Finalise a pipeline step: compute latency, append to trace."""
+            t0 = _step_t0.pop(step, None)
+            latency_ms = int((time.monotonic() - t0) * 1000) if isinstance(t0, float) else None
+            model = _step_t0.pop(f"_model_{step}", None)
+            input_summary = str(_step_t0.pop(f"_input_{step}", "") or "")
+            trace.add_step(
+                step,
+                model=model,  # type: ignore[arg-type]
+                input_summary=input_summary,
+                output_summary=output_summary,
+                latency_ms=latency_ms,
+                status=status,
+                error=error,
+            )
+
         # --- Validate request ---
         emit("validate_request", "started")
+        trace_start("validate_request", input_summary=f"user={external_user_id}, conv={conversation_id}")
         user_row = self.repo.get_or_create_user(external_user_id)
         conversation = self.repo.get_conversation(conversation_id)
         if not conversation:
@@ -662,9 +690,23 @@ class AgenticOrchestrator:
         previous_context = dict(conversation.get("session_context_json") or {})
         turn = self.repo.create_turn(conversation_id=conversation_id, user_message=message)
         turn_id = str(turn["id"])
+
+        # ── Trace builder ────────────────────────────────────────────
+        # Accumulates the per-turn trace incrementally. Persisted at the
+        # end of every handler path via repo.insert_turn_trace.
+        trace = TurnTraceBuilder(
+            turn_id=turn_id,
+            conversation_id=conversation_id,
+            user_id=external_user_id,
+            user_message=message,
+            has_image=bool(image_data),
+        )
+
         attached_item: Dict[str, Any] | None = None
         effective_message = message
+        trace_end("validate_request", output_summary=f"turn={turn_id}")
         if image_data:
+            trace_start("wardrobe_enrichment", model="gpt-5-mini", input_summary=f"image_upload, message={message[:80]}")
             try:
                 # Phase 12D follow-up (April 9 2026): enrich the uploaded
                 # garment but do NOT persist it to user_wardrobe_items yet.
@@ -713,6 +755,19 @@ class AgenticOrchestrator:
                 effective_message = f"{message.strip()} {attached_context}".strip()
             if attached_item is not None:
                 effective_message = f"{effective_message} Image anchor source: {attachment_source.replace('_', ' ')}.".strip()
+            # Close the wardrobe_enrichment trace step
+            enriched_cat = str((attached_item or {}).get("garment_category") or "")
+            enriched_color = str((attached_item or {}).get("primary_color") or "")
+            is_garm = (attached_item or {}).get("is_garment_photo")
+            trace_end(
+                "wardrobe_enrichment",
+                output_summary=f"is_garment={is_garm}, category={enriched_cat}, color={enriched_color}",
+                status="ok" if attached_item else "error",
+            )
+            trace.set_image_classification(
+                is_garment_photo=is_garm if is_garm is not None else None,
+                garment_present_confidence=float((attached_item or {}).get("garment_present_confidence") or 1.0),
+            )
         # --- 0.5 Onboarding Gate ---
         emit("onboarding_gate", "started")
         onboarding_status = self.onboarding_gateway.get_onboarding_status(external_user_id)
@@ -833,6 +888,7 @@ class AgenticOrchestrator:
 
         # Run Copilot Planner
         emit("copilot_planner", "started")
+        trace_start("copilot_planner", model="gpt-5.4", input_summary=f"message={message[:80]}, has_image={bool(image_data)}")
         t0 = time.monotonic()
         try:
             plan_result = self._copilot_planner.plan(planner_input)
@@ -983,6 +1039,32 @@ class AgenticOrchestrator:
             if "non_garment_image" not in override_reasons:
                 override_reasons.append("non_garment_image")
 
+        # ── Close the planner trace step and snapshot the intent ──
+        trace_end(
+            "copilot_planner",
+            output_summary=f"intent={plan_result.intent}, action={plan_result.action}, overrides={override_reasons}",
+        )
+        trace.set_intent(
+            primary_intent=plan_result.intent,
+            intent_confidence=plan_result.intent_confidence,
+            action=plan_result.action,
+            reason_codes=["copilot_planner", *override_reasons],
+        )
+        # Snapshot the query entities the planner extracted
+        rc = plan_result.resolved_context
+        trace.set_context(
+            query_entities={
+                "occasion_signal": rc.occasion_signal,
+                "formality_hint": rc.formality_hint,
+                "time_of_day": str(getattr(rc, "time_of_day", "") or ""),
+                "weather_context": str(getattr(rc, "weather_context", "") or ""),
+                "specific_needs": list(rc.specific_needs or []),
+                "target_product_type": str(getattr(rc, "target_product_type", "") or ""),
+                "followup_intent": rc.followup_intent,
+                "is_followup": rc.is_followup,
+            },
+        )
+
         # Build intent classification for metadata compatibility
         intent = IntentClassification(
             primary_intent=plan_result.intent,
@@ -1044,9 +1126,11 @@ class AgenticOrchestrator:
             status=onboarding_gate.status,
         )
 
-        # Dispatch on action
+        # Dispatch on action — capture the return value so we can
+        # persist the turn trace after the handler completes.
+        handler_result: Dict[str, Any] | None = None
         if plan_result.action == Action.RESPOND_DIRECTLY:
-            return self._handle_direct_response(
+            handler_result = self._handle_direct_response(
                 plan_result=plan_result,
                 intent=intent,
                 conversation_id=conversation_id,
@@ -1059,7 +1143,7 @@ class AgenticOrchestrator:
 
             )
         elif plan_result.action == Action.ASK_CLARIFICATION:
-            return self._handle_clarification(
+            handler_result = self._handle_clarification(
                 plan_result=plan_result,
                 intent=intent,
                 conversation_id=conversation_id,
@@ -1072,7 +1156,7 @@ class AgenticOrchestrator:
 
             )
         elif plan_result.action == Action.RUN_RECOMMENDATION_PIPELINE:
-            return self._handle_planner_pipeline(
+            handler_result = self._handle_planner_pipeline(
                 plan_result=plan_result,
                 intent=intent,
                 conversation_id=conversation_id,
@@ -1092,7 +1176,7 @@ class AgenticOrchestrator:
                 emit=emit,
             )
         elif plan_result.action == Action.RUN_OUTFIT_CHECK:
-            return self._handle_outfit_check(
+            handler_result = self._handle_outfit_check(
                 plan_result=plan_result,
                 intent=intent,
                 conversation_id=conversation_id,
@@ -1106,7 +1190,7 @@ class AgenticOrchestrator:
                 attached_item=attached_item,
             )
         elif plan_result.action == Action.RUN_GARMENT_EVALUATION:
-            return self._handle_garment_evaluation(
+            handler_result = self._handle_garment_evaluation(
                 plan_result=plan_result,
                 intent=intent,
                 conversation_id=conversation_id,
@@ -1120,7 +1204,7 @@ class AgenticOrchestrator:
                 attached_item=attached_item,
             )
         elif plan_result.action == Action.SAVE_WARDROBE_ITEM:
-            return self._handle_planner_wardrobe_save(
+            handler_result = self._handle_planner_wardrobe_save(
                 plan_result=plan_result,
                 intent=intent,
                 conversation_id=conversation_id,
@@ -1133,7 +1217,7 @@ class AgenticOrchestrator:
 
             )
         elif plan_result.action == Action.SAVE_FEEDBACK:
-            return self._handle_planner_feedback(
+            handler_result = self._handle_planner_feedback(
                 plan_result=plan_result,
                 intent=intent,
                 conversation_id=conversation_id,
@@ -1148,7 +1232,7 @@ class AgenticOrchestrator:
         else:
             # Unknown action — fall back to direct response
             _log.warning("Unknown planner action: %s, falling back to direct response", plan_result.action)
-            return self._handle_direct_response(
+            handler_result = self._handle_direct_response(
                 plan_result=plan_result,
                 intent=intent,
                 conversation_id=conversation_id,
@@ -1160,6 +1244,25 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence,
 
             )
+
+        # ── Persist the turn trace ────────────────────────────────────
+        # Snapshot the evaluation summary from the handler result if
+        # available (recommendation pipeline, garment_evaluation, outfit
+        # check — each stores outfits/scores in the result dict).
+        if handler_result:
+            outfits = handler_result.get("outfits") or []
+            metadata = handler_result.get("metadata") or {}
+            trace.set_evaluation({
+                "evaluator_path": metadata.get("evaluator_path") or "",
+                "answer_source": metadata.get("answer_source") or "",
+                "outfit_count": len(outfits),
+                "response_type": handler_result.get("response_type") or "",
+            })
+            # Store last_turn_id in session context via the handler result
+            # so the NEXT turn can correlate user_response.
+            handler_result.setdefault("_trace_turn_id", turn_id)
+        self._persist_trace(trace)
+        return handler_result or {"conversation_id": conversation_id, "turn_id": turn_id, "response_type": "error"}
 
     # ------------------------------------------------------------------
     # Virtual try-on
@@ -2856,6 +2959,18 @@ class AgenticOrchestrator:
         if extra:
             payload.update(extra)
         return payload
+
+    # ------------------------------------------------------------------
+    # Turn trace persistence
+    # ------------------------------------------------------------------
+
+    def _persist_trace(self, trace: TurnTraceBuilder) -> None:
+        """Persist the accumulated per-turn trace. Best-effort: failures
+        here must never block the response to the user."""
+        try:
+            self.repo.insert_turn_trace(**trace.build())
+        except Exception:
+            _log.warning("Failed to persist turn trace", exc_info=True)
 
     # ------------------------------------------------------------------
     # Copilot Planner action handlers

@@ -595,6 +595,23 @@ def create_app() -> FastAPI:
                                 turn_id=turn_id,
                             )
 
+            # Update the turn trace with the user's feedback signal so
+            # we can correlate pipeline shape with user satisfaction in
+            # a single-table query on turn_traces.
+            if turn_id:
+                try:
+                    repo.update_turn_trace_user_response(
+                        turn_id=str(turn_id),
+                        user_response={
+                            "feedback_type": payload.event_type,
+                            "feedback_notes": payload.notes[:200] if payload.notes else "",
+                            "feedback_item_ids": list(item_ids),
+                            "feedback_outfit_rank": payload.outfit_rank,
+                        },
+                    )
+                except Exception:
+                    pass  # best-effort; never break the feedback flow
+
             return {"ok": True, "count": count, "turn_id": turn_id or ""}
         except HTTPException:
             raise

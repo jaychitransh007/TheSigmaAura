@@ -683,3 +683,73 @@ class ConversationRepository:
             limit=1,
         )
         return rows[0] if rows else None
+
+    # -- turn_traces -----------------------------------------------------------
+
+    def insert_turn_trace(
+        self,
+        *,
+        turn_id: str,
+        conversation_id: str,
+        user_id: str,
+        user_message: str = "",
+        has_image: bool = False,
+        image_classification: Optional[Dict[str, Any]] = None,
+        primary_intent: str = "",
+        intent_confidence: float = 0.0,
+        action: str = "",
+        reason_codes: Optional[List[str]] = None,
+        profile_snapshot: Optional[Dict[str, Any]] = None,
+        query_entities: Optional[Dict[str, Any]] = None,
+        steps: Optional[List[Dict[str, Any]]] = None,
+        evaluation: Optional[Dict[str, Any]] = None,
+        total_latency_ms: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Insert a unified per-turn trace after process_turn completes."""
+        payload: Dict[str, Any] = {
+            "turn_id": turn_id,
+            "conversation_id": conversation_id,
+            "user_id": user_id,
+            "user_message": user_message,
+            "has_image": has_image,
+            "image_classification": image_classification or {},
+            "primary_intent": primary_intent,
+            "intent_confidence": intent_confidence,
+            "action": action,
+            "reason_codes": list(reason_codes or []),
+            "profile_snapshot": profile_snapshot or {},
+            "query_entities": query_entities or {},
+            "steps": steps or [],
+            "evaluation": evaluation or {},
+            "user_response": {},
+            "total_latency_ms": total_latency_ms,
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        }
+        return self.client.insert_one("turn_traces", payload)
+
+    def update_turn_trace_user_response(
+        self,
+        *,
+        turn_id: str,
+        user_response: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Update the user_response column on a previously-persisted trace.
+
+        Called retroactively when the user's next signal arrives: a
+        follow-up message (from the next process_turn), feedback (from
+        the feedback endpoint), or a wishlist/purchase click.
+        """
+        try:
+            return self.client.update_one(
+                "turn_traces",
+                filters={"turn_id": f"eq.{turn_id}"},
+                patch={
+                    "user_response": user_response,
+                    "updated_at": _now_iso(),
+                },
+            )
+        except Exception:
+            # Best-effort: a missing trace row (e.g. turn pre-dating the
+            # migration) should not break the calling code path.
+            return None

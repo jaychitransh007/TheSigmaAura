@@ -1018,6 +1018,84 @@ Success criteria:
 
 ## Immediate Next Item
 
+### ✅ CLOSED — Distributed per-turn traces (April 9 2026)
+
+Shipped April 9, 2026. One `turn_traces` row per conversation turn capturing input → intent → context snapshot → step-by-step workflow → evaluation → user response signal → end-to-end latency. Migration applied to staging Supabase. Test count: **332 passing** (was 329, +3 new `TurnTraceBuilder` unit tests).
+
+Files touched:
+- **`supabase/migrations/20260409120000_turn_traces.sql`** — new table with columns for all 10 signal groups (input, intent, context, steps JSONB array, evaluation, user_response, total_latency_ms), indexed on turn_id (unique), conversation_id, user_id, primary_intent, created_at. Applied to staging via `supabase db push`.
+- **`modules/platform_core/src/platform_core/repositories.py`** — added `insert_turn_trace(...)` and `update_turn_trace_user_response(...)` to `ConversationRepository`. The update method is best-effort (missing rows don't break callers).
+- **`modules/agentic_application/src/agentic_application/tracing.py`** — new `TurnTraceBuilder` class: lightweight in-memory accumulator with `add_step(step, model, input_summary, output_summary, latency_ms, status, error)`, `set_intent(...)`, `set_context(...)`, `set_evaluation(...)`, and `build() → dict`. No I/O — just dict accumulation.
+- **`modules/agentic_application/src/agentic_application/orchestrator.py`**:
+  - Import `TurnTraceBuilder`.
+  - Instantiate at the top of `process_turn` with turn_id, conversation_id, user_id, message, has_image.
+  - `trace_start(step, model, input_summary)` / `trace_end(step, output_summary, status, error)` helpers alongside every existing `emit()` call — dual-write: SSE thinking bubble for the UI + trace step for the DB. Currently instruments `validate_request`, `wardrobe_enrichment`, and `copilot_planner` as the first landing; downstream steps (architect, search, assembly, reranker, render, evaluator, formatter) can be added incrementally by the same `trace_start/trace_end` pattern without touching the builder.
+  - After the planner, `trace.set_intent(...)` and `trace.set_context(query_entities=...)` snapshot the classified intent and extracted entities.
+  - Dispatch block restructured: handler results are captured into `handler_result`, then `trace.set_evaluation(...)` extracts the evaluator_path / answer_source / outfit_count from the result, then `_persist_trace(trace)` persists the full trace to `turn_traces`. Best-effort: trace persistence failures log a warning but never block the response.
+  - New `_persist_trace(trace)` helper on the orchestrator.
+- **`modules/agentic_application/src/agentic_application/api.py`** — feedback endpoint now calls `repo.update_turn_trace_user_response(turn_id, {feedback_type, notes, item_ids, outfit_rank})` after persisting `feedback_events`, so the turn trace row retroactively captures what the user thought of the response. Best-effort (wrapped in try/except so feedback is never blocked).
+- **`tests/test_agentic_application.py`** — 3 new unit tests in `TurnTraceBuilderTests`:
+  1. `test_build_produces_correct_shape` — full trace with 2 steps, intent, context, evaluation
+  2. `test_build_empty_produces_valid_shape` — empty trace still returns a well-formed dict
+  3. `test_add_step_with_error` — error step with status="error" and error message
+
+**What's instrumented in this first landing:**
+- `validate_request` step (latency)
+- `wardrobe_enrichment` step (model=gpt-5-mini, input=image, output=is_garment+category+color, latency)
+- `copilot_planner` step (model=gpt-5.4, input=message, output=intent+action+overrides, latency)
+- Intent + query_entities snapshot
+- Evaluation summary (evaluator_path, answer_source, outfit_count, response_type)
+- Total end-to-end latency
+- User feedback correlation (retroactive update from the feedback endpoint)
+
+**What can be added incrementally** (same `trace_start/trace_end` pattern, one edit per step):
+- `onboarding_gate`, `user_context` steps
+- `outfit_architect`, `catalog_search`, `outfit_assembly`, `reranker` steps
+- `tryon_render`, `visual_evaluator`, `response_formatting` steps
+- Profile snapshot (profile_confidence_pct, gender, seasonal, body_shape, archetypes)
+- Wishlist + purchase click correlation
+- Next-message correlation (requires adding a `list_turns limit=2` method to the repo)
+
+---
+
+### P0 — Distributed per-turn traces (April 9 2026) — historical plan retained for reference
+
+**Goal:** one `turn_traces` row per conversation turn that captures the full lifecycle — input, intent, context snapshot, step-by-step workflow (model, summarized I/O, latency, status), final evaluation, user's subsequent response signal, and end-to-end latency — so that debugging a turn, finding slow steps, and correlating user satisfaction with pipeline shape are all single-table queries.
+
+**Why the current infra isn't enough:** signals already exist but are scattered across 6+ tables (`conversation_turns`, `model_call_logs`, `tool_traces`, `dependency_validation_events`, `policy_event_log`, `feedback_events`, `confidence_history`). Answering "what happened on turn X step-by-step?" requires 5+ JOINs and parsing multiple JSONB blobs. The `stage_callback` / `emit()` calls in the orchestrator are the closest thing to a workflow trace but are ephemeral (SSE to the browser, never persisted).
+
+**Schema — one row per turn in `turn_traces`:**
+
+| Column group | Columns | Shape |
+|---|---|---|
+| **Identifiers** | `id`, `turn_id` (FK unique), `conversation_id`, `user_id` | UUIDs + text |
+| **1. Input** | `user_message`, `has_image`, `image_classification` | text + bool + JSONB |
+| **2. Intent** | `primary_intent`, `intent_confidence`, `action`, `reason_codes` | text + real + text + text[] |
+| **3. Context** | `profile_snapshot`, `query_entities` | JSONB × 2 |
+| **4-6, 9. Workflow + Steps** | `steps` | JSONB array: `[{step, model, input_summary, output_summary, latency_ms, status, error}]` |
+| **7. Evaluation** | `evaluation` | JSONB: `{path, outfit_count, source, match_scores, verdict}` |
+| **8. User response** | `user_response` | JSONB: `{next_message_intent, feedback_type, notes, wishlisted, purchased, response_ms}` — filled retroactively |
+| **10. Latency** | `total_latency_ms` | integer |
+| **Timestamps** | `created_at`, `updated_at` | timestamptz |
+
+**Steps array** — one element per pipeline stage (11 for a full pairing_request, 4-6 for simpler intents): `validate_request` → `onboarding_gate` → `wardrobe_enrichment` → `copilot_planner` → `outfit_architect` → `catalog_search` → `outfit_assembly` → `reranker` → `tryon_render` → `visual_evaluator` → `response_formatting`. Each element carries `{step, model, input_summary, output_summary, latency_ms, status, error}`.
+
+**User response correlation** — `user_response` starts as `'{}'` and is updated retroactively when the next signal arrives: next message (from the following `process_turn`), feedback (from the feedback endpoint), wishlist (from the wishlist endpoint), or purchase click (when tracked). Single `UPDATE ... WHERE turn_id = ?`.
+
+**Implementation plan (Steps 1-7):**
+
+- **Step 1 — Migration.** Create `turn_traces` table on staging Supabase via direct SQL. Add indexes on `turn_id` (unique), `conversation_id`, `user_id`, `primary_intent`, `created_at`. Migration file at `supabase/migrations/20260409120000_turn_traces.sql`.
+- **Step 2 — Repository.** Add `insert_turn_trace(...)` and `update_turn_trace_user_response(...)` to `ConversationRepository` in `repositories.py`.
+- **Step 3 — TurnTraceBuilder.** New lightweight class in `modules/agentic_application/src/agentic_application/tracing.py` that accumulates steps during `process_turn`. Methods: `add_step(step, model, input_summary, output_summary, latency_ms, status, error)`, `set_intent(...)`, `set_context(profile_snapshot, query_entities)`, `set_evaluation(...)`, `build() → dict` (returns the full trace row payload).
+- **Step 4 — Wire into orchestrator.** Instantiate `TurnTraceBuilder` at the top of `process_turn`. At each existing `emit()` call site, also call `trace.add_step(...)`. At the end of every handler path (recommendation pipeline, garment_evaluation, outfit_check, style_discovery, explanation, clarification, direct response), call `repo.insert_turn_trace(trace.build())`. Capture end-to-end latency via `time.monotonic()` at the top and bottom of `process_turn`.
+- **Step 5 — User response correlation.** In the feedback endpoint (`api.py`), after persisting feedback_events, also call `repo.update_turn_trace_user_response(turn_id, {feedback_type, notes, item_ids})`. In the wishlist endpoint, same. At the TOP of `process_turn`, look up the previous turn_id from `previous_context` and update its trace's `user_response.next_message_intent`.
+- **Step 6 — Tests.** Unit tests for `TurnTraceBuilder` (build with steps, build empty, build with partial context). Integration test: mock orchestrator process_turn and verify `repo.insert_turn_trace` is called with the expected shape.
+- **Step 7 — Docs + commit.** Close out this P0. Add Panels 15-17 to `OPERATIONS.md` (Turn Latency Distribution, Step Latency Heatmap, User Response Rate). Update `WORKFLOW_REFERENCE.md` with the tracing contract.
+
+**What this does NOT change:** no new LLM calls; no external dependencies (no OTel SDK/collector); no frontend changes (SSE thinking bubble keeps working via `emit()`); no change to `resolved_context_json` (the trace is a parallel record, not a replacement); minimal latency impact (one INSERT per turn at the end of `process_turn`).
+
+---
+
 ### ✅ CLOSED — Non-garment image detection on chat upload (April 9 2026)
 
 Shipped April 9, 2026. The wardrobe enrichment now explicitly classifies whether the uploaded image actually shows a wearable garment, and the orchestrator surfaces a clarification before any downstream pipeline runs when it doesn't. Test count: **329 passing** (was 325, +4 new regression tests).

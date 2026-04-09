@@ -6481,6 +6481,69 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
             )
 
 
+class TurnTraceBuilderTests(unittest.TestCase):
+    """Unit tests for the TurnTraceBuilder accumulator."""
+
+    def test_build_produces_correct_shape(self):
+        from agentic_application.tracing import TurnTraceBuilder
+
+        trace = TurnTraceBuilder(
+            turn_id="t1", conversation_id="c1", user_id="u1",
+            user_message="What goes with this shirt?", has_image=True,
+        )
+        trace.add_step("validate_request", input_summary="user=u1", output_summary="ok", latency_ms=10)
+        trace.add_step("copilot_planner", model="gpt-5.4", input_summary="msg", output_summary="pairing_request", latency_ms=800)
+        trace.set_intent(primary_intent="pairing_request", intent_confidence=0.95, action="run_recommendation_pipeline", reason_codes=["copilot_planner"])
+        trace.set_context(
+            profile_snapshot={"gender": "male", "primary_archetype": "natural"},
+            query_entities={"occasion_signal": None},
+        )
+        trace.set_evaluation({"evaluator_path": "visual", "outfit_count": 3})
+
+        result = trace.build()
+        self.assertEqual("t1", result["turn_id"])
+        self.assertEqual("c1", result["conversation_id"])
+        self.assertEqual("u1", result["user_id"])
+        self.assertEqual("What goes with this shirt?", result["user_message"])
+        self.assertTrue(result["has_image"])
+        self.assertEqual("pairing_request", result["primary_intent"])
+        self.assertEqual(0.95, result["intent_confidence"])
+        self.assertEqual("run_recommendation_pipeline", result["action"])
+        self.assertEqual(["copilot_planner"], result["reason_codes"])
+        self.assertEqual({"gender": "male", "primary_archetype": "natural"}, result["profile_snapshot"])
+        self.assertIsNone(result["query_entities"]["occasion_signal"])
+        self.assertEqual(2, len(result["steps"]))
+        self.assertEqual("validate_request", result["steps"][0]["step"])
+        self.assertEqual("gpt-5.4", result["steps"][1]["model"])
+        self.assertEqual(800, result["steps"][1]["latency_ms"])
+        self.assertEqual("visual", result["evaluation"]["evaluator_path"])
+        self.assertIsInstance(result["total_latency_ms"], int)
+        self.assertGreaterEqual(result["total_latency_ms"], 0)
+
+    def test_build_empty_produces_valid_shape(self):
+        """An empty trace (no steps, no intent, no context) still
+        returns a well-formed dict so insert_turn_trace doesn't error."""
+        from agentic_application.tracing import TurnTraceBuilder
+
+        trace = TurnTraceBuilder(turn_id="t2", conversation_id="c2", user_id="u2")
+        result = trace.build()
+        self.assertEqual("t2", result["turn_id"])
+        self.assertEqual("", result["primary_intent"])
+        self.assertEqual([], result["steps"])
+        self.assertEqual({}, result["evaluation"])
+        self.assertIsInstance(result["total_latency_ms"], int)
+
+    def test_add_step_with_error(self):
+        from agentic_application.tracing import TurnTraceBuilder
+
+        trace = TurnTraceBuilder(turn_id="t3", conversation_id="c3", user_id="u3")
+        trace.add_step("outfit_architect", model="gpt-5.4", status="error", error="timeout after 30s")
+        result = trace.build()
+        self.assertEqual(1, len(result["steps"]))
+        self.assertEqual("error", result["steps"][0]["status"])
+        self.assertEqual("timeout after 30s", result["steps"][0]["error"])
+
+
 class Phase12EStageEmissionTests(unittest.TestCase):
     """Phase 12E end-to-end stage emission tests.
 
