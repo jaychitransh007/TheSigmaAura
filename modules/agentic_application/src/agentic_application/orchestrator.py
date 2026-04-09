@@ -719,6 +719,7 @@ class AgenticOrchestrator:
         # the existing row) instead of re-fetching + re-sending the image
         # as image_data. We load the row directly — no re-enrichment, no
         # duplicate wardrobe write.
+        _log.info("process_turn: wardrobe_item_id=%r, has_image_data=%s", wardrobe_item_id, bool(image_data))
         if wardrobe_item_id and not image_data:
             try:
                 wardrobe_items = self.onboarding_gateway.get_wardrobe_items(external_user_id) or []
