@@ -719,7 +719,7 @@ class AgenticOrchestrator:
         # the existing row) instead of re-fetching + re-sending the image
         # as image_data. We load the row directly — no re-enrichment, no
         # duplicate wardrobe write.
-        _log.info("process_turn: wardrobe_item_id=%r, has_image_data=%s", wardrobe_item_id, bool(image_data))
+        _log.warning("process_turn: wardrobe_item_id=%r, has_image_data=%s", wardrobe_item_id, bool(image_data))
         if wardrobe_item_id and not image_data:
             try:
                 wardrobe_items = self.onboarding_gateway.get_wardrobe_items(external_user_id) or []
@@ -4833,10 +4833,14 @@ class AgenticOrchestrator:
             if anchor_item is not None:
                 outfit_card_items = [self._wardrobe_item_to_outfit_item(dict(anchor_item, _role="anchor"))]
 
-        # Remove the initial full-photo wardrobe item — decomposition will
-        # create proper individual garment items to replace it.
+        # Remove the initial full-photo wardrobe item and decompose into
+        # individual garments — but ONLY for new uploads. When the item
+        # was selected from wardrobe (attachment_source == "wardrobe_selection"),
+        # skip both: the item is already properly saved in the user's
+        # wardrobe and doesn't need re-decomposition.
+        is_wardrobe_selection = str((attached_item or {}).get("attachment_source") or "") == "wardrobe_selection"
         attached_item_id = str((attached_item or {}).get("id") or "").strip()
-        if attached_item_id:
+        if attached_item_id and not is_wardrobe_selection:
             try:
                 self.onboarding_gateway.delete_wardrobe_item(
                     user_id=external_user_id,
@@ -4846,7 +4850,8 @@ class AgenticOrchestrator:
                 _log.warning("Failed to delete initial outfit wardrobe item %s", attached_item_id, exc_info=True)
 
         # Process 2 (async): decompose outfit → crop → enrich → save to wardrobe
-        if image_path:
+        # Skipped for wardrobe selections — the item is already in wardrobe.
+        if image_path and not is_wardrobe_selection:
             Thread(
                 target=self._decompose_and_save_garments,
                 args=(image_path, message, external_user_id, turn_id, conversation_id),

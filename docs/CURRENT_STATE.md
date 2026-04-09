@@ -1018,6 +1018,52 @@ Success criteria:
 
 ## Immediate Next Item
 
+### ✅ CLOSED — "Select from wardrobe" end-to-end bugs (April 9 2026)
+
+Shipped April 9, 2026. Five bugs fixed in one commit across `ui.py` + `orchestrator.py`. Tests: 318 passing.
+
+1. **Picker no longer overwrites typed message** — `messageEl.value` only set when input is empty
+2. **Wardrobe item image shown in user's chat bubble** — new `pendingWardrobeImageUrl` variable saved alongside `pendingWardrobeItemId`; passed to `addBubble` as the bubble image
+3. **Decomposition skipped for wardrobe-selected items** — the outfit_check handler's delete + decompose + save block now checks `attachment_source == "wardrobe_selection"` and skips both when true
+4. **Debug log elevated to WARNING** — `process_turn: wardrobe_item_id=...` now always visible in terminal
+5. **`clearImagePreview()` clears all three pending variables** — `pendingImageData`, `pendingWardrobeItemId`, `pendingWardrobeImageUrl`
+
+---
+
+### P0 — "Select from wardrobe" end-to-end bugs (April 9 2026) — historical plan
+
+Five bugs identified from the wardrobe-selection test flow. All stem from the same root: the "Select from wardrobe" feature was added as a quick frontend wire-up without end-to-end integration testing across the full chat lifecycle.
+
+**Bug 1 — Picker overwrites the user's typed message.**
+When the user selects a wardrobe item, the picker click handler unconditionally sets `messageEl.value = "What goes with my " + item.title + "?"`, destroying whatever the user had already typed ("Should I wear this for date tonight?"). The user expects the picker to attach the item, not replace their message.
+**Fix:** only set the default message when the input is empty: `if (!messageEl.value.trim()) { messageEl.value = ...; }`.
+
+**Bug 2 — Wardrobe item image not shown in the user's chat bubble.**
+`addBubble(message, "user", attachedImage)` passes `attachedImage = pendingImageData` which is empty for wardrobe selections (we intentionally don't set `pendingImageData` to avoid re-uploading). So the user's chat bubble has no image preview — it looks like a text-only message even though a garment was attached.
+**Fix:** store the wardrobe item's image URL in a new `pendingWardrobeImageUrl` variable alongside `pendingWardrobeItemId`. In the send handler, use it as the bubble image when no uploaded image exists: `addBubble(message, "user", attachedImage || pendingWardrobeImageUrl)`. Save the URL before `clearImagePreview()` clears it.
+
+**Bug 3 — Outfit decomposition runs on an already-owned wardrobe item.**
+When the orchestrator processes a wardrobe-selected item, the outfit_check or garment_evaluation handler decomposes the garment and tries to add decomposed items to wardrobe. For wardrobe-selected items (`attachment_source == "wardrobe_selection"`), decomposition and wardrobe-add should be skipped entirely — the item is already in the user's wardrobe.
+**Fix:** in the decomposition path (found in orchestrator's outfit_check and garment_evaluation handlers), check `attached_item.get("attachment_source") == "wardrobe_selection"` and skip decomposition + wardrobe writes when true.
+
+**Bug 4 — `wardrobe_item_id` may not be reaching the backend.**
+The debug logs didn't show the `process_turn: wardrobe_item_id=...` line (likely filtered by log level), and the turn data shows no anchor. The JS code looks correct on inspection but the user reports the item "gets removed on sending." Possible causes: a race condition between picker state and send, or the pre-filled message masking the original user intent.
+**Fix:** change the debug log from `_log.info` to `_log.warning` so it always shows. Add a `console.log` in the JS payload builder to confirm what's actually in the POST body.
+
+**Bug 5 — After processing, the displayed message reverts to the original instead of showing the pre-filled one.**
+The user sees "Should I wear this for date tonight?" in the chat (their original message) but the backend received "What goes with my Black Drawstring Joggers?" (the pre-filled message). This is because the frontend first shows the user's typed text in the bubble, then the response comes back — but the status endpoint returns `user_message` from the DB which is the pre-filled text. On conversation reload, the stored message displays instead of the one the user saw in real time.
+**Fix:** this is a consequence of Bug 1. Once the picker stops overwriting the user's message, the stored message will match what the user typed.
+
+**Implementation plan (5 steps, all in `ui.py` + 1 in `orchestrator.py`):**
+
+1. **Picker click handler** — only set `messageEl.value` when input is empty; store `pendingWardrobeImageUrl` alongside `pendingWardrobeItemId`
+2. **Send handler** — save `pendingWardrobeImageUrl` before `clearImagePreview()`; pass it to `addBubble` when no uploaded image exists
+3. **`clearImagePreview()`** — also clear `pendingWardrobeImageUrl`
+4. **Orchestrator decomposition guard** — skip decomposition when `attachment_source == "wardrobe_selection"`
+5. **Debug log level** — change `_log.info` to `_log.warning` for the `wardrobe_item_id` log line
+
+---
+
 ### ✅ CLOSED — Context retention: carry attached garment across follow-up turns (April 9 2026)
 
 **Bug:** when the user asked "Can I wear this pant for my date tonight?" (Turn 1, garment_evaluation with uploaded image), then followed up with "Show me a date-night outfit with these pants" (Turn 2, pairing_request), the orchestrator lost the garment context. Turn 2 ran without an anchor — the architect searched catalog for BOTH top AND bottom, producing outfits with random joggers/cargo pants instead of using the user's specific Black Track Pants as the anchor bottom.

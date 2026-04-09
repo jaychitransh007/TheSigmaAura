@@ -1175,7 +1175,8 @@ def get_web_ui_html(
 
   // ── State ──
   var pendingImageData = "";
-  var pendingWardrobeItemId = "";  // set by "Select from wardrobe" picker
+  var pendingWardrobeItemId = "";      // set by "Select from wardrobe" picker
+  var pendingWardrobeImageUrl = "";    // wardrobe item image for the chat bubble
   var wardrobeItems = [];
   var wardrobeSummary = null;
   var activeWardrobeFilter = "all";
@@ -1468,6 +1469,7 @@ def get_web_ui_html(
   function clearImagePreview() {{
     pendingImageData = "";
     pendingWardrobeItemId = "";
+    pendingWardrobeImageUrl = "";
     imageChipImg.src = "";
     imageChipName.textContent = "";
     imageChip.classList.remove("visible");
@@ -1603,7 +1605,8 @@ def get_web_ui_html(
             // fetching the image as base64. The backend loads the existing
             // item directly — no re-enrichment, no duplicate wardrobe row.
             pendingWardrobeItemId = item.id || "";
-            console.log("[AURA] Wardrobe picker click: pendingWardrobeItemId =", pendingWardrobeItemId, "title =", item.title);
+            pendingWardrobeImageUrl = imgUrl || "";
+            console.log("[AURA] Wardrobe picker: id =", pendingWardrobeItemId, "img =", pendingWardrobeImageUrl, "title =", item.title);
             // Show the wardrobe item's image as a preview chip so the
             // user sees what they selected, but DON'T set pendingImageData
             // (that would trigger a full re-upload on the backend).
@@ -1614,7 +1617,11 @@ def get_web_ui_html(
               imageChipName.textContent = item.title || "Wardrobe item";
               imageChip.classList.add("visible");
             }}
-            messageEl.value = "What goes with my " + (item.title || "wardrobe item") + "?";
+            // Only set the default message if the user hasn't typed
+            // anything yet. Don't overwrite their custom query.
+            if (!messageEl.value.trim()) {{
+              messageEl.value = "What goes with my " + (item.title || "wardrobe item") + "?";
+            }}
             wardrobePickerModal.classList.remove("open");
             messageEl.focus();
           }});
@@ -2196,8 +2203,13 @@ def get_web_ui_html(
       var convId = await ensureConversation();
       var attachedImage = pendingImageData;
       var attachedWardrobeItemId = pendingWardrobeItemId;
-      console.log("[AURA] Send: attachedImage =", !!attachedImage, "attachedWardrobeItemId =", attachedWardrobeItemId);
-      addBubble(message, "user", attachedImage);
+      var attachedWardrobeImg = pendingWardrobeImageUrl;
+      // Show the user's message with the attached image in the chat
+      // bubble. For wardrobe selections, use the wardrobe item's image
+      // URL (not a base64 data URL) so the bubble shows the garment.
+      var bubbleImage = attachedImage || attachedWardrobeImg || "";
+      console.log("[AURA] Send: attachedImage =", !!attachedImage, "wardrobeItemId =", attachedWardrobeItemId, "wardrobeImg =", !!attachedWardrobeImg);
+      addBubble(message, "user", bubbleImage);
       messageEl.value = "";
       messageEl.style.height = "auto";
       clearImagePreview();
