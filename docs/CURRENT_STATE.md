@@ -1118,7 +1118,7 @@ The UI already iterates `items.forEach` for thumbnails and Buy Now links — it'
 - **Step 1 — Architect JSON schema** (`agents/outfit_architect.py`):
   - Add `"three_piece"` to `direction_type` enum: `["complete", "paired", "three_piece"]`
   - Add `"outerwear"` to `role` enum: `["complete", "top", "bottom", "outerwear"]`
-  - No change to `plan_type` — `"mixed"` already covers combinations
+  - `plan_type` removed from schema — each direction carries its own `direction_type`
 
 - **Step 2 — Architect prompt** (`prompt/outfit_architect.md`):
   - Remove "Three-piece directions are NOT allowed in v1"

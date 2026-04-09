@@ -213,7 +213,6 @@ class AgenticApplicationTests(unittest.TestCase):
                 "occasion_signal": "wedding",
                 "formality_hint": "formal",
                 "specific_needs": ["elongation"],
-                "plan_type": "mixed",
                 "followup_count": 1,
                 "last_recommendation_ids": ["prev-1"],
             },
@@ -286,9 +285,7 @@ class AgenticApplicationTests(unittest.TestCase):
         client = Mock()
 
         agent = CatalogSearchAgent(retrieval_gateway=retrieval_gateway, client=client)
-        plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             directions=[
                 DirectionSpec(
                     direction_id="B",
@@ -357,9 +354,7 @@ class AgenticApplicationTests(unittest.TestCase):
         ]
 
         agent = CatalogSearchAgent(retrieval_gateway=retrieval_gateway, client=client)
-        plan = RecommendationPlan(
-            plan_type="complete_only",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -431,7 +426,6 @@ class AgenticApplicationTests(unittest.TestCase):
                 "is_followup": False,
                 "followup_intent": None,
             },
-            "plan_type": "complete_only",
             "retrieval_count": 12,
             "directions": [],
         })
@@ -452,9 +446,7 @@ class AgenticApplicationTests(unittest.TestCase):
         assembly_score is penalized so better-matched pairs rank higher,
         but zero-candidate outcomes are avoided."""
         assembler = OutfitAssembler()
-        plan = RecommendationPlan(
-            plan_type="paired_only",
-            directions=[
+        plan = RecommendationPlan( directions=[
                 DirectionSpec(
                     direction_id="B",
                     direction_type="paired",
@@ -546,9 +538,7 @@ class AgenticApplicationTests(unittest.TestCase):
         fallback message, not an empty assistant_message."""
         repo, gw = self._build_minimal_orchestrator_repo_and_gateway()
 
-        plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             plan_source="llm",
             directions=[
                 DirectionSpec(
@@ -609,9 +599,7 @@ class AgenticApplicationTests(unittest.TestCase):
         guard must rewrite it to a graceful fallback before returning."""
         repo, gw = self._build_minimal_orchestrator_repo_and_gateway()
 
-        plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             plan_source="llm",
             directions=[
                 DirectionSpec(
@@ -630,7 +618,8 @@ class AgenticApplicationTests(unittest.TestCase):
             message="",   # ← deliberately empty
             outfits=[],
             follow_up_suggestions=[],
-            metadata={"plan_type": "paired_only", "plan_source": "llm"},
+            metadata={
+ "plan_source": "llm"},
         )
 
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
@@ -683,12 +672,10 @@ class AgenticApplicationTests(unittest.TestCase):
                     "occasion_signal": "wedding",
                     "formality_hint": "formal",
                     "specific_needs": ["elongation"],
-                    "plan_type": "mixed",
                     "followup_count": 1,
                     "last_recommendation_ids": ["prev-1"],
                 },
                 "last_recommendations": [{"candidate_id": "prev-1"}],
-                "last_plan_type": "mixed",
                 "last_occasion": "wedding",
                 "last_live_context": {"specific_needs": ["elongation"]},
             },
@@ -766,11 +753,10 @@ class AgenticApplicationTests(unittest.TestCase):
                 )
             ],
             follow_up_suggestions=["Show me something bolder"],
-            metadata={"plan_type": "mixed", "plan_source": "llm"},
+            metadata={
+ "plan_source": "llm"},
         )
-        plan = RecommendationPlan(
-            plan_type="mixed",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             plan_source="llm",
             directions=[
                 DirectionSpec(
@@ -977,9 +963,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(user_need="Need a blazer"),
             hard_filters={"gender_expression": "feminine"},
         )
-        plan = RecommendationPlan(
-            plan_type="complete_only",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             directions=[],
         )
 
@@ -1023,7 +1007,7 @@ class AgenticApplicationTests(unittest.TestCase):
             ),
             live=LiveContext(user_need="Need options", occasion_signal="wedding"),
         )
-        plan = RecommendationPlan(plan_type="mixed", directions=[])
+        plan = RecommendationPlan( directions=[])
 
         response = formatter.format(evaluated, context, plan, candidates)
 
@@ -1075,7 +1059,7 @@ class AgenticApplicationTests(unittest.TestCase):
             ),
             live=LiveContext(user_need="Need something polished"),
         )
-        plan = RecommendationPlan(plan_type="complete_only", directions=[])
+        plan = RecommendationPlan( directions=[])
 
         response = formatter.format(evaluated, context, plan, candidates)
 
@@ -1121,9 +1105,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 }
             ],
         )
-        plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -1181,9 +1163,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 }
             ],
         )
-        plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -1239,9 +1219,7 @@ class AgenticApplicationTests(unittest.TestCase):
             user=UserContext(user_id="u1", gender="female"),
             live=LiveContext(user_need="Office look"),
         )
-        plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -1314,9 +1292,7 @@ class AgenticApplicationTests(unittest.TestCase):
             user=UserContext(user_id="u1", gender="female"),
             live=LiveContext(user_need="Office look"),
         )
-        plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -1377,9 +1353,7 @@ class AgenticApplicationTests(unittest.TestCase):
             user=UserContext(user_id="u1", gender="female"),
             live=LiveContext(user_need="Office look"),
         )
-        plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -1454,9 +1428,7 @@ class AgenticApplicationTests(unittest.TestCase):
             live=LiveContext(user_need="something"),
             disliked_product_ids=["disliked_1"],
         )
-        plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -1499,9 +1471,7 @@ class AgenticApplicationTests(unittest.TestCase):
             user=UserContext(user_id="u1", gender="female"),
             live=LiveContext(user_need="something"),
         )
-        plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=8,
+        plan = RecommendationPlan( retrieval_count=8,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -1541,7 +1511,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 items=[{"product_id": "sku-1", "title": "Dress"}], assembly_score=0.9,
             )
         ]
-        plan = RecommendationPlan(plan_type="complete_only", retrieval_count=8, directions=[])
+        plan = RecommendationPlan( retrieval_count=8, directions=[])
 
         response = formatter.format(evaluated, context, plan, candidates)
         self.assertIn("fresh color direction", response.message)
@@ -1573,7 +1543,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 items=[{"product_id": "sku-1", "title": "Dress"}], assembly_score=0.9,
             )
         ]
-        plan = RecommendationPlan(plan_type="complete_only", retrieval_count=8, directions=[])
+        plan = RecommendationPlan( retrieval_count=8, directions=[])
 
         response = formatter.format(evaluated, context, plan, candidates)
         self.assertIn("similar style", response.message)
@@ -1865,9 +1835,7 @@ class AgenticApplicationTests(unittest.TestCase):
             ),
             action_parameters=CopilotActionParameters(),
         )
-        fake_plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=12,
+        fake_plan = RecommendationPlan( retrieval_count=12,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -2018,9 +1986,7 @@ class AgenticApplicationTests(unittest.TestCase):
             ),
             action_parameters=CopilotActionParameters(),
         )
-        fake_plan = RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=12,
+        fake_plan = RecommendationPlan( retrieval_count=12,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -2182,9 +2148,7 @@ class AgenticApplicationTests(unittest.TestCase):
             ),
             action_parameters=CopilotActionParameters(),
         )
-        fake_plan = RecommendationPlan(
-            plan_type="complete_only",
-            retrieval_count=12,
+        fake_plan = RecommendationPlan( retrieval_count=12,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -2853,9 +2817,7 @@ class CopilotPlannerTests(unittest.TestCase):
             action_parameters=CopilotActionParameters(),
         )
 
-        fake_plan = RecommendationPlan(
-            plan_type="complete_only",
-            retrieval_count=12,
+        fake_plan = RecommendationPlan( retrieval_count=12,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -3057,8 +3019,7 @@ class CopilotPlannerTests(unittest.TestCase):
             ),
             action_parameters=CopilotActionParameters(),
         )
-        fake_plan = RecommendationPlan(
-            plan_type="paired_only", retrieval_count=12,
+        fake_plan = RecommendationPlan( retrieval_count=12,
             directions=[DirectionSpec(
                 direction_id="A", direction_type="paired", label="Pairing",
                 queries=[QuerySpec(query_id="A1", role="bottom", hard_filters={}, query_document="trousers to pair with white shirt")],
@@ -3144,8 +3105,7 @@ class CopilotPlannerTests(unittest.TestCase):
             ),
             action_parameters=CopilotActionParameters(),
         )
-        fake_plan = RecommendationPlan(
-            plan_type="paired_only", retrieval_count=12,
+        fake_plan = RecommendationPlan( retrieval_count=12,
             directions=[DirectionSpec(
                 direction_id="A", direction_type="paired", label="Pairing",
                 queries=[QuerySpec(query_id="A1", role="shoe", hard_filters={}, query_document="shoes for date night smart casual")],
@@ -3207,8 +3167,7 @@ class CopilotPlannerTests(unittest.TestCase):
             ),
             action_parameters=CopilotActionParameters(),
         )
-        fake_plan = RecommendationPlan(
-            plan_type="paired_only", retrieval_count=12,
+        fake_plan = RecommendationPlan( retrieval_count=12,
             directions=[DirectionSpec(
                 direction_id="A", direction_type="paired", label="Catalog pairing",
                 queries=[QuerySpec(query_id="A1", role="bottom", hard_filters={}, query_document="trousers for smart casual")],
@@ -3286,9 +3245,7 @@ class CopilotPlannerTests(unittest.TestCase):
             ),
             action_parameters=CopilotActionParameters(),
         )
-        fake_plan = RecommendationPlan(
-            plan_type="complete_only",
-            retrieval_count=12,
+        fake_plan = RecommendationPlan( retrieval_count=12,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -3412,9 +3369,7 @@ class CopilotPlannerTests(unittest.TestCase):
             ),
             action_parameters=CopilotActionParameters(),
         )
-        fake_plan = RecommendationPlan(
-            plan_type="complete_only",
-            retrieval_count=12,
+        fake_plan = RecommendationPlan( retrieval_count=12,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -3961,9 +3916,7 @@ class CopilotPlannerTests(unittest.TestCase):
             ),
             action_parameters=CopilotActionParameters(),
         )
-        fake_plan = RecommendationPlan(
-            plan_type="complete_only",
-            retrieval_count=12,
+        fake_plan = RecommendationPlan( retrieval_count=12,
             directions=[
                 DirectionSpec(
                     direction_id="A",
@@ -4076,8 +4029,7 @@ class CopilotPlannerTests(unittest.TestCase):
             resolved_context=CopilotResolvedContext(style_goal=Intent.PAIRING_REQUEST),
             action_parameters=CopilotActionParameters(target_piece="navy blazer"),
         )
-        fake_plan = RecommendationPlan(
-            plan_type="paired_only", retrieval_count=12,
+        fake_plan = RecommendationPlan( retrieval_count=12,
             directions=[DirectionSpec(
                 direction_id="A", direction_type="paired", label="Blazer Pairing",
                 queries=[QuerySpec(query_id="A1", role="bottom", hard_filters={}, query_document="trousers to pair with navy blazer")],

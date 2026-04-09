@@ -17,6 +17,11 @@ from platform_core.restricted_categories import detect_restricted_record
 
 MAX_FORMATTED_OUTFITS = 3
 
+
+def _direction_types(plan: RecommendationPlan) -> set[str]:
+    """Return the set of direction_type values in the plan."""
+    return {d.direction_type for d in plan.directions}
+
 _ARCHETYPE_RE = re.compile(r"style_archetype_primary:\s*(.+)", re.IGNORECASE)
 
 
@@ -231,7 +236,7 @@ class ResponseFormatter:
                 outfits=[],
                 follow_up_suggestions=fallback_suggestions,
                 metadata={
-                    "plan_type": plan.plan_type,
+                    "direction_types": sorted(_direction_types(plan)),
                     "plan_source": plan.plan_source,
                     "direction_count": len(plan.directions),
                     "zero_result_fallback": True,
@@ -292,7 +297,7 @@ class ResponseFormatter:
                 outfits=[],
                 follow_up_suggestions=["Try a different occasion", "Show me something casual"],
                 metadata={
-                    "plan_type": plan.plan_type,
+                    "direction_types": sorted(_direction_types(plan)),
                     "plan_source": plan.plan_source,
                     "direction_count": len(plan.directions),
                     "restricted_item_exclusion_count": blocked_item_count,
@@ -313,7 +318,7 @@ class ResponseFormatter:
             outfits=outfits,
             follow_up_suggestions=suggestions,
             metadata={
-                "plan_type": plan.plan_type,
+                "direction_types": sorted(_direction_types(plan)),
                 "plan_source": plan.plan_source,
                 "direction_count": len(plan.directions),
                 "outfit_count": len(outfits),
@@ -405,6 +410,7 @@ class ResponseFormatter:
         instead of substring-matching the raw suggestion text.
         """
         intent = (ctx.live.followup_intent or "").strip()
+        dtypes = _direction_types(plan)
         improve: List[str] = []
         alternatives: List[str] = []
         shop_gap: List[str] = []
@@ -424,9 +430,9 @@ class ResponseFormatter:
                 "Show me more options",
                 "Something completely different",
                 (
-                    "Show me top and bottom pairings instead"
-                    if plan.plan_type != "paired_only"
-                    else "Show me complete outfit alternatives"
+                    "Show me complete outfit alternatives"
+                    if "paired" in dtypes or "three_piece" in dtypes
+                    else "Show me top and bottom pairings instead"
                 ),
             ])
         else:
@@ -436,9 +442,9 @@ class ResponseFormatter:
                 improve.append("Show me something more formal")
             improve.append("Show me bolder options")
 
-            if plan.plan_type == "complete_only":
+            if "paired" not in dtypes and "three_piece" not in dtypes:
                 alternatives.append("Show me top and bottom pairings instead")
-            elif plan.plan_type == "paired_only":
+            elif "complete" not in dtypes:
                 alternatives.append("Show me complete outfit alternatives")
             alternatives.append("Show me more options")
             alternatives.append("Something completely different")

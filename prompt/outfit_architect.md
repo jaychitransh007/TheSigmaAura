@@ -55,17 +55,16 @@ Return strict JSON matching this structure:
     "is_followup": false,
     "followup_intent": "increase_boldness | decrease_formality | change_color | ... | null"
   },
-  "plan_type": "complete_only | paired_only | mixed",
   "retrieval_count": 12,
   "directions": [
     {
       "direction_id": "A",
-      "direction_type": "complete | paired",
+      "direction_type": "complete | paired | three_piece",
       "label": "short human-readable label",
       "queries": [
         {
           "query_id": "A1",
-          "role": "complete | top | bottom",
+          "role": "complete | top | bottom | outerwear",
           "hard_filters": {"styling_completeness": "complete"},
           "query_document": "structured text document"
         }
@@ -125,7 +124,7 @@ Time of day MUST influence the color vocabulary in your query documents' `PATTER
 - A `complete` direction has one query with `role: "complete"`. Finds standalone outfit items (kurta_set, co_ord_set, suit_set, dress, jumpsuit).
 - A `paired` direction has two queries: one with `role: "top"` and one with `role: "bottom"`. Finds a top + bottom combination.
 - A `three_piece` direction has three queries: `role: "top"`, `role: "bottom"`, and `role: "outerwear"`. Finds a top + bottom + layering piece (blazer, nehru_jacket, jacket, shacket, cardigan).
-- Use `plan_type: "mixed"` when combining direction types (the standard case for broad requests).
+- For broad requests, use all three structure types (complete + paired + three_piece).
 
 ### Direction Diversity — Three Structures
 
@@ -385,13 +384,13 @@ When `is_followup` is true and `followup_intent` is set, apply the following str
 **`change_color`:**
 - Examine `previous_recommendations[0].primary_colors` — choose DIFFERENT colors from the same seasonal color group. Do NOT reuse any of the previous primary colors.
 - Preserve from the previous recommendation: occasion, formality, garment subtypes, silhouette, volume, fit.
-- Keep the same `plan_type` (complete_only, paired_only, or mixed) as the previous turn.
+- Keep the same direction structure types as the previous turn.
 - The styling goal should explicitly reference that the user wants a new color direction.
 
 **`similar_to_previous`:**
 - Examine all dimensions from `previous_recommendations[0]` — preserve garment subtypes, colors, formality, occasion, volume, fit, silhouette.
 - Variation should come from different specific products, not changed parameters.
-- Keep the same `plan_type` as the previous turn.
+- Keep the same direction structure types as the previous turn.
 - The styling goal should explicitly reference that the user wants a similar look with fresh product options.
 
 **`increase_boldness`:**

@@ -45,7 +45,7 @@ def _parse_previous_memory(previous_context: Dict[str, Any]) -> ConversationMemo
             "formality_hint": last_live_context.get("formality_hint"),
             "time_hint": last_live_context.get("time_hint"),
             "specific_needs": last_live_context.get("specific_needs") or [],
-            "plan_type": previous_context.get("last_plan_type"),
+            # plan_type removed — direction_types are per-direction now
         }
     try:
         return ConversationMemory.model_validate(raw)
@@ -78,11 +78,9 @@ def build_conversation_memory(
         specific_needs = _dedupe_preserve_order(
             [*prior.specific_needs, *live_context.specific_needs]
         )
-        plan_type = prior.plan_type or previous_context.get("last_plan_type")
         followup_count = prior.followup_count + 1
     else:
         specific_needs = _dedupe_preserve_order(live_context.specific_needs)
-        plan_type = previous_context.get("last_plan_type")
         followup_count = prior.followup_count
 
     if live_context.followup_intent == FollowUpIntent.INCREASE_FORMALITY:
@@ -98,7 +96,6 @@ def build_conversation_memory(
         formality_hint=formality_hint,
         time_hint=time_hint,
         specific_needs=specific_needs,
-        plan_type=str(plan_type or "") or None,
         followup_count=followup_count,
         last_recommendation_ids=_dedupe_preserve_order(
             [*prior.last_recommendation_ids, *recommendation_ids]

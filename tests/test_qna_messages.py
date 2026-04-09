@@ -87,16 +87,16 @@ class TestCopilotPlannerCompleted:
 
 class TestOutfitArchitectCompleted:
     @pytest.mark.parametrize(
-        "plan_type,expected_fragment",
+        "direction_types,expected_fragment",
         [
-            ("paired_only", "coordinated top + bottom"),
-            ("complete_only", "complete one-piece looks"),
-            ("mixed", "a mix of complete and paired looks"),
+            (["paired"], "two-piece pairings"),
+            (["complete"], "complete sets"),
+            (["complete", "paired", "three_piece"], "complete sets"),
         ],
     )
-    def test_plan_types_produce_distinct_descriptions(self, plan_type, expected_fragment):
+    def test_direction_types_produce_distinct_descriptions(self, direction_types, expected_fragment):
         msg = generate_stage_message("outfit_architect", "completed", {
-            "plan_type": plan_type,
+            "direction_types": direction_types,
             "direction_count": 3,
         })
         assert expected_fragment in msg
@@ -104,9 +104,9 @@ class TestOutfitArchitectCompleted:
 
     def test_without_direction_count(self):
         msg = generate_stage_message("outfit_architect", "completed", {
-            "plan_type": "mixed",
+            "direction_types": ["paired", "three_piece"],
         })
-        assert "a mix of complete and paired looks" in msg
+        assert "two-piece pairings" in msg
         assert "across" not in msg
 
     def test_empty_context(self):

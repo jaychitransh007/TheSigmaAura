@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-_PLAN_TYPE_DESCRIPTIONS = {
-    "paired_only": "a coordinated top + bottom look",
-    "complete_only": "complete one-piece looks",
-    "mixed": "a mix of complete and paired looks",
+_DIRECTION_TYPE_LABELS = {
+    "complete": "complete sets",
+    "paired": "two-piece pairings",
+    "three_piece": "three-piece layered looks",
 }
 
 _TEMPLATES: Dict[str, str] = {
@@ -41,8 +41,9 @@ _TEMPLATES: Dict[str, str] = {
 
 
 def _outfit_architect_completed(ctx: Dict[str, Any]) -> str:
-    plan_type = ctx.get("plan_type") or ""
-    desc = _PLAN_TYPE_DESCRIPTIONS.get(plan_type, plan_type or "outfits")
+    dtypes = ctx.get("direction_types") or []
+    labels = [_DIRECTION_TYPE_LABELS.get(dt, dt) for dt in dtypes if dt]
+    desc = ", ".join(labels) if labels else "outfits"
     n = ctx.get("direction_count")
     if n is not None:
         return f"Plan ready — {desc} across {n} style directions."

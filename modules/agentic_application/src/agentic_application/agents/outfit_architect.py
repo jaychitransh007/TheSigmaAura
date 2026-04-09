@@ -30,7 +30,7 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
     "schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["resolved_context", "plan_type", "retrieval_count", "directions"],
+        "required": ["resolved_context", "retrieval_count", "directions"],
         "properties": {
             "resolved_context": {
                 "type": "object",
@@ -54,10 +54,6 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     "is_followup": {"type": "boolean"},
                     "followup_intent": {"type": ["string", "null"]},
                 },
-            },
-            "plan_type": {
-                "type": "string",
-                "enum": ["complete_only", "paired_only", "mixed"],
             },
             "retrieval_count": {"type": "integer"},
             "directions": {
@@ -238,7 +234,6 @@ class OutfitArchitect:
                 followup_intent=raw_resolved.get("followup_intent"),
             )
         return RecommendationPlan(
-            plan_type=raw.get("plan_type", "complete_only"),
             retrieval_count=int(raw.get("retrieval_count", 12)),
             directions=directions,
             plan_source="llm",

@@ -159,7 +159,7 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
             "filters_applied": {"gender_expression": "feminine", "styling_completeness": "complete"},
             "outfits": [],
             "follow_up_suggestions": [],
-            "metadata": {"plan_type": "mixed"},
+            "metadata": {"direction_types": ["complete", "paired"]},
         }
         client = TestClient(app)
         resp = client.post("/v1/conversations/c1/turns", json={"user_id": "u1", "message": "Need office wear"})
@@ -167,7 +167,7 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         payload = resp.json()
         self.assertEqual("t1", payload["turn_id"])
         self.assertEqual([], payload["outfits"])
-        self.assertEqual({"plan_type": "mixed"}, payload["metadata"])
+        self.assertEqual({"direction_types": ["complete", "paired"]}, payload["metadata"])
         kwargs = orchestrator.process_turn.call_args.kwargs
         self.assertEqual("u1", kwargs["external_user_id"])
         self.assertEqual("Need office wear", kwargs["message"])
@@ -214,7 +214,7 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
             "filters_applied": {"gender_expression": "feminine"},
             "outfits": [{"rank": index, "title": f"Outfit {index}", "items": []} for index in range(1, 6)],
             "follow_up_suggestions": ["Show me more options"],
-            "metadata": {"plan_type": "mixed", "outfit_count": 5},
+            "metadata": {"direction_types": ["complete", "paired"], "outfit_count": 5},
         }
         client = TestClient(app)
         resp = client.post("/v1/conversations/c1/turns", json={"user_id": "u1", "message": "Need options"})

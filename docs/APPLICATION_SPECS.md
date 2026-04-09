@@ -948,7 +948,7 @@ class ConversationMemory:
     formality_hint: str | None
     time_hint: str | None
     specific_needs: list[str]
-    plan_type: str | None
+    # plan_type removed — direction_type is per-direction
     followup_count: int
     last_recommendation_ids: list[str]
 ```
@@ -964,7 +964,7 @@ class ConversationMemory:
 
 After each turn, the orchestrator writes:
 - `memory` — serialized `ConversationMemory`
-- `last_plan_type` — `complete_only` / `paired_only` / `mixed`
+- `last_direction_types` — list of direction types from last plan (e.g. `["complete", "paired", "three_piece"]`)
 - `last_recommendations` — enriched recommendation summaries (colors, garment categories, subtypes, roles, occasion fits, formality levels, pattern types, volume profiles, fit types, silhouette types)
 - `last_occasion` — resolved occasion signal
 - `last_live_context` — full live context snapshot
@@ -1151,7 +1151,7 @@ The architect should not output freeform prose only. It should return JSON plus 
 
 ```python
 class RecommendationPlan:
-    plan_type: str                 # complete_only | paired_only | mixed
+    # plan_type removed — each direction carries its own direction_type
     retrieval_count: int           # default 12 per query
     directions: list[DirectionSpec]
     plan_source: str               # always "llm" (no fallback)
@@ -1242,10 +1242,10 @@ The architect receives enriched prior recommendation context via `combined_conte
 Follow-up intent effects on planning:
 - `increase_boldness` — shifts query vocabulary toward bolder choices
 - `decrease_formality` / `increase_formality` — adjusts target formality
-- `change_color` — chooses different colors from the same seasonal group(s) while preserving occasion, formality, garment subtypes, silhouette, volume, fit, and plan_type
+- `change_color` — chooses different colors from the same seasonal group(s) while preserving occasion, formality, garment subtypes, silhouette, volume, fit, and direction structure
 - `full_alternative` — requests entirely different direction
 - `more_options` — requests additional candidates in same direction
-- `similar_to_previous` — preserves garment subtypes, colors, formality, occasion, volume, fit, silhouette, and plan_type; variation comes from different products, not changed parameters
+- `similar_to_previous` — preserves garment subtypes, colors, formality, occasion, volume, fit, silhouette, and direction structure; variation comes from different products, not changed parameters
 
 ### Output format
 
@@ -1419,10 +1419,10 @@ Rank complete and paired outfit candidates against the user's body, color, style
 The evaluator builds a JSON payload for the LLM containing:
 - `user_profile`: gender, height, waist, analysis_attributes, derived_interpretations, style_preference
 - `live_context`: occasion, formality, specific_needs, followup_intent
-- `conversation_memory`: persisted prior occasion, formality, plan_type, follow-up count
+- `conversation_memory`: persisted prior occasion, formality, follow-up count
 - `previous_recommendations`: persisted summaries of prior recommendation candidates
 - `previous_recommendation_focus`: the latest prior recommendation to compare against
-- `plan_type`: complete_only, paired_only, or mixed
+- direction types: complete, paired, three_piece (per-direction, not plan-level)
 - `candidates`: list of outfit candidates with full item metadata
 - `candidate_deltas`: per-candidate comparison to the latest prior recommendation across 8 signals:
   - colors: `shared_colors`, `new_colors`

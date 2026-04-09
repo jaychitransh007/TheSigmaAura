@@ -4114,7 +4114,7 @@ class AgenticOrchestrator:
             latency_ms=architect_ms,
         )
         emit("outfit_architect", "completed", ctx={
-            "plan_type": plan.plan_type,
+            "direction_types": sorted({d.direction_type for d in plan.directions}),
             "direction_count": len(plan.directions),
         })
 
@@ -4135,7 +4135,8 @@ class AgenticOrchestrator:
         # Then inject the anchor as the sole item for that role after search.
         anchor = combined_context.live.anchor_garment
         anchor_role = ""
-        if anchor and plan.plan_type == "paired_only":
+        has_paired = any(d.direction_type in ("paired", "three_piece") for d in plan.directions)
+        if anchor and has_paired:
             anchor_category = str(anchor.get("garment_category") or "").lower()
             anchor_role = "top" if anchor_category in ("top", "shirt", "blouse") else "bottom" if anchor_category in ("bottom", "trouser", "pant") else "complete"
             for direction in plan.directions:
@@ -4459,7 +4460,7 @@ class AgenticOrchestrator:
             session_context={
                 **previous_context,
                 "memory": conversation_memory.model_dump(),
-                "last_plan_type": plan.plan_type,
+                "last_direction_types": sorted({d.direction_type for d in plan.directions}),
                 "last_recommendations": rec_summary,
                 "last_occasion": effective_live_context.occasion_signal or "",
                 "last_live_context": effective_live_context.model_dump(),

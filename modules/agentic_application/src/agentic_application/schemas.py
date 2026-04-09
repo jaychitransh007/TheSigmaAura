@@ -106,7 +106,6 @@ class ConversationMemory(BaseModel):
     formality_hint: Optional[str] = None
     time_hint: Optional[str] = None
     specific_needs: List[str] = Field(default_factory=list)
-    plan_type: Optional[str] = None
     followup_count: int = 0
     last_recommendation_ids: List[str] = Field(default_factory=list)
     recent_intents: List[str] = Field(default_factory=list)
@@ -162,7 +161,6 @@ class ResolvedContextBlock(BaseModel):
 
 
 class RecommendationPlan(BaseModel):
-    plan_type: str  # complete_only | paired_only | mixed
     retrieval_count: int = 12
     directions: List[DirectionSpec]
     plan_source: str = "llm"
