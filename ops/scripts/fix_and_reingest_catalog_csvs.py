@@ -72,8 +72,8 @@ def fix_csv(input_path, store_prefix):
         if not old_pid.startswith(store_prefix):
             row["product_id"] = f"{store_prefix}_{old_pid}"
 
-        # Add store field
-        row["store"] = store_prefix.lower()
+        # Note: no "store" column in catalog_enriched — the store is
+        # encoded in the product_id prefix instead.
 
         # Fix broken image URL
         if img and not img.startswith("http") and product_url.startswith("http"):
