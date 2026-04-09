@@ -89,23 +89,9 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                                         "type": "object",
                                         "additionalProperties": False,
                                         "required": [
-                                            "styling_completeness",
-                                            "garment_category",
-                                            "garment_subtype",
                                             "gender_expression",
                                         ],
                                         "properties": {
-                                            "styling_completeness": {
-                                                "type": ["string", "null"],
-                                                "enum": ["complete", "needs_bottomwear", "needs_topwear", "needs_innerwear", "dual_dependency", None],
-                                            },
-                                            "garment_category": {
-                                                "anyOf": [
-                                                    {"type": "string", "enum": ["top", "bottom", "set", "one_piece", "outerwear"]},
-                                                    {"type": "array", "items": {"type": "string", "enum": ["top", "bottom", "set", "one_piece", "outerwear"]}},
-                                                    {"type": "null"},
-                                                ],
-                                            },
                                             "garment_subtype": {
                                                 "anyOf": [
                                                     {"type": "string"},

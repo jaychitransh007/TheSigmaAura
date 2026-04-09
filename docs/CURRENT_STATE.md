@@ -1019,6 +1019,43 @@ Success criteria:
 
 ## Immediate Next Item
 
+### P0 — Smart hard-filter vs soft-signal decision in the architect (April 9 2026)
+
+**Problem:** the architect applies hard filters (`garment_category`, `garment_subtype`, `styling_completeness`) on every query, which creates binary gates that exclude valid products. For broad requests like "traditional outfit for a wedding", the narrow filters (`garment_subtype=kurta, garment_category=top, styling_completeness=needs_bottomwear`) excluded 724 festive Vastramay items (kurta_sets, nehru_jackets, blazers) because they're tagged as `set/complete` not `top/needs_bottomwear`. The user got 9 results from a catalog of 14K+.
+
+Hard filters are only appropriate when the user is **specific** ("show me shirts"). For **broad requests** ("something traditional", "festive outfit", "office wear"), the relevant attributes should be **soft signals in the query document text** where embedding similarity ranks them by relevance instead of binary exclusion.
+
+**Design rule:**
+- `gender_expression` → **always hard filter** (truly binary, never optional)
+- `garment_subtype` → **hard filter only when the user names a specific garment type** ("show me kurtas" → hard filter `kurta`). For broad requests → move to query document text as soft signal.
+- `garment_category` → **always soft signal** (never hard filter). The embedding similarity handles category relevance. Hard-filtering on category is the #1 cause of zero results because sets/one_piece/outerwear are excluded when only `top` is specified.
+- `styling_completeness` → **always soft signal** (never hard filter). Complete sets (kurta + pyjama) are perfectly valid results for "find me a kurta" — the user doesn't care if it comes as a set or standalone.
+
+**Implementation plan (3 steps):**
+
+- **Step 1 — Architect prompt** (`prompt/outfit_architect.md`):
+  - Remove `garment_category` and `styling_completeness` from the `hard_filters` required fields. They move to the query document text only.
+  - `garment_subtype` stays in `hard_filters` but is conditional: the prompt instructs "only set `garment_subtype` when the user names a specific garment type. For broad requests (occasion-based, style-based, 'something traditional'), set `garment_subtype` to `null` and express the desired types in the query document text instead."
+  - Update the filter vocabulary table to reflect: `garment_category` removed, `styling_completeness` removed, `garment_subtype` is "optional — only for specific requests".
+  - Add examples showing the difference between specific vs broad.
+
+- **Step 2 — Architect JSON schema** (`agents/outfit_architect.py`):
+  - Remove `garment_category` and `styling_completeness` from the `hard_filters.required` list (keep them in `properties` so the model CAN still set them, but they're optional).
+  - This is backwards-compatible: old plans that include these fields still work; the SQL function still handles them. But new plans won't include them by default.
+
+- **Step 3 — Catalog search agent** (`agents/catalog_search_agent.py`):
+  - Add `garment_category` and `styling_completeness` to the `build_directional_filters` function's output ONLY when the direction type requires it (e.g. `paired` direction still needs `styling_completeness` for the individual role queries to avoid returning complete sets for a "top" role).
+  - Actually, on reflection: for paired directions, `styling_completeness` in the directional filter is still valuable (you DO want `needs_bottomwear` when searching for a top to pair). But for `complete` directions, it should be `complete`. The existing `build_directional_filters` already handles this. The change is: the ARCHITECT no longer sets these in `hard_filters` — the search agent sets them based on the direction/role structure.
+
+**What changes for the user:**
+- "Something traditional for a wedding" → architect sets `garment_subtype: null`, puts "traditional festive kurta kurta_set nehru_jacket sherwani blazer" in query document → embedding search finds ALL relevant items across categories/completeness → ranked by similarity → 700+ results instead of 9
+- "Show me shirts" → architect sets `garment_subtype: "shirt"` → hard filter → precise results
+- "Find me kurtas" → architect sets `garment_subtype: ["kurta", "kurta_set"]` → multi-value hard filter → all kurta variants
+
+**Risk:** removing category/completeness hard filters means the embedding similarity carries more weight. If embeddings are low quality, irrelevant items may rank high. Mitigation: the embeddings were just regenerated with full enrichment attributes, so quality is good. And the evaluator (VisualEvaluatorAgent) still scores each candidate visually, so bad matches get low scores.
+
+---
+
 ### ✅ CLOSED — Multi-value subtype filters for catalog search (April 9 2026)
 
 Shipped April 9, 2026. The architect can now output arrays of plausible garment subtypes per query. The SQL search function matches ANY value in the array. Tests: 318 passing. Migration applied to staging.

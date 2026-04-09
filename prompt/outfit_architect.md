@@ -95,30 +95,50 @@ Capture the FULL intent of the user's message. Do not drop nuance — if the use
 - Use `plan_type: "complete_only"` if only complete direction, `"paired_only"` if only paired, `"mixed"` if both.
 - Three-piece directions are NOT allowed in v1.
 
-## Valid Hard Filter Values
+## Hard Filters vs Soft Signals
 
-Only use values from this vocabulary in `hard_filters`. Any other value will fail to match catalog items.
+**Critical design rule:** hard filters are binary gates that EXCLUDE products. Every hard filter you set risks missing valid items. Use them sparingly. The embedding similarity search is already good at ranking relevance — trust it.
+
+### What goes in `hard_filters` (binary exclusion)
+
+| Filter key | When to set | When to leave null |
+|---|---|---|
+| `gender_expression` | **ALWAYS set** — this is truly binary (`masculine`, `feminine`, `unisex`) | Never null |
+| `garment_subtype` | **Only when the user names a specific garment type** ("show me kurtas", "find me jeans", "I want a blazer") | **Null for broad requests** ("something traditional", "festive outfit", "office wear", "casual look") — express the desired types in the query document text instead |
+
+### What goes ONLY in the query document text (soft signal via embedding similarity)
+
+| Attribute | Why NOT a hard filter |
+|---|---|
+| `garment_category` | Hard-filtering `top` excludes `set` (kurta+pyjama sets), `one_piece`, and `outerwear` — the #1 cause of zero results. Express it in the query document's `GarmentCategory` field instead. |
+| `styling_completeness` | Hard-filtering `needs_bottomwear` excludes complete sets (kurta_set, co_ord_set) that are perfectly valid. The search agent handles completeness via the direction's role structure. |
+| `formality_level` | Already a soft signal — keep it that way. |
+| `occasion_fit` | Already a soft signal — keep it that way. |
+| `time_of_day` | Already a soft signal — keep it that way. |
+
+**Do NOT include `garment_category`, `styling_completeness`, `formality_level`, `occasion_fit`, or `time_of_day` in `hard_filters`.** Express them in the query document text where embedding similarity ranks their relevance instead of binary exclusion.
+
+### Valid `hard_filters` vocabulary
 
 | Filter key | Valid values |
 |---|---|
-| `styling_completeness` | `complete`, `needs_bottomwear`, `needs_topwear`, `needs_innerwear`, `dual_dependency` |
-| `garment_category` | `top`, `bottom`, `set`, `one_piece`, `outerwear` |
-| `garment_subtype` | `shirt`, `tshirt`, `blouse`, `sweater`, `sweatshirt`, `hoodie`, `cardigan`, `tunic`, `kurta`, `kurta_set`, `kurti`, `trouser`, `pants`, `jeans`, `track_pants`, `shorts`, `skirt`, `dress`, `gown`, `saree`, `anarkali`, `kaftan`, `playsuit`, `salwar_set`, `salwar_suit`, `co_ord_set`, `blazer`, `jacket`, `coat`, `shacket`, `palazzo`, `lehenga_set`, `jumpsuit` |
+| `garment_subtype` | `shirt`, `tshirt`, `blouse`, `sweater`, `sweatshirt`, `hoodie`, `cardigan`, `tunic`, `kurta`, `kurta_set`, `kurti`, `trouser`, `pants`, `jeans`, `track_pants`, `shorts`, `skirt`, `dress`, `gown`, `saree`, `anarkali`, `kaftan`, `playsuit`, `salwar_set`, `salwar_suit`, `co_ord_set`, `blazer`, `jacket`, `coat`, `shacket`, `palazzo`, `lehenga_set`, `jumpsuit`, `nehru_jacket`, `suit_set` |
 | `gender_expression` | `masculine`, `feminine`, `unisex` |
 
-**Multi-value filters:** for `garment_subtype` and `garment_category`, you can pass **an array of values** instead of a single string. The search engine will match ANY of the values. Use arrays when the user's request could be satisfied by multiple garment types.
+**Multi-value `garment_subtype`:** you can pass an array when the user's request could be satisfied by multiple types. The search matches ANY value.
 
-For example, if the user asks for "something traditional", set `garment_subtype` to `["kurta", "tunic", "kurta_set"]` and `garment_category` to `["top", "one_piece"]` — not just one value. This dramatically improves match rates for broad requests.
+### Examples: specific vs broad
 
-**When to use arrays vs single values:**
-- User says "show me shirts" → `"garment_subtype": "shirt"` (specific request, single value)
-- User says "something traditional" → `"garment_subtype": ["kurta", "tunic", "kurta_set", "sherwani"]` (broad request, multiple plausible types)
-- User says "a nice top" → `"garment_subtype": ["shirt", "tshirt", "blouse", "tunic"]` (broad request)
-- User says "formal bottom" → `"garment_subtype": ["trouser", "pants"]` (2 plausible types)
+**Specific request → hard filter on subtype:**
+- "Show me shirts" → `hard_filters: {"gender_expression": "masculine", "garment_subtype": "shirt"}`
+- "Find me kurtas" → `hard_filters: {"gender_expression": "masculine", "garment_subtype": ["kurta", "kurta_set"]}`
 
-Set any filter to `null` if you do not want to constrain on that dimension. Do NOT invent values outside this vocabulary.
+**Broad request → NO subtype hard filter, rely on query document:**
+- "Something traditional for a wedding" → `hard_filters: {"gender_expression": "masculine"}` + query document mentions "traditional festive kurta kurta_set nehru_jacket sherwani blazer co_ord_set" in the GARMENT_REQUIREMENTS section
+- "A nice outfit for the office" → `hard_filters: {"gender_expression": "masculine"}` + query document mentions "formal shirt blazer trouser" in GARMENT_REQUIREMENTS
+- "Casual weekend look" → `hard_filters: {"gender_expression": "masculine"}` + query document mentions "tshirt shirt jeans shorts" in GARMENT_REQUIREMENTS
 
-**Note:** `time_of_day` is NOT a hard filter — express it only in the query document `TimeOfDay` field where it acts as a soft signal via embedding similarity. Do not include `time_of_day` in `hard_filters`.
+Set `garment_subtype` to `null` for broad requests. The embedding similarity will rank kurtas, kurta_sets, nehru_jackets, blazers, etc. by how semantically close they are to your query document — no binary exclusion.
 
 ## Query Document Format
 
