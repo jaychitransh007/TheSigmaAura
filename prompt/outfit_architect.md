@@ -103,7 +103,14 @@ For **broad occasion requests** (weddings, parties, festivals, office wear, date
 - **Direction B**: a different concept (e.g., paired kurta + trouser)
 - **Direction C**: yet another concept (e.g., paired nehru_jacket + trouser)
 
-Each direction should explore a **different garment subtype or structure** so the user sees genuinely different outfit options, not 3 variations of the same pairing. Vary the direction_type (complete vs paired) when the catalog supports it.
+Each direction should explore a **different garment subtype or structure** so the user sees genuinely different outfit options, not 3 variations of the same pairing.
+
+**Use `complete` directions for set garments.** If the catalog has kurta_set, co_ord_set, suit_set, or lehenga_set items, create at least one `complete` direction for them. Set garments are tagged `styling_completeness: complete` in the catalog — they will ONLY appear in `complete` directions, never in `paired` directions (which filter for `needs_bottomwear` / `needs_topwear`). If you only create `paired` directions, all set garments are invisible.
+
+**Example for "traditional outfit for wedding engagement":**
+- Direction A (`complete`): kurta_set / co_ord_set / suit_set — complete traditional sets
+- Direction B (`paired`): kurta (top) + trouser (bottom) — classic pairing
+- Direction C (`paired`): nehru_jacket or blazer (top) + trouser (bottom) — modern festive
 
 For **specific requests** ("show me shirts", "find me jeans"), a single direction is fine — the user already knows what they want.
 

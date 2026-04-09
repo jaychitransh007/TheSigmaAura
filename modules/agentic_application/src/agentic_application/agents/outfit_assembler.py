@@ -547,6 +547,7 @@ class OutfitAssembler:
                 or metadata.get("handle")
                 or ""
             ),
+            image_url=image_url,
         )
         item: Dict[str, Any] = {
             "product_id": product.product_id,

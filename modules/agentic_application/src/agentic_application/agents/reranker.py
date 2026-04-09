@@ -68,6 +68,12 @@ class Reranker:
         ``limit`` defaults to ``pool_top_n`` so the orchestrator has the
         full over-generation pool to draw from when handling try-on
         quality-gate failures. Pass ``final_top_n`` for direct top-N use.
+
+        Direction diversity: when multiple directions produced candidates,
+        we round-robin one candidate per direction (highest score from each)
+        before filling remaining slots globally by score. This guarantees
+        the user sees variety across the architect's different outfit
+        concepts rather than N copies from whichever direction scored best.
         """
         cap = self.pool_top_n if limit is None else max(1, int(limit))
         ordered = sorted(
@@ -77,12 +83,37 @@ class Reranker:
                 str(getattr(c, "candidate_id", "")),
             ),
         )
-        result = ordered[:cap]
+
+        # --- Direction-aware round-robin ---
+        # 1. Pick the top candidate from each direction.
+        picked_ids: set[str] = set()
+        result: List[OutfitCandidate] = []
+        seen_directions: set[str] = set()
+        for c in ordered:
+            d = getattr(c, "direction_id", "")
+            if d and d not in seen_directions:
+                seen_directions.add(d)
+                result.append(c)
+                picked_ids.add(str(getattr(c, "candidate_id", "")))
+                if len(result) >= cap:
+                    break
+
+        # 2. Fill remaining slots globally by score.
+        if len(result) < cap:
+            for c in ordered:
+                cid = str(getattr(c, "candidate_id", ""))
+                if cid not in picked_ids:
+                    result.append(c)
+                    picked_ids.add(cid)
+                    if len(result) >= cap:
+                        break
+
         _log.info(
-            "Reranker: input=%d → kept=%d (cap=%d, final_top_n=%d, pool_top_n=%d)",
+            "Reranker: input=%d → kept=%d (cap=%d, directions=%d, final_top_n=%d, pool_top_n=%d)",
             len(ordered),
             len(result),
             cap,
+            len(seen_directions),
             self.final_top_n,
             self.pool_top_n,
         )
