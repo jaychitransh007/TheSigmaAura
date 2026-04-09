@@ -2194,6 +2194,7 @@ def get_web_ui_html(
     try {{
       var convId = await ensureConversation();
       var attachedImage = pendingImageData;
+      var attachedWardrobeItemId = pendingWardrobeItemId;
       addBubble(message, "user", attachedImage);
       messageEl.value = "";
       messageEl.style.height = "auto";
@@ -2203,10 +2204,9 @@ def get_web_ui_html(
       // When the user selected from wardrobe (not uploaded a new image),
       // send the wardrobe_item_id so the backend loads the existing item
       // directly without re-enriching or creating a duplicate row.
-      if (pendingWardrobeItemId && !attachedImage) {{
-        payload.wardrobe_item_id = pendingWardrobeItemId;
+      if (attachedWardrobeItemId && !attachedImage) {{
+        payload.wardrobe_item_id = attachedWardrobeItemId;
       }}
-      pendingWardrobeItemId = "";
       var res = await fetch("/v1/conversations/" + convId + "/turns/start", {{
         method: "POST",
         headers: {{ "Content-Type": "application/json" }},
