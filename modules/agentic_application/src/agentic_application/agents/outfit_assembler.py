@@ -146,10 +146,10 @@ MAX_PAIRED_CANDIDATES = 30
 # (pocket squares, dupattas) and mis-tagged items from appearing as
 # tops, bottoms, or outerwear.
 _VALID_CATEGORIES_FOR_ROLE: Dict[str, set[str]] = {
-    "top": {"top", "outerwear"},
+    "top": {"top"},
     "bottom": {"bottom"},
     "outerwear": {"outerwear"},
-    "complete": {"set", "one_piece", "complete", "top", "bottom", "outerwear"},
+    "complete": {"set", "one_piece", "complete"},
 }
 
 

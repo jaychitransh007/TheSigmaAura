@@ -82,12 +82,7 @@ def build_directional_filters(direction_type: str, role: str) -> Dict[str, Any]:
     if role == "outerwear":
         return {"styling_completeness": ["needs_innerwear"]}
     if role == "top":
-        # In paired directions, include needs_innerwear so nehru jackets
-        # are discoverable as the "top" layer. In three_piece directions,
-        # outerwear has its own role — don't overlap.
-        if direction_type == "three_piece":
-            return {"styling_completeness": "needs_bottomwear"}
-        return {"styling_completeness": ["needs_bottomwear", "needs_innerwear"]}
+        return {"styling_completeness": "needs_bottomwear"}
     if role == "bottom":
         return {"styling_completeness": "needs_topwear"}
     if direction_type in ("paired", "three_piece"):

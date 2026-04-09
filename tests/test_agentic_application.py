@@ -325,8 +325,7 @@ class AgenticApplicationTests(unittest.TestCase):
         filters = retrieval_gateway.similarity_search.call_args.kwargs["filters"]
         self.assertEqual("feminine", filters["gender_expression"])
         # styling_completeness comes from build_directional_filters (role=top)
-        # Multi-value: includes needs_innerwear for layering pieces (nehru jackets)
-        self.assertEqual(["needs_bottomwear", "needs_innerwear"], filters["styling_completeness"])
+        self.assertEqual("needs_bottomwear", filters["styling_completeness"])
         # garment_subtype comes from architect's explicit hard_filters
         self.assertEqual("blouse", filters["garment_subtype"])
         # query document lines are soft signals for embeddings only, not hard filters
