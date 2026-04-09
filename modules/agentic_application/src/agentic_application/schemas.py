@@ -122,7 +122,7 @@ class ConversationMemory(BaseModel):
 class CombinedContext(BaseModel):
     user: UserContext
     live: LiveContext
-    hard_filters: Dict[str, str] = Field(default_factory=dict)
+    hard_filters: Dict[str, Any] = Field(default_factory=dict)
     previous_recommendations: Optional[List[Dict[str, Any]]] = None
     conversation_memory: Optional[ConversationMemory] = None
     conversation_history: Optional[List[Dict[str, str]]] = None
@@ -139,7 +139,9 @@ class CombinedContext(BaseModel):
 class QuerySpec(BaseModel):
     query_id: str
     role: str  # complete | top | bottom
-    hard_filters: Dict[str, str] = Field(default_factory=dict)
+    # Filter values can be strings (single value) or lists of strings
+    # (multi-value — the SQL function matches ANY value in the array).
+    hard_filters: Dict[str, Any] = Field(default_factory=dict)
     query_document: str
 
 
