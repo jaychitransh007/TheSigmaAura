@@ -1021,7 +1021,78 @@ Success criteria:
 
 ## Immediate Next Item
 
-### P0 — Three outfit structures: complete, two-piece, three-piece (April 10 2026)
+### P0 — Occasion-fabric coupling + sub-occasion formality calibration in architect (April 10 2026)
+
+**Problem:** User feedback from conversation `2035c3cb` (wedding engagement) shows two quality failures even after structural fixes:
+
+1. **Occasion mismatch** — "western looks for wedding engagement" returned a casual cotton shirt + beige trousers (reads "office", not "celebration") and a velvet blazer set (reads "event" but not "engagement ceremony"). User feedback on 5/6 items: *"Not an outfit for festive or ceremonial occasion."*
+
+2. **Formality miscalibration** — traditional turn returned an ornate sherwani set. User feedback: *"Too much."* Engagement is semi-formal/polished, not full-formal/heavy embellishment like a wedding ceremony.
+
+**Root causes:**
+
+- The architect treats occasion as a label (`OccasionSignal: wedding_engagement`) in the OCCASION_AND_SIGNAL section of the query document, but doesn't let it **drive fabric and construction choices**. A cotton shirt can never read "engagement ceremony" regardless of color — the fabric itself carries formality signal. The FABRIC_AND_BUILD section is generated independently of the occasion.
+
+- The architect has no sub-occasion calibration. `wedding_engagement` maps to `semi_formal`, same as a work dinner. But an engagement ceremony calls for statement fabrics (silk, velvet, structured wool, satin), rich textures, and elevated construction — not just "semi-formal fit and silhouette."
+
+- For "western + festive", the narrow intersection of western silhouettes that carry celebratory presence requires very specific query vocabulary: structured suiting fabrics, statement colors, textured weaves, sharp tailoring. The current query docs don't push this hard enough.
+
+**Implementation plan (2 steps, prompt-only):**
+
+- **Step 1 — Occasion-Fabric Coupling** (`prompt/outfit_architect.md`):
+  Add a new section after Garment Type Selection:
+
+  ```
+  ## Occasion-Fabric Coupling
+
+  When the occasion calls for celebration or ceremony (wedding, engagement,
+  party, festive event), the FABRIC_AND_BUILD section of every query MUST
+  reflect that — not just the OCCASION_AND_SIGNAL section.
+
+  Celebratory fabrics: silk, satin, velvet, brocade, jacquard, structured
+  wool blend, fine suiting. These carry the "dressed for an event" signal
+  that cotton, linen, jersey, and knit never do.
+
+  Casual fabrics: cotton, linen, jersey, denim, fleece, knit. These are
+  appropriate for casual and smart-casual occasions. They should NEVER
+  appear in the FABRIC_AND_BUILD section for ceremonial/festive queries
+  even if the user's style preference leans casual.
+
+  The rule: occasion overrides style preference for fabric selection.
+  A minimalist who attends an engagement still wears silk or structured
+  wool, not cotton — the minimalism shows in silhouette and color, not
+  in fabric downgrade.
+  ```
+
+- **Step 2 — Sub-Occasion Formality Calibration** (`prompt/outfit_architect.md`):
+  Add to the `resolved_context` rules section:
+
+  ```
+  ## Sub-Occasion Calibration
+
+  Not all wedding-related events have the same formality:
+
+  | Sub-occasion | Formality | Embellishment | Fabric signal |
+  |---|---|---|---|
+  | Wedding ceremony | formal | moderate-to-heavy OK | silk, brocade, heavy jacquard |
+  | Wedding engagement | semi_formal | subtle-to-moderate, NO heavy | silk, structured wool, velvet, satin |
+  | Wedding reception | semi_formal to formal | moderate OK | silk, satin, velvet |
+  | Sangeet / mehndi | smart_casual to semi_formal | playful, colorful | silk, cotton-silk blend, printed |
+  | Cocktail party | semi_formal | minimal, sharp | suiting wool, silk, structured |
+
+  When the user says "engagement", do NOT reach for heavy embroidery,
+  sherwanis, or brocade sets. Reach for polished, clean-lined pieces
+  in premium fabrics with subtle texture or embellishment.
+  ```
+
+**What changes for the user:**
+- "Western looks for wedding engagement" → query docs demand silk/velvet/structured-wool fabrics + semi-formal embellishment → casual cotton shirts dropped from retrieval ranking → user gets blazer in textured wool + silk shirt + tailored trouser
+- "Traditional outfit for engagement" → sherwani-level ornateness suppressed → polished kurta sets with subtle embroidery surface instead
+- Feedback signal: "Not an outfit for festive or ceremonial occasion" should drop to near-zero
+
+---
+
+### ✅ CLOSED — Three outfit structures: complete, two-piece, three-piece (April 10 2026)
 
 **Problem:** The architect currently only creates `complete` (single garment) and `paired` (top + bottom) directions. For broad occasion requests (wedding, party, office), every response should offer **three structurally different outfit options** so the user sees real variety in silhouette and layering, not just color/brand variations of the same structure.
 
