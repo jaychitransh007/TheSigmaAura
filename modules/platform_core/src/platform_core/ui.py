@@ -1082,12 +1082,12 @@ def get_web_ui_html(
 
     # ── Wishlist Page ──
     html += """
-<div class="page-view page-wishlist">
+<div class="page-view page-wishlist" style="padding: 24px;">
   <div class="results-header">
     <h2>My Wishlist</h2>
     <p>Garments you saved from your styling sessions.</p>
   </div>
-  <div class="closet-grid" id="wishlistGrid">
+  <div class="closet-grid" id="wishlistGrid" style="gap: 18px; margin-top: 16px;">
     <div class="results-empty">Loading wishlist...</div>
   </div>
 </div>
@@ -1095,12 +1095,12 @@ def get_web_ui_html(
 
     # ── Trial Room Page ──
     html += """
-<div class="page-view page-trialroom">
+<div class="page-view page-trialroom" style="padding: 24px;">
   <div class="results-header">
     <h2>Trial Room</h2>
     <p>See how outfits look on you — your virtual try-on gallery.</p>
   </div>
-  <div class="closet-grid" id="tryonGalleryGrid">
+  <div class="closet-grid" id="tryonGalleryGrid" style="gap: 18px; margin-top: 16px;">
     <div class="results-empty">Loading try-on gallery...</div>
   </div>
 </div>

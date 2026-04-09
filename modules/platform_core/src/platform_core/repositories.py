@@ -757,20 +757,22 @@ class ConversationRepository:
     # -- wishlist (catalog_interaction_history) --------------------------------
 
     def list_wishlist_products(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Return deduplicated wishlisted products for a user.
+        """Return deduplicated wishlisted catalog products for a user.
 
-        Queries ``catalog_interaction_history`` for ``interaction_type='save'``
-        rows, deduplicates by ``product_id``, then hydrates each product
-        from ``catalog_enriched`` (title, price, image, URL).
+        Only includes ``source_surface='product_wishlist'`` (the actual
+        heart button), NOT ``outfit_feedback`` (like/dislike button
+        which also creates ``interaction_type='save'`` rows but includes
+        wardrobe UUIDs that aren't catalog products).
         """
         interactions = self.client.select_many(
             "catalog_interaction_history",
             filters={
                 "user_id": f"eq.{user_id}",
                 "interaction_type": "eq.save",
+                "source_surface": "eq.product_wishlist",
             },
             order="created_at.desc",
-            limit=limit * 2,  # over-fetch to handle duplicates
+            limit=limit * 2,
         )
         # Deduplicate by product_id, keeping the most recent
         seen: dict[str, Dict[str, Any]] = {}
@@ -780,27 +782,35 @@ class ConversationRepository:
                 seen[pid] = row
         if not seen:
             return []
-        # Hydrate from catalog_enriched
+        # Batch hydrate from catalog_enriched — single query
+        product_ids = list(seen.keys())[:limit]
+        in_filter = ",".join(product_ids)
+        enriched_rows = self.client.select_many(
+            "catalog_enriched",
+            filters={"product_id": f"in.({in_filter})"},
+        )
+        enriched_map: dict[str, Dict[str, Any]] = {
+            str(r.get("product_id") or ""): r for r in enriched_rows
+        }
         results: List[Dict[str, Any]] = []
-        for pid, interaction in list(seen.items())[:limit]:
-            enriched = self.client.select_one(
-                "catalog_enriched",
-                filters={"product_id": f"eq.{pid}"},
-            )
+        for pid in product_ids:
+            enriched = enriched_map.get(pid)
+            if not enriched:
+                continue  # skip products not found in catalog
             results.append({
                 "product_id": pid,
-                "title": str((enriched or {}).get("title") or pid),
-                "price": str((enriched or {}).get("price") or ""),
+                "title": str(enriched.get("title") or pid),
+                "price": str(enriched.get("price") or ""),
                 "image_url": str(
-                    (enriched or {}).get("images__0__src")
-                    or (enriched or {}).get("primary_image_url")
+                    enriched.get("images__0__src")
+                    or enriched.get("primary_image_url")
                     or ""
                 ),
-                "product_url": str((enriched or {}).get("url") or ""),
-                "garment_category": str((enriched or {}).get("garment_category") or ""),
-                "garment_subtype": str((enriched or {}).get("garment_subtype") or ""),
-                "primary_color": str((enriched or {}).get("primary_color") or ""),
-                "wishlisted_at": str(interaction.get("created_at") or ""),
+                "product_url": str(enriched.get("url") or ""),
+                "garment_category": str(enriched.get("garment_category") or ""),
+                "garment_subtype": str(enriched.get("garment_subtype") or ""),
+                "primary_color": str(enriched.get("primary_color") or ""),
+                "wishlisted_at": str(seen[pid].get("created_at") or ""),
             })
         return results
 
