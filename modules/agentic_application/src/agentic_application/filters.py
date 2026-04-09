@@ -7,9 +7,7 @@ from .schemas import UserContext
 
 
 _QUERY_FILTER_MAPPING = {
-    "GarmentCategory": "garment_category",
     "GarmentSubtype": "garment_subtype",
-    "StylingCompleteness": "styling_completeness",
 }
 
 

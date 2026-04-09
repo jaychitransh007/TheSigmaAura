@@ -324,9 +324,12 @@ class AgenticApplicationTests(unittest.TestCase):
 
         filters = retrieval_gateway.similarity_search.call_args.kwargs["filters"]
         self.assertEqual("feminine", filters["gender_expression"])
+        # styling_completeness comes from build_directional_filters (role=top)
         self.assertEqual("needs_bottomwear", filters["styling_completeness"])
-        self.assertEqual("top", filters["garment_category"])
+        # garment_subtype extracted from query document
         self.assertEqual("blouse", filters["garment_subtype"])
+        # garment_category and styling_completeness in query doc are soft signals, not hard filters
+        self.assertNotIn("garment_category", filters)
         # time_of_day, occasion_fit, and formality_level are soft signals, not hard filters
         self.assertNotIn("time_of_day", filters)
         self.assertNotIn("occasion_fit", filters)
