@@ -93,6 +93,7 @@ class SupabaseRestClient:
         columns: str = "*",
         order: Optional[str] = None,
         limit: Optional[int] = None,
+        offset: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         query: Dict[str, Any] = {"select": columns}
         if filters:
@@ -101,6 +102,8 @@ class SupabaseRestClient:
             query["order"] = order
         if limit is not None:
             query["limit"] = str(limit)
+        if offset is not None and offset > 0:
+            query["offset"] = str(offset)
         out = self._request("GET", table, query=query, prefer="")
         if isinstance(out, list):
             return out

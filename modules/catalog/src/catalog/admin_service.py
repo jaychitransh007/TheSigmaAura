@@ -199,6 +199,34 @@ class CatalogAdminService:
             self.vector_store.fail_job(job_id, _format_exc())
             raise
 
+    _RESYNC_PAGE_SIZE = 500
+
+    def _fetch_enriched_rows(
+        self,
+        filters: Dict[str, str] | None,
+        max_rows: int,
+    ) -> List[Dict[str, Any]]:
+        """Paginated fetch from catalog_enriched."""
+        all_rows: List[Dict[str, Any]] = []
+        page = self._RESYNC_PAGE_SIZE
+        offset = 0
+        while True:
+            batch = self.vector_store.client.select_many(
+                "catalog_enriched",
+                filters=filters or None,
+                order="product_id.asc",
+                limit=page,
+                offset=offset,
+            )
+            all_rows.extend(batch)
+            if len(batch) < page:
+                break
+            offset += page
+            if max_rows > 0 and len(all_rows) >= max_rows:
+                all_rows = all_rows[:max_rows]
+                break
+        return all_rows
+
     def resync_catalog_embeddings(
         self,
         *,
@@ -225,12 +253,7 @@ class CatalogAdminService:
             filters: Dict[str, str] = {}
             if product_id_prefix:
                 filters["product_id"] = f"like.{product_id_prefix}*"
-            limit = max_rows if max_rows > 0 else None
-            rows = self.vector_store.client.select_many(
-                "catalog_enriched",
-                filters=filters or None,
-                limit=limit,
-            )
+            rows = self._fetch_enriched_rows(filters or None, max_rows)
             logger.info(
                 "resync_catalog_embeddings: fetched %d rows from catalog_enriched (prefix=%r)",
                 len(rows), product_id_prefix or "(all)",
