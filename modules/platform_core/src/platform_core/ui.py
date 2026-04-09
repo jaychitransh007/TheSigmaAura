@@ -536,8 +536,8 @@ def get_web_ui_html(
       transition: transform 120ms ease, box-shadow 120ms ease;
     }
     .closet-card:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(54, 32, 24, 0.10); }
-    .closet-image { aspect-ratio: 3/4; overflow: hidden; background: var(--surface-alt); }
-    .closet-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .closet-image { aspect-ratio: 4/5; overflow: hidden; background: var(--surface-alt); }
+    .closet-image img { width: 100%; height: 100%; object-fit: cover; object-position: center 20%; display: block; }
     .closet-placeholder {
       width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
       font-size: 13px; color: var(--muted-soft);
@@ -551,13 +551,16 @@ def get_web_ui_html(
       background: var(--surface-deep); color: var(--muted); font-weight: 600;
       text-transform: capitalize;
     }
-    .closet-actions { display: flex; gap: 6px; margin-top: 2px; }
+    .closet-actions { display: flex; gap: 6px; margin-top: 4px; }
     .studio-btn {
-      flex: 1; padding: 7px 0; border-radius: 10px; font-size: 11px; font-weight: 700;
+      flex: 1; padding: 8px 0; border-radius: 10px; font-size: 11px; font-weight: 700;
       border: 1px solid var(--line); background: var(--surface); color: var(--ink);
       cursor: pointer; text-align: center; transition: all 100ms ease;
     }
     .studio-btn:hover { border-color: var(--wardrobe); color: var(--wardrobe); background: rgba(111,47,69,0.04); }
+    .studio-btn.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+    .studio-btn.primary:hover { background: var(--wardrobe); border-color: var(--wardrobe); color: #fff; }
+    .studio-btn.icon-only { flex: 0 0 auto; padding: 8px 12px; font-size: 14px; }
     .studio-btn.danger { color: #9b2323; border-color: rgba(155,35,35,0.2); }
     .studio-btn.danger:hover { border-color: #9b2323; background: rgba(155,35,35,0.04); }
     .wardrobe-search {
@@ -2648,7 +2651,8 @@ def get_web_ui_html(
     }}
     closetGrid.innerHTML = filtered.map(function(item) {{
       var imageUrl = wardrobeImageUrl(item);
-      var tags = [item.garment_category, item.primary_color, item.occasion_fit].filter(Boolean).slice(0, 3);
+      var rawTags = [item.garment_category, item.primary_color, item.formality_level || item.occasion_fit].filter(Boolean).slice(0, 3);
+      var tags = rawTags.map(function(t) {{ return String(t).replace(/_/g, " "); }});
       var title = item.title || "Wardrobe Item";
       var imageHtml = imageUrl
         ? '<img src="' + escapeHtml(imageUrl) + '" alt="' + escapeHtml(title) + '" loading="lazy" />'
@@ -2657,13 +2661,11 @@ def get_web_ui_html(
         '<div class="closet-image">' + imageHtml + '</div>' +
         '<div class="closet-body">' +
           '<h3>' + escapeHtml(title) + '</h3>' +
-          '<p>' + escapeHtml(item.description || "Saved in your wardrobe.") + '</p>' +
-          '<div class="tag-row">' + (tags.length ? tags.map(function(tag) {{ return '<span class="tag">' + escapeHtml(tag) + '</span>'; }}).join("") : '<span class="tag">untagged</span>') + '</div>' +
+          '<div class="tag-row">' + (tags.length ? tags.map(function(tag) {{ return '<span class="tag">' + escapeHtml(tag) + '</span>'; }}).join("") : '') + '</div>' +
           '<div class="closet-actions">' +
-            '<button class="studio-btn" type="button" data-wardrobe-prompt="' + escapeHtml("Style my " + title + " from my wardrobe.") + '" data-wardrobe-img="' + escapeHtml(imageUrl || "") + '">Style This</button>' +
-            '<button class="studio-btn" type="button" data-wardrobe-prompt="' + escapeHtml("Build me an outfit around my " + title + " for the right occasion.") + '" data-wardrobe-img="' + escapeHtml(imageUrl || "") + '">Build A Look</button>' +
+            '<button class="studio-btn primary" type="button" data-wardrobe-prompt="' + escapeHtml("Style my " + title + " from my wardrobe.") + '" data-wardrobe-img="' + escapeHtml(imageUrl || "") + '">Style This</button>' +
             '<button class="studio-btn" type="button" data-action="edit" data-item-id="' + escapeHtml(item.id) + '">Edit</button>' +
-            '<button class="studio-btn danger" type="button" data-action="delete" data-item-id="' + escapeHtml(item.id) + '">Delete</button>' +
+            '<button class="studio-btn danger icon-only" type="button" data-action="delete" data-item-id="' + escapeHtml(item.id) + '">&#128465;</button>' +
           '</div>' +
         '</div></article>';
     }}).join("");
@@ -2686,7 +2688,7 @@ def get_web_ui_html(
       wardrobeItems.forEach(function(item) {{ wardrobeItemsById[item.id] = item; }});
       wStatCount.textContent = String(wardrobeItems.length);
       wStatComplete.textContent = String((wardrobeSummary && wardrobeSummary.completeness_score_pct) || 0) + "%";
-      wStatusPill.textContent = wardrobeItems.length ? "Loaded" : "No pieces yet";
+      wStatusPill.textContent = wardrobeItems.length ? "" : "No pieces yet";
       // Restore persisted filters
       try {{
         var saved = JSON.parse(localStorage.getItem("aura_wardrobe_filters") || "null");
