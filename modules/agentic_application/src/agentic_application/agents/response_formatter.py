@@ -34,12 +34,36 @@ def _extract_plan_archetype(plan: RecommendationPlan | None) -> str:
     return ""
 
 
+def _browser_safe_image_url(raw: str) -> str:
+    """Rewrite local data/ paths to the FastAPI serving route.
+
+    Catalog items carry HTTP(S) URLs which pass through unchanged.
+    Wardrobe items carry relative paths like
+    ``data/onboarding/images/wardrobe/abc.jpg`` which the browser can't
+    fetch directly. This helper rewrites them to
+    ``/v1/onboarding/images/local?path=...`` which the FastAPI route
+    serves. Duplicated from ``AgenticOrchestrator._browser_safe_image_url``
+    so the response formatter can apply it without importing the
+    orchestrator.
+    """
+    from urllib.parse import quote
+    raw = str(raw or "").strip()
+    if not raw:
+        return ""
+    normalized = raw.lower()
+    if normalized.startswith(("http://", "https://", "data:", "/v1/")):
+        return raw
+    if raw.startswith("data/") or "/data/onboarding/images/" in raw or "onboarding/images/" in raw:
+        return "/v1/onboarding/images/local?path=" + quote(raw, safe="/._-")
+    return raw
+
+
 def _build_item_card(item: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "product_id": str(item.get("product_id", "")),
         "similarity": float(item.get("similarity", 0.0) or 0.0),
         "title": str(item.get("title", "")),
-        "image_url": str(item.get("image_url", "")),
+        "image_url": _browser_safe_image_url(item.get("image_url") or item.get("image_path") or ""),
         "price": str(item.get("price", "")),
         "product_url": str(item.get("product_url", "")),
         "garment_category": str(item.get("garment_category", "")),
