@@ -441,7 +441,13 @@ class AgenticApplicationTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 architect.plan(context)
 
-    def test_outfit_assembler_rejects_paired_candidates_with_mismatched_occasion(self) -> None:
+    def test_outfit_assembler_penalizes_but_keeps_mismatched_occasion_pairs(self) -> None:
+        """April 9, 2026: occasion/formality/volume mismatches are now
+        soft penalties instead of hard rejections. The assembler must
+        still produce candidates even when the occasion tags differ —
+        the visual evaluator judges the actual rendered look. The
+        assembly_score is penalized so better-matched pairs rank higher,
+        but zero-candidate outcomes are avoided."""
         assembler = OutfitAssembler()
         plan = RecommendationPlan(
             plan_type="paired_only",
@@ -492,7 +498,11 @@ class AgenticApplicationTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual([], candidates)
+        # The pair is NOT rejected — it's penalized but still produced.
+        self.assertEqual(1, len(candidates))
+        # The assembly_score should be lower than a perfectly matched pair
+        # (0.9 + 0.88) / 2 = 0.89 base, minus occasion gap penalty
+        self.assertLess(candidates[0].assembly_score, 0.89)
 
     # ------------------------------------------------------------------
     # P0: Silent empty response on pipeline failure

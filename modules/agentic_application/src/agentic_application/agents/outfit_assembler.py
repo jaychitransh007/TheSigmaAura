@@ -169,12 +169,25 @@ def _get_attr(product: RetrievedProduct, key: str) -> str:
 
 
 def _formality_compatible(a: str, b: str) -> Tuple[bool, str]:
+    """Check formality compatibility. Returns (ok, note).
+
+    April 9, 2026: converted from hard rejection to soft penalty.
+    The previous behavior returned (False, ...) on any mismatch, which
+    hard-rejected the pair at score=0. This caused zero-candidate
+    outcomes when a casual anchor (e.g. track pants) was paired with
+    smart_casual catalog shirts — every pair was rejected, producing
+    empty outfits. Now mismatches are penalized but never rejected
+    outright, so the assembler always produces candidates for the
+    evaluator to judge visually.
+    """
+    if not a or not b:
+        return True, ""
     allowed = _FORMALITY_COMPAT.get(a)
     if allowed is None:
         return True, ""
     if b in allowed:
         return True, ""
-    return False, f"formality mismatch: {a} vs {b}"
+    return True, f"formality gap: {a} vs {b}"
 
 
 def _color_temp_compatible(a: str, b: str) -> Tuple[bool, str]:
@@ -189,11 +202,20 @@ def _color_temp_compatible(a: str, b: str) -> Tuple[bool, str]:
 
 
 def _occasion_compatible(a: str, b: str) -> Tuple[bool, str]:
+    """Check occasion compatibility. Returns (ok, note).
+
+    April 9, 2026: converted from hard rejection to soft penalty.
+    The previous exact-match check rejected any pair where the two
+    items had different occasion_fit tags — even when both were
+    perfectly reasonable for the same context (e.g. "casual" top with
+    "evening" pants). Now mismatches are penalized but never rejected
+    outright.
+    """
     if not a or not b:
         return True, ""
     if a == b:
         return True, ""
-    return False, f"occasion mismatch: {a} vs {b}"
+    return True, f"occasion gap: {a} vs {b}"
 
 
 def _pattern_compatible(a: str, b: str) -> Tuple[bool, str]:
@@ -206,8 +228,14 @@ def _pattern_compatible(a: str, b: str) -> Tuple[bool, str]:
 
 
 def _volume_compatible(a: str, b: str) -> Tuple[bool, str]:
+    """Check volume compatibility. Returns (ok, note).
+
+    April 9, 2026: converted from hard rejection to soft penalty.
+    Double-oversized is penalized but not rejected outright — the
+    visual evaluator can judge whether the actual rendered look works.
+    """
     if a == "oversized" and b == "oversized":
-        return False, "extreme volume conflict: both oversized"
+        return True, "extreme volume: both oversized"
     return True, ""
 
 
@@ -396,22 +424,20 @@ class OutfitAssembler:
         penalty = 0.0
         notes: List[str] = []
 
-        # Formality compatibility
+        # Formality compatibility (soft penalty, not hard rejection)
         top_form = _get_attr(top, "formality_level") or _get_attr(top, "FormalityLevel")
         bot_form = _get_attr(bottom, "formality_level") or _get_attr(bottom, "FormalityLevel")
         ok, note = _formality_compatible(top_form, bot_form)
-        if not ok:
-            return 0.0, [note]
         if note:
+            penalty += 0.20
             notes.append(note)
 
-        # Occasion compatibility
+        # Occasion compatibility (soft penalty, not hard rejection)
         top_occ = _get_attr(top, "occasion_fit") or _get_attr(top, "OccasionFit")
         bot_occ = _get_attr(bottom, "occasion_fit") or _get_attr(bottom, "OccasionFit")
         ok, note = _occasion_compatible(top_occ, bot_occ)
-        if not ok:
-            return 0.0, [note]
         if note:
+            penalty += 0.15
             notes.append(note)
 
         # Color temperature
@@ -432,12 +458,13 @@ class OutfitAssembler:
             penalty += 0.05
             notes.append(note)
 
-        # Volume
+        # Volume (soft penalty, not hard rejection)
         top_vol = _get_attr(top, "volume_profile") or _get_attr(top, "VolumeProfile")
         bot_vol = _get_attr(bottom, "volume_profile") or _get_attr(bottom, "VolumeProfile")
         ok, note = _volume_compatible(top_vol, bot_vol)
-        if not ok:
-            return 0.0, [note]
+        if note:
+            penalty += 0.25
+            notes.append(note)
 
         # Fit coherence — relaxed bottom with structured/regular top is a mismatch
         # for anything at or above smart-casual formality.
