@@ -1021,40 +1021,63 @@ Success criteria:
 
 ## Immediate Next Item
 
-### P0 — Re-embed Vastramay/Powerlook/CampusSutra from database (April 10 2026)
+### P0 — Three outfit structures: complete, two-piece, three-piece (April 10 2026)
 
-**Status:** Code shipped. Awaiting manual execution from admin UI.
+**Problem:** The architect currently only creates `complete` (single garment) and `paired` (top + bottom) directions. For broad occasion requests (wedding, party, office), every response should offer **three structurally different outfit options** so the user sees real variety in silhouette and layering, not just color/brand variations of the same structure.
 
-~1,862 items from Vastramay (826), Powerlook (831), CampusSutra (205) have enrichment attributes in `catalog_enriched` but their embeddings in `catalog_item_embeddings` have null filter columns and weak vectors (generated before enrichment). They are invisible to all filtered searches.
+**Target output for "traditional outfit for wedding engagement":**
+- **Direction A (complete):** single complete garment — kurta_set, co_ord_set, suit_set
+- **Direction B (two-piece/paired):** top + bottom — kurta + trouser, shirt + trouser
+- **Direction C (three-piece):** top + bottom + outerwear — shirt + trouser + nehru_jacket, kurta + trouser + blazer
 
-**What was built:**
-- `POST /v1/admin/catalog/embeddings/resync` endpoint — reads from `catalog_enriched` (database), no skip-already-embedded check, supports `product_id_prefix` filter
-- Admin UI: "Re-sync Embeddings from DB" button with prefix input field
-- Fixes also shipped: silent row_status filtering now logs warnings, skip count log is accurate
+**PDP behavior by structure:**
+- Complete (1 item): 1 garment thumbnail + 1 try-on image + 1 Buy Now link
+- Two-piece (2 items): 2 garment thumbnails + 1 try-on image + 2 Buy Now links
+- Three-piece (3 items): 3 garment thumbnails + 1 try-on image + 3 Buy Now links
 
-**To execute:**
-1. Start the app server
-2. Go to Catalog Admin → Step 4
-3. Enter `VASTRAMAY` in the prefix field, click "Re-sync Embeddings from DB"
-4. Repeat for `POWERLOOK` and `CAMPUSSUTRA`
-5. Verify: wedding engagement query should now return Vastramay kurta_sets and festive items
+The UI already iterates `items.forEach` for thumbnails and Buy Now links — it's item-count agnostic. No UI changes needed for the card layout. The try-on render already composites all items in a candidate.
 
-**Cost:** ~1,862 OpenAI embedding API calls (text-embedding-3-small). One-time.
+**Implementation plan (5 steps):**
+
+- **Step 1 — Architect JSON schema** (`agents/outfit_architect.py`):
+  - Add `"three_piece"` to `direction_type` enum: `["complete", "paired", "three_piece"]`
+  - Add `"outerwear"` to `role` enum: `["complete", "top", "bottom", "outerwear"]`
+  - No change to `plan_type` — `"mixed"` already covers combinations
+
+- **Step 2 — Architect prompt** (`prompt/outfit_architect.md`):
+  - Remove "Three-piece directions are NOT allowed in v1"
+  - Add three_piece direction rules: 3 queries (role=top, role=bottom, role=outerwear)
+  - Update Direction Diversity section: for broad occasion requests, the three directions should be one of each structure type (complete + paired + three_piece)
+  - Add three_piece examples in the Concept-First Paired Planning section (extend to cover outerwear coordination)
+
+- **Step 3 — Directional filters** (`filters.py`):
+  - Add `role == "outerwear"` case to `build_directional_filters`:
+    `return {"styling_completeness": ["needs_innerwear"]}` — outerwear is a layering piece that needs something underneath
+
+- **Step 4 — Assembler** (`agents/outfit_assembler.py`):
+  - Add `_assemble_three_piece` method alongside `_assemble_complete` and `_assemble_paired`
+  - Logic: collect tops, bottoms, and outerwear from retrieved sets; score 3-way combinations (top × bottom × outerwear with cap at 10 each to avoid explosion); compatibility scoring reuses `_evaluate_pair` for top+bottom, adds outerwear formality/color coherence check
+  - In `assemble()`, dispatch `three_piece` direction_type to the new method
+  - `_parse_plan` in outfit_architect.py: handle `three_piece` direction_type
+
+- **Step 5 — Tests + verification**:
+  - Add test for `build_directional_filters` with `role="outerwear"`
+  - Add test for assembler three-piece assembly
+  - Verify complete outfit PDP shows 1 thumbnail + 1 tryon + 1 Buy Now
+  - Verify three-piece PDP shows 3 thumbnails + 1 tryon + 3 Buy Now links
 
 ---
 
-### P1 — Verify remaining 6 Shopify store domains for product URLs (April 10 2026)
+### ✅ CLOSED — Re-embed Vastramay/Powerlook/CampusSutra from database (April 10 2026)
 
-7 stores verified, 6 remain unmapped (~152 products with empty Buy Now links). Research task — try domain variations against known product handles.
+Executed April 10, 2026. All three stores re-embedded via `POST /v1/admin/catalog/embeddings/resync`:
+- Vastramay: 826 processed, 826 saved
+- Powerlook: 831 processed, 831 saved
+- CampusSutra: 410 processed, 410 saved
 
-| CDN shop ID | Products | Candidate domain |
-|---|---|---|
-| `0267/2394/2570` | 30 | jaypore? |
-| `0383/1771/9684` | 27 | labelreyya? |
-| `0636/0134/4666` | 30 | ritukumar? |
-| `0859/4217/3988` | 20 | pantaloons? |
-| `0625/1797/files` | 13 | unknown |
-| `0752/6435/files` | 27 | rare rabbit? |
+Additional cleanup: 61 Koskii/Showoffff items enriched via batch API then re-embedded. 85 dead items (84 Powerlook + 1 Vastramay with delisted products and broken images) deleted. 271 items with empty product URLs deleted.
+
+Final catalog: **14,391 items** — all enriched, all embedded, zero null filter columns.
 
 ---
 
