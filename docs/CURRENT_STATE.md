@@ -1018,6 +1018,36 @@ Success criteria:
 
 ## Immediate Next Item
 
+### ✅ CLOSED — Remove dead legacy OutfitCheckAgent (April 9 2026, codebase cleanup)
+
+Shipped April 9, 2026. Removed `OutfitCheckAgent` (254 lines) and its prompt file — zero runtime callers since Phase 12B. Test count: **331 passing** (was 332, -1 removed test that directly instantiated the deleted agent).
+
+Files removed:
+- `modules/agentic_application/src/agentic_application/agents/outfit_check_agent.py` — 254 lines deleted
+- `prompt/outfit_check.md` — legacy prompt deleted
+
+Files modified:
+- `orchestrator.py` — removed the import and `self.outfit_check_agent = OutfitCheckAgent()` instantiation. Added a comment noting that the legacy `OutfitEvaluator` (text-only fallback) stays until Phase 12E.
+- `tests/test_agentic_application.py` — removed the import, removed `test_outfit_check_agent_uses_responses_api_with_json_schema` (was the only test that directly instantiated the agent), removed all `patch("agentic_application.orchestrator.OutfitCheckAgent")` lines from every `with` block that mocked it (10 occurrences across multiple test methods).
+
+**Still alive (Phase 12E retirement target):** `OutfitEvaluator` (`agents/outfit_evaluator.py`, 540 lines) + `prompt/outfit_evaluator.md` — the text-only recommendation evaluator that fires as a fallback when `VisualEvaluatorAgent` returns zero results (rare but possible when the user has no person photo). Removing it requires the visual evaluator to degrade gracefully for no-image turns.
+
+---
+
+### P0 — Remove dead legacy OutfitCheckAgent (April 9 2026, codebase cleanup) — historical plan
+
+**Context:** a full codebase audit found that `OutfitCheckAgent` (254 lines) and its prompt file `prompt/outfit_check.md` have **zero runtime callers**. The agent is imported and instantiated by the orchestrator (`self.outfit_check_agent = OutfitCheckAgent()`, line 92) but no method on it is ever called at runtime — the Phase 12B `VisualEvaluatorAgent` replaced all of its call sites. The comment says "kept until tests are migrated off it", but the only test references are `patch("agentic_application.orchestrator.OutfitCheckAgent")` stubs that just suppress the import — they don't exercise the agent's logic.
+
+**Separate from this cleanup:** `OutfitEvaluator` (the legacy **text-only** recommendation evaluator, 540 lines) IS still called as a fallback at `orchestrator.py:4064` when the visual evaluator returns zero results. That agent stays until Phase 12E makes the visual evaluator degrade gracefully for no-person-image turns.
+
+**Implementation plan:**
+- **Step 1** — Delete `modules/agentic_application/src/agentic_application/agents/outfit_check_agent.py` and `prompt/outfit_check.md`.
+- **Step 2** — Remove the import (`from .agents.outfit_check_agent import OutfitCheckAgent`) and instantiation (`self.outfit_check_agent = OutfitCheckAgent()`) from `orchestrator.py`.
+- **Step 3** — Remove `OutfitCheckAgent` from `patch()` calls in `tests/test_agentic_application.py` (the mock is a stub that just prevents import errors; removing the agent makes the mock unnecessary).
+- **Step 4** — Run the full test suite, close out this P0, commit, push.
+
+---
+
 ### ✅ CLOSED — Distributed per-turn traces (April 9 2026)
 
 Shipped April 9, 2026. One `turn_traces` row per conversation turn capturing input → intent → context snapshot → step-by-step workflow → evaluation → user response signal → end-to-end latency. Migration applied to staging Supabase. Test count: **332 passing** (was 329, +3 new `TurnTraceBuilder` unit tests).

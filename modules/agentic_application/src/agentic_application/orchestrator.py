@@ -15,7 +15,6 @@ from platform_core.repositories import ConversationRepository
 
 from .agents.catalog_search_agent import CatalogSearchAgent
 from .agents.copilot_planner import CopilotPlanner, build_planner_input
-from .agents.outfit_check_agent import OutfitCheckAgent  # legacy fallback during Phase 12B rollout
 from .agents.outfit_architect import OutfitArchitect
 from .agents.outfit_assembler import OutfitAssembler
 from .agents.outfit_evaluator import OutfitEvaluator  # legacy text-only fallback
@@ -89,7 +88,11 @@ class AgenticOrchestrator:
         self._catalog_rows: Optional[list] = None
 
         self.outfit_architect = OutfitArchitect()
-        self.outfit_check_agent = OutfitCheckAgent()  # legacy — kept until tests are migrated off it
+        # OutfitCheckAgent removed (Phase 12B cleanup, April 9 2026) — the
+        # VisualEvaluatorAgent replaced all of its call sites. The legacy
+        # text-only OutfitEvaluator below is still the fallback for the
+        # recommendation pipeline when the visual evaluator returns zero
+        # results; it stays until Phase 12E.
         self.visual_evaluator = VisualEvaluatorAgent()  # Phase 12B vision-grounded evaluator
         self.style_advisor = StyleAdvisorAgent()  # Phase 12C open-ended discovery + explanation
         self.catalog_search_agent = CatalogSearchAgent(

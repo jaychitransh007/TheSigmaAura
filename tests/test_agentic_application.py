@@ -23,7 +23,7 @@ for p in (
 
 from agentic_application.agents.catalog_search_agent import CatalogSearchAgent
 from agentic_application.agents.outfit_assembler import OutfitAssembler
-from agentic_application.agents.outfit_check_agent import OutfitCheckAgent
+# OutfitCheckAgent removed (Phase 12B cleanup, April 9 2026)
 from agentic_application.agents.response_formatter import ResponseFormatter
 from agentic_application.agents.outfit_architect import OutfitArchitect
 from agentic_application.agents.outfit_evaluator import (
@@ -3043,7 +3043,6 @@ class CopilotPlannerTests(unittest.TestCase):
     def _build_orchestrator(self, repo, gw, planner_mock):
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
              patch("agentic_application.orchestrator.OutfitArchitect"), \
-             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
              patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
              patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
@@ -4266,62 +4265,11 @@ class CopilotPlannerTests(unittest.TestCase):
         )
         repo.log_model_call.assert_called()
 
-    @patch("agentic_application.agents.outfit_check_agent.OpenAI")
-    @patch("agentic_application.agents.outfit_check_agent.get_api_key", return_value="test-key")
-    def test_outfit_check_agent_uses_responses_api_with_json_schema(self, _get_api_key, openai_cls):
-        client = Mock()
-        client.responses.create.return_value = Mock(
-            output_text=json.dumps(
-                {
-                    "overall_verdict": "great_choice",
-                    "overall_note": "Strong look.",
-                    "scores": {
-                    "body_harmony_pct": 90,
-                    "color_suitability_pct": 91,
-                    "style_fit_pct": 92,
-                    "pairing_coherence_pct": 89,
-                    "occasion_pct": 93,
-                },
-                    "strengths": ["Balanced silhouette."],
-                    "improvements": [],
-                    "style_archetype_read": {
-                        "classic_pct": 70,
-                        "dramatic_pct": 10,
-                        "romantic_pct": 5,
-                        "natural_pct": 20,
-                        "minimalist_pct": 80,
-                        "creative_pct": 10,
-                        "sporty_pct": 5,
-                        "edgy_pct": 5,
-                    },
-                }
-            )
-        )
-        openai_cls.return_value = client
-
-        agent = OutfitCheckAgent()
-        user_context = Mock(
-            gender="masculine",
-            derived_interpretations={},
-            style_preference={},
-            analysis_attributes={},
-            wardrobe_items=[],
-        )
-
-        result = agent.evaluate(
-            user_context=user_context,
-            outfit_description="Check this look.",
-            occasion_signal="date_night",
-            profile_confidence_pct=100,
-        )
-
-        self.assertEqual("great_choice", result.overall_verdict)
-        openai_cls.assert_called_once_with(api_key="test-key")
-        kwargs = client.responses.create.call_args.kwargs
-        self.assertEqual("gpt-5.4", kwargs["model"])
-        self.assertIn("format", kwargs["text"])
-        self.assertEqual("outfit_check_result", kwargs["text"]["format"]["name"])
-        self.assertEqual(89, result.pairing_coherence_pct)
+    # test_outfit_check_agent_uses_responses_api_with_json_schema removed
+    # (Phase 12B cleanup, April 9 2026) — OutfitCheckAgent was deleted;
+    # the VisualEvaluatorAgent replaced all of its call sites. The
+    # visual evaluator's own response-API + JSON-schema test is in
+    # Phase12BBuildingBlockTests.
 
     def test_rate_my_outfit_routes_to_outfit_check_handler(self):
         from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
@@ -5711,7 +5659,6 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
         )
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
              patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
-             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
              patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
              patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
@@ -5784,7 +5731,6 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
         )
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
              patch("agentic_application.orchestrator.OutfitArchitect"), \
-             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
              patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
              patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
@@ -6082,7 +6028,6 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
         )
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
              patch("agentic_application.orchestrator.OutfitArchitect"), \
-             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
              patch("agentic_application.orchestrator.VisualEvaluatorAgent") as ve_cls, \
              patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
@@ -6187,7 +6132,6 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
         )
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
              patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
-             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
              patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
              patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
@@ -6284,7 +6228,6 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
         }
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
              patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
-             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
              patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
              patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner):
@@ -6334,7 +6277,6 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
         }
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
              patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
-             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
              patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
              patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner):
@@ -6385,7 +6327,6 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
         }
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
              patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
-             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
              patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
              patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner):
@@ -6452,7 +6393,6 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
         }
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
              patch("agentic_application.orchestrator.OutfitArchitect"), \
-             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
              patch("agentic_application.orchestrator.VisualEvaluatorAgent") as ve_cls, \
              patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner):
@@ -6584,7 +6524,6 @@ class Phase12EStageEmissionTests(unittest.TestCase):
         visual evaluator."""
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
              patch("agentic_application.orchestrator.OutfitArchitect"), \
-             patch("agentic_application.orchestrator.OutfitCheckAgent"), \
              patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
              patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
