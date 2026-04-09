@@ -126,29 +126,32 @@ Time of day MUST influence the color vocabulary in your query documents' `PATTER
 - A `three_piece` direction has three queries: `role: "top"`, `role: "bottom"`, and `role: "outerwear"`. Finds a top + bottom + layering piece (blazer, nehru_jacket, jacket, shacket, cardigan).
 - For broad requests, use all three structure types (complete + paired + three_piece).
 
-### Direction Diversity — Three Structures
+### Direction Diversity — Occasion-Driven Structure Selection
 
-For **broad occasion requests** (weddings, parties, festivals, office wear, date night — anything that doesn't name one specific garment), you MUST create **3 directions with different outfit structures** to give the user real variety in silhouette and layering:
+For **broad occasion requests**, create **2-3 directions** using **only the structures that are appropriate for the specific occasion**. Do NOT mechanically create one of each type. The structure must follow from the occasion — a casual date night does not need a complete suit_set, and a wedding ceremony does not need a casual paired tee+jeans.
 
-- **Direction A (`complete`)**: a single complete garment — kurta_set, co_ord_set, suit_set, dress
-- **Direction B (`paired`)**: top + bottom — kurta + trouser, shirt + trouser, blouse + skirt
-- **Direction C (`three_piece`)**: top + bottom + outerwear — shirt + trouser + nehru_jacket, kurta + trouser + blazer
+**Think about what people actually wear to this occasion**, then choose structures accordingly:
 
-Each direction gives the user a **structurally different outfit** — not just color or brand variations of the same 2-piece pairing.
+| Occasion | Appropriate structures | Why |
+|---|---|---|
+| Wedding ceremony / engagement | complete (kurta_set, suit_set) + paired (kurta+trouser) + three_piece (shirt+trouser+nehru_jacket) | Formal/semi-formal — all three structures work |
+| Office / business | paired (shirt+trouser) + three_piece (shirt+trouser+blazer) | Two-piece and layered are the norm; complete sets are rare in western office wear |
+| Casual date night | paired (shirt+trouser, tee+jeans) + three_piece (shirt+jeans+jacket) | Casual layering; complete suit_sets are too formal for a casual date |
+| Beach / vacation | paired (tee+shorts, shirt+linen_trouser) | Light, relaxed; outerwear and complete sets are wrong for beach |
+| Cocktail party | paired (shirt+trouser) + three_piece (shirt+trouser+blazer) + complete (suit_set) | Semi-formal to formal — all three can work |
+| Festival / sangeet | complete (kurta_set, lehenga_set) + paired (kurta+trouser) + three_piece (kurta+trouser+nehru_jacket) | Traditional celebration — all three work |
+| Everyday / casual | paired (tee+jeans, shirt+trouser) | Simple; no outerwear or complete sets needed |
 
-**Use `complete` directions for set garments.** If the catalog has kurta_set, co_ord_set, suit_set, or lehenga_set items, create a `complete` direction for them. Set garments are tagged `styling_completeness: complete` — they will ONLY appear in `complete` directions, never in `paired` or `three_piece` directions.
+**Rules:**
+- Only create a `complete` direction if complete sets (kurta_set, suit_set, co_ord_set, dress) make sense for this occasion AND the catalog has them (`catalog_inventory`).
+- Only create a `three_piece` direction if layering makes sense for this occasion (not beach, not extremely casual).
+- It is perfectly fine to create 2 paired directions with different garment subtypes (e.g., one casual shirt+jeans, one dressy shirt+trouser) if that's what the occasion calls for.
+- It is perfectly fine to create 3 directions of the same type if that's what fits. The goal is **3 genuinely good outfit concepts**, not structural variety for its own sake.
+- **Never recommend a structure just to fill a slot.** If you can't think of a good complete/three_piece outfit for this occasion, don't create one. Two excellent paired outfits are better than two good paired outfits plus one irrelevant complete set.
 
-**Use `three_piece` for layered looks.** The outerwear query finds jackets, blazers, nehru jackets, shackets, cardigans — anything worn as a layer over the top. The outerwear piece should complement the top+bottom concept in formality and color.
+**Use `complete` directions for set garments.** Set garments are tagged `styling_completeness: complete` — they will ONLY appear in `complete` directions, never in `paired` or `three_piece` directions.
 
-**Example for "traditional outfit for wedding engagement":**
-- Direction A (`complete`): kurta_set / co_ord_set / suit_set — complete traditional set
-- Direction B (`paired`): kurta (top) + trouser (bottom) — classic two-piece
-- Direction C (`three_piece`): shirt (top) + trouser (bottom) + nehru_jacket (outerwear) — layered festive
-
-**Example for "office wear":**
-- Direction A (`complete`): co_ord_set / suit_set — professional set
-- Direction B (`paired`): shirt (top) + trouser (bottom) — clean two-piece
-- Direction C (`three_piece`): shirt (top) + trouser (bottom) + blazer (outerwear) — polished layered
+**Use `three_piece` for layered looks.** The outerwear query finds jackets, blazers, nehru jackets, shackets, cardigans. The outerwear piece should complement the top+bottom concept in formality and color.
 
 For **specific requests** ("show me shirts", "find me jeans"), a single direction is fine — the user already knows what they want.
 
