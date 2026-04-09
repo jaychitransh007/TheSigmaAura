@@ -721,6 +721,14 @@ class AgenticOrchestrator:
         # duplicate wardrobe write.
         _log.warning("process_turn: wardrobe_item_id=%r, has_image_data=%s", wardrobe_item_id, bool(image_data))
         if wardrobe_item_id and not image_data:
+            # ── Wardrobe selection path ──────────────────────────────
+            # Functionally identical to the image-upload path below
+            # EXCEPT: no re-enrichment (item is already enriched), no
+            # persistence (item is already in wardrobe), no decomposition
+            # (handled downstream via attachment_source check). Everything
+            # else — context in effective_message, flags, trace steps,
+            # anchor injection, evaluator flow — is the same.
+            trace_start("wardrobe_selection", input_summary=f"wardrobe_item_id={wardrobe_item_id}")
             try:
                 wardrobe_items = self.onboarding_gateway.get_wardrobe_items(external_user_id) or []
                 match = next(
@@ -732,23 +740,31 @@ class AgenticOrchestrator:
                     attached_item["attachment_source"] = "wardrobe_selection"
                     attached_item["is_garment_photo"] = True
                     attached_item["garment_present_confidence"] = 1.0
-                    # Append the item's 46 enriched attributes to the
-                    # effective_message so the planner, architect, and
-                    # evaluator all see exactly what the selected garment
-                    # is (title, category, color, subtype, formality) —
-                    # not what else might be visible in the image. This
-                    # matches what the image-upload path does at the end
-                    # of the enrichment block.
+                    # Append the item's enriched attributes to effective_message
+                    # so planner/architect/evaluator see the garment identity —
+                    # same as the upload path does after enrichment.
                     attached_context = self._attached_item_context(attached_item)
                     if attached_context:
                         effective_message = f"{message.strip()} {attached_context}".strip()
                     effective_message = f"{effective_message} Image anchor source: wardrobe selection.".strip()
+                    trace_end(
+                        "wardrobe_selection",
+                        output_summary=f"loaded: {attached_item.get('title')}, {attached_item.get('garment_category')}, {attached_item.get('primary_color')}",
+                    )
+                    trace.set_image_classification(
+                        is_garment_photo=True,
+                        garment_present_confidence=1.0,
+                    )
                     _log.info(
-                        "Loaded existing wardrobe item %s for turn (no re-upload): %s",
+                        "Loaded wardrobe item %s: %s",
                         wardrobe_item_id,
                         attached_context[:100] if attached_context else "no context",
                     )
+                else:
+                    trace_end("wardrobe_selection", output_summary="item not found", status="error")
+                    _log.warning("Wardrobe item %s not found for user %s", wardrobe_item_id, external_user_id)
             except Exception:
+                trace_end("wardrobe_selection", output_summary="load failed", status="error")
                 _log.warning("Failed to load wardrobe item %s", wardrobe_item_id, exc_info=True)
 
         if image_data:
