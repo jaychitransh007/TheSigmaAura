@@ -323,6 +323,7 @@ def create_app() -> FastAPI:
                 message=payload.message,
                 channel=payload.channel,
                 image_data=payload.image_data or "",
+                wardrobe_item_id=payload.wardrobe_item_id or "",
             )
             return TurnResponse(**out)
         except (ValueError, SupabaseError, RuntimeError) as exc:
@@ -360,6 +361,7 @@ def create_app() -> FastAPI:
                     message=payload.message,
                     channel=payload.channel,
                     image_data=payload.image_data or "",
+                    wardrobe_item_id=payload.wardrobe_item_id or "",
                     stage_callback=append_stage,
                 )
                 append_stage("turn_execution", "completed")

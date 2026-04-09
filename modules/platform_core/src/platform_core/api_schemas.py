@@ -39,6 +39,12 @@ class CreateTurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     channel: str = Field(default="web", pattern=r"^(web)$")
     image_data: str = Field(default="", max_length=10_000_000)
+    # When the user selects an existing wardrobe item (instead of
+    # uploading a new image), the frontend sends the wardrobe item's
+    # UUID here. The orchestrator loads the item directly from
+    # user_wardrobe_items instead of re-enriching and re-saving,
+    # avoiding duplicate wardrobe rows.
+    wardrobe_item_id: str = Field(default="")
 
 
 class OutfitItem(BaseModel):

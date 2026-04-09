@@ -651,6 +651,7 @@ class AgenticOrchestrator:
         message: str,
         channel: str = "web",
         image_data: str = "",
+        wardrobe_item_id: str = "",
         stage_callback: Optional[Callable[[str, str, str], None]] = None,
     ) -> Dict[str, Any]:
         def emit(stage: str, detail: str = "", ctx: dict | None = None) -> None:
@@ -711,6 +712,32 @@ class AgenticOrchestrator:
         attached_item: Dict[str, Any] | None = None
         effective_message = message
         trace_end("validate_request", output_summary=f"turn={turn_id}")
+
+        # ── Wardrobe item selection (existing item, no re-upload) ──
+        # When the user picks an item from "Select from wardrobe" in the
+        # chat composer, the frontend sends wardrobe_item_id (the UUID of
+        # the existing row) instead of re-fetching + re-sending the image
+        # as image_data. We load the row directly — no re-enrichment, no
+        # duplicate wardrobe write.
+        if wardrobe_item_id and not image_data:
+            try:
+                wardrobe_items = self.onboarding_gateway.get_wardrobe_items(external_user_id) or []
+                match = next(
+                    (w for w in wardrobe_items if str(w.get("id") or "") == wardrobe_item_id),
+                    None,
+                )
+                if match:
+                    attached_item = dict(match)
+                    attached_item["attachment_source"] = "wardrobe_selection"
+                    attached_item["is_garment_photo"] = True
+                    attached_item["garment_present_confidence"] = 1.0
+                    _log.info(
+                        "Loaded existing wardrobe item %s for turn (no re-upload)",
+                        wardrobe_item_id,
+                    )
+            except Exception:
+                _log.warning("Failed to load wardrobe item %s", wardrobe_item_id, exc_info=True)
+
         if image_data:
             trace_start("wardrobe_enrichment", model="gpt-5-mini", input_summary=f"image_upload, message={message[:80]}")
             try:

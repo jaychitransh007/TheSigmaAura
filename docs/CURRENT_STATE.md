@@ -1018,6 +1018,24 @@ Success criteria:
 
 ## Immediate Next Item
 
+### ✅ CLOSED — Fix duplicate wardrobe rows on "Select from wardrobe" pairing (April 9 2026)
+
+**Bug:** when the user selected an existing wardrobe item via the "Select from wardrobe" chat composer, the frontend fetched the item's image as a blob, converted it to base64, and re-sent it as `image_data` in the turn request — exactly like a new upload. The backend then re-enriched and re-saved it, creating a **duplicate wardrobe row** for an item the user already owned.
+
+**Fix:** the frontend now sends `wardrobe_item_id` (the existing row's UUID) instead of re-uploading the image bytes. The backend's `process_turn` checks for `wardrobe_item_id` first: if present, it loads the existing wardrobe item directly from `user_wardrobe_items` — no re-enrichment, no re-save, no duplicate. The existing item's enriched attributes flow into the planner + architect + evaluator exactly as before.
+
+Files changed:
+- `platform_core/api_schemas.py` — added `wardrobe_item_id: str = ""` to `CreateTurnRequest`
+- `api.py` — both turn endpoints pass `wardrobe_item_id` through to `process_turn`
+- `orchestrator.py` — new `wardrobe_item_id` parameter on `process_turn`; when present and `image_data` is empty, loads the matching item from `get_wardrobe_items` and sets `attachment_source="wardrobe_selection"`, `is_garment_photo=True`, `garment_present_confidence=1.0`
+- `ui.py` — wardrobe picker click handler sends `wardrobe_item_id` and shows a preview chip without setting `pendingImageData`; send-message handler includes `wardrobe_item_id` in the payload when no image is attached
+
+**Two paths, clearly separated:**
+- **Upload new image** → `image_data` set, `wardrobe_item_id` empty → enrichment runs → persisted to wardrobe (if intent allows) → standard path
+- **Select from wardrobe** → `image_data` empty, `wardrobe_item_id` set → existing item loaded directly → no enrichment, no persistence → standard path
+
+---
+
 ### ✅ CLOSED — Remove legacy OutfitEvaluator fallback (April 9 2026, codebase cleanup)
 
 Shipped April 9, 2026. Removed `OutfitEvaluator` (540 lines) + `prompt/outfit_evaluator.md` and replaced the fallback branch with a graceful empty-response path. Test count: **318 passing** (was 331, -13 removed tests that exercised the deleted evaluator's unit-level functions or the legacy-fallback code path).

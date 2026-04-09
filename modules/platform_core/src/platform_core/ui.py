@@ -1175,6 +1175,7 @@ def get_web_ui_html(
 
   // ── State ──
   var pendingImageData = "";
+  var pendingWardrobeItemId = "";  // set by "Select from wardrobe" picker
   var wardrobeItems = [];
   var wardrobeSummary = null;
   var activeWardrobeFilter = "all";
@@ -1597,19 +1598,22 @@ def get_web_ui_html(
           el.innerHTML = (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || "Item") + '" loading="lazy" />' : '<div style="aspect-ratio:3/4;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;">No image</div>') +
             '<div class="label">' + escapeHtml(item.title || "Wardrobe Item") + '</div>';
           el.addEventListener("click", function() {{
+            // Send the wardrobe_item_id to the backend instead of re-
+            // fetching the image as base64. The backend loads the existing
+            // item directly — no re-enrichment, no duplicate wardrobe row.
+            pendingWardrobeItemId = item.id || "";
+            // Show the wardrobe item's image as a preview chip so the
+            // user sees what they selected, but DON'T set pendingImageData
+            // (that would trigger a full re-upload on the backend).
             if (imgUrl) {{
-              // Fetch the image to get base64
-              fetch(imgUrl).then(function(r) {{ return r.blob(); }}).then(function(blob) {{
-                var reader = new FileReader();
-                reader.onload = function(e) {{ setImagePreview(e.target.result, item.title || "Wardrobe item"); }};
-                reader.readAsDataURL(blob);
-              }}).catch(function() {{
-                // Fallback: seed a prompt mentioning the item
-                messageEl.value = "Style my " + (item.title || "wardrobe item") + " from my wardrobe.";
-              }});
-            }} else {{
-              messageEl.value = "Style my " + (item.title || "wardrobe item") + " from my wardrobe.";
+              var chip = document.getElementById("imageChip");
+              if (chip) {{
+                chip.querySelector(".preview").src = imgUrl;
+                chip.querySelector(".name").textContent = item.title || "Wardrobe item";
+                chip.style.display = "flex";
+              }}
             }}
+            messageEl.value = "What goes with my " + (item.title || "wardrobe item") + "?";
             wardrobePickerModal.classList.remove("open");
             messageEl.focus();
           }});
@@ -2181,8 +2185,9 @@ def get_web_ui_html(
     err.textContent = "";
     var message = messageEl.value.trim();
     if (!USER_ID) {{ err.textContent = "No user session. Please log in."; return; }}
-    if (!message && !pendingImageData) {{ return; }}
+    if (!message && !pendingImageData && !pendingWardrobeItemId) {{ return; }}
     if (!message && pendingImageData) {{ message = "What goes with this? Show me pairing options."; }}
+    if (!message && pendingWardrobeItemId) {{ message = "What goes with this wardrobe item?"; }}
 
     sendBtn.disabled = true;
     messageEl.disabled = true;
@@ -2195,6 +2200,13 @@ def get_web_ui_html(
       clearImagePreview();
       var payload = {{ user_id: USER_ID, message: message }};
       if (attachedImage) payload.image_data = attachedImage;
+      // When the user selected from wardrobe (not uploaded a new image),
+      // send the wardrobe_item_id so the backend loads the existing item
+      // directly without re-enriching or creating a duplicate row.
+      if (pendingWardrobeItemId && !attachedImage) {{
+        payload.wardrobe_item_id = pendingWardrobeItemId;
+      }}
+      pendingWardrobeItemId = "";
       var res = await fetch("/v1/conversations/" + convId + "/turns/start", {{
         method: "POST",
         headers: {{ "Content-Type": "application/json" }},
