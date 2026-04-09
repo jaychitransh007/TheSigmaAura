@@ -732,9 +732,21 @@ class AgenticOrchestrator:
                     attached_item["attachment_source"] = "wardrobe_selection"
                     attached_item["is_garment_photo"] = True
                     attached_item["garment_present_confidence"] = 1.0
+                    # Append the item's 46 enriched attributes to the
+                    # effective_message so the planner, architect, and
+                    # evaluator all see exactly what the selected garment
+                    # is (title, category, color, subtype, formality) —
+                    # not what else might be visible in the image. This
+                    # matches what the image-upload path does at the end
+                    # of the enrichment block.
+                    attached_context = self._attached_item_context(attached_item)
+                    if attached_context:
+                        effective_message = f"{message.strip()} {attached_context}".strip()
+                    effective_message = f"{effective_message} Image anchor source: wardrobe selection.".strip()
                     _log.info(
-                        "Loaded existing wardrobe item %s for turn (no re-upload)",
+                        "Loaded existing wardrobe item %s for turn (no re-upload): %s",
                         wardrobe_item_id,
+                        attached_context[:100] if attached_context else "no context",
                     )
             except Exception:
                 _log.warning("Failed to load wardrobe item %s", wardrobe_item_id, exc_info=True)
