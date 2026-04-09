@@ -424,7 +424,7 @@ Primary data sources:
 
 Current filter behavior:
 - global hard filter: `gender_expression` (always applied, never relaxed)
-- direction hard filters: `styling_completeness` — role-specific values: `complete` for complete directions, `needs_bottomwear` for top role, `needs_topwear` for bottom role, `["needs_innerwear"]` for outerwear role (three_piece directions). In paired directions, top role uses `["needs_bottomwear", "needs_innerwear"]` to include layering pieces.
+- direction hard filters: `styling_completeness` — role-specific values: `complete` for complete directions, `needs_bottomwear` for top role (all direction types), `needs_topwear` for bottom role, `["needs_innerwear"]` for outerwear role. Outerwear items are exclusively discoverable via the outerwear role — never in top or bottom.
 - architect explicit hard_filters: `garment_subtype` (conditional — set for specific requests, null for broad)
 - query-document lines are **soft signals for embedding similarity only** — `_QUERY_FILTER_MAPPING` is empty; no hard filters extracted from query document text (April 9 2026)
 - soft signals via embedding similarity only: `occasion_fit`, `formality_level`, `time_of_day`
@@ -1211,7 +1211,7 @@ The UI already iterates `items.forEach` for thumbnails and Buy Now links — it'
 - **Step 2 — Architect prompt** (`prompt/outfit_architect.md`):
   - Remove "Three-piece directions are NOT allowed in v1"
   - Add three_piece direction rules: 3 queries (role=top, role=bottom, role=outerwear)
-  - Update Direction Diversity section: for broad occasion requests, the three directions should be one of each structure type (complete + paired + three_piece)
+  - Update Direction Diversity section: occasion-driven structure selection (choose structures appropriate for the occasion, don't mechanically create one-of-each)
   - Add three_piece examples in the Concept-First Paired Planning section (extend to cover outerwear coordination)
 
 - **Step 3 — Directional filters** (`filters.py`):

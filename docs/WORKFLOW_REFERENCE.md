@@ -171,7 +171,7 @@ User message
    ├── Stage 1: Outfit Architect [gpt-5.4]
    │   ├── Input: CombinedContext (profile, live context, hard filters, previous recs)
    │   ├── Output: ArchitectPlan with directions (direction_type per direction, query specs)
-   │   ├── Plan types: complete_only | paired_only | mixed (broad requests: 1 complete + 1 paired + 1 three_piece)
+   │   ├── 2-3 directions, structure chosen by occasion (not mechanical one-of-each)
    │   ├── Direction types: complete (1 query), paired (top+bottom), three_piece (top+bottom+outerwear)
    │   ├── Concept-first: color coordination, volume balance, pattern distribution, occasion-fabric coupling
    │   └── DB: repo.log_model_call(call_type="outfit_architect")

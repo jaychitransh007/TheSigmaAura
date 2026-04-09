@@ -44,7 +44,7 @@ Implemented now:
 - no filter relaxation — single search pass per query
 - **batched embedding** (all query documents in one OpenAI API call) + **parallel search+hydrate** (ThreadPoolExecutor, 4 workers) — ~4x retrieval speedup
 - embedding retrieval from `catalog_item_embeddings` with hydration from `catalog_enriched`
-- direction-aware retrieval: `needs_bottomwear` for top (paired: `["needs_bottomwear", "needs_innerwear"]`), `needs_topwear` for bottom, `["needs_innerwear"]` for outerwear, `complete` for complete directions
+- direction-aware retrieval: `needs_bottomwear` for top (all direction types), `needs_topwear` for bottom, `["needs_innerwear"]` for outerwear, `complete` for complete directions. Outerwear exclusively in outerwear role.
 - **direction-aware reranker**: round-robin picks one candidate per direction before filling by score — guarantees outfit variety across architect's concepts
 - previous recommendation exclusion: follow-up turns exclude prior product IDs from retrieval
 - deterministic assembly and LLM evaluation with graceful evaluator fallback
@@ -1060,8 +1060,7 @@ Global hard filters (always applied):
 
 Direction-specific filters (applied by `build_directional_filters` in the catalog search agent):
 - complete outfit directions use `styling_completeness = "complete"`
-- paired top directions use `styling_completeness = ["needs_bottomwear", "needs_innerwear"]` (multi-value — includes layering pieces in 2-piece looks)
-- three_piece top directions use `styling_completeness = "needs_bottomwear"` (outerwear has its own role)
+- top directions use `styling_completeness = "needs_bottomwear"` (all direction types — outerwear is exclusively in its own role)
 - bottom directions use `styling_completeness = "needs_topwear"`
 - outerwear directions use `styling_completeness = ["needs_innerwear"]` (blazers, nehru jackets, jackets)
 
