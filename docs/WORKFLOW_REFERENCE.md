@@ -47,7 +47,7 @@ The Phase 12 re-architecture (Phases 12A–12E, completed April 2026) consolidat
 | Component | Phase | Purpose |
 |---|---|---|
 | `agents/visual_evaluator_agent.py` | 12B | Vision-grounded per-candidate evaluator — the **sole evaluator** in the system (legacy `OutfitEvaluator` and `OutfitCheckAgent` removed April 9, 2026). 9 dimension scores (5 always-evaluated + 4 context-gated), 8 archetype scores, optional `overall_verdict`/`strengths`/`improvements`. Three modes: `recommendation`, `single_garment`, `outfit_check`. |
-| `agents/reranker.py` | 12B | Deterministic top-N pruning before the expensive try-on stage. `final_top_n=3`, `pool_top_n=5` defaults; the over-generation pool gives the orchestrator headroom when a try-on fails the quality gate. |
+| `agents/reranker.py` | 12B | Direction-aware round-robin pruning before the try-on stage. Picks the top candidate from each direction first, then fills remaining slots by global `assembly_score`. `final_top_n=3`, `pool_top_n=5` defaults; the over-generation pool gives the orchestrator headroom when a try-on fails the quality gate. |
 | `agents/style_advisor_agent.py` | 12C | LLM advisor for open-ended `style_discovery` and `explanation_request` (against prior turn artifacts). Returns structured advice with prose answer + bullets + cited attributes + dominant directions. |
 | Four thinking directions | 12C | Reasoning axes propagated through architect / visual evaluator / advisor prompts: physical+color, comfort, occasion, weather/time. NOT fixed weights — the agent identifies which 1-2 dominate per turn. |
 | `weather_context` / `time_of_day` / `target_product_type` | 12A/C | New `CopilotResolvedContext` fields extracted by the planner, consumed by the architect and visual evaluator. |
@@ -177,7 +177,7 @@ User message
    │
    ├── Stage 2: Catalog Search [pgvector]
    │   ├── Embed query document via text-embedding-3-small (1536d)
-   │   ├── Hard filters: gender_expression, styling_completeness, garment_category, garment_subtype
+   │   ├── Hard filters: gender_expression (always), garment_subtype (conditional); styling_completeness from direction role; garment_category is soft signal only
    │   ├── Soft signals via embedding similarity: occasion, formality, time_of_day, color
    │   ├── No filter relaxation — single search pass, no retry
    │   ├── Retrieve: 12 products per query direction
@@ -803,7 +803,7 @@ User message
 4. Build Minimal Search Plan [NO LLM]
    ├── Single DirectionSpec with single QuerySpec
    ├── Query document: "A {color} {garment} for {formality}. {profile palette hint}"
-   └── Hard filters: gender_expression + garment_category + garment_subtype
+   └── Hard filters: gender_expression (always) + garment_subtype (conditional); garment_category is soft signal only
 
 5. Catalog Search [pgvector — embedding only, no LLM]
    ├── Reuses CatalogSearchAgent.search() public API

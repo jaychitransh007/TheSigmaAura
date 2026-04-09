@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: April 8, 2026 (Phase 12 re-architecture plan: visually-grounded evaluation, intent consolidation 12→7+feedback, planner split, pairing upload fix)
+Last updated: April 10, 2026 (Phase 12 close-out: smart hard-filter/soft-signal tiering, multi-direction diversity, reranker round-robin, catalog admin resync from DB, needs_innerwear filter, catalog health remediation 14,391 items)
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -50,7 +50,8 @@ Project status:
 - chat composer: `+` button popover with "Upload image" and "Select from wardrobe" options; drag-drop and paste support
 - wishlist: wishlisted catalog garments with product images, title, price, Buy Now — data from `catalog_interaction_history` hydrated with `catalog_enriched`
 - trial room: virtual try-on render gallery (2:3 aspect ratio, gradient timestamp overlay) — data from `virtual_tryon_images`
-- catalog admin: pipeline with upload, enrichment sync, embedding generation, URL backfill, include-incomplete toggle, skip-already-embedded optimization
+- catalog admin: pipeline with upload, enrichment sync, embedding generation, URL backfill, include-incomplete toggle, skip-already-embedded optimization, **resync-from-DB endpoint** (`POST /v1/admin/catalog/embeddings/resync`) for re-embedding enriched items with product_id_prefix filter and paginated fetch
+- catalog health: **14,391 items** — all enriched, all embedded, zero null filter columns; dead/delisted items cleaned up; Vastramay/Powerlook/CampusSutra re-embedded from DB after enrichment
 
 The system is a working recommendation engine with supporting infrastructure. The next phase is evolving it from a shopping-first tool into a lifestyle stylist — wardrobe-first across all intents, dedicated handlers for non-recommendation intents (outfit check, shopping decision, pairing, capsule planning), and WhatsApp as a live retention surface.
 
@@ -339,7 +340,7 @@ Implemented:
 - conversation memory carry-forward
 - LLM-only architect planner — no deterministic fallback (model: `gpt-5.4`)
 - strict JSON schema with enum-constrained hard filter vocabulary
-- hard filters: `gender_expression`, `styling_completeness`, `garment_category`, `garment_subtype`
+- hard filters: `gender_expression` (always), `garment_subtype` (conditional — only when user names a specific garment type); `garment_category` and `styling_completeness` are **soft signals** in the query document text only (April 9 2026 tiering)
 - soft signals via embedding only: `occasion_fit`, `formality_level`, `time_of_day`
 - no filter relaxation — single search pass per query
 - direction-aware retrieval: `needs_bottomwear` / `needs_topwear` / `complete`
@@ -416,8 +417,9 @@ Primary data sources:
 
 Current filter behavior:
 - global hard filter: `gender_expression` (always applied, never relaxed)
-- direction hard filters: `styling_completeness` (`complete`, `needs_bottomwear`, `needs_topwear`)
-- query-document hard filters: `garment_category`, `garment_subtype` (extracted server-side from planner output)
+- direction hard filters: `styling_completeness` — multi-value arrays: `complete` for complete directions, `["needs_bottomwear", "needs_innerwear"]` for top role, `["needs_topwear", "needs_innerwear"]` for bottom role (April 10 2026 — unlocks nehru jackets tagged `needs_innerwear`)
+- architect explicit hard_filters: `garment_subtype` (conditional — set for specific requests, null for broad)
+- query-document lines are **soft signals for embedding similarity only** — `_QUERY_FILTER_MAPPING` is empty; no hard filters extracted from query document text (April 9 2026)
 - soft signals via embedding similarity only: `occasion_fit`, `formality_level`, `time_of_day`
 
 No filter relaxation — single search pass per query. No retry with dropped filters.
@@ -1973,7 +1975,7 @@ Status: **complete** (April 8, 2026). Visual evaluator path is gated on the user
 Goal: evaluation reflects the rendered try-on, not catalog attributes. Explicit reranker prunes candidates before the expensive visual stage.
 
 Checklist:
-- [x] introduce an explicit `Reranker` step in the orchestrator pipeline between `OutfitAssembler` and try-on generation (`agents/reranker.py` — deterministic `assembly_score` sort with `final_top_n=3`, `pool_top_n=5`)
+- [x] introduce an explicit `Reranker` step in the orchestrator pipeline between `OutfitAssembler` and try-on generation (`agents/reranker.py` — **direction-aware round-robin**: picks the top candidate from each direction first, then fills remaining slots by global `assembly_score`; `final_top_n=3`, `pool_top_n=5`)
 - [x] merge `OutfitEvaluator` and `OutfitCheckAgent` into a single `VisualEvaluatorAgent` (`agents/visual_evaluator_agent.py`) that takes `(image, candidate_metadata, user_context, live_context, intent, mode)` and produces 9 dim scores + 8 archetype scores + structured notes per candidate. The agent works in three modes: `recommendation` (per-candidate, no overall_verdict), `single_garment` (full output for `garment_evaluation`), `outfit_check` (full output for the user-photo flow)
 - [x] add the 9th evaluator dimension `weather_time_pct` to `EvaluatedRecommendation` + `OutfitCard` (internal + api) — appropriateness for stated weather and time of day
 - [x] author `prompt/visual_evaluator.md` (combines the strongest pieces of `outfit_evaluator.md` and `outfit_check.md`, names the four thinking directions, single-garment framing, follow-up evaluation rules, weather/time mapping)

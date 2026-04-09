@@ -39,11 +39,13 @@ Implemented now:
 - server-side conversation-memory carry-forward across follow-up turns
 - planner-driven runtime with deterministic handler overrides for pairing, outfit check, source preference, and catalog CTA follow-up
 - strict JSON schema with enum-constrained hard filter vocabulary
-- hard filters: `gender_expression`, `styling_completeness`, `garment_category`, `garment_subtype`
-- soft signals via embedding similarity only: `occasion_fit`, `formality_level`, `time_of_day`
+- **tiered hard filter / soft signal system** (April 9 2026): `gender_expression` always hard; `garment_subtype` conditional (hard for specific requests, null for broad); `garment_category` and `styling_completeness` are soft signals in query document text only — never hard filters
+- soft signals via embedding similarity only: `garment_category`, `styling_completeness`, `occasion_fit`, `formality_level`, `time_of_day`
 - no filter relaxation — single search pass per query
 - embedding retrieval from `catalog_item_embeddings` with hydration from `catalog_enriched`
-- direction-aware retrieval: `needs_bottomwear` / `needs_topwear` / `complete`
+- direction-aware retrieval: multi-value arrays — `["needs_bottomwear", "needs_innerwear"]` for top, `["needs_topwear", "needs_innerwear"]` for bottom, `complete` for complete directions
+- **direction-aware reranker**: round-robin picks one candidate per direction before filling by score — guarantees outfit variety across architect's concepts
+- previous recommendation exclusion: follow-up turns exclude prior product IDs from retrieval
 - deterministic assembly and LLM evaluation with graceful evaluator fallback
 - architect failure returns error to user (no silent degradation)
 - latency tracking via `time.monotonic()` per agent stage
@@ -1046,35 +1048,39 @@ class CombinedContext:
     conversation_memory: ConversationMemory | None
 ```
 
-### Hard filters
+### Hard filters vs soft signals (April 9-10 2026 tiering)
 
-Global hard filters:
+**Tiered filter system** — hard filters are binary gates that exclude products. Use sparingly. The embedding similarity search ranks relevance via soft signals in the query document text.
+
+Global hard filters (always applied):
 - `gender_expression` (derived from user gender: male → masculine, female → feminine)
 
-Direction-specific hard filters:
-- complete outfit directions use `styling_completeness = complete`
-- paired top directions use `styling_completeness = needs_bottomwear`
-- paired bottom directions use `styling_completeness = needs_topwear`
+Direction-specific filters (applied by `build_directional_filters` in the catalog search agent):
+- complete outfit directions use `styling_completeness = "complete"`
+- paired top directions use `styling_completeness = ["needs_bottomwear", "needs_innerwear"]` (multi-value array — includes nehru jackets and layering pieces)
+- paired bottom directions use `styling_completeness = ["needs_topwear", "needs_innerwear"]`
 
-Query-document-extracted hard filters (server-side extraction from architect output):
-- `garment_category`
-- `garment_subtype`
+Architect explicit hard filters (set in `query.hard_filters`):
+- `garment_subtype` — **conditional**: set only when the user names a specific garment type ("show me kurtas"); null for broad requests ("something traditional for a wedding")
 
-NOT hard filters (soft signals via embedding similarity only):
+**NOT hard filters** (soft signals in query document text via embedding similarity only):
+- `garment_category` — hard-filtering `top` excludes `set` (kurta_set), `one_piece`, `outerwear`; the #1 cause of zero results
+- `styling_completeness` — hard-filtering `needs_bottomwear` excludes complete sets; the search agent handles completeness via direction structure
 - `occasion_fit`
 - `formality_level`
 - `time_of_day`
 
-No filter relaxation — single search pass per query. If a query returns insufficient results, it is not retried with dropped filters.
+No query-document-extracted hard filters — `_QUERY_FILTER_MAPPING` is empty. All query document lines are soft signals for embedding similarity only. The architect sets hard_filters explicitly when needed.
 
-Valid hard filter vocabulary (enforced in architect JSON schema):
+No filter relaxation — single search pass per query. If a query returns insufficient results, it is not retried with dropped filters. Previous recommendation product IDs are excluded from follow-up retrieval.
 
-| Filter key | Valid values |
-|---|---|
-| `styling_completeness` | `complete`, `needs_bottomwear`, `needs_topwear`, `needs_innerwear`, `dual_dependency` |
-| `garment_category` | `top`, `bottom`, `set`, `one_piece`, `outerwear` |
-| `garment_subtype` | `shirt`, `tshirt`, `blouse`, `sweater`, `sweatshirt`, `hoodie`, `cardigan`, `tunic`, `kurta_set`, `trouser`, `pants`, `jeans`, `track_pants`, `shorts`, `skirt`, `dress`, `gown`, `saree`, `anarkali`, `kaftan`, `playsuit`, `salwar_set`, `salwar_suit`, `co_ord_set`, `blazer`, `jacket`, `coat`, `shacket` |
-| `gender_expression` | `masculine`, `feminine`, `unisex` |
+Valid filter vocabulary (enforced in architect JSON schema):
+
+| Filter key | Role | Valid values |
+|---|---|---|
+| `garment_subtype` | Conditional hard filter (specific requests only) | `shirt`, `tshirt`, `blouse`, `sweater`, `sweatshirt`, `hoodie`, `cardigan`, `tunic`, `kurta`, `kurta_set`, `kurti`, `trouser`, `pants`, `jeans`, `track_pants`, `shorts`, `skirt`, `dress`, `gown`, `saree`, `anarkali`, `kaftan`, `playsuit`, `salwar_set`, `salwar_suit`, `co_ord_set`, `blazer`, `jacket`, `coat`, `shacket`, `palazzo`, `lehenga_set`, `jumpsuit`, `nehru_jacket`, `suit_set` |
+| `gender_expression` | Always hard filter | `masculine`, `feminine`, `unisex` |
+| `styling_completeness` | Direction-level only (not architect) | `complete`, `needs_bottomwear`, `needs_topwear`, `needs_innerwear`, `dual_dependency` |
 
 Important:
 - for v1, do not globally force complete outfits

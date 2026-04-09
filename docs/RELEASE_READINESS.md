@@ -22,10 +22,11 @@ The pipeline must produce a usable answer for every primary intent without
 manual intervention.
 
 - [ ] All 318 tests across `tests/` pass against the current branch
-      (verified April 9, 2026: legacy evaluators removed, turn_traces +
-      non-garment detection + split polar bar chart + assistant markup +
-      4-tab layout (Chat/Wardrobe/Wishlist/Trial Room) + multi-value
-      subtype filters + catalog re-enrichment (14.7K products) shipped).
+      (verified April 10, 2026: smart hard-filter/soft-signal tiering +
+      multi-direction diversity + reranker round-robin + needs_innerwear
+      filter + catalog admin resync endpoint + previous-rec exclusion +
+      product URL reconstruction + catalog health remediation (14,391
+      enriched+embedded products, zero nulls) shipped).
 - [ ] `ops/scripts/validate_dependency_report.py` runs to completion with
       zero failed assertions.
 - [ ] `ops/scripts/smoke_test_full_flow.sh` runs to completion against a
@@ -47,6 +48,9 @@ manual intervention.
 The environment we ship to must have the data the pipeline depends on.
 
 - [ ] `catalog_enriched` has at least 500 rows with `row_status in ('ok','complete')`.
+      (verified April 10, 2026: 14,391 items, all enriched, all embedded,
+      zero null filter columns. Dead/delisted items cleaned up. Vastramay,
+      Powerlook, CampusSutra re-embedded from DB via resync endpoint.)
 - [ ] `catalog_item_embeddings` has the same row count as the embeddable
       subset of `catalog_enriched` (no orphan rows, no missing embeddings).
 - [ ] All Supabase migrations under `supabase/migrations/` have been
