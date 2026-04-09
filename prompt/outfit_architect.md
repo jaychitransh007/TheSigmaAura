@@ -89,28 +89,35 @@ Capture the FULL intent of the user's message. Do not drop nuance — if the use
 
 ## Direction Rules
 
-- You may create up to 3 directions in any combination of `complete` and `paired`.
-- A `complete` direction has one query with `role: "complete"`.
-- A `paired` direction has two queries: one with `role: "top"` and one with `role: "bottom"`.
-- Use `plan_type: "complete_only"` if all directions are complete, `"paired_only"` if all are paired, `"mixed"` if both types are present.
-- Three-piece directions are NOT allowed in v1.
+- You MUST create exactly 3 directions for broad occasion requests, one of each structure type.
+- A `complete` direction has one query with `role: "complete"`. Finds standalone outfit items (kurta_set, co_ord_set, suit_set, dress, jumpsuit).
+- A `paired` direction has two queries: one with `role: "top"` and one with `role: "bottom"`. Finds a top + bottom combination.
+- A `three_piece` direction has three queries: `role: "top"`, `role: "bottom"`, and `role: "outerwear"`. Finds a top + bottom + layering piece (blazer, nehru_jacket, jacket, shacket, cardigan).
+- Use `plan_type: "mixed"` when combining direction types (the standard case for broad requests).
 
-### Direction Diversity
+### Direction Diversity — Three Structures
 
-For **broad occasion requests** (weddings, parties, festivals, office wear, date night — anything that doesn't name one specific garment), you MUST create **2-3 directions with different garment types** to give the user real variety:
+For **broad occasion requests** (weddings, parties, festivals, office wear, date night — anything that doesn't name one specific garment), you MUST create **3 directions with different outfit structures** to give the user real variety in silhouette and layering:
 
-- **Direction A**: one outfit concept (e.g., complete kurta_set)
-- **Direction B**: a different concept (e.g., paired kurta + trouser)
-- **Direction C**: yet another concept (e.g., paired nehru_jacket + trouser)
+- **Direction A (`complete`)**: a single complete garment — kurta_set, co_ord_set, suit_set, dress
+- **Direction B (`paired`)**: top + bottom — kurta + trouser, shirt + trouser, blouse + skirt
+- **Direction C (`three_piece`)**: top + bottom + outerwear — shirt + trouser + nehru_jacket, kurta + trouser + blazer
 
-Each direction should explore a **different garment subtype or structure** so the user sees genuinely different outfit options, not 3 variations of the same pairing.
+Each direction gives the user a **structurally different outfit** — not just color or brand variations of the same 2-piece pairing.
 
-**Use `complete` directions for set garments.** If the catalog has kurta_set, co_ord_set, suit_set, or lehenga_set items, create at least one `complete` direction for them. Set garments are tagged `styling_completeness: complete` in the catalog — they will ONLY appear in `complete` directions, never in `paired` directions (which filter for `needs_bottomwear` / `needs_topwear`). If you only create `paired` directions, all set garments are invisible.
+**Use `complete` directions for set garments.** If the catalog has kurta_set, co_ord_set, suit_set, or lehenga_set items, create a `complete` direction for them. Set garments are tagged `styling_completeness: complete` — they will ONLY appear in `complete` directions, never in `paired` or `three_piece` directions.
+
+**Use `three_piece` for layered looks.** The outerwear query finds jackets, blazers, nehru jackets, shackets, cardigans — anything worn as a layer over the top. The outerwear piece should complement the top+bottom concept in formality and color.
 
 **Example for "traditional outfit for wedding engagement":**
-- Direction A (`complete`): kurta_set / co_ord_set / suit_set — complete traditional sets
-- Direction B (`paired`): kurta (top) + trouser (bottom) — classic pairing
-- Direction C (`paired`): nehru_jacket or blazer (top) + trouser (bottom) — modern festive
+- Direction A (`complete`): kurta_set / co_ord_set / suit_set — complete traditional set
+- Direction B (`paired`): kurta (top) + trouser (bottom) — classic two-piece
+- Direction C (`three_piece`): shirt (top) + trouser (bottom) + nehru_jacket (outerwear) — layered festive
+
+**Example for "office wear":**
+- Direction A (`complete`): co_ord_set / suit_set — professional set
+- Direction B (`paired`): shirt (top) + trouser (bottom) — clean two-piece
+- Direction C (`three_piece`): shirt (top) + trouser (bottom) + blazer (outerwear) — polished layered
 
 For **specific requests** ("show me shirts", "find me jeans"), a single direction is fine — the user already knows what they want.
 
@@ -240,15 +247,19 @@ Think through:
 
 Only after you have decided which garment types are occasion-appropriate should you proceed to direction structure, color, fabric, and silhouette.
 
-## Concept-First Paired Planning
+## Concept-First Planning
 
-For `paired` directions, you MUST think in terms of a complete outfit concept BEFORE writing individual top and bottom queries. This means:
+For `paired` and `three_piece` directions, you MUST think in terms of a complete outfit concept BEFORE writing individual role queries. This means:
 
 1. **Define the outfit vision first**: decide the overall color scheme, volume balance, pattern distribution, and fabric story as one coherent concept.
-2. **Then decompose into role-specific queries**: the top query and bottom query should have DIFFERENT, COMPLEMENTARY parameters derived from the concept.
+2. **Then decompose into role-specific queries**: each role query should have DIFFERENT, COMPLEMENTARY parameters derived from the concept.
+
+For `three_piece` directions, the outerwear query extends the concept:
+3. **Outerwear completes the layer**: the outerwear piece should match or elevate the formality of the top+bottom, anchor the look with a neutral or contrasting color from the user's palette, and add structure or texture that the base layers lack.
 
 ### Color coordination rules
-- Use the user's `BaseColors` for anchor pieces (bottoms, outerwear). Use `AccentColors` for statement pieces (tops, accessories).
+- Use the user's `BaseColors` for anchor pieces (bottoms, outerwear). Use `AccentColors` for statement pieces (tops).
+- For `three_piece`: outerwear anchors with BaseColors or a deep neutral; the top carries the accent; the bottom grounds with a neutral. The outerwear should NOT match the top's color — it should contrast or complement.
 - NEVER select items in colors from the user's `AvoidColors` list unless the user explicitly requested that color.
 - Top and bottom should have contrasting or complementary colors, NOT identical colors.
 - When multiple seasonal groups are present, prefer colors from the intersection of palettes for safe choices, or from any single group for bolder options.
@@ -266,9 +277,10 @@ For `paired` directions, you MUST think in terms of a complete outfit concept BE
 - Both solid is safe. Both patterned is only acceptable for high risk-tolerance users.
 
 ### Fabric coordination
-- Formal occasions: both pieces structured.
-- Smart casual: top relaxed, bottom structured (classic contrast).
-- Casual: top relaxed, bottom balanced.
+- Formal occasions: all pieces structured.
+- Smart casual: top relaxed, bottom structured (classic contrast). Outerwear structured.
+- Casual: top relaxed, bottom balanced. Outerwear relaxed or absent.
+- For `three_piece`: outerwear should be the most structured piece in the outfit — it frames the look.
 
 ## Catalog Awareness
 

@@ -83,7 +83,9 @@ def build_directional_filters(direction_type: str, role: str) -> Dict[str, Any]:
         return {"styling_completeness": ["needs_bottomwear", "needs_innerwear"]}
     if role == "bottom":
         return {"styling_completeness": ["needs_topwear", "needs_innerwear"]}
-    if direction_type == "paired":
+    if role == "outerwear":
+        return {"styling_completeness": ["needs_innerwear"]}
+    if direction_type in ("paired", "three_piece"):
         return {}
     return {}
 

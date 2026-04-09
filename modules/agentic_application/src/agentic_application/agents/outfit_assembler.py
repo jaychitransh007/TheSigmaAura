@@ -265,6 +265,10 @@ class OutfitAssembler:
                 candidates.extend(
                     self._assemble_paired(direction.direction_id, direction_sets, combined_context)
                 )
+            elif direction.direction_type == "three_piece":
+                candidates.extend(
+                    self._assemble_three_piece(direction.direction_id, direction_sets, combined_context)
+                )
 
         candidates = self._enforce_cross_outfit_diversity(candidates)
         return candidates
@@ -408,6 +412,68 @@ class OutfitAssembler:
                     items=[
                         self._product_to_item(top, role="top"),
                         self._product_to_item(bottom, role="bottom"),
+                    ],
+                    assembly_score=score,
+                    assembly_notes=notes,
+                )
+            )
+        return candidates
+
+    def _assemble_three_piece(
+        self, direction_id: str, sets: List[RetrievedSet], combined_context: CombinedContext | None = None,
+    ) -> List[OutfitCandidate]:
+        """Combine top + bottom + outerwear products."""
+        tops: List[RetrievedProduct] = []
+        bottoms: List[RetrievedProduct] = []
+        outerwear: List[RetrievedProduct] = []
+        for rs in sets:
+            if rs.role == "top":
+                tops.extend(rs.products)
+            elif rs.role == "bottom":
+                bottoms.extend(rs.products)
+            elif rs.role == "outerwear":
+                outerwear.extend(rs.products)
+
+        if not tops or not bottoms or not outerwear:
+            # Fall back to paired assembly if outerwear is missing
+            if tops and bottoms:
+                return self._assemble_paired(direction_id, sets, combined_context)
+            return []
+
+        # Cap inputs to avoid combinatorial explosion
+        tops = tops[:10]
+        bottoms = bottoms[:10]
+        outerwear = outerwear[:10]
+
+        scored: List[Tuple[float, List[str], RetrievedProduct, RetrievedProduct, RetrievedProduct]] = []
+        for top in tops:
+            for bottom in bottoms:
+                pair_score, pair_notes = self._evaluate_pair(top, bottom, combined_context)
+                if pair_score <= 0:
+                    continue
+                for outer in outerwear:
+                    outer_score, outer_notes = self._evaluate_pair(top, outer, combined_context)
+                    if outer_score <= 0:
+                        continue
+                    # Three-piece score: weighted average of pair + outerwear coherence
+                    total_score = (pair_score * 0.6) + (outer_score * 0.4)
+                    notes = pair_notes + outer_notes
+                    scored.append((total_score, notes, top, bottom, outer))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        scored = scored[:MAX_PAIRED_CANDIDATES]
+
+        candidates: List[OutfitCandidate] = []
+        for score, notes, top, bottom, outer in scored:
+            candidates.append(
+                OutfitCandidate(
+                    candidate_id=str(uuid4())[:8],
+                    direction_id=direction_id,
+                    candidate_type="three_piece",
+                    items=[
+                        self._product_to_item(top, role="top"),
+                        self._product_to_item(bottom, role="bottom"),
+                        self._product_to_item(outer, role="outerwear"),
                     ],
                     assembly_score=score,
                     assembly_notes=notes,

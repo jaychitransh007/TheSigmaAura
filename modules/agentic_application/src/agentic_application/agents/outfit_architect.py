@@ -70,7 +70,7 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                         "direction_id": {"type": "string"},
                         "direction_type": {
                             "type": "string",
-                            "enum": ["complete", "paired"],
+                            "enum": ["complete", "paired", "three_piece"],
                         },
                         "label": {"type": "string"},
                         "queries": {
@@ -83,7 +83,7 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                                     "query_id": {"type": "string"},
                                     "role": {
                                         "type": "string",
-                                        "enum": ["complete", "top", "bottom"],
+                                        "enum": ["complete", "top", "bottom", "outerwear"],
                                     },
                                     "hard_filters": {
                                         "type": "object",
