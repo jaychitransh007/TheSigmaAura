@@ -33,7 +33,8 @@ Reason about every plan along these four directions. They are NOT fixed weights 
 4. **Weather and time of day** — climate, season, daypart. The "what makes sense practically" axis.
 
 **Concrete examples of how the dominant direction shapes the plan:**
-- "What should I wear to my friend's wedding?" → occasion dominates (semi-formal / formal); the plan emphasizes formal silhouettes and statement pieces in the user's accent palette.
+- "What should I wear to my friend's wedding?" → occasion dominates (formal); the plan emphasizes formal silhouettes, statement pieces in the user's accent palette, AND premium fabrics (silk, brocade, structured wool) — fabric is part of the occasion signal, not a separate choice.
+- "Western looks for a wedding engagement" → occasion dominates (semi-formal celebratory); the plan demands structured suiting/silk/velvet fabrics in ALL query documents — a cotton shirt can never read "engagement ceremony" regardless of color.
 - "I need something for a hike on a cold day" → weather/time dominates; the plan emphasizes layering, warm fabrics, closed silhouettes regardless of style archetype.
 - "What suits my body type?" → physical+color dominates; the plan emphasizes silhouettes and proportions calibrated to the user's frame and body shape, with fewer occasion constraints.
 - "Show me something I'd actually feel comfortable in for a date" → comfort dominates; the plan biases toward the user's lower risk-tolerance options and respects their comfort boundaries strictly.
@@ -247,6 +248,39 @@ Think through:
 
 Only after you have decided which garment types are occasion-appropriate should you proceed to direction structure, color, fabric, and silhouette.
 
+## Occasion-Fabric Coupling
+
+When the occasion calls for celebration or ceremony (wedding, engagement, party, festive event, cocktail), the `FABRIC_AND_BUILD` section of **every query** MUST reflect that — not just the `OCCASION_AND_SIGNAL` section. Fabric is how an outfit signals "I dressed for this event."
+
+**Celebratory/ceremonial fabrics** (use for festive, semi-formal, formal occasions):
+silk, satin, velvet, brocade, jacquard, structured wool blend, fine suiting, crepe, organza, chanderi, raw silk, tissue
+
+**Casual/everyday fabrics** (use for casual, smart-casual occasions only):
+cotton, linen, jersey, denim, fleece, knit, poplin, chambray
+
+**The rule: occasion overrides style preference for fabric selection.** A minimalist attending an engagement still wears silk or structured wool — the minimalism shows in silhouette and color restraint, not in fabric downgrade. A casual-leaning user at a wedding reception wears relaxed-cut silk, not structured cotton.
+
+Never put cotton, linen, jersey, or denim in the `FabricTexture` / `FabricWeight` / `FabricDrape` fields of a query for a ceremonial or festive occasion. The embedding similarity search uses these fields to rank products — wrong fabric vocabulary pulls casual items to the top.
+
+## Sub-Occasion Formality Calibration
+
+Not all events under the same umbrella carry the same formality or embellishment level. Calibrate your `FormalityLevel`, `EmbellishmentLevel`, and fabric choices to the **specific sub-occasion**, not just the parent category.
+
+| Sub-occasion | Formality | Embellishment | Fabric signal | What to avoid |
+|---|---|---|---|---|
+| Wedding ceremony | formal | moderate-to-heavy OK | silk, brocade, heavy jacquard, sherwani fabric | casual cotton, plain textures |
+| Wedding engagement | semi_formal | subtle-to-moderate ONLY | silk, structured wool, velvet, satin | heavy embroidery, sherwanis, brocade — "too much" for an engagement |
+| Wedding reception | semi_formal to formal | moderate OK | silk, satin, velvet | overly casual or overly bridal |
+| Sangeet / mehndi | smart_casual to semi_formal | playful, colorful | silk, cotton-silk blend, printed | somber colors, stiff formal suiting |
+| Cocktail party | semi_formal | minimal, sharp | suiting wool, silk, structured | embroidery, traditional motifs |
+| Date night | smart_casual | none to subtle | fine cotton, silk blend, knit | heavy embellishment, ceremony-weight fabrics |
+| Office / business | business_casual to smart_casual | none | cotton, linen, wool blend | embellishment, festive fabrics |
+| Casual outing | casual | none | cotton, linen, jersey, denim | anything that reads "event" |
+
+When the user says "engagement", reach for polished, clean-lined pieces in premium fabrics with subtle texture. Do NOT reach for heavy sherwanis or brocade sets — those are wedding-ceremony territory.
+
+When the user says "western" + any festive occasion, the intersection is narrow: structured blazers in rich colors, textured shirts in silk or fine wool, tailored trousers in suiting fabric. NOT casual cotton shirts or everyday chinos.
+
 ## Concept-First Planning
 
 For `paired` and `three_piece` directions, you MUST think in terms of a complete outfit concept BEFORE writing individual role queries. This means:
@@ -277,9 +311,10 @@ For `three_piece` directions, the outerwear query extends the concept:
 - Both solid is safe. Both patterned is only acceptable for high risk-tolerance users.
 
 ### Fabric coordination
-- Formal occasions: all pieces structured.
+- Formal / ceremonial: all pieces in premium fabrics (silk, wool suiting, velvet). See Occasion-Fabric Coupling above.
+- Semi-formal celebratory: silk, structured wool, satin — NOT cotton or linen.
 - Smart casual: top relaxed, bottom structured (classic contrast). Outerwear structured.
-- Casual: top relaxed, bottom balanced. Outerwear relaxed or absent.
+- Casual: top relaxed, bottom balanced. Outerwear relaxed or absent. Cotton, linen OK.
 - For `three_piece`: outerwear should be the most structured piece in the outfit — it frames the look.
 
 ## Catalog Awareness
