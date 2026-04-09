@@ -3511,18 +3511,17 @@ def get_web_ui_html(
       items.forEach(function(item) {{
         var card = document.createElement("div");
         card.className = "closet-card";
+        card.style.cssText = "border-radius:14px; border:1px solid var(--line); overflow:hidden; background:var(--surface); box-shadow:0 2px 12px rgba(54,32,24,0.06); cursor:pointer; transition:transform 120ms ease, box-shadow 120ms ease;";
         var imgUrl = item.image_url || "";
-        card.innerHTML = '<div class="closet-image" style="aspect-ratio:2/3;">' +
-          (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="Try-on" loading="lazy" style="object-fit:cover;width:100%;height:100%;" />' : '') +
-        '</div>' +
-        '<div class="closet-meta">' +
-          '<div style="font-size:11px;color:var(--muted);">' + relativeTime(item.created_at) + '</div>' +
+        card.innerHTML = '<div style="aspect-ratio:2/3; overflow:hidden; background:var(--surface-alt); position:relative;">' +
+          (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="Try-on" loading="lazy" style="width:100%; height:100%; object-fit:cover; display:block;" />' : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;">No render</div>') +
+          '<div style="position:absolute; bottom:0; left:0; right:0; padding:8px 12px; background:linear-gradient(transparent, rgba(0,0,0,0.5)); color:#fff; font-size:11px; font-weight:500;">' + relativeTime(item.created_at) + '</div>' +
         '</div>';
-        // Lightbox on click
+        card.addEventListener("mouseenter", function() {{ card.style.transform = "translateY(-2px)"; card.style.boxShadow = "0 6px 20px rgba(54,32,24,0.12)"; }});
+        card.addEventListener("mouseleave", function() {{ card.style.transform = ""; card.style.boxShadow = "0 2px 12px rgba(54,32,24,0.06)"; }});
         card.addEventListener("click", function() {{
           if (imgUrl) window.open(imgUrl, "_blank");
         }});
-        card.style.cursor = "pointer";
         grid.appendChild(card);
       }});
     }} catch (_) {{
