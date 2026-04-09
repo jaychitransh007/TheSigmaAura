@@ -1021,7 +1021,7 @@ Success criteria:
 
 ## Immediate Next Item
 
-### P0 — Occasion-fabric coupling + sub-occasion formality calibration in architect (April 10 2026)
+### ✅ CLOSED — Occasion-fabric coupling + sub-occasion formality calibration in architect (April 10 2026)
 
 **Problem:** User feedback from conversation `2035c3cb` (wedding engagement) shows two quality failures even after structural fixes:
 
