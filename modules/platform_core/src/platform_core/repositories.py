@@ -802,7 +802,8 @@ class ConversationRepository:
                 "title": str(enriched.get("title") or pid),
                 "price": str(enriched.get("price") or ""),
                 "image_url": str(
-                    enriched.get("images__0__src")
+                    enriched.get("images_0_src")
+                    or enriched.get("images__0__src")
                     or enriched.get("primary_image_url")
                     or ""
                 ),
