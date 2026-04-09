@@ -1467,6 +1467,7 @@ def get_web_ui_html(
 
   function clearImagePreview() {{
     pendingImageData = "";
+    pendingWardrobeItemId = "";
     imageChipImg.src = "";
     imageChipName.textContent = "";
     imageChip.classList.remove("visible");
@@ -1606,12 +1607,11 @@ def get_web_ui_html(
             // user sees what they selected, but DON'T set pendingImageData
             // (that would trigger a full re-upload on the backend).
             if (imgUrl) {{
-              var chip = document.getElementById("imageChip");
-              if (chip) {{
-                chip.querySelector(".preview").src = imgUrl;
-                chip.querySelector(".name").textContent = item.title || "Wardrobe item";
-                chip.style.display = "flex";
-              }}
+              imageChipImg.src = imgUrl;
+              imageChipImg.onerror = function() {{ this.style.display = "none"; }};
+              imageChipImg.style.display = "";
+              imageChipName.textContent = item.title || "Wardrobe item";
+              imageChip.classList.add("visible");
             }}
             messageEl.value = "What goes with my " + (item.title || "wardrobe item") + "?";
             wardrobePickerModal.classList.remove("open");
