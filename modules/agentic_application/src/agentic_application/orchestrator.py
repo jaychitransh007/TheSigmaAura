@@ -801,6 +801,32 @@ class AgenticOrchestrator:
                 is_garment_photo=is_garm if is_garm is not None else None,
                 garment_present_confidence=float((attached_item or {}).get("garment_present_confidence") or 1.0),
             )
+
+        # ── Carry forward the previous turn's attached item ──────────
+        # When the user didn't upload a new image and didn't select from
+        # wardrobe, but the previous turn had an attached garment (e.g.
+        # the user said "Can I wear this pant?" on Turn 1 and is now
+        # saying "Show me a date-night outfit with these pants" on Turn
+        # 2), use the previous turn's attached item as this turn's
+        # anchor. Without this, follow-up pairing requests lose the
+        # garment context and the architect searches catalog for BOTH
+        # roles instead of anchoring the user's piece.
+        if not attached_item:
+            prev_attached = previous_context.get("last_attached_item")
+            if prev_attached and isinstance(prev_attached, dict) and prev_attached.get("id"):
+                attached_item = dict(prev_attached)
+                attached_item.setdefault("attachment_source", "previous_turn")
+                attached_item.setdefault("is_garment_photo", True)
+                attached_item.setdefault("garment_present_confidence", 1.0)
+                attached_context = self._attached_item_context(attached_item)
+                if attached_context:
+                    effective_message = f"{message.strip()} {attached_context}".strip()
+                _log.info(
+                    "Loaded attached item from previous turn: %s (id=%s)",
+                    attached_item.get("title"),
+                    attached_item.get("id"),
+                )
+
         # --- 0.5 Onboarding Gate ---
         emit("onboarding_gate", "started")
         onboarding_status = self.onboarding_gateway.get_onboarding_status(external_user_id)
@@ -1277,6 +1303,55 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence,
 
             )
+
+        # ── Store last_attached_item so the NEXT turn can carry it ────
+        # If this turn processed an attached garment (from upload or
+        # wardrobe selection), persist a summary in the session context
+        # so a follow-up "pair these pants" turn can anchor on it.
+        # This is a read-merge-write because the handler already wrote
+        # its own session context fields — we add one more key without
+        # overwriting the rest. Best-effort: failures here must not
+        # block the response.
+        if attached_item and str(attached_item.get("id") or "").strip():
+            try:
+                fresh_ctx = dict(
+                    (self.repo.get_conversation(conversation_id) or {}).get("session_context_json") or {}
+                )
+                fresh_ctx["last_attached_item"] = {
+                    "id": str(attached_item.get("id") or ""),
+                    "title": str(attached_item.get("title") or ""),
+                    "image_path": str(attached_item.get("image_path") or ""),
+                    "image_url": str(attached_item.get("image_url") or ""),
+                    "garment_category": str(attached_item.get("garment_category") or ""),
+                    "garment_subtype": str(attached_item.get("garment_subtype") or ""),
+                    "primary_color": str(attached_item.get("primary_color") or ""),
+                    "secondary_color": str(attached_item.get("secondary_color") or ""),
+                    "formality_level": str(attached_item.get("formality_level") or ""),
+                    "occasion_fit": str(attached_item.get("occasion_fit") or ""),
+                    "pattern_type": str(attached_item.get("pattern_type") or ""),
+                    "source": str(attached_item.get("source") or "wardrobe"),
+                }
+                self.repo.update_conversation_context(
+                    conversation_id=conversation_id,
+                    session_context=fresh_ctx,
+                )
+            except Exception:
+                _log.debug("Could not store last_attached_item in session context", exc_info=True)
+        elif not attached_item:
+            # Clear the previous attached item so it doesn't linger
+            # across unrelated turns (e.g. user switches topic).
+            try:
+                fresh_ctx = dict(
+                    (self.repo.get_conversation(conversation_id) or {}).get("session_context_json") or {}
+                )
+                if "last_attached_item" in fresh_ctx:
+                    del fresh_ctx["last_attached_item"]
+                    self.repo.update_conversation_context(
+                        conversation_id=conversation_id,
+                        session_context=fresh_ctx,
+                    )
+            except Exception:
+                _log.debug("Could not clear last_attached_item", exc_info=True)
 
         # ── Persist the turn trace ────────────────────────────────────
         # Snapshot the evaluation summary from the handler result if

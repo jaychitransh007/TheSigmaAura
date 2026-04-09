@@ -1018,6 +1018,26 @@ Success criteria:
 
 ## Immediate Next Item
 
+### ✅ CLOSED — Context retention: carry attached garment across follow-up turns (April 9 2026)
+
+**Bug:** when the user asked "Can I wear this pant for my date tonight?" (Turn 1, garment_evaluation with uploaded image), then followed up with "Show me a date-night outfit with these pants" (Turn 2, pairing_request), the orchestrator lost the garment context. Turn 2 ran without an anchor — the architect searched catalog for BOTH top AND bottom, producing outfits with random joggers/cargo pants instead of using the user's specific Black Track Pants as the anchor bottom.
+
+**Root cause:** no mechanism existed to carry the `attached_item` from one turn's garment_evaluation into the next turn's pairing_request as the anchor. The anchor injection at `orchestrator.py:3723` checks `if intent == PAIRING_REQUEST and attached_item:` — but on a follow-up turn with no new upload/selection, `attached_item` was always `None`.
+
+**Fix (two parts):**
+
+1. **Store:** after every handler returns, if `attached_item` was present (from upload or wardrobe selection), persist a `last_attached_item` dict in the session context (read-merge-write so handler's own context keys aren't overwritten). Clear it on turns without an attached item so it doesn't linger across unrelated topics.
+
+2. **Load:** at the TOP of `process_turn`, after the `wardrobe_item_id` and `image_data` blocks, if `attached_item` is still `None` AND `previous_context` has a `last_attached_item` with a valid `id`, use it as this turn's `attached_item`. The attached context string is appended to `effective_message` so the planner sees the garment attributes.
+
+The anchor injection at line 3723 then finds `attached_item` populated and correctly sets `initial_live_context.anchor_garment`, so the architect plans for only the complementary role (tops for the anchor pants) instead of searching both roles from catalog.
+
+**Files changed:**
+- `orchestrator.py` — two new blocks: "Carry forward previous turn's attached item" (load) + "Store last_attached_item" (persist). Both are best-effort with try/except so failures don't block responses.
+- `docs/CURRENT_STATE.md` — this close-out.
+
+---
+
 ### ✅ CLOSED — Fix duplicate wardrobe rows on "Select from wardrobe" pairing (April 9 2026)
 
 **Bug:** when the user selected an existing wardrobe item via the "Select from wardrobe" chat composer, the frontend fetched the item's image as a blob, converted it to base64, and re-sent it as `image_data` in the turn request — exactly like a new upload. The backend then re-enriched and re-saved it, creating a **duplicate wardrobe row** for an item the user already owned.
