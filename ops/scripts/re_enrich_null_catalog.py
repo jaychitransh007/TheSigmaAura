@@ -31,11 +31,12 @@ from catalog.enrichment.config import PipelineConfig
 
 # Load config
 config = load_config()
-_sb_url = os.environ.get("SUPABASE_URL") or config.get("SUPABASE_URL", "")
-_sb_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or config.get("SUPABASE_SERVICE_ROLE_KEY", "")
-client = SupabaseRestClient(rest_url=_sb_url, service_role_key=_sb_key)
+client = SupabaseRestClient(
+    rest_url=config.supabase_rest_url,
+    service_role_key=config.supabase_service_role_key,
+)
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or config.get("OPENAI_API_KEY", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 MODEL = "gpt-5-mini"
 BATCH_SIZE = 50  # fetch this many null rows at a time
 
