@@ -1026,7 +1026,7 @@ Success criteria:
 
 ## Immediate Next Item
 
-### P0 — Parallelize catalog retrieval: batch embeddings + concurrent search (April 10 2026)
+### ✅ CLOSED — Parallelize catalog retrieval: batch embeddings + concurrent search (April 10 2026)
 
 **Problem:** The catalog search pipeline makes **18 sequential network calls** for a typical broad request (6 queries × 3 calls each: embed → search → hydrate). Each cycle is ~300-500ms, totalling ~2-3 seconds just for retrieval — the largest latency contributor in the pipeline.
 

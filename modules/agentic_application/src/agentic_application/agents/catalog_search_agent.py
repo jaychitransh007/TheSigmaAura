@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, Iterable, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from platform_core.restricted_categories import detect_restricted_record
 from platform_core.supabase_rest import SupabaseRestClient
@@ -15,6 +16,7 @@ from ..filters import (
 )
 from ..schemas import (
     CombinedContext,
+    QuerySpec,
     RecommendationPlan,
     RetrievedProduct,
     RetrievedSet,
@@ -22,6 +24,8 @@ from ..schemas import (
 from ..services.catalog_retrieval_gateway import ApplicationCatalogRetrievalGateway
 
 _log = logging.getLogger(__name__)
+
+_MAX_SEARCH_WORKERS = 4
 
 
 class CatalogSearchAgent:
@@ -34,6 +38,10 @@ class CatalogSearchAgent:
         self._retrieval_gateway = retrieval_gateway
         self._client = client
 
+    # ------------------------------------------------------------------
+    # Public
+    # ------------------------------------------------------------------
+
     def search(
         self,
         plan: RecommendationPlan,
@@ -41,16 +49,17 @@ class CatalogSearchAgent:
         *,
         relaxed_filter_keys: Iterable[str] = (),
     ) -> List[RetrievedSet]:
-        """Execute retrieval for every QuerySpec across all directions."""
-        results: List[RetrievedSet] = []
+        """Execute retrieval for every QuerySpec across all directions.
+
+        Embeddings are batched into a single OpenAI API call, then
+        search + hydrate cycles run in parallel via ThreadPoolExecutor.
+        """
         relaxed_keys = {str(key or "").strip() for key in relaxed_filter_keys}
         disliked_ids: set[str] = {
             str(pid).strip()
             for pid in list(getattr(combined_context, "disliked_product_ids", []) or [])
             if str(pid or "").strip()
         }
-        # Collect product IDs from previous recommendations so follow-up turns
-        # surface fresh products instead of repeating the same outfits.
         prev_rec_ids: set[str] = set()
         for rec in (combined_context.previous_recommendations or []):
             for item_id in (rec.get("item_ids") or []):
@@ -58,10 +67,10 @@ class CatalogSearchAgent:
                 if pid:
                     prev_rec_ids.add(pid)
         exclude_ids = disliked_ids | prev_rec_ids
-        _log.info(
-            "CatalogSearch: starting search for %d direction(s), retrieval_count=%d, disliked_excluded=%d, prev_rec_excluded=%d",
-            len(plan.directions), plan.retrieval_count, len(disliked_ids), len(prev_rec_ids),
-        )
+
+        # --- Prepare tasks and collect query documents ----------------
+        tasks: List[Dict[str, Any]] = []
+        query_documents: List[str] = []
         for direction in plan.directions:
             for query in direction.queries:
                 filters = merge_filters(
@@ -71,104 +80,132 @@ class CatalogSearchAgent:
                     query.hard_filters,
                 )
                 filters = drop_filter_keys(filters, relaxed_keys)
-                _log.info(
-                    "CatalogSearch: dir=%s query=%s role=%s filters=%s doc_len=%d",
-                    direction.direction_id, query.query_id, query.role,
-                    filters, len(query.query_document),
-                )
+                tasks.append({
+                    "direction_id": direction.direction_id,
+                    "query": query,
+                    "filters": filters,
+                })
+                query_documents.append(query.query_document)
 
-                # Embedding
-                t0 = time.monotonic()
-                try:
-                    embedding = self._retrieval_gateway.embed_texts([query.query_document])[0]
-                except Exception:
-                    _log.exception("CatalogSearch: embed_texts FAILED for query %s", query.query_id)
-                    embedding = None
-                embed_ms = int((time.monotonic() - t0) * 1000)
-
-                if embedding is None:
-                    _log.error("CatalogSearch: embedding is None — skipping search for query %s", query.query_id)
-                    results.append(
-                        RetrievedSet(
-                            direction_id=direction.direction_id,
-                            query_id=query.query_id,
-                            role=query.role,
-                            products=[],
-                            applied_filters={**filters, "restricted_category_policy": "excluded", "error": "embedding_failed"},
-                        )
-                    )
-                    continue
-
-                _log.info(
-                    "CatalogSearch: embedded in %dms, dims=%d, first_5_vals=[%s]",
-                    embed_ms, len(embedding),
-                    ", ".join(f"{v:.4f}" for v in embedding[:5]),
-                )
-
-                # Similarity search
-                t1 = time.monotonic()
-                try:
-                    matches = self._retrieval_gateway.similarity_search(
-                        query_embedding=embedding,
-                        match_count=plan.retrieval_count,
-                        filters=filters,
-                    ) or []
-                except Exception:
-                    _log.exception("CatalogSearch: similarity_search FAILED for query %s", query.query_id)
-                    matches = []
-                search_ms = int((time.monotonic() - t1) * 1000)
-
-                _log.info(
-                    "CatalogSearch: similarity_search returned %d matches in %dms",
-                    len(matches), search_ms,
-                )
-                if matches:
-                    top = matches[0]
-                    _log.info(
-                        "CatalogSearch: top match: pid=%s sim=%.4f cat=%s sub=%s",
-                        str(top.get("product_id", ""))[:30],
-                        float(top.get("similarity") or 0),
-                        top.get("garment_category", ""),
-                        top.get("garment_subtype", ""),
-                    )
-
-                # Hydrate
-                t2 = time.monotonic()
-                products = self._hydrate_matches(matches)
-                hydrate_ms = int((time.monotonic() - t2) * 1000)
-                pre_exclude = len(products)
-                if exclude_ids:
-                    products = [p for p in products if str(p.product_id or "") not in exclude_ids]
-                excluded_count = pre_exclude - len(products)
-                _log.info(
-                    "CatalogSearch: hydrated %d → %d products in %dms (blocked %d by restricted policy, excluded %d disliked+prev_rec)",
-                    len(matches), len(products), hydrate_ms,
-                    len(matches) - pre_exclude, excluded_count,
-                )
-
-                applied_filters_meta = {
-                    **filters,
-                    "restricted_category_policy": "excluded",
-                }
-                if disliked_ids:
-                    applied_filters_meta["disliked_product_policy"] = "excluded"
-                if prev_rec_ids:
-                    applied_filters_meta["prev_rec_product_policy"] = "excluded"
-                    applied_filters_meta["prev_rec_excluded_count"] = str(len(prev_rec_ids))
-                results.append(
-                    RetrievedSet(
-                        direction_id=direction.direction_id,
-                        query_id=query.query_id,
-                        role=query.role,
-                        products=products,
-                        applied_filters=applied_filters_meta,
-                    )
-                )
         _log.info(
-            "CatalogSearch: completed — %d set(s), total products: %d",
-            len(results), sum(len(rs.products) for rs in results),
+            "CatalogSearch: starting search for %d direction(s), %d queries, retrieval_count=%d, disliked=%d, prev_rec=%d",
+            len(plan.directions), len(tasks), plan.retrieval_count,
+            len(disliked_ids), len(prev_rec_ids),
         )
-        return results
+
+        # --- Step 1: Batch embed all query documents in one call ------
+        t_embed = time.monotonic()
+        try:
+            all_embeddings: List[Optional[List[float]]] = self._retrieval_gateway.embed_texts(query_documents)
+        except Exception:
+            _log.exception("CatalogSearch: batch embed_texts FAILED for %d documents", len(query_documents))
+            all_embeddings = [None] * len(query_documents)
+        embed_ms = int((time.monotonic() - t_embed) * 1000)
+        _log.info("CatalogSearch: batch embedded %d documents in %dms", len(query_documents), embed_ms)
+
+        # --- Step 2: Parallel search + hydrate ------------------------
+        t_search = time.monotonic()
+        results: List[Optional[RetrievedSet]] = [None] * len(tasks)
+
+        def _search_one(idx: int) -> Tuple[int, RetrievedSet]:
+            task = tasks[idx]
+            query: QuerySpec = task["query"]
+            filters: Dict[str, Any] = task["filters"]
+            direction_id: str = task["direction_id"]
+            embedding = all_embeddings[idx] if idx < len(all_embeddings) else None
+
+            applied_filters_meta = {
+                **filters,
+                "restricted_category_policy": "excluded",
+            }
+            if disliked_ids:
+                applied_filters_meta["disliked_product_policy"] = "excluded"
+            if prev_rec_ids:
+                applied_filters_meta["prev_rec_product_policy"] = "excluded"
+                applied_filters_meta["prev_rec_excluded_count"] = str(len(prev_rec_ids))
+
+            if embedding is None:
+                _log.error("CatalogSearch: embedding is None — skipping query %s", query.query_id)
+                return idx, RetrievedSet(
+                    direction_id=direction_id,
+                    query_id=query.query_id,
+                    role=query.role,
+                    products=[],
+                    applied_filters={**applied_filters_meta, "error": "embedding_failed"},
+                )
+
+            _log.info(
+                "CatalogSearch: dir=%s query=%s role=%s filters=%s",
+                direction_id, query.query_id, query.role, filters,
+            )
+
+            # Similarity search
+            t0 = time.monotonic()
+            try:
+                matches = self._retrieval_gateway.similarity_search(
+                    query_embedding=embedding,
+                    match_count=plan.retrieval_count,
+                    filters=filters,
+                ) or []
+            except Exception:
+                _log.exception("CatalogSearch: similarity_search FAILED for query %s", query.query_id)
+                matches = []
+            search_ms = int((time.monotonic() - t0) * 1000)
+
+            _log.info(
+                "CatalogSearch: [%s/%s] similarity_search returned %d matches in %dms",
+                direction_id, query.query_id, len(matches), search_ms,
+            )
+
+            # Hydrate
+            t1 = time.monotonic()
+            products = self._hydrate_matches(matches)
+            hydrate_ms = int((time.monotonic() - t1) * 1000)
+            pre_exclude = len(products)
+            if exclude_ids:
+                products = [p for p in products if str(p.product_id or "") not in exclude_ids]
+            excluded_count = pre_exclude - len(products)
+            _log.info(
+                "CatalogSearch: [%s/%s] hydrated %d→%d in %dms (excluded %d)",
+                direction_id, query.query_id,
+                len(matches), len(products), hydrate_ms, excluded_count,
+            )
+
+            return idx, RetrievedSet(
+                direction_id=direction_id,
+                query_id=query.query_id,
+                role=query.role,
+                products=products,
+                applied_filters=applied_filters_meta,
+            )
+
+        workers = min(len(tasks), _MAX_SEARCH_WORKERS) if tasks else 1
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_search_one, i): i for i in range(len(tasks))}
+            for future in as_completed(futures):
+                try:
+                    idx, retrieved_set = future.result()
+                    results[idx] = retrieved_set
+                except Exception:
+                    i = futures[future]
+                    task = tasks[i]
+                    _log.exception("CatalogSearch: worker failed for query %s", task["query"].query_id)
+                    results[i] = RetrievedSet(
+                        direction_id=task["direction_id"],
+                        query_id=task["query"].query_id,
+                        role=task["query"].role,
+                        products=[],
+                        applied_filters={"error": "worker_failed"},
+                    )
+
+        search_total_ms = int((time.monotonic() - t_search) * 1000)
+        final = [rs for rs in results if rs is not None]
+        _log.info(
+            "CatalogSearch: completed — %d set(s), %d products, embed=%dms, search+hydrate=%dms (parallel, %d workers)",
+            len(final), sum(len(rs.products) for rs in final),
+            embed_ms, search_total_ms, workers,
+        )
+        return final
 
     def _hydrate_matches(self, matches: List[Dict[str, Any]]) -> List[RetrievedProduct]:
         """Convert raw vector search matches into RetrievedProduct entries."""
