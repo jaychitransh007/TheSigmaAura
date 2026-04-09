@@ -1026,6 +1026,63 @@ Success criteria:
 
 ## Immediate Next Item
 
+### P0 — Parallelize catalog retrieval: batch embeddings + concurrent search (April 10 2026)
+
+**Problem:** The catalog search pipeline makes **18 sequential network calls** for a typical broad request (6 queries × 3 calls each: embed → search → hydrate). Each cycle is ~300-500ms, totalling ~2-3 seconds just for retrieval — the largest latency contributor in the pipeline.
+
+**Current flow (sequential):**
+```
+for each of 6 queries:
+    embed_texts([1 document])       → OpenAI API call (~200ms)
+    similarity_search(embedding)    → Supabase RPC call (~150ms)
+    _hydrate_matches(product_ids)   → Supabase REST call (~100ms)
+Total: ~6 × 450ms ≈ 2.7 seconds
+```
+
+**Optimized flow:**
+```
+Step 1: embed_texts([all 6 documents])  → 1 OpenAI API call (~250ms)
+Step 2: ThreadPoolExecutor(4 workers):
+    parallel: search + hydrate query A1  (~200ms)
+    parallel: search + hydrate query B1  (~200ms)
+    parallel: search + hydrate query B2  (~200ms)
+    parallel: search + hydrate query C1  (~200ms)
+    parallel: search + hydrate query C2  (~200ms)
+    parallel: search + hydrate query C3  (~200ms)
+                                        → wall clock ~200-400ms (2 rounds of 4)
+Total: ~250ms + 400ms ≈ 650ms (~4x speedup)
+```
+
+**Feasibility (verified):**
+- `embed_texts()` already accepts a list of texts and batches internally (EMBED_BATCH_SIZE=50). Currently called with 1 text per query — just needs to be called once with all 6.
+- OpenAI SDK (httpx) is thread-safe. SupabaseRestClient (urllib, no mutable state) is thread-safe. Both verified by examining instance variables and request isolation.
+- Codebase already uses `ThreadPoolExecutor` for visual evaluation (3 workers) and try-on rendering (3 workers) — proven pattern.
+- Per-query latency logging preserved via individual future results.
+
+**Implementation plan (single file change: `catalog_search_agent.py`):**
+
+- **Step 1 — Batch embedding**: Before the query loop, collect all query documents into a list. Call `embed_texts(all_documents)` once. Map embeddings back to queries by index.
+
+- **Step 2 — Prepare tasks**: For each query, pre-compute the merged filters (same as today). Build a list of `(query, direction_id, embedding, filters)` task tuples.
+
+- **Step 3 — Parallel search+hydrate**: Use `ThreadPoolExecutor(max_workers=min(len(tasks), 4))` to run `_search_single_query()` for each task concurrently. Each task does: similarity_search → filter disliked/prev_rec → hydrate → return RetrievedSet.
+
+- **Step 4 — Collect results**: Gather RetrievedSet results from futures, sort by (direction_id, query_id) for deterministic ordering.
+
+- **Step 5 — Logging**: Log batch embedding time once. Log per-query search+hydrate time from each future. Total search time still captured by orchestrator.
+
+**What does NOT change:**
+- Filter logic (merge_filters, build_directional_filters, hard_filters) — unchanged
+- Similarity search SQL function — unchanged
+- Hydration from catalog_enriched — unchanged
+- Product exclusion (disliked + previous_rec) — unchanged
+- Assembler, reranker, evaluator — unchanged
+- Result quality — identical; same queries, same filters, same embeddings, same products
+
+**Risk:** Supabase connection pool under concurrent load. Mitigation: cap at 4 workers (same as visual eval uses 3). The Supabase REST API handles concurrent HTTP requests natively.
+
+---
+
 ### ✅ CLOSED — Occasion-fabric coupling + sub-occasion formality calibration in architect (April 10 2026)
 
 **Problem:** User feedback from conversation `2035c3cb` (wedding engagement) shows two quality failures even after structural fixes:
