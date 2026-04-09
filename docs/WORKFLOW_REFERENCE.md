@@ -176,10 +176,11 @@ User message
    │   ├── Concept-first: color coordination, volume balance, pattern distribution, occasion-fabric coupling
    │   └── DB: repo.log_model_call(call_type="outfit_architect")
    │
-   ├── Stage 2: Catalog Search [pgvector]
-   │   ├── Embed query document via text-embedding-3-small (1536d)
+   ├── Stage 2: Catalog Search [pgvector, parallelized]
+   │   ├── Step 1: batch embed ALL query documents in one OpenAI call (text-embedding-3-small, 1536d)
+   │   ├── Step 2: parallel search+hydrate via ThreadPoolExecutor (4 workers)
    │   ├── Hard filters: gender_expression (always), garment_subtype (conditional); styling_completeness from direction role; garment_category is soft signal only
-   │   ├── Soft signals via embedding similarity: occasion, formality, time_of_day, color
+   │   ├── Soft signals via embedding similarity: all 46 enrichment attributes including embellishment, visual direction, occasion, formality, color
    │   ├── No filter relaxation — single search pass, no retry
    │   ├── Retrieve: 12 products per query direction
    │   └── Hydrate: product_id → catalog_enriched row

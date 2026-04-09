@@ -42,6 +42,7 @@ Implemented now:
 - **tiered hard filter / soft signal system** (April 9 2026): `gender_expression` always hard; `garment_subtype` conditional (hard for specific requests, null for broad); `garment_category` and `styling_completeness` are soft signals in query document text only — never hard filters
 - soft signals via embedding similarity only: `garment_category`, `styling_completeness`, `occasion_fit`, `formality_level`, `time_of_day`
 - no filter relaxation — single search pass per query
+- **batched embedding** (all query documents in one OpenAI API call) + **parallel search+hydrate** (ThreadPoolExecutor, 4 workers) — ~4x retrieval speedup
 - embedding retrieval from `catalog_item_embeddings` with hydration from `catalog_enriched`
 - direction-aware retrieval: `needs_bottomwear` for top (paired: `["needs_bottomwear", "needs_innerwear"]`), `needs_topwear` for bottom, `["needs_innerwear"]` for outerwear, `complete` for complete directions
 - **direction-aware reranker**: round-robin picks one candidate per direction before filling by score — guarantees outfit variety across architect's concepts
@@ -812,11 +813,13 @@ Orchestrator (agentic_application/orchestrator.py)
 4. Outfit Architect (gpt-5.4, JSON schema)
     |
     v
-5. Catalog Search Agent
-    |    +--> text-embedding-3-small (1536 dim)
-    |    +--> catalog_item_embeddings (pgvector cosine)
-    |    +--> catalog_enriched (hydration)
-    |    +--> Hard filters: gender_expression, styling_completeness, garment_category, garment_subtype
+5. Catalog Search Agent (batched embed + parallel search)
+    |    +--> Step 1: batch embed all query documents (1 OpenAI call)
+    |    +--> Step 2: parallel search+hydrate (ThreadPoolExecutor, 4 workers)
+    |    |    +--> text-embedding-3-small (1536 dim)
+    |    |    +--> catalog_item_embeddings (pgvector cosine)
+    |    |    +--> catalog_enriched (hydration)
+    |    +--> Hard filters: gender_expression (always), garment_subtype (conditional), styling_completeness (directional)
     |    +--> No filter relaxation — single search pass per query
     |
     v

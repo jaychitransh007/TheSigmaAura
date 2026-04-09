@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: April 10, 2026 (Phase 12 close-out: three outfit structures (complete/paired/three_piece), occasion-fabric coupling, time-of-day inference, role-category validation, catalog cleanup 14,296 garment-only items, admin resync with pagination)
+Last updated: April 10, 2026 (Phase 12 close-out: three outfit structures, all 46 attributes in query docs, parallel retrieval ~4x speedup, occasion-fabric coupling, time-of-day inference, role-category validation, outerwear recategorization, catalog 14,296 garment-only items)
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -51,7 +51,9 @@ Project status:
 - wishlist: wishlisted catalog garments with product images, title, price, Buy Now — data from `catalog_interaction_history` hydrated with `catalog_enriched`
 - trial room: virtual try-on render gallery (2:3 aspect ratio, gradient timestamp overlay) — data from `virtual_tryon_images`
 - catalog admin: pipeline with upload, enrichment sync, embedding generation, URL backfill, include-incomplete toggle, skip-already-embedded optimization, **resync-from-DB endpoint** (`POST /v1/admin/catalog/embeddings/resync`) for re-embedding enriched items with product_id_prefix filter and paginated fetch
-- catalog health: **14,296 items** — all enriched, all embedded, zero null filter columns; dead/delisted items cleaned up; Vastramay/Powerlook/CampusSutra re-embedded from DB after enrichment
+- catalog health: **14,296 garment-only items** — all enriched, all embedded, zero null filter columns; 90 accessories + 271 empty-URL items deleted; 99 blazer/jacket/shacket recategorized from top→outerwear; Vastramay/Powerlook/CampusSutra re-embedded from DB after enrichment
+- retrieval performance: **batched embeddings** (single OpenAI call for all query documents) + **parallel search+hydrate** (ThreadPoolExecutor, 4 workers) — ~4x speedup vs sequential
+- query document coverage: **all 46 enrichment attributes** in architect query template including EMBELLISHMENT (EmbellishmentLevel/Type/Zone) and VISUAL_DIRECTION (VerticalWeightBias, VisualWeightPlacement, StructuralFocus, BodyFocusZone, LineDirection)
 
 The system is a working recommendation engine with supporting infrastructure. The next phase is evolving it from a shopping-first tool into a lifestyle stylist — wardrobe-first across all intents, dedicated handlers for non-recommendation intents (outfit check, shopping decision, pairing, capsule planning), and WhatsApp as a live retention surface.
 

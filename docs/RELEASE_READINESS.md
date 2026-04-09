@@ -22,11 +22,11 @@ The pipeline must produce a usable answer for every primary intent without
 manual intervention.
 
 - [ ] All 318 tests across `tests/` pass against the current branch
-      (verified April 10, 2026: smart hard-filter/soft-signal tiering +
-      multi-direction diversity + reranker round-robin + needs_innerwear
-      filter + catalog admin resync endpoint + previous-rec exclusion +
-      product URL reconstruction + catalog health remediation (14,296
-      enriched+embedded products, zero nulls) shipped).
+      (verified April 10, 2026: three outfit structures + all 46 attributes
+      in query docs + parallel retrieval ~4x speedup + occasion-fabric
+      coupling + time-of-day inference + role-category validation +
+      outerwear recategorization + plan_type removed + catalog 14,296
+      garment-only items, zero nulls, 90 accessories purged).
 - [ ] `ops/scripts/validate_dependency_report.py` runs to completion with
       zero failed assertions.
 - [ ] `ops/scripts/smoke_test_full_flow.sh` runs to completion against a
