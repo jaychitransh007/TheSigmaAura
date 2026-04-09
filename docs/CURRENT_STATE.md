@@ -1018,6 +1018,40 @@ Success criteria:
 
 ## Immediate Next Item
 
+### ✅ CLOSED — Remove legacy OutfitEvaluator fallback (April 9 2026, codebase cleanup)
+
+Shipped April 9, 2026. Removed `OutfitEvaluator` (540 lines) + `prompt/outfit_evaluator.md` and replaced the fallback branch with a graceful empty-response path. Test count: **318 passing** (was 331, -13 removed tests that exercised the deleted evaluator's unit-level functions or the legacy-fallback code path).
+
+Files removed:
+- `modules/agentic_application/src/agentic_application/agents/outfit_evaluator.py` — 540 lines deleted
+- `prompt/outfit_evaluator.md` — legacy prompt deleted
+
+Files modified:
+- `orchestrator.py` — the `if not evaluated:` fallback block at ~line 4065 no longer calls `self.outfit_evaluator.evaluate(...)`. Instead it logs a warning ("Visual evaluator produced zero results") and leaves `evaluated = []`. The downstream `ResponseFormatter` already returns a clean "I couldn't return safe outfit recommendations for this request" message when outfits is empty — so the user gets a graceful retry-prompt instead of a degraded text-only response from a legacy evaluator with an incompatible scoring shape. Removed the import and `self.outfit_evaluator = OutfitEvaluator()` instantiation.
+- `tests/test_agentic_application.py` — removed 12 unit test methods that called deleted functions (`_build_eval_payload`, `_candidate_delta`, `_fallback_evaluations`, `_followup_reasoning_defaults`, `OutfitEvaluator()`), removed 1 stage-emission test for the legacy path, removed all `orchestrator.outfit_evaluator.evaluate = Mock(...)` lines from integration tests, fixed 3 broken `with patch(...)` blocks where removing the evaluator mock left an empty `patch()` call. Updated 1 test assertion that assumed the fallback would produce non-empty recommendations.
+
+**Cumulative cleanup result (OutfitCheckAgent + OutfitEvaluator):**
+- **-1,234 lines of legacy evaluator code** across 4 files
+- The `VisualEvaluatorAgent` is now the **sole evaluator** in the system
+- Photo upload is mandatory at onboarding, so the visual path is always attempted
+- On transient visual-evaluator failures (rare: Gemini/OpenAI outage, timeout), the user gets a clean "try again" message instead of an inconsistent legacy-scored response
+
+---
+
+### P0 — Remove legacy OutfitEvaluator fallback (April 9 2026) — historical plan
+
+**Context:** photo upload is mandatory at onboarding, so `person_image_path` is always present for any user who passes the onboarding gate. The `OutfitEvaluator` (540 lines) is the legacy text-only recommendation evaluator that fires as a fallback at `orchestrator.py:4065-4068` when the Phase 12B `VisualEvaluatorAgent` returns zero results. With mandatory photos, the only scenario that triggers this fallback is a **visual evaluator exception** (Gemini/OpenAI outage, timeout, code bug) — not "user has no person photo."
+
+540 lines of legacy code for a rare exception-recovery path is excessive. The alternative: replace the fallback with a **3-line graceful empty-response** that logs the failure and returns a friendly "I couldn't evaluate outfits right now, please try again" message — the same pattern we use for other transient failures (architect failure, enrichment failure, etc.). A degraded text-only response from a legacy evaluator that uses a different scoring shape (no vision, no confidence scaling, different archetype weights) is arguably WORSE than a clean "try again" because it produces inconsistent quality signals in the user's conversation history.
+
+**Implementation plan:**
+- **Step 1** — Replace the `if not evaluated:` fallback block at `orchestrator.py:4065-4068` with a graceful empty-response path: log a warning, set `evaluated = []`, and let the downstream `if not evaluated` → empty-response formatter handle it (the response formatter already returns a "I couldn't return safe outfit recommendations" message when `outfits` is empty).
+- **Step 2** — Delete `agents/outfit_evaluator.py` (540 lines) and `prompt/outfit_evaluator.md`.
+- **Step 3** — Remove the import and `self.outfit_evaluator = OutfitEvaluator()` instantiation from `orchestrator.py`.
+- **Step 4** — Remove any test patches for OutfitEvaluator. Run full suite, close out, commit, push.
+
+---
+
 ### ✅ CLOSED — Remove dead legacy OutfitCheckAgent (April 9 2026, codebase cleanup)
 
 Shipped April 9, 2026. Removed `OutfitCheckAgent` (254 lines) and its prompt file — zero runtime callers since Phase 12B. Test count: **331 passing** (was 332, -1 removed test that directly instantiated the deleted agent).

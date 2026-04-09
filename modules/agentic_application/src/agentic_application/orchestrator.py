@@ -17,7 +17,10 @@ from .agents.catalog_search_agent import CatalogSearchAgent
 from .agents.copilot_planner import CopilotPlanner, build_planner_input
 from .agents.outfit_architect import OutfitArchitect
 from .agents.outfit_assembler import OutfitAssembler
-from .agents.outfit_evaluator import OutfitEvaluator  # legacy text-only fallback
+# OutfitEvaluator removed (Phase 12B cleanup, April 9 2026) — the
+# VisualEvaluatorAgent is now the sole evaluator. The legacy text-only
+# fallback has been replaced with a graceful empty-response path that
+# lets the response formatter handle transient visual-evaluator failures.
 from .agents.reranker import Reranker
 from .agents.response_formatter import ResponseFormatter
 from .agents.style_advisor_agent import StyleAdvice, StyleAdvisorAgent
@@ -101,7 +104,7 @@ class AgenticOrchestrator:
         )
         self.outfit_assembler = OutfitAssembler()
         self.reranker = Reranker()  # Phase 12B explicit pruning step
-        self.outfit_evaluator = OutfitEvaluator()  # legacy text-only fallback
+        # OutfitEvaluator removed — see import block comment above.
         self.response_formatter = ResponseFormatter()
 
         self._copilot_planner = CopilotPlanner()
@@ -4063,9 +4066,20 @@ class AgenticOrchestrator:
                     evaluated = []
 
             if not evaluated:
-                emit("outfit_evaluation", "started", ctx={"path": "legacy_text"})
-                evaluated = self.outfit_evaluator.evaluate(candidates, combined_context, plan)
-                emit("outfit_evaluation", "completed")
+                # The visual evaluator either wasn't attempted or failed.
+                # Photo upload is mandatory, so the only way we get here is
+                # a transient visual-evaluator exception (Gemini/OpenAI
+                # outage, timeout, etc.). Rather than falling back to a
+                # legacy text-only evaluator with a different scoring shape
+                # (which produces inconsistent quality signals), we let the
+                # downstream empty-response formatter handle it — it returns
+                # a friendly "I couldn't return safe outfit recommendations
+                # for this request" message. Clean, consistent, retryable.
+                _log.warning(
+                    "Visual evaluator produced zero results for turn %s; "
+                    "returning empty outfits (graceful degradation)",
+                    turn_id,
+                )
 
             evaluator_ms = int((time.monotonic() - t0) * 1000)
             self.repo.log_model_call(

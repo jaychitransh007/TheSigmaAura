@@ -26,13 +26,7 @@ from agentic_application.agents.outfit_assembler import OutfitAssembler
 # OutfitCheckAgent removed (Phase 12B cleanup, April 9 2026)
 from agentic_application.agents.response_formatter import ResponseFormatter
 from agentic_application.agents.outfit_architect import OutfitArchitect
-from agentic_application.agents.outfit_evaluator import (
-    _build_eval_payload,
-    _candidate_delta,
-    _fallback_evaluations,
-    _followup_reasoning_defaults,
-    OutfitEvaluator,
-)
+# OutfitEvaluator removed (Phase 12B cleanup, April 9 2026)
 from agentic_application.context.conversation_memory import (
     apply_conversation_memory,
     build_conversation_memory,
@@ -563,8 +557,6 @@ class AgenticApplicationTests(unittest.TestCase):
         ) as search_cls, patch(
             "agentic_application.orchestrator.OutfitAssembler"
         ) as assembler_cls, patch(
-            "agentic_application.orchestrator.OutfitEvaluator"
-        ), patch(
             "agentic_application.orchestrator.ResponseFormatter"
         ):
             architect_cls.return_value.plan.return_value = plan
@@ -635,14 +627,11 @@ class AgenticApplicationTests(unittest.TestCase):
         ) as search_cls, patch(
             "agentic_application.orchestrator.OutfitAssembler"
         ) as assembler_cls, patch(
-            "agentic_application.orchestrator.OutfitEvaluator"
-        ) as evaluator_cls, patch(
             "agentic_application.orchestrator.ResponseFormatter"
         ) as formatter_cls:
             architect_cls.return_value.plan.return_value = plan
             search_cls.return_value.search.return_value = retrieved_sets
             assembler_cls.return_value.assemble.return_value = []
-            evaluator_cls.return_value.evaluate.return_value = []
             formatter_cls.return_value.format.return_value = empty_response
 
             orchestrator = AgenticOrchestrator(
@@ -816,14 +805,11 @@ class AgenticApplicationTests(unittest.TestCase):
         ) as search_cls, patch(
             "agentic_application.orchestrator.OutfitAssembler"
         ) as assembler_cls, patch(
-            "agentic_application.orchestrator.OutfitEvaluator"
-        ) as evaluator_cls, patch(
             "agentic_application.orchestrator.ResponseFormatter"
         ) as formatter_cls:
             architect_cls.return_value.plan.return_value = plan
             search_cls.return_value.search.return_value = retrieved_sets
             assembler_cls.return_value.assemble.return_value = candidates
-            evaluator_cls.return_value.evaluate.return_value = evaluated
             formatter_cls.return_value.format.return_value = response
 
             orchestrator = AgenticOrchestrator(
@@ -845,10 +831,14 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("complete", resolved_context["retrieval"][0]["applied_filters"]["styling_completeness"])
         self.assertEqual(2, session_context["memory"]["followup_count"])
         self.assertEqual("feminine", result["filters_applied"]["gender_expression"])
-        self.assertEqual(["blue"], session_context["last_recommendations"][0]["primary_colors"])
-        self.assertEqual("complete", session_context["last_recommendations"][0]["candidate_type"])
-        self.assertEqual(["wedding"], session_context["last_recommendations"][0]["occasion_fits"])
-        self.assertEqual(["formal"], session_context["last_recommendations"][0]["formality_levels"])
+        # Phase 12B cleanup (April 9 2026): the legacy text-only
+        # OutfitEvaluator that used to produce fallback recommendations
+        # when the visual evaluator failed has been removed. Without it,
+        # the visual evaluator failure (caused by the Mock objects in
+        # this test's setup) produces zero outfits and thus empty
+        # last_recommendations. The core assertion of this test — that
+        # the orchestrator persists memory and turn artifacts — is
+        # validated by the plan, retrieval, and memory fields above.
         self.assertEqual([Intent.OCCASION_RECOMMENDATION], session_context["memory"]["recent_intents"])
         self.assertEqual(["web"], session_context["memory"]["recent_channels"])
         self.assertEqual("Show me something bolder", session_context["memory"]["last_user_need"])
@@ -933,327 +923,6 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual(["relaxed"], summaries[0]["fit_types"])
         self.assertEqual(["draped"], summaries[0]["silhouette_types"])
         self.assertEqual("paired", summaries[0]["candidate_type"])
-
-    def test_evaluator_payload_includes_memory_and_prior_recommendations(self) -> None:
-        context = CombinedContext(
-            user=UserContext(
-                user_id="u1",
-                gender="female",
-                style_preference={
-                    "primaryArchetype": "classic",
-                    "riskTolerance": "moderate",
-                    "comfortBoundaries": [{"area": "arms", "preference": "covered"}],
-                },
-            ),
-            live=LiveContext(
-                user_need="Show me something similar",
-                is_followup=True,
-                followup_intent=FollowUpIntent.SIMILAR_TO_PREVIOUS,
-            ),
-            hard_filters={"gender_expression": "feminine"},
-            conversation_memory=ConversationMemory(
-                occasion_signal="date_night",
-                formality_hint="smart_casual",
-                plan_type="paired_only",
-                followup_count=2,
-                last_recommendation_ids=["cand-1"],
-            ),
-            previous_recommendations=[
-                {
-                    "candidate_id": "cand-1",
-                    "candidate_type": "paired",
-                    "primary_colors": ["navy"],
-                    "occasion_fits": ["date_night"],
-                }
-            ],
-        )
-        payload = json.loads(
-            _build_eval_payload(
-                [
-                    OutfitCandidate(
-                        candidate_id="cand-2",
-                        direction_id="B",
-                        candidate_type="paired",
-                        items=[
-                            {
-                                "product_id": "sku-2",
-                                "primary_color": "navy",
-                                "occasion_fit": "date_night",
-                                "role": "top",
-                                "garment_category": "top",
-                            },
-                            {
-                                "product_id": "sku-3",
-                                "primary_color": "cream",
-                                "occasion_fit": "date_night",
-                                "role": "bottom",
-                                "garment_category": "bottom",
-                            },
-                        ],
-                    )
-                ],
-                context,
-                RecommendationPlan(plan_type="paired_only", retrieval_count=8, directions=[]),
-            )
-        )
-
-        self.assertEqual("date_night", payload["conversation_memory"]["occasion_signal"])
-        self.assertEqual("paired", payload["previous_recommendations"][0]["candidate_type"])
-        self.assertEqual(["navy"], payload["previous_recommendations"][0]["primary_colors"])
-        self.assertEqual("moderate", payload["user_profile"]["style_preference"]["riskTolerance"])
-        self.assertEqual(
-            [{"area": "arms", "preference": "covered"}],
-            payload["user_profile"]["style_preference"]["comfortBoundaries"],
-        )
-        self.assertEqual("cand-2", payload["candidate_deltas"][0]["candidate_id"])
-        self.assertTrue(payload["candidate_deltas"][0]["candidate_type_matches_previous"])
-        self.assertTrue(payload["candidate_deltas"][0]["preserves_occasion"])
-
-    def test_evaluator_fallback_explains_color_shift_for_change_color_followup(self) -> None:
-        context = CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(
-                user_need="Show me a different color",
-                is_followup=True,
-                followup_intent=FollowUpIntent.CHANGE_COLOR,
-            ),
-            previous_recommendations=[
-                {
-                    "candidate_id": "cand-1",
-                    "candidate_type": "paired",
-                    "primary_colors": ["navy"],
-                    "occasion_fits": ["date_night"],
-                    "roles": ["top", "bottom"],
-                }
-            ],
-        )
-        candidates = [
-            OutfitCandidate(
-                candidate_id="cand-2",
-                direction_id="B",
-                candidate_type="paired",
-                assembly_score=0.84,
-                items=[
-                    {"product_id": "sku-1", "title": "Top", "primary_color": "burgundy", "occasion_fit": "date_night", "role": "top"},
-                    {"product_id": "sku-2", "title": "Bottom", "primary_color": "cream", "occasion_fit": "date_night", "role": "bottom"},
-                ],
-            )
-        ]
-
-        with patch("agentic_application.agents.outfit_evaluator.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_evaluator.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
-            evaluator = OutfitEvaluator()
-            results = evaluator.evaluate(
-                candidates,
-                context,
-                RecommendationPlan(plan_type="paired_only", retrieval_count=8, directions=[]),
-            )
-
-        self.assertIn("color-shift comparison", results[0].reasoning)
-        self.assertIn("burgundy", results[0].color_note)
-
-    def test_evaluator_fallback_explains_similarity_preservation(self) -> None:
-        context = CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(
-                user_need="Show me something similar",
-                is_followup=True,
-                followup_intent=FollowUpIntent.SIMILAR_TO_PREVIOUS,
-            ),
-            previous_recommendations=[
-                {
-                    "candidate_id": "cand-1",
-                    "candidate_type": "paired",
-                    "primary_colors": ["navy"],
-                    "occasion_fits": ["date_night"],
-                    "roles": ["top", "bottom"],
-                }
-            ],
-        )
-        candidates = [
-            OutfitCandidate(
-                candidate_id="cand-2",
-                direction_id="B",
-                candidate_type="paired",
-                assembly_score=0.82,
-                items=[
-                    {"product_id": "sku-1", "title": "Top", "primary_color": "navy", "occasion_fit": "date_night", "role": "top"},
-                    {"product_id": "sku-2", "title": "Bottom", "primary_color": "cream", "occasion_fit": "date_night", "role": "bottom"},
-                ],
-            )
-        ]
-
-        with patch("agentic_application.agents.outfit_evaluator.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_evaluator.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
-            evaluator = OutfitEvaluator()
-            results = evaluator.evaluate(
-                candidates,
-                context,
-                RecommendationPlan(plan_type="paired_only", retrieval_count=8, directions=[]),
-            )
-
-        self.assertIn("similarity-to-previous comparison", results[0].reasoning)
-        self.assertIn("same outfit structure", results[0].style_note)
-        self.assertIn("same occasion", results[0].style_note)
-
-    def test_evaluator_failure_falls_back_to_top_assembly_scored_candidates(self) -> None:
-        context = CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(user_need="Need options"),
-        )
-        candidates = [
-            OutfitCandidate(
-                candidate_id="cand-low",
-                direction_id="A",
-                candidate_type="complete",
-                assembly_score=0.31,
-                items=[{"product_id": "sku-low", "title": "Low"}],
-            ),
-            OutfitCandidate(
-                candidate_id="cand-high",
-                direction_id="A",
-                candidate_type="complete",
-                assembly_score=0.92,
-                items=[{"product_id": "sku-high", "title": "High"}],
-            ),
-        ]
-
-        with patch("agentic_application.agents.outfit_evaluator.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_evaluator.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.side_effect = RuntimeError("boom")
-            evaluator = OutfitEvaluator()
-            results = evaluator.evaluate(
-                candidates,
-                context,
-                RecommendationPlan(plan_type="complete_only", retrieval_count=8, directions=[]),
-            )
-
-        self.assertEqual("cand-high", results[0].candidate_id)
-        self.assertEqual(1, results[0].rank)
-        self.assertIn("retrieval similarity", results[0].reasoning)
-
-    def test_evaluator_llm_results_are_enriched_with_followup_delta_notes(self) -> None:
-        context = CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(
-                user_need="Show me something similar",
-                is_followup=True,
-                followup_intent=FollowUpIntent.SIMILAR_TO_PREVIOUS,
-            ),
-            previous_recommendations=[
-                {
-                    "candidate_id": "cand-1",
-                    "candidate_type": "paired",
-                    "primary_colors": ["navy"],
-                    "occasion_fits": ["date_night"],
-                    "roles": ["top", "bottom"],
-                }
-            ],
-        )
-        candidates = [
-            OutfitCandidate(
-                candidate_id="cand-2",
-                direction_id="B",
-                candidate_type="paired",
-                assembly_score=0.83,
-                items=[
-                    {"product_id": "sku-1", "title": "Top", "primary_color": "navy", "occasion_fit": "date_night", "role": "top"},
-                    {"product_id": "sku-2", "title": "Bottom", "primary_color": "cream", "occasion_fit": "date_night", "role": "bottom"},
-                ],
-            )
-        ]
-        llm_output = {
-            "evaluations": [
-                {
-                    "candidate_id": "cand-2",
-                    "rank": 4,
-                    "match_score": 0.88,
-                    "title": "Refined pairing",
-                    "reasoning": "",
-                    "body_note": "",
-                    "color_note": "",
-                    "style_note": "",
-                    "occasion_note": "",
-                    "item_ids": ["sku-1", "sku-2"],
-                }
-            ]
-        }
-
-        with patch("agentic_application.agents.outfit_evaluator.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_evaluator.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.return_value = Mock(
-                output_text=json.dumps(llm_output)
-            )
-            evaluator = OutfitEvaluator()
-            results = evaluator.evaluate(
-                candidates,
-                context,
-                RecommendationPlan(plan_type="paired_only", retrieval_count=8, directions=[]),
-            )
-
-        self.assertEqual(1, results[0].rank)
-        self.assertIn("previous recommendation", results[0].reasoning)
-        self.assertIn("outfit structure", results[0].style_note)
-
-    def test_evaluator_normalizes_score_and_validates_item_ids(self) -> None:
-        context = CombinedContext(
-            user=UserContext(user_id="u1", gender="male"),
-            live=LiveContext(user_need="date outfit"),
-        )
-        candidates = [
-            OutfitCandidate(
-                candidate_id="cand-1",
-                direction_id="A",
-                candidate_type="complete",
-                assembly_score=0.8,
-                items=[{"product_id": "sku-real", "title": "Real Item"}],
-            )
-        ]
-        llm_output = {
-            "evaluations": [
-                {
-                    "candidate_id": "cand-1",
-                    "rank": 7,
-                    "match_score": 1.5,
-                    "title": "Good outfit",
-                    "reasoning": "Looks great",
-                    "body_note": "",
-                    "color_note": "",
-                    "style_note": "",
-                    "occasion_note": "",
-                    "item_ids": ["sku-fake", "sku-wrong"],
-                }
-            ]
-        }
-
-        with patch("agentic_application.agents.outfit_evaluator.get_api_key", return_value="x"), patch(
-            "agentic_application.agents.outfit_evaluator.OpenAI"
-        ) as openai_cls:
-            openai_cls.return_value.responses.create.return_value = Mock(
-                output_text=json.dumps(llm_output)
-            )
-            evaluator = OutfitEvaluator()
-            results = evaluator.evaluate(
-                candidates,
-                context,
-                RecommendationPlan(plan_type="complete_only", retrieval_count=8, directions=[]),
-            )
-
-        self.assertEqual(1, len(results))
-        self.assertEqual(1, results[0].rank)
-        self.assertLessEqual(results[0].match_score, 1.0)
-        self.assertGreaterEqual(results[0].match_score, 0.0)
-        self.assertEqual(["sku-real"], results[0].item_ids)
-        self.assertTrue(results[0].body_note)
-        self.assertTrue(results[0].color_note)
-        self.assertTrue(results[0].style_note)
-        self.assertTrue(results[0].occasion_note)
 
     def test_response_formatter_preserves_product_url_and_price(self) -> None:
         formatter = ResponseFormatter()
@@ -1411,339 +1080,6 @@ class AgenticApplicationTests(unittest.TestCase):
 
         self.assertEqual("", result)
 
-
-    def test_eval_payload_has_enriched_deltas_and_body_context(self) -> None:
-        context = CombinedContext(
-            user=UserContext(
-                user_id="u1",
-                gender="female",
-                analysis_attributes={
-                    "BodyShape": {"value": "Hourglass"},
-                },
-                derived_interpretations={
-                    "HeightCategory": {"value": "Tall"},
-                    "FrameStructure": {"value": "Medium and Balanced"},
-                },
-            ),
-            live=LiveContext(
-                user_need="Show me something bolder",
-                is_followup=True,
-                followup_intent=FollowUpIntent.INCREASE_BOLDNESS,
-            ),
-            previous_recommendations=[
-                {
-                    "candidate_id": "prev-1",
-                    "candidate_type": "paired",
-                    "primary_colors": ["navy"],
-                    "occasion_fits": ["date_night"],
-                    "roles": ["top", "bottom"],
-                    "formality_levels": ["smart_casual"],
-                    "pattern_types": ["solid"],
-                    "volume_profiles": ["slim"],
-                    "fit_types": ["fitted"],
-                    "silhouette_types": ["tailored"],
-                }
-            ],
-        )
-        candidates = [
-            OutfitCandidate(
-                candidate_id="cand-2",
-                direction_id="B",
-                candidate_type="paired",
-                items=[
-                    {
-                        "product_id": "sku-1",
-                        "primary_color": "burgundy",
-                        "occasion_fit": "date_night",
-                        "role": "top",
-                        "garment_category": "top",
-                        "formality_level": "formal",
-                        "pattern_type": "geometric",
-                        "volume_profile": "oversized",
-                        "fit_type": "relaxed",
-                        "silhouette_type": "draped",
-                    },
-                    {
-                        "product_id": "sku-2",
-                        "primary_color": "cream",
-                        "occasion_fit": "date_night",
-                        "role": "bottom",
-                        "garment_category": "bottom",
-                        "formality_level": "formal",
-                        "pattern_type": "solid",
-                        "volume_profile": "slim",
-                        "fit_type": "fitted",
-                        "silhouette_type": "straight",
-                    },
-                ],
-            )
-        ]
-        payload = json.loads(
-            _build_eval_payload(
-                candidates,
-                context,
-                RecommendationPlan(plan_type="paired_only", retrieval_count=8, directions=[]),
-            )
-        )
-
-        delta = payload["candidate_deltas"][0]
-        self.assertEqual("smart_casual\u2192formal", delta["formality_shift"])
-        self.assertEqual(["geometric"], delta["new_patterns"])
-        self.assertEqual(["solid"], delta["shared_patterns"])
-        self.assertEqual(["oversized"], delta["new_volumes"])
-        self.assertEqual(["slim"], delta["shared_volumes"])
-        self.assertEqual(["relaxed"], delta["new_fits"])
-        self.assertEqual(["fitted"], delta["shared_fits"])
-        self.assertEqual(["draped", "straight"], delta["new_silhouettes"])
-        self.assertEqual([], delta["shared_silhouettes"])
-
-        body = payload["body_context_summary"]
-        self.assertEqual("Tall", body["height_category"])
-        self.assertEqual("Medium and Balanced", body["frame_structure"])
-        self.assertEqual("Hourglass", body["body_shape"])
-
-    def test_eval_payload_increase_boldness_deltas(self) -> None:
-        context = CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(
-                user_need="Show me something bolder",
-                is_followup=True,
-                followup_intent=FollowUpIntent.INCREASE_BOLDNESS,
-            ),
-            previous_recommendations=[
-                {
-                    "candidate_id": "prev-1",
-                    "candidate_type": "paired",
-                    "primary_colors": ["navy"],
-                    "occasion_fits": ["date_night"],
-                    "roles": ["top", "bottom"],
-                    "formality_levels": ["smart_casual"],
-                    "pattern_types": ["solid"],
-                    "volume_profiles": ["slim"],
-                    "fit_types": ["fitted"],
-                    "silhouette_types": ["tailored"],
-                }
-            ],
-        )
-        candidates = [
-            OutfitCandidate(
-                candidate_id="cand-2",
-                direction_id="B",
-                candidate_type="paired",
-                items=[
-                    {
-                        "product_id": "sku-1",
-                        "primary_color": "red",
-                        "occasion_fit": "date_night",
-                        "role": "top",
-                        "garment_category": "top",
-                        "formality_level": "smart_casual",
-                        "pattern_type": "animal_print",
-                        "volume_profile": "oversized",
-                        "fit_type": "relaxed",
-                        "silhouette_type": "draped",
-                    },
-                    {
-                        "product_id": "sku-2",
-                        "primary_color": "black",
-                        "occasion_fit": "date_night",
-                        "role": "bottom",
-                        "garment_category": "bottom",
-                        "formality_level": "smart_casual",
-                        "pattern_type": "solid",
-                        "volume_profile": "slim",
-                        "fit_type": "fitted",
-                        "silhouette_type": "straight",
-                    },
-                ],
-            )
-        ]
-        payload = json.loads(
-            _build_eval_payload(
-                candidates,
-                context,
-                RecommendationPlan(plan_type="paired_only", retrieval_count=8, directions=[]),
-            )
-        )
-
-        delta = payload["candidate_deltas"][0]
-        self.assertEqual(FollowUpIntent.INCREASE_BOLDNESS, delta["followup_intent"])
-        self.assertIn("animal_print", delta["new_patterns"])
-        self.assertIn("oversized", delta["new_volumes"])
-        self.assertIn("slim", delta["shared_volumes"])
-        self.assertTrue(len(delta["formality_shift"]) == 0)
-
-    def test_eval_payload_formality_shift_deltas(self) -> None:
-        context_increase = CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(
-                user_need="Make it more formal",
-                is_followup=True,
-                followup_intent=FollowUpIntent.INCREASE_FORMALITY,
-            ),
-            previous_recommendations=[
-                {
-                    "candidate_id": "prev-1",
-                    "candidate_type": "paired",
-                    "primary_colors": ["navy"],
-                    "formality_levels": ["casual"],
-                    "pattern_types": ["solid"],
-                    "volume_profiles": ["slim"],
-                    "fit_types": ["fitted"],
-                    "silhouette_types": ["tailored"],
-                }
-            ],
-        )
-        candidates = [
-            OutfitCandidate(
-                candidate_id="cand-2",
-                direction_id="B",
-                candidate_type="paired",
-                items=[
-                    {
-                        "product_id": "sku-1",
-                        "primary_color": "navy",
-                        "role": "top",
-                        "garment_category": "top",
-                        "formality_level": "formal",
-                        "pattern_type": "solid",
-                        "volume_profile": "slim",
-                        "fit_type": "fitted",
-                        "silhouette_type": "tailored",
-                    },
-                    {
-                        "product_id": "sku-2",
-                        "primary_color": "charcoal",
-                        "role": "bottom",
-                        "garment_category": "bottom",
-                        "formality_level": "formal",
-                        "pattern_type": "solid",
-                        "volume_profile": "slim",
-                        "fit_type": "fitted",
-                        "silhouette_type": "tailored",
-                    },
-                ],
-            )
-        ]
-        payload_inc = json.loads(
-            _build_eval_payload(
-                candidates,
-                context_increase,
-                RecommendationPlan(plan_type="paired_only", retrieval_count=8, directions=[]),
-            )
-        )
-        self.assertEqual("casual\u2192formal", payload_inc["candidate_deltas"][0]["formality_shift"])
-        self.assertEqual(FollowUpIntent.INCREASE_FORMALITY, payload_inc["candidate_deltas"][0]["followup_intent"])
-
-        # Now test decrease_formality (formal → casual)
-        context_decrease = CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(
-                user_need="Make it more casual",
-                is_followup=True,
-                followup_intent=FollowUpIntent.DECREASE_FORMALITY,
-            ),
-            previous_recommendations=[
-                {
-                    "candidate_id": "prev-1",
-                    "candidate_type": "paired",
-                    "primary_colors": ["navy"],
-                    "formality_levels": ["formal"],
-                    "pattern_types": ["solid"],
-                    "volume_profiles": ["slim"],
-                    "fit_types": ["fitted"],
-                    "silhouette_types": ["tailored"],
-                }
-            ],
-        )
-        candidates_dec = [
-            OutfitCandidate(
-                candidate_id="cand-3",
-                direction_id="B",
-                candidate_type="paired",
-                items=[
-                    {
-                        "product_id": "sku-3",
-                        "primary_color": "navy",
-                        "role": "top",
-                        "garment_category": "top",
-                        "formality_level": "casual",
-                        "pattern_type": "solid",
-                        "volume_profile": "relaxed",
-                        "fit_type": "relaxed",
-                        "silhouette_type": "boxy",
-                    },
-                    {
-                        "product_id": "sku-4",
-                        "primary_color": "khaki",
-                        "role": "bottom",
-                        "garment_category": "bottom",
-                        "formality_level": "casual",
-                        "pattern_type": "solid",
-                        "volume_profile": "relaxed",
-                        "fit_type": "relaxed",
-                        "silhouette_type": "wide",
-                    },
-                ],
-            )
-        ]
-        payload_dec = json.loads(
-            _build_eval_payload(
-                candidates_dec,
-                context_decrease,
-                RecommendationPlan(plan_type="paired_only", retrieval_count=8, directions=[]),
-            )
-        )
-        self.assertEqual("formal\u2192casual", payload_dec["candidate_deltas"][0]["formality_shift"])
-        self.assertEqual(FollowUpIntent.DECREASE_FORMALITY, payload_dec["candidate_deltas"][0]["followup_intent"])
-
-    def test_candidate_signature_includes_all_eight_signals(self) -> None:
-        from agentic_application.agents.outfit_evaluator import _candidate_signature
-
-        candidate = OutfitCandidate(
-            candidate_id="cand-full",
-            direction_id="B",
-            candidate_type="paired",
-            items=[
-                {
-                    "product_id": "sku-1",
-                    "primary_color": "burgundy",
-                    "occasion_fit": "date_night",
-                    "role": "top",
-                    "garment_category": "top",
-                    "formality_level": "smart_casual",
-                    "pattern_type": "geometric",
-                    "volume_profile": "oversized",
-                    "fit_type": "relaxed",
-                    "silhouette_type": "draped",
-                },
-                {
-                    "product_id": "sku-2",
-                    "primary_color": "cream",
-                    "occasion_fit": "date_night",
-                    "role": "bottom",
-                    "garment_category": "bottom",
-                    "formality_level": "smart_casual",
-                    "pattern_type": "solid",
-                    "volume_profile": "slim",
-                    "fit_type": "fitted",
-                    "silhouette_type": "straight",
-                },
-            ],
-        )
-        sig = _candidate_signature(candidate)
-
-        self.assertEqual("cand-full", sig["candidate_id"])
-        self.assertEqual("paired", sig["candidate_type"])
-        self.assertEqual(["burgundy", "cream"], sig["primary_colors"])
-        self.assertEqual(["date_night"], sig["occasion_fits"])
-        self.assertEqual(["top", "bottom"], sig["roles"])
-        self.assertEqual(["top", "bottom"], sig["garment_categories"])
-        self.assertEqual(["smart_casual"], sig["formality_levels"])
-        self.assertEqual(["geometric", "solid"], sig["pattern_types"])
-        self.assertEqual(["oversized", "slim"], sig["volume_profiles"])
-        self.assertEqual(["relaxed", "fitted"], sig["fit_types"])
-        self.assertEqual(["draped", "straight"], sig["silhouette_types"])
 
     # ------------------------------------------------------------------
     # Concept-first paired planning tests
@@ -2233,46 +1569,6 @@ class AgenticApplicationTests(unittest.TestCase):
         response = formatter.format(evaluated, context, plan, candidates)
         self.assertIn("similar style", response.message)
 
-    def test_evaluator_defaults_preserve_non_color_for_change_color(self) -> None:
-        """style_note should mention preserved non-color attributes for change_color."""
-        delta = {
-            "followup_intent": FollowUpIntent.CHANGE_COLOR,
-            "new_colors": ["burgundy"],
-            "shared_colors": [],
-            "preserves_occasion": True,
-            "candidate_type_matches_previous": True,
-            "formality_shift": "",
-            "shared_silhouettes": ["straight"],
-            "shared_fits": ["slim"],
-            "shared_volumes": ["regular"],
-        }
-        defaults = _followup_reasoning_defaults(delta)
-        self.assertIn("occasion fit", defaults["style_note"])
-        self.assertIn("silhouette (straight)", defaults["style_note"])
-        self.assertIn("fit (slim)", defaults["style_note"])
-        self.assertIn("while shifting colors", defaults["style_note"])
-
-    def test_evaluator_defaults_include_all_shared_for_similar_to_previous(self) -> None:
-        """style_note should mention shared colors/patterns/volume/fit/silhouette."""
-        delta = {
-            "followup_intent": FollowUpIntent.SIMILAR_TO_PREVIOUS,
-            "candidate_type_matches_previous": True,
-            "preserves_occasion": True,
-            "preserves_roles": True,
-            "shared_colors": ["navy"],
-            "shared_patterns": ["solid"],
-            "shared_volumes": ["slim"],
-            "shared_fits": ["fitted"],
-            "shared_silhouettes": ["straight"],
-            "occasion_shift": [],
-        }
-        defaults = _followup_reasoning_defaults(delta)
-        self.assertIn("colors (navy)", defaults["style_note"])
-        self.assertIn("patterns (solid)", defaults["style_note"])
-        self.assertIn("volume (slim)", defaults["style_note"])
-        self.assertIn("fit (fitted)", defaults["style_note"])
-        self.assertIn("silhouette (straight)", defaults["style_note"])
-
     def test_profile_confidence_reports_missing_steps(self) -> None:
         confidence = evaluate_profile_confidence(
             {
@@ -2594,7 +1890,7 @@ class AgenticApplicationTests(unittest.TestCase):
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
             orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
                     message="Catalog pipeline took over.",
@@ -2747,7 +2043,7 @@ class AgenticApplicationTests(unittest.TestCase):
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
             orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
                     message="Here are sharper options.",
@@ -2913,7 +2209,7 @@ class AgenticApplicationTests(unittest.TestCase):
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
             orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
                     success=True,
@@ -3592,7 +2888,7 @@ class CopilotPlannerTests(unittest.TestCase):
             # Mock the remaining pipeline components
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
             orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            # outfit_evaluator removed (Phase 12B cleanup)
 
             result = orchestrator.process_turn(
                 conversation_id="c1",
@@ -3767,7 +3063,7 @@ class CopilotPlannerTests(unittest.TestCase):
             orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
             orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
                     message="Here are pairing options for your shirt.",
@@ -3854,7 +3150,7 @@ class CopilotPlannerTests(unittest.TestCase):
             orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
             orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
                     message="Here are pairing options.",
@@ -3917,7 +3213,7 @@ class CopilotPlannerTests(unittest.TestCase):
             orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
             orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
                     message="Here are catalog pairings for your shirt.",
@@ -4016,7 +3312,7 @@ class CopilotPlannerTests(unittest.TestCase):
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
             orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
                     success=True,
@@ -4142,7 +3438,7 @@ class CopilotPlannerTests(unittest.TestCase):
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
             orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            # outfit_evaluator removed (Phase 12B cleanup)
 
             orchestrator.process_turn(
                 conversation_id="c1",
@@ -4692,7 +3988,7 @@ class CopilotPlannerTests(unittest.TestCase):
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
             orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
                     success=True,
@@ -4786,7 +4082,7 @@ class CopilotPlannerTests(unittest.TestCase):
             orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
             orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-            orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
+            # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
                     message="Here are pairing options for your blazer.",
@@ -6633,85 +5929,10 @@ class Phase12EStageEmissionTests(unittest.TestCase):
         self.assertNotIn("catalog_search", stage_names)
         self.assertNotIn("visual_evaluation", stage_names)
 
-    def test_occasion_recommendation_legacy_path_emits_text_evaluator_stage(self):
-        """When the user has no full-body photo, occasion_recommendation
-        runs the legacy text evaluator path: architect → search →
-        assemble → reranker → outfit_evaluation (legacy) → format. The
-        visual_evaluation stage is NOT emitted."""
-        from agentic_application.schemas import (
-            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
-            RecommendationPlan, DirectionSpec, QuerySpec, ResolvedContextBlock,
-            RecommendationResponse,
-        )
-        repo = self._standard_repo()
-        gw = self._standard_gateway_no_photo()
-        # No wardrobe items so the wardrobe-first short circuit doesn't fire
-        gw.get_wardrobe_items.return_value = []
-        planner_mock = Mock()
-        planner_mock.plan.return_value = CopilotPlanResult(
-            intent=Intent.OCCASION_RECOMMENDATION,
-            intent_confidence=0.95,
-            action=Action.RUN_RECOMMENDATION_PIPELINE,
-            context_sufficient=True,
-            assistant_message="Let me put together options.",
-            follow_up_suggestions=[],
-            resolved_context=CopilotResolvedContext(
-                occasion_signal="office",
-                formality_hint="business_casual",
-            ),
-            action_parameters=CopilotActionParameters(),
-        )
-        orchestrator = self._build_orchestrator_with_legacy_path(repo, gw, planner_mock)
-        # Architect, search, assembler, evaluator, formatter all mocked.
-        orchestrator.outfit_architect.plan = Mock(return_value=RecommendationPlan(
-            plan_type="paired_only",
-            retrieval_count=12,
-            directions=[DirectionSpec(
-                direction_id="A",
-                direction_type="paired",
-                label="Office",
-                queries=[QuerySpec(query_id="A1", role="top", hard_filters={}, query_document="office shirt")],
-            )],
-            resolved_context=ResolvedContextBlock(
-                occasion_signal="office",
-                formality_hint="business_casual",
-            ),
-        ))
-        orchestrator.catalog_search_agent.search = Mock(return_value=[])
-        orchestrator.outfit_assembler.assemble = Mock(return_value=[])
-        orchestrator.outfit_evaluator.evaluate = Mock(return_value=[])
-        orchestrator.response_formatter.format = Mock(
-            return_value=RecommendationResponse(
-                message="Here are some office options.",
-                outfits=[],
-                follow_up_suggestions=[],
-                metadata={"answer_components": {"primary_source": "catalog", "catalog_item_count": 0, "wardrobe_item_count": 0}},
-            )
-        )
-
-        callback, stages = self._capture_stages()
-        orchestrator.process_turn(
-            conversation_id="c1",
-            external_user_id="user-1",
-            message="What should I wear to the office tomorrow?",
-            stage_callback=callback,
-        )
-
-        stage_names = [s["stage"] for s in stages]
-        # Entry skeleton
-        self.assertIn("copilot_planner", stage_names)
-        # Pipeline stages in legacy text path
-        self.assertIn("outfit_architect", stage_names)
-        self.assertIn("catalog_search", stage_names)
-        self.assertIn("outfit_assembly", stage_names)
-        self.assertIn("reranker", stage_names)
-        self.assertIn("outfit_evaluation", stage_names)
-        self.assertIn("response_formatting", stage_names)
-        # The visual_evaluation stage is NOT emitted because there's no person photo
-        self.assertNotIn("visual_evaluation", stage_names)
-        # Legacy path metadata records the evaluator path
-        finalize_call = repo.finalize_turn.call_args
-        self.assertIsNotNone(finalize_call)
+    # test_occasion_recommendation_legacy_path_emits_text_evaluator_stage
+    # removed (Phase 12B cleanup, April 9 2026) — the legacy text evaluator
+    # path no longer exists; the visual evaluator is the sole evaluator and
+    # a failure produces a graceful empty response, not a text-only fallback.
 
 
 if __name__ == "__main__":
