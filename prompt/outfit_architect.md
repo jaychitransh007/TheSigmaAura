@@ -238,6 +238,18 @@ GARMENT_REQUIREMENTS:
 - SleeveLength: ...
 - SkinExposureLevel: ...
 
+EMBELLISHMENT:
+- EmbellishmentLevel: none | minimal | subtle | moderate | heavy | statement
+- EmbellishmentType: embroidery | print | beading | sequins | mirror_work | applique | lace | distressing | mixed | studs
+- EmbellishmentZone: allover | neckline | hem | waist | shoulder | back | sleeve
+
+VISUAL_DIRECTION:
+- VerticalWeightBias: balanced | upper_biased | lower_biased
+- VisualWeightPlacement: distributed | upper_biased | lower_biased | center
+- StructuralFocus: distributed | neckline | hem | waist | shoulder | hip | sleeve
+- BodyFocusZone: full_length | bust | shoulders | waist | hips | legs | face_neck | back
+- LineDirection: minimal | vertical | horizontal | mixed | diagonal
+
 FABRIC_AND_BUILD:
 - FabricDrape: ...
 - FabricWeight: ...
@@ -310,6 +322,38 @@ Not all events under the same umbrella carry the same formality or embellishment
 When the user says "engagement", reach for polished, clean-lined pieces in premium fabrics with subtle texture. Do NOT reach for heavy sherwanis or brocade sets — those are wedding-ceremony territory.
 
 When the user says "western" + any festive occasion, the intersection is narrow: structured blazers in rich colors, textured shirts in silk or fine wool, tailored trousers in suiting fabric. NOT casual cotton shirts or everyday chinos.
+
+## Embellishment Reasoning
+
+Set the `EMBELLISHMENT` section based on **occasion + sub-occasion calibration**:
+
+| Occasion type | EmbellishmentLevel | EmbellishmentType | EmbellishmentZone |
+|---|---|---|---|
+| Wedding ceremony | moderate to heavy | embroidery, sequins, beading | allover or neckline |
+| Wedding engagement | subtle to moderate | embroidery, sequins | neckline or hem |
+| Cocktail / party | minimal to subtle | print, mixed | neckline |
+| Office / business | none to minimal | print (subtle) | — |
+| Casual | none | — | — |
+
+This is the **key differentiator** between "too much" and "not festive enough". A wedding engagement query with `EmbellishmentLevel: subtle to moderate` and `EmbellishmentZone: neckline` will rank tastefully festive items above plain items AND above heavily embellished ceremony pieces.
+
+## Visual Direction Reasoning
+
+Set the `VISUAL_DIRECTION` section based on **the user's body analysis attributes**:
+
+| User attribute | Visual direction field | How to set |
+|---|---|---|
+| FrameStructure: Narrow | VerticalWeightBias: upper_biased | Adds visual width at shoulders |
+| FrameStructure: Broad / Large | VerticalWeightBias: balanced or lower_biased | Avoids top-heavy emphasis |
+| FrameStructure: Medium and Balanced | VerticalWeightBias: balanced | Maintains natural proportions |
+| HeightCategory: Short or Below Average | LineDirection: vertical | Vertical lines elongate |
+| HeightCategory: Tall or Above Average | LineDirection: horizontal or mixed | Can carry horizontal detail |
+| HeightCategory: Average | LineDirection: minimal or vertical | Safe default |
+| Body shape emphasis (broad shoulders) | StructuralFocus: shoulder | Highlights strength |
+| Body shape emphasis (defined waist) | StructuralFocus: waist | Highlights strength |
+| General / no specific emphasis | StructuralFocus: distributed | Even visual weight |
+
+The user's `analysis_attributes` contain FrameStructure and `derived_interpretations` contain HeightCategory. Use these to set VerticalWeightBias, LineDirection, StructuralFocus, and BodyFocusZone. Do NOT default everything to "balanced" or "distributed" — use the body data.
 
 ## Concept-First Planning
 
