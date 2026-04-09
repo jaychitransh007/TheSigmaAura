@@ -1085,6 +1085,35 @@ Total: ~250ms + 400ms ≈ 650ms (~4x speedup)
 
 ---
 
+### User Feedback Analysis — 449 events, 119 unique dislikes (March 16 – April 10 2026)
+
+**Summary:** 449 feedback events (185 likes, 264 dislikes). 119 unique dislike notes (deduped by conversation+turn). Categorized into 12 axial codes mapped to system components.
+
+| # | Category | Count | System Component | Status |
+|---|----------|-------|------------------|--------|
+| 1 | **Virtual Try-on Quality** | 29 | Try-on renderer (Gemini) | **OPEN** — proportions distorted, face changed, accessories/tattoos transferred from garment model, pants changed, existing clothing visible under tried-on garment. Quality gate exists but doesn't catch these. |
+| 2 | **Wrong Pairing** | 26 | Assembler + Architect | **PARTIALLY FIXED** — role-category validation blocks accessories, duplicate-product check blocks same item in multiple roles. Remaining: color/style coherence in cross-product pairings still produces odd combos ("kurta with random trousers"). |
+| 3 | **Occasion Mismatch** | 24 | Architect query docs | **MOSTLY FIXED** — occasion-fabric coupling, sub-occasion calibration, time-of-day inference, embellishment level in query docs all shipped. Remaining: joggers/casual trousers still appearing for formal occasions (catalog data quality — see #10). |
+| 4 | **Color Dislike** | 16 | Architect color guidance | **PARTIALLY FIXED** — evening color shift (deep palette) shipped. Remaining: accent color saturation too aggressive ("too bright", "accent color all over the place"), avoid-colors not always respected. |
+| 5 | **Body Fit Issues** | 12 | Architect visual direction + Assembler | **PARTIALLY FIXED** — VISUAL_DIRECTION now in query docs (LineDirection, VerticalWeightBias). Remaining: "slim jeans makes me look ugly" repeated 6x across dates — body-shape-aware fit type selection not strong enough. |
+| 6 | **Style Mismatch** | 9 | Architect style preference | **PARTIALLY FIXED** — style archetype override rule exists. Remaining: "not me", "I would never wear this" — the system doesn't learn from repeated style rejections across conversations. |
+| 7 | **Wrong Garment Type** | 9 | Architect + Catalog search | **PARTIALLY FIXED** — garment_subtype hard filter is conditional. Remaining: "I asked for shirts, got tshirts" — when user names a specific type but catalog pool is thin, the system substitutes similar subtypes instead of saying "no results." |
+| 8 | **Catalog Data Quality** | 9 | Enrichment + Catalog admin | **PARTIALLY FIXED** — accessories removed, outerwear recategorized. Remaining: joggers tagged as trousers, casual trousers tagged as formal. Need catalog-wide audit of GarmentSubtype accuracy for bottomwear. |
+| 9 | **Pattern Dislike** | 8 | Architect pattern guidance | **OPEN** — "too much patterns", "I don't like these patterns." Pattern distribution rules exist in the prompt but pattern intensity/user preference not calibrated. |
+| 10 | **Structural Bugs** | 6 | Assembler + Filters | **FIXED** — jacket+blazer double-outerwear (strict role-category separation), pocket square as bottomwear (accessories purged + category validation). |
+| 11 | **Repeat Items** | 4 | Reranker + Previous-rec exclusion | **FIXED** — cross-outfit diversity cap (MAX_PRODUCT_REPEAT_PER_RUN=1), previous recommendation exclusion on follow-ups, reranker round-robin. |
+| 12 | **Other** | 14 | Various | Mixed — "would require a third piece" (three_piece now shipped), "I liked the pant but not the topwear" (per-item like/dislike not yet actionable). |
+
+**Top 3 unaddressed issues by impact:**
+
+1. **Virtual try-on quality (29 feedbacks)** — the single largest complaint category. Proportions distorted, face altered, garment details changed, accessories/tattoos transferred from product model images. The quality gate catches gross failures but not subtle distortions. Needs: try-on prompt refinement, post-render visual consistency check, garment model accessory stripping.
+
+2. **Joggers/casual trousers in formal contexts (9+ feedbacks across occasion + catalog)** — joggers and casual trousers tagged as `trouser` with `formality: smart_casual` appear in formal/ceremonial queries. Need: catalog-wide GarmentSubtype audit for bottomwear — reclassify joggers as `track_pants` or `jogger`, casual trousers as `casual_trouser` distinct from `trouser`.
+
+3. **Color/pattern intensity not personalized (24 feedbacks across color + pattern)** — "too bright", "accent color all over", "too much patterns", "I don't like these patterns." The system uses the user's seasonal palette but doesn't calibrate color saturation intensity or pattern density to the user's risk tolerance. Need: map risk_tolerance (conservative/moderate/adventurous) to ColorSaturation and PatternScale ranges in the architect prompt.
+
+---
+
 ### ✅ CLOSED — Occasion-fabric coupling + sub-occasion formality calibration in architect (April 10 2026)
 
 **Problem:** User feedback from conversation `2035c3cb` (wedding engagement) shows two quality failures even after structural fixes:
