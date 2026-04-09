@@ -25,7 +25,7 @@ manual intervention.
       (verified April 10, 2026: smart hard-filter/soft-signal tiering +
       multi-direction diversity + reranker round-robin + needs_innerwear
       filter + catalog admin resync endpoint + previous-rec exclusion +
-      product URL reconstruction + catalog health remediation (14,391
+      product URL reconstruction + catalog health remediation (14,296
       enriched+embedded products, zero nulls) shipped).
 - [ ] `ops/scripts/validate_dependency_report.py` runs to completion with
       zero failed assertions.
@@ -48,7 +48,7 @@ manual intervention.
 The environment we ship to must have the data the pipeline depends on.
 
 - [ ] `catalog_enriched` has at least 500 rows with `row_status in ('ok','complete')`.
-      (verified April 10, 2026: 14,391 items, all enriched, all embedded,
+      (verified April 10, 2026: 14,296 items, all enriched, all embedded,
       zero null filter columns. Dead/delisted items cleaned up. Vastramay,
       Powerlook, CampusSutra re-embedded from DB via resync endpoint.)
 - [ ] `catalog_item_embeddings` has the same row count as the embeddable

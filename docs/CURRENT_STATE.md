@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: April 10, 2026 (Phase 12 close-out: smart hard-filter/soft-signal tiering, multi-direction diversity, reranker round-robin, catalog admin resync from DB, needs_innerwear filter, catalog health remediation 14,391 items)
+Last updated: April 10, 2026 (Phase 12 close-out: three outfit structures (complete/paired/three_piece), occasion-fabric coupling, time-of-day inference, role-category validation, catalog cleanup 14,296 garment-only items, admin resync with pagination)
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -51,7 +51,7 @@ Project status:
 - wishlist: wishlisted catalog garments with product images, title, price, Buy Now — data from `catalog_interaction_history` hydrated with `catalog_enriched`
 - trial room: virtual try-on render gallery (2:3 aspect ratio, gradient timestamp overlay) — data from `virtual_tryon_images`
 - catalog admin: pipeline with upload, enrichment sync, embedding generation, URL backfill, include-incomplete toggle, skip-already-embedded optimization, **resync-from-DB endpoint** (`POST /v1/admin/catalog/embeddings/resync`) for re-embedding enriched items with product_id_prefix filter and paginated fetch
-- catalog health: **14,391 items** — all enriched, all embedded, zero null filter columns; dead/delisted items cleaned up; Vastramay/Powerlook/CampusSutra re-embedded from DB after enrichment
+- catalog health: **14,296 items** — all enriched, all embedded, zero null filter columns; dead/delisted items cleaned up; Vastramay/Powerlook/CampusSutra re-embedded from DB after enrichment
 
 The system is a working recommendation engine with supporting infrastructure. The next phase is evolving it from a shopping-first tool into a lifestyle stylist — wardrobe-first across all intents, dedicated handlers for non-recommendation intents (outfit check, shopping decision, pairing, capsule planning), and WhatsApp as a live retention surface.
 
@@ -376,7 +376,12 @@ Current execution order:
 Current supported plan modes:
 - `complete_only`
 - `paired_only`
-- `mixed`
+- `mixed` (standard for broad occasion requests — typically 1 complete + 1 paired + 1 three_piece)
+
+Current supported direction types:
+- `complete` — single query, role=complete (kurta_set, suit_set, dress)
+- `paired` — two queries: role=top + role=bottom
+- `three_piece` — three queries: role=top + role=bottom + role=outerwear (blazer, nehru_jacket, jacket)
 
 Current supported retrieval directions:
 - complete outfit
@@ -417,7 +422,7 @@ Primary data sources:
 
 Current filter behavior:
 - global hard filter: `gender_expression` (always applied, never relaxed)
-- direction hard filters: `styling_completeness` — multi-value arrays: `complete` for complete directions, `["needs_bottomwear", "needs_innerwear"]` for top role, `["needs_topwear", "needs_innerwear"]` for bottom role (April 10 2026 — unlocks nehru jackets tagged `needs_innerwear`)
+- direction hard filters: `styling_completeness` — role-specific values: `complete` for complete directions, `needs_bottomwear` for top role, `needs_topwear` for bottom role, `["needs_innerwear"]` for outerwear role (three_piece directions). In paired directions, top role uses `["needs_bottomwear", "needs_innerwear"]` to include layering pieces.
 - architect explicit hard_filters: `garment_subtype` (conditional — set for specific requests, null for broad)
 - query-document lines are **soft signals for embedding similarity only** — `_QUERY_FILTER_MAPPING` is empty; no hard filters extracted from query document text (April 9 2026)
 - soft signals via embedding similarity only: `occasion_fit`, `formality_level`, `time_of_day`
@@ -1148,7 +1153,7 @@ Executed April 10, 2026. All three stores re-embedded via `POST /v1/admin/catalo
 
 Additional cleanup: 61 Koskii/Showoffff items enriched via batch API then re-embedded. 85 dead items (84 Powerlook + 1 Vastramay with delisted products and broken images) deleted. 271 items with empty product URLs deleted.
 
-Final catalog: **14,391 items** — all enriched, all embedded, zero null filter columns.
+Final catalog: **14,296 items** — all enriched, all embedded, zero null filter columns.
 
 ---
 
@@ -2248,7 +2253,7 @@ These were considered during Phase 12E scoping but explicitly punted because the
 2. **Background re-enrichment** — a worker that walks legacy wardrobe rows saved before Phase 12D's `service.py` retry-and-mark fix and re-runs the enrichment vision call. Today users with sparse legacy wardrobe items get a clarification when they reference one as an anchor; auto-re-enrichment would close the loop.
 3. **Reranker calibration from staging telemetry** — incorporate prior-turn feedback, user style preference proximity, and weather/time match as additional reranker signals. Today `assembly_score` is the only signal. Phase 12E added the operations panels (9-12) that provide the inputs once staging traffic accumulates.
 4. **Capsule / trip planning return** — Phase 12A removed this intent. Capsule/trip planning will return as a dedicated phase with the right shape (multi-day outfit selection with intentional wardrobe item recurrence).
-5. **Three-piece outfit support** — current pipeline supports `complete_only` / `paired_only` / `mixed` plan types. Three-piece (top + bottom + outerwear) requires architect prompt + assembler logic changes.
+5. ~~**Three-piece outfit support**~~ — **DONE** (April 10 2026). `three_piece` direction type with `outerwear` role. Architect prompt, JSON schema, assembler `_assemble_three_piece`, directional filters, role-category validation all shipped.
 6. **External weather API integration** — Phase 12 extracts weather context from the user message text only. A real weather API call (lat/lon → current conditions) would let the system reason about weather even when the user doesn't mention it.
 7. **Splitting OutfitEvaluator and OutfitCheckAgent fully** — Phase 12B added `VisualEvaluatorAgent` as the new path; the legacy `OutfitEvaluator` remains as the no-photo fallback and `OutfitCheckAgent` remains because some tests still mock it. A follow-up phase can delete both once test coverage is fully migrated.
 
@@ -2273,7 +2278,7 @@ The following items from earlier sections of this document are **superseded by P
 - WhatsApp runtime rebuild — separate phase
 - External weather API integration — for Phase 12 the planner extracts weather context from the user message or conversation memory; external API is a future enhancement
 - Reranker learning from live feedback — comes after staging telemetry lands
-- Three-piece outfit support — unchanged; stays at `complete_only` / `paired_only` / `mixed`
+- Three-piece outfit support — **DONE** (April 10 2026); `three_piece` direction type shipped
 - Alternative embedding models for catalog retrieval — unchanged from current design
 - Bulk wardrobe upload UI — `wardrobe_ingestion` remains as silent-save; no new user-facing bulk surface in this phase
 

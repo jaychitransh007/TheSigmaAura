@@ -171,8 +171,9 @@ User message
    ├── Stage 1: Outfit Architect [gpt-5.4]
    │   ├── Input: CombinedContext (profile, live context, hard filters, previous recs)
    │   ├── Output: ArchitectPlan with directions (plan_type, query specs)
-   │   ├── Plan types: complete_only | paired_only | mixed
-   │   ├── Concept-first: color coordination, volume balance, pattern distribution
+   │   ├── Plan types: complete_only | paired_only | mixed (broad requests: 1 complete + 1 paired + 1 three_piece)
+   │   ├── Direction types: complete (1 query), paired (top+bottom), three_piece (top+bottom+outerwear)
+   │   ├── Concept-first: color coordination, volume balance, pattern distribution, occasion-fabric coupling
    │   └── DB: repo.log_model_call(call_type="outfit_architect")
    │
    ├── Stage 2: Catalog Search [pgvector]
@@ -186,6 +187,9 @@ User message
    ├── Stage 3: Outfit Assembly [deterministic]
    │   ├── Complete directions: each product → one candidate (score = similarity)
    │   ├── Paired directions: top × bottom cross-product (capped at 15 each)
+   │   ├── Three-piece directions: top × bottom × outerwear (capped at 10 each, 60/40 weighted scoring)
+   │   ├── Role-category validation: top→top, bottom→bottom, outerwear→outerwear, complete→set/one_piece; accessories rejected
+   │   ├── Duplicate product check: same product_id cannot appear in multiple roles
    │   ├── Compatibility checks: formality, occasion, color temp, pattern, volume, fit, texture
    │   └── MAX_PAIRED_CANDIDATES = 30
    │

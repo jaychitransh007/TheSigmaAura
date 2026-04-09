@@ -43,7 +43,7 @@ Implemented now:
 - soft signals via embedding similarity only: `garment_category`, `styling_completeness`, `occasion_fit`, `formality_level`, `time_of_day`
 - no filter relaxation — single search pass per query
 - embedding retrieval from `catalog_item_embeddings` with hydration from `catalog_enriched`
-- direction-aware retrieval: multi-value arrays — `["needs_bottomwear", "needs_innerwear"]` for top, `["needs_topwear", "needs_innerwear"]` for bottom, `complete` for complete directions
+- direction-aware retrieval: `needs_bottomwear` for top (paired: `["needs_bottomwear", "needs_innerwear"]`), `needs_topwear` for bottom, `["needs_innerwear"]` for outerwear, `complete` for complete directions
 - **direction-aware reranker**: round-robin picks one candidate per direction before filling by score — guarantees outfit variety across architect's concepts
 - previous recommendation exclusion: follow-up turns exclude prior product IDs from retrieval
 - deterministic assembly and LLM evaluation with graceful evaluator fallback
@@ -1057,8 +1057,10 @@ Global hard filters (always applied):
 
 Direction-specific filters (applied by `build_directional_filters` in the catalog search agent):
 - complete outfit directions use `styling_completeness = "complete"`
-- paired top directions use `styling_completeness = ["needs_bottomwear", "needs_innerwear"]` (multi-value array — includes nehru jackets and layering pieces)
-- paired bottom directions use `styling_completeness = ["needs_topwear", "needs_innerwear"]`
+- paired top directions use `styling_completeness = ["needs_bottomwear", "needs_innerwear"]` (multi-value — includes layering pieces in 2-piece looks)
+- three_piece top directions use `styling_completeness = "needs_bottomwear"` (outerwear has its own role)
+- bottom directions use `styling_completeness = "needs_topwear"`
+- outerwear directions use `styling_completeness = ["needs_innerwear"]` (blazers, nehru jackets, jackets)
 
 Architect explicit hard filters (set in `query.hard_filters`):
 - `garment_subtype` — **conditional**: set only when the user names a specific garment type ("show me kurtas"); null for broad requests ("something traditional for a wedding")
@@ -1325,15 +1327,18 @@ Convert retrieved product sets into complete evaluable outfit candidates.
 
 If pairing is part of v1, the system needs an explicit assembly layer before evaluation. Retrieval alone is not enough.
 
-### V1 pairing scope
+### Pairing scope
 
-Only:
-- `top + bottom`
+Supported direction types:
+- `complete` — single garment (kurta_set, suit_set, dress, co_ord_set)
+- `paired` — `top + bottom` (kurta + trouser, shirt + trouser)
+- `three_piece` — `top + bottom + outerwear` (shirt + trouser + blazer, kurta + trouser + nehru_jacket)
 
-Not in v1:
-- three-piece outfits
-- accessory pairing
-- outerwear layering logic
+Role-category validation in assembler: top→top only, bottom→bottom only, outerwear→outerwear only, complete→set/one_piece only. Accessories (pocket squares, dupattas, jewelry) rejected from all roles.
+
+Not in scope:
+- accessory pairing (scarves, jewelry, shoes as add-ons)
+- four-piece or layered combos beyond top+bottom+outerwear
 
 ### Assembly behavior
 
