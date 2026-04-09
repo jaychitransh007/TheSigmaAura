@@ -140,6 +140,33 @@ _TEMP_COMPAT: Dict[str, set] = {
 
 MAX_PAIRED_CANDIDATES = 30
 
+# Valid garment_category values for each retrieval role.  Products whose
+# enriched garment_category falls outside the allowed set for their role
+# are filtered out before assembly scoring — this prevents accessories
+# (pocket squares, dupattas) and mis-tagged items from appearing as
+# tops, bottoms, or outerwear.
+_VALID_CATEGORIES_FOR_ROLE: Dict[str, set[str]] = {
+    "top": {"top", "outerwear"},
+    "bottom": {"bottom"},
+    "outerwear": {"outerwear"},
+    "complete": {"set", "one_piece", "complete", "top", "bottom", "outerwear"},
+}
+
+
+def _is_valid_for_role(product: "RetrievedProduct", role: str) -> bool:
+    """Check if a product's garment_category is compatible with the role."""
+    allowed = _VALID_CATEGORIES_FOR_ROLE.get(role)
+    if not allowed:
+        return True  # unknown role — don't block
+    cat = str(
+        product.enriched_data.get("garment_category")
+        or product.metadata.get("garment_category")
+        or ""
+    ).strip().lower()
+    if not cat:
+        return True  # no category data — let it through
+    return cat in allowed
+
 # Cross-outfit diversity cap: a single product_id may appear in at most this
 # many of the assembled candidates that are returned to the evaluator and,
 # ultimately, the user. Set to 1 so each garment shows up in exactly one
@@ -380,9 +407,9 @@ class OutfitAssembler:
         bottoms: List[RetrievedProduct] = []
         for rs in sets:
             if rs.role == "top":
-                tops.extend(rs.products)
+                tops.extend(p for p in rs.products if _is_valid_for_role(p, "top"))
             elif rs.role == "bottom":
-                bottoms.extend(rs.products)
+                bottoms.extend(p for p in rs.products if _is_valid_for_role(p, "bottom"))
 
         if not tops or not bottoms:
             return []
@@ -428,11 +455,11 @@ class OutfitAssembler:
         outerwear: List[RetrievedProduct] = []
         for rs in sets:
             if rs.role == "top":
-                tops.extend(rs.products)
+                tops.extend(p for p in rs.products if _is_valid_for_role(p, "top"))
             elif rs.role == "bottom":
-                bottoms.extend(rs.products)
+                bottoms.extend(p for p in rs.products if _is_valid_for_role(p, "bottom"))
             elif rs.role == "outerwear":
-                outerwear.extend(rs.products)
+                outerwear.extend(p for p in rs.products if _is_valid_for_role(p, "outerwear"))
 
         if not tops or not bottoms or not outerwear:
             # Fall back to paired assembly if outerwear is missing
