@@ -3471,15 +3471,17 @@ def get_web_ui_html(
       items.forEach(function(item) {{
         var card = document.createElement("div");
         card.className = "closet-card";
+        card.style.cssText = "border-radius:14px; border:1px solid var(--line); overflow:hidden; background:var(--surface); box-shadow:0 2px 12px rgba(54,32,24,0.06);";
         var imgUrl = item.image_url || "";
-        card.innerHTML = '<div class="closet-image">' +
-          (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || "Item") + '" loading="lazy" />' : '') +
+        var priceStr = item.price ? String(item.price).replace(/\\.0$/, "") : "";
+        card.innerHTML = '<div class="closet-image" style="aspect-ratio:3/4; overflow:hidden; background:var(--surface-alt);">' +
+          (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || "Item") + '" loading="lazy" style="width:100%; height:100%; object-fit:cover;" />' : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;">No image</div>') +
         '</div>' +
-        '<div class="closet-meta">' +
-          '<div class="closet-title">' + escapeHtml(item.title || "Untitled") + '</div>' +
-          (item.price ? '<div style="color:var(--accent);font-weight:700;font-size:13px;">Rs. ' + escapeHtml(item.price) + '</div>' : '') +
-          (item.garment_category ? '<div style="font-size:11px;color:var(--muted);">' + escapeHtml(item.garment_category) + (item.primary_color ? ' &middot; ' + escapeHtml(item.primary_color) : '') + '</div>' : '') +
-          (item.product_url ? '<a href="' + escapeHtml(item.product_url) + '" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:underline;margin-top:4px;display:inline-block;">Buy Now</a>' : '') +
+        '<div style="padding:12px 14px 14px; display:flex; flex-direction:column; gap:4px;">' +
+          '<div style="font-size:13px; font-weight:600; color:var(--ink); line-height:1.35;">' + escapeHtml(item.title || "Untitled") + '</div>' +
+          (priceStr ? '<div style="color:var(--accent); font-weight:700; font-size:14px;">Rs. ' + escapeHtml(priceStr) + '</div>' : '') +
+          (item.garment_category ? '<div style="font-size:11px; color:var(--muted); text-transform:capitalize;">' + escapeHtml(item.garment_category.replace(/_/g, " ")) + (item.primary_color ? ' &middot; ' + escapeHtml(item.primary_color.replace(/_/g, " ")) : '') + '</div>' : '') +
+          (item.product_url ? '<a href="' + escapeHtml(item.product_url) + '" target="_blank" style="display:inline-block; margin-top:6px; padding:6px 16px; font-size:12px; font-weight:600; color:var(--surface); background:var(--ink); border-radius:8px; text-decoration:none; text-align:center;">Buy Now</a>' : '') +
         '</div>';
         grid.appendChild(card);
       }});
