@@ -1018,6 +1018,36 @@ Success criteria:
 
 ## Immediate Next Item
 
+### ✅ CLOSED — Multi-value subtype filters for catalog search (April 9 2026)
+
+Shipped April 9, 2026. The architect can now output arrays of plausible garment subtypes per query. The SQL search function matches ANY value in the array. Tests: 318 passing. Migration applied to staging.
+
+**Files changed:**
+- `supabase/migrations/20260409140000_multivalue_search_filters.sql` — updated `match_catalog_item_embeddings` to detect if a filter value is a JSONB array and use `= ANY(...)` matching; falls back to exact `=` for plain strings. Applied to staging.
+- `prompt/outfit_architect.md` — added `kurta`, `kurti`, `palazzo`, `lehenga_set`, `jumpsuit` to the subtype enum. Added "Multi-value filters" section instructing the architect to pass arrays for broad requests and single values for specific requests, with 4 concrete examples.
+- `agents/outfit_architect.py` — `garment_subtype` and `garment_category` schema changed from `{"type": ["string", "null"]}` to `{"anyOf": [string, array, null]}` so the model can return either.
+- `filters.py` — `merge_filters` now handles list values: normalizes each element, preserves as a list in the merged dict. The RPC receives a JSONB array.
+
+---
+
+### P0 — Multi-value subtype filters for catalog search (April 9 2026) — historical plan
+
+**Problem:** the architect outputs a single `garment_subtype` string per query (e.g. `"tunic"`). The search function does exact `=` matching. When the user asks for "something traditional like a kurta", the architect picks ONE subtype from its enum, but the catalog may use a different label for the same concept. Result: zero matches for `garment_subtype='tunic'` when the items are tagged `kurta`.
+
+**Fix:** architect outputs arrays of plausible subtypes per query. The search function matches ANY of them via `= ANY(array)`.
+
+**3 changes:**
+
+1. **SQL function** (`match_catalog_item_embeddings`): change each filter line from `cie.X = filter->>'X'` to: if the filter value is a JSONB array, use `cie.X = ANY(SELECT jsonb_array_elements_text(filter->'X'))`, else keep the exact `=` match. Same change for `garment_category`. Applied via new migration.
+
+2. **Architect prompt + schema** (`prompt/outfit_architect.md` + `agents/outfit_architect.py`): change `garment_subtype` and `garment_category` from `{"type": ["string", "null"]}` to `{"type": ["string", "array", "null"], "items": {"type": "string"}}`. Update the prompt to instruct: "For garment_subtype, list ALL plausible subtypes for the occasion (e.g. `["kurta", "tunic", "nehru_jacket"]` not just `"tunic"`). Prefer arrays with 2-4 values."
+
+3. **Filter merging** (`filters.py`): when a filter value is a list, JSON-encode it so the RPC receives a JSONB array. The SQL function detects the type and uses the right matching.
+
+Also: add `kurta` to the subtype enum (it's in the catalog but missing from the architect's list).
+
+---
+
 ### ✅ CLOSED — Tabs redesign: Wishlist + Trial Room + Chat wishlist picker (April 9 2026)
 
 Shipped April 9, 2026. The 3-tab layout (Chat / Wardrobe / Results) is now a 4-tab layout (**Chat / Wardrobe / Wishlist / Trial Room**) with a "Select from wishlist" picker in the chat composer. Tests: 318 passing.

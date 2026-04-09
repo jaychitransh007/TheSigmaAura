@@ -103,8 +103,18 @@ Only use values from this vocabulary in `hard_filters`. Any other value will fai
 |---|---|
 | `styling_completeness` | `complete`, `needs_bottomwear`, `needs_topwear`, `needs_innerwear`, `dual_dependency` |
 | `garment_category` | `top`, `bottom`, `set`, `one_piece`, `outerwear` |
-| `garment_subtype` | `shirt`, `tshirt`, `blouse`, `sweater`, `sweatshirt`, `hoodie`, `cardigan`, `tunic`, `kurta_set`, `trouser`, `pants`, `jeans`, `track_pants`, `shorts`, `skirt`, `dress`, `gown`, `saree`, `anarkali`, `kaftan`, `playsuit`, `salwar_set`, `salwar_suit`, `co_ord_set`, `blazer`, `jacket`, `coat`, `shacket` |
+| `garment_subtype` | `shirt`, `tshirt`, `blouse`, `sweater`, `sweatshirt`, `hoodie`, `cardigan`, `tunic`, `kurta`, `kurta_set`, `kurti`, `trouser`, `pants`, `jeans`, `track_pants`, `shorts`, `skirt`, `dress`, `gown`, `saree`, `anarkali`, `kaftan`, `playsuit`, `salwar_set`, `salwar_suit`, `co_ord_set`, `blazer`, `jacket`, `coat`, `shacket`, `palazzo`, `lehenga_set`, `jumpsuit` |
 | `gender_expression` | `masculine`, `feminine`, `unisex` |
+
+**Multi-value filters:** for `garment_subtype` and `garment_category`, you can pass **an array of values** instead of a single string. The search engine will match ANY of the values. Use arrays when the user's request could be satisfied by multiple garment types.
+
+For example, if the user asks for "something traditional", set `garment_subtype` to `["kurta", "tunic", "kurta_set"]` and `garment_category` to `["top", "one_piece"]` — not just one value. This dramatically improves match rates for broad requests.
+
+**When to use arrays vs single values:**
+- User says "show me shirts" → `"garment_subtype": "shirt"` (specific request, single value)
+- User says "something traditional" → `"garment_subtype": ["kurta", "tunic", "kurta_set", "sherwani"]` (broad request, multiple plausible types)
+- User says "a nice top" → `"garment_subtype": ["shirt", "tshirt", "blouse", "tunic"]` (broad request)
+- User says "formal bottom" → `"garment_subtype": ["trouser", "pants"]` (2 plausible types)
 
 Set any filter to `null` if you do not want to constrain on that dimension. Do NOT invent values outside this vocabulary.
 

@@ -100,10 +100,19 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                                                 "enum": ["complete", "needs_bottomwear", "needs_topwear", "needs_innerwear", "dual_dependency", None],
                                             },
                                             "garment_category": {
-                                                "type": ["string", "null"],
-                                                "enum": ["top", "bottom", "set", "one_piece", "outerwear", None],
+                                                "anyOf": [
+                                                    {"type": "string", "enum": ["top", "bottom", "set", "one_piece", "outerwear"]},
+                                                    {"type": "array", "items": {"type": "string", "enum": ["top", "bottom", "set", "one_piece", "outerwear"]}},
+                                                    {"type": "null"},
+                                                ],
                                             },
-                                            "garment_subtype": {"type": ["string", "null"]},
+                                            "garment_subtype": {
+                                                "anyOf": [
+                                                    {"type": "string"},
+                                                    {"type": "array", "items": {"type": "string"}},
+                                                    {"type": "null"},
+                                                ],
+                                            },
                                             "gender_expression": {
                                                 "type": ["string", "null"],
                                                 "enum": ["masculine", "feminine", "unisex", None],

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, Iterable
+from typing import Any, Dict, Iterable
 
 from .schemas import UserContext
 
@@ -37,14 +37,26 @@ def build_global_hard_filters(user: UserContext) -> Dict[str, str]:
     return filters
 
 
-def merge_filters(*filter_dicts: Dict[str, str]) -> Dict[str, str]:
-    """Merge multiple filter dicts; later dicts override earlier ones. Empty values are skipped."""
-    merged: Dict[str, str] = {}
+def merge_filters(*filter_dicts: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge multiple filter dicts; later dicts override earlier ones.
+
+    Values can be strings (single value) or lists (multi-value). Lists
+    are preserved as-is for the SQL function's array matching. Empty
+    values are skipped.
+    """
+    merged: Dict[str, Any] = {}
     for d in filter_dicts:
         for key, value in d.items():
-            normalized = normalize_filter_value(value) if value else ""
-            if normalized:
-                merged[key] = normalized
+            if isinstance(value, list):
+                # Multi-value filter: normalize each element, drop empties
+                normalized_list = [normalize_filter_value(v) for v in value if v]
+                normalized_list = [v for v in normalized_list if v]
+                if normalized_list:
+                    merged[key] = normalized_list
+            else:
+                normalized = normalize_filter_value(value) if value else ""
+                if normalized:
+                    merged[key] = normalized
     return merged
 
 
