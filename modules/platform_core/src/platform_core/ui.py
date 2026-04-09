@@ -513,7 +513,7 @@ def get_web_ui_html(
 
     /* ===== Wardrobe Page ===== */
     .page-wardrobe {
-      padding: 24px 32px; max-width: 960px; margin: 0 auto; width: 100%;
+      padding: 24px 32px; width: 100%;
     }
     .wardrobe-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
     .wardrobe-header h2 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 24px; font-weight: 600; }
@@ -529,7 +529,7 @@ def get_web_ui_html(
     }
     .filter-chip:hover { border-color: var(--wardrobe); color: var(--wardrobe); }
     .filter-chip.active { background: rgba(95, 106, 82, 0.12); color: var(--wardrobe); border-color: rgba(95, 106, 82, 0.3); }
-    .closet-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .closet-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
     .closet-card {
       border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
       background: var(--surface); box-shadow: 0 2px 12px rgba(54, 32, 24, 0.05);
@@ -785,7 +785,7 @@ def get_web_ui_html(
       .outfit-thumbs { flex-direction: row; overflow-x: auto; padding: 8px; }
       .outfit-thumbs img { width: 56px; height: 56px; }
       .outfit-main-img img { max-height: 320px; }
-      .closet-grid { grid-template-columns: repeat(2, 1fr); }
+      .closet-grid { grid-template-columns: repeat(3, 1fr); }
       .results-grid { grid-template-columns: 1fr; }
       .profile-grid, .style-facts, .edit-grid { grid-template-columns: 1fr; }
     }
@@ -804,7 +804,7 @@ def get_web_ui_html(
       .composer-wrap { padding: 6px 12px 12px; }
       .prompt-grid { grid-template-columns: 1fr; }
       .page-wardrobe, .page-results, .page-profile { padding: 16px; }
-      .closet-grid { grid-template-columns: 1fr 1fr; }
+      .closet-grid { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 430px) {
       .header-brand { font-size: 18px; }
