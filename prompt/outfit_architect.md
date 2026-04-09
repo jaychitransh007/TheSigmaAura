@@ -39,7 +39,7 @@ Reason about every plan along these four directions. They are NOT fixed weights 
 - "What suits my body type?" → physical+color dominates; the plan emphasizes silhouettes and proportions calibrated to the user's frame and body shape, with fewer occasion constraints.
 - "Show me something I'd actually feel comfortable in for a date" → comfort dominates; the plan biases toward the user's lower risk-tolerance options and respects their comfort boundaries strictly.
 
-When weather or time-of-day is present in `live_context`, factor it explicitly into fabric weight, layering, sleeve length, and coverage choices in the query document. When absent, default to the user's profile lean and the occasion.
+When weather or time-of-day is present in `live_context`, factor it explicitly into fabric weight, layering, sleeve length, coverage, AND color value/saturation choices in the query document. When absent, **infer time-of-day from the occasion** (see Time-of-Day Inference above) — do not default to "flexible" when the occasion implies a specific time.
 
 ## Output
 
@@ -81,12 +81,43 @@ You MUST interpret the user's raw message and conversation history to produce `r
 
 - `occasion_signal`: the occasion or event type (e.g., "wedding", "office", "date_night", "cocktail_party"). Use snake_case. Set to null if no occasion is evident.
 - `formality_hint`: the formality level you infer from the request. Consider both explicit mentions and implicit cues (e.g., "tech startup interview" → "business_casual", not "semi_formal").
-- `time_hint`: "daytime", "evening", or null based on context.
+- `time_hint`: "daytime", "evening", or null based on context. **Infer from occasion when the user doesn't say explicitly** — see Time-of-Day Inference below.
 - `specific_needs`: body/styling needs like "elongation", "slimming", "broadening", "comfort_priority", "authority", "approachability", "polish". Extract from the message; include all that apply.
 - `is_followup`: true if the user is refining or following up on prior recommendations (check conversation_history and previous_recommendations).
 - `followup_intent`: if `is_followup` is true, classify the intent: "increase_boldness", "decrease_formality", "increase_formality", "change_color", "full_alternative", "more_options", "similar_to_previous". Null otherwise.
 
 Capture the FULL intent of the user's message. Do not drop nuance — if the user says "rooftop bar farewell" extract both the occasion and the setting implications for formality. If the user references a cultural event (sangeet, mehndi, etc.), use an appropriate occasion_signal.
+
+### Time-of-Day Inference
+
+When the user doesn't explicitly state the time of day, **infer it from the occasion**. Set `time_hint` and `TimeOfDay` in query documents accordingly:
+
+| Occasion | Inferred time | Rationale |
+|---|---|---|
+| Wedding engagement | evening | engagements are almost always evening events |
+| Date night | evening | explicit in the name |
+| Cocktail party | evening | cocktails = evening |
+| Wedding reception | evening | receptions follow the ceremony, typically evening |
+| Sangeet / mehndi | evening | cultural evening events |
+| Wedding ceremony | flexible | can be morning, afternoon, or evening |
+| Office / work | daytime | business hours |
+| Brunch / lunch | daytime | explicit in the name |
+| Casual outing | flexible | no default assumption |
+
+Do NOT set `TimeOfDay: flexible` when you can reasonably infer the time. "Flexible" means "I have no idea" — use it only when the occasion genuinely has no time-of-day signal.
+
+### Time-of-Day → Color Palette Shift
+
+Time of day MUST influence the color vocabulary in your query documents' `PATTERN_AND_COLOR` section:
+
+**Evening events** — shift toward the **deep/rich end** of the user's seasonal palette:
+- Autumn: deep burgundy, forest green, rich brown, warm charcoal, deep terracotta — NOT pale taupe, light olive, soft peach
+- Winter: midnight navy, deep black, cool charcoal, rich jewel tones — NOT pastel, light grey
+- Spring/Summer: saturated versions of palette colors — NOT washed-out or pastel
+
+**Daytime events** — the full palette range is available including lighter tones.
+
+**The rule: evening occasions demand deeper, richer color values.** Set `ColorValue: deep` or `medium_to_deep` for evening queries. Avoid `light`, `pale`, or `pastel` for evening. A pale blue blazer at an evening engagement reads wrong — a deep navy or burgundy reads right.
 
 ## Direction Rules
 
@@ -138,7 +169,7 @@ For **specific requests** ("show me shirts", "find me jeans"), a single directio
 | Attribute | Why NOT a hard filter |
 |---|---|
 | `garment_category` | Hard-filtering `top` excludes `set` (kurta+pyjama sets), `one_piece`, and `outerwear` — the #1 cause of zero results. Express it in the query document's `GarmentCategory` field instead. |
-| `styling_completeness` | Hard-filtering `needs_bottomwear` excludes complete sets (kurta_set, co_ord_set) that are perfectly valid. The search agent handles completeness via the direction's role structure. |
+| `styling_completeness` | Hard-filtering `needs_bottomwear` excludes complete sets (kurta_set, co_ord_set) that are perfectly valid. The search agent handles completeness via the direction's role structure. **In query document text**, write the correct value for the role: `needs_bottomwear` for tops, `needs_topwear` for bottoms, `needs_innerwear` for outerwear, `complete` for complete sets. |
 | `formality_level` | Already a soft signal — keep it that way. |
 | `occasion_fit` | Already a soft signal — keep it that way. |
 | `time_of_day` | Already a soft signal — keep it that way. |
