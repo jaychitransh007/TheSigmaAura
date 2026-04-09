@@ -59,6 +59,8 @@ def get_web_ui_html(
     body.view-chat .page-chat { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow: hidden; }
     body.view-wardrobe .page-wardrobe { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-results .page-results { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
+    body.view-wishlist .page-wishlist { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
+    body.view-trialroom .page-trialroom { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-profile .page-profile { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-edit-profile .page-profile { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body:not(.view-chat) .history-rail { display: none !important; }
@@ -830,7 +832,8 @@ def get_web_ui_html(
   <nav class="header-nav">
     <a href="/?user={safe_user_id}&view=chat" class="{'active' if active_view == 'chat' else ''}">Chat</a>
     <a href="/?user={safe_user_id}&view=wardrobe" class="{'active' if active_view == 'wardrobe' else ''}">Wardrobe</a>
-    <a href="/?user={safe_user_id}&view=results" class="{'active' if active_view == 'results' else ''}">Results</a>
+    <a href="/?user={safe_user_id}&view=wishlist" class="{'active' if active_view == 'wishlist' else ''}">Wishlist</a>
+    <a href="/?user={safe_user_id}&view=trialroom" class="{'active' if active_view == 'trialroom' else ''}">Trial Room</a>
   </nav>
   <div class="header-actions">
     <button class="new-chat-btn" id="newChatBtn">+ New Chat</button>
@@ -900,6 +903,7 @@ def get_web_ui_html(
           <div class="plus-popover" id="plusPopover">
             <button type="button" id="uploadImageBtn"><span class="icon">&#128247;</span> Upload image</button>
             <button type="button" id="selectWardrobeBtn"><span class="icon">&#128090;</span> Select from wardrobe</button>
+            <button type="button" id="selectWishlistBtn"><span class="icon">&#11088;</span> Select from wishlist</button>
           </div>
         </div>
         <textarea id="messageInput" rows="1" placeholder="Message Aura..." aria-label="Message"></textarea>
@@ -1076,6 +1080,32 @@ def get_web_ui_html(
 </div>
 """
 
+    # ── Wishlist Page ──
+    html += """
+<div class="page-view page-wishlist">
+  <div class="results-header">
+    <h2>My Wishlist</h2>
+    <p>Garments you saved from your styling sessions.</p>
+  </div>
+  <div class="closet-grid" id="wishlistGrid">
+    <div class="results-empty">Loading wishlist...</div>
+  </div>
+</div>
+"""
+
+    # ── Trial Room Page ──
+    html += """
+<div class="page-view page-trialroom">
+  <div class="results-header">
+    <h2>Trial Room</h2>
+    <p>See how outfits look on you — your virtual try-on gallery.</p>
+  </div>
+  <div class="closet-grid" id="tryonGalleryGrid">
+    <div class="results-empty">Loading try-on gallery...</div>
+  </div>
+</div>
+"""
+
     # ── Profile Page (unified: analysis + profile + style code + palette) ──
     html += """
 <div class="page-view page-profile">
@@ -1177,6 +1207,8 @@ def get_web_ui_html(
   var pendingImageData = "";
   var pendingWardrobeItemId = "";      // set by "Select from wardrobe" picker
   var pendingWardrobeImageUrl = "";    // wardrobe item image for the chat bubble
+  var pendingWishlistProductId = "";   // set by "Select from wishlist" picker
+  var pendingWishlistImageUrl = "";    // wishlist item image for the chat bubble
   var wardrobeItems = [];
   var wardrobeSummary = null;
   var activeWardrobeFilter = "all";
@@ -1470,6 +1502,8 @@ def get_web_ui_html(
     pendingImageData = "";
     pendingWardrobeItemId = "";
     pendingWardrobeImageUrl = "";
+    pendingWishlistProductId = "";
+    pendingWishlistImageUrl = "";
     imageChipImg.src = "";
     imageChipName.textContent = "";
     imageChip.classList.remove("visible");
@@ -1630,6 +1664,68 @@ def get_web_ui_html(
       }})
       .catch(function() {{
         wardrobePickerGrid.innerHTML = '<div class="modal-empty">Failed to load wardrobe.</div>';
+      }});
+  }}
+
+  // ── Wishlist picker (same pattern as wardrobe picker) ──
+  var selectWishlistBtn = document.getElementById("selectWishlistBtn");
+  if (selectWishlistBtn) {{
+    selectWishlistBtn.addEventListener("click", function() {{
+      plusPopover.classList.remove("open");
+      openWishlistPicker();
+    }});
+  }}
+
+  function openWishlistPicker() {{
+    // Reuse the wardrobe picker modal structure for the wishlist picker.
+    // Swap the title and load wishlist items instead.
+    if (wardrobePickerModal) {{
+      wardrobePickerModal.classList.add("open");
+      loadWishlistPickerItems();
+    }}
+  }}
+
+  function loadWishlistPickerItems() {{
+    if (!USER_ID) {{ wardrobePickerGrid.innerHTML = '<div class="modal-empty">No user ID.</div>'; return; }}
+    wardrobePickerGrid.innerHTML = '<div class="modal-empty">Loading wishlist...</div>';
+    fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/wishlist")
+      .then(function(r) {{ return r.json(); }})
+      .then(function(data) {{
+        var items = data.items || [];
+        if (!items.length) {{
+          wardrobePickerGrid.innerHTML = '<div class="modal-empty">No wishlisted items yet. Tap the heart on outfit cards to save items.</div>';
+          return;
+        }}
+        wardrobePickerGrid.innerHTML = "";
+        items.forEach(function(item) {{
+          var imgUrl = item.image_url || "";
+          var el = document.createElement("div");
+          el.className = "modal-item";
+          el.innerHTML = (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || "Item") + '" loading="lazy" />' : '<div style="aspect-ratio:3/4;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;">No image</div>') +
+            '<div class="label">' + escapeHtml(item.title || "Wishlist Item") + '</div>' +
+            (item.price ? '<div class="label" style="color:var(--accent);font-weight:700;">Rs. ' + escapeHtml(item.price) + '</div>' : '');
+          el.addEventListener("click", function() {{
+            pendingWishlistProductId = item.product_id || "";
+            pendingWishlistImageUrl = imgUrl || "";
+            console.log("[AURA] Wishlist picker: product_id =", pendingWishlistProductId, "title =", item.title);
+            if (imgUrl) {{
+              imageChipImg.src = imgUrl;
+              imageChipImg.onerror = function() {{ this.style.display = "none"; }};
+              imageChipImg.style.display = "";
+              imageChipName.textContent = item.title || "Wishlist item";
+              imageChip.classList.add("visible");
+            }}
+            if (!messageEl.value.trim()) {{
+              messageEl.value = "Should I buy this " + (item.title || "item") + "?";
+            }}
+            wardrobePickerModal.classList.remove("open");
+            messageEl.focus();
+          }});
+          wardrobePickerGrid.appendChild(el);
+        }});
+      }})
+      .catch(function() {{
+        wardrobePickerGrid.innerHTML = '<div class="modal-empty">Failed to load wishlist.</div>';
       }});
   }}
 
@@ -2193,9 +2289,10 @@ def get_web_ui_html(
     err.textContent = "";
     var message = messageEl.value.trim();
     if (!USER_ID) {{ err.textContent = "No user session. Please log in."; return; }}
-    if (!message && !pendingImageData && !pendingWardrobeItemId) {{ return; }}
+    if (!message && !pendingImageData && !pendingWardrobeItemId && !pendingWishlistProductId) {{ return; }}
     if (!message && pendingImageData) {{ message = "What goes with this? Show me pairing options."; }}
     if (!message && pendingWardrobeItemId) {{ message = "What goes with this wardrobe item?"; }}
+    if (!message && pendingWishlistProductId) {{ message = "Should I buy this?"; }}
 
     sendBtn.disabled = true;
     messageEl.disabled = true;
@@ -2204,22 +2301,26 @@ def get_web_ui_html(
       var attachedImage = pendingImageData;
       var attachedWardrobeItemId = pendingWardrobeItemId;
       var attachedWardrobeImg = pendingWardrobeImageUrl;
+      var attachedWishlistProductId = pendingWishlistProductId;
+      var attachedWishlistImg = pendingWishlistImageUrl;
       // Show the user's message with the attached image in the chat
-      // bubble. For wardrobe selections, use the wardrobe item's image
-      // URL (not a base64 data URL) so the bubble shows the garment.
-      var bubbleImage = attachedImage || attachedWardrobeImg || "";
-      console.log("[AURA] Send: attachedImage =", !!attachedImage, "wardrobeItemId =", attachedWardrobeItemId, "wardrobeImg =", !!attachedWardrobeImg);
+      // bubble. For wardrobe/wishlist selections, use the item's image
+      // URL so the bubble shows the garment.
+      var bubbleImage = attachedImage || attachedWardrobeImg || attachedWishlistImg || "";
+      console.log("[AURA] Send: image =", !!attachedImage, "wardrobe =", attachedWardrobeItemId, "wishlist =", attachedWishlistProductId);
       addBubble(message, "user", bubbleImage);
       messageEl.value = "";
       messageEl.style.height = "auto";
       clearImagePreview();
       var payload = {{ user_id: USER_ID, message: message }};
       if (attachedImage) payload.image_data = attachedImage;
-      // When the user selected from wardrobe (not uploaded a new image),
-      // send the wardrobe_item_id so the backend loads the existing item
-      // directly without re-enriching or creating a duplicate row.
+      // When the user selected from wardrobe or wishlist (not uploaded a
+      // new image), send the ID so the backend loads the item directly.
       if (attachedWardrobeItemId && !attachedImage) {{
         payload.wardrobe_item_id = attachedWardrobeItemId;
+      }}
+      if (attachedWishlistProductId && !attachedImage && !attachedWardrobeItemId) {{
+        payload.wishlist_product_id = attachedWishlistProductId;
       }}
       var res = await fetch("/v1/conversations/" + convId + "/turns/start", {{
         method: "POST",
@@ -3351,6 +3452,84 @@ def get_web_ui_html(
   // Load results view
   if (ACTIVE_VIEW === "results") {{
     loadResults();
+  }}
+
+  // ── Wishlist page ──
+  async function loadWishlist() {{
+    var grid = document.getElementById("wishlistGrid");
+    if (!grid) return;
+    grid.innerHTML = '<div class="results-empty">Loading wishlist...</div>';
+    try {{
+      var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/wishlist");
+      var data = await res.json();
+      var items = data.items || [];
+      if (!items.length) {{
+        grid.innerHTML = '<div class="results-empty">No wishlisted items yet. Tap the heart &#9825; on outfit cards to save garments you like.</div>';
+        return;
+      }}
+      grid.innerHTML = "";
+      items.forEach(function(item) {{
+        var card = document.createElement("div");
+        card.className = "closet-card";
+        var imgUrl = item.image_url || "";
+        card.innerHTML = '<div class="closet-image">' +
+          (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || "Item") + '" loading="lazy" />' : '') +
+        '</div>' +
+        '<div class="closet-meta">' +
+          '<div class="closet-title">' + escapeHtml(item.title || "Untitled") + '</div>' +
+          (item.price ? '<div style="color:var(--accent);font-weight:700;font-size:13px;">Rs. ' + escapeHtml(item.price) + '</div>' : '') +
+          (item.garment_category ? '<div style="font-size:11px;color:var(--muted);">' + escapeHtml(item.garment_category) + (item.primary_color ? ' &middot; ' + escapeHtml(item.primary_color) : '') + '</div>' : '') +
+          (item.product_url ? '<a href="' + escapeHtml(item.product_url) + '" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:underline;margin-top:4px;display:inline-block;">Buy Now</a>' : '') +
+        '</div>';
+        grid.appendChild(card);
+      }});
+    }} catch (_) {{
+      grid.innerHTML = '<div class="results-empty">Failed to load wishlist.</div>';
+    }}
+  }}
+
+  if (ACTIVE_VIEW === "wishlist") {{
+    loadWishlist();
+  }}
+
+  // ── Trial Room page ──
+  async function loadTryonGallery() {{
+    var grid = document.getElementById("tryonGalleryGrid");
+    if (!grid) return;
+    grid.innerHTML = '<div class="results-empty">Loading trial room...</div>';
+    try {{
+      var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/tryon-gallery");
+      var data = await res.json();
+      var items = data.items || [];
+      if (!items.length) {{
+        grid.innerHTML = '<div class="results-empty">No try-on renders yet. Chat with Aura and ask to try something on!</div>';
+        return;
+      }}
+      grid.innerHTML = "";
+      items.forEach(function(item) {{
+        var card = document.createElement("div");
+        card.className = "closet-card";
+        var imgUrl = item.image_url || "";
+        card.innerHTML = '<div class="closet-image" style="aspect-ratio:2/3;">' +
+          (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="Try-on" loading="lazy" style="object-fit:cover;width:100%;height:100%;" />' : '') +
+        '</div>' +
+        '<div class="closet-meta">' +
+          '<div style="font-size:11px;color:var(--muted);">' + relativeTime(item.created_at) + '</div>' +
+        '</div>';
+        // Lightbox on click
+        card.addEventListener("click", function() {{
+          if (imgUrl) window.open(imgUrl, "_blank");
+        }});
+        card.style.cursor = "pointer";
+        grid.appendChild(card);
+      }});
+    }} catch (_) {{
+      grid.innerHTML = '<div class="results-empty">Failed to load trial room.</div>';
+    }}
+  }}
+
+  if (ACTIVE_VIEW === "trialroom") {{
+    loadTryonGallery();
   }}
 
   // Load profile

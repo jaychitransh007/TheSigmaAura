@@ -45,6 +45,10 @@ class CreateTurnRequest(BaseModel):
     # user_wardrobe_items instead of re-enriching and re-saving,
     # avoiding duplicate wardrobe rows.
     wardrobe_item_id: str = Field(default="")
+    # When the user selects a wishlisted catalog product from the
+    # wishlist picker, the frontend sends the product_id here.
+    # The orchestrator loads the product from catalog_enriched.
+    wishlist_product_id: str = Field(default="")
 
 
 class OutfitItem(BaseModel):
@@ -210,3 +214,37 @@ class ResultListItem(BaseModel):
 class ResultListResponse(BaseModel):
     user_id: str
     results: List[ResultListItem] = Field(default_factory=list)
+
+
+# -- Wishlist ----------------------------------------------------------------
+
+class WishlistItem(BaseModel):
+    product_id: str
+    title: str = ""
+    price: str = ""
+    image_url: str = ""
+    product_url: str = ""
+    garment_category: str = ""
+    garment_subtype: str = ""
+    primary_color: str = ""
+    wishlisted_at: str = ""
+
+
+class WishlistResponse(BaseModel):
+    user_id: str
+    items: List[WishlistItem] = Field(default_factory=list)
+
+
+# -- Trial Room (try-on gallery) ---------------------------------------------
+
+class TryonGalleryItem(BaseModel):
+    id: str
+    image_url: str = ""
+    garment_ids: List[str] = Field(default_factory=list)
+    garment_source: str = ""
+    created_at: str = ""
+
+
+class TryonGalleryResponse(BaseModel):
+    user_id: str
+    items: List[TryonGalleryItem] = Field(default_factory=list)

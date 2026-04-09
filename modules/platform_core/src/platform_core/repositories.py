@@ -753,3 +753,74 @@ class ConversationRepository:
             # Best-effort: a missing trace row (e.g. turn pre-dating the
             # migration) should not break the calling code path.
             return None
+
+    # -- wishlist (catalog_interaction_history) --------------------------------
+
+    def list_wishlist_products(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return deduplicated wishlisted products for a user.
+
+        Queries ``catalog_interaction_history`` for ``interaction_type='save'``
+        rows, deduplicates by ``product_id``, then hydrates each product
+        from ``catalog_enriched`` (title, price, image, URL).
+        """
+        interactions = self.client.select_many(
+            "catalog_interaction_history",
+            filters={
+                "user_id": f"eq.{user_id}",
+                "interaction_type": "eq.save",
+            },
+            order="created_at.desc",
+            limit=limit * 2,  # over-fetch to handle duplicates
+        )
+        # Deduplicate by product_id, keeping the most recent
+        seen: dict[str, Dict[str, Any]] = {}
+        for row in interactions:
+            pid = str(row.get("product_id") or "").strip()
+            if pid and pid not in seen:
+                seen[pid] = row
+        if not seen:
+            return []
+        # Hydrate from catalog_enriched
+        results: List[Dict[str, Any]] = []
+        for pid, interaction in list(seen.items())[:limit]:
+            enriched = self.client.select_one(
+                "catalog_enriched",
+                filters={"product_id": f"eq.{pid}"},
+            )
+            results.append({
+                "product_id": pid,
+                "title": str((enriched or {}).get("title") or pid),
+                "price": str((enriched or {}).get("price") or ""),
+                "image_url": str(
+                    (enriched or {}).get("images__0__src")
+                    or (enriched or {}).get("primary_image_url")
+                    or ""
+                ),
+                "product_url": str((enriched or {}).get("url") or ""),
+                "garment_category": str((enriched or {}).get("garment_category") or ""),
+                "garment_subtype": str((enriched or {}).get("garment_subtype") or ""),
+                "primary_color": str((enriched or {}).get("primary_color") or ""),
+                "wishlisted_at": str(interaction.get("created_at") or ""),
+            })
+        return results
+
+    # -- tryon gallery (virtual_tryon_images) ----------------------------------
+
+    def list_tryon_gallery(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return recent try-on renders for a user's Trial Room gallery."""
+        rows = self.client.select_many(
+            "virtual_tryon_images",
+            filters={"user_id": f"eq.{user_id}"},
+            order="created_at.desc",
+            limit=limit,
+        )
+        return [
+            {
+                "id": str(row.get("id") or ""),
+                "file_path": str(row.get("file_path") or ""),
+                "garment_ids": list(row.get("garment_ids") or []),
+                "garment_source": str(row.get("garment_source") or ""),
+                "created_at": str(row.get("created_at") or ""),
+            }
+            for row in rows
+        ]

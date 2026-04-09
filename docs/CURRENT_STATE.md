@@ -1018,7 +1018,34 @@ Success criteria:
 
 ## Immediate Next Item
 
-### P0 — Tabs redesign: Wishlist + Trial Room + Chat wishlist picker (April 9 2026)
+### ✅ CLOSED — Tabs redesign: Wishlist + Trial Room + Chat wishlist picker (April 9 2026)
+
+Shipped April 9, 2026. The 3-tab layout (Chat / Wardrobe / Results) is now a 4-tab layout (**Chat / Wardrobe / Wishlist / Trial Room**) with a "Select from wishlist" picker in the chat composer. Tests: 318 passing.
+
+**New API endpoints:**
+- `GET /v1/users/{user_id}/wishlist` — deduplicated wishlisted products hydrated from `catalog_interaction_history` + `catalog_enriched` (title, price, image, URL, category, color)
+- `GET /v1/users/{user_id}/tryon-gallery` — recent try-on renders from `virtual_tryon_images` with browser-safe image URLs
+
+**New API schemas:** `WishlistItem`, `WishlistResponse`, `TryonGalleryItem`, `TryonGalleryResponse` in `api_schemas.py`. New `wishlist_product_id: str` on `CreateTurnRequest`.
+
+**New repository methods:** `list_wishlist_products(user_id)`, `list_tryon_gallery(user_id)` in `repositories.py`.
+
+**UI changes (`ui.py`):**
+- 4-tab nav: Chat / Wardrobe / Wishlist / Trial Room
+- Wishlist page: grid of catalog product cards (product image, title, price, Buy Now link) loaded from the new endpoint
+- Trial Room page: grid of try-on renders (2:3 aspect ratio, click to open full-size, relative timestamp) loaded from the new endpoint
+- Chat composer: "Select from wishlist" button (star icon) in the `+` popover, opens a picker modal that loads from `/v1/users/{id}/wishlist`, sets `pendingWishlistProductId` + `pendingWishlistImageUrl`, shows preview chip, default message "Should I buy this [title]?"
+- Send handler: sends `wishlist_product_id` in the payload; shows the product image in the user's chat bubble
+
+**Backend (`orchestrator.py`):**
+- New `wishlist_product_id` parameter on `process_turn`
+- New wishlist_selection path: loads catalog product from `catalog_enriched`, builds `attached_item` with `attachment_source="wishlist_selection"`, appends garment context to `effective_message`, trace step `wishlist_selection`
+- No wardrobe persistence, no decomposition (catalog product, not user-owned)
+- Full parity with wardrobe_selection path (same flags, same context injection, same evaluator flow)
+
+---
+
+### P0 — Tabs redesign: Wishlist + Trial Room + Chat wishlist picker (April 9 2026) — historical plan
 
 **Goal:** Replace the 3-tab layout (Chat / Wardrobe / Results) with a 4-tab layout (Chat / Wardrobe / Wishlist / Trial Room) and add a "Select from wishlist" option in the chat composer.
 

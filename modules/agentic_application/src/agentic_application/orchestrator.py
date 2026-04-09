@@ -652,6 +652,7 @@ class AgenticOrchestrator:
         channel: str = "web",
         image_data: str = "",
         wardrobe_item_id: str = "",
+        wishlist_product_id: str = "",
         stage_callback: Optional[Callable[[str, str, str], None]] = None,
     ) -> Dict[str, Any]:
         def emit(stage: str, detail: str = "", ctx: dict | None = None) -> None:
@@ -766,6 +767,56 @@ class AgenticOrchestrator:
             except Exception:
                 trace_end("wardrobe_selection", output_summary="load failed", status="error")
                 _log.warning("Failed to load wardrobe item %s", wardrobe_item_id, exc_info=True)
+
+        # ── Wishlist product selection (catalog item from wishlist) ──
+        # Same pattern as wardrobe selection but sources from
+        # catalog_enriched instead of user_wardrobe_items. No wardrobe
+        # persistence, no decomposition.
+        if wishlist_product_id and not image_data and not attached_item:
+            trace_start("wishlist_selection", input_summary=f"product_id={wishlist_product_id}")
+            try:
+                enriched = self.repo.client.select_one(
+                    "catalog_enriched",
+                    filters={"product_id": f"eq.{wishlist_product_id}"},
+                )
+                if enriched:
+                    attached_item = {
+                        "id": str(enriched.get("product_id") or wishlist_product_id),
+                        "title": str(enriched.get("title") or ""),
+                        "image_url": str(
+                            enriched.get("images__0__src")
+                            or enriched.get("primary_image_url")
+                            or ""
+                        ),
+                        "image_path": "",
+                        "garment_category": str(enriched.get("garment_category") or ""),
+                        "garment_subtype": str(enriched.get("garment_subtype") or ""),
+                        "primary_color": str(enriched.get("primary_color") or ""),
+                        "secondary_color": str(enriched.get("secondary_color") or ""),
+                        "formality_level": str(enriched.get("formality_level") or ""),
+                        "occasion_fit": str(enriched.get("occasion_fit") or ""),
+                        "pattern_type": str(enriched.get("pattern_type") or ""),
+                        "source": "catalog",
+                        "attachment_source": "wishlist_selection",
+                        "is_garment_photo": True,
+                        "garment_present_confidence": 1.0,
+                    }
+                    attached_context = self._attached_item_context(attached_item)
+                    if attached_context:
+                        effective_message = f"{message.strip()} {attached_context}".strip()
+                    effective_message = f"{effective_message} Image anchor source: wishlist selection.".strip()
+                    trace_end(
+                        "wishlist_selection",
+                        output_summary=f"loaded: {attached_item.get('title')}, {attached_item.get('garment_category')}",
+                    )
+                    trace.set_image_classification(is_garment_photo=True, garment_present_confidence=1.0)
+                    _log.info("Loaded wishlist product %s: %s", wishlist_product_id, attached_item.get("title"))
+                else:
+                    trace_end("wishlist_selection", output_summary="product not found", status="error")
+                    _log.warning("Wishlist product %s not found in catalog_enriched", wishlist_product_id)
+            except Exception:
+                trace_end("wishlist_selection", output_summary="load failed", status="error")
+                _log.warning("Failed to load wishlist product %s", wishlist_product_id, exc_info=True)
 
         if image_data:
             trace_start("wardrobe_enrichment", model="gpt-5-mini", input_summary=f"image_upload, message={message[:80]}")

@@ -23,11 +23,15 @@ from platform_core.api_schemas import (
     ResolveConversationResponse,
     ResultListItem,
     ResultListResponse,
+    TryonGalleryItem,
+    TryonGalleryResponse,
     TurnJobStartResponse,
     TurnJobStatusResponse,
     TurnListItem,
     TurnListResponse,
     TurnResponse,
+    WishlistItem,
+    WishlistResponse,
 )
 from platform_core.config import load_config
 from platform_core.fallback_messages import graceful_policy_message
@@ -324,6 +328,7 @@ def create_app() -> FastAPI:
                 channel=payload.channel,
                 image_data=payload.image_data or "",
                 wardrobe_item_id=payload.wardrobe_item_id or "",
+                wishlist_product_id=payload.wishlist_product_id or "",
             )
             return TurnResponse(**out)
         except (ValueError, SupabaseError, RuntimeError) as exc:
@@ -362,6 +367,7 @@ def create_app() -> FastAPI:
                     channel=payload.channel,
                     image_data=payload.image_data or "",
                     wardrobe_item_id=payload.wardrobe_item_id or "",
+                    wishlist_product_id=payload.wishlist_product_id or "",
                     stage_callback=append_stage,
                 )
                 append_stage("turn_execution", "completed")
@@ -784,6 +790,47 @@ def create_app() -> FastAPI:
                     )
                 )
             return ResultListResponse(user_id=user_id, results=items)
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # -- Wishlist tab -----------------------------------------------------------
+
+    @app.get("/v1/users/{user_id}/wishlist", response_model=WishlistResponse)
+    def list_wishlist(user_id: str) -> WishlistResponse:
+        """Return wishlisted catalog products for the Wishlist tab."""
+        try:
+            items = repo.list_wishlist_products(user_id)
+            return WishlistResponse(
+                user_id=user_id,
+                items=[WishlistItem(**item) for item in items],
+            )
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # -- Trial Room tab --------------------------------------------------------
+
+    @app.get("/v1/users/{user_id}/tryon-gallery", response_model=TryonGalleryResponse)
+    def list_tryon_gallery(user_id: str) -> TryonGalleryResponse:
+        """Return try-on renders for the Trial Room gallery tab."""
+        try:
+            from urllib.parse import quote
+            rows = repo.list_tryon_gallery(user_id)
+            items = []
+            for row in rows:
+                fp = str(row.get("file_path") or "").strip()
+                # Rewrite local data/ paths to the serving route
+                if fp and not fp.startswith(("http://", "https://", "/v1/")):
+                    image_url = "/v1/onboarding/images/local?path=" + quote(fp, safe="/._-")
+                else:
+                    image_url = fp
+                items.append(TryonGalleryItem(
+                    id=row.get("id") or "",
+                    image_url=image_url,
+                    garment_ids=row.get("garment_ids") or [],
+                    garment_source=row.get("garment_source") or "",
+                    created_at=row.get("created_at") or "",
+                ))
+            return TryonGalleryResponse(user_id=user_id, items=items)
         except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
