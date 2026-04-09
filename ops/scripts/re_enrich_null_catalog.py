@@ -223,11 +223,46 @@ def main():
     print(f"\n[5/5] Parsing results and updating catalog_enriched...")
     success, failed = parse_and_update_results(results_path, rows)
 
+    # Mark rows that were submitted but got no result back as
+    # enrichment_failed so they don't loop forever on re-runs.
+    # These are typically products with broken/expired image URLs.
+    result_pids = set()
+    with open(results_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            r = json.loads(line)
+            cid = r.get("custom_id", "")
+            # Extract product_id from custom_id format: null_row_{idx}__{product_id}
+            parts = cid.split("__", 1)
+            if len(parts) == 2:
+                result_pids.add(parts[1])
+
+    missing_count = 0
+    for idx, row in enumerate(rows):
+        pid = str(row.get("product_id") or "")
+        image_url = str(row.get("images_0_src") or "").strip()
+        if not image_url:
+            continue  # already counted as skipped
+        if pid not in result_pids:
+            # This row was submitted but got no result — mark it
+            try:
+                client.update_one(
+                    "catalog_enriched",
+                    filters={"product_id": f"eq.{pid}"},
+                    patch={"row_status": "enrichment_failed", "error_reason": "batch_no_result_image_likely_broken"},
+                )
+                missing_count += 1
+            except Exception:
+                pass
+
     print(f"\n{'=' * 60}")
     print(f"Done!")
     print(f"  Total rows:  {len(rows)}")
     print(f"  Enriched:    {success}")
     print(f"  Failed:      {failed}")
+    print(f"  No result:   {missing_count} (marked enrichment_failed — likely broken image URLs)")
     print(f"  Skipped:     {len(rows) - count} (no image)")
     print(f"{'=' * 60}")
     print(f"\nNext step: run embedding sync from the catalog admin to")
