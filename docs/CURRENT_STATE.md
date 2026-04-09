@@ -1019,7 +1019,35 @@ Success criteria:
 
 ## Immediate Next Item
 
-(No active P0 items.)
+### P0 — Outfit diversity: multi-direction, previous-exclusion, broad-subtype enforcement (April 9 2026)
+
+**Problem:** "Traditional outfit for a wedding engagement" returns the same 3 outfits on every turn (including follow-ups like "make it more festive"). Root causes:
+
+1. **Single direction** — the architect creates only 1 paired direction (kurta + trouser). All 3 outfits are assembled from the same 10 × 11 product pool, guaranteeing identical top-3 combinations.
+2. **Subtype hard filter still set for broad requests** — despite Option C, the architect sets `garment_subtype: "kurta"` for a broad "traditional wedding" request. Combined with `styling_completeness: needs_bottomwear` from directional filters, this excludes kurta_sets, nehru_jackets, co_ord_sets (all tagged `complete`). Result: 10 Nicobar kurtas only.
+3. **Follow-ups return identical products** — "make it more festive" produces the same filters, same retrieval pool, same 3 outfits. Previously shown product IDs are not excluded from retrieval.
+4. **GarmentSubtype double-path** — `extract_query_document_filters` extracts `GarmentSubtype` from query doc text as a hard filter, overriding the architect's null in hard_filters for broad requests. Defeats the whole point of Option C.
+
+**Implementation plan (3 steps):**
+
+- **Step 1 — Architect prompt** (`prompt/outfit_architect.md`):
+  - Allow up to 3 directions (any mix of complete/paired), not just 1+1
+  - Add "Direction Diversity" rules: different garment types across directions for broad occasion requests
+  - Strengthen broad-vs-specific: wedding/occasion/style-discovery = ALWAYS broad (subtype null)
+  - Add follow-up rule: explore different garment types and exclude previously shown item_ids
+
+- **Step 2 — Remove GarmentSubtype from query doc extraction** (`filters.py`):
+  - Remove `GarmentSubtype` from `_QUERY_FILTER_MAPPING` — the architect handles it in hard_filters; query doc text is for embeddings only
+  - Update test to match new behavior
+
+- **Step 3 — Previous recommendation exclusion** (`catalog_search_agent.py`):
+  - Extract product IDs from `combined_context.previous_recommendations`
+  - Exclude from retrieval results (same pattern as disliked_ids)
+
+**What changes for the user:**
+- "Traditional wedding outfit" → 3 diverse directions (complete kurta_set, paired kurta+trouser, paired nehru_jacket+trouser) → 3 outfits from 3 different pools → real variety
+- "Make it more festive" → previously shown products excluded → entirely new items
+- Broad requests no longer constrained by narrow subtype filters
 
 ---
 

@@ -298,7 +298,7 @@ class AgenticApplicationTests(unittest.TestCase):
                         QuerySpec(
                             query_id="B1",
                             role="top",
-                            hard_filters={},
+                            hard_filters={"garment_subtype": "blouse"},
                             query_document=(
                                 "GARMENT_REQUIREMENTS:\n"
                                 "- GarmentCategory: top\n"
@@ -326,9 +326,9 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("feminine", filters["gender_expression"])
         # styling_completeness comes from build_directional_filters (role=top)
         self.assertEqual("needs_bottomwear", filters["styling_completeness"])
-        # garment_subtype extracted from query document
+        # garment_subtype comes from architect's explicit hard_filters
         self.assertEqual("blouse", filters["garment_subtype"])
-        # garment_category and styling_completeness in query doc are soft signals, not hard filters
+        # query document lines are soft signals for embeddings only, not hard filters
         self.assertNotIn("garment_category", filters)
         # time_of_day, occasion_fit, and formality_level are soft signals, not hard filters
         self.assertNotIn("time_of_day", filters)
@@ -1481,10 +1481,6 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual(
             "excluded",
             results[0].applied_filters.get("disliked_product_policy"),
-        )
-        self.assertEqual(
-            "1",
-            results[0].applied_filters.get("disliked_excluded_count"),
         )
 
     def test_catalog_search_no_disliked_filter_when_list_empty(self) -> None:

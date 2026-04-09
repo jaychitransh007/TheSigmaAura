@@ -49,9 +49,18 @@ class CatalogSearchAgent:
             for pid in list(getattr(combined_context, "disliked_product_ids", []) or [])
             if str(pid or "").strip()
         }
+        # Collect product IDs from previous recommendations so follow-up turns
+        # surface fresh products instead of repeating the same outfits.
+        prev_rec_ids: set[str] = set()
+        for rec in (combined_context.previous_recommendations or []):
+            for item_id in (rec.get("item_ids") or []):
+                pid = str(item_id or "").strip()
+                if pid:
+                    prev_rec_ids.add(pid)
+        exclude_ids = disliked_ids | prev_rec_ids
         _log.info(
-            "CatalogSearch: starting search for %d direction(s), retrieval_count=%d, disliked_excluded=%d",
-            len(plan.directions), plan.retrieval_count, len(disliked_ids),
+            "CatalogSearch: starting search for %d direction(s), retrieval_count=%d, disliked_excluded=%d, prev_rec_excluded=%d",
+            len(plan.directions), plan.retrieval_count, len(disliked_ids), len(prev_rec_ids),
         )
         for direction in plan.directions:
             for query in direction.queries:
@@ -127,14 +136,14 @@ class CatalogSearchAgent:
                 t2 = time.monotonic()
                 products = self._hydrate_matches(matches)
                 hydrate_ms = int((time.monotonic() - t2) * 1000)
-                pre_dislike = len(products)
-                if disliked_ids:
-                    products = [p for p in products if str(p.product_id or "") not in disliked_ids]
-                disliked_excluded = pre_dislike - len(products)
+                pre_exclude = len(products)
+                if exclude_ids:
+                    products = [p for p in products if str(p.product_id or "") not in exclude_ids]
+                excluded_count = pre_exclude - len(products)
                 _log.info(
-                    "CatalogSearch: hydrated %d → %d products in %dms (blocked %d by restricted policy, excluded %d disliked)",
+                    "CatalogSearch: hydrated %d → %d products in %dms (blocked %d by restricted policy, excluded %d disliked+prev_rec)",
                     len(matches), len(products), hydrate_ms,
-                    len(matches) - pre_dislike, disliked_excluded,
+                    len(matches) - pre_exclude, excluded_count,
                 )
 
                 applied_filters_meta = {
@@ -143,7 +152,9 @@ class CatalogSearchAgent:
                 }
                 if disliked_ids:
                     applied_filters_meta["disliked_product_policy"] = "excluded"
-                    applied_filters_meta["disliked_excluded_count"] = str(disliked_excluded)
+                if prev_rec_ids:
+                    applied_filters_meta["prev_rec_product_policy"] = "excluded"
+                    applied_filters_meta["prev_rec_excluded_count"] = str(len(prev_rec_ids))
                 results.append(
                     RetrievedSet(
                         direction_id=direction.direction_id,

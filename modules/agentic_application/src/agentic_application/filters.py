@@ -6,8 +6,9 @@ from typing import Any, Dict, Iterable
 from .schemas import UserContext
 
 
-_QUERY_FILTER_MAPPING = {
-    "GarmentSubtype": "garment_subtype",
+_QUERY_FILTER_MAPPING: Dict[str, str] = {
+    # All garment attributes in query documents are soft signals for embedding
+    # similarity only.  The architect sets hard_filters explicitly when needed.
 }
 
 

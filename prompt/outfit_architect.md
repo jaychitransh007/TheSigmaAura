@@ -89,11 +89,23 @@ Capture the FULL intent of the user's message. Do not drop nuance — if the use
 
 ## Direction Rules
 
-- v1 allows at most one `complete` direction and one `paired` direction.
-- A `complete` direction has one query with `role: "complete"` and `hard_filters.styling_completeness: "complete"`.
-- A `paired` direction has two queries: one with `role: "top"` (with `hard_filters.styling_completeness: "needs_bottomwear"`) and one with `role: "bottom"` (with `hard_filters.styling_completeness: "needs_topwear"`).
-- Use `plan_type: "complete_only"` if only complete direction, `"paired_only"` if only paired, `"mixed"` if both.
+- You may create up to 3 directions in any combination of `complete` and `paired`.
+- A `complete` direction has one query with `role: "complete"`.
+- A `paired` direction has two queries: one with `role: "top"` and one with `role: "bottom"`.
+- Use `plan_type: "complete_only"` if all directions are complete, `"paired_only"` if all are paired, `"mixed"` if both types are present.
 - Three-piece directions are NOT allowed in v1.
+
+### Direction Diversity
+
+For **broad occasion requests** (weddings, parties, festivals, office wear, date night — anything that doesn't name one specific garment), you MUST create **2-3 directions with different garment types** to give the user real variety:
+
+- **Direction A**: one outfit concept (e.g., complete kurta_set)
+- **Direction B**: a different concept (e.g., paired kurta + trouser)
+- **Direction C**: yet another concept (e.g., paired nehru_jacket + trouser)
+
+Each direction should explore a **different garment subtype or structure** so the user sees genuinely different outfit options, not 3 variations of the same pairing. Vary the direction_type (complete vs paired) when the catalog supports it.
+
+For **specific requests** ("show me shirts", "find me jeans"), a single direction is fine — the user already knows what they want.
 
 ## Hard Filters vs Soft Signals
 
@@ -134,9 +146,12 @@ Capture the FULL intent of the user's message. Do not drop nuance — if the use
 - "Find me kurtas" → `hard_filters: {"gender_expression": "masculine", "garment_subtype": ["kurta", "kurta_set"]}`
 
 **Broad request → NO subtype hard filter, rely on query document:**
-- "Something traditional for a wedding" → `hard_filters: {"gender_expression": "masculine"}` + query document mentions "traditional festive kurta kurta_set nehru_jacket sherwani blazer co_ord_set" in the GARMENT_REQUIREMENTS section
-- "A nice outfit for the office" → `hard_filters: {"gender_expression": "masculine"}` + query document mentions "formal shirt blazer trouser" in GARMENT_REQUIREMENTS
-- "Casual weekend look" → `hard_filters: {"gender_expression": "masculine"}` + query document mentions "tshirt shirt jeans shorts" in GARMENT_REQUIREMENTS
+- "Something traditional for a wedding" → `hard_filters: {"gender_expression": "masculine", "garment_subtype": null}` + query document mentions "traditional festive kurta kurta_set nehru_jacket sherwani blazer co_ord_set" in the GARMENT_REQUIREMENTS section
+- "A nice outfit for the office" → `hard_filters: {"gender_expression": "masculine", "garment_subtype": null}` + query document mentions "formal shirt blazer trouser" in GARMENT_REQUIREMENTS
+- "Casual weekend look" → `hard_filters: {"gender_expression": "masculine", "garment_subtype": null}` + query document mentions "tshirt shirt jeans shorts" in GARMENT_REQUIREMENTS
+- "Make it more festive" (follow-up) → `hard_filters: {"gender_expression": "masculine", "garment_subtype": null}` — follow-ups refining occasion/style are still broad
+
+**Rule of thumb:** if the request is about an **occasion**, **style**, or **mood** (wedding, party, office, creative, bold, festive, casual), it is ALWAYS a broad request — set `garment_subtype: null`. Only set a specific subtype when the user literally names a garment type ("kurtas", "shirts", "jeans").
 
 Set `garment_subtype` to `null` for broad requests. The embedding similarity will rank kurtas, kurta_sets, nehru_jackets, blazers, etc. by how semantically close they are to your query document — no binary exclusion.
 
@@ -306,3 +321,9 @@ When `is_followup` is true and `followup_intent` is set, apply the following str
 **`more_options`:**
 - Request additional candidates in the same direction as the previous recommendation.
 - Set `retrieval_count` between 10 and 15 depending on how specific the request is.
+
+### Follow-Up Product Diversity
+
+For ALL follow-up intents: the system automatically excludes previously recommended product IDs from retrieval. Your job is to ensure the **directions explore different angles** — different garment subtypes, different color families, different silhouettes — so the retrieval pool itself is different, not just filtered.
+
+When `previous_recommendations` is present, review what garment types were already shown and plan directions that use DIFFERENT garment types or combinations where possible. Example: if the first turn showed kurta+trouser, the follow-up could explore nehru_jacket+trouser or a complete kurta_set.
