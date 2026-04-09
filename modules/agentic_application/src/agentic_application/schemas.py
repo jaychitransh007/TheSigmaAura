@@ -184,7 +184,7 @@ class RetrievedSet(BaseModel):
     query_id: str
     role: str  # complete | top | bottom
     products: List[RetrievedProduct] = Field(default_factory=list)
-    applied_filters: Dict[str, str] = Field(default_factory=dict)
+    applied_filters: Dict[str, Any] = Field(default_factory=dict)
 
 
 # --- Assembly output ---
