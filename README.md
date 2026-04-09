@@ -14,7 +14,7 @@ The system is organized in six layers:
 |-------|---------|
 | **Entry Surfaces** | Web app (onboarding, chat, wardrobe, profile), chat management, wardrobe studio, catalog admin |
 | **User Intelligence** | Onboarding, 3-agent analysis pipeline, interpretations, digital draping, style profile, confidence engines |
-| **Intent Runtime** | Intent registry (StrEnum, 12 intents, 9 actions), copilot planner, orchestrator, dedicated handlers, recommendation pipeline (architect → search → assemble → evaluate), wardrobe engine, virtual try-on |
+| **Intent Runtime** | Intent registry (StrEnum, 8 intents, 7 actions), copilot planner, orchestrator, dedicated handlers, recommendation pipeline (architect → search → assemble → rerank → tryon → visual evaluate → format), wardrobe engine, virtual try-on |
 | **Output & Experience** | Response formatter, 3-column PDP cards, chat UI, wardrobe UI, profile UI |
 | **Safety & Trust** | Image moderation (dual-layer), policy engine, comfort learning, feedback loop, dependency instrumentation |
 | **Data Stores** | User data, conversations, wardrobe, catalog (pgvector), try-on media, telemetry |
@@ -80,7 +80,7 @@ Always use `python3 -m pip` (not bare `pip`) to guarantee the install lands in t
 ## Project Stats
 
 - 36 Supabase migrations
-- 329 tests
+- 318 tests
 - 8 intents (7 advisory + silent wardrobe_ingestion), 7 action types, 7 follow-up types (StrEnum registry, post-Phase 12A consolidation)
 - 50+ catalog enrichment attributes
 - 46 wardrobe enrichment attributes (plus `is_garment_photo` boolean + `garment_present_confidence` for non-garment image detection on chat uploads)

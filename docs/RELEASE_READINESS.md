@@ -21,11 +21,11 @@ The companion artifacts are:
 The pipeline must produce a usable answer for every primary intent without
 manual intervention.
 
-- [ ] All 329 tests across `tests/` pass against the current branch
-      (135+ in `test_agentic_application.py` plus the bounded-context suites;
-      verified April 9, 2026 after the contextual-evaluation + split polar
-      bar chart + assistant-markup-renderer + outfit_check None-fix +
-      non-garment image detection landings).
+- [ ] All 318 tests across `tests/` pass against the current branch
+      (verified April 9, 2026 after the legacy evaluator cleanup: OutfitCheckAgent
+      + OutfitEvaluator removed, VisualEvaluatorAgent is the sole evaluator,
+      turn_traces table landed, non-garment image detection landed, split
+      polar bar chart + assistant markup renderer shipped).
 - [ ] `ops/scripts/validate_dependency_report.py` runs to completion with
       zero failed assertions.
 - [ ] `ops/scripts/smoke_test_full_flow.sh` runs to completion against a

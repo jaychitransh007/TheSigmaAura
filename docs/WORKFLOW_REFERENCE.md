@@ -25,7 +25,7 @@ The Phase 12 re-architecture (Phases 12A–12E, completed April 2026) consolidat
 
 | Intent | Action | Pipeline shape |
 |---|---|---|
-| `occasion_recommendation` | `RUN_RECOMMENDATION_PIPELINE` | architect → search → assemble → reranker → tryon (top-3, parallel) → visual_evaluator → format. Legacy text-only `OutfitEvaluator` is the fallback when the user has no full-body photo. Absorbs the old `product_browse` intent via `target_product_type`. |
+| `occasion_recommendation` | `RUN_RECOMMENDATION_PIPELINE` | architect → search → assemble → reranker → tryon (top-3, parallel) → visual_evaluator → format. Photo upload is mandatory; on transient visual-evaluator failure the response formatter returns a graceful "try again" empty response (the legacy text-only `OutfitEvaluator` fallback was removed April 9, 2026). Absorbs the old `product_browse` intent via `target_product_type`. |
 | `pairing_request` | `RUN_RECOMMENDATION_PIPELINE` | Same as occasion_recommendation, with `enriched_data["is_anchor"]=True` on the synthetic anchor `RetrievedProduct`. The diversity pass exempts anchors so all 3 outfits survive. |
 | `garment_evaluation` | `RUN_GARMENT_EVALUATION` | tryon → visual_evaluator → format with optional buy/skip verdict. Replaces `shopping_decision`, `garment_on_me_request`, and `virtual_tryon_request`. Photo-only input. `purchase_intent: bool` from the planner controls whether the verdict block renders. |
 | `outfit_check` | `RUN_OUTFIT_CHECK` | visual_evaluator on the user's photo → format → async decomposition. No try-on (the user is already wearing the outfit), no architect call. |
@@ -46,7 +46,7 @@ The Phase 12 re-architecture (Phases 12A–12E, completed April 2026) consolidat
 
 | Component | Phase | Purpose |
 |---|---|---|
-| `agents/visual_evaluator_agent.py` | 12B | Vision-grounded per-candidate evaluator that replaces text-only `OutfitEvaluator` and `OutfitCheckAgent`. 9 dimension scores (8 existing + new `weather_time_pct`), 8 archetype scores, optional `overall_verdict`/`strengths`/`improvements`. Three modes: `recommendation`, `single_garment`, `outfit_check`. |
+| `agents/visual_evaluator_agent.py` | 12B | Vision-grounded per-candidate evaluator — the **sole evaluator** in the system (legacy `OutfitEvaluator` and `OutfitCheckAgent` removed April 9, 2026). 9 dimension scores (5 always-evaluated + 4 context-gated), 8 archetype scores, optional `overall_verdict`/`strengths`/`improvements`. Three modes: `recommendation`, `single_garment`, `outfit_check`. |
 | `agents/reranker.py` | 12B | Deterministic top-N pruning before the expensive try-on stage. `final_top_n=3`, `pool_top_n=5` defaults; the over-generation pool gives the orchestrator headroom when a try-on fails the quality gate. |
 | `agents/style_advisor_agent.py` | 12C | LLM advisor for open-ended `style_discovery` and `explanation_request` (against prior turn artifacts). Returns structured advice with prose answer + bullets + cited attributes + dominant directions. |
 | Four thinking directions | 12C | Reasoning axes propagated through architect / visual evaluator / advisor prompts: physical+color, comfort, occasion, weather/time. NOT fixed weights — the agent identifies which 1-2 dominate per turn. |
@@ -198,7 +198,7 @@ User message
    │   │       minimalist, creative, sporty, edgy
    │   ├── Graceful fallback: criteria from assembly_score if LLM fails
    │   ├── Hard cap: maximum 5 evaluated recommendations
-   │   └── DB: repo.log_model_call(call_type="outfit_evaluator")
+   │   └── DB: repo.log_model_call(call_type="visual_evaluator")
    │
    ├── Stage 5: Response Formatting [deterministic]
    │   ├── Filter restricted items (lingerie, etc.)
@@ -416,7 +416,7 @@ User message
 3. Dispatch → _handle_outfit_check()
 
 4. Vision-Based Outfit Evaluation [gpt-5.4]
-   ├── Agent: OutfitCheckAgent.evaluate()
+   ├── Agent: VisualEvaluatorAgent.evaluate_candidate() (mode="outfit_check")
    ├── Input: user_context, outfit_description, occasion_signal, image_path
    ├── Output: OutfitCheckResult
    │   ├── overall_verdict: "Strong" | "Solid" | "Needs work"
@@ -682,7 +682,7 @@ User message
 3. Response: Planner's LLM-generated personalized assessment
    ├── Based on: user profile, style archetype, body shape, color analysis
    ├── Considers: garment description from message or attached image
-   └── No separate agent call (unlike outfit_check which uses OutfitCheckAgent)
+   └── No separate agent call (uses VisualEvaluatorAgent in single_garment mode)
 
 4. DB: repo.finalize_turn(handler="copilot_planner_direct"), context update
 ```
@@ -869,7 +869,7 @@ Follow-up intents are detected by the copilot planner via `resolved_context.foll
 |-----------|-------|------------|---------|
 | Copilot Planner | gpt-5.4 | Every turn | All 7 advisory + feedback + silent wardrobe_ingestion |
 | Outfit Architect | gpt-5.4 | Recommendation pipeline | occasion_recommendation, pairing_request |
-| Visual Evaluator (Phase 12B) | gpt-5.4 (vision) | Per-candidate after try-on; replaces text-only OutfitEvaluator and OutfitCheckAgent | occasion_recommendation, pairing_request, garment_evaluation, outfit_check |
+| Visual Evaluator (Phase 12B) | gpt-5.4 (vision) | Per-candidate after try-on; sole evaluator in the system (legacy agents removed) | occasion_recommendation, pairing_request, garment_evaluation, outfit_check |
 | Outfit Evaluator (legacy) | gpt-5.4 | Fallback when user has no full-body photo or visual path raises | occasion_recommendation, pairing_request |
 | Style Advisor (Phase 12C) | gpt-5.4 | Open-ended style discovery + explanation against prior recommendations | style_discovery (general topic), explanation_request (when previous_recommendations exists) |
 | Wardrobe Enrichment | gpt-5-mini (vision) | On every chat-uploaded garment image + outfit decomposition | wardrobe_ingestion (silent), pairing_request (when image attached), outfit_check (async decomposition), garment_evaluation (when image attached) |
@@ -888,7 +888,7 @@ Follow-up intents are detected by the copilot planner via `resolved_context.foll
 | Intent | LLM calls | Image generation calls |
 |---|---|---|
 | `occasion_recommendation` (visual path, user has photo) | planner (1) + architect (1) + visual_evaluator (3 parallel) = 5 | tryon ×3 in parallel |
-| `occasion_recommendation` (legacy text path, no photo) | planner (1) + architect (1) + outfit_evaluator (1) = 3 | 0 |
+| `occasion_recommendation` (visual failure fallback) | planner (1) + architect (1) = 2 (visual evaluator failed → graceful empty response, no legacy evaluator) | 0 |
 | `pairing_request` (visual path) | planner (1) + architect (1) + visual_evaluator (3 parallel) = 5 | tryon ×3 |
 | `garment_evaluation` | planner (1) + visual_evaluator (1) = 2 | tryon ×1 |
 | `outfit_check` | planner (1) + visual_evaluator (1) = 2 | 0 (no try-on; user is already in the photo) |

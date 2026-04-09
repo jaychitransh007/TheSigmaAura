@@ -268,11 +268,13 @@ ORDER BY 1;
 
 ## Panel 9 — Visual Evaluator Path Mix (Phase 12B+)
 
-**Question:** what fraction of recommendation turns took the new visual
-evaluator path vs the legacy text-only fallback? The visual path activates
-when the user has a full-body profile photo on file. A sustained drop in
-the visual share usually means a regression in person-image upload OR a
-spike in `tryon_quality_gate_failures`.
+**Question:** are recommendation turns consistently reaching the visual
+evaluator? Photo upload is mandatory at onboarding, so the `visual` path
+should fire for every recommendation turn. The only alternative is a
+transient visual-evaluator failure (Gemini/OpenAI outage, timeout) which
+now produces a graceful empty response (the legacy text-only
+`OutfitEvaluator` fallback was removed April 9, 2026). A sustained
+non-visual share means a code regression or an evaluator outage.
 
 ```sql
 -- evaluator_path_mix_last_7d
@@ -292,12 +294,12 @@ ORDER BY turns DESC;
 ```
 
 Healthy steady state:
-- `visual` ~ 60–80% (most users with full-body photos)
-- `legacy_text` ~ 20–40% (users without photos, plus fallback after a
-  visual-path exception)
+- `visual` should be ~100% (photo upload is mandatory, legacy fallback removed)
+- Any `legacy_text` or `unknown` entries indicate a code regression or
+  a turn that bypassed the visual evaluator due to a transient exception
 
-If `visual` drops below 50%, check Panel 10 (quality gate failures) and
-Panel 12 (wardrobe enrichment failures) before assuming a code regression.
+If `visual` drops below 95%, check Panel 10 (quality gate failures) and
+Panel 12 (wardrobe enrichment failures) for correlated spikes.
 
 ---
 

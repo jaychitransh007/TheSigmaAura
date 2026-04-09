@@ -395,7 +395,7 @@ Implementation is organized in phases. Phases 0–3 and Phase 6 are substantiall
 #### Phase 0 — contracts, analytics, and truth model — COMPLETE
 
 Status: done.
-- formal intent taxonomy defined (12 intents in copilot planner)
+- formal intent taxonomy defined (8 intents post-Phase 12A consolidation)
 - event schema for turn-completion, feedback, and dependency validation
 - confidence formula documented for profile and recommendation engines
 - first-50 success metrics defined
@@ -422,7 +422,7 @@ Status: done.
 Status: router and dedicated handler set are implemented in runtime.
 
 Done:
-- copilot planner classifies 12 intents with action dispatch
+- copilot planner classifies 8 intents with action dispatch (post-Phase 12A)
 - `run_recommendation_pipeline` handler fully operational (occasion recommendation)
 - `run_outfit_check` handler implemented with structured scoring, critique, and improvement suggestions
 - `run_shopping_decision` handler implemented with product parsing, verdicting, wardrobe overlap checks, and pairing follow-up
@@ -1111,7 +1111,7 @@ async def handle_recommendation_request(request: RecommendationRequest) -> dict:
     plan = await outfit_architect(combined)
     retrieved = await catalog_search_agent(plan, combined)
     candidates = assemble_outfits(retrieved, plan, combined)
-    evaluated = await outfit_evaluator(candidates, combined, plan)
+    evaluated = await visual_evaluator(candidates, combined, plan)  # sole evaluator (legacy OutfitEvaluator removed April 9, 2026)
     response = format_response(evaluated, combined, plan)
 
     await persist_turn_state(request, combined, plan, retrieved, evaluated, response)
@@ -1828,7 +1828,7 @@ Support:
 ### Step 5
 
 Build:
-- `outfit_evaluator.py`
+- ~~`outfit_evaluator.py`~~ *(removed April 9, 2026 — VisualEvaluatorAgent is the sole evaluator)*
 
 Return:
 - ranked recommendations
