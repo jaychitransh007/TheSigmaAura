@@ -529,32 +529,37 @@ def get_web_ui_html(
     }
     .filter-chip:hover { border-color: var(--wardrobe); color: var(--wardrobe); }
     .filter-chip.active { background: rgba(95, 106, 82, 0.12); color: var(--wardrobe); border-color: rgba(95, 106, 82, 0.3); }
-    .closet-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .closet-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
     .closet-card {
-      border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
-      background: var(--surface); transition: box-shadow 120ms ease;
+      border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+      background: var(--surface); box-shadow: 0 2px 12px rgba(54, 32, 24, 0.05);
+      transition: transform 120ms ease, box-shadow 120ms ease;
     }
-    .closet-card:hover { box-shadow: 0 4px 20px rgba(54, 32, 24, 0.08); }
+    .closet-card:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(54, 32, 24, 0.10); }
     .closet-image { aspect-ratio: 3/4; overflow: hidden; background: var(--surface-alt); }
-    .closet-image img { width: 100%; height: 100%; object-fit: cover; }
+    .closet-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .closet-placeholder {
       width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
       font-size: 13px; color: var(--muted-soft);
     }
-    .closet-body { padding: 12px; }
-    .closet-body h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-    .closet-body p { font-size: 12px; color: var(--muted); line-height: 1.4; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .tag-row { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
-    .tag { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: var(--surface-deep); color: var(--muted); font-weight: 600; }
-    .closet-actions { display: flex; gap: 6px; }
-    .studio-btn {
-      flex: 1; padding: 6px 0; border-radius: 999px; font-size: 11px; font-weight: 700;
-      border: 1px solid var(--line); background: var(--surface); color: var(--ink);
-      cursor: pointer; text-align: center;
+    .closet-body { padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 6px; }
+    .closet-body h3 { font-size: 14px; font-weight: 700; margin: 0; line-height: 1.3; color: var(--ink); }
+    .closet-body p { font-size: 12px; color: var(--muted); line-height: 1.4; margin: 0; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+    .tag-row { display: flex; gap: 5px; flex-wrap: wrap; }
+    .tag {
+      font-size: 10px; padding: 3px 10px; border-radius: 999px;
+      background: var(--surface-deep); color: var(--muted); font-weight: 600;
+      text-transform: capitalize;
     }
-    .studio-btn:hover { border-color: var(--wardrobe); color: var(--wardrobe); }
-    .studio-btn.danger { color: #9b2323; border-color: rgba(155,35,35,0.25); }
-    .studio-btn.danger:hover { border-color: #9b2323; }
+    .closet-actions { display: flex; gap: 6px; margin-top: 2px; }
+    .studio-btn {
+      flex: 1; padding: 7px 0; border-radius: 10px; font-size: 11px; font-weight: 700;
+      border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+      cursor: pointer; text-align: center; transition: all 100ms ease;
+    }
+    .studio-btn:hover { border-color: var(--wardrobe); color: var(--wardrobe); background: rgba(111,47,69,0.04); }
+    .studio-btn.danger { color: #9b2323; border-color: rgba(155,35,35,0.2); }
+    .studio-btn.danger:hover { border-color: #9b2323; background: rgba(155,35,35,0.04); }
     .wardrobe-search {
       width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 999px;
       font-family: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
