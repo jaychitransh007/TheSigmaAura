@@ -89,6 +89,7 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                                         "type": "object",
                                         "additionalProperties": False,
                                         "required": [
+                                            "garment_subtype",
                                             "gender_expression",
                                         ],
                                         "properties": {
