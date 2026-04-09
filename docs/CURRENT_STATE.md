@@ -1018,6 +1018,111 @@ Success criteria:
 
 ## Immediate Next Item
 
+### P0 — Tabs redesign: Wishlist + Trial Room + Chat wishlist picker (April 9 2026)
+
+**Goal:** Replace the 3-tab layout (Chat / Wardrobe / Results) with a 4-tab layout (Chat / Wardrobe / Wishlist / Trial Room) and add a "Select from wishlist" option in the chat composer.
+
+#### Current state
+
+| Tab | Data source | Shows |
+|---|---|---|
+| Chat | conversations / turns | Chat + outfit cards |
+| Wardrobe | `user_wardrobe_items` | User-owned garments with enriched attributes |
+| Results | `conversation_turns` (recent turns with outfits) | Full outfit result cards from previous conversations |
+
+#### Target state
+
+| Tab | Data source | Shows | New? |
+|---|---|---|---|
+| **Chat** | conversations / turns | Chat + outfit cards + "Select from wishlist" in composer | Modified (add wishlist picker) |
+| **Wardrobe** | `user_wardrobe_items` | User-owned garments (unchanged) | No |
+| **Wishlist** | `catalog_interaction_history` WHERE `interaction_type='save'` | Individual wishlisted garments — catalog product image (NOT try-on), title, price, Buy Now | **NEW** |
+| **Trial Room** | `virtual_tryon_images` | Try-on render gallery — just the rendered images, no product details, no scores | **RENAMED + reworked from Results** |
+
+#### Data model notes
+
+**Wishlist data** already exists in `catalog_interaction_history`:
+- Wishlisted via the heart button on outfit cards → `interaction_type='save'`, `source_surface='product_wishlist'`
+- Each row has: `user_id`, `product_id`, `conversation_id`, `turn_id`, `created_at`
+- To show the garment image + title + price, we need to JOIN or hydrate from `catalog_enriched` (which has `images__0__src`, `title`, `price`, `url`)
+- **New API endpoint needed:** `GET /v1/users/{user_id}/wishlist` → returns deduplicated list of wishlisted products with their catalog image, title, price, product_url
+
+**Trial Room data** already exists in `virtual_tryon_images`:
+- Each row has: `user_id`, `file_path` (the rendered try-on image on disk), `garment_ids`, `garment_source`, `conversation_id`, `turn_id`, `created_at`, `quality_score_pct`
+- The file_path points to `data/tryon/images/{hash}.jpg` — served via `/v1/onboarding/images/local?path=...`
+- **New API endpoint needed:** `GET /v1/users/{user_id}/tryon-gallery` → returns list of try-on images sorted by `created_at DESC`, with the browser-safe image URL
+
+**Wishlist picker in chat** — same pattern as the wardrobe picker:
+- "Select from wishlist" button in the `+` popover alongside "Upload image" and "Select from wardrobe"
+- Opens a picker modal showing wishlisted products (catalog images, not try-ons)
+- Selecting one sets `pendingWishlistProductId` + `pendingWishlistImageUrl`
+- The send handler includes `wishlist_product_id` in the payload
+- Backend: `process_turn` receives `wishlist_product_id`, loads the product from `catalog_enriched`, builds an `attached_item` dict from the catalog row's enriched attributes, appends garment context to `effective_message` — same as wardrobe selection but sourcing from catalog instead of wardrobe
+- **No wardrobe persistence, no decomposition** — the item is a catalog product the user is interested in, not one they own
+
+#### Implementation plan (8 steps)
+
+**Step 1 — New API endpoints (api.py + repositories.py)**
+- `GET /v1/users/{user_id}/wishlist` — query `catalog_interaction_history` for `interaction_type='save'`, deduplicate by `product_id`, hydrate each product from `catalog_enriched` (title, price, primary_image_url, product_url, garment_category, primary_color), return as a list
+- `GET /v1/users/{user_id}/tryon-gallery` — query `virtual_tryon_images` for the user, order by `created_at DESC`, return browser-safe image URLs + garment_ids + created_at
+- Repository methods: `list_wishlist_products(user_id)`, `list_tryon_gallery(user_id)`
+
+**Step 2 — API schema (api_schemas.py)**
+- `WishlistItem(product_id, title, price, image_url, product_url, garment_category, primary_color, wishlisted_at)`
+- `WishlistResponse(user_id, items: List[WishlistItem])`
+- `TryonGalleryItem(id, image_url, garment_ids, garment_source, created_at)`
+- `TryonGalleryResponse(user_id, items: List[TryonGalleryItem])`
+
+**Step 3 — Navigation tabs (ui.py HTML)**
+- Replace `Results` tab with `Wishlist` and `Trial Room`:
+  ```
+  Chat | Wardrobe | Wishlist | Trial Room
+  ```
+- Add CSS for `.view-wishlist .page-wishlist` and `.view-trialroom .page-trialroom`
+- Add the two new `<div class="page-view page-wishlist">` and `<div class="page-view page-trialroom">` containers with grid layouts
+
+**Step 4 — Wishlist page (ui.py JS)**
+- `loadWishlist()` function: fetch `/v1/users/{user_id}/wishlist`, render a grid of product cards (image, title, price, Buy Now link)
+- Card layout: similar to wardrobe grid (3 columns on desktop, 2 on mobile)
+- Each card shows the catalog product image (NOT the try-on render)
+- "Remove from wishlist" button on each card (calls a new `DELETE /v1/users/{user_id}/wishlist/{product_id}` endpoint)
+
+**Step 5 — Trial Room page (ui.py JS)**
+- `loadTryonGallery()` function: fetch `/v1/users/{user_id}/tryon-gallery`, render a masonry/grid of try-on images
+- Each card shows: the rendered try-on image (2:3 aspect ratio), date/time
+- Clicking an image opens it full-size in a lightbox
+- No product details, no scores — pure visual gallery of "how things looked on me"
+
+**Step 6 — Chat composer: "Select from wishlist" button + picker**
+- Add third button in the `+` popover: "Select from wishlist" (star icon)
+- New picker modal (`wishlistPickerModal`) — loads from `/v1/users/{user_id}/wishlist`, shows catalog images in a grid
+- Click handler: sets `pendingWishlistProductId` + `pendingWishlistImageUrl`, shows preview chip, sets default message if input is empty ("Should I buy this [title]?")
+- Send handler: saves `pendingWishlistProductId` before `clearImagePreview()`, includes `wishlist_product_id` in the payload when set
+
+**Step 7 — Backend: process_turn handles wishlist_product_id**
+- `CreateTurnRequest` gains `wishlist_product_id: str = ""`
+- Both turn endpoints pass it through to `process_turn`
+- `process_turn` gains `wishlist_product_id: str = ""` parameter
+- New path in process_turn: when `wishlist_product_id` is set and `image_data` + `wardrobe_item_id` are empty, load the catalog product from `catalog_enriched`, build an `attached_item` dict from the enriched row, set `attachment_source="wishlist_selection"`, append garment context to `effective_message`
+- No wardrobe persistence (it's a catalog product, not user-owned)
+- No decomposition
+- Trace step: `wishlist_selection`
+
+**Step 8 — Tests + docs**
+- New API tests for the two new endpoints
+- Smoke test: verify Wishlist and Trial Room tabs render
+- Smoke test: verify "Select from wishlist" button exists in the rendered HTML
+- Update `CURRENT_STATE.md`, `DESIGN.md`, `APPLICATION_SPECS.md`
+
+#### Risk callouts
+
+- **Catalog hydration for wishlist:** the `catalog_interaction_history` only stores `product_id`. To show title/price/image we need to JOIN or look up each product in `catalog_enriched`. If the catalog is large, this could be slow. Mitigation: query with `product_id IN (...)` filter, limit to 50 most recent wishlist items.
+- **Try-on image cleanup:** the `virtual_tryon_images` table accumulates renders indefinitely. For the Trial Room gallery, limit to the 50 most recent. A future retention policy can clean up old renders.
+- **Wishlist product_id vs wardrobe item_id:** these are different namespaces. Catalog products have product_ids like `SHOWOFFFF_9856072188180_50510889910548`; wardrobe items have UUIDs. The backend must route to the correct data source based on which ID is provided.
+- **"Select from wishlist" attached_item shape:** the catalog product's enriched data has the same 46 attributes as a wardrobe item (they use the same enrichment schema). The `attached_item` dict can be built from the catalog row using the same field names. The only difference is `source="catalog"` instead of `source="wardrobe"`.
+
+---
+
 ### ✅ CLOSED — "Select from wardrobe" end-to-end bugs (April 9 2026)
 
 Shipped April 9, 2026. Five bugs fixed in one commit across `ui.py` + `orchestrator.py`. Tests: 318 passing.
