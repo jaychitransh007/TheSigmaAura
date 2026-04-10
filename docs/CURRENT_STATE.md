@@ -3613,3 +3613,36 @@ File: `modules/user/src/user/interpreter.py`
 **Gap 7 — FrameStructure labels:**
 - [x] architect prompt Visual Direction table updated with all 5 valid labels
 
+---
+
+## Remove Digital Draping
+
+**Decision:** Digital draping produces unreliable results — the LLM has a systematic cool-bias at 35% overlay opacity, over-assigns confidence on subtle visual differences, and overrides correct deterministic results. The deterministic interpreter (weighted warmth from SkinUndertone + HairTemp + EyeColor, depth, chroma) is more reliable. Remove draping entirely.
+
+### Removal scope — 10 touchpoints
+
+**Deleted:**
+- [x] `modules/user/src/user/draping.py` — entire DigitalDrapingService
+- [x] `prompt/digital_draping.md` — draping prompt
+- [x] `tests/test_digital_draping.py` — draping tests
+- [x] `data/draping/overlays/` — local overlay image files
+
+**Removed from analysis pipeline:**
+- [x] `analysis.py`: removed `_apply_draping_collaboration()`, `_DRAPING_OVERRIDE_MARGIN`, all `DigitalDrapingService` imports/calls, `draping_output` from snapshot updates
+- [x] `run_analysis()` and `run_remaining_and_finalize()` go straight from collation+interpretation to persistence
+- [x] `effective_seasonal_groups` uses source="deterministic" only
+
+**Removed from API + UI:**
+- [x] `api.py`: removed `GET /analysis/draping-images/{user_id}` endpoint, removed `data/draping/overlays` from allowed_roots
+- [x] `ui.py` (platform_core): removed draping card HTML, `loadDrapingImages()` JS, draping CSS
+
+**Removed from user context builder:**
+- [x] `user_context_builder.py`: removed effective_seasonal_groups overlay that could override SeasonalColorGroup with draping. Removed `derive_color_palette` import. Deterministic result from `collated_output` is now the sole authority.
+
+**DB — columns left in place (non-breaking):**
+- `user_analysis_snapshots.draping_output` — no longer written, defaults to `{}`
+- `draping_overlay_images` table — no longer written, left in place
+- `user_interpretation_snapshots` draping columns — no longer written
+
+**All 143 tests passing (130 main + 13 interpreter).**
+

@@ -778,14 +778,6 @@ def get_web_ui_html(
     .palette-chip.accent { background: rgba(111, 47, 69, 0.10); color: var(--accent); }
     .palette-chip.avoid { background: rgba(155, 35, 35, 0.08); color: #9b2323; }
 
-    .draping-rounds { display: flex; flex-direction: column; gap: 16px; }
-    .draping-round { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-alt, #f9f5f0); }
-    .draping-round img { width: 100%; border-radius: 10px; aspect-ratio: 2/3; object-fit: cover; }
-    .draping-round-meta { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
-    .draping-round-meta strong { color: var(--ink); }
-    .draping-img-label { text-align: center; font-size: 11px; font-weight: 600; color: var(--muted); margin-top: 4px; }
-    .draping-winner { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
-
     /* ===== Responsive ===== */
     @media (max-width: 900px) {
       .history-rail { width: 220px; min-width: 220px; }
@@ -1182,10 +1174,6 @@ def get_web_ui_html(
   <div class="color-palette-card" id="colorPaletteCard">
     <h3>Your Color Palette</h3>
     <div id="colorPaletteContent"></div>
-  </div>
-  <div class="color-palette-card" id="drapingCard" style="display:none;">
-    <h3>Digital Draping Results</h3>
-    <div id="drapingContent"></div>
   </div>
 </div>
 """
@@ -3209,40 +3197,6 @@ def get_web_ui_html(
         : "Complete your analysis to unlock your full style code.";
     }}
     renderColorPalette(derived);
-    loadDrapingImages();
-  }}
-
-  function loadDrapingImages() {{
-    if (!USER_ID) return;
-    var card = document.getElementById("drapingCard");
-    var content = document.getElementById("drapingContent");
-    if (!card || !content) return;
-    fetch("/v1/onboarding/analysis/draping-images/" + encodeURIComponent(USER_ID))
-      .then(function(r) {{ return r.json(); }})
-      .then(function(data) {{
-        var rounds = data.rounds || [];
-        if (!rounds.length) return;
-        // Group by the latest analysis run (first 3 rounds by most recent created_at)
-        var latest = rounds.slice(0, 3);
-        var html = '<div class="draping-rounds">';
-        latest.forEach(function(r) {{
-          var imgA = r.image_a_path || "";
-          var imgB = r.image_b_path || "";
-          if (imgA && !imgA.startsWith("http")) imgA = "/v1/onboarding/images/local?path=" + encodeURIComponent(imgA);
-          if (imgB && !imgB.startsWith("http")) imgB = "/v1/onboarding/images/local?path=" + encodeURIComponent(imgB);
-          var winnerIsA = r.choice === "A";
-          html += '<div class="draping-round">';
-          html += '<div class="draping-round-meta"><strong>Round ' + r.round_number + ':</strong> ' + escapeHtml(r.round_question || "") + '</div>';
-          if (imgA) html += '<div><img src="' + imgA + '" class="' + (winnerIsA ? "draping-winner" : "") + '" /><div class="draping-img-label">' + escapeHtml(r.label_a || "A") + (winnerIsA ? " ✓" : "") + '</div></div>';
-          if (imgB) html += '<div><img src="' + imgB + '" class="' + (!winnerIsA ? "draping-winner" : "") + '" /><div class="draping-img-label">' + escapeHtml(r.label_b || "B") + (!winnerIsA ? " ✓" : "") + '</div></div>';
-          html += '<div class="draping-round-meta">' + escapeHtml(r.reasoning || "") + '</div>';
-          html += '</div>';
-        }});
-        html += '</div>';
-        content.innerHTML = html;
-        card.style.display = "";
-      }})
-      .catch(function() {{}});
   }}
 
   // Image previews

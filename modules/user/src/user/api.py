@@ -55,7 +55,6 @@ def _resolve_local_image_file(path_value: str) -> Path | None:
     allowed_roots = [
         (_repo_root() / "data" / "onboarding" / "images").resolve(),
         (_repo_root() / "data" / "tryon" / "images").resolve(),
-        (_repo_root() / "data" / "draping" / "overlays").resolve(),
     ]
     for allowed_root in allowed_roots:
         try:
@@ -503,14 +502,5 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         except (SupabaseError, RuntimeError, ValueError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         return AnalysisStatusResponse(**status)
-
-    @router.get("/analysis/draping-images/{user_id}")
-    def get_draping_images(user_id: str):
-        """Return draping overlay image metadata for the profile page."""
-        try:
-            rows = service._repo.get_draping_overlays(user_id)
-        except (SupabaseError, RuntimeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-        return {"user_id": user_id, "rounds": rows}
 
     return router

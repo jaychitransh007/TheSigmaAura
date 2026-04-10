@@ -1255,13 +1255,7 @@ The color analysis pipeline produces a dimension-first profile:
 - Primary season derived from warmth branch + depth band (same logic, better inputs).
 - ColorDimensionProfile: raw warmth, depth, contrast, chroma stored as derived interpretation.
 
-**Step 3 — Digital draping with threshold-based collaboration (3 LLM rounds):**
-- 3-round tournament: Warm vs Cool → within-branch → confirmation.
-- Confidence margin computed from categorical points (Strong=3/Moderate=2/Slight=1).
-- Margin > 4: draping overrides deterministic. Margin ≤ 4: deterministic holds (draping stored as secondary_season).
-- Overlay images persisted to `draping_overlay_images` table + disk for audit/display.
-
-**Step 4 — 12 sub-season assignment (deterministic):**
+**Step 3 — 12 sub-season assignment (deterministic):**
 - Each primary season splits into 3 sub-seasons by dominant dimension: Warm/Deep/Soft Autumn, Warm/Light/Clear Spring, Cool/Light/Soft Summer, Cool/Deep/Clear Winter.
 - Adjacency rules: Warm Autumn ↔ Warm Spring, Soft Autumn ↔ Soft Summer, etc.
 - 12 curated sub-season palettes (168 color values) with boundary blending: accents from adjacent sub-season, avoid list narrowed to intersection for boundary users.

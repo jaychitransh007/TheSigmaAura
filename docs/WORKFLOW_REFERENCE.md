@@ -130,10 +130,9 @@ Scope: correctness, robustness, and retrieval quality improvements to the archit
 | Weighted warmth score | SkinUndertone(×3) + HairTemp(×2) + EyeColor(×1) replaces single-attribute binary branch. Ambiguous flag. |
 | SkinHairContrast | New first-class derived interpretation. Wired to visual evaluator + style advisor. |
 | ColorDimensionProfile | Raw warmth/depth/contrast/chroma surfaced as derived interpretation. |
-| Draping threshold collaboration | Margin > 4 = override, ≤ 4 = defer. Replaces unconditional override. |
+| ~~Draping~~ | Removed — LLM draping had systematic cool-bias. Deterministic interpreter is sole color authority. |
 | 12 sub-seasons | Warm/Deep/Soft Autumn, Warm/Light/Clear Spring, Cool/Light/Soft Summer, Cool/Deep/Clear Winter. |
 | 12 sub-season palettes | 168 curated colors. Boundary blending for ambiguous users. |
-| Draping image persistence | Overlay JPEGs saved to disk + `draping_overlay_images` table. Displayed on profile page. |
 | Anti-hedging calibration | Body type prompt: CALIBRATION section prevents center-bias on VisualWeight/ArmVolume. |
 | FrameStructure interpreter fix | Removed height penalty, fixed label mapping. |
 
