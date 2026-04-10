@@ -3581,3 +3581,35 @@ File: `modules/user/src/user/interpreter.py`
 - [x] `run_draping()` accepts `analysis_snapshot_id` param, passes to each round for DB association
 - [x] both callers in `analysis.py` (`run_analysis` and `run_remaining_and_finalize`) now pass `run_id` as analysis_snapshot_id
 
+### Post-Implementation: Integration Gaps
+
+**Gap 1 — Architect prompt:**
+- [x] added SubSeason, SkinHairContrast, ColorDimensionProfile to Input section with usage guidance
+- [x] updated Visual Direction Reasoning table: all 5 FrameStructure labels now match interpreter output
+
+**Gap 2 — Tests (10 new, 13 total in test_onboarding_interpreter.py):**
+- [x] weighted warmth with Olive undertone + Cool undertone overriding warm hair
+- [x] ambiguous temperature flag
+- [x] sub-season assignment (Deep Autumn, Deep Winter)
+- [x] boundary palette blending (accents extended from adjacent)
+- [x] SkinHairContrast High + Low
+- [x] backward compat (EyeClarity fallback)
+- [x] ColorDimensionProfile surfaced with all fields
+
+**Gap 3 — Draping prompt:**
+- [x] added Strong/Moderate/Slight reference points to confidence instruction in digital_draping.md
+
+**Gap 4 — Downstream agents:**
+- [x] visual_evaluator_agent.py: passes sub_season + skin_hair_contrast to evaluation context
+- [x] style_advisor_agent.py: passes sub_season + skin_hair_contrast to advice context
+
+**Gap 5 — effective_seasonal_groups:**
+- [x] both callers in analysis.py enrich effective_groups[0] with sub_season value
+
+**Gap 6 — Docs:**
+- [x] APPLICATION_SPECS.md: added "Color analysis — 12 sub-season architecture" section
+- [x] WORKFLOW_REFERENCE.md: added "Color Analysis Overhaul" table with all changes
+
+**Gap 7 — FrameStructure labels:**
+- [x] architect prompt Visual Direction table updated with all 5 valid labels
+

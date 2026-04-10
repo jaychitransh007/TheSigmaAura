@@ -126,6 +126,8 @@ def _build_user_profile_payload(user_context: Any) -> Dict[str, Any]:
     return {
         "gender": getattr(user_context, "gender", ""),
         "seasonal_color_group": _nested_value(derived, "SeasonalColorGroup") or None,
+        "sub_season": _nested_value(derived, "SubSeason") or None,
+        "skin_hair_contrast": _nested_value(derived, "SkinHairContrast") or None,
         "base_colors": (derived.get("BaseColors") or {}).get("value") or [],
         "accent_colors": (derived.get("AccentColors") or {}).get("value") or [],
         "avoid_colors": (derived.get("AvoidColors") or {}).get("value") or [],

@@ -35,5 +35,5 @@ Return a JSON object with exactly these fields:
 ```
 
 - `choice`: "A" or "B" — which overlay is more harmonious
-- `confidence`: 0.0 to 1.0 — how clearly one overlay is superior (0.5 = nearly indistinguishable, 1.0 = obvious winner)
+- `confidence`: 0.0 to 1.0 — how clearly one overlay is superior. Use these reference points: **Strong** (>0.80) = very clear winner, obvious harmony advantage; **Moderate** (0.60–0.80) = noticeable difference but not dramatic; **Slight** (<0.60) = subtle difference, both overlays are close. Do not default to moderate — use the full range.
 - `reasoning`: brief explanation of the visual evidence

@@ -7,7 +7,10 @@ Your job is to translate a combined user + occasion context into a structured re
 You receive a JSON object containing:
 - `profile`: gender, height, waist, profession, profile_richness
 - `analysis_attributes`: body shape, proportions, color attributes (each as value strings)
-- `derived_interpretations`: HeightCategory, WaistSizeBand, FrameStructure, SeasonalColorGroup, ContrastLevel, and **color palette fields**:
+- `derived_interpretations`: HeightCategory, WaistSizeBand, FrameStructure, SeasonalColorGroup, ContrastLevel, **SubSeason**, **SkinHairContrast**, **ColorDimensionProfile**, and **color palette fields**:
+  - `SubSeason.value`: one of 12 sub-seasons (e.g., "Warm Autumn", "Clear Spring", "Soft Summer"). Use this for more nuanced color vocabulary than the 4-season group. `SubSeason.adjacent_sub_seasons` lists borrowable neighbors.
+  - `SkinHairContrast.value`: Low / Medium / High — the contrast between the user's skin depth and hair depth. High contrast users can carry bold pattern contrast and high-contrast color pairings. Low contrast users look best in tonal, blended palettes.
+  - `ColorDimensionProfile`: raw warmth_score, depth_score, chroma_score, skin_hair_contrast, ambiguous_temperature — use for fine-grained decisions when the sub-season label alone is insufficient.
   - `BaseColors.value`: list of foundation neutral color names (anchors for bottoms, outerwear)
   - `AccentColors.value`: list of statement color names (for tops, focal pieces)
   - `AvoidColors.value`: list of colors that clash with this user's seasonal palette — NEVER use these in query documents unless the user explicitly requests one
@@ -392,9 +395,11 @@ Set the `VISUAL_DIRECTION` section based on **the user's body analysis attribute
 
 | User attribute | Visual direction field | How to set |
 |---|---|---|
-| FrameStructure: Narrow | VerticalWeightBias: upper_biased | Adds visual width at shoulders |
-| FrameStructure: Broad / Large | VerticalWeightBias: balanced or lower_biased | Avoids top-heavy emphasis |
-| FrameStructure: Medium and Balanced | VerticalWeightBias: balanced | Maintains natural proportions |
+| FrameStructure: Light and Narrow | VerticalWeightBias: upper_biased | Adds visual width at shoulders |
+| FrameStructure: Solid and Broad | VerticalWeightBias: balanced or lower_biased | Avoids top-heavy emphasis |
+| FrameStructure: Medium and Balanced / Solid and Balanced | VerticalWeightBias: balanced | Maintains natural proportions |
+| FrameStructure: Light and Broad | VerticalWeightBias: balanced | Light frame, proportionate width |
+| FrameStructure: Solid and Narrow | VerticalWeightBias: upper_biased | Adds width to balance density |
 | HeightCategory: Short or Below Average | LineDirection: vertical | Vertical lines elongate |
 | HeightCategory: Tall or Above Average | LineDirection: horizontal or mixed | Can carry horizontal detail |
 | HeightCategory: Average | LineDirection: minimal or vertical | Safe default |

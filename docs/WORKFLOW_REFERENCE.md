@@ -121,7 +121,23 @@ Scope: correctness, robustness, and retrieval quality improvements to the archit
 | Office sub-occasion split | "Office / business" split into "Formal office" (paired + three_piece) and "Daily office" (paired only). `daily_office` occasion_signal added. Default: daily_office unless meetings/presentations mentioned. |
 | Search timeout retry | `_MAX_SEARCH_WORKERS` 4→2, 1 retry on timeout (error 57014) with 0.5s delay. Staging showed 7 concurrent vector RPCs caused intermittent statement timeouts → 0 products for timed-out queries → 1-outfit responses. |
 
-Tests: 127 passing (6 new regression tests added for live_context payload, ranking_bias, three_piece).
+### Color Analysis Overhaul — 12 Sub-Season Typing (Phase: Color Overhaul)
+
+| Change | Impact |
+|---|---|
+| SkinUndertone + SkinChroma added to color prompt | 7 attributes extracted (was 5). Olive detection for South Asian users. Zero added latency. |
+| EyeClarity → EyeChroma rename | Backward-compat fallback in interpreter for existing DB rows. |
+| Weighted warmth score | SkinUndertone(×3) + HairTemp(×2) + EyeColor(×1) replaces single-attribute binary branch. Ambiguous flag. |
+| SkinHairContrast | New first-class derived interpretation. Wired to visual evaluator + style advisor. |
+| ColorDimensionProfile | Raw warmth/depth/contrast/chroma surfaced as derived interpretation. |
+| Draping threshold collaboration | Margin > 4 = override, ≤ 4 = defer. Replaces unconditional override. |
+| 12 sub-seasons | Warm/Deep/Soft Autumn, Warm/Light/Clear Spring, Cool/Light/Soft Summer, Cool/Deep/Clear Winter. |
+| 12 sub-season palettes | 168 curated colors. Boundary blending for ambiguous users. |
+| Draping image persistence | Overlay JPEGs saved to disk + `draping_overlay_images` table. Displayed on profile page. |
+| Anti-hedging calibration | Body type prompt: CALIBRATION section prevents center-bias on VisualWeight/ArmVolume. |
+| FrameStructure interpreter fix | Removed height penalty, fixed label mapping. |
+
+Tests: 127+ passing.
 
 ### What stays the same
 

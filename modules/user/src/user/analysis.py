@@ -301,9 +301,17 @@ class UserAnalysisService:
             analysis_snapshot_id=run_id,
             interpretations=derived,
         )
+        # Include sub-season in effective seasonal groups
+        sub_season_val = (derived.get("SubSeason") or {}).get("value", "")
+        _effective = list(draping_result.selected_groups) if draping_result.selected_groups else []
+        if _effective and sub_season_val:
+            _effective[0] = {**_effective[0], "sub_season": sub_season_val}
+        elif sub_season_val and not _effective:
+            _s = derived.get("SeasonalColorGroup") or {}
+            _effective = [{"value": _s.get("value", ""), "probability": _s.get("confidence", 0), "source": "deterministic", "sub_season": sub_season_val}]
         self._repo.insert_effective_seasonal_groups(
             user_id=user_id,
-            seasonal_groups=draping_result.selected_groups,
+            seasonal_groups=_effective,
             source="draping" if draping_result.selected_groups else "deterministic",
         )
         return self.get_analysis_status(user_id)
@@ -393,9 +401,17 @@ class UserAnalysisService:
             interpretations=derived,
         )
         # Persist effective seasonal groups
+        # Include sub-season in effective seasonal groups
+        sub_season_val = (derived.get("SubSeason") or {}).get("value", "")
+        _effective = list(draping_result.selected_groups) if draping_result.selected_groups else []
+        if _effective and sub_season_val:
+            _effective[0] = {**_effective[0], "sub_season": sub_season_val}
+        elif sub_season_val and not _effective:
+            _s = derived.get("SeasonalColorGroup") or {}
+            _effective = [{"value": _s.get("value", ""), "probability": _s.get("confidence", 0), "source": "deterministic", "sub_season": sub_season_val}]
         self._repo.insert_effective_seasonal_groups(
             user_id=user_id,
-            seasonal_groups=draping_result.selected_groups,
+            seasonal_groups=_effective,
             source="draping" if draping_result.selected_groups else "deterministic",
         )
         return self.get_analysis_status(user_id)

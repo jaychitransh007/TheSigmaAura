@@ -1241,6 +1241,31 @@ For `paired` and `three_piece` directions, the architect defines the outfit visi
 - **Pattern:** typically one patterned piece + one solid.
 - **Fabric:** governed by occasion calibration; all pieces in premium fabrics for ceremonial occasions.
 
+### Color analysis — 12 sub-season architecture (Phase: Color Overhaul)
+
+The color analysis pipeline produces a dimension-first profile:
+
+**Step 1 — LLM extraction (7 attributes from headshot, zero added latency):** SkinSurfaceColor, HairColor, HairColorTemperature, EyeColor, EyeChroma (renamed from EyeClarity), SkinUndertone (Warm/Cool/Neutral-Warm/Neutral-Cool/Olive), SkinChroma (Muted/Moderate/Clear).
+
+**Step 2 — Dimension-first interpreter (deterministic, zero API calls):**
+- Weighted warmth score: SkinUndertone(×3) + HairColorTemperature(×2) + EyeColor(×1), normalized to ±2. Replaces single-attribute binary branch. Ambiguous flag when |warmth| < 0.5.
+- Depth score: average of skin/hair/eye depth (0-10 scale).
+- SkinHairContrast: abs(skin_depth - hair_depth) → Low/Medium/High. First-class dimension for pattern/contrast decisions.
+- Chroma score: average of SkinChroma + EyeChroma (0-1 scale).
+- Primary season derived from warmth branch + depth band (same logic, better inputs).
+- ColorDimensionProfile: raw warmth, depth, contrast, chroma stored as derived interpretation.
+
+**Step 3 — Digital draping with threshold-based collaboration (3 LLM rounds):**
+- 3-round tournament: Warm vs Cool → within-branch → confirmation.
+- Confidence margin computed from categorical points (Strong=3/Moderate=2/Slight=1).
+- Margin > 4: draping overrides deterministic. Margin ≤ 4: deterministic holds (draping stored as secondary_season).
+- Overlay images persisted to `draping_overlay_images` table + disk for audit/display.
+
+**Step 4 — 12 sub-season assignment (deterministic):**
+- Each primary season splits into 3 sub-seasons by dominant dimension: Warm/Deep/Soft Autumn, Warm/Light/Clear Spring, Cool/Light/Soft Summer, Cool/Deep/Clear Winter.
+- Adjacency rules: Warm Autumn ↔ Warm Spring, Soft Autumn ↔ Soft Summer, etc.
+- 12 curated sub-season palettes (168 color values) with boundary blending: accents from adjacent sub-season, avoid list narrowed to intersection for boundary users.
+
 ### Anchor garment handling
 
 When the user wants to build around an existing piece (`anchor_garment`), the architect:
