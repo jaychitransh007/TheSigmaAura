@@ -1613,13 +1613,17 @@ def get_onboarding_html() -> str:
         setStep(4); // → images
       });
 
-      document.getElementById("dobNextBtn").addEventListener("click", () => {
+      document.getElementById("dobNextBtn").addEventListener("click", async () => {
         hideError("dobErr");
         const dob = document.getElementById("dobInput").value;
         if (!dob) {
           showError("dobErr", "Date of birth is required.");
           return;
         }
+        // Phase 2: start other_details analysis (needs gender + age + both images)
+        try {
+          await postJson("/v1/onboarding/analysis/start-phase2", { user_id: state.userId }, "");
+        } catch (_) { /* best-effort */ }
         setStep(6); // → body
       });
 
@@ -1687,11 +1691,10 @@ def get_onboarding_html() -> str:
           document.getElementById("status-fullbody").textContent = "✓ Full body uploaded";
           await uploadImageAsync("headshot");
           document.getElementById("status-headshot").textContent = "✓ Headshot uploaded";
-          // Fire-and-forget: start partial analysis (color + details agents)
-          // The body_type agent will start later after profile is saved.
+          // Phase 1: start color analysis (needs only gender + headshot)
           try {
-            await postJson("/v1/onboarding/analysis/start-partial", { user_id: state.userId }, "");
-          } catch (_) { /* best-effort — analysis will start fully after profile save */ }
+            await postJson("/v1/onboarding/analysis/start-phase1", { user_id: state.userId }, "");
+          } catch (_) { /* best-effort */ }
           setStep(5); // → dob
         } catch (error) {
           showError("imagesErr", String(error.message || error));

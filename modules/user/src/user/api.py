@@ -315,10 +315,12 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         except (SupabaseError, RuntimeError, ValueError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-        if str(run.get("status")) == "pending":
+        if str(run.get("status")) in ("pending", "running"):
             def run_job() -> None:
                 try:
-                    analysis_service.run_analysis(payload.user_id)
+                    # Uses run_remaining_and_finalize so phases 1/2 outputs
+                    # (color + other_details) are reused if already completed.
+                    analysis_service.run_remaining_and_finalize(payload.user_id)
                 except Exception as exc:  # noqa: BLE001
                     analysis_service.fail_analysis(payload.user_id, str(exc))
 
@@ -331,22 +333,77 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
             message="Analysis started" if str(run.get("status") or "pending") == "pending" else "Analysis already in progress or complete",
         )
 
-    @router.post("/analysis/start-partial", response_model=AnalysisStartResponse)
-    def start_partial_analysis(payload: AnalysisStartRequest) -> AnalysisStartResponse:
-        """Best-effort early analysis start after image upload.
+    @router.post("/analysis/start-phase1", response_model=AnalysisStartResponse)
+    def start_phase1(payload: AnalysisStartRequest) -> AnalysisStartResponse:
+        """Phase 1: start color analysis agent right after image upload.
 
-        Called by the onboarding UI after images are uploaded but before
-        profile completion. Currently a no-op placeholder — all 3 agents
-        require date_of_birth which hasn't been collected at this point.
-
-        Future: refactor agents to run without DOB (color agent could
-        run with just gender + headshot), then wire partial execution here.
+        Requires gender (already collected) + headshot image.
+        Age is passed as empty — color analysis is age-independent.
         """
+        try:
+            status = service.get_status(payload.user_id)
+        except (SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        gender = status.get("gender") or ""
+        if not gender:
+            raise HTTPException(status_code=400, detail="Gender is required for color analysis.")
+
+        ctx = {"gender": gender, "age": "", "height": "", "waist": ""}
+
+        def run_job() -> None:
+            try:
+                analysis_service.run_single_agent(
+                    payload.user_id,
+                    "color_analysis_headshot",
+                    prompt_context_override=ctx,
+                )
+            except Exception:
+                pass  # best-effort — full analysis will re-run this if it failed
+
+        Thread(target=run_job, daemon=True).start()
         return AnalysisStartResponse(
             user_id=payload.user_id,
             analysis_run_id="",
-            status="deferred",
-            message="Analysis will start after profile is complete. Images are saved.",
+            status="phase1_started",
+            message="Color analysis started.",
+        )
+
+    @router.post("/analysis/start-phase2", response_model=AnalysisStartResponse)
+    def start_phase2(payload: AnalysisStartRequest) -> AnalysisStartResponse:
+        """Phase 2: start other_details agent after DOB is provided.
+
+        Requires gender + date_of_birth + both images.
+        """
+        try:
+            status = service.get_status(payload.user_id)
+        except (SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        gender = status.get("gender") or ""
+        dob = status.get("date_of_birth") or ""
+        if not dob:
+            raise HTTPException(status_code=400, detail="Date of birth is required for this phase.")
+
+        age = analysis_service._calculate_age(dob)
+        ctx = {"gender": gender, "age": age, "height": "", "waist": ""}
+
+        def run_job() -> None:
+            try:
+                analysis_service.run_single_agent(
+                    payload.user_id,
+                    "other_details_analysis",
+                    prompt_context_override=ctx,
+                )
+            except Exception:
+                pass  # best-effort
+
+        Thread(target=run_job, daemon=True).start()
+        return AnalysisStartResponse(
+            user_id=payload.user_id,
+            analysis_run_id="",
+            status="phase2_started",
+            message="Other details analysis started.",
         )
 
     @router.post("/analysis/rerun", response_model=AnalysisStartResponse)

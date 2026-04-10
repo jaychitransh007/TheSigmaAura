@@ -3375,7 +3375,39 @@ Changes:
 - [x] merged full-body and headshot into one step (`step-images`) with side-by-side upload slots and per-slot status indicators
 - [x] height input changed from cm to **feet + inches** (two inputs), waist from cm to **inches** — converts to cm before API call (`heightCm = ((ft * 12) + inches) * 2.54`)
 - [x] added `uploadImageAsync()` helper for sequential upload of both images from the combined screen
-- [x] added `POST /v1/onboarding/analysis/start-partial` endpoint — currently a no-op placeholder (returns `status: "deferred"`) because all 3 analysis agents require `date_of_birth` which isn't collected until after images. Future: refactor color agent to run without DOB, enabling true partial analysis.
 - [x] updated all `data-back` indices and `setStep()` targets for the new step order
 - [x] updated step count display: "Step X of 9" (was 10)
+
+### Phased Analysis — Early Agent Execution
+
+**Goal:** start analysis agents as soon as their inputs are available, not after full onboarding. The user fills in fields progressively — agents should start as each data dependency is met.
+
+**Prompt analysis:** checked all 3 agent prompts for actual profile field usage:
+- Color agent prompt uses `<gender>` and `<age>` as context placeholders. Age is supplementary — skin/hair/eye color classification is age-independent. Can run with gender only.
+- Other details agent uses `<gender>` and `<age>`. Gender-aware hair length baseline needs gender; age is supplementary. Can run with gender + age.
+- Body type agent uses `<gender>`, `<age>`, `<height>`, `<waist>`. Height/waist are "context only" per prompt, but inform the vision model's frame assessment. Needs all four.
+
+**Phased execution plan:**
+
+| Trigger | Agent(s) to start | Data available | Data missing (passed as empty) |
+|---|---|---|---|
+| After image upload (step 4) | **color_analysis_headshot** | gender, headshot | age (empty — harmless) |
+| After DOB input (step 5) | **other_details_analysis** | gender, age, headshot, full_body | — |
+| After profile save (step 7, profession) | **body_type_analysis** + collation + interpretation + draping | gender, age, height, waist, full_body | — |
+
+**Implementation:**
+
+Service layer:
+- [x] added `run_single_agent(user_id, agent_name, prompt_context_override)` — runs one agent, persists its output column on the analysis snapshot, does NOT collate/interpret
+- [x] added `run_remaining_and_finalize(user_id)` — checks which agents already have output, runs only the missing ones, collates all 3, runs interpretation + draping, marks completed
+
+API layer:
+- [x] replaced no-op `start-partial` with real `POST /v1/onboarding/analysis/start-phase1` — starts color agent in daemon thread with gender-only context (age/height/waist empty)
+- [x] added `POST /v1/onboarding/analysis/start-phase2` — starts other_details agent in daemon thread with gender + age
+- [x] updated `POST /v1/onboarding/analysis/start` to use `run_remaining_and_finalize` — detects phases 1/2 output already on the snapshot and only runs body_type + collation + interpretation + draping
+
+UI layer:
+- [x] after image upload → fires `start-phase1` (color agent begins ~30s before it otherwise would)
+- [x] after DOB input → fires `start-phase2` (other_details agent begins while user fills measurements + profession)
+- [x] after style preference → redirects to main app where `analysis/start` runs body_type + finalization, reusing phase 1/2 output
 
