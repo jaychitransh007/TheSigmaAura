@@ -3431,3 +3431,15 @@ UI layer:
 - [x] `determineResumeDestination()` rewritten for new step order: checks each field in sequence (name → gender → images → DOB → height/waist → profession → style) and jumps to first incomplete step
 - [x] `onboarding_complete=true` → redirects to main app (processing view)
 
+### Body Type Analysis — Anti-Hedging Calibration
+
+**Problem:** Vision LLMs systematically default to the middle of classification scales ("Medium", "Balanced", "Approximately Equal") to avoid appearing judgmental about body size. Staging validation showed a user with a clearly Solid+Broad frame classified as "Medium and Balanced" — producing wrong FrameStructure → wrong VerticalWeightBias → wrong silhouette recommendations.
+
+**Root cause:** The prompt instruction "independent of actual body weight" was read by the model as permission to downplay visible mass. The "do not make evaluative judgments" rule (meant to prevent comments about attractiveness) was interpreted as "be conservative on body size scales."
+
+**Fix (`prompt/body_type_analysis.md`):**
+- [x] added CALIBRATION section naming the center-bias problem explicitly: "Vision models systematically default toward Medium/Balanced — these are NOT safe defaults"
+- [x] added concrete calibration examples for VisualWeight (Light through Heavy with visual cues: bone visibility, limb thickness, joint width, frame density) and ArmVolume (Slim through Full)
+- [x] added "Accuracy is kindness" framing: misclassifying a Heavy frame as Medium produces recommendations that don't fit or flatter
+- [x] reinforced per-attribute instructions on VisualWeight ("do NOT default to Medium"), ArmVolume ("do not downgrade to Medium out of caution"), MidsectionState ("classify what you see")
+
