@@ -37,7 +37,7 @@ ATTRIBUTES TO EXTRACT:
 
 6. VisualWeight
    Enum: Light | Medium-Light | Medium | Medium-Heavy | Heavy
-   Instruction: Assess the overall perceived mass and density of the frame as it appears in the image. This is independent of actual body weight — it reflects how heavy or light the skeletal and muscular frame reads visually. A tall person with fine bones and slim limbs reads as Light. A compact person with broad joints and dense musculature reads as Heavy. Consider bone structure visibility, limb thickness relative to length, and overall frame density.
+   Instruction: Assess the overall perceived mass and density of the frame as it appears in the image. This reflects how heavy or light the skeletal and muscular frame reads visually — consider bone structure visibility, limb thickness relative to length, joint width, and overall frame density. A person with fine bones and slim limbs reads as Light. A person with broad joints, thick limbs, and substantial mass reads as Medium-Heavy or Heavy. Do NOT default to Medium — use Medium only when the frame genuinely sits at the center of the range.
 
 7. VerticalProportion
    Enum: Compact | Moderate | Elongated
@@ -46,11 +46,11 @@ ATTRIBUTES TO EXTRACT:
 
 8. ArmVolume
    Enum: Slim | Medium | Full
-   Instruction: Assess the visual fullness of the upper arms (between the shoulder and elbow). Slim means the upper arm is visibly lean with little soft tissue volume. Medium means moderate fullness that is proportionate to the rest of the body. Full means the upper arm has noticeable volume — either from musculature or soft tissue — that would influence sleeve fit.
+   Instruction: Assess the visual fullness of the upper arms (between the shoulder and elbow). Slim means the upper arm is visibly lean with little soft tissue volume. Medium means moderate fullness that is proportionate and does not stand out. Full means the upper arm carries noticeable volume — either from musculature or soft tissue — that would influence sleeve fit. Classify as Full when the arm width is a prominent visual feature; do not downgrade to Medium out of caution.
 
 9. MidsectionState
     Enum: Flat | Moderate Fullness | Significant Fullness
-    Instruction: Assess the visual fullness of the area from below the bust/chest to the top of the hips. Flat means the midsection appears flat or concave in profile, with no visible protrusion. Moderate Fullness means there is some visible volume or gentle rounding but it does not dominate the silhouette. Significant Fullness means the midsection is a prominent feature of the silhouette, extending noticeably forward or outward.
+    Instruction: Assess the visual fullness of the area from below the bust/chest to the top of the hips. Flat means the midsection appears flat or concave in profile, with no visible protrusion. Moderate Fullness means there is some visible volume or gentle rounding but it does not dominate the silhouette. Significant Fullness means the midsection is a prominent feature of the silhouette, extending noticeably forward or outward. Classify what you see — if the midsection is clearly full, say so. Accurate classification drives correct fit recommendations.
 
 10. BustVolume
     Enum: Flat / Minimal | Small | Medium | Prominent | Very Prominent
@@ -111,6 +111,28 @@ Confidence definition:
     "evidence_note": "<1 sentence visual cue>"
   }
 }
+
+---
+
+CALIBRATION — AVOID CENTER BIAS:
+
+Vision models systematically default toward the middle of classification scales ("Medium", "Balanced", "Approximately Equal") to avoid appearing judgmental. This produces incorrect results that harm downstream styling.
+
+**Use the full range of every enum.** "Medium" and "Balanced" are specific classifications for frames that genuinely sit at the center — they are NOT safe defaults. Misclassifying a Heavy frame as Medium or a Full arm as Medium produces wrong silhouette recommendations that do not flatter the client.
+
+Calibration examples for VisualWeight:
+- Light: visible bone structure at wrists/collarbones, slim limbs with clear taper, minimal soft tissue
+- Medium-Light: moderate bone structure, lean but not angular
+- Medium: proportionate frame density, neither noticeably lean nor noticeably dense
+- Medium-Heavy: substantial frame, broad joints, full limbs that carry visible mass
+- Heavy: dense, wide-set frame, thick limbs relative to length, significant mass throughout
+
+Calibration examples for ArmVolume:
+- Slim: upper arm is notably lean, clear taper from shoulder to elbow
+- Medium: moderate, proportionate — arm width doesn't stand out
+- Full: upper arm carries substantial volume — this is common and normal, and classifying it accurately is essential for sleeve-fit recommendations
+
+**Accuracy is kindness.** A client who receives styling advice based on a "Medium" frame when their actual frame is "Heavy" will get recommendations that don't fit, don't flatter, and feel wrong. Honest classification leads to better styling outcomes.
 
 ---
 
