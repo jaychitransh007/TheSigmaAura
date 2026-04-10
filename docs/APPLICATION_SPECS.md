@@ -1,6 +1,6 @@
 # Application Layer — Implementation Specification
 
-Last updated: April 10, 2026 (Section 7 updated for Phase 13/13B architect remediation)
+Last updated: April 11, 2026 (Color overhaul: 12 sub-season, draping removed, BodyShape mapping)
 
 > **⚠️ Partially deprecated.** Sections of this document still describe the
 > *legacy* routing layer (`intent_router.py`, `intent_handlers.py`,
@@ -62,7 +62,7 @@ Implemented now:
 - anchor_garment on LiveContext: uploaded garment passed to architect with full enrichment attributes; architect skips anchor's role; anchor injected as sole item for its role before assembly
 - **P0 open: pairing pipeline end-to-end fix still needed** — anchor injection + role stripping code exists but deployment issues prevent validation; see `docs/CURRENT_STATE.md` for details
 - explicit source selection metadata: wardrobe-first, catalog-only, or hybrid
-- digital draping integration: effective seasonal groups overlaid onto user context
+- deterministic 12-sub-season color analysis (draping removed — deterministic interpreter is sole authority)
 - color palette system: base/accent/avoid colors derived from seasonal group, passed to copilot planner, outfit architect, and outfit check agents
 - comfort learning: behavioral seasonal palette refinement from outfit likes
 - profile confidence engine and recommendation confidence engine (9-factor, 0–100 scoring)
@@ -894,8 +894,8 @@ class UserContext:
 - `HeightCategory` and `WaistSizeBand` should come from deterministic interpretations.
 - Style preference should be loaded exactly as stored, including blend ratio, risk tolerance, formality lean, pattern type, and comfort boundaries.
 - Current runtime enforces a minimum usable profile before recommendations: `gender`, `SeasonalColorGroup`, and primary archetype/style preference signal.
-- `SeasonalColorGroup` is derived from digital draping (LLM-based, 4-season: Spring/Summer/Autumn/Winter) when headshot available, with deterministic interpretation as fallback.
-- When multiple seasonal groups exist (from draping or comfort learning), `additional_groups` is surfaced in the user context.
+- `SeasonalColorGroup` is derived deterministically from weighted warmth (SkinUndertone + HairColorTemperature + EyeColor), depth, and chroma → 4-season → 12 sub-season. Digital draping was removed due to systematic LLM cool-bias.
+- `SubSeason` (e.g., "Deep Autumn", "Clear Winter") provides finer-grained classification within the primary season.
 
 ## 3. Occasion Resolver
 
@@ -1813,8 +1813,8 @@ Hard rule:
 Minimum required profile for recommendation:
 - `gender`
 - `SeasonalColorGroup`
-- `SeasonalColorGroup` may include `additional_groups` from digital draping or comfort learning (max 2 groups total)
-- `BaseColors`, `AccentColors`, `AvoidColors` are derived from the seasonal group and re-derived when draping/comfort learning updates the group
+- `SeasonalColorGroup` includes `dimension_profile` (warmth/depth/contrast/chroma scores) and `SubSeason` for 12-sub-season classification
+- `BaseColors`, `AccentColors`, `AvoidColors` are derived from the sub-season palette with boundary blending when confidence is low
 - `style_preference.primaryArchetype`
 
 The system should degrade gracefully with partial body or detail attributes.
@@ -1965,7 +1965,7 @@ Each stage emits `started` and `completed` (or `failed` / `insufficient` / `suff
 | POST | `/v1/onboarding/images/{category}` | Upload image (full_body, headshot) |
 | GET | `/v1/onboarding/style-archetype-session` | Load style archetype selection UI |
 | POST | `/v1/onboarding/style-preference-complete` | Save style preference |
-| POST | `/v1/onboarding/analysis/start` | Launch 3-agent analysis + digital draping |
+| POST | `/v1/onboarding/analysis/start` | Launch 3-agent analysis + deterministic interpretation |
 | POST | `/v1/onboarding/analysis/status` | Check analysis completion |
 | POST | `/v1/onboarding/analysis/rerun` | Rerun specific analysis agent |
 

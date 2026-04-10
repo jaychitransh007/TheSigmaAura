@@ -22,7 +22,7 @@ The pipeline must produce a usable answer for every primary intent without
 manual intervention.
 
 - [ ] All tests across `tests/` pass against the current branch
-      (verified April 10, 2026: 127 in test_agentic_application + 3 in
+      (verified April 11, 2026: 130 in test_agentic_application + 3 in
       test_architecture_boundaries + 36 in test_qna_messages.
       Phase 13/13B added 6 regression tests: live_context payload,
       ranking_bias schema/parsing, three_piece direction, anchor payload.

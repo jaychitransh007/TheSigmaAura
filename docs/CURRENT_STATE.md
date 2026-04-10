@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: April 10, 2026 (Phase 13B close-out: outfit architect prompt & schema remediation — live_context wired, ranking_bias signal, occasion-driven structures, style-stretch + guard, weather-fabric override, anchor conflict resolution, query doc field omission, color synonym expansion, semantic fabric clusters, follow-up tiebreaker, retrieval quality hardening, 6 regression tests added)
+Last updated: April 11, 2026 (Color analysis overhaul: 12 sub-season typing, draping removed, BodyShape→silhouette mapping, anti-hedging calibration, FrameStructure fix, onboarding reorder + incremental save + resume flow, phased analysis, search timeout retry)
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -97,7 +97,7 @@ Success means users come back before real decisions: should I buy this, what goe
 ## Current Gap Versus Target State
 
 ### What exists and works:
-- onboarding flow (OTP, profile, images, analysis, draping, style prefs)
+- onboarding flow (OTP, profile, images, analysis, style prefs) — draping removed
 - catalog enrichment and embedding retrieval pipeline
 - copilot planner with intent classification and action routing (12 intents recognized)
 - recommendation pipeline (architect → search → assemble → evaluate → format → try-on) — used for both occasion and pairing requests (pairing always runs full pipeline including try-on)
@@ -242,7 +242,7 @@ Implemented:
   3. `other_details_analysis` — uses headshot + full_body → FaceShape, NeckLength, HairLength, JawlineDefinition, ShoulderSlope
 - Each agent returns JSON with `{value, confidence, evidence_note}` per attribute
 - Deterministic interpretation pipeline (`interpreter.py`) derives:
-  - `SeasonalColorGroup` — 4-season color analysis (Spring, Summer, Autumn, Winter) — deterministic fallback from surface color, hair, eye inputs. Overridden by digital draping when headshot available.
+  - `SeasonalColorGroup` — 4-season → 12 sub-season color analysis (deterministic from weighted warmth, depth, chroma). Digital draping removed.
   - `BaseColors` — Foundation/neutral colors for outfit anchors (4-5 per season, e.g. Autumn: warm taupe, warm brown, olive, muted gold)
   - `AccentColors` — Statement/pop colors that complement the user's coloring (4-5 per season, e.g. Autumn: terracotta, rust, burgundy, forest green, burnt orange)
   - `AvoidColors` — Colors that clash with the user's natural coloring (4-5 per season, e.g. Autumn: icy blue, fuchsia, royal blue, stark white, silver)
@@ -250,7 +250,7 @@ Implemented:
   - `WaistSizeBand` — Very Small / Small / Medium / Large / Very Large
   - `ContrastLevel` — Low / Medium-Low / Medium / Medium-High / High (from depth spread across skin, hair, eyes)
   - `FrameStructure` — Light and Narrow / Light and Broad / Medium and Balanced / Solid and Narrow / Solid and Broad
-- **Digital draping** (`user/draping.py`) — LLM-based 3-round vision chain using headshot overlays:
+- ~~**Digital draping**~~ (`user/draping.py` deleted) — was LLM-based 3-round vision chain, removed due to systematic cool-bias:
   - R1: Warm vs Cool (gold vs silver overlay)
   - R2: Within-branch (Spring vs Autumn, or Summer vs Winter)
   - R3: Confirmation (winner vs cross-temperature neighbor)
@@ -572,7 +572,7 @@ Main weak spots:
 ### User Layer
 - OTP-based onboarding with acquisition source tracking
 - 3-agent parallel analysis pipeline (body type, color, other details) via gpt-5.4
-- digital draping — 3-round LLM vision chain for seasonal color analysis
+- ~~digital draping~~ — removed (was 3-round LLM vision chain, replaced by deterministic 12-sub-season interpreter)
 - deterministic interpretation engine (seasonal color, base/accent/avoid color palettes, height, waist, contrast, frame)
 - style archetype preference capture (3 layers → primary/secondary archetypes, risk tolerance, formality lean)
 - comfort learning — behavioral seasonal palette refinement from outfit likes
@@ -655,8 +655,8 @@ Supabase tables (36 migrations in `supabase/migrations/`):
 - `user_analysis_runs` — tracks analysis snapshots per user (status, model_name, body_type_output, color_headshot_output, other_details_output, collated_output)
 - `user_derived_interpretations` — stores deterministic interpretations (SeasonalColorGroup, BaseColors, AccentColors, AvoidColors, HeightCategory, WaistSizeBand, ContrastLevel, FrameStructure) with value/confidence/evidence_note
 - `user_style_preference` — primary_archetype, secondary_archetype, risk_tolerance, formality_lean, pattern_type, selected_images
-- `user_analysis_snapshots` — now includes `draping_output` (jsonb) column for digital draping chain results
-- `user_interpretation_snapshots` — now includes `seasonal_color_distribution`, `seasonal_color_groups_json`, `seasonal_color_source`, `draping_chain_log` columns
+- `user_analysis_snapshots` — `draping_output` column exists but no longer written (draping removed)
+- `user_interpretation_snapshots` — draping columns (`seasonal_color_distribution`, `seasonal_color_groups_json`, `seasonal_color_source`, `draping_chain_log`) exist but no longer written. New columns: `sub_season_*`, `skin_hair_contrast_*`, `color_dimension_profile_*`, `confidence_margin`
 - `user_effective_seasonal_groups` — source of truth for per-request seasonal color groups (user_id, seasonal_groups jsonb, source, superseded_at)
 - `user_comfort_learning` — behavioral comfort learning signals (user_id, signal_type, signal_source, detected_seasonal_direction, garment_id)
 
@@ -705,7 +705,7 @@ modules/
 │   ├── service.py                # OTP, profile, image handling, wardrobe operations
 │   ├── analysis.py               # 3-agent analysis pipeline
 │   ├── interpreter.py            # Deterministic interpretation derivation
-│   ├── draping.py               # Digital draping — LLM-based seasonal color analysis
+│   ├── (draping.py deleted)      # Was digital draping — removed
 │   ├── wardrobe_enrichment.py    # Vision-API wardrobe item analysis and attribute extraction
 │   ├── style_archetype.py        # Style preference selection
 │   ├── repository.py             # Supabase CRUD for onboarding + wardrobe tables
@@ -788,7 +788,7 @@ python3 -m pytest tests/test_agentic_application.py -v
 | `tests/test_user_profiler.py` | User profiler utilities |
 | `tests/test_config_and_schema.py` | Configuration validation, schema consistency |
 | `tests/test_architecture_boundaries.py` | Module boundary enforcement, import validation |
-| `tests/test_digital_draping.py` | Digital draping: hex conversion, 4-season distribution computation, top-N group selection, tiebreak priority, DrapingResult serialization |
+| ~~`tests/test_digital_draping.py`~~ | Deleted — digital draping removed |
 | `tests/test_comfort_learning.py` | Comfort learning: 4-season color mapping, high/low-intent signal detection, evaluate-and-update threshold logic, max 2 groups, supersede old rows |
 | `tests/test_qna_messages.py` | QnA narration: stage message templates, context-aware narration |
 
@@ -798,7 +798,7 @@ python3 -m pytest tests/test_agentic_application.py -v
 
 **Onboarding:** 3-agent analysis with mock LLM responses, interpretation derivation across 4 seasonal color groups (Spring, Summer, Autumn, Winter), style archetype selection, single-agent rerun with baseline preservation.
 
-**Digital draping:** Hex-to-RGBA conversion, 4-season probability distribution (sums to 1.0), high/low confidence behavior, confirmation round cross-temperature shifts, top-N group selection (clear winner / top-2 clash / 3+ clash with Autumn/Winter preference), tiebreak priority.
+~~**Digital draping:**~~ Tests deleted — draping removed from codebase.
 
 **Comfort learning:** Season-to-color mapping (4 seasons, warm/cool), high-intent signal detection (outside current groups), low-intent signal detection (color keywords), evaluate-and-update threshold (5 high-intent), max 2 groups, supersede old effective rows, no duplicate direction.
 
@@ -3393,18 +3393,18 @@ Changes:
 |---|---|---|---|
 | After image upload (step 4) | **color_analysis_headshot** | gender, headshot | age (empty — harmless) |
 | After DOB input (step 5) | **other_details_analysis** | gender, age, headshot, full_body | — |
-| After profile save (step 7, profession) | **body_type_analysis** + collation + interpretation + draping | gender, age, height, waist, full_body | — |
+| After profile save (step 7, profession) | **body_type_analysis** + collation + interpretation | gender, age, height, waist, full_body | — |
 
 **Implementation:**
 
 Service layer:
 - [x] added `run_single_agent(user_id, agent_name, prompt_context_override)` — runs one agent, persists its output column on the analysis snapshot, does NOT collate/interpret
-- [x] added `run_remaining_and_finalize(user_id)` — checks which agents already have output, runs only the missing ones, collates all 3, runs interpretation + draping, marks completed
+- [x] added `run_remaining_and_finalize(user_id)` — checks which agents already have output, runs only the missing ones, collates all 3, runs interpretation, marks completed
 
 API layer:
 - [x] replaced no-op `start-partial` with real `POST /v1/onboarding/analysis/start-phase1` — starts color agent in daemon thread with gender-only context (age/height/waist empty)
 - [x] added `POST /v1/onboarding/analysis/start-phase2` — starts other_details agent in daemon thread with gender + age
-- [x] updated `POST /v1/onboarding/analysis/start` to use `run_remaining_and_finalize` — detects phases 1/2 output already on the snapshot and only runs body_type + collation + interpretation + draping
+- [x] updated `POST /v1/onboarding/analysis/start` to use `run_remaining_and_finalize` — detects phases 1/2 output already on the snapshot and only runs body_type + collation + interpretation
 
 UI layer:
 - [x] after image upload → fires `start-phase1` (color agent begins ~30s before it otherwise would)

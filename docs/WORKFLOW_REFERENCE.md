@@ -1,6 +1,6 @@
 # Workflow Reference — Intent Execution Flows
 
-Last updated: April 10, 2026 (Phase 13B close-out — outfit architect prompt & schema remediation)
+Last updated: April 11, 2026 (Color overhaul: 12 sub-season, draping removed, BodyShape mapping, onboarding reorder)
 
 > **What this is (and isn't):** This is **reference documentation for humans
 > reading the codebase**. It describes how each intent is executed by the
@@ -135,6 +135,9 @@ Scope: correctness, robustness, and retrieval quality improvements to the archit
 | 12 sub-season palettes | 168 curated colors. Boundary blending for ambiguous users. |
 | Anti-hedging calibration | Body type prompt: CALIBRATION section prevents center-bias on VisualWeight/ArmVolume. |
 | FrameStructure interpreter fix | Removed height penalty, fixed label mapping. |
+| BodyShape → silhouette mapping | Architect prompt maps all 7 body shapes to silhouette strategy, volume guidance, and StructuralFocus. BodyShape overrides FrameStructure for width decisions. |
+| Onboarding reorder | Steps: mobile→otp→name→gender→images→dob→body→profession→style (9 steps, was 10). Incremental save after each field. Resume flow pre-fills from existing profile. |
+| Phased analysis | Color agent starts after images (phase 1), other_details after DOB (phase 2), body_type after profile save (phase 3). |
 
 Tests: 127+ passing.
 

@@ -715,9 +715,9 @@ Tools are deterministic or service-backed capabilities that agents can call.
 
 Includes:
 - body analysis
-- color analysis
+- color analysis (7 attributes + 12 sub-season deterministic interpreter)
 - detail analysis
-- digital draping
+- ~~digital draping~~ (removed — deterministic interpreter is sole authority)
 
 ### T2. Wardrobe Parser + Tagger
 
