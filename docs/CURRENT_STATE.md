@@ -3363,3 +3363,19 @@ Definition of done:
 - [x] **post-staging validation fix:** reinforced that diversification MUST only use subtypes present in `catalog_inventory` with count > 0 — staging showed the LLM chose `polo` (0 items in catalog), wasting direction B entirely. Rule now includes explicit example: "if the catalog carries shirt (758), tshirt (20), sweater (106) but no polo, use shirt/tshirt/sweater, NOT polo"
 - [x] strengthened Catalog Awareness: "Never plan for a subtype with zero items" expanded to explain consequence — "the search will return zero results for that query, wasting a direction"
 
+### Onboarding UX Improvements
+
+**Step reorder** — moved images earlier and combined into single screen so users complete the high-friction step sooner:
+
+Old: mobile → otp → name → dob → gender → body → profession → **fullbody** → **headshot** → style → done (10 steps)
+New: mobile → otp → name → gender → **images (both)** → dob → body → profession → style → done (9 steps)
+
+Changes:
+- [x] reordered `STEP_ORDER` in `user/ui.py` — gender before images (needed for style session gender filtering), images combined into single screen
+- [x] merged full-body and headshot into one step (`step-images`) with side-by-side upload slots and per-slot status indicators
+- [x] height input changed from cm to **feet + inches** (two inputs), waist from cm to **inches** — converts to cm before API call (`heightCm = ((ft * 12) + inches) * 2.54`)
+- [x] added `uploadImageAsync()` helper for sequential upload of both images from the combined screen
+- [x] added `POST /v1/onboarding/analysis/start-partial` endpoint — currently a no-op placeholder (returns `status: "deferred"`) because all 3 analysis agents require `date_of_birth` which isn't collected until after images. Future: refactor color agent to run without DOB, enabling true partial analysis.
+- [x] updated all `data-back` indices and `setStep()` targets for the new step order
+- [x] updated step count display: "Step X of 9" (was 10)
+

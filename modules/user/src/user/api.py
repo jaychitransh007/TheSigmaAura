@@ -331,6 +331,24 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
             message="Analysis started" if str(run.get("status") or "pending") == "pending" else "Analysis already in progress or complete",
         )
 
+    @router.post("/analysis/start-partial", response_model=AnalysisStartResponse)
+    def start_partial_analysis(payload: AnalysisStartRequest) -> AnalysisStartResponse:
+        """Best-effort early analysis start after image upload.
+
+        Called by the onboarding UI after images are uploaded but before
+        profile completion. Currently a no-op placeholder — all 3 agents
+        require date_of_birth which hasn't been collected at this point.
+
+        Future: refactor agents to run without DOB (color agent could
+        run with just gender + headshot), then wire partial execution here.
+        """
+        return AnalysisStartResponse(
+            user_id=payload.user_id,
+            analysis_run_id="",
+            status="deferred",
+            message="Analysis will start after profile is complete. Images are saved.",
+        )
+
     @router.post("/analysis/rerun", response_model=AnalysisStartResponse)
     def rerun_analysis(payload: AnalysisStartRequest) -> AnalysisStartResponse:
         try:

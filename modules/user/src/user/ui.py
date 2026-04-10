@@ -602,7 +602,7 @@ def get_onboarding_html() -> str:
 
     <main class="main">
       <div class="topline">
-        <div class="step-meta" id="stepMeta">Step 1 of 10</div>
+        <div class="step-meta" id="stepMeta">Step 1 of 9</div>
         <div class="progress" id="progressBar"></div>
       </div>
 
@@ -649,133 +649,137 @@ def get_onboarding_html() -> str:
           </div>
         </div>
 
+        <div class="step" id="step-gender">
+          <h2 class="step-title">Select gender.</h2>
+          <p class="step-desc">This helps us tailor recommendations to your body and style profile.</p>
+          <div class="choice-grid cols-2" id="genderGrid"></div>
+          <input id="genderInput" type="hidden" />
+          <div class="error" id="genderErr"></div>
+          <div class="actions">
+            <button class="btn secondary" data-back="2">Back</button>
+            <button class="btn primary" id="genderNextBtn">Continue</button>
+          </div>
+        </div>
+
+        <div class="step" id="step-images">
+          <h2 class="step-title">Upload your photos.</h2>
+          <p class="step-desc">We need a full-body and a headshot to analyze your body proportions, coloring, and features. Position each photo inside the 2:3 frame before uploading.</p>
+          <div class="grid-2">
+            <div class="image-card">
+              <div class="uploader">
+                <div class="dropzone" id="dropzone-fullbody">
+                  <div>
+                    <strong>Full body</strong>
+                    <div class="caption">Standing pose, head to toe.</div>
+                  </div>
+                </div>
+                <input id="input-fullbody" type="file" accept="image/*" hidden />
+                <div class="crop-shell" id="crop-shell-fullbody">
+                  <div class="crop-stage">
+                    <canvas class="crop-canvas" id="canvas-fullbody" width="800" height="1200"></canvas>
+                    <div class="crop-overlay"></div>
+                    <div class="ratio-badge">2:3</div>
+                  </div>
+                  <div class="crop-controls">
+                    <div class="zoom-row">
+                      <span>Zoom</span>
+                      <input id="zoom-fullbody" type="range" min="1" max="4" step="0.01" value="1" />
+                      <button class="btn ghost" type="button" id="change-fullbody">Change</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="upload-status" id="status-fullbody"></div>
+              </div>
+            </div>
+            <div class="image-card">
+              <div class="uploader">
+                <div class="dropzone" id="dropzone-headshot">
+                  <div>
+                    <strong>Headshot</strong>
+                    <div class="caption">Clear face, even lighting.</div>
+                  </div>
+                </div>
+                <input id="input-headshot" type="file" accept="image/*" hidden />
+                <div class="crop-shell" id="crop-shell-headshot">
+                  <div class="crop-stage">
+                    <canvas class="crop-canvas" id="canvas-headshot" width="800" height="1200"></canvas>
+                    <div class="crop-overlay"></div>
+                    <div class="ratio-badge">2:3</div>
+                  </div>
+                  <div class="crop-controls">
+                    <div class="zoom-row">
+                      <span>Zoom</span>
+                      <input id="zoom-headshot" type="range" min="1" max="4" step="0.01" value="1" />
+                      <button class="btn ghost" type="button" id="change-headshot">Change</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="upload-status" id="status-headshot"></div>
+              </div>
+            </div>
+          </div>
+          <div class="error" id="imagesErr"></div>
+          <div class="actions">
+            <button class="btn secondary" data-back="3">Back</button>
+            <button class="btn primary" id="uploadBothBtn">Upload Photos and Continue</button>
+          </div>
+        </div>
+
         <div class="step" id="step-dob">
           <h2 class="step-title">Add your date of birth.</h2>
-          <p class="step-desc">Use the calendar selector so the value is normalized before it is stored.</p>
+          <p class="step-desc">This helps us calibrate age-appropriate style recommendations.</p>
           <div class="field">
             <label for="dobInput">Date of Birth</label>
             <input id="dobInput" type="date" />
           </div>
           <div class="error" id="dobErr"></div>
           <div class="actions">
-            <button class="btn secondary" data-back="2">Back</button>
+            <button class="btn secondary" data-back="4">Back</button>
             <button class="btn primary" id="dobNextBtn">Continue</button>
           </div>
         </div>
 
-        <div class="step" id="step-gender">
-          <h2 class="step-title">Select gender.</h2>
-          <p class="step-desc">This remains a fixed set for now and feeds the local profile record.</p>
-          <div class="choice-grid cols-2" id="genderGrid"></div>
-          <input id="genderInput" type="hidden" />
-          <div class="error" id="genderErr"></div>
-          <div class="actions">
-            <button class="btn secondary" data-back="3">Back</button>
-            <button class="btn primary" id="genderNextBtn">Continue</button>
-          </div>
-        </div>
-
         <div class="step" id="step-body">
-          <h2 class="step-title">Capture core body measurements.</h2>
-          <p class="step-desc">Height and waist are stored in centimeters for fit-related downstream analysis.</p>
+          <h2 class="step-title">Your measurements.</h2>
+          <p class="step-desc">These help us recommend the right silhouettes and fits for your frame.</p>
           <div class="grid-2">
             <div class="field">
-              <label for="heightInput">Height (cm)</label>
-              <input id="heightInput" type="number" min="50" max="300" step="0.1" placeholder="170" />
+              <label>Height</label>
+              <div class="grid-2">
+                <div class="field">
+                  <input id="heightFtInput" type="number" min="3" max="7" step="1" placeholder="5" />
+                  <div class="caption">feet</div>
+                </div>
+                <div class="field">
+                  <input id="heightInInput" type="number" min="0" max="11" step="1" placeholder="8" />
+                  <div class="caption">inches</div>
+                </div>
+              </div>
             </div>
             <div class="field">
-              <label for="waistInput">Waist (cm)</label>
-              <input id="waistInput" type="number" min="30" max="200" step="0.1" placeholder="80" />
+              <label for="waistInInput">Waist</label>
+              <input id="waistInInput" type="number" min="20" max="60" step="0.5" placeholder="32" />
+              <div class="caption">inches</div>
             </div>
           </div>
+          <input id="heightInput" type="hidden" />
+          <input id="waistInput" type="hidden" />
           <div class="error" id="bodyErr"></div>
           <div class="actions">
-            <button class="btn secondary" data-back="4">Back</button>
+            <button class="btn secondary" data-back="5">Back</button>
             <button class="btn primary" id="bodyNextBtn">Continue</button>
           </div>
         </div>
 
         <div class="step" id="step-profession">
           <h2 class="step-title">Choose your profession.</h2>
-          <p class="step-desc">This is a controlled list right now so the profile schema stays stable.</p>
+          <p class="step-desc">This helps us understand your daily dress code context.</p>
           <div class="choice-grid cols-2" id="professionGrid"></div>
           <input id="professionInput" type="hidden" />
           <div class="error" id="professionErr"></div>
           <div class="actions">
-            <button class="btn secondary" data-back="5">Back</button>
-            <button class="btn primary" id="professionNextBtn">Save Profile</button>
-          </div>
-        </div>
-
-        <div class="step" id="step-img-fullbody">
-          <h2 class="step-title">Upload your full body reference.</h2>
-          <p class="step-desc">Use a top-to-toe image. After selecting a photo, position it inside the fixed 2:3 frame before upload.</p>
-          <div class="image-card">
-            <div class="uploader">
-              <div class="dropzone" id="dropzone-fullbody">
-                <div>
-                  <strong>Select full body image</strong>
-                  <div class="caption">Standing pose, full frame, good lighting.</div>
-                </div>
-              </div>
-              <input id="input-fullbody" type="file" accept="image/*" hidden />
-              <div class="crop-shell" id="crop-shell-fullbody">
-                <div class="crop-stage">
-                  <canvas class="crop-canvas" id="canvas-fullbody" width="800" height="1200"></canvas>
-                  <div class="crop-overlay"></div>
-                  <div class="ratio-badge">2:3 frame</div>
-                </div>
-                <div class="crop-controls">
-                  <div class="zoom-row">
-                    <span>Zoom</span>
-                    <input id="zoom-fullbody" type="range" min="1" max="4" step="0.01" value="1" />
-                    <button class="btn ghost" type="button" id="change-fullbody">Change Photo</button>
-                  </div>
-                  <div class="caption">Drag the image to reposition it inside the frame. The saved output will match this 2:3 crop.</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="error" id="fullbodyErr"></div>
-          <div class="actions">
             <button class="btn secondary" data-back="6">Back</button>
-            <button class="btn primary" id="uploadFullbodyBtn">Upload and Continue</button>
-          </div>
-        </div>
-
-        <div class="step" id="step-img-headshot">
-          <h2 class="step-title">Upload your headshot.</h2>
-          <p class="step-desc">Use a face-forward shot. Position it inside the same 2:3 frame before upload.</p>
-          <div class="image-card">
-            <div class="uploader">
-              <div class="dropzone" id="dropzone-headshot">
-                <div>
-                  <strong>Select headshot image</strong>
-                  <div class="caption">Clear face visibility, neutral expression, even light.</div>
-                </div>
-              </div>
-              <input id="input-headshot" type="file" accept="image/*" hidden />
-              <div class="crop-shell" id="crop-shell-headshot">
-                <div class="crop-stage">
-                  <canvas class="crop-canvas" id="canvas-headshot" width="800" height="1200"></canvas>
-                  <div class="crop-overlay"></div>
-                  <div class="ratio-badge">2:3 frame</div>
-                </div>
-                <div class="crop-controls">
-                  <div class="zoom-row">
-                    <span>Zoom</span>
-                    <input id="zoom-headshot" type="range" min="1" max="4" step="0.01" value="1" />
-                    <button class="btn ghost" type="button" id="change-headshot">Change Photo</button>
-                  </div>
-                  <div class="caption">Drag and adjust until the crop is correct, then upload.</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="error" id="headshotErr"></div>
-          <div class="actions">
-            <button class="btn secondary" data-back="7">Back</button>
-            <button class="btn primary" id="uploadHeadshotBtn">Upload and Continue</button>
+            <button class="btn primary" id="professionNextBtn">Save Profile</button>
           </div>
         </div>
 
@@ -798,7 +802,7 @@ def get_onboarding_html() -> str:
           </div>
           <div class="error" id="styleErr"></div>
           <div class="actions">
-            <button class="btn secondary" data-back="8">Back</button>
+            <button class="btn secondary" data-back="7">Back</button>
             <button class="btn primary" id="saveStyleBtn" disabled>Continue to Profile Processing</button>
           </div>
         </div>
@@ -837,12 +841,11 @@ def get_onboarding_html() -> str:
       "mobile",
       "otp",
       "name",
-      "dob",
       "gender",
+      "images",
+      "dob",
       "body",
       "profession",
-      "img-fullbody",
-      "img-headshot",
       "style",
       "done"
     ];
@@ -873,13 +876,11 @@ def get_onboarding_html() -> str:
     const IMAGE_STEPS = {
       fullbody: {
         category: "full_body",
-        errorId: "fullbodyErr",
-        nextStep: 8
+        errorId: "imagesErr"
       },
       headshot: {
         category: "headshot",
-        errorId: "headshotErr",
-        nextStep: 9
+        errorId: "imagesErr"
       }
     };
     const REQUIRED_IMAGE_CATEGORIES = ["full_body", "headshot"];
@@ -1503,6 +1504,24 @@ def get_onboarding_html() -> str:
       }
     }
 
+    async function uploadImageAsync(key) {
+      const details = IMAGE_STEPS[key];
+      const crop = state.cropper[key];
+      const blob = await exportCrop(crop);
+      const formData = new FormData();
+      formData.append("user_id", state.userId);
+      formData.append("file", blob, details.category + ".jpg");
+      const response = await fetch("/v1/onboarding/images/" + details.category, {
+        method: "POST",
+        body: formData
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(extractError(data, "Image upload failed for " + key));
+      }
+      return data;
+    }
+
     function profilePayload() {
       return {
         user_id: state.userId,
@@ -1585,6 +1604,15 @@ def get_onboarding_html() -> str:
         setStep(3);
       });
 
+      document.getElementById("genderNextBtn").addEventListener("click", () => {
+        hideError("genderErr");
+        if (!document.getElementById("genderInput").value) {
+          showError("genderErr", "Select a gender option.");
+          return;
+        }
+        setStep(4); // → images
+      });
+
       document.getElementById("dobNextBtn").addEventListener("click", () => {
         hideError("dobErr");
         const dob = document.getElementById("dobInput").value;
@@ -1592,31 +1620,32 @@ def get_onboarding_html() -> str:
           showError("dobErr", "Date of birth is required.");
           return;
         }
-        setStep(4);
-      });
-
-      document.getElementById("genderNextBtn").addEventListener("click", () => {
-        hideError("genderErr");
-        if (!document.getElementById("genderInput").value) {
-          showError("genderErr", "Select a gender option.");
-          return;
-        }
-        setStep(5);
+        setStep(6); // → body
       });
 
       document.getElementById("bodyNextBtn").addEventListener("click", () => {
         hideError("bodyErr");
-        const height = parseFloat(document.getElementById("heightInput").value);
-        const waist = parseFloat(document.getElementById("waistInput").value);
-        if (!Number.isFinite(height) || height < 50 || height > 300) {
-          showError("bodyErr", "Enter height between 50 and 300 cm.");
+        const ft = parseInt(document.getElementById("heightFtInput").value, 10);
+        const inches = parseInt(document.getElementById("heightInInput").value, 10) || 0;
+        const waistIn = parseFloat(document.getElementById("waistInInput").value);
+        if (!Number.isFinite(ft) || ft < 3 || ft > 7) {
+          showError("bodyErr", "Enter height in feet (3-7).");
           return;
         }
-        if (!Number.isFinite(waist) || waist < 30 || waist > 200) {
-          showError("bodyErr", "Enter waist between 30 and 200 cm.");
+        if (inches < 0 || inches > 11) {
+          showError("bodyErr", "Inches must be 0-11.");
           return;
         }
-        setStep(6);
+        if (!Number.isFinite(waistIn) || waistIn < 20 || waistIn > 60) {
+          showError("bodyErr", "Enter waist in inches (20-60).");
+          return;
+        }
+        // Convert to cm for the API
+        const heightCm = Math.round(((ft * 12) + inches) * 2.54 * 10) / 10;
+        const waistCm = Math.round(waistIn * 2.54 * 10) / 10;
+        document.getElementById("heightInput").value = heightCm;
+        document.getElementById("waistInput").value = waistCm;
+        setStep(7); // → profession
       });
 
       document.getElementById("professionNextBtn").addEventListener("click", async () => {
@@ -1630,7 +1659,7 @@ def get_onboarding_html() -> str:
         button.textContent = "Saving...";
         try {
           await postJson("/v1/onboarding/profile", profilePayload(), "Failed to save profile");
-          setStep(7);
+          setStep(8); // → style
         } catch (error) {
           showError("professionErr", String(error.message || error));
         } finally {
@@ -1639,11 +1668,37 @@ def get_onboarding_html() -> str:
         }
       });
 
-      document.getElementById("uploadFullbodyBtn").addEventListener("click", () => {
-        uploadImage("fullbody", "uploadFullbodyBtn", "Upload and Continue");
-      });
-      document.getElementById("uploadHeadshotBtn").addEventListener("click", () => {
-        uploadImage("headshot", "uploadHeadshotBtn", "Upload and Continue");
+      document.getElementById("uploadBothBtn").addEventListener("click", async () => {
+        hideError("imagesErr");
+        const button = document.getElementById("uploadBothBtn");
+        // Check that both images have been selected (cropper has an image loaded)
+        if (!state.cropper.fullbody.image) {
+          showError("imagesErr", "Please select a full-body photo.");
+          return;
+        }
+        if (!state.cropper.headshot.image) {
+          showError("imagesErr", "Please select a headshot photo.");
+          return;
+        }
+        button.disabled = true;
+        button.textContent = "Uploading...";
+        try {
+          await uploadImageAsync("fullbody");
+          document.getElementById("status-fullbody").textContent = "✓ Full body uploaded";
+          await uploadImageAsync("headshot");
+          document.getElementById("status-headshot").textContent = "✓ Headshot uploaded";
+          // Fire-and-forget: start partial analysis (color + details agents)
+          // The body_type agent will start later after profile is saved.
+          try {
+            await postJson("/v1/onboarding/analysis/start-partial", { user_id: state.userId }, "");
+          } catch (_) { /* best-effort — analysis will start fully after profile save */ }
+          setStep(5); // → dob
+        } catch (error) {
+          showError("imagesErr", String(error.message || error));
+        } finally {
+          button.disabled = false;
+          button.textContent = "Upload Photos and Continue";
+        }
       });
       document.getElementById("saveStyleBtn").addEventListener("click", async () => {
         hideError("styleErr");

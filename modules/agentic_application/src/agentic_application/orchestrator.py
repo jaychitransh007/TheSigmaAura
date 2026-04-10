@@ -915,11 +915,13 @@ class AgenticOrchestrator:
 
         # --- 0.5 Onboarding Gate ---
         emit("onboarding_gate", "started")
+        trace_start("onboarding_gate", input_summary=f"user={external_user_id}")
         onboarding_status = self.onboarding_gateway.get_onboarding_status(external_user_id)
         analysis_status = self.onboarding_gateway.get_analysis_status(external_user_id)
         onboarding_gate = evaluate_onboarding_gate(onboarding_status, analysis_status)
         if not onboarding_gate.allowed:
             emit("onboarding_gate", "blocked")
+            trace_end("onboarding_gate", output_summary="blocked", status="blocked")
             self._persist_profile_confidence(
                 external_user_id=external_user_id,
                 conversation_id=conversation_id,
@@ -1001,18 +1003,21 @@ class AgenticOrchestrator:
                 "metadata": metadata,
             }
         emit("onboarding_gate", "completed")
+        trace_end("onboarding_gate", output_summary="allowed")
 
         # --- Copilot Planner path ---
         profile_confidence = onboarding_gate.profile_confidence
 
         # Build user context
         emit("user_context", "started")
+        trace_start("user_context", input_summary=f"user={external_user_id}")
         user_context = build_user_context(
             external_user_id,
             onboarding_gateway=self.onboarding_gateway,
         )
         validate_minimum_profile(user_context)
         emit("user_context", "completed", ctx={"richness": user_context.profile_richness})
+        trace_end("user_context", output_summary=f"richness={user_context.profile_richness}")
 
         # Build conversation history
         conversation_history = self._build_conversation_history(previous_context, message)
@@ -1054,6 +1059,7 @@ class AgenticOrchestrator:
                 error_message=str(exc),
             )
             emit("copilot_planner", "error")
+            trace_end("copilot_planner", status="error", error=str(exc)[:200])
             fallback_message = "I'm having trouble processing your request right now. Please try again."
             self.repo.finalize_turn(
                 turn_id=turn_id,
@@ -1091,6 +1097,7 @@ class AgenticOrchestrator:
             "intent": plan_result.intent,
             "action": plan_result.action,
         })
+        trace_end("copilot_planner", output_summary=f"intent={plan_result.intent}, action={plan_result.action}")
 
         plan_result, override_reasons, force_catalog_followup, source_preference = self._apply_planner_overrides(
             plan_result=plan_result,
@@ -1319,6 +1326,8 @@ class AgenticOrchestrator:
                 force_catalog_followup=force_catalog_followup,
                 source_preference=source_preference,
                 emit=emit,
+                trace_start=trace_start,
+                trace_end=trace_end,
             )
         elif plan_result.action == Action.RUN_OUTFIT_CHECK:
             handler_result = self._handle_outfit_check(
@@ -3868,7 +3877,15 @@ class AgenticOrchestrator:
         force_catalog_followup: bool = False,
         source_preference: str = "",
         emit: Any,
+        trace_start: Any = None,
+        trace_end: Any = None,
     ) -> Dict[str, Any]:
+        # Default trace functions to no-ops if not passed (e.g. in tests).
+        if trace_start is None:
+            trace_start = lambda *a, **kw: None
+        if trace_end is None:
+            trace_end = lambda *a, **kw: None
+
         # Build live context from planner's resolved context
         rc = plan_result.resolved_context
         initial_live_context = self._build_effective_live_context(
@@ -4049,11 +4066,13 @@ class AgenticOrchestrator:
 
         # Run Outfit Architect
         emit("outfit_architect", "started")
+        trace_start("outfit_architect", model="gpt-5.4", input_summary=f"message={message[:80]}")
         t0 = time.monotonic()
         try:
             plan = self.outfit_architect.plan(combined_context)
         except Exception as exc:
             architect_ms = int((time.monotonic() - t0) * 1000)
+            trace_end("outfit_architect", status="error", error=str(exc)[:200])
             _log.error("Outfit architect failed: %s", exc, exc_info=True)
             self.repo.log_model_call(
                 conversation_id=conversation_id,
@@ -4123,6 +4142,7 @@ class AgenticOrchestrator:
             "direction_types": sorted({d.direction_type for d in plan.directions}),
             "direction_count": len(plan.directions),
         })
+        trace_end("outfit_architect", output_summary=f"{len(plan.directions)} directions, retrieval_count={plan.retrieval_count}")
 
         conversation_memory = build_conversation_memory(
             previous_context,
@@ -4155,6 +4175,7 @@ class AgenticOrchestrator:
         # surfaces as a graceful user-facing message instead of an empty turn.
         try:
             emit("catalog_search", "started")
+            trace_start("catalog_search", input_summary=f"{len(plan.directions)} directions, retrieval_count={plan.retrieval_count}")
             t0 = time.monotonic()
             retrieved_sets = self.catalog_search_agent.search(plan, combined_context)
             search_ms = int((time.monotonic() - t0) * 1000)
@@ -4167,10 +4188,12 @@ class AgenticOrchestrator:
                     output_json={"result_count": len(rs.products)},
                     latency_ms=search_ms,
                 )
+            total_products = sum(len(rs.products) for rs in retrieved_sets)
             emit("catalog_search", "completed", ctx={
-                "product_count": sum(len(rs.products) for rs in retrieved_sets),
+                "product_count": total_products,
                 "set_count": len(retrieved_sets),
             })
+            trace_end("catalog_search", output_summary=f"{len(retrieved_sets)} sets, {total_products} products, {search_ms}ms")
 
             # Inject anchor as the sole item for its role.
             # Phase 12D: mark with is_anchor=True so the assembler's
@@ -4199,8 +4222,10 @@ class AgenticOrchestrator:
                            anchor_role, sum(len(rs.products) for rs in retrieved_sets if rs.role != anchor_role))
 
             emit("outfit_assembly", "started")
+            trace_start("outfit_assembly", input_summary=f"{total_products} products")
             candidates = self.outfit_assembler.assemble(retrieved_sets, plan, combined_context)
             emit("outfit_assembly", "completed", ctx={"candidate_count": len(candidates)})
+            trace_end("outfit_assembly", output_summary=f"{len(candidates)} candidates")
 
             # Phase 12B: rerank → render top-N try-ons → visual evaluator
             # (per-candidate, parallel) with legacy text evaluator as the
@@ -4208,8 +4233,10 @@ class AgenticOrchestrator:
             # raises. Stage emission distinguishes the two paths so the
             # operator dashboard can track which one ran.
             emit("reranker", "started")
+            trace_start("reranker", input_summary=f"{len(candidates)} candidates")
             ranked_pool = self.reranker.rerank(candidates)
             emit("reranker", "completed", ctx={"pool_size": len(ranked_pool)})
+            trace_end("reranker", output_summary=f"pool={len(ranked_pool)}")
 
             person_image_path = self.onboarding_gateway.get_person_image_path(external_user_id)
             visual_path_attempted = False
@@ -4228,6 +4255,7 @@ class AgenticOrchestrator:
                 visual_path_attempted = True
                 try:
                     emit("visual_evaluation", "started", ctx={"target_count": self.reranker.final_top_n})
+                    trace_start("visual_evaluation", model="gpt-5.4", input_summary=f"pool={len(ranked_pool)}, target={self.reranker.final_top_n}")
                     rendered, tryon_stats = self._render_candidates_for_visual_eval(
                         candidates=ranked_pool,
                         person_image_path=str(person_image_path),
@@ -4246,12 +4274,14 @@ class AgenticOrchestrator:
                         )
                         evaluator_path = "visual"
                     emit("visual_evaluation", "completed", ctx={"evaluated_count": len(evaluated)})
-                except Exception:
+                    trace_end("visual_evaluation", output_summary=f"{len(evaluated)} evaluated, path=visual")
+                except Exception as _ve_exc:
                     _log.warning(
                         "Visual evaluator path failed; will fall back to assembly_score promotion",
                         exc_info=True,
                     )
                     emit("visual_evaluation", "error")
+                    trace_end("visual_evaluation", status="error", error=str(_ve_exc)[:200])
                     evaluated = []
 
             if not evaluated:
@@ -4317,6 +4347,7 @@ class AgenticOrchestrator:
             )
 
             emit("response_formatting", "started")
+            trace_start("response_formatting", input_summary=f"{len(evaluated)} evaluated")
             response = self.response_formatter.format(
                 evaluated,
                 combined_context,
@@ -4366,7 +4397,9 @@ class AgenticOrchestrator:
                 )
             )
             response.metadata["turn_id"] = turn_id
-            emit("response_formatting", "completed", ctx={"outfit_count": min(len(evaluated), 3)})
+            outfit_count = min(len(evaluated), 3)
+            emit("response_formatting", "completed", ctx={"outfit_count": outfit_count})
+            trace_end("response_formatting", output_summary=f"{outfit_count} outfits")
         except Exception as exc:
             stage_ms = int((time.monotonic() - t0) * 1000)
             _log.error("Pipeline stage failed between architect and formatter: %s", exc, exc_info=True)
@@ -4419,8 +4452,10 @@ class AgenticOrchestrator:
             )
 
         emit("virtual_tryon", "started")
+        trace_start("virtual_tryon", model="gemini-3.1-flash", input_summary=f"{len(response.outfits)} outfits")
         self._attach_tryon_images(response.outfits, external_user_id, conversation_id=conversation_id, turn_id=turn_id)
         emit("virtual_tryon", "completed")
+        trace_end("virtual_tryon", output_summary=f"{len(response.outfits)} outfits attached")
 
         self._persist_catalog_interactions(
             external_user_id=external_user_id,
