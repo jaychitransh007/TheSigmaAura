@@ -3566,3 +3566,18 @@ File: `modules/user/src/user/interpreter.py`
 - [x] `secondary_season` and `confidence_margin` surfaced on SeasonalColorGroup by `_apply_draping_collaboration()`
 - [x] architect reads `additional_groups` which now includes secondary season from draping
 
+### Post-Implementation: Migration, Integration, Draping Image Storage
+
+**Migration** (`supabase/migrations/20260411120000_color_analysis_12_season.sql`):
+- [x] added columns to `user_interpretation_snapshots`: sub_season (value/confidence/evidence_note), skin_hair_contrast (value/confidence/evidence_note), color_dimension_profile (value/confidence/evidence_note), confidence_margin
+- [x] created `draping_overlay_images` table for persisting draping overlay pairs per round (user_id, analysis_snapshot_id, round_number, image_a/b_path, colors, labels, choice, confidence, reasoning, winner)
+
+**Repository integration** (`repository.py`):
+- [x] added SubSeason, SkinHairContrast, ColorDimensionProfile to `INTERPRETATION_COLUMN_PREFIXES` — these now persist to typed columns alongside the JSONB collated_output
+- [x] added `insert_draping_overlay()` method for persisting draping round images + decisions
+
+**Draping image persistence** (`draping.py`):
+- [x] added `_run_round_with_persistence()` — saves overlay images to `data/draping/overlays/{user_id}_r{round}_a/b.jpg` and records paths + round metadata in `draping_overlay_images` table
+- [x] `run_draping()` accepts `analysis_snapshot_id` param, passes to each round for DB association
+- [x] both callers in `analysis.py` (`run_analysis` and `run_remaining_and_finalize`) now pass `run_id` as analysis_snapshot_id
+

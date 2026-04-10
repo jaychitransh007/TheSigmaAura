@@ -187,39 +187,48 @@ class DigitalDrapingService:
         user_id: str,
         headshot_path: str,
         attributes: Dict[str, Any],
+        *,
+        analysis_snapshot_id: str = "",
     ) -> DrapingResult:
         rounds: List[DrapingRound] = []
+        overlay_paths: List[tuple[str, str]] = []
 
         # Round 1: Warm vs Cool
-        r1 = self._run_round(
-            headshot_path, 1, "Warm vs Cool undertone",
+        r1, paths1 = self._run_round_with_persistence(
+            user_id, headshot_path, 1, "Warm vs Cool undertone",
             WARM_COOL_COLORS[0], WARM_COOL_COLORS[1],
             "warm", "cool",
+            analysis_snapshot_id=analysis_snapshot_id,
         )
         rounds.append(r1)
+        overlay_paths.append(paths1)
         temperature = r1.winner_label  # "warm" or "cool"
 
         # Round 2: Within-branch (Spring vs Autumn, or Summer vs Winter)
         branch = BRANCH_COLORS[temperature]
-        r2 = self._run_round(
-            headshot_path, 2,
+        r2, paths2 = self._run_round_with_persistence(
+            user_id, headshot_path, 2,
             f"{branch['label_a']} vs {branch['label_b']}",
             branch["a_hex"], branch["b_hex"],
             branch["label_a"], branch["label_b"],
+            analysis_snapshot_id=analysis_snapshot_id,
         )
         rounds.append(r2)
+        overlay_paths.append(paths2)
         primary_season = r2.winner_label
 
         # Round 3: Confirmation — primary vs cross-temperature neighbor
         neighbor = CROSS_NEIGHBOR[primary_season]
-        r3 = self._run_round(
-            headshot_path, 3,
+        r3, paths3 = self._run_round_with_persistence(
+            user_id, headshot_path, 3,
             f"Confirmation: {primary_season} vs {neighbor}",
             CONFIRMATION_COLORS[primary_season],
             CONFIRMATION_COLORS[neighbor],
             primary_season, neighbor,
+            analysis_snapshot_id=analysis_snapshot_id,
         )
         rounds.append(r3)
+        overlay_paths.append(paths3)
 
         chain_log = [
             {
@@ -248,6 +257,57 @@ class DigitalDrapingService:
             primary_season=selected[0]["value"] if selected else primary_season,
             confidence_margin=margin,
         )
+
+    def _run_round_with_persistence(
+        self,
+        user_id: str,
+        headshot_path: str,
+        round_number: int,
+        question: str,
+        color_a: str,
+        color_b: str,
+        label_a: str,
+        label_b: str,
+        *,
+        analysis_snapshot_id: str = "",
+    ) -> tuple[DrapingRound, tuple[str, str]]:
+        """Run a draping round, persist overlay images to disk, record in DB."""
+        result = self._run_round(headshot_path, round_number, question, color_a, color_b, label_a, label_b)
+
+        # Save overlay images to disk
+        img_a_b64, img_b_b64 = self._generate_overlay_pair(headshot_path, color_a, color_b)
+        draping_dir = Path("data/draping/overlays")
+        draping_dir.mkdir(parents=True, exist_ok=True)
+        path_a = str(draping_dir / f"{user_id}_r{round_number}_a.jpg")
+        path_b = str(draping_dir / f"{user_id}_r{round_number}_b.jpg")
+        try:
+            Path(path_a).write_bytes(base64.b64decode(img_a_b64))
+            Path(path_b).write_bytes(base64.b64decode(img_b_b64))
+        except Exception:
+            path_a, path_b = "", ""
+
+        # Persist to DB
+        try:
+            self._repo.insert_draping_overlay(
+                user_id=user_id,
+                analysis_snapshot_id=analysis_snapshot_id,
+                round_number=round_number,
+                round_question=question,
+                image_a_path=path_a,
+                image_b_path=path_b,
+                color_a=color_a,
+                color_b=color_b,
+                label_a=label_a,
+                label_b=label_b,
+                choice=result.choice,
+                confidence=result.confidence,
+                reasoning=result.reasoning,
+                winner_label=result.winner_label,
+            )
+        except Exception:
+            pass  # best-effort — draping result is still valid without DB persistence
+
+        return result, (path_a, path_b)
 
     def _run_round(
         self,

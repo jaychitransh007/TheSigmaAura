@@ -280,7 +280,8 @@ class UserAnalysisService:
         # Digital draping with threshold-based collaboration
         draping_service = DigitalDrapingService(self._repo, model=self._model)
         draping_result = draping_service.run_draping(
-            user_id, images["headshot"]["file_path"], collated["attributes"]
+            user_id, images["headshot"]["file_path"], collated["attributes"],
+            analysis_snapshot_id=run_id,
         )
         _apply_draping_collaboration(derived, draping_result)
 
@@ -370,7 +371,8 @@ class UserAnalysisService:
         # Digital draping with threshold-based collaboration
         draping_service = DigitalDrapingService(self._repo, model=self._model)
         draping_result = draping_service.run_draping(
-            user_id, images["headshot"]["file_path"], collated["attributes"]
+            user_id, images["headshot"]["file_path"], collated["attributes"],
+            analysis_snapshot_id=run_id,
         )
         _apply_draping_collaboration(derived, draping_result)
 

@@ -31,6 +31,9 @@ INTERPRETATION_COLUMN_PREFIXES = {
     "ContrastLevel": "contrast_level",
     "FrameStructure": "frame_structure",
     "WaistSizeBand": "waist_size_band",
+    "SubSeason": "sub_season",
+    "SkinHairContrast": "skin_hair_contrast",
+    "ColorDimensionProfile": "color_dimension_profile",
 }
 
 
@@ -495,6 +498,42 @@ class OnboardingRepository:
             "user_id": user_id,
             "seasonal_groups": seasonal_groups,
             "source": source,
+            "created_at": _now_iso(),
+        })
+
+    def insert_draping_overlay(
+        self,
+        *,
+        user_id: str,
+        analysis_snapshot_id: str,
+        round_number: int,
+        round_question: str,
+        image_a_path: str,
+        image_b_path: str,
+        color_a: str,
+        color_b: str,
+        label_a: str,
+        label_b: str,
+        choice: str,
+        confidence: float,
+        reasoning: str,
+        winner_label: str,
+    ) -> Dict[str, Any]:
+        return self.client.insert_one("draping_overlay_images", {
+            "user_id": user_id,
+            "analysis_snapshot_id": analysis_snapshot_id,
+            "round_number": round_number,
+            "round_question": round_question,
+            "image_a_path": image_a_path,
+            "image_b_path": image_b_path,
+            "color_a": color_a,
+            "color_b": color_b,
+            "label_a": label_a,
+            "label_b": label_b,
+            "choice": choice,
+            "confidence": confidence,
+            "reasoning": reasoning,
+            "winner_label": winner_label,
             "created_at": _now_iso(),
         })
 
