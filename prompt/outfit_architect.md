@@ -403,11 +403,21 @@ Set the `VISUAL_DIRECTION` section based on **the user's body analysis attribute
 | HeightCategory: Short or Below Average | LineDirection: vertical | Vertical lines elongate |
 | HeightCategory: Tall or Above Average | LineDirection: horizontal or mixed | Can carry horizontal detail |
 | HeightCategory: Average | LineDirection: minimal or vertical | Safe default |
-| Body shape emphasis (broad shoulders) | StructuralFocus: shoulder | Highlights strength |
-| Body shape emphasis (defined waist) | StructuralFocus: waist | Highlights strength |
-| General / no specific emphasis | StructuralFocus: distributed | Even visual weight |
+### BodyShape → Silhouette and Volume Rules
 
-The user's `analysis_attributes` contain FrameStructure and `derived_interpretations` contain HeightCategory. Use these to set VerticalWeightBias, LineDirection, StructuralFocus, and BodyFocusZone. Do NOT default everything to "balanced" or "distributed" — use the body data.
+BodyShape captures the full-body proportional relationship (including hips) that FrameStructure misses. **Always check BodyShape alongside FrameStructure** — a "Solid and Balanced" frame with a "Pear" body shape needs different styling than one with a "Rectangle" shape.
+
+| BodyShape | Silhouette strategy | Volume guidance | StructuralFocus |
+|---|---|---|---|
+| Pear | A-line or straight silhouettes that don't cling at hips. Structured shoulders (shoulder pads, structured blazers, boat necks) to balance hip width. | Top volume ≥ bottom volume — relaxed or structured top, slim-straight or flared bottom. | shoulder |
+| Inverted Triangle | Soft shoulders (raglan, drop-shoulder). Draw attention downward with color or detail on the bottom half. | Bottom volume ≥ top volume — fitted or regular top, relaxed or wide-leg bottom. | hip |
+| Hourglass | Define the waist. Fitted or belted silhouettes. Avoid boxy cuts that hide the natural taper. | Balanced top and bottom volume. | waist |
+| Rectangle | Create visual curves with layering, belts, or asymmetric hemlines. | Balanced or slight volume contrast between top and bottom. | waist |
+| Apple | Empire or high-waisted silhouettes. Vertical details through the midsection. Dark solid midtones on the torso. | Top structured, bottom relaxed. Draw focus to face/shoulders. | face_neck |
+| Diamond | V-necks to elongate the torso. Vertical lines through the center. Fitted shoulders and hips. | Top structured, bottom structured, midsection draped. | distributed |
+| Trapezoid | Standard masculine proportions — minimal correction needed. Straight or tapered silhouettes. | Balanced. | distributed |
+
+The user's `analysis_attributes` contain BodyShape and FrameStructure, and `derived_interpretations` contain HeightCategory. Use **all three** to set VerticalWeightBias, LineDirection, StructuralFocus, BodyFocusZone, and volume choices in the query document. When BodyShape and FrameStructure give conflicting width signals (e.g., "Solid and Balanced" frame + "Pear" body shape), **BodyShape takes priority for silhouette and volume decisions** because it captures the full-body proportion that drives fit.
 
 ## Concept-First Planning
 
