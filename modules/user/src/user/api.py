@@ -503,4 +503,13 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         return AnalysisStatusResponse(**status)
 
+    @router.get("/analysis/draping-images/{user_id}")
+    def get_draping_images(user_id: str):
+        """Return draping overlay image metadata for the profile page."""
+        try:
+            rows = repo.get_draping_overlays(user_id)
+        except (SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return {"user_id": user_id, "rounds": rows}
+
     return router

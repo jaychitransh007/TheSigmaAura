@@ -537,6 +537,14 @@ class OnboardingRepository:
             "created_at": _now_iso(),
         })
 
+    def get_draping_overlays(self, user_id: str) -> List[Dict[str, Any]]:
+        return self.client.select_many(
+            "draping_overlay_images",
+            filters={"user_id": f"eq.{user_id}"},
+            order="created_at.desc,round_number.asc",
+            limit=6,
+        ) or []
+
     def get_effective_seasonal_groups(self, user_id: str) -> Optional[Dict[str, Any]]:
         rows = self.client.select_many(
             "user_effective_seasonal_groups",
