@@ -3456,3 +3456,113 @@ UI layer:
 - [x] fixed label mapping: `("Solid", "Balanced")` → `"Solid and Balanced"`, `("Light", "Balanced")` → `"Light and Narrow"`
 - [x] now 5 of 9 combinations produce distinct labels instead of collapsing to "Medium and Balanced"
 
+---
+
+## Color Analysis System Overhaul — 12-Season Typing + Dimension-First Architecture
+
+### Problem Statement
+
+The current system has three structural weaknesses:
+1. **Warmth is determined by a single attribute** (HairColorTemperature). Olive-skinned South Asian users with warm-toned hair get misclassified as Autumn when their skin undertone is actually cool/olive.
+2. **Draping unconditionally overrides the deterministic analysis.** A 43%-vs-38% draping split throws away a solid attribute-based signal.
+3. **4-season bucketing is too coarse.** Two users classified as "Autumn" can have very different coloring (Warm Autumn vs Soft Autumn vs Deep Autumn), but receive identical palettes.
+
+### Architecture Shift
+
+Current: season-first (determine season → derive palette)
+Target: dimension-first (compute warmth/depth/contrast/chroma → derive season + sub-season AND expose raw dimensions for direct downstream use)
+
+### Implementation Plan — 3 Phases
+
+---
+
+#### Phase A — Enhanced Color Extraction (prompt changes, zero added latency)
+
+**A1. Add SkinUndertone to color analysis prompt**
+
+File: `prompt/color_analysis_headshot.md`
+- [x] added attribute #6: `SkinUndertone` with enum `Warm | Cool | Neutral-Warm | Neutral-Cool | Olive` — instruction focuses on jaw-to-neck area, explicitly ignores hair color, includes Olive detection note for South Asian skin
+
+File: `modules/user/src/user/analysis.py`
+- [x] added `SkinUndertone` to `COLOR_HEADSHOT_SPEC.attribute_enums`
+
+**A2. Add SkinChroma to color analysis prompt**
+
+File: `prompt/color_analysis_headshot.md`
+- [x] added attribute #7: `SkinChroma` with enum `Muted | Moderate | Clear`
+
+File: `modules/user/src/user/analysis.py`
+- [x] added `SkinChroma` to `COLOR_HEADSHOT_SPEC.attribute_enums`
+
+**A3. Rename EyeClarity → EyeChroma**
+
+- [x] renamed in prompt, COLOR_HEADSHOT_SPEC, and JSON response format
+- [x] interpreter uses backward-compat fallback: reads "EyeChroma" first, falls back to "EyeClarity" for pre-existing analysis data
+
+---
+
+#### Phase B — Dimension-First Interpreter (code changes, zero API calls)
+
+**B1. Weighted warmth score replacing binary branch**
+
+File: `modules/user/src/user/interpreter.py` — `_derive_seasonal_color_group()`
+- [x] implemented weighted warmth from SkinUndertone(×3) + HairTemp(×2) + EyeColor(×1), normalized to ±2
+- [x] fallback path for users without SkinUndertone (pre-Phase A): uses HairTemp(×2) + EyeColor(×1) only
+- [x] `ambiguous_temperature` flag when |warmth_score| < 0.5 — reduces confidence by 0.10
+
+**B2. Explicit skin-hair contrast score**
+
+File: `modules/user/src/user/interpreter.py`
+- [x] added `_derive_skin_hair_contrast()` — computes `abs(skin_depth - hair_depth)`, stores as Low/Medium/High label + numeric score
+- [x] registered as `SkinHairContrast` in `derive_interpretations()`
+
+**B3. Chroma-aware season selection**
+
+File: `modules/user/src/user/interpreter.py`
+- [x] chroma_score = average of SkinChroma score + EyeChroma score (Muted=0.15, Moderate=0.55, Clear=0.9)
+- [x] computed inside `_derive_seasonal_color_group()`, feeds into sub-season assignment and is stored in dimension_profile
+
+**B4. Store dimension profile as first-class output**
+
+- [x] `_derive_color_dimension_profile()` surfaces warmth_score, depth_score, skin_hair_contrast, chroma_score, ambiguous_temperature as `ColorDimensionProfile` derived interpretation
+- [x] dimension_profile also attached to SeasonalColorGroup output for direct access
+
+---
+
+#### Phase C — Draping Collaboration + 12 Sub-Seasons
+
+**C1. Draping confidence margin**
+
+File: `modules/user/src/user/draping.py`
+- [x] added `_confidence_to_points()`: >0.8→Strong(3), 0.6-0.8→Moderate(2), <0.6→Slight(1)
+- [x] added `_compute_confidence_margin()`: sums points for primary season camp vs runner-up across 3 rounds
+- [x] `confidence_margin` stored on `DrapingResult` and serialized in `to_dict()`
+
+**C2. Threshold-based draping collaboration**
+
+File: `modules/user/src/user/analysis.py`
+- [x] extracted `_apply_draping_collaboration()` shared helper, used in both `run_analysis()` and `run_remaining_and_finalize()`
+- [x] threshold `_DRAPING_OVERRIDE_MARGIN = 4`: margin > 4 → draping overrides; margin ≤ 4 + agreement → confidence boosted; margin ≤ 4 + disagreement → deterministic holds, draping stored as secondary_season
+- [x] `secondary_season` and `confidence_margin` surfaced as first-class fields on SeasonalColorGroup output
+
+**C3. 12 sub-season assignment**
+
+File: `modules/user/src/user/interpreter.py`
+- [x] added `_derive_sub_season()` — scores each candidate sub-season by how extreme the user is on its defining dimension (warmth/depth/chroma), picks the best match
+- [x] `_SUB_SEASON_RULES` dict defines all 12 sub-seasons with their dominant dimension and direction (highest/lowest)
+- [x] `SUB_SEASON_ADJACENCY` dict defines borrowing relationships (Warm Autumn ↔ Warm Spring, Soft Autumn ↔ Soft Summer, etc.)
+- [x] stored as `SubSeason` derived interpretation with `adjacent_sub_seasons` list
+
+**C4. 12 sub-season palettes with dimension-based adjustments**
+
+File: `modules/user/src/user/interpreter.py`
+- [x] `SUB_SEASON_PALETTE_MAP`: 12 curated palette tables (4 base + 5 accent + 5 avoid each = 168 color values)
+- [x] `SEASON_PALETTE_MAP` now derived from sub-season palettes (backward compat)
+- [x] `derive_color_palette()` accepts `sub_season`, `secondary_season`, `dimension_profile`
+- [x] boundary blending: confidence < 0.6 or secondary_season → base from primary, accents extended from adjacent, avoid narrowed to intersection
+
+**C5. Store secondary season and confidence margin explicitly**
+
+- [x] `secondary_season` and `confidence_margin` surfaced on SeasonalColorGroup by `_apply_draping_collaboration()`
+- [x] architect reads `additional_groups` which now includes secondary season from draping
+

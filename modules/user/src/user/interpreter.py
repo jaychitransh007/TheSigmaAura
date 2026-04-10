@@ -1,54 +1,158 @@
 from typing import Any, Dict, List
 
 
-SEASON_PALETTE_MAP: Dict[str, Dict[str, List[str]]] = {
-    "Spring": {
-        "base": ["ivory", "warm beige", "camel", "light gold"],
-        "accent": ["coral", "peach", "turquoise", "bright coral", "hot pink"],
-        "avoid": ["black", "charcoal", "icy blue", "dark navy", "stark white"],
+# ── 12 Sub-Season Palette System ──
+# Each sub-season has curated base, accent, and avoid lists sourced from
+# established color analysis references (Sci\ART, Caygill, Kitchener).
+# The 4-season lookup is derived by merging the sub-season palettes.
+
+SUB_SEASON_PALETTE_MAP: Dict[str, Dict[str, List[str]]] = {
+    # ── AUTUMN ──
+    "Warm Autumn": {
+        "base": ["warm camel", "golden brown", "warm bronze", "dark honey"],
+        "accent": ["terracotta", "burnt sienna", "pumpkin", "warm coral", "amber"],
+        "avoid": ["icy blue", "fuchsia", "silver", "stark white", "cool pink"],
     },
-    "Summer": {
-        "base": ["light grey", "soft white", "slate blue", "mauve"],
-        "accent": ["lavender", "powder blue", "dusty rose", "periwinkle", "muted teal"],
-        "avoid": ["orange", "rust", "golden yellow", "burnt orange", "terracotta"],
+    "Deep Autumn": {
+        "base": ["dark chocolate", "espresso", "warm charcoal", "deep olive"],
+        "accent": ["burgundy", "forest green", "burnt orange", "deep teal", "rust"],
+        "avoid": ["pastel pink", "powder blue", "light lavender", "stark white", "icy grey"],
     },
-    "Autumn": {
-        "base": ["warm taupe", "warm brown", "olive", "muted gold"],
-        "accent": ["terracotta", "rust", "burgundy", "forest green", "burnt orange"],
-        "avoid": ["icy blue", "fuchsia", "royal blue", "stark white", "silver"],
+    "Soft Autumn": {
+        "base": ["warm taupe", "soft khaki", "muted olive", "warm grey"],
+        "accent": ["sage green", "muted terracotta", "dusty coral", "soft rust", "warm mauve"],
+        "avoid": ["neon", "royal blue", "fuchsia", "stark black", "electric colors"],
     },
-    "Winter": {
-        "base": ["black", "white", "charcoal", "dark navy"],
-        "accent": ["true red", "royal blue", "emerald", "fuchsia", "deep purple"],
-        "avoid": ["golden yellow", "peach", "warm beige", "rust", "muted gold"],
+    # ── SPRING ──
+    "Warm Spring": {
+        "base": ["warm ivory", "golden beige", "camel", "warm sand"],
+        "accent": ["coral", "warm peach", "golden yellow", "turquoise", "warm red"],
+        "avoid": ["charcoal", "icy blue", "dark navy", "cool grey", "burgundy"],
+    },
+    "Light Spring": {
+        "base": ["ivory", "light camel", "soft peach", "light gold"],
+        "accent": ["light coral", "peach", "aqua", "bright salmon", "light turquoise"],
+        "avoid": ["black", "charcoal", "dark brown", "deep burgundy", "dark navy"],
+    },
+    "Clear Spring": {
+        "base": ["warm white", "bright beige", "clear camel", "light warm grey"],
+        "accent": ["hot pink", "bright coral", "electric turquoise", "bright orange", "vivid green"],
+        "avoid": ["muted olive", "dusty rose", "warm taupe", "muddy brown", "greyish tones"],
+    },
+    # ── SUMMER ──
+    "Cool Summer": {
+        "base": ["cool grey", "soft white", "blue-grey", "cool taupe"],
+        "accent": ["dusty blue", "lavender", "cool rose", "soft teal", "periwinkle"],
+        "avoid": ["orange", "golden yellow", "rust", "warm brown", "terracotta"],
+    },
+    "Light Summer": {
+        "base": ["light grey", "soft white", "pale blue-grey", "cool beige"],
+        "accent": ["powder blue", "soft pink", "light lavender", "dusty rose", "light mint"],
+        "avoid": ["black", "dark brown", "burnt orange", "deep red", "dark olive"],
+    },
+    "Soft Summer": {
+        "base": ["medium grey", "mauve-grey", "soft slate", "muted blue-grey"],
+        "accent": ["dusty rose", "muted teal", "soft plum", "muted sage", "smoky blue"],
+        "avoid": ["neon", "bright orange", "vivid yellow", "electric blue", "stark black"],
+    },
+    # ── WINTER ──
+    "Cool Winter": {
+        "base": ["charcoal", "cool white", "dark navy", "cool grey"],
+        "accent": ["royal blue", "emerald", "deep fuchsia", "cool red", "deep purple"],
+        "avoid": ["warm beige", "golden yellow", "peach", "warm brown", "muted gold"],
+    },
+    "Deep Winter": {
+        "base": ["black", "dark charcoal", "midnight navy", "deep espresso"],
+        "accent": ["true red", "deep emerald", "bright white", "deep royal blue", "deep berry"],
+        "avoid": ["pastel", "light peach", "warm taupe", "muted olive", "soft coral"],
+    },
+    "Clear Winter": {
+        "base": ["pure white", "black", "icy grey", "bright navy"],
+        "accent": ["hot pink", "electric blue", "vivid emerald", "bright red", "icy violet"],
+        "avoid": ["muted olive", "dusty rose", "warm taupe", "golden brown", "soft tones"],
     },
 }
 
+# Legacy 4-season map derived from sub-season palettes (union of base sub-seasons)
+SEASON_PALETTE_MAP: Dict[str, Dict[str, List[str]]] = {
+    season: {
+        "base": SUB_SEASON_PALETTE_MAP[f"{'Warm' if season in ('Autumn','Spring') else 'Cool'} {season}"]["base"],
+        "accent": SUB_SEASON_PALETTE_MAP[f"{'Warm' if season in ('Autumn','Spring') else 'Cool'} {season}"]["accent"],
+        "avoid": SUB_SEASON_PALETTE_MAP[f"{'Warm' if season in ('Autumn','Spring') else 'Cool'} {season}"]["avoid"],
+    }
+    for season in ("Spring", "Summer", "Autumn", "Winter")
+}
 
-def derive_color_palette(season: str, confidence: float) -> Dict[str, Dict[str, Any]]:
-    palette = SEASON_PALETTE_MAP.get(season)
+
+def derive_color_palette(
+    season: str,
+    confidence: float,
+    *,
+    sub_season: str = "",
+    secondary_season: str = "",
+    dimension_profile: Dict[str, Any] | None = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Derive base/accent/avoid palettes from sub-season with boundary blending.
+
+    When sub_season is provided, uses the curated 12-sub-season palette.
+    When confidence is low or a secondary_season is close, blends palettes:
+    - Base colors from primary sub-season
+    - Accent colors include top-2 from adjacent sub-season as "also try"
+    - Avoid list narrowed to intersection of both seasons (boundary users
+      can often wear colors one season avoids but the other endorses)
+    """
+    # Try sub-season palette first, fall back to 4-season
+    palette = SUB_SEASON_PALETTE_MAP.get(sub_season) or SEASON_PALETTE_MAP.get(season)
     if not palette:
         unable: Dict[str, Any] = {
             "value": [],
             "confidence": 0.0,
-            "evidence_note": f"Cannot derive palette: seasonal group '{season}' is not recognized.",
+            "evidence_note": f"Cannot derive palette: '{sub_season or season}' is not recognized.",
         }
         return {"BaseColors": dict(unable), "AccentColors": dict(unable), "AvoidColors": dict(unable)}
+
+    base = list(palette["base"])
+    accent = list(palette["accent"])
+    avoid = list(palette["avoid"])
+    palette_source = sub_season or season
+
+    # Boundary blending when confidence is low or secondary season is close
+    is_boundary = confidence < 0.6 or bool(secondary_season)
+    if is_boundary and secondary_season:
+        # Find the adjacent sub-season palette
+        adj_sub = ""
+        if sub_season:
+            neighbors = SUB_SEASON_ADJACENCY.get(sub_season, [])
+            for n in neighbors:
+                if secondary_season in n or n.endswith(secondary_season):
+                    adj_sub = n
+                    break
+        adj_palette = SUB_SEASON_PALETTE_MAP.get(adj_sub) or SEASON_PALETTE_MAP.get(secondary_season)
+        if adj_palette:
+            # Add top-2 adjacent accents as "also try"
+            for color in adj_palette["accent"][:2]:
+                if color not in accent:
+                    accent.append(color)
+            # Narrow avoid to intersection — boundary users can wear some "avoid" colors
+            adj_avoid = set(adj_palette["avoid"])
+            avoid = [c for c in avoid if c in adj_avoid]
+            palette_source = f"{palette_source} (blended with {adj_sub or secondary_season})"
+
     return {
         "BaseColors": {
-            "value": palette["base"],
+            "value": base,
             "confidence": confidence,
-            "evidence_note": f"Foundation neutrals for {season} palette.",
+            "evidence_note": f"Foundation neutrals for {palette_source} palette.",
         },
         "AccentColors": {
-            "value": palette["accent"],
+            "value": accent,
             "confidence": confidence,
-            "evidence_note": f"Statement colors that complement {season} coloring.",
+            "evidence_note": f"Statement colors for {palette_source}." + (" Includes adjacent season crossovers." if is_boundary else ""),
         },
         "AvoidColors": {
-            "value": palette["avoid"],
+            "value": avoid,
             "confidence": confidence,
-            "evidence_note": f"Colors that typically clash with {season} coloring.",
+            "evidence_note": f"Colors that clash with {palette_source}." + (" Narrowed to shared avoids for boundary case." if is_boundary else ""),
         },
     }
 
@@ -59,36 +163,59 @@ def derive_interpretations(
     height_cm: float = 0.0,
     waist_cm: float = 0.0,
 ) -> Dict[str, Dict[str, Any]]:
+    seasonal = _derive_seasonal_color_group(attributes)
     outputs = {
         "HeightCategory": _derive_height_category(height_cm),
-        "SeasonalColorGroup": _derive_seasonal_color_group(attributes),
+        "SeasonalColorGroup": seasonal,
         "ContrastLevel": _derive_contrast_level(attributes),
+        "SkinHairContrast": _derive_skin_hair_contrast(attributes),
+        "SubSeason": _derive_sub_season(seasonal),
+        "ColorDimensionProfile": _derive_color_dimension_profile(seasonal),
         "FrameStructure": _derive_frame_structure(attributes, height_cm=height_cm),
         "WaistSizeBand": _derive_waist_size_band(waist_cm),
     }
     seasonal = outputs["SeasonalColorGroup"]
+    sub_season_val = outputs.get("SubSeason", {}).get("value", "")
+    secondary = seasonal.get("secondary_season") or ""
+    dim_profile = seasonal.get("dimension_profile") or {}
     outputs.update(derive_color_palette(
         seasonal.get("value", ""),
         seasonal.get("confidence", 0.0),
+        sub_season=sub_season_val,
+        secondary_season=secondary,
+        dimension_profile=dim_profile,
     ))
     for payload in outputs.values():
-        payload["source_agent"] = "deterministic_interpreter"
+        if isinstance(payload, dict):
+            payload["source_agent"] = "deterministic_interpreter"
     return outputs
 
 
 def _derive_seasonal_color_group(attributes: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """Dimension-first seasonal color analysis.
+
+    Computes warmth, depth, contrast, and chroma scores from raw attributes,
+    then derives the primary season. A ``dimension_profile`` dict is attached
+    to the output for downstream use (sub-season assignment, palette tweaks,
+    architect styling decisions).
+    """
     skin_surface = _value(attributes, "SkinSurfaceColor")
     hair_color = _value(attributes, "HairColor")
     hair_temp = _value(attributes, "HairColorTemperature")
     eye_color = _value(attributes, "EyeColor")
-    eye_clarity = _value(attributes, "EyeClarity")
+    # Backward compat: accept both old "EyeClarity" and new "EyeChroma"
+    eye_chroma = _value(attributes, "EyeChroma") or _value(attributes, "EyeClarity")
+    # New Phase A attributes (may be absent for users analysed before this change)
+    skin_undertone = _value(attributes, "SkinUndertone")
+    skin_chroma = _value(attributes, "SkinChroma")
 
+    # Core 5 are required; new attributes are optional enhancements
     missing = [name for name, value in {
         "SkinSurfaceColor": skin_surface,
         "HairColor": hair_color,
         "HairColorTemperature": hair_temp,
         "EyeColor": eye_color,
-        "EyeClarity": eye_clarity,
+        "EyeChroma": eye_chroma,
     }.items() if not value or value == "Unable to Assess"]
     if missing:
         return {
@@ -97,24 +224,36 @@ def _derive_seasonal_color_group(attributes: Dict[str, Dict[str, Any]]) -> Dict[
             "evidence_note": "Missing required inputs: " + ", ".join(missing) + ".",
         }
 
-    warmth_score = 0
-    warmth_score += {"Warm": 2, "Neutral": 0, "Cool": -2}.get(hair_temp, 0)
+    # ── Warmth score: weighted multi-attribute consensus ──
+    # SkinUndertone (weight 3) + HairColorTemperature (weight 2) + EyeColor (weight 1)
+    # Normalized to -2..+2 range. Replaces the old single-attribute binary branch.
+    undertone_warmth = {
+        "Warm": 2, "Neutral-Warm": 1, "Olive": 0,
+        "Neutral-Cool": -1, "Cool": -2,
+    }.get(skin_undertone or "", None)
+    hair_warmth = {"Warm": 2, "Neutral": 0, "Cool": -2}.get(hair_temp, 0)
+    eye_warmth = {
+        "Black-Brown": 1, "Dark Brown": 0.5, "Medium Brown": 0.5,
+        "Light Brown": 0.5, "Hazel": 0, "Green": 0,
+        "Blue": -1, "Grey": -1,
+    }.get(eye_color, 0)
+
+    if undertone_warmth is not None:
+        # Full 3-signal weighted warmth
+        warmth_score = (undertone_warmth * 3 + hair_warmth * 2 + eye_warmth * 1) / 6.0
+    else:
+        # Fallback for users without SkinUndertone (pre-Phase A analysis)
+        warmth_score = (hair_warmth * 2 + eye_warmth * 1) / 3.0
+
+    ambiguous_temperature = abs(warmth_score) < 0.5
     branch = "warm" if warmth_score > 0 else "cool"
 
-    depth_score = (
-        _skin_depth_value(skin_surface)
-        + _hair_depth_value(hair_color)
-        + _eye_depth_value(eye_color)
-    ) / 3.0
-    contrast_spread = max(
-        _skin_depth_value(skin_surface),
-        _hair_depth_value(hair_color),
-        _eye_depth_value(eye_color),
-    ) - min(
-        _skin_depth_value(skin_surface),
-        _hair_depth_value(hair_color),
-        _eye_depth_value(eye_color),
-    )
+    # ── Depth score ──
+    skin_depth = _skin_depth_value(skin_surface)
+    hair_depth = _hair_depth_value(hair_color)
+    eye_depth = _eye_depth_value(eye_color)
+    depth_score = (skin_depth + hair_depth + eye_depth) / 3.0
+
     if depth_score <= 3.0:
         depth_band = "light"
     elif depth_score >= 7.0:
@@ -122,12 +261,19 @@ def _derive_seasonal_color_group(attributes: Dict[str, Dict[str, Any]]) -> Dict[
     else:
         depth_band = "medium"
 
-    clarity_score = {
-        "Soft / Muted": 0.15,
-        "Balanced": 0.55,
-        "Bright / Clear": 0.9,
-    }.get(eye_clarity, 0.55)
+    # ── Skin-hair contrast (first-class dimension) ──
+    skin_hair_contrast = abs(skin_depth - hair_depth)
 
+    # ── Chroma score ──
+    eye_chroma_score = {
+        "Soft / Muted": 0.15, "Balanced": 0.55, "Bright / Clear": 0.9,
+    }.get(eye_chroma, 0.55)
+    skin_chroma_score = {
+        "Muted": 0.15, "Moderate": 0.55, "Clear": 0.9,
+    }.get(skin_chroma or "", 0.55)  # default to moderate if not available
+    chroma_score = (eye_chroma_score + skin_chroma_score) / 2.0
+
+    # ── Season selection ──
     if branch == "warm":
         if depth_band == "deep" or (depth_band == "medium" and depth_score >= 5.6):
             season = "Autumn"
@@ -139,20 +285,43 @@ def _derive_seasonal_color_group(attributes: Dict[str, Dict[str, Any]]) -> Dict[
         else:
             season = "Summer"
 
-    confidence = _aggregate_confidence(
-        attributes,
-        ["SkinSurfaceColor", "HairColor", "HairColorTemperature", "EyeColor", "EyeClarity"],
-    )
-    if hair_temp == "Neutral":
-        confidence -= 0.08
+    # ── Confidence ──
+    conf_keys = ["SkinSurfaceColor", "HairColor", "HairColorTemperature", "EyeColor"]
+    # Use whichever name exists in the attributes
+    if "EyeChroma" in attributes:
+        conf_keys.append("EyeChroma")
+    elif "EyeClarity" in attributes:
+        conf_keys.append("EyeClarity")
+    if skin_undertone:
+        conf_keys.append("SkinUndertone")
+    if skin_chroma:
+        conf_keys.append("SkinChroma")
+    confidence = _aggregate_confidence(attributes, conf_keys)
+    if ambiguous_temperature:
+        confidence -= 0.10
     if depth_band == "medium":
         confidence -= 0.04
     confidence = max(0.0, min(0.99, confidence))
 
+    # ── Dimension profile (attached to output for downstream use) ──
+    dimension_profile = {
+        "warmth_score": round(warmth_score, 3),
+        "depth_score": round(depth_score, 2),
+        "skin_hair_contrast": skin_hair_contrast,
+        "chroma_score": round(chroma_score, 3),
+        "ambiguous_temperature": ambiguous_temperature,
+    }
+
+    undertone_note = f", {skin_undertone.lower()} undertone" if skin_undertone else ""
     return {
         "value": season,
         "confidence": confidence,
-        "evidence_note": f"{hair_temp} hair temperature, {skin_surface.lower()} skin surface, {depth_band} overall depth, and {eye_clarity.lower()} clarity place the palette in {season}.",
+        "evidence_note": (
+            f"Warmth score {warmth_score:+.2f} ({branch}){undertone_note}, "
+            f"{depth_band} depth ({depth_score:.1f}), "
+            f"chroma {chroma_score:.2f} → {season}."
+        ),
+        "dimension_profile": dimension_profile,
     }
 
 
@@ -194,6 +363,132 @@ def _derive_contrast_level(attributes: Dict[str, Dict[str, Any]]) -> Dict[str, A
         "value": label,
         "confidence": confidence,
         "evidence_note": f"Feature depth spread is {spread:.1f} across skin, hair, and eyes, mapping to {label} contrast.",
+    }
+
+
+def _derive_skin_hair_contrast(attributes: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """First-class skin-hair contrast score for pattern/outfit contrast decisions."""
+    skin = _value(attributes, "SkinSurfaceColor")
+    hair = _value(attributes, "HairColor")
+    if not skin or not hair or skin == "Unable to Assess" or hair == "Unable to Assess":
+        return {"value": "Unable to Assess", "confidence": 0.0, "evidence_note": "Missing skin or hair data."}
+    score = abs(_skin_depth_value(skin) - _hair_depth_value(hair))
+    if score <= 2:
+        label = "Low"
+    elif score <= 4:
+        label = "Medium"
+    else:
+        label = "High"
+    confidence = _aggregate_confidence(attributes, ["SkinSurfaceColor", "HairColor"])
+    return {
+        "value": label,
+        "confidence": confidence,
+        "numeric_score": score,
+        "evidence_note": f"Skin depth ({skin}) vs hair depth ({hair}) = {score} point spread → {label} skin-hair contrast.",
+    }
+
+
+# ── 12 Sub-Season Assignment ──
+
+# Which dimension is dominant determines the sub-season within each primary season.
+# Warm Autumn (highest warmth), Deep Autumn (highest depth), Soft Autumn (lowest chroma)
+# Warm Spring (highest warmth), Light Spring (lowest depth), Clear Spring (highest chroma)
+# Cool Summer (coolest warmth), Light Summer (lowest depth), Soft Summer (lowest chroma)
+# Cool Winter (coolest warmth), Deep Winter (highest depth), Clear Winter (highest chroma)
+
+_SUB_SEASON_RULES: Dict[str, List[tuple[str, str, str]]] = {
+    # season: [(sub_season, dimension, direction), ...]
+    # direction: "highest" = largest value wins, "lowest" = smallest value wins
+    "Autumn": [
+        ("Warm Autumn", "warmth_score", "highest"),
+        ("Deep Autumn", "depth_score", "highest"),
+        ("Soft Autumn", "chroma_score", "lowest"),
+    ],
+    "Spring": [
+        ("Warm Spring", "warmth_score", "highest"),
+        ("Light Spring", "depth_score", "lowest"),
+        ("Clear Spring", "chroma_score", "highest"),
+    ],
+    "Summer": [
+        ("Cool Summer", "warmth_score", "lowest"),
+        ("Light Summer", "depth_score", "lowest"),
+        ("Soft Summer", "chroma_score", "lowest"),
+    ],
+    "Winter": [
+        ("Cool Winter", "warmth_score", "lowest"),
+        ("Deep Winter", "depth_score", "highest"),
+        ("Clear Winter", "chroma_score", "highest"),
+    ],
+}
+
+# Adjacency: sub-seasons that share a dominant dimension can borrow from each other.
+SUB_SEASON_ADJACENCY: Dict[str, List[str]] = {
+    "Warm Autumn": ["Warm Spring"],
+    "Deep Autumn": ["Deep Winter"],
+    "Soft Autumn": ["Soft Summer"],
+    "Warm Spring": ["Warm Autumn"],
+    "Light Spring": ["Light Summer"],
+    "Clear Spring": ["Clear Winter"],
+    "Cool Summer": ["Cool Winter"],
+    "Light Summer": ["Light Spring"],
+    "Soft Summer": ["Soft Autumn"],
+    "Cool Winter": ["Cool Summer"],
+    "Deep Winter": ["Deep Autumn"],
+    "Clear Winter": ["Clear Spring"],
+}
+
+
+def _derive_sub_season(seasonal_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Assign one of 12 sub-seasons based on which dimension is most dominant."""
+    season = seasonal_result.get("value", "")
+    profile = seasonal_result.get("dimension_profile") or {}
+    if season not in _SUB_SEASON_RULES or not profile:
+        return {
+            "value": season or "Unable to Assess",
+            "confidence": 0.0,
+            "evidence_note": "Cannot determine sub-season without dimension profile.",
+        }
+
+    rules = _SUB_SEASON_RULES[season]
+    # Score each sub-season by how extreme the user is on its defining dimension
+    best_sub = season  # fallback
+    best_score = -999.0
+    for sub_name, dim_key, direction in rules:
+        raw = float(profile.get(dim_key, 0.5))
+        score = raw if direction == "highest" else -raw
+        if score > best_score:
+            best_score = score
+            best_sub = sub_name
+
+    neighbors = SUB_SEASON_ADJACENCY.get(best_sub, [])
+    return {
+        "value": best_sub,
+        "confidence": seasonal_result.get("confidence", 0.0),
+        "adjacent_sub_seasons": neighbors,
+        "evidence_note": f"Within {season}, dominant dimension maps to {best_sub}. Adjacent: {', '.join(neighbors) if neighbors else 'none'}.",
+    }
+
+
+def _derive_color_dimension_profile(seasonal_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Surface the raw dimension scores as a first-class derived interpretation."""
+    profile = seasonal_result.get("dimension_profile") or {}
+    if not profile:
+        return {"value": "unavailable", "confidence": 0.0, "evidence_note": "No dimension profile computed."}
+    return {
+        "value": "computed",
+        "confidence": seasonal_result.get("confidence", 0.0),
+        "warmth_score": profile.get("warmth_score", 0.0),
+        "depth_score": profile.get("depth_score", 0.0),
+        "skin_hair_contrast": profile.get("skin_hair_contrast", 0),
+        "chroma_score": profile.get("chroma_score", 0.5),
+        "ambiguous_temperature": profile.get("ambiguous_temperature", False),
+        "evidence_note": (
+            f"warmth={profile.get('warmth_score', 0):+.2f}, "
+            f"depth={profile.get('depth_score', 0):.1f}, "
+            f"contrast={profile.get('skin_hair_contrast', 0)}, "
+            f"chroma={profile.get('chroma_score', 0):.2f}, "
+            f"ambiguous={profile.get('ambiguous_temperature', False)}"
+        ),
     }
 
 

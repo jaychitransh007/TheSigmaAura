@@ -27,9 +27,17 @@ ATTRIBUTES TO EXTRACT:
    Enum: Black-Brown | Dark Brown | Medium Brown | Light Brown | Hazel | Green | Blue | Grey
    Instruction: Assess the dominant visible iris color. Ignore reflections, contact lens glare, and shadowing when possible.
 
-5. EyeClarity
+5. EyeChroma
    Enum: Soft / Muted | Balanced | Bright / Clear
-   Instruction: Assess whether the eyes appear softly blended and low-contrast, moderate in clarity, or bright and vivid with clear contrast between iris, sclera, and surrounding features.
+   Instruction: Assess the saturation and vividness of the eye area. Soft / Muted means the iris, sclera, and surrounding features blend softly with low contrast between them. Bright / Clear means the iris color is vivid and there is strong contrast between iris, sclera, and surrounding features. Balanced means moderate saturation between the two extremes.
+
+6. SkinUndertone
+   Enum: Warm | Cool | Neutral-Warm | Neutral-Cool | Olive
+   Instruction: Assess the undertone of the skin by focusing on the jaw-to-neck area and inner wrist if visible. IGNORE hair color entirely — this is about skin only. Warm = golden, peachy, or yellowish cast beneath the surface. Cool = pink, rosy, or bluish cast. Neutral-Warm = undertone is subtle but leans slightly golden. Neutral-Cool = undertone is subtle but leans slightly pink. Olive = a distinct greenish-grey or greenish-yellow undertone layered beneath the surface depth — common in South Asian, Mediterranean, and Middle Eastern skin. Olive is NOT the same as warm; olive-undertone skin can appear warm on the surface but will look sallow (not luminous) under warm-toned draping.
+
+7. SkinChroma
+   Enum: Muted | Moderate | Clear
+   Instruction: Assess how saturated and vivid the complexion appears overall. Muted = the skin looks soft, greyed-out, or low-saturation, as if seen through a soft-focus filter. Clear = the skin looks vivid, high-saturation, and bright with strong color presence. Moderate = between the two. This is independent of depth — a Deep skin can be Muted or Clear.
 
 ---
 
@@ -65,7 +73,17 @@ Confidence definition:
     "confidence": <0.0 to 1.0>,
     "evidence_note": "<1 sentence visual cue>"
   },
-  "EyeClarity": {
+  "EyeChroma": {
+    "value": "<enum value>",
+    "confidence": <0.0 to 1.0>,
+    "evidence_note": "<1 sentence visual cue>"
+  },
+  "SkinUndertone": {
+    "value": "<enum value>",
+    "confidence": <0.0 to 1.0>,
+    "evidence_note": "<1 sentence visual cue>"
+  },
+  "SkinChroma": {
     "value": "<enum value>",
     "confidence": <0.0 to 1.0>,
     "evidence_note": "<1 sentence visual cue>"

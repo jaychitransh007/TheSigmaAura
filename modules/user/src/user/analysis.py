@@ -33,6 +33,68 @@ def _repo_root() -> Path:
 
 PROMPT_DIR = _repo_root() / "prompt"
 
+# Draping collaboration threshold: draping only overrides the deterministic
+# season when its confidence margin exceeds this value. Three Strong rounds
+# score 9 points (margin ~9), three Slight rounds score 3 (margin ~3).
+# Threshold of 4 means roughly two Strong + one Moderate agreement required.
+_DRAPING_OVERRIDE_MARGIN = 4
+
+
+def _apply_draping_collaboration(
+    derived: Dict[str, Any],
+    draping_result: "DrapingResult",
+) -> None:
+    """Apply draping result to SeasonalColorGroup using threshold-based collaboration.
+
+    - margin > _DRAPING_OVERRIDE_MARGIN: draping overrides deterministic season
+    - margin <= threshold AND draping agrees: deterministic holds, confidence boosted
+    - margin <= threshold AND draping disagrees: deterministic holds, draping stored as secondary
+    """
+    if not draping_result.selected_groups:
+        return
+
+    deterministic = derived.get("SeasonalColorGroup", {})
+    det_season = deterministic.get("value", "")
+    draping_season = draping_result.selected_groups[0]["value"]
+    margin = draping_result.confidence_margin
+
+    if margin > _DRAPING_OVERRIDE_MARGIN:
+        # Strong draping signal — override
+        derived["SeasonalColorGroup"] = {
+            **deterministic,
+            "value": draping_season,
+            "confidence": draping_result.selected_groups[0]["probability"],
+            "evidence_note": f"Digital draping override (margin {margin}): {', '.join(g['value'] for g in draping_result.selected_groups)}",
+            "source_agent": "digital_draping",
+            "additional_groups": draping_result.selected_groups[1:],
+            "distribution": draping_result.distribution,
+            "confidence_margin": margin,
+            "secondary_season": draping_result.selected_groups[1]["value"] if len(draping_result.selected_groups) > 1 else None,
+        }
+    elif draping_season == det_season:
+        # Agreement — boost confidence
+        boosted = min(0.99, float(deterministic.get("confidence", 0.5)) + 0.08)
+        derived["SeasonalColorGroup"] = {
+            **deterministic,
+            "confidence": boosted,
+            "evidence_note": deterministic.get("evidence_note", "") + f" Confirmed by draping (margin {margin}).",
+            "source_agent": "deterministic_confirmed_by_draping",
+            "distribution": draping_result.distribution,
+            "confidence_margin": margin,
+            "secondary_season": draping_result.selected_groups[1]["value"] if len(draping_result.selected_groups) > 1 else None,
+        }
+    else:
+        # Disagreement but weak draping — deterministic holds, draping is secondary
+        derived["SeasonalColorGroup"] = {
+            **deterministic,
+            "evidence_note": deterministic.get("evidence_note", "") + f" Draping suggested {draping_season} (margin {margin}) but deferred to attribute analysis.",
+            "source_agent": "deterministic_draping_deferred",
+            "additional_groups": draping_result.selected_groups,
+            "distribution": draping_result.distribution,
+            "confidence_margin": margin,
+            "secondary_season": draping_season,
+        }
+
 
 @dataclass(frozen=True)
 class AgentSpec:
@@ -74,7 +136,9 @@ COLOR_HEADSHOT_SPEC = AgentSpec(
         "HairColor": ["Black", "Dark Brown", "Medium Brown", "Light Brown", "Auburn", "Red", "Blonde", "Grey", "White"],
         "HairColorTemperature": ["Cool", "Neutral", "Warm"],
         "EyeColor": ["Black-Brown", "Dark Brown", "Medium Brown", "Light Brown", "Hazel", "Green", "Blue", "Grey"],
-        "EyeClarity": ["Soft / Muted", "Balanced", "Bright / Clear"],
+        "EyeChroma": ["Soft / Muted", "Balanced", "Bright / Clear"],
+        "SkinUndertone": ["Warm", "Cool", "Neutral-Warm", "Neutral-Cool", "Olive"],
+        "SkinChroma": ["Muted", "Moderate", "Clear"],
     },
     required_profile_fields=["gender", "date_of_birth"],
     image_categories=["headshot"],
@@ -213,20 +277,12 @@ class UserAnalysisService:
             waist_cm=float(profile.get("waist_cm") or 0.0),
         )
 
-        # Digital draping
+        # Digital draping with threshold-based collaboration
         draping_service = DigitalDrapingService(self._repo, model=self._model)
         draping_result = draping_service.run_draping(
             user_id, images["headshot"]["file_path"], collated["attributes"]
         )
-        if draping_result.selected_groups:
-            derived["SeasonalColorGroup"] = {
-                "value": draping_result.selected_groups[0]["value"],
-                "confidence": draping_result.selected_groups[0]["probability"],
-                "evidence_note": f"Digital draping: {', '.join(g['value'] for g in draping_result.selected_groups)}",
-                "source_agent": "digital_draping",
-                "additional_groups": draping_result.selected_groups[1:],
-                "distribution": draping_result.distribution,
-            }
+        _apply_draping_collaboration(derived, draping_result)
 
         self._repo.update_analysis_snapshot(
             run_id,
@@ -311,20 +367,12 @@ class UserAnalysisService:
             waist_cm=float(profile.get("waist_cm") or 0.0),
         )
 
-        # Digital draping — runs after deterministic interpretation
+        # Digital draping with threshold-based collaboration
         draping_service = DigitalDrapingService(self._repo, model=self._model)
         draping_result = draping_service.run_draping(
             user_id, images["headshot"]["file_path"], collated["attributes"]
         )
-        if draping_result.selected_groups:
-            derived["SeasonalColorGroup"] = {
-                "value": draping_result.selected_groups[0]["value"],
-                "confidence": draping_result.selected_groups[0]["probability"],
-                "evidence_note": f"Digital draping: {', '.join(g['value'] for g in draping_result.selected_groups)}",
-                "source_agent": "digital_draping",
-                "additional_groups": draping_result.selected_groups[1:],
-                "distribution": draping_result.distribution,
-            }
+        _apply_draping_collaboration(derived, draping_result)
 
         self._repo.update_analysis_snapshot(
             run_id,

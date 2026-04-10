@@ -100,12 +100,22 @@ class DrapingRound:
     winner_label: str = ""
 
 
+def _confidence_to_points(confidence: float) -> int:
+    """Map float confidence to categorical points: Strong=3, Moderate=2, Slight=1."""
+    if confidence > 0.8:
+        return 3
+    if confidence >= 0.6:
+        return 2
+    return 1
+
+
 @dataclass
 class DrapingResult:
     chain_log: List[Dict[str, Any]] = field(default_factory=list)
     distribution: Dict[str, float] = field(default_factory=dict)
     selected_groups: List[Dict[str, Any]] = field(default_factory=list)
     primary_season: str = ""
+    confidence_margin: int = 0  # gap between winner and runner-up point totals
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -113,6 +123,7 @@ class DrapingResult:
             "distribution": self.distribution,
             "selected_groups": self.selected_groups,
             "primary_season": self.primary_season,
+            "confidence_margin": self.confidence_margin,
         }
 
 
@@ -228,12 +239,14 @@ class DigitalDrapingService:
 
         distribution = self._compute_distribution(rounds, temperature)
         selected = self._select_top_groups(distribution)
+        margin = self._compute_confidence_margin(rounds, selected[0]["value"] if selected else primary_season)
 
         return DrapingResult(
             chain_log=chain_log,
             distribution=distribution,
             selected_groups=selected,
             primary_season=selected[0]["value"] if selected else primary_season,
+            confidence_margin=margin,
         )
 
     def _run_round(
@@ -312,6 +325,30 @@ class DigitalDrapingService:
             dist = {s: round(v / total, 4) for s, v in dist.items()}
 
         return dist
+
+    @staticmethod
+    def _compute_confidence_margin(rounds: List[DrapingRound], primary: str) -> int:
+        """Sum categorical confidence points for the primary season vs runner-up.
+
+        Each round's confidence maps to Strong(3)/Moderate(2)/Slight(1).
+        Points go to the primary when the round's winner is the primary or
+        supports it (same temperature branch). Otherwise points go to runner-up.
+        The margin is winner_points - runner_up_points.
+        """
+        # Map each season to a set of labels that "support" it across rounds
+        warm_seasons = {"Spring", "Autumn", "warm"}
+        cool_seasons = {"Summer", "Winter", "cool"}
+        primary_camp = warm_seasons if primary in warm_seasons else cool_seasons
+
+        winner_pts = 0
+        runner_pts = 0
+        for r in rounds:
+            pts = _confidence_to_points(r.confidence)
+            if r.winner_label in primary_camp or r.winner_label == primary:
+                winner_pts += pts
+            else:
+                runner_pts += pts
+        return winner_pts - runner_pts
 
     @staticmethod
     def _select_top_groups(distribution: Dict[str, float]) -> List[Dict[str, Any]]:
