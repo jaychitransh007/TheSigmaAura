@@ -290,7 +290,7 @@ def get_onboarding_html() -> str:
     .dropzone {
       display: grid;
       place-items: center;
-      min-height: 200px;
+      aspect-ratio: 2 / 3;
       border: 1px dashed rgba(188, 172, 151, 0.9);
       border-radius: 18px;
       background: rgba(255, 255, 255, 0.8);
