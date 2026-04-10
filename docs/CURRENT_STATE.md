@@ -3443,3 +3443,16 @@ UI layer:
 - [x] added "Accuracy is kindness" framing: misclassifying a Heavy frame as Medium produces recommendations that don't fit or flatter
 - [x] reinforced per-attribute instructions on VisualWeight ("do NOT default to Medium"), ArmVolume ("do not downgrade to Medium out of caution"), MidsectionState ("classify what you see")
 
+### FrameStructure Interpreter — Two Bugs Fixed
+
+**Staging investigation** showed the LLM agent output was actually correct (`VisualWeight: Medium-Heavy`, `ArmVolume: Full`) but the deterministic interpreter in `interpreter.py` mapped these to wrong FrameStructure. Two bugs:
+
+**Bug 1 — Height penalty on width_score:** Users with `height_cm <= 160` got a -0.5 width penalty. For this user (160cm, Full arms, Average shoulders): `width_score = 0 + 1 - 0.5 = 0.5` → "Balanced" instead of "Broad". Height doesn't change observed arm volume or shoulder slope — a short person with Full arms IS broad.
+
+**Bug 2 — Label mapping:** `("Solid", "Balanced")` mapped to `"Medium and Balanced"` — should be `"Solid and Balanced"`. A Solid weight band should never produce a "Medium" label. Similarly, `("Light", "Balanced")` mapped to `"Medium and Balanced"` instead of `"Light and Narrow"`.
+
+**Fix (`interpreter.py`):**
+- [x] removed height_cm bonus/penalty from width_score calculation — width is determined purely by ShoulderSlope + ArmVolume observations
+- [x] fixed label mapping: `("Solid", "Balanced")` → `"Solid and Balanced"`, `("Light", "Balanced")` → `"Light and Narrow"`
+- [x] now 5 of 9 combinations produce distinct labels instead of collapsing to "Medium and Balanced"
+

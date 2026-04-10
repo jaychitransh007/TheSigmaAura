@@ -223,10 +223,10 @@ def _derive_frame_structure(attributes: Dict[str, Dict[str, Any]], *, height_cm:
     width_score = 0
     width_score += {"Square": 1, "Average": 0, "Sloped": -1}.get(shoulder_slope, 0)
     width_score += {"Full": 1, "Medium": 0, "Slim": -1}.get(arm_volume, 0)
-    if height_cm >= 182:
-        width_score += 0.5
-    elif height_cm and height_cm <= 160:
-        width_score -= 0.5
+    # Height bonus/penalty removed — height doesn't change observed arm
+    # volume or shoulder slope. A 155cm person with Full arms is broad;
+    # a 185cm person with Slim arms is narrow. The old ±0.5 penalty
+    # caused short+Full users to be misclassified as Balanced.
 
     if width_score >= 1:
         width_band = "Broad"
@@ -237,14 +237,14 @@ def _derive_frame_structure(attributes: Dict[str, Dict[str, Any]], *, height_cm:
 
     label = {
         ("Light", "Narrow"): "Light and Narrow",
+        ("Light", "Balanced"): "Light and Narrow",
         ("Light", "Broad"): "Light and Broad",
-        ("Light", "Balanced"): "Medium and Balanced",
         ("Medium", "Narrow"): "Medium and Balanced",
-        ("Medium", "Broad"): "Medium and Balanced",
         ("Medium", "Balanced"): "Medium and Balanced",
+        ("Medium", "Broad"): "Medium and Balanced",
         ("Solid", "Narrow"): "Solid and Narrow",
+        ("Solid", "Balanced"): "Solid and Balanced",
         ("Solid", "Broad"): "Solid and Broad",
-        ("Solid", "Balanced"): "Medium and Balanced",
     }[(weight_band, width_band)]
 
     confidence = _aggregate_confidence(attributes, ["VisualWeight", "ShoulderSlope", "ArmVolume"])
