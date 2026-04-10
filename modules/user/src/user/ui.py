@@ -1030,6 +1030,17 @@ def get_onboarding_html() -> str:
       return data;
     }
 
+    async function patchJson(url, payload) {
+      const response = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(extractError(data, "Update failed"));
+      return data;
+    }
+
     function isHeicLikeFile(file) {
       const name = (file && file.name ? file.name : "").toLowerCase();
       const type = (file && file.type ? file.type : "").toLowerCase();
@@ -1285,20 +1296,51 @@ def get_onboarding_html() -> str:
       syncStyleSelectionUI();
     }
 
+    function prefillFromStatus(status) {
+      // Pre-fill form fields from existing profile data
+      if (status.name) document.getElementById("nameInput").value = status.name;
+      if (status.gender) {
+        document.getElementById("genderInput").value = status.gender;
+        // Highlight the selected gender chip
+        document.querySelectorAll("#genderGrid .choice-btn").forEach(btn => {
+          btn.classList.toggle("selected", btn.dataset.value === status.gender);
+        });
+      }
+      if (status.date_of_birth) document.getElementById("dobInput").value = status.date_of_birth;
+      if (status.height_cm) {
+        const totalInches = Math.round(status.height_cm / 2.54);
+        document.getElementById("heightFtInput").value = Math.floor(totalInches / 12);
+        document.getElementById("heightInInput").value = totalInches % 12;
+        document.getElementById("heightInput").value = status.height_cm;
+      }
+      if (status.waist_cm) {
+        document.getElementById("waistInInput").value = Math.round(status.waist_cm / 2.54 * 2) / 2;
+        document.getElementById("waistInput").value = status.waist_cm;
+      }
+      if (status.profession) {
+        document.getElementById("professionInput").value = status.profession;
+        document.querySelectorAll("#professionGrid .choice-btn").forEach(btn => {
+          btn.classList.toggle("selected", btn.dataset.value === status.profession);
+        });
+      }
+      // Set gender in style state for session filtering
+      if (status.gender) state.style.gender = (status.gender === "female") ? "female" : "male";
+    }
+
     function determineResumeDestination(status) {
       const uploaded = Array.isArray(status.images_uploaded) ? status.images_uploaded : [];
-      const hasAllImages = REQUIRED_IMAGE_CATEGORIES.every((category) => uploaded.includes(category));
+      const hasAllImages = REQUIRED_IMAGE_CATEGORIES.every((c) => uploaded.includes(c));
 
-      if (status.onboarding_complete || (status.profile_complete && hasAllImages && status.style_preference_complete)) {
-        return { type: "processing" };
-      }
-      if (status.profile_complete) {
-        if (!uploaded.includes("full_body")) return { type: "step", index: 7 };
-        if (!uploaded.includes("headshot")) return { type: "step", index: 8 };
-        if (!status.style_preference_complete) return { type: "step", index: 9 };
-        return { type: "processing" };
-      }
-      return { type: "step", index: 2 };
+      // New step order: mobile(0), otp(1), name(2), gender(3), images(4), dob(5), body(6), profession(7), style(8), done(9)
+      if (status.onboarding_complete) return { type: "processing" };
+      if (!status.name) return { type: "step", index: 2 };
+      if (!status.gender) return { type: "step", index: 3 };
+      if (!hasAllImages) return { type: "step", index: 4 };
+      if (!status.date_of_birth) return { type: "step", index: 5 };
+      if (!status.height_cm || !status.waist_cm) return { type: "step", index: 6 };
+      if (!status.profession) return { type: "step", index: 7 };
+      if (!status.style_preference_complete) return { type: "step", index: 8 };
+      return { type: "processing" };
     }
 
     function clampCrop(crop) {
@@ -1580,6 +1622,7 @@ def get_onboarding_html() -> str:
           if (!statusResponse.ok) {
             throw new Error(extractError(status, "Unable to load onboarding status"));
           }
+          prefillFromStatus(status);
           const destination = determineResumeDestination(status);
           if (destination.type === "processing") {
             window.location.href = "/?user=" + encodeURIComponent(state.userId) + "&view=profile";
@@ -1594,22 +1637,28 @@ def get_onboarding_html() -> str:
         }
       });
 
-      document.getElementById("nameNextBtn").addEventListener("click", () => {
+      document.getElementById("nameNextBtn").addEventListener("click", async () => {
         hideError("nameErr");
         const name = document.getElementById("nameInput").value.trim();
         if (!name) {
           showError("nameErr", "Name is required.");
           return;
         }
+        // Incremental save
+        try { await patchJson("/v1/onboarding/profile/partial", { user_id: state.userId, name }); } catch(_) {}
         setStep(3);
       });
 
-      document.getElementById("genderNextBtn").addEventListener("click", () => {
+      document.getElementById("genderNextBtn").addEventListener("click", async () => {
         hideError("genderErr");
-        if (!document.getElementById("genderInput").value) {
+        const gender = document.getElementById("genderInput").value;
+        if (!gender) {
           showError("genderErr", "Select a gender option.");
           return;
         }
+        state.style.gender = (gender === "female") ? "female" : "male";
+        // Incremental save
+        try { await patchJson("/v1/onboarding/profile/partial", { user_id: state.userId, gender }); } catch(_) {}
         setStep(4); // → images
       });
 
@@ -1620,6 +1669,8 @@ def get_onboarding_html() -> str:
           showError("dobErr", "Date of birth is required.");
           return;
         }
+        // Incremental save
+        try { await patchJson("/v1/onboarding/profile/partial", { user_id: state.userId, date_of_birth: dob }); } catch(_) {}
         // Phase 2: start other_details analysis (needs gender + age + both images)
         try {
           await postJson("/v1/onboarding/analysis/start-phase2", { user_id: state.userId }, "");
@@ -1627,7 +1678,7 @@ def get_onboarding_html() -> str:
         setStep(6); // → body
       });
 
-      document.getElementById("bodyNextBtn").addEventListener("click", () => {
+      document.getElementById("bodyNextBtn").addEventListener("click", async () => {
         hideError("bodyErr");
         const ft = parseInt(document.getElementById("heightFtInput").value, 10);
         const inches = parseInt(document.getElementById("heightInInput").value, 10) || 0;
@@ -1649,6 +1700,8 @@ def get_onboarding_html() -> str:
         const waistCm = Math.round(waistIn * 2.54 * 10) / 10;
         document.getElementById("heightInput").value = heightCm;
         document.getElementById("waistInput").value = waistCm;
+        // Incremental save
+        try { await patchJson("/v1/onboarding/profile/partial", { user_id: state.userId, height_cm: heightCm, waist_cm: waistCm }); } catch(_) {}
         setStep(7); // → profession
       });
 

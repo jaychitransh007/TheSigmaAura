@@ -67,6 +67,16 @@ class ProfileRequest(BaseModel):
     profession: Profession
 
 
+class ProfilePartialRequest(BaseModel):
+    user_id: str = Field(min_length=1)
+    name: Optional[str] = Field(default=None, max_length=100)
+    date_of_birth: Optional[date] = None
+    gender: Optional[Gender] = None
+    height_cm: Optional[float] = Field(default=None, ge=50, le=300)
+    waist_cm: Optional[float] = Field(default=None, ge=30, le=200)
+    profession: Optional[Profession] = None
+
+
 class ProfileResponse(BaseModel):
     user_id: str
     saved: bool

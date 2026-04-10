@@ -3411,3 +3411,23 @@ UI layer:
 - [x] after DOB input → fires `start-phase2` (other_details agent begins while user fills measurements + profession)
 - [x] after style preference → redirects to main app where `analysis/start` runs body_type + finalization, reusing phase 1/2 output
 
+### Incremental Profile Persistence + Resume Flow
+
+**Problem 1:** Steps 3-6 (name, gender, DOB, body) are held in JS memory and only persisted as a batch at step 7 ("Save Profile"). If the user drops off at step 5 after uploading images, their name and gender are lost despite images being saved to disk.
+
+**Problem 2:** When a returning user re-enters mobile + OTP, the UI starts them at step 3 (name) regardless of existing progress. No pre-fill, no skip-to-incomplete-step, no way to edit already-saved fields.
+
+**Fix 1 — Incremental save:**
+- [x] added `PATCH /v1/onboarding/profile/partial` endpoint — `ProfilePartialRequest` with all optional fields, `patch_profile` service + repo methods update only provided fields
+- [x] after name step → saves name via PATCH
+- [x] after gender step → saves gender via PATCH
+- [x] after DOB step → saves date_of_birth via PATCH
+- [x] after body step → saves height_cm + waist_cm via PATCH
+- [x] after profession step → saves profession + marks `profile_complete=true` via existing POST /profile
+
+**Fix 2 — Resume flow:**
+- [x] after OTP verification, UI calls `GET /v1/onboarding/status/{user_id}` (already existed) and now calls `prefillFromStatus()` to populate all form fields with existing values
+- [x] `prefillFromStatus()` pre-fills: name, gender (input + chip highlight), DOB, height (reverse-converts cm → ft+in), waist (reverse-converts cm → in), profession (input + chip highlight)
+- [x] `determineResumeDestination()` rewritten for new step order: checks each field in sequence (name → gender → images → DOB → height/waist → profession → style) and jumps to first incomplete step
+- [x] `onboarding_complete=true` → redirects to main app (processing view)
+

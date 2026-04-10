@@ -370,6 +370,16 @@ class OnboardingService:
         self._check_and_mark_complete(user_id)
         return True
 
+    def patch_profile(self, user_id: str, **fields) -> bool:
+        """Update individual profile fields without requiring all fields."""
+        if self._repo is None:
+            return False
+        existing = self._repo.get_profile_by_user_id(user_id)
+        if not existing:
+            return False
+        self._repo.patch_profile(user_id, **fields)
+        return True
+
     def save_image(
         self,
         user_id: str,

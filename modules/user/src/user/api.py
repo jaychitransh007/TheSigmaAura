@@ -14,6 +14,7 @@ from .schemas import (
     ImageCategory,
     ImageUploadResponse,
     OnboardingStatusResponse,
+    ProfilePartialRequest,
     ProfileRequest,
     ProfileResponse,
     SendOtpRequest,
@@ -120,6 +121,32 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         if not ok:
             raise HTTPException(status_code=404, detail="User not found. Complete OTP verification first.")
         return ProfileResponse(user_id=payload.user_id, saved=True, message="Profile saved")
+
+    @router.patch("/profile/partial", response_model=ProfileResponse)
+    def patch_profile(payload: ProfilePartialRequest) -> ProfileResponse:
+        """Update individual profile fields. Only provided (non-null) fields are saved."""
+        fields = {}
+        if payload.name is not None:
+            fields["name"] = payload.name
+        if payload.date_of_birth is not None:
+            fields["date_of_birth"] = str(payload.date_of_birth)
+        if payload.gender is not None:
+            fields["gender"] = payload.gender
+        if payload.height_cm is not None:
+            fields["height_cm"] = payload.height_cm
+        if payload.waist_cm is not None:
+            fields["waist_cm"] = payload.waist_cm
+        if payload.profession is not None:
+            fields["profession"] = payload.profession
+        if not fields:
+            return ProfileResponse(user_id=payload.user_id, saved=False, message="No fields to update")
+        try:
+            ok = service.patch_profile(payload.user_id, **fields)
+        except (SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        if not ok:
+            raise HTTPException(status_code=404, detail="User not found.")
+        return ProfileResponse(user_id=payload.user_id, saved=True, message="Profile updated")
 
     @router.post("/images/normalize")
     def normalize_image(file: UploadFile = File(...)) -> Response:

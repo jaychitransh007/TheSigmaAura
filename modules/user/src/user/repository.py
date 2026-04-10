@@ -152,6 +152,22 @@ class OnboardingRepository:
         self.insert_onboarding_profile_snapshot(user_id, snapshot_reason="profile_saved")
         return result
 
+    def patch_profile(self, user_id: str, **fields: Any) -> Optional[Dict[str, Any]]:
+        """Update only the provided profile fields. Does NOT set profile_complete."""
+        if not fields:
+            return None
+        patch = {k: v for k, v in fields.items() if v is not None}
+        if not patch:
+            return None
+        patch["updated_at"] = _now_iso()
+        result = self.client.update_one(
+            "onboarding_profiles",
+            filters={"user_id": f"eq.{user_id}"},
+            patch=patch,
+        )
+        self.insert_onboarding_profile_snapshot(user_id, snapshot_reason="field_update")
+        return result
+
     def mark_onboarding_complete(self, user_id: str) -> Optional[Dict[str, Any]]:
         result = self.client.update_one(
             "onboarding_profiles",
