@@ -1,8 +1,8 @@
 # Intent-Driven Fashion Copilot Architecture
 
-Last updated: April 8, 2026
+Last updated: April 10, 2026
 
-> **⚠️ Target-state document — substantially superseded by Phase 12.** This
+> **⚠️ Target-state document — substantially superseded by Phase 12 + Phase 13.** This
 > file describes the *aspirational* architecture (web + WhatsApp,
 > cross-channel identity, the original 12-intent taxonomy). Several large
 > chunks below are now historically inaccurate:
@@ -28,6 +28,14 @@ Last updated: April 8, 2026
 >    the user's uploaded garment reaches Gemini.
 > 4. **WhatsApp runtime does not exist.** Removed deliberately; will be
 >    rebuilt in a later phase.
+> 5. **Outfit architect substantially hardened in Phase 13/13B** (April 10, 2026).
+>    The architect prompt now includes: occasion-driven structure selection (not
+>    mechanical one-of-each), `live_context` wiring (weather/time/target_product_type),
+>    `ranking_bias` signal, style-stretch directions, weather-fabric climate override,
+>    anchor conflict resolution for all categories, query document field omission
+>    (not `not_applicable`), color synonym expansion, semantic fabric clusters,
+>    follow-up intent tiebreaker, and consolidated occasion calibration.
+>    See `docs/CURRENT_STATE.md` Phase 13/13B for the full change list.
 >
 > For the authoritative "what is running right now" view, always defer to
 > `docs/CURRENT_STATE.md`. When this document and `CURRENT_STATE.md`

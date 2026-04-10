@@ -25,7 +25,14 @@ from ..services.catalog_retrieval_gateway import ApplicationCatalogRetrievalGate
 
 _log = logging.getLogger(__name__)
 
-_MAX_SEARCH_WORKERS = 4
+# Reduced from 4 → 2 to limit concurrent vector similarity RPCs against
+# the database.  With 7 queries (3 directions × 2-3 roles), 4 workers
+# caused intermittent statement timeouts on Supabase (error 57014).
+_MAX_SEARCH_WORKERS = 2
+
+# Retry config for similarity_search timeouts.
+_SEARCH_MAX_RETRIES = 1
+_SEARCH_RETRY_DELAY_S = 0.5
 
 
 class CatalogSearchAgent:
@@ -139,17 +146,33 @@ class CatalogSearchAgent:
                 direction_id, query.query_id, query.role, filters,
             )
 
-            # Similarity search
+            # Similarity search with retry on timeout
             t0 = time.monotonic()
-            try:
-                matches = self._retrieval_gateway.similarity_search(
-                    query_embedding=embedding,
-                    match_count=plan.retrieval_count,
-                    filters=filters,
-                ) or []
-            except Exception:
-                _log.exception("CatalogSearch: similarity_search FAILED for query %s", query.query_id)
-                matches = []
+            matches: list = []
+            for attempt in range(_SEARCH_MAX_RETRIES + 1):
+                try:
+                    matches = self._retrieval_gateway.similarity_search(
+                        query_embedding=embedding,
+                        match_count=plan.retrieval_count,
+                        filters=filters,
+                    ) or []
+                    break
+                except Exception as exc:
+                    exc_msg = str(exc)
+                    is_timeout = "57014" in exc_msg or "timeout" in exc_msg.lower()
+                    if is_timeout and attempt < _SEARCH_MAX_RETRIES:
+                        _log.warning(
+                            "CatalogSearch: similarity_search TIMEOUT for query %s (attempt %d/%d), retrying in %.1fs",
+                            query.query_id, attempt + 1, _SEARCH_MAX_RETRIES + 1, _SEARCH_RETRY_DELAY_S,
+                        )
+                        time.sleep(_SEARCH_RETRY_DELAY_S)
+                        continue
+                    _log.exception(
+                        "CatalogSearch: similarity_search FAILED for query %s (attempt %d/%d, timeout=%s)",
+                        query.query_id, attempt + 1, _SEARCH_MAX_RETRIES + 1, is_timeout,
+                    )
+                    matches = []
+                    break
             search_ms = int((time.monotonic() - t0) * 1000)
 
             _log.info(

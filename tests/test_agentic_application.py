@@ -5896,5 +5896,127 @@ class Phase12EStageEmissionTests(unittest.TestCase):
     # a failure produces a graceful empty response, not a text-only fallback.
 
 
+    # --- Phase 13: Outfit Architect payload and schema regression tests ---
+
+    def test_outfit_architect_payload_includes_live_context_fields(self) -> None:
+        """_build_user_payload must include weather_context, time_of_day,
+        and target_product_type from LiveContext under a 'live_context' key."""
+        from agentic_application.agents.outfit_architect import _build_user_payload
+
+        context = CombinedContext(
+            user=UserContext(
+                user_id="u1",
+                gender="male",
+                derived_interpretations={
+                    "SeasonalColorGroup": {"value": "Warm Autumn"},
+                },
+            ),
+            live=LiveContext(
+                user_need="Something warm for a rainy evening",
+                weather_context="rainy, cold",
+                time_of_day="evening",
+                target_product_type="",
+            ),
+            hard_filters={"gender_expression": "masculine"},
+        )
+
+        payload = json.loads(_build_user_payload(context))
+        self.assertIn("live_context", payload)
+        lc = payload["live_context"]
+        self.assertEqual("rainy, cold", lc["weather_context"])
+        self.assertEqual("evening", lc["time_of_day"])
+        self.assertIsNone(lc["target_product_type"])  # empty string → None
+
+    def test_outfit_architect_payload_live_context_null_when_empty(self) -> None:
+        """When LiveContext fields are empty/default, they should be null
+        in the payload so the prompt sees null, not empty strings."""
+        from agentic_application.agents.outfit_architect import _build_user_payload
+
+        context = CombinedContext(
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="Show me something"),
+            hard_filters={"gender_expression": "feminine"},
+        )
+
+        payload = json.loads(_build_user_payload(context))
+        lc = payload["live_context"]
+        self.assertIsNone(lc["weather_context"])
+        self.assertIsNone(lc["time_of_day"])
+        self.assertIsNone(lc["target_product_type"])
+
+    def test_outfit_architect_payload_includes_anchor_garment(self) -> None:
+        """When anchor_garment is set on LiveContext, the payload must include it."""
+        from agentic_application.agents.outfit_architect import _build_user_payload
+
+        anchor = {"garment_category": "outerwear", "garment_subtype": "blazer", "primary_color": "navy"}
+        context = CombinedContext(
+            user=UserContext(user_id="u1", gender="male"),
+            live=LiveContext(user_need="Build around my blazer", anchor_garment=anchor),
+            hard_filters={"gender_expression": "masculine"},
+        )
+
+        payload = json.loads(_build_user_payload(context))
+        self.assertEqual(anchor, payload["anchor_garment"])
+
+    def test_direction_spec_accepts_three_piece(self) -> None:
+        """DirectionSpec.direction_type must accept 'three_piece'."""
+        d = DirectionSpec(
+            direction_id="C",
+            direction_type="three_piece",
+            label="Layered look",
+            queries=[
+                QuerySpec(query_id="C1", role="top", query_document="..."),
+                QuerySpec(query_id="C2", role="bottom", query_document="..."),
+                QuerySpec(query_id="C3", role="outerwear", query_document="..."),
+            ],
+        )
+        self.assertEqual("three_piece", d.direction_type)
+        self.assertEqual(3, len(d.queries))
+
+    def test_resolved_context_block_ranking_bias_default_and_override(self) -> None:
+        """ResolvedContextBlock.ranking_bias defaults to 'balanced' and accepts overrides."""
+        default = ResolvedContextBlock()
+        self.assertEqual("balanced", default.ranking_bias)
+
+        explicit = ResolvedContextBlock(ranking_bias="conservative")
+        self.assertEqual("conservative", explicit.ranking_bias)
+
+    def test_outfit_architect_parses_ranking_bias(self) -> None:
+        """_parse_plan must extract ranking_bias from the LLM response."""
+        from agentic_application.agents.outfit_architect import OutfitArchitect
+        from unittest.mock import patch
+
+        raw = {
+            "resolved_context": {
+                "occasion_signal": "office",
+                "formality_hint": "business_casual",
+                "time_hint": "daytime",
+                "specific_needs": [],
+                "is_followup": False,
+                "followup_intent": None,
+                "ranking_bias": "formal_first",
+            },
+            "retrieval_count": 12,
+            "directions": [
+                {
+                    "direction_id": "A",
+                    "direction_type": "paired",
+                    "label": "Office classic",
+                    "queries": [
+                        {"query_id": "A1", "role": "top", "hard_filters": {"garment_subtype": None, "gender_expression": "masculine"}, "query_document": "..."},
+                        {"query_id": "A2", "role": "bottom", "hard_filters": {"garment_subtype": None, "gender_expression": "masculine"}, "query_document": "..."},
+                    ],
+                }
+            ],
+        }
+
+        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"):
+            architect = OutfitArchitect.__new__(OutfitArchitect)
+            plan = architect._parse_plan(raw)
+
+        self.assertEqual("formal_first", plan.resolved_context.ranking_bias)
+        self.assertEqual(1, len(plan.directions))
+
+
 if __name__ == "__main__":
     unittest.main()

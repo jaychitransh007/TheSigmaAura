@@ -42,6 +42,7 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     "specific_needs",
                     "is_followup",
                     "followup_intent",
+                    "ranking_bias",
                 ],
                 "properties": {
                     "occasion_signal": {"type": ["string", "null"]},
@@ -53,6 +54,16 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     },
                     "is_followup": {"type": "boolean"},
                     "followup_intent": {"type": ["string", "null"]},
+                    "ranking_bias": {
+                        "type": "string",
+                        "enum": [
+                            "conservative",
+                            "balanced",
+                            "expressive",
+                            "formal_first",
+                            "comfort_first",
+                        ],
+                    },
                 },
             },
             "retrieval_count": {"type": "integer"},
@@ -147,12 +158,19 @@ def _build_user_payload(ctx: CombinedContext) -> str:
             g["value"] for g in seasonal_raw["additional_groups"]
         ]
 
+    live_context_block: Dict[str, Any] = {
+        "weather_context": ctx.live.weather_context or None,
+        "time_of_day": ctx.live.time_of_day or None,
+        "target_product_type": ctx.live.target_product_type or None,
+    }
+
     payload = {
         "profile": profile_block,
         "analysis_attributes": attrs,
         "derived_interpretations": interps,
         "style_preference": user.style_preference,
         "user_message": ctx.live.user_need,
+        "live_context": live_context_block,
         "conversation_history": ctx.conversation_history or [],
         "hard_filters": ctx.hard_filters,
         "previous_recommendations": ctx.previous_recommendations,
@@ -232,6 +250,7 @@ class OutfitArchitect:
                 specific_needs=raw_resolved.get("specific_needs") or [],
                 is_followup=bool(raw_resolved.get("is_followup")),
                 followup_intent=raw_resolved.get("followup_intent"),
+                ranking_bias=str(raw_resolved.get("ranking_bias") or "balanced"),
             )
         return RecommendationPlan(
             retrieval_count=int(raw.get("retrieval_count", 12)),

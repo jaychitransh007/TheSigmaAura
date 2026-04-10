@@ -517,6 +517,20 @@ the image as not-a-garment.
 
 ---
 
+---
+
+## Panel 15 — Catalog Search Timeout Rate (Post-Phase 13B)
+
+**Question:** How often are vector similarity searches timing out?
+
+**Context:** The `catalog_search_agent` runs parallel similarity RPCs against `catalog_item_embeddings`. Under load (7 concurrent queries × cosine scan over 1000+ rows), Supabase statement timeouts (error 57014) cause queries to return 0 products. Post-13B fix: workers reduced from 4→2 and retry-on-timeout added. This panel tracks whether timeouts still occur.
+
+**Signal source:** Application logs from `catalog_search_agent`. The retry logic logs `WARNING` with `similarity_search TIMEOUT` on each timeout. Monitor via log aggregation (grep for `similarity_search TIMEOUT` or `similarity_search FAILED.*timeout`).
+
+**Healthy:** zero timeouts in a 24h window. **Degraded:** occasional timeouts but retry succeeds (retried turns still produce 3 outfits). **Unhealthy:** persistent timeouts even after retry → users see 1-outfit responses. Escalation: check Supabase compute tier, DB connection pool, or add a pgvector HNSW index.
+
+---
+
 ## How to refresh
 
 1. Open Supabase Studio (or your preferred SQL client) connected to staging.

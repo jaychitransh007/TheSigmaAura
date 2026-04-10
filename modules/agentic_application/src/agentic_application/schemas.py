@@ -96,6 +96,13 @@ class LiveContext(BaseModel):
     is_followup: bool = False
     followup_intent: Optional[str] = None
     anchor_garment: Optional[Dict[str, Any]] = None
+    # Phase 13: planner-extracted signals forwarded to the outfit architect.
+    # These mirror the same-named fields on CopilotResolvedContext; the
+    # orchestrator copies them into LiveContext so the architect payload
+    # can expose them under a `live_context` key.
+    weather_context: str = ""
+    time_of_day: str = ""
+    target_product_type: str = ""
 
 
 # --- Conversation Memory ---
@@ -146,7 +153,7 @@ class QuerySpec(BaseModel):
 
 class DirectionSpec(BaseModel):
     direction_id: str  # A | B | C
-    direction_type: str  # complete | paired
+    direction_type: str  # complete | paired | three_piece
     label: str
     queries: List[QuerySpec]
 
@@ -158,6 +165,9 @@ class ResolvedContextBlock(BaseModel):
     specific_needs: List[str] = Field(default_factory=list)
     is_followup: bool = False
     followup_intent: Optional[str] = None
+    # Phase 13B: ranking intent signal for downstream reranker/assembler.
+    # conservative | balanced | expressive | formal_first | comfort_first
+    ranking_bias: str = "balanced"
 
 
 class RecommendationPlan(BaseModel):

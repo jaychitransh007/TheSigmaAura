@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: April 10, 2026 (Phase 12 close-out: three outfit structures, all 46 attributes in query docs, parallel retrieval ~4x speedup, occasion-fabric coupling, time-of-day inference, role-category validation, outerwear recategorization, catalog 14,296 garment-only items)
+Last updated: April 10, 2026 (Phase 13B close-out: outfit architect prompt & schema remediation — live_context wired, ranking_bias signal, occasion-driven structures, style-stretch + guard, weather-fabric override, anchor conflict resolution, query doc field omission, color synonym expansion, semantic fabric clusters, follow-up tiebreaker, retrieval quality hardening, 6 regression tests added)
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -3187,4 +3187,179 @@ Definition of done:
 
 Definition of done:
 - users can tell whether Aura is giving them a full outfit, a refinement suggestion, or just a starting piece
+
+---
+
+## Phase 13: Outfit Architect Prompt & Schema Remediation
+
+Scope: fix contradictions, close gaps, and tighten the outfit architect system prompt (`prompt/outfit_architect.md`) and its code wrapper (`modules/agentic_application/src/agentic_application/agents/outfit_architect.py`). No new features — this is correctness, consistency, and robustness.
+
+**Status: all items implemented and verified (125/125 tests passing).**
+
+### P0 — Code Bug: Missing `live_context` Fields in Architect Payload
+
+- [x] added `weather_context`, `time_of_day`, `target_product_type` fields to `LiveContext` schema
+- [x] wired them in `_build_effective_live_context()` from `CopilotResolvedContext` (both normal and catalog-followup paths)
+- [x] `_build_user_payload()` now nests them under a `live_context` key in the architect payload
+- [x] prompt Input section updated to document `live_context` as an object with three sub-fields
+- [x] 3 regression tests added: fields present when set, null when empty, anchor_garment passthrough
+
+### P0 — Contradictory Direction-Count Rules (Issues 1, 13)
+
+- [x] removed "You MUST create exactly 3 directions for broad occasion requests, one of each structure type"
+- [x] removed "For broad requests, use all three structure types (complete + paired + three_piece)"
+- [x] occasion-driven structure selection (the table with occasion → appropriate structures) is now the sole authority
+
+### P0 — Input Schema Gaps: Color Fields and `previous_recommendations` (Issues 4, 14)
+
+- [x] documented `BaseColors.value`, `AccentColors.value`, `AvoidColors.value`, `SeasonalColorGroup_additional` in the `derived_interpretations` bullet of the Input section
+- [x] documented `previous_recommendations` as a structured list with all 11 fields (title, primary_colors, garment_categories, garment_subtypes, roles, occasion_fits, formality_levels, pattern_types, volume_profiles, fit_types, silhouette_types)
+
+### P1 — Anchor Garment Conflict Resolution (Issues 3, 10)
+
+- [x] added anchor rules 4 and 5: per-category direction structure (top → paired/three_piece without top query; bottom → paired/three_piece without bottom query; outerwear → paired only with both top+bottom; complete → no search)
+- [x] explicit "goal is always a complete outfit" rule
+
+### P1 — `retrieval_count` Guidance (Issue 2)
+
+- [x] added `retrieval_count` rules table after the Output schema: 12 broad, 6 single-garment, 8–10 anchor, 10–15 more_options, 12 change_color/similar/full_alternative
+
+### P1 — Query Document Field Completeness (Issue 5)
+
+- [x] added after query document template: "Every field MUST be populated… write `not_applicable` for genuinely irrelevant fields"
+
+### P1 — Follow-Up Intent Tiebreaker (Issue 6)
+
+- [x] added priority ordering: change_color > increase/decrease_formality > increase_boldness > full_alternative > similar_to_previous > more_options
+
+### P1 — Inventory Starvation: Occasion > Count (Issues 8, 16)
+
+- [x] replaced `count < 5` hard-avoid with occasion-first logic: count >= 1 is usable if occasion-appropriate
+- [x] added fallback direction rule for count < 3
+
+### P2 — Seasonal Color Group Additional Guidance (Issue 7)
+
+- [x] added inline guidance in query document PROFILE_AND_STYLE section: populate when `SeasonalColorGroup_additional` is present, otherwise rely on primary group
+
+### P2 — Fabric Vocabulary: Semantic Clusters (Issue 9)
+
+- [x] added semantic fabric cluster instruction in the consolidated Occasion Calibration section
+
+### P2 — Style-Stretch Direction (Issue 11)
+
+- [x] added Style-Stretch Direction subsection under Direction Rules: third direction pushes one notch beyond archetype, gated by riskTolerance
+
+### P2 — Prompt Structure Optimization (Issues 12, 15)
+
+- [x] consolidated Sub-Occasion Calibration + Embellishment Reasoning + Occasion-Fabric Coupling into single "Occasion Calibration — Formality, Fabric, and Embellishment" section with one unified reference table
+- [x] moved Thinking Directions from after Input to just before Guidelines (near generation point)
+- [x] query document format left unchanged — compression requires embedding quality A/B test before committing
+
+### P2 — `DirectionSpec` Comment (Minor)
+
+- [x] updated `schemas.py` comment to `# complete | paired | three_piece`
+- [x] regression test added: `test_direction_spec_accepts_three_piece`
+
+---
+
+## Phase 13B: Outfit Architect — Retrieval Quality, Failure Mode Hardening, Ranking Intent
+
+Scope: fix remaining prompt sequencing issues, harden against real-world failure modes (weather-fabric conflict, anchor formality mismatch, embedding noise from filler tokens), add color synonym expansion, and introduce a ranking intent signal for downstream use.
+
+**Status: all items implemented and verified (127/127 tests passing).**
+
+### P0 — Thinking Directions Placement (Issue 1)
+
+- [x] moved Thinking Directions from between Style Archetype Override and Guidelines to between Time-of-Day Color Palette Shift and Direction Rules — now acts as a framing lens before all specific rules
+
+Definition of done:
+- Thinking Directions sits immediately before the sections it should frame (Direction Rules, Hard Filters, Query Document Format, etc.)
+
+### P0 — Query Document: Omit Inapplicable Fields (Issues 4, 6)
+
+- [x] replaced "write `not_applicable`" rule with "omit fields that have no physical counterpart"
+- [x] added per-role omission guide: bottom queries omit NecklineType, NecklineDepth, ShoulderStructure, SleeveLength; top/outerwear/complete queries populate all fields
+- [x] clarified that WaistDefinition, GarmentLength, FitType, VolumeProfile apply to ALL garment categories
+
+### P0 — Fallback Direction Count Tiebreaker (Issue 5)
+
+- [x] added to fallback rule: "When adding a fallback would exceed 3 total directions, replace the lowest-confidence direction with the fallback rather than adding a fourth"
+
+### P1 — Style-Stretch Occasion Guard (Issues 2, 10)
+
+- [x] added guard: fabric/formality/embellishment/AvoidColors not relaxable for stretch; stretch operates in style/silhouette/color space only
+- [x] removed "a different fabric family" from the high-risk stretch examples to prevent occasion-fabric conflict
+
+### P1 — Follow-Up Rules: Explicit Field Name Mapping (Issue 3)
+
+- [x] `change_color` rule now references `occasion_fits`, `formality_levels`, `garment_subtypes`, `silhouette_types`, `volume_profiles`, `fit_types`
+- [x] `similar_to_previous` rule now references `garment_subtypes`, `primary_colors`, `formality_levels`, `occasion_fits`, `volume_profiles`, `fit_types`, `silhouette_types`
+
+### P1 — Anchor Formality Conflict Resolution (Issue 9)
+
+- [x] added anchor rule 6: shift supporting garments upward in formality to compensate when anchor conflicts with occasion
+
+### P1 — Weather-Fabric Climate Override (Issue 11)
+
+- [x] added Occasion Calibration core rule 5: weather overrides occasion for fabric weight/breathability; examples for hot/humid and cold scenarios; occasion still governs formality and embellishment
+
+### P1 — Color Synonym Expansion (Issue 8)
+
+- [x] added to color coordination rules: PrimaryColor/SecondaryColor fields should use comma-separated synonym lists (e.g., "terracotta, rust, burnt orange, warm brick")
+
+### P2 — Query Document Conciseness (Issue 7)
+
+- [x] added to query document format intro: "Use concise values — single terms or comma-separated lists, not full sentences"
+
+### P2 — `retrieval_count` vs Inventory Depth (Issue 12)
+
+- [x] added: "Do NOT inflate retrieval_count to compensate for low inventory"
+
+### P2 — Ranking Intent Signal (Issue 13)
+
+- [x] added `ranking_bias` field to `ResolvedContextBlock` in `schemas.py` (default: "balanced")
+- [x] added `ranking_bias` to `_PLAN_JSON_SCHEMA` in `outfit_architect.py` with enum: conservative, balanced, expressive, formal_first, comfort_first
+- [x] added `ranking_bias` to `_parse_plan()` extraction
+- [x] added `ranking_bias` to prompt output schema and `resolved_context` rules with guidance on when to set each value
+- [x] 2 regression tests added: default/override on ResolvedContextBlock, parse from LLM response
+- [ ] wire `ranking_bias` into assembler/reranker scoring (future work — Phase 14)
+
+### Post-13B Fix — Direction Differentiation for Outfit Count Regression
+
+**Root cause:** After Phase 13B, outfit count dropped from 3 to 1-2. The conciseness instruction and field omission rules made query documents across directions more formulaic and similar in embedding space. Similar query documents → overlapping product retrieval → the cross-outfit diversity pass (`_enforce_cross_outfit_diversity`, `MAX_PRODUCT_REPEAT_PER_RUN=1`) eliminated most candidates since shared products can only appear in one outfit.
+
+**Fix (prompt-only):**
+- [x] added "direction differentiation" rule to Query Document Format: query documents across directions MUST use noticeably different vocabulary for garment subtypes, colors, fabrics, silhouettes. Explains WHY: similar documents → same products → 1 surviving outfit after diversity pass.
+- [x] added to Concept-First Planning: "Each direction must be a genuinely different outfit concept — different garment subtypes, different color families, or different silhouette approaches."
+
+### Post-13B Fix — Search Timeout Resilience + Office Sub-Occasion Calibration
+
+**Root cause investigation (staging conversation `b8a5f527`):** "Find me outfits for daily office wear" returned only 1 outfit. Traced the pipeline:
+- Architect produced 3 directions correctly (2 paired + 1 three_piece)
+- Search returned `product_ids` for all 7 queries, but top queries only surfaced 1 product each
+- Reproduced: Supabase vector search RPC (`match_catalog_item_embeddings`) hits statement timeout (error 57014) intermittently when 7 parallel queries run simultaneously against 1000+ row cosine similarity scans
+- Search agent catches the exception at `catalog_search_agent.py:150-152` and sets `matches = []` — silently returns 0 products for timed-out queries
+- With only 1 top product surviving (the query that didn't timeout), all 3 directions shared it, and `MAX_PRODUCT_REPEAT_PER_RUN=1` eliminated all but 1 candidate
+
+**Two secondary issues found:**
+1. The occasion table maps ALL "Office / business" to `paired + three_piece`, but "daily office wear" (smart_casual, repeatable) should lean paired-only — a blazer every day is overdressed
+2. All 3 top queries used `GarmentSubtype: shirt` — even with direction differentiation, the same subtype + same filters produces near-identical embeddings
+
+**Fix 1 — Search timeout retry with reduced concurrency:**
+
+- [x] reduced `_MAX_SEARCH_WORKERS` from 4 to 2 in `catalog_search_agent.py`
+- [x] added retry loop in `_search_one`: 1 retry after timeout (detects error code 57014 or "timeout" in message), 0.5s delay between attempts
+- [x] logs `WARNING` with query_id, attempt number, and timeout flag on each retry
+
+**Fix 2 — Office sub-occasion split in prompt:**
+
+- [x] split "Office / business" row into "Formal office / business meeting" (paired + three_piece) and "Daily office / everyday work" (paired only) in both the direction structure table and the Occasion Calibration formality/fabric table
+- [x] added `daily_office` as a valid `occasion_signal` in the `resolved_context` rules with classifier: "daily/everyday/regular/routine" → daily_office; meetings/presentations/clients/interviews → office; generic → default to daily_office
+- [x] updated Time-of-Day Inference table for the split
+
+**Fix 3 — Top-role subtype diversification:**
+
+- [x] added "Role-level subtype diversification" rule to Query Document Format: when multiple directions share the same role, vary GarmentSubtype across directions. If the occasion constrains to one subtype, vary color family and silhouette instead.
+- [x] **post-staging validation fix:** reinforced that diversification MUST only use subtypes present in `catalog_inventory` with count > 0 — staging showed the LLM chose `polo` (0 items in catalog), wasting direction B entirely. Rule now includes explicit example: "if the catalog carries shirt (758), tshirt (20), sweater (106) but no polo, use shirt/tshirt/sweater, NOT polo"
+- [x] strengthened Catalog Awareness: "Never plan for a subtype with zero items" expanded to explain consequence — "the search will return zero results for that query, wasting a direction"
 

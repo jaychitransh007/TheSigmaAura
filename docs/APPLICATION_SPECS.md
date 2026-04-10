@@ -1,6 +1,6 @@
 # Application Layer — Implementation Specification
 
-Last updated: April 8, 2026 (deprecation banner)
+Last updated: April 10, 2026 (Section 7 updated for Phase 13/13B architect remediation)
 
 > **⚠️ Partially deprecated.** Sections of this document still describe the
 > *legacy* routing layer (`intent_router.py`, `intent_handlers.py`,
@@ -1141,119 +1141,138 @@ async def handle_recommendation_request(request: RecommendationRequest) -> dict:
 
 ## 7. Outfit Architect
 
+> Updated: April 10, 2026 (Phase 13/13B remediation — prompt hardening, live_context wiring, ranking_bias, occasion-driven structures, retrieval quality improvements)
+
 ### Purpose
 
-Translate user context into retrieval directions.
+Translate user context into retrieval directions. The architect is the planning brain: it reads the user's profile, occasion, and request, then produces structured query documents that drive embedding similarity search against the catalog.
 
-### Important design decision
-
-The architect should not output freeform prose only. It should return JSON plus a structured labeled query document per direction.
-
-### Output
+### Output schema
 
 ```python
 class RecommendationPlan:
-    # plan_type removed — each direction carries its own direction_type
-    retrieval_count: int           # default 12 per query
+    retrieval_count: int           # default 12; varies by request type
     directions: list[DirectionSpec]
     plan_source: str               # always "llm" (no fallback)
-
+    resolved_context: ResolvedContextBlock
 
 class DirectionSpec:
     direction_id: str              # A | B | C
-    direction_type: str            # complete | paired
+    direction_type: str            # complete | paired | three_piece
     label: str
     queries: list[QuerySpec]
 
-
 class QuerySpec:
     query_id: str
-    role: str                      # complete | top | bottom
-    hard_filters: dict
+    role: str                      # complete | top | bottom | outerwear
+    hard_filters: dict             # only gender_expression (always) + garment_subtype (when user names a type)
     query_document: str            # structured labeled retrieval doc
+
+class ResolvedContextBlock:
+    occasion_signal: str | None
+    formality_hint: str | None
+    time_hint: str | None
+    specific_needs: list[str]
+    is_followup: bool
+    followup_intent: str | None
+    ranking_bias: str              # conservative | balanced | expressive | formal_first | comfort_first
 ```
 
-### V1 direction policy
+### Direction types
 
-Allowed:
-- one complete-outfit direction
-- one paired direction
-- optionally both
+- **complete** — one query with `role: "complete"`. Finds standalone outfit items (kurta_set, co_ord_set, suit_set, dress, jumpsuit).
+- **paired** — two queries: `role: "top"` + `role: "bottom"`. Finds a top + bottom combination.
+- **three_piece** — three queries: `role: "top"` + `role: "bottom"` + `role: "outerwear"`. Finds a top + bottom + layering piece.
 
-Not allowed in v1:
-- three-piece directions
+### Occasion-driven structure selection
+
+The architect creates **2–3 directions** using **only the structures appropriate for the specific occasion**. It does NOT mechanically produce one of each type. Examples: office → paired + three_piece (no complete sets); beach → paired only; wedding ceremony → all three can work. The architect consults a per-occasion structure table in the prompt to decide.
+
+### Style-stretch direction
+
+For broad occasion requests with 3 directions, the third direction pushes the user's style one notch beyond their comfort zone — blending in an adjacent archetype's vocabulary. Scaled by `riskTolerance`. The stretch MUST still satisfy all occasion calibration constraints (fabric, formality, embellishment, AvoidColors are not relaxable).
+
+### Retrieval count guidance
+
+| Request type | retrieval_count |
+|---|---|
+| Broad occasion (2–3 directions) | 12 |
+| Specific single-garment | 6 |
+| Anchor garment | 8–10 |
+| Follow-up: more_options | 10–15 |
+| Follow-up: change_color / similar / full_alternative | 12 |
+
+The architect does not inflate retrieval_count to compensate for low inventory.
+
+### live_context wiring (Phase 13)
+
+`_build_user_payload()` sends a `live_context` block to the LLM containing:
+- `weather_context` — free-form weather signal from the planner ("rainy", "humid", "cold")
+- `time_of_day` — free-form time signal ("morning", "evening", "late night")
+- `target_product_type` — when set, single-garment mode ("show me shirts")
+
+These fields are added to `LiveContext` in `schemas.py` and wired from `CopilotResolvedContext` via `_build_effective_live_context()` in the orchestrator.
+
+### Ranking bias (Phase 13B)
+
+The `resolved_context` includes a `ranking_bias` field: `conservative | balanced | expressive | formal_first | comfort_first`. Set by the architect based on the user's riskTolerance and request framing. Downstream reranker wiring is planned for Phase 14.
 
 ### Catalog inventory awareness
 
-The architect receives a `catalog_inventory` snapshot: a list of `{gender_expression, garment_category, garment_subtype, styling_completeness, count}` entries showing what the catalog currently carries. The architect MUST consult this before choosing garment subtypes, preferring subtypes with deeper inventory (more items = better embedding matches) and avoiding subtypes with zero or very low counts (< 5).
+The architect receives a `catalog_inventory` snapshot. **Occasion fit takes priority over inventory depth** — if the occasion calls for a specific garment type and the catalog has at least 1 item, the architect includes it. When the ideal subtype has < 3 items, a fallback direction with a higher-inventory alternative is added (replacing the lowest-confidence direction if that would exceed 3 total). **Hard constraint:** subtypes with zero items in inventory must never be used — the search will return zero results, wasting a direction. This is reinforced in both the Catalog Awareness rules and the subtype diversification rule.
 
-### Resolved context output
+### Search timeout resilience (Post-13B)
 
-The architect also outputs a `resolved_context` block (occasion_signal, formality_hint, time_hint, specific_needs, is_followup, followup_intent) that captures its interpretation of the user's request. This resolved context is used downstream for response messaging and follow-up tracking.
+The catalog search agent (`catalog_search_agent.py`) runs parallel vector similarity RPCs via ThreadPoolExecutor. Staging validation revealed intermittent Supabase statement timeouts (error 57014) when 7 concurrent queries hit the DB. Fix: `_MAX_SEARCH_WORKERS` reduced from 4 to 2, and `_search_one` retries once on timeout (0.5s delay) before returning empty. Without this, timed-out queries silently return 0 products, cascading into 1-outfit responses.
 
-### Concept-first paired planning
+### Occasion calibration — formality, fabric, embellishment
 
-For paired directions, the architect LLM uses a concept-first approach as instructed by the system prompt:
+A single reference table in the prompt governs formality level, fabric vocabulary, and embellishment level/type/zone per sub-occasion (wedding ceremony vs engagement vs sangeet vs cocktail vs **formal office** vs **daily office** vs casual). "Office / business" is split: formal office (meetings, presentations → paired + three_piece with blazer) vs daily office (everyday/routine → paired only, no blazer). Default is daily_office when the context is generic. Key rules:
+- Occasion overrides style preference for fabric
+- Weather overrides occasion for fabric weight/breathability (hot wedding → silk/crepe, NOT velvet)
+- Semantic fabric clusters used in query documents (multi-term phrases for broader embedding match)
+- Embellishment level is the key differentiator between "too much" and "not festive enough"
 
-1. **Define the outfit vision first**: The LLM decides the overall color scheme, volume balance, pattern distribution, and fabric story as one coherent concept.
-2. **Decompose into role-specific queries**: The top query and bottom query have DIFFERENT, COMPLEMENTARY parameters derived from the concept.
+### Concept-first planning
 
-Key concept rules (instructed in `prompt/outfit_architect.md`):
+For `paired` and `three_piece` directions, the architect defines the outfit vision (color scheme, volume balance, pattern distribution, fabric story) as one coherent concept BEFORE decomposing into role-specific queries. **Each direction must be a genuinely different outfit concept** — different garment subtypes, different color families, or different silhouette approaches — because the downstream diversity pass (`_enforce_cross_outfit_diversity`, `MAX_PRODUCT_REPEAT_PER_RUN=1`) eliminates outfits that share products. Similar query documents → overlapping retrieval → only 1 surviving outfit. **Role-level subtype diversification:** when multiple directions share a role (e.g., all need a top), vary `GarmentSubtype` across directions using only subtypes present in `catalog_inventory` (e.g., shirt/tshirt/sweater for daily office). Key rules:
+- **Color:** BaseColors → anchors (bottoms, outerwear); AccentColors → statement (tops). AvoidColors are never used. **Color synonym expansion** in PrimaryColor/SecondaryColor fields (e.g., "terracotta, rust, burnt orange, warm brick").
+- **Volume:** top and bottom create visual balance using FrameStructure data.
+- **Pattern:** typically one patterned piece + one solid.
+- **Fabric:** governed by occasion calibration; all pieces in premium fabrics for ceremonial occasions.
 
-**Color coordination** — Use the user's `BaseColors` for anchor pieces (bottoms, outerwear) and `AccentColors` for statement pieces (tops, accessories). Never select items in colors from the user's `AvoidColors` list unless the user explicitly requested that color. Top and bottom should have contrasting or complementary colors, NOT identical colors. When multiple seasonal groups are present, prefer colors from the intersection of palettes for safe choices, or from any single group for bolder options.
+### Anchor garment handling
 
-**Volume balance** — Top and bottom should create visual balance. If one piece is relaxed/oversized, the other should be slim/fitted. Uses the user's FrameStructure to decide which piece gets more volume.
-
-**Pattern distribution** — Typically ONE piece carries the pattern and the other is solid. Pattern usually goes on top unless the user requests otherwise. Both patterned only for high risk-tolerance users.
-
-**Fabric coordination** — Formal → both structured. Smart casual → top relaxed, bottom structured. Casual → top relaxed, bottom balanced.
-
-The paired top and bottom queries MUST have different PrimaryColor, VolumeProfile, PatternType, and FabricDrape values reflecting the coordinated outfit concept. This is enforced by the LLM prompt, not by deterministic code.
-
-Complete outfit directions are NOT affected by the concept layer — they use uniform parameters.
-
-### Style archetype override
-
-The user's saved `style_preference` (primaryArchetype, secondaryArchetype) is the **default starting point**, not a hard constraint. If the user's message or conversation history explicitly mentions a different style archetype or aesthetic direction (e.g., "show me something Creative", "I want a streetwear look"), the architect MUST use the requested style instead of the saved profile preference.
-
-This applies to all style-related signals: archetype, risk tolerance, pattern preference, formality lean. The user's live request always takes priority over their saved profile.
-
-The override is enforced in the architect system prompt (`prompt/outfit_architect.md`) and reflected in the response message via `_extract_plan_archetype()` in the response formatter, which reads the actual `style_archetype_primary` value from the plan's query documents rather than the user profile.
+When the user wants to build around an existing piece (`anchor_garment`), the architect:
+1. Skips the anchor's garment_category role
+2. Uses anchor attributes to guide complementary searches
+3. Chooses direction structure based on what the anchor fills (top anchor → paired bottom or three_piece; outerwear anchor → paired top+bottom, no three_piece)
+4. If anchor formality conflicts with occasion, shifts supporting garments UP in formality to compensate
 
 ### Query document format
 
-The architect's `query_document` should mirror the catalog embedding representation:
-- structured labeled sections
-- consistent vocabulary
-- not freeform paragraph-only output
+7 sections mirroring the catalog embedding vocabulary: `USER_NEED`, `PROFILE_AND_STYLE`, `GARMENT_REQUIREMENTS`, `EMBELLISHMENT`, `VISUAL_DIRECTION`, `FABRIC_AND_BUILD`, `PATTERN_AND_COLOR`, `OCCASION_AND_SIGNAL`. Values are concise (single terms or comma-separated lists, not prose). Inapplicable fields are omitted (not filled with "not_applicable") for cleaner embedding signal. Per-role omission: bottom queries omit NecklineType, NecklineDepth, ShoulderStructure, SleeveLength.
 
-Required sections:
-- `USER_NEED`
-- `PROFILE_AND_STYLE`
-- `GARMENT_REQUIREMENTS`
-- `FABRIC_AND_BUILD`
-- `PATTERN_AND_COLOR`
-- `OCCASION_AND_SIGNAL`
+### Style archetype override
 
-### Follow-up intent handling in planner
+The user's saved style_preference is the default. If the user's live message mentions a different style, the architect uses the requested style instead. Enforced in `prompt/outfit_architect.md`.
 
-The architect receives enriched prior recommendation context via `combined_context.previous_recommendations`, which includes:
-- `primary_colors`, `garment_categories`, `garment_subtypes`, `roles`
-- `occasion_fits`, `formality_levels`, `pattern_types`, `volume_profiles`, `fit_types`, `silhouette_types`
+### Thinking directions
 
-Follow-up intent effects on planning:
-- `increase_boldness` — shifts query vocabulary toward bolder choices
-- `decrease_formality` / `increase_formality` — adjusts target formality
-- `change_color` — chooses different colors from the same seasonal group(s) while preserving occasion, formality, garment subtypes, silhouette, volume, fit, and direction structure
-- `full_alternative` — requests entirely different direction
-- `more_options` — requests additional candidates in same direction
-- `similar_to_previous` — preserves garment subtypes, colors, formality, occasion, volume, fit, silhouette, and direction structure; variation comes from different products, not changed parameters
+The architect reasons along four axes (physical+color, user comfort, occasion appropriateness, weather/time) and identifies which 1–2 dominate for each request. This section sits in the prompt after resolved_context rules, before direction rules, so it frames all downstream decisions.
 
-### Output format
+### Follow-up intent handling
 
-Return strict JSON.
+The architect receives `previous_recommendations` with structured fields: `primary_colors`, `garment_categories`, `garment_subtypes`, `roles`, `occasion_fits`, `formality_levels`, `pattern_types`, `volume_profiles`, `fit_types`, `silhouette_types`.
 
-Do not parse marker-delimited text.
+Follow-up intent effects:
+- `change_color` — different colors, preserves `occasion_fits`, `formality_levels`, `garment_subtypes`, `silhouette_types`, `volume_profiles`, `fit_types`
+- `similar_to_previous` — preserves all dimensions including `primary_colors`; variation from different products
+- `increase_boldness` / `decrease_formality` / `increase_formality` — adjusts target parameters
+- `full_alternative` — entirely different direction
+- `more_options` — additional candidates in same direction
+
+**Tiebreaker:** When the message matches multiple intents, priority: change_color > increase/decrease_formality > increase_boldness > full_alternative > similar_to_previous > more_options.
 
 ## 8. Catalog Search Agent
 

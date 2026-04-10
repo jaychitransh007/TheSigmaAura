@@ -1,6 +1,6 @@
 # Workflow Reference — Intent Execution Flows
 
-Last updated: April 8, 2026 (Phase 12E close-out)
+Last updated: April 10, 2026 (Phase 13B close-out — outfit architect prompt & schema remediation)
 
 > **What this is (and isn't):** This is **reference documentation for humans
 > reading the codebase**. It describes how each intent is executed by the
@@ -94,9 +94,38 @@ The visual evaluator scores **5 dimensions for every candidate** and **4 dimensi
 - Buy/skip verdict is `(body + color + style) / 3` against the standard thresholds (>=78 buy, >=60 conditional, else skip).
 - If the user follows up with "Actually, for the office tomorrow when it's 5°C," the next turn re-scores with `occasion_pct` and `weather_time_pct` populated.
 
+### Phase 13/13B: Outfit Architect Prompt & Schema Remediation (April 10, 2026)
+
+Scope: correctness, robustness, and retrieval quality improvements to the architect prompt (`prompt/outfit_architect.md`) and its code wrapper. No new pipeline components — this hardens the planning stage.
+
+| Change | Impact |
+|---|---|
+| `live_context` wired to architect | `weather_context`, `time_of_day`, `target_product_type` now reach the LLM via `_build_user_payload()`. Added to `LiveContext` schema, wired in `_build_effective_live_context()`. |
+| `ranking_bias` field | New field on `ResolvedContextBlock`: `conservative / balanced / expressive / formal_first / comfort_first`. Architect sets it based on riskTolerance and request framing. Downstream reranker wiring in Phase 14. |
+| Occasion-driven structure selection | Removed contradictory "exactly 3, one of each" rule. Architect now creates 2–3 directions using only structures appropriate for the occasion. |
+| Style-stretch direction | Third direction pushes user's style one notch beyond comfort zone, gated by riskTolerance. Hard-guarded: fabric/formality/embellishment/AvoidColors not relaxable. |
+| Weather-fabric override | Weather overrides occasion for fabric weight/breathability. Hot/humid wedding → silk/crepe not velvet. |
+| Occasion calibration consolidation | Merged 3 overlapping sections (Sub-Occasion Calibration + Embellishment Reasoning + Occasion-Fabric Coupling) into one reference table. |
+| Anchor conflict resolution | Rules for every anchor category (top/bottom/outerwear/complete). Formality conflict rule: shift supporting garments up. |
+| Query doc completeness | Changed from "write not_applicable" to "omit inapplicable fields" for cleaner embedding signal. Per-role omission guide. |
+| Retrieval count guidance | Per-request-type table (12 broad, 6 single-garment, 8–10 anchor, 10–15 more_options). |
+| Follow-up intent tiebreaker | Priority: change_color > increase/decrease_formality > increase_boldness > full_alternative > similar_to_previous > more_options. |
+| Follow-up field mapping | change_color and similar_to_previous rules now reference exact schema field names from previous_recommendations. |
+| Inventory starvation fix | Occasion fit > inventory count. Subtypes with ≥1 item are usable. Fallback direction for < 3 items (replaces lowest-confidence direction if exceeding 3 total). |
+| Color synonym expansion | PrimaryColor/SecondaryColor use comma-separated synonyms (e.g., "terracotta, rust, burnt orange"). |
+| Semantic fabric clusters | FabricTexture/FabricDrape use multi-term phrases for broader embedding match. |
+| Thinking Directions position | Moved to after resolved_context rules, before Direction Rules — framing lens, not postscript. |
+| `DirectionSpec.direction_type` | Comment updated to `# complete | paired | three_piece` |
+| Direction differentiation | Query documents across directions must use noticeably different vocabulary. Similar docs → overlapping retrieval → diversity pass (`MAX_PRODUCT_REPEAT_PER_RUN=1`) drops candidates → only 1-2 outfits survive. Reinforced in Query Document Format and Concept-First Planning sections. |
+| Subtype diversification | When multiple directions share a role, vary GarmentSubtype — but only using subtypes present in `catalog_inventory`. Staging showed LLM chose `polo` (0 in catalog), wasting a direction. |
+| Office sub-occasion split | "Office / business" split into "Formal office" (paired + three_piece) and "Daily office" (paired only). `daily_office` occasion_signal added. Default: daily_office unless meetings/presentations mentioned. |
+| Search timeout retry | `_MAX_SEARCH_WORKERS` 4→2, 1 retry on timeout (error 57014) with 0.5s delay. Staging showed 7 concurrent vector RPCs caused intermittent statement timeouts → 0 products for timed-out queries → 1-outfit responses. |
+
+Tests: 127 passing (6 new regression tests added for live_context payload, ranking_bias, three_piece).
+
 ### What stays the same
 
-The architect (`OutfitArchitect`), catalog search agent (`CatalogSearchAgent`), assembler (`OutfitAssembler`), response formatter (`ResponseFormatter`), try-on service (`TryonService`), and try-on quality gate (`TryonQualityGate`) are unchanged in their core responsibilities. Phase 12 added new components alongside them and changed the **order** of pipeline stages, not the per-stage logic.
+The catalog search agent (`CatalogSearchAgent`) now has timeout retry logic but its core responsibility (embed → search → hydrate) is unchanged. The assembler (`OutfitAssembler`), response formatter (`ResponseFormatter`), try-on service (`TryonService`), and try-on quality gate (`TryonQualityGate`) are unchanged. Phase 12 added new components alongside them; Phase 13/13B hardened the architect's planning quality and search resilience without changing the pipeline shape.
 
 ### How to read the per-intent sections below
 
@@ -181,7 +210,7 @@ User message
    │   ├── Step 2: parallel search+hydrate via ThreadPoolExecutor (4 workers)
    │   ├── Hard filters: gender_expression (always), garment_subtype (conditional); styling_completeness from direction role; garment_category is soft signal only
    │   ├── Soft signals via embedding similarity: all 46 enrichment attributes including embellishment, visual direction, occasion, formality, color
-   │   ├── No filter relaxation — single search pass, no retry
+   │   ├── No filter relaxation — single search pass, 1 retry on timeout (Post-13B)
    │   ├── Retrieve: 12 products per query direction
    │   └── Hydrate: product_id → catalog_enriched row
    │

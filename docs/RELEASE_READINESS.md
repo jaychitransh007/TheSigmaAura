@@ -21,8 +21,12 @@ The companion artifacts are:
 The pipeline must produce a usable answer for every primary intent without
 manual intervention.
 
-- [ ] All 318 tests across `tests/` pass against the current branch
-      (verified April 10, 2026: three outfit structures + all 46 attributes
+- [ ] All tests across `tests/` pass against the current branch
+      (verified April 10, 2026: 127 in test_agentic_application + 3 in
+      test_architecture_boundaries + 36 in test_qna_messages.
+      Phase 13/13B added 6 regression tests: live_context payload,
+      ranking_bias schema/parsing, three_piece direction, anchor payload.
+      Prior scope: three outfit structures + all 46 attributes
       in query docs + parallel retrieval ~4x speedup + occasion-fabric
       coupling + time-of-day inference + role-category validation +
       outerwear recategorization + plan_type removed + catalog 14,296
@@ -135,5 +139,4 @@ These are explicit non-goals — do not block the release on them:
 - WhatsApp inbound runtime (deliberately removed; rebuilding separately)
 - Virtual try-on feedback loop (P2 — try-on quality complaints handler)
 - First-50 recurring-intent analysis dashboard (separate workstream)
-- Pairing-pipeline anchor enforcement edge cases (architect-side queries
-  for the anchor's role still slip through occasionally)
+- ~~Pairing-pipeline anchor enforcement edge cases~~ — **resolved in Phase 13** (April 10, 2026): anchor rules 4–6 added to the architect prompt covering every anchor category (top/bottom/outerwear/complete) with explicit direction structure constraints and formality conflict resolution. The architect now skips the anchor's role and chooses direction types based on what the anchor fills.

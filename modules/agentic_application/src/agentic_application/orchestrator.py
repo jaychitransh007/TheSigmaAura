@@ -556,6 +556,9 @@ class AgenticOrchestrator:
                 specific_needs=resolved_context.specific_needs,
                 is_followup=resolved_context.is_followup,
                 followup_intent=resolved_context.followup_intent,
+                weather_context=str(getattr(resolved_context, "weather_context", "") or ""),
+                time_of_day=str(getattr(resolved_context, "time_of_day", "") or ""),
+                target_product_type=str(getattr(resolved_context, "target_product_type", "") or ""),
             )
 
         last_live_context = dict(previous_context.get("last_live_context") or {})
@@ -580,6 +583,9 @@ class AgenticOrchestrator:
             specific_needs=merged_specific_needs,
             is_followup=True,
             followup_intent=resolved_context.followup_intent or "catalog_followup",
+            weather_context=str(getattr(resolved_context, "weather_context", "") or last_live_context.get("weather_context") or ""),
+            time_of_day=str(getattr(resolved_context, "time_of_day", "") or last_live_context.get("time_of_day") or ""),
+            target_product_type=str(getattr(resolved_context, "target_product_type", "") or last_live_context.get("target_product_type") or ""),
         )
 
     def create_conversation(
