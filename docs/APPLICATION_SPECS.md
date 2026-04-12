@@ -53,7 +53,7 @@ Implemented now:
 - persisted turn artifacts: live context, memory, plan, applied filters, retrieved IDs, assembled candidates, final recommendations
 - response formatting for recommendation-pipeline turns (max 3 outfits) with 16-field item cards; dedicated handlers can return bounded multi-look outputs beyond that
 - virtual try-on via Gemini (`gemini-3.1-flash-image-preview`) with parallel generation, quality gate, persistent disk + DB storage (`virtual_tryon_images` table), and cache reuse by user + garment ID set
-- 3-column PDP outfit cards with Buy Now, single split polar bar chart (Nightingale-style: top semicircle = 8-axis style archetype profile in purple, bottom semicircle = dynamic 5-9 axis fit/evaluation profile in burgundy, dashed horizontal divider between them, evaluation values × analysis_confidence_pct), icon feedback (save/like/dislike)
+- 2-column PDP outfit cards (hero 3:4 aspect `object-fit: cover` + 36% info panel) with click-to-cycle hero + `1/N` counter badge, split polar bar chart (Nightingale-style: top semicircle = 8-axis style archetype profile in champagne `--signal`, bottom semicircle = dynamic 5-9 axis fit/evaluation profile in oxblood `--accent`, colours read from CSS custom properties via `getComputedStyle` so they flip for dark mode), feedback strip at bottom (heart SVG icon for like + "What would you change?" inline textarea with reaction chips for constructive dislike feedback)
 - `analysis_confidence_pct` — attribute-level analysis confidence used to scale evaluation scores at render time
 - per-outfit feedback capture with turn-level correlation
 - wardrobe ingestion from chat with vision-API enrichment and dual-layer image moderation
@@ -70,17 +70,18 @@ Implemented now:
 - restricted category exclusion in catalog retrieval
 - conversation management: rename (PATCH) and delete/archive (DELETE) endpoints with sidebar UI
 - wardrobe edit modal (all metadata fields) and per-card delete with confirmation
-- wardrobe search bar, enhanced category filter chips (8), color filter row (11), localStorage persistence
+- wardrobe: borderless 5-column closet grid, uppercase tracked label filter chips, hairline-underline search, right-edge Add Item drawer, per-card edit/delete as hover-reveal text buttons, localStorage filter persistence
 - dependency/retention instrumentation (turn-completion events, cohort anchors, memory-input lift)
 - follow-up turns with 7 follow-up intent types
 - `response_type` field: `"recommendation"` | `"clarification"`
 - quick-reply suggestion chips for clarification responses
-- unified profile page with inline editing, style code, and color palette display
-- chat composer + button with upload image / wardrobe picker popover
-- wardrobe add-item modal — photo-only upload with auto-enrichment (46 attributes via vision API)
+- profile as style dossier: display-xl Fraunces name hero, italic adjective list, champagne signal rule on palette card, underline-only edit inputs, theme toggle, flat analysis badges
+- chat: italic Fraunces welcome headline, borderless stylist bubbles (2px ink left rule on agent copy), ⌘K history rail toggle, follow-up uppercase bucket headers, stylist-voice stage messages (one-per-poll advance), 960px feed width
+- header nav: 56px, uppercase tracked label links with ink underline active state, Chat · Wardrobe · Looks · Saved · Trial Room
+- wardrobe add-item drawer (right-edge slide) — photo-only upload with auto-enrichment (46 attributes via vision API)
 - catalog pipeline: auto-generated product_id from URL for CSVs lacking the column
-- results page with outfit preview thumbnails from outfits[].items[].image_url
-- unified warm/burgundy design system across onboarding, processing, main app, and admin
+- Looks page (formerly Results): 3-column lookbook grid with full-bleed image cards, Fraunces italic title overlaid bottom-left, uppercase source/intent labels, staggered entrance animation; read-time hydration for historical turns missing outfits in `resolved_context_json`
+- Confident Luxe design system across onboarding, processing, main app, and admin — ivory `#F7F3EC` canvas, oxblood `#5C1A1B` accent, champagne `#C6A15B` signal (personal cues only), Fraunces (display) + Inter (body) + JetBrains Mono (labels), hairline borders replacing shadows on static cards, full dark mode parity via `[data-theme="dark"]`, motion system (single easing curve, 120/240/480ms durations, view-enter fade+rise, runway label track-in, staggered Looks grid entrance, `prefers-reduced-motion` override)
 
 Remaining work is now concentrated in hardening and live-environment validation rather than core intent/runtime capability gaps. See `docs/CURRENT_STATE.md` for the execution checklist.
 

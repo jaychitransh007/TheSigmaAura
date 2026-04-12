@@ -88,10 +88,13 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         html = resp.text
         self.assertIn("Sigma Aura", html)
         # Phase 11A: the legacy "Agent Processing Stages" header was
-        # replaced with a subtle stage bar driven by latestVisibleStage
-        # in JS. Assert the new artifacts.
+        # replaced with a subtle stage bar driven by visibleStages() in JS.
+        # Phase 14 follow-up (stage advance fix): the renderer now walks
+        # stages one-per-poll via shownIdx so every stage gets dwell time
+        # on screen, not just the longest-running one.
         self.assertIn("renderStages", html)
-        self.assertIn("latestVisibleStage", html)
+        self.assertIn("visibleStages", html)
+        self.assertIn("shownIdx", html)
         self.assertIn("Logout", html)
         # Legacy admin/debug controls should NOT appear in the user-facing shell
         self.assertNotIn("Strictness", html)
@@ -400,11 +403,18 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         # Top + bottom semicircle calls (start angles π and 0, both spanning π)
         self.assertIn("// start at 9 o'clock", html)
         self.assertIn("// start at 3 o'clock", html)
-        # Both colors present (purple for archetype, burgundy for fit)
-        self.assertIn("rgba(127, 119, 221, 0.38)", html, "archetype fill colour missing")
-        self.assertIn("rgba(139, 48, 85, 0.35)", html, "fit fill colour missing")
-        self.assertIn("#7F77DD", html, "archetype stroke colour missing")
-        self.assertIn("#8B3055", html, "fit stroke colour missing")
+        # Phase 14 Confident Luxe refresh: the chart colours are now
+        # read from CSS custom properties (--signal-rgb for the archetype
+        # semicircle, --accent-rgb for the criteria semicircle) so the
+        # chart follows the Confident Luxe palette and flips for dark
+        # mode without re-rendering. The old hardcoded purple/burgundy
+        # literals must be gone.
+        self.assertIn('getPropertyValue("--signal-rgb")', html, "archetype colour must read --signal-rgb")
+        self.assertIn('getPropertyValue("--accent-rgb")', html, "criteria colour must read --accent-rgb")
+        self.assertIn("signalStroke", html, "champagne stroke variable missing")
+        self.assertIn("accentStroke", html, "oxblood stroke variable missing")
+        self.assertNotIn("#7F77DD", html, "legacy purple archetype literal must be retired")
+        self.assertNotIn("#8B3055", html, "legacy burgundy criteria literal must be retired")
         # Legend was removed — the axis labels themselves are already
         # color-coded, so the "Style profile" / "Fit profile" caption
         # below the chart is redundant. Make sure it stays gone.

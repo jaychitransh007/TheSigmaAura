@@ -9,27 +9,70 @@ def get_catalog_admin_html() -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <script>(function(){try{var t=localStorage.getItem("aura_theme");if(!t){t=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light";}document.documentElement.setAttribute("data-theme",t);}catch(e){}}());</script>
   <title>Aura Catalog Admin</title>
   <style>
+    /* ===== Confident Luxe tokens — see docs/DESIGN.md ===== */
     :root {
-      --bg: #f6f0ea;
-      --surface: #fffaf5;
-      --ink: #201915;
-      --muted: #6e655f;
-      --line: #dfd1c4;
-      --accent: #6f2f45;
-      --accent-soft: #f3e6ea;
-      --warn: #b08a4e;
+      --canvas: #F7F3EC;
+      --surface: #FDFBF6;
+      --surface-sunk: #EEE8DD;
+      --bg: #F7F3EC;
+      --ink: #16110E;
+      --ink-2: #2E2824;
+      --ink-3: #6B635C;
+      --ink-rgb: 22, 17, 14;
+      --muted: #6B635C;
+      --line: #E1D8C9;
+      --line-strong: #C9BCA8;
+      --accent: #5C1A1B;
+      --accent-soft: #7A2A2C;
+      --accent-rgb: 92, 26, 27;
+      --signal: #C6A15B;
+      --signal-rgb: 198, 161, 91;
+      --warn: #C6A15B;
+      --on-accent: #FDFBF6;
+      --danger: #8A2A2A;
+      --danger-rgb: 138, 42, 42;
+      --shadow-rgb: 22, 17, 14;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 14px;
+      --ease: cubic-bezier(.2, .7, .1, 1);
+      --dur-1: 120ms;
+    }
+    [data-theme="dark"] {
+      --canvas: #0E0B09;
+      --surface: #15110E;
+      --surface-sunk: #0A0806;
+      --bg: #0E0B09;
+      --ink: #F4EFE5;
+      --ink-2: #D8D1C3;
+      --ink-3: #8A8176;
+      --ink-rgb: 244, 239, 229;
+      --muted: #8A8176;
+      --line: #2A231D;
+      --line-strong: #3A312A;
+      --accent: #B34548;
+      --accent-soft: #C95A5D;
+      --accent-rgb: 179, 69, 72;
+      --signal: #D6B373;
+      --signal-rgb: 214, 179, 115;
+      --warn: #D6B373;
+      --on-accent: #F4EFE5;
+      --danger: #B3544F;
+      --danger-rgb: 179, 84, 79;
+      --shadow-rgb: 0, 0, 0;
     }
     body {
       margin: 0;
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-family: "Inter", -apple-system, "Helvetica Neue", sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
       color: var(--ink);
-      background:
-        radial-gradient(circle at top left, rgba(184, 139, 150, 0.22), transparent 28%),
-        radial-gradient(circle at 85% 12%, rgba(176, 138, 78, 0.14), transparent 24%),
-        linear-gradient(180deg, #fbf6f1 0%, var(--bg) 42%, #f1e6da 100%);
+      background: var(--canvas);
+      -webkit-font-smoothing: antialiased;
     }
     .wrap {
       max-width: 1240px;
@@ -39,8 +82,7 @@ def get_catalog_admin_html() -> str:
     .hero, .panel, .step {
       background: var(--surface);
       border: 1px solid var(--line);
-      border-radius: 16px;
-      box-shadow: 0 8px 24px rgba(20, 20, 20, 0.05);
+      border-radius: var(--radius-md);
     }
     .hero {
       padding: 20px;
@@ -48,7 +90,7 @@ def get_catalog_admin_html() -> str:
     }
     .hero h1 {
       margin: 0 0 8px;
-      font-family: "Cormorant Garamond", serif;
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
       font-size: 32px;
       font-weight: 600;
     }
@@ -85,7 +127,7 @@ def get_catalog_admin_html() -> str:
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 10px 12px;
-      background: #fff;
+      background: var(--surface);
       font-size: 14px;
     }
     .btns {
@@ -100,10 +142,10 @@ def get_catalog_admin_html() -> str:
       font-weight: 700;
       cursor: pointer;
       background: var(--accent);
-      color: #fff;
+      color: var(--on-accent);
     }
     button.secondary {
-      background: #fff;
+      background: var(--surface);
       color: var(--ink);
       border-color: var(--line);
     }
@@ -117,7 +159,7 @@ def get_catalog_admin_html() -> str:
       border: 1px solid var(--line);
       border-radius: 12px;
       padding: 12px;
-      background: #fff;
+      background: var(--surface);
     }
     .metric .label {
       font-size: 12px;
@@ -158,7 +200,7 @@ def get_catalog_admin_html() -> str:
     }
     .upload-item {
       padding: 10px 0;
-      border-bottom: 1px dashed #e8e1d7;
+      border-bottom: 1px dashed var(--line);
       font-size: 13px;
     }
     .upload-item:last-child {
@@ -174,7 +216,7 @@ def get_catalog_admin_html() -> str:
       margin-top: 12px;
       border: 1px dashed var(--line);
       border-radius: 12px;
-      background: #fff;
+      background: var(--surface);
       padding: 12px;
       min-height: 80px;
       white-space: pre-wrap;

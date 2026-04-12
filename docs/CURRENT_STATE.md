@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: April 11, 2026 (Color analysis overhaul: 12 sub-season typing, draping removed, BodyShape→silhouette mapping, anti-hedging calibration, FrameStructure fix, onboarding reorder + incremental save + resume flow, phased analysis, search timeout retry)
+Last updated: April 11, 2026 (Phase 14: Confident Luxe design refinement planned — ivory + oxblood + Fraunces (free OFL) + Inter, tonal moments, dark mode; Color analysis overhaul: 12 sub-season typing, draping removed, BodyShape→silhouette mapping, anti-hedging calibration, FrameStructure fix, onboarding reorder + incremental save + resume flow, phased analysis, search timeout retry)
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -41,10 +41,10 @@ Project status:
 - wardrobe: ingestion, enrichment, retrieval, wardrobe-first occasion response, full CRUD UI (add/edit/delete), enhanced filters (search, category, color), and completeness scoring implemented
 - WhatsApp: removed from current codebase (previously had formatting and deep linking; runtime was never built)
 - safety: dual-layer image moderation (heuristic + vision), restricted category exclusion, try-on quality gate implemented
-- web UI: modern chat-first interface with unified warm/burgundy design across onboarding, profile analysis, main app, and admin; 4-tab layout (Chat / Wardrobe / Wishlist / Trial Room)
-- profile: unified view + edit page with inline editing toggle, style code card, and personalized color palette card (base/accent/avoid)
-- wardrobe: seamless "+Add Item" modal — photo-only upload with auto-enrichment (46 attributes via vision API); edit modal for all metadata fields; per-card delete with confirmation
-- wardrobe filters: search bar (title/description/brand/category), category chips (8 including Dresses, Outerwear, Accessories), color filter row (11 colors), localStorage persistence
+- web UI: Confident Luxe design system (Phase 14) — ivory/oxblood/champagne palette, Fraunces + Inter + JetBrains Mono, hairline borders, full dark mode, motion system; 5-tab nav (Chat / Wardrobe / Looks / Saved / Trial Room) with 56px header and uppercase tracked label links
+- profile: style dossier with display-xl name hero, italic adjective list, champagne signal rule on palette card, theme toggle, underline-only edit inputs
+- wardrobe: borderless 5-column closet grid with right-edge Add Item drawer — photo-only upload with auto-enrichment (46 attributes via vision API); edit modal with underline inputs; hover-reveal edit/delete text buttons
+- wardrobe filters: hairline-underline search, uppercase tracked label category chips (8), color filter row (11 colors), localStorage persistence
 - chat management: conversation rename (inline edit) and delete (archive) with hover-reveal sidebar actions; `title` column on conversations table
 - virtual try-on: persistent storage with cache reuse — images saved to disk + `virtual_tryon_images` table, mapped by user + garment IDs + source; same garment combination returns cached result without re-generation
 - chat composer: `+` button popover with "Upload image" and "Select from wardrobe" options; drag-drop and paste support
@@ -1026,7 +1026,174 @@ Checklist:
 Success criteria:
 - we can say with evidence whether users are forming a real pre-buy / pre-dress dependency on the system
 
+## Phase 14: Confident Luxe Design Refinement (P0 — Current)
+
+**Goal:** migrate the live UI from the legacy warm-cream + rose-wine direction to the refined "Confident Luxe" token set defined in `docs/DESIGN.md` (§ Brand Direction — Confident Luxe). Phase 11A delivered the stylist-studio *architecture* (information architecture, component vocabulary, tab model). Phase 14 replaces the *visual language* on top of that architecture so the surface reads as premium fashion authority rather than warm-craft boutique.
+
+**Why now:** user feedback on the current UI is that it reads "unprofessional and backward" — the architecture is sound but the palette (`#f6f0ea` cream + `#6f2f45` wine), the serif pairing (Cormorant Garamond + Avenir Next), the ambient drop shadows on static cards, and the lack of dark mode together carry a warm-craft feel instead of confident-luxe maison authority. The brand direction needs to shift without touching the backend or the information architecture.
+
+**Scope — visual language only:**
+- `modules/platform_core/src/platform_core/ui.py` — HTML, CSS, JS (~3,552 lines). This is where all chat / wardrobe / looks / profile surfaces live.
+- `modules/user/src/user/ui.py` — onboarding and OTP surfaces (~3,144 lines).
+- `modules/catalog/src/catalog/ui.py` — catalog admin (~578 lines). Admin surfaces can adopt the refined tokens but are not required to carry tonal moments.
+- `docs/DESIGN.md` — ✅ updated (refined brand direction, refined tokens, tonal moments, voice, dark mode).
+- `docs/DESIGN_SYSTEM_VALIDATION.md` — ✅ updated (new typography check, new colour check, new hairline-vs-shadow check, new dark-mode journey, new Confident Luxe tonal audit).
+
+**Out of scope (explicitly):**
+- backend, repositories, schemas, agents, pipelines, API endpoints
+- information architecture (tabs, views, CRUD flows) — Phase 11A stands
+- framework migration (the server-rendered f-string architecture stays)
+- new dependencies beyond Google Fonts (Fraunces, Inter, JetBrains Mono — all SIL OFL, zero paid fonts)
+
+### Step 1 — Token pass and typography swap (highest impact)
+
+This single step does 60–70% of the visual work. It touches only the top `<style>` block and the `<link rel="stylesheet">` head of each UI file.
+
+Checklist:
+- [ ] drop the refined CSS custom properties defined in `docs/DESIGN.md` § Example Semantic Tokens into the top of `platform_core/ui.py`, `user/ui.py`, and `catalog/ui.py` — one shared `:root` block per file for now (deduplication can come later)
+- [ ] add `[data-theme="dark"]` block with dark-mode token equivalents
+- [ ] preconnect and load Google Fonts: `Fraunces` (variable, with `opsz` and `SOFT` axes), `Inter` (variable), and `JetBrains Mono`. All SIL OFL. One preconnect + one stylesheet link.
+- [ ] replace `font-family: "Avenir Next", "Segoe UI", sans-serif` body rule with `"Inter", -apple-system, "Helvetica Neue", sans-serif`
+- [ ] replace `font-family: "Cormorant Garamond", Georgia, serif` display rule with `"Fraunces", "Cormorant Garamond", Georgia, serif` (Cormorant stays in the fallback stack so nothing regresses if the font fails to load)
+- [ ] retire every literal reference to `#f6f0ea`, `#efe6dc`, `#fffaf5`, `#6f2f45`, `#b88b96`, `#5f6a52`, `#b08a4e` in CSS strings — replace with the new `--canvas`, `--surface`, `--accent`, `--signal` variables. No literal hex values for retired tokens are permitted post-step.
+- [ ] remove drop shadows from static card rules (`.outfit-card`, `.closet-card`, `.profile-card`, etc.) — replace with `1px solid var(--line)`
+- [ ] keep shadows only on `.modal-box` (`--shadow-modal`), popovers (`--shadow-pop`), and `.composer-outer:focus-within`
+- [ ] implement a theme toggle stub (persists to `localStorage.aura_theme`, honours `prefers-color-scheme` on first load)
+- [ ] screenshot all primary surfaces at 1440 desktop and 390 mobile before/after — attach to the PR
+
+Verification:
+- legacy hex grep returns zero hits: `rg '#f6f0ea|#6f2f45|#b88b96|#efe6dc|#fffaf5|#5f6a52|#b08a4e' modules/**/ui.py`
+- Fraunces is the primary display family on every surface; Cormorant Garamond only appears in the fallback list, never as the first family
+- Inter is the primary body / UI family; Avenir Next only appears in the fallback list
+- screenshots show warm ivory canvas, espresso ink text, oxblood active states
+- full test suite still green: `python3 -m pytest tests/ -v`
+
+### Step 2 — Chat view rebuild (empty state, composer, bubbles, history drawer)
+
+Checklist:
+- [ ] rebuild the chat empty state: 72/76 display italic greeting (*"Good evening, {name}. What are we wearing."*), one body line, four uppercase label suggestions above the composer (`BUILD A LOOK · WHAT FITS ME · PLAN A TRIP · IS THIS WORTH BUYING`)
+- [ ] strip background + border from agent chat bubbles — render as flowing stylist copy directly on `--canvas`, with a 2px `--ink` avatar rule on the left margin
+- [ ] keep the user bubble but restyle: right-aligned, `--surface-sunk` background, `--radius-md`, no shadow
+- [ ] restyle composer: 14px radius, 1px `--line` border, `--shadow-pop` on focus only, 720 max-width, attachment chip row above textarea
+- [ ] replace the permanent 280px history sidebar with a drawer triggered by ⌘K and left-edge hover zone (keeping the same rename/archive affordances — `PATCH/DELETE /v1/conversations/{id}`)
+- [ ] outfit cards inline in chat: remove card borders, use 4:5 image, add `YOURS` / `SHOP` / `HYBRID` uppercase label, add 1px `--signal` rule on personalized cards only
+- [ ] follow-up groups render under `IMPROVE IT` / `SHOW ALTERNATIVES` / `SHOP THE GAP` uppercase headers (already driven by `follow_up_groups` in `response_formatter.py` — only the rendering changes)
+
+Verification:
+- empty state displays italic display type at 72/76
+- no agent bubble carries a background colour or shadow
+- history drawer opens via ⌘K and via left-edge hover, closes via Escape and backdrop click
+- Phase 11A "chat welcome screen with progressive disclosure" behaviour still works under the new visual
+
+### Step 3 — Wardrobe restyle (grid, filters, add-item drawer)
+
+Checklist:
+- [ ] rebuild wardrobe header: `display-lg` "Wardrobe" + mono item count + season/palette badge in `--signal`
+- [ ] convert filter row to uppercase label chips only — three rows: *Category · Color · Occasion*. Retire colour-pill backgrounds; active state = filled `--ink` on `--canvas`.
+- [ ] convert the search bar to a hairline-underline input positioned at the far right of the filter row
+- [ ] restyle closet cards: no border, no shadow, no background — just 4:5 photo + metadata below. Hover = image dims 4%, title underlines.
+- [ ] convert "+ Add Item" modal to a right-edge drawer (480px wide on desktop, full-screen on mobile). Photo upload top, underline-input metadata form below.
+- [ ] keep the edit and delete modals but restyle with the new tokens; modals keep centre-overlay pattern (don't migrate to drawer)
+- [ ] preserve all existing filter behaviour (`aura_wardrobe_filters` localStorage, `Occasion-ready` metadata match, category and colour logic) — only the rendering changes
+
+Verification:
+- closet cards carry zero box-shadow
+- `Occasion-ready` chip still filters by enrichment metadata (verify one `occasion_fit=wedding` item appears and one `everyday` item does not)
+- edit / delete backend calls still fire correctly (`PATCH` / `DELETE /v1/onboarding/wardrobe/items/{id}`)
+
+### Step 4 — Looks (results) rebuild as lookbook
+
+Checklist:
+- [ ] rename the "Results" tab to "Looks" in nav labels and view CSS class (`page-results` → `page-looks` OR keep class, change label — prefer keeping class to avoid churn)
+- [ ] two tabs inside Looks: `SAVED` and `HISTORY` (uppercase label type)
+- [ ] grid of outfit cards: full-bleed image, title in display type overlaid bottom-left with backdrop-blur, source pill (`YOURS` / `SHOP` / `HYBRID`) top-right in uppercase `label`
+- [ ] click = full-screen lookbook view: large image left, metadata + "why this works" commentary right, "open original chat" link below
+- [ ] verdict rendering for buy/skip responses: full-bleed product image + `Worth it.` / `Skip.` / `Maybe.` in 48/52 display italic + one `body` sentence of reasoning
+- [ ] preserve the split polar bar chart (style archetype + fit evaluation) — recolour axes to tokenised colours (`--accent` for fit, `--signal` for archetype, or inverse), not hardcoded `#7F77DD` / `#8B3055`
+
+Verification:
+- verdict cards render italic display type for the verdict word
+- split polar bar chart axes use CSS variables, not literal hex
+- saved looks still load from `virtual_tryon_images` / past recommendations via existing endpoints
+
+### Step 5 — Profile as style dossier
+
+Checklist:
+- [ ] hero: name in `display-xl` (72px), one-line style statement in `body`
+- [ ] three cards side-by-side on desktop, stacked on mobile: **Body** (shape + measurements), **Colour** (season + base / accent / avoid swatches — champagne 1px rule allowed here), **Style Code** (style adjectives rendered as oversized quote blocks in display italic, one per line, no punctuation)
+- [ ] add a "Recent signals" timeline below the three cards: what the system has learned (*"prefers midi over mini"*, *"leans minimalist in winter"*) — sourced from existing user analysis data
+- [ ] inline edit toggle stays, but becomes a per-card ghost text button, not a single page-level pencil
+- [ ] theme toggle lives here as a one-sentence affordance
+
+Verification:
+- style code adjectives render in display italic
+- swatches still reflect the user's base / accent / avoid palette from the existing colour palette system (P0 item from 2026-04-05)
+- edit mode still calls the existing profile PATCH endpoint
+
+### Step 6 — Dark mode polish + motion system
+
+Checklist:
+- [ ] verify every surface under `[data-theme="dark"]` — canvas, surface, surface-sunk, ink, lines, accent, signal, positive, negative
+- [ ] add the single motion easing curve and three duration tokens to the shared style block
+- [ ] add view-transition fade+rise on `body.view-X` switches using `--dur-3` + `--ease`
+- [ ] add the "runway program" track-in detail to section labels (uppercase labels animate in from 4–6px left) — once per view only, honour `prefers-reduced-motion`
+- [ ] add staggered entrance (60ms stagger, `--dur-2`) to outfit card grids in Looks
+- [ ] add stylist-voice loading copy: `Laying pieces on the table.`, `Looking through your closet.`, `Pairing this back for you.`, `Finding something that fits.` (driven by existing pipeline stage events)
+
+Verification:
+- dark mode parity on every primary surface (home, chat, wardrobe, looks, profile, product sheet, all modals)
+- `prefers-reduced-motion: reduce` disables all stagger and track-in motion
+- no animation uses a curve other than `--ease`
+- no duration outside `--dur-1 / --dur-2 / --dur-3`
+
+### Success criteria (entire phase)
+
+- the light-mode surface reads as confident-luxe maison, not warm-craft boutique
+- dark mode parity is complete across every primary surface
+- zero legacy hex values remain in the CSS for retired tokens
+- Cormorant Garamond and Avenir Next appear only as font fallbacks, never as the primary family
+- no static card carries a drop shadow
+- the `docs/DESIGN_SYSTEM_VALIDATION.md` checklist (updated for Confident Luxe) is fully green on both 375 mobile and 1440 desktop, in both light and dark mode
+- the full test suite (`python3 -m pytest tests/ -v`) remains green — Phase 14 is a visual-language change and must not regress any backend behaviour
+- user feedback on "unprofessional / backward" no longer applies
+
+### Risks and mitigations
+
+- **Font licensing.** Resolved: the full target stack (Fraunces, Inter, JetBrains Mono) is SIL OFL and served by Google Fonts. No paid faces, no commercial gate. PP Editorial New, Söhne, GT Sectra, and other paid candidates are out of scope.
+- **IIFE semicolon bug in `platform_core/ui.py`.** Adjacent IIFEs in f-strings must end with `;` to survive ASI. Known hazard — enforce review on every new IIFE block added in steps 2–6.
+- **Hardcoded hex values scattered beyond the token block.** Step 1 verification grep is mandatory to catch them.
+- **Polar bar chart regressions.** The chart colours are currently hardcoded in JS. Step 4 recolour must pass the chart accessibility check (`role="img"` + `aria-label`) already in the validation checklist.
+
+---
+
 ## Immediate Next Item
+
+### Phase 14 Follow-up: Outfit PDP Card Polish (April 12 2026)
+
+**Problem:** The outfit PDP card (3-column grid inside the chat feed) carries several warm-craft / dashboard artefacts that survived the Phase 14 token pass. Confirmed via live dark-mode screenshot.
+
+Checklist:
+- [x] **Price format** — strip `.0` decimal, add comma separator (`Rs. 2,275` not `Rs. 2275.0`), render in JetBrains Mono
+- [x] **Summary text** — render italic, `--ink-3` colour, slightly smaller — reads as a stylist caption, not a competing headline
+- [x] **Title** — Fraunces italic on `.outfit-title` (tonal moment: the outfit name is a styling verdict)
+- [x] **Per-item source labels** — each product row shows `YOURS` or `SHOP` in uppercase `label` type above the item title
+- [x] **BUY NOW** — Confident Luxe text-link style (ink underline, no fill)
+- [x] **Polar chart** — always visible (user preference), no toggle
+- [x] **Card border-radius** — `var(--radius-md)` (8px) confirmed
+- [x] **Hero layout** — 2-column `1fr / 36%` grid, hero with `aspect-ratio: 3/4` and `object-fit: cover`, thumbnails hidden (click hero to cycle + `1/N` counter badge)
+- [x] **Feedback icons** — SVG line-art heart (like) and X (dislike), `currentColor` inheriting
+- [x] **Chat feed widened** — 720px → 960px so cards have breathing room; bubbles self-limit via `max-width: 82%`
+- [x] **Dislike form restyled** — hairline chips, underline textarea, ink-fill Submit, hairline Cancel
+- [ ] **Feedback UX redesign** — move feedback from header to bottom of info panel as a contextual feedback strip:
+  - Left: heart icon for quick "I like this" (one-tap positive signal)
+  - Right: *"What would you change?"* text prompt (looks like a placeholder, invites constructive feedback)
+  - Clicking "What would you change?" expands the reaction chips + textarea inline below
+  - Removes the binary like/dislike framing — replaces it with a constructive feedback flow
+  - Sits after the full evaluation: see outfit → read products → check chart → react
+
+**Scope:** CSS + JS in `modules/platform_core/src/platform_core/ui.py`, zero backend changes.
+
+---
 
 ### ✅ CLOSED — Parallelize catalog retrieval: batch embeddings + concurrent search (April 10 2026)
 

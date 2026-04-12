@@ -9,32 +9,90 @@ def get_onboarding_html() -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <script>(function(){try{var t=localStorage.getItem("aura_theme");if(!t){t=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light";}document.documentElement.setAttribute("data-theme",t);}catch(e){}}());</script>
   <title>Sigma Aura Onboarding</title>
   <style>
+    /* ===== Confident Luxe tokens — see docs/DESIGN.md ===== */
     :root {
-      --bg: #f6f0ea;
-      --surface: rgba(255, 250, 245, 0.94);
-      --surface-strong: #fffaf5;
-      --ink: #201915;
-      --muted: #6e655f;
-      --line: #dfd1c4;
-      --line-strong: #c8b8a6;
-      --accent: #6f2f45;
-      --accent-soft: #f3e6ea;
-      --accent-warm: #b08a4e;
-      --danger: #9b2323;
-      --danger-bg: #fceeee;
-      --shadow: 0 22px 60px rgba(54, 32, 24, 0.08);
+      --canvas: #F7F3EC;
+      --canvas-rgb: 247, 243, 236;
+      --surface: #FDFBF6;
+      --surface-sunk: #EEE8DD;
+      --surface-strong: #FDFBF6;
+      --bg: #F7F3EC;
+      --ink: #16110E;
+      --ink-2: #2E2824;
+      --ink-3: #6B635C;
+      --ink-4: #A69C92;
+      --ink-rgb: 22, 17, 14;
+      --muted: #6B635C;
+      --line: #E1D8C9;
+      --line-strong: #C9BCA8;
+      --accent: #5C1A1B;
+      --accent-soft: #7A2A2C;
+      --accent-rgb: 92, 26, 27;
+      --accent-warm: #C6A15B;
+      --signal: #C6A15B;
+      --signal-rgb: 198, 161, 91;
+      --on-accent: #FDFBF6;
+      --danger: #8A2A2A;
+      --danger-bg: rgba(138, 42, 42, 0.08);
+      --danger-rgb: 138, 42, 42;
+      --positive: #4A6B3A;
+      --shadow-rgb: 22, 17, 14;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 14px;
+      --shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04), 0 8px 24px rgba(var(--shadow-rgb), 0.06);
+      --shadow-modal: 0 24px 80px rgba(var(--shadow-rgb), 0.18);
+      --ease: cubic-bezier(.2, .7, .1, 1);
+      --dur-1: 120ms;
+      --dur-2: 240ms;
+      --dur-3: 480ms;
+    }
+    [data-theme="dark"] {
+      --canvas: #0E0B09;
+      --canvas-rgb: 14, 11, 9;
+      --surface: #15110E;
+      --surface-sunk: #0A0806;
+      --surface-strong: #15110E;
+      --bg: #0E0B09;
+      --ink: #F4EFE5;
+      --ink-2: #D8D1C3;
+      --ink-3: #8A8176;
+      --ink-4: #544D45;
+      --ink-rgb: 244, 239, 229;
+      --muted: #8A8176;
+      --line: #2A231D;
+      --line-strong: #3A312A;
+      --accent: #B34548;
+      --accent-soft: #C95A5D;
+      --accent-rgb: 179, 69, 72;
+      --accent-warm: #D6B373;
+      --signal: #D6B373;
+      --signal-rgb: 214, 179, 115;
+      --on-accent: #F4EFE5;
+      --danger: #B3544F;
+      --danger-bg: rgba(179, 84, 79, 0.16);
+      --danger-rgb: 179, 84, 79;
+      --positive: #6F9356;
+      --shadow-rgb: 0, 0, 0;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.5);
+      --shadow-modal: 0 24px 80px rgba(0,0,0,0.65);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       height: 100vh;
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-family: "Inter", -apple-system, "Helvetica Neue", sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
       color: var(--ink);
-      background: var(--bg);
+      background: var(--canvas);
       overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
     .shell {
       display: grid;
@@ -44,8 +102,8 @@ def get_onboarding_html() -> str:
     .sidebar {
       padding: 48px 36px;
       background:
-        linear-gradient(180deg, rgba(111, 47, 69, 0.96) 0%, rgba(80, 30, 48, 0.98) 100%);
-      color: #f6f2eb;
+        linear-gradient(180deg, rgba(var(--accent-rgb), 0.96) 0%, rgba(var(--accent-rgb), 0.98) 100%);
+      color: var(--on-accent);
       display: flex;
       flex-direction: column;
       gap: 28px;
@@ -59,7 +117,7 @@ def get_onboarding_html() -> str:
     }
     .sidebar h1 {
       margin: 0;
-      font-family: "Cormorant Garamond", serif;
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
       font-size: 42px;
       font-weight: 600;
       line-height: 1.06;
@@ -72,7 +130,7 @@ def get_onboarding_html() -> str:
       font-size: 14px;
     }
     .sidebar-tagline {
-      font-family: "Cormorant Garamond", serif;
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
       font-size: 18px;
       font-style: italic;
       color: rgba(246, 242, 235, 0.72);
@@ -130,10 +188,7 @@ def get_onboarding_html() -> str:
     }
     .main {
       padding: 40px 48px;
-      background:
-        radial-gradient(circle at top left, rgba(184, 139, 150, 0.12), transparent 28%),
-        radial-gradient(circle at 85% 12%, rgba(176, 138, 78, 0.08), transparent 24%),
-        linear-gradient(180deg, #fbf6f1 0%, var(--bg) 42%, #f1e6da 100%);
+      background: var(--canvas);
       display: flex;
       flex-direction: column;
       gap: 18px;
@@ -170,7 +225,7 @@ def get_onboarding_html() -> str:
       transform: scaleY(1.2);
     }
     .progress-bar.done {
-      background: #b08a4e;
+      background: var(--signal);
     }
     .panel {
       border: none;
@@ -220,7 +275,7 @@ def get_onboarding_html() -> str:
       border: 1px solid var(--line);
       border-radius: 16px;
       padding: 16px 18px;
-      background: #fff;
+      background: var(--surface);
       color: var(--ink);
       font-size: 16px;
       outline: none;
@@ -229,7 +284,7 @@ def get_onboarding_html() -> str:
     .field input:focus,
     .field select:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 4px rgba(31, 111, 95, 0.08);
+      box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.08);
     }
     .caption {
       font-size: 12px;
@@ -252,7 +307,7 @@ def get_onboarding_html() -> str:
       border: 1px solid var(--line);
       border-radius: 18px;
       padding: 16px;
-      background: #fff;
+      background: var(--surface);
       cursor: pointer;
       transition: border-color 140ms ease, transform 140ms ease, background 140ms ease;
     }
@@ -346,7 +401,7 @@ def get_onboarding_html() -> str:
       padding: 6px 10px;
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.12);
-      color: #fff;
+      color: var(--on-accent);
       font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.08em;
@@ -392,10 +447,10 @@ def get_onboarding_html() -> str:
     }
     .btn.primary {
       background: var(--accent);
-      color: #fff;
+      color: var(--on-accent);
     }
     .btn.secondary {
-      background: #fff;
+      background: var(--surface);
       color: var(--ink);
       border: 1px solid var(--line);
     }
@@ -490,7 +545,7 @@ def get_onboarding_html() -> str:
       border: 1px solid var(--line);
       border-radius: 18px;
       overflow: hidden;
-      background: #f7f1ea;
+      background: var(--surface-sunk);
       cursor: pointer;
       transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
       min-height: 208px;
@@ -501,7 +556,7 @@ def get_onboarding_html() -> str:
     }
     .style-card.selected {
       border-color: var(--accent);
-      box-shadow: 0 0 0 4px rgba(31, 111, 95, 0.12);
+      box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.12);
     }
     .style-card img {
       width: 100%;
@@ -509,7 +564,7 @@ def get_onboarding_html() -> str:
       object-fit: cover;
       display: block;
       aspect-ratio: 4 / 5;
-      background: #efe7dd;
+      background: var(--surface-sunk);
     }
     .style-badge {
       position: absolute;
@@ -519,7 +574,7 @@ def get_onboarding_html() -> str:
       height: 28px;
       border-radius: 50%;
       background: rgba(17, 17, 17, 0.52);
-      color: #fff;
+      color: var(--on-accent);
       display: grid;
       place-items: center;
       font-size: 13px;
@@ -1805,34 +1860,92 @@ def get_wardrobe_manager_html(user_id: str = "") -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <script>(function(){{try{{var t=localStorage.getItem("aura_theme");if(!t){{t=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light";}}document.documentElement.setAttribute("data-theme",t);}}catch(e){{}}}}());</script>
   <title>Sigma Aura Wardrobe Manager</title>
   <style>
+    /* ===== Confident Luxe tokens — see docs/DESIGN.md ===== */
     :root {{
-      --bg: #f4ede5;
-      --surface: rgba(255, 252, 247, 0.94);
-      --surface-strong: #fffdfa;
-      --ink: #1f1b17;
-      --muted: #6a6258;
-      --line: #d9cdbf;
-      --line-strong: #baa78e;
-      --accent: #1f6f5f;
-      --accent-soft: #e4efe9;
-      --warm: #b7742a;
-      --danger: #a22929;
-      --danger-soft: #fdeeee;
-      --shadow: 0 24px 64px rgba(49, 37, 23, 0.14);
+      --canvas: #F7F3EC;
+      --canvas-rgb: 247, 243, 236;
+      --surface: #FDFBF6;
+      --surface-sunk: #EEE8DD;
+      --surface-strong: #FDFBF6;
+      --bg: #F7F3EC;
+      --ink: #16110E;
+      --ink-2: #2E2824;
+      --ink-3: #6B635C;
+      --ink-4: #A69C92;
+      --ink-rgb: 22, 17, 14;
+      --muted: #6B635C;
+      --line: #E1D8C9;
+      --line-strong: #C9BCA8;
+      --accent: #5C1A1B;
+      --accent-soft: #7A2A2C;
+      --accent-rgb: 92, 26, 27;
+      --warm: #C6A15B;
+      --signal: #C6A15B;
+      --signal-rgb: 198, 161, 91;
+      --on-accent: #FDFBF6;
+      --danger: #8A2A2A;
+      --danger-soft: rgba(138, 42, 42, 0.08);
+      --danger-rgb: 138, 42, 42;
+      --positive: #4A6B3A;
+      --shadow-rgb: 22, 17, 14;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 14px;
+      --shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04), 0 8px 24px rgba(var(--shadow-rgb), 0.06);
+      --shadow-modal: 0 24px 80px rgba(var(--shadow-rgb), 0.18);
+      --ease: cubic-bezier(.2, .7, .1, 1);
+      --dur-1: 120ms;
+      --dur-2: 240ms;
+      --dur-3: 480ms;
+    }}
+    [data-theme="dark"] {{
+      --canvas: #0E0B09;
+      --canvas-rgb: 14, 11, 9;
+      --surface: #15110E;
+      --surface-sunk: #0A0806;
+      --surface-strong: #15110E;
+      --bg: #0E0B09;
+      --ink: #F4EFE5;
+      --ink-2: #D8D1C3;
+      --ink-3: #8A8176;
+      --ink-4: #544D45;
+      --ink-rgb: 244, 239, 229;
+      --muted: #8A8176;
+      --line: #2A231D;
+      --line-strong: #3A312A;
+      --accent: #B34548;
+      --accent-soft: #C95A5D;
+      --accent-rgb: 179, 69, 72;
+      --warm: #D6B373;
+      --signal: #D6B373;
+      --signal-rgb: 214, 179, 115;
+      --on-accent: #F4EFE5;
+      --danger: #B3544F;
+      --danger-soft: rgba(179, 84, 79, 0.16);
+      --danger-rgb: 179, 84, 79;
+      --positive: #6F9356;
+      --shadow-rgb: 0, 0, 0;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.5);
+      --shadow-modal: 0 24px 80px rgba(0,0,0,0.65);
     }}
     * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
       min-height: 100vh;
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-family: "Inter", -apple-system, "Helvetica Neue", sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
       color: var(--ink);
-      background:
-        radial-gradient(circle at top left, #f7e4cb 0%, rgba(247, 228, 203, 0.34) 26%, transparent 52%),
-        radial-gradient(circle at bottom right, #ddebe4 0%, rgba(221, 235, 228, 0.45) 22%, transparent 50%),
-        linear-gradient(135deg, #f5efe7 0%, #efe4d8 48%, #ece2d6 100%);
+      background: var(--canvas);
       padding: 24px 16px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }}
     .shell {{
       width: min(1180px, 100%);
@@ -1853,8 +1966,8 @@ def get_wardrobe_manager_html(user_id: str = "") -> str:
     .sidebar {{
       padding: 26px;
       background:
-        linear-gradient(180deg, rgba(31, 111, 95, 0.94) 0%, rgba(22, 83, 71, 0.96) 100%);
-      color: #f7f2ea;
+        linear-gradient(180deg, rgba(var(--accent-rgb), 0.94) 0%, rgba(var(--accent-rgb), 0.96) 100%);
+      color: var(--on-accent);
       display: grid;
       align-content: start;
       gap: 18px;
@@ -1994,17 +2107,17 @@ def get_wardrobe_manager_html(user_id: str = "") -> str:
     }}
     .btn.primary {{
       background: var(--accent);
-      color: #fff;
+      color: var(--on-accent);
     }}
     .btn.secondary {{
-      background: #fff;
+      background: var(--surface);
       color: var(--ink);
       border: 1px solid var(--line);
     }}
     .btn.danger {{
       background: var(--danger-soft);
       color: var(--danger);
-      border: 1px solid rgba(162, 41, 41, 0.12);
+      border: 1px solid rgba(var(--danger-rgb), 0.12);
     }}
     .status {{
       display: none;
@@ -2050,7 +2163,7 @@ def get_wardrobe_manager_html(user_id: str = "") -> str:
     .tag {{
       padding: 7px 10px;
       border-radius: 999px;
-      background: #f4eee7;
+      background: var(--surface-sunk);
       color: var(--muted);
       font-size: 12px;
       font-weight: 700;
@@ -2063,7 +2176,7 @@ def get_wardrobe_manager_html(user_id: str = "") -> str:
     .list div {{
       padding: 10px 12px;
       border-radius: 14px;
-      background: #f8f2eb;
+      background: var(--surface-sunk);
       font-size: 13px;
       line-height: 1.45;
     }}
@@ -2455,36 +2568,91 @@ def get_processing_html(user_id: str = "") -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <script>(function(){try{var t=localStorage.getItem("aura_theme");if(!t){t=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light";}document.documentElement.setAttribute("data-theme",t);}catch(e){}}());</script>
   <title>Sigma Aura Profile Processing</title>
   <style>
+    /* ===== Confident Luxe tokens — see docs/DESIGN.md ===== */
     :root {
-      --bg: #f6f0ea;
-      --surface: #fffaf5;
-      --ink: #201915;
-      --muted: #6e655f;
-      --line: #dfd1c4;
-      --accent: #6f2f45;
-      --accent-soft: #f3e6ea;
-      --warm: #b08a4e;
-      --danger: #9b2323;
-      --danger-bg: #fceeee;
-      --shadow: 0 22px 60px rgba(54, 32, 24, 0.08);
+      --canvas: #F7F3EC;
+      --canvas-rgb: 247, 243, 236;
+      --surface: #FDFBF6;
+      --surface-sunk: #EEE8DD;
+      --bg: #F7F3EC;
+      --ink: #16110E;
+      --ink-2: #2E2824;
+      --ink-3: #6B635C;
+      --ink-4: #A69C92;
+      --ink-rgb: 22, 17, 14;
+      --muted: #6B635C;
+      --line: #E1D8C9;
+      --line-strong: #C9BCA8;
+      --accent: #5C1A1B;
+      --accent-soft: #7A2A2C;
+      --accent-rgb: 92, 26, 27;
+      --warm: #C6A15B;
+      --signal: #C6A15B;
+      --signal-rgb: 198, 161, 91;
+      --on-accent: #FDFBF6;
+      --danger: #8A2A2A;
+      --danger-bg: rgba(138, 42, 42, 0.08);
+      --danger-rgb: 138, 42, 42;
+      --positive: #4A6B3A;
+      --shadow-rgb: 22, 17, 14;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 14px;
+      --shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04), 0 8px 24px rgba(var(--shadow-rgb), 0.06);
+      --shadow-modal: 0 24px 80px rgba(var(--shadow-rgb), 0.18);
+      --ease: cubic-bezier(.2, .7, .1, 1);
+      --dur-1: 120ms;
+      --dur-2: 240ms;
+      --dur-3: 480ms;
+    }
+    [data-theme="dark"] {
+      --canvas: #0E0B09;
+      --canvas-rgb: 14, 11, 9;
+      --surface: #15110E;
+      --surface-sunk: #0A0806;
+      --bg: #0E0B09;
+      --ink: #F4EFE5;
+      --ink-2: #D8D1C3;
+      --ink-3: #8A8176;
+      --ink-4: #544D45;
+      --ink-rgb: 244, 239, 229;
+      --muted: #8A8176;
+      --line: #2A231D;
+      --line-strong: #3A312A;
+      --accent: #B34548;
+      --accent-soft: #C95A5D;
+      --accent-rgb: 179, 69, 72;
+      --warm: #D6B373;
+      --signal: #D6B373;
+      --signal-rgb: 214, 179, 115;
+      --on-accent: #F4EFE5;
+      --danger: #B3544F;
+      --danger-bg: rgba(179, 84, 79, 0.16);
+      --danger-rgb: 179, 84, 79;
+      --positive: #6F9356;
+      --shadow-rgb: 0, 0, 0;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.5);
+      --shadow-modal: 0 24px 80px rgba(0,0,0,0.65);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-family: "Inter", -apple-system, "Helvetica Neue", sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
       color: var(--ink);
-      background:
-        radial-gradient(circle at top left, rgba(184, 139, 150, 0.22), transparent 28%),
-        radial-gradient(circle at 85% 12%, rgba(176, 138, 78, 0.14), transparent 24%),
-        linear-gradient(180deg, #fbf6f1 0%, #f6f0ea 42%, #f1e6da 100%);
+      background: var(--canvas);
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 24px 16px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
     .shell {
       width: min(100%, 1120px);
@@ -2498,8 +2666,8 @@ def get_processing_html(user_id: str = "") -> str:
     }
     .side {
       padding: 32px 26px;
-      background: linear-gradient(180deg, rgba(111, 47, 69, 0.94) 0%, rgba(90, 36, 56, 0.96) 100%);
-      color: #f6f2eb;
+      background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.94) 0%, rgba(var(--accent-rgb), 0.96) 100%);
+      color: var(--on-accent);
       display: grid;
       align-content: start;
       gap: 22px;
@@ -2512,7 +2680,7 @@ def get_processing_html(user_id: str = "") -> str:
     }
     .side h1 {
       margin: 0;
-      font-family: "Cormorant Garamond", serif;
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
       font-size: 34px;
       font-weight: 600;
       line-height: 1.05;
@@ -2589,7 +2757,7 @@ def get_processing_html(user_id: str = "") -> str:
       width: 100%;
       height: 10px;
       border-radius: 999px;
-      background: #efe6dc;
+      background: var(--surface-sunk);
       overflow: hidden;
       margin-top: 14px;
     }
@@ -2597,7 +2765,7 @@ def get_processing_html(user_id: str = "") -> str:
       width: 14%;
       height: 100%;
       border-radius: inherit;
-      background: linear-gradient(90deg, var(--accent) 0%, #b08a4e 100%);
+      background: linear-gradient(90deg, var(--accent) 0%, var(--signal) 100%);
       transition: width 300ms ease;
     }
     .error {
@@ -2620,7 +2788,7 @@ def get_processing_html(user_id: str = "") -> str:
       border: 1px solid var(--line);
       border-radius: 18px;
       padding: 18px;
-      background: #fff;
+      background: var(--surface);
       display: grid;
       gap: 12px;
     }
@@ -2660,7 +2828,7 @@ def get_processing_html(user_id: str = "") -> str:
       border: 1px solid var(--line);
       border-radius: 16px;
       padding: 14px 16px;
-      background: #fff;
+      background: var(--surface);
     }
     .profile-item label {
       display: block;
@@ -2680,11 +2848,11 @@ def get_processing_html(user_id: str = "") -> str:
       border: 1px solid var(--line);
       border-radius: 18px;
       overflow: hidden;
-      background: #fff;
+      background: var(--surface);
     }
     .result-group-header {
       padding: 14px 18px;
-      background: #f8f4ee;
+      background: var(--surface-sunk);
       border-bottom: 1px solid var(--line);
       font-size: 13px;
       letter-spacing: 0.08em;
@@ -2697,7 +2865,7 @@ def get_processing_html(user_id: str = "") -> str:
       grid-template-columns: 180px 1fr 100px;
       gap: 12px;
       padding: 14px 18px;
-      border-bottom: 1px solid #efe7dd;
+      border-bottom: 1px solid var(--line);
       align-items: start;
     }
     .row:last-child {
@@ -2742,10 +2910,10 @@ def get_processing_html(user_id: str = "") -> str:
     }
     button.primary {
       background: var(--accent);
-      color: #fff;
+      color: var(--on-accent);
     }
     button.secondary {
-      background: #fff;
+      background: var(--surface);
       color: var(--ink);
       border: 1px solid var(--line);
     }

@@ -60,6 +60,223 @@ _TURN_JOB_LOCK = Lock()
 _TURN_JOBS: Dict[str, Dict[str, Any]] = {}
 
 
+# ---------------------------------------------------------------------------
+# Historical outfit-card hydration
+# ---------------------------------------------------------------------------
+#
+# Four recommendation handlers persisted turns without writing the rendered
+# OutfitCard(s) into resolved_context_json. The card objects were only
+# returned in the live HTTP response, so when a user later opens that
+# conversation in the chat history sidebar, loadConversation → renderOutfits
+# reads resolved_context.outfits → empty → no cards.
+#
+# The Phase 14 backend patches (_build_wardrobe_first_occasion_response,
+# _build_wardrobe_first_pairing_response, _build_catalog_anchor_pairing_response)
+# fixed the forward path so new turns persist outfits correctly. This
+# helper covers the historical gap: for any turn that reaches /turns
+# missing an `outfits` array, it reconstructs a synthetic OutfitCard on
+# the fly from the signals that ARE persisted (recommendations[].item_ids +
+# handler_payload) and splices it into the response.
+#
+# Reconstructed cards carry the title, reasoning, items, source labels,
+# and (if available) the virtual try-on image. The polar chart metrics
+# (body_harmony_pct, archetype percentages, etc.) were never persisted,
+# so the chart renders empty for historical cards — still better than
+# zero cards. The helper is best-effort: if no item IDs are findable
+# for a turn, it leaves that turn untouched (non-recommendation paths
+# like onboarding gates and clarifications).
+
+
+def _wardrobe_row_to_item_dict(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a user_wardrobe_items row into the item-dict shape the
+    frontend buildOutfitCard expects. Mirrors
+    AgenticOrchestrator._wardrobe_item_to_outfit_item."""
+    return {
+        "product_id": str(row.get("id") or ""),
+        "title": str(row.get("title") or ""),
+        "image_url": str(row.get("image_url") or row.get("image_path") or ""),
+        "price": "",
+        "product_url": "",
+        "garment_category": str(row.get("garment_category") or ""),
+        "garment_subtype": str(row.get("garment_subtype") or ""),
+        "primary_color": str(row.get("primary_color") or ""),
+        "formality_level": str(row.get("formality_level") or ""),
+        "occasion_fit": str(row.get("occasion_fit") or ""),
+        "pattern_type": str(row.get("pattern_type") or ""),
+        "source": "wardrobe",
+    }
+
+
+def _catalog_row_to_item_dict(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert a catalog_enriched row into the item-dict shape the
+    frontend buildOutfitCard expects. Mirrors the catalog side of
+    OutfitAssembler._product_to_item."""
+    image_url = str(
+        row.get("images__0__src")
+        or row.get("images_0_src")
+        or row.get("primary_image_url")
+        or row.get("image_url")
+        or ""
+    )
+    return {
+        "product_id": str(row.get("product_id") or ""),
+        "title": str(row.get("title") or ""),
+        "image_url": image_url,
+        "price": str(row.get("price") or ""),
+        "product_url": str(row.get("url") or row.get("product_url") or ""),
+        "garment_category": str(row.get("garment_category") or ""),
+        "garment_subtype": str(row.get("garment_subtype") or ""),
+        "primary_color": str(row.get("primary_color") or ""),
+        "formality_level": str(row.get("formality_level") or ""),
+        "occasion_fit": str(row.get("occasion_fit") or ""),
+        "pattern_type": str(row.get("pattern_type") or ""),
+        "source": "catalog",
+    }
+
+
+def _empty_outfit_skeleton() -> Dict[str, Any]:
+    """Zero-valued OutfitCard fields for metrics that were never persisted.
+    The frontend polar chart gracefully drops null/zero values, so an
+    empty skeleton renders an empty chart rather than crashing."""
+    return {
+        "body_note": "",
+        "color_note": "",
+        "style_note": "",
+        "occasion_note": "",
+        "body_harmony_pct": 0,
+        "color_suitability_pct": 0,
+        "style_fit_pct": 0,
+        "risk_tolerance_pct": 0,
+        "comfort_boundary_pct": 0,
+        "occasion_pct": None,
+        "specific_needs_pct": None,
+        "weather_time_pct": None,
+        "pairing_coherence_pct": None,
+        "classic_pct": 0,
+        "dramatic_pct": 0,
+        "romantic_pct": 0,
+        "natural_pct": 0,
+        "minimalist_pct": 0,
+        "creative_pct": 0,
+        "sporty_pct": 0,
+        "edgy_pct": 0,
+    }
+
+
+def _hydrate_missing_outfits(
+    *,
+    client: SupabaseRestClient,
+    repo: ConversationRepository,
+    user_id: str,
+    turns: List[Dict[str, Any]],
+) -> None:
+    """For every turn whose resolved_context_json is missing an `outfits`
+    array, reconstruct synthetic outfit cards from persisted signals and
+    mutate the turn in place.
+
+    Best-effort — turns without recoverable item IDs (clarifications,
+    onboarding gates, errors) are left untouched.
+    """
+    # Collect the set of turns that need hydration and the union of item
+    # IDs they reference, so wardrobe + catalog lookups can be batched.
+    all_ids: set = set()
+    pending: List[tuple] = []  # (turn_row, recommendations_list, per_rec_ids)
+    for turn in turns:
+        rc = turn.get("resolved_context_json") or {}
+        if rc.get("outfits"):
+            continue
+        recs = rc.get("recommendations") or []
+        if not recs:
+            continue
+        per_rec_ids: List[List[str]] = []
+        for rec in recs:
+            ids = [str(x).strip() for x in (rec.get("item_ids") or []) if str(x).strip()]
+            per_rec_ids.append(ids)
+            all_ids.update(ids)
+        if not any(per_rec_ids):
+            continue
+        pending.append((turn, recs, per_rec_ids))
+
+    if not pending or not all_ids:
+        return
+
+    # Batch-fetch this user's wardrobe (already scoped by user_id, cheap)
+    try:
+        wardrobe_rows = client.select_many(
+            "user_wardrobe_items",
+            filters={"user_id": f"eq.{user_id}"},
+        ) or []
+    except Exception:
+        wardrobe_rows = []
+    wardrobe_by_id = {str(r.get("id") or ""): r for r in wardrobe_rows}
+
+    # Any ID not matched against the wardrobe is assumed to be a catalog
+    # product_id. Batch-fetch those from catalog_enriched.
+    catalog_ids_to_fetch = [i for i in all_ids if i and i not in wardrobe_by_id]
+    catalog_by_id: Dict[str, Dict[str, Any]] = {}
+    if catalog_ids_to_fetch:
+        try:
+            ids_csv = ",".join(catalog_ids_to_fetch)
+            catalog_rows = client.select_many(
+                "catalog_enriched",
+                filters={"product_id": f"in.({ids_csv})"},
+            ) or []
+            catalog_by_id = {str(r.get("product_id") or ""): r for r in catalog_rows}
+        except Exception:
+            catalog_by_id = {}
+
+    from urllib.parse import quote
+
+    # Reconstruct one outfit per persisted recommendation.
+    for turn, recs, per_rec_ids in pending:
+        outfits: List[Dict[str, Any]] = []
+        for rec, ids in zip(recs, per_rec_ids):
+            items: List[Dict[str, Any]] = []
+            for item_id in ids:
+                if item_id in wardrobe_by_id:
+                    items.append(_wardrobe_row_to_item_dict(wardrobe_by_id[item_id]))
+                elif item_id in catalog_by_id:
+                    items.append(_catalog_row_to_item_dict(catalog_by_id[item_id]))
+            if not items:
+                continue
+
+            # Try-on image: look up by the same sorted garment-ID set the
+            # live renderer used. If found, rewrite the stored file_path
+            # to the local-images serving route so the browser can load it.
+            tryon_image_url = ""
+            try:
+                tryon_row = repo.find_tryon_image_by_garments(user_id, ids)
+                if tryon_row:
+                    fp = str(tryon_row.get("file_path") or "").strip()
+                    if fp and not fp.startswith(("http://", "https://", "/v1/")):
+                        tryon_image_url = "/v1/onboarding/images/local?path=" + quote(fp, safe="/._-")
+                    else:
+                        tryon_image_url = fp
+            except Exception:
+                tryon_image_url = ""
+
+            outfit_dict: Dict[str, Any] = {
+                "rank": int(rec.get("rank") or (len(outfits) + 1)),
+                "title": str(rec.get("title") or "Styled Look"),
+                "reasoning": str(rec.get("reasoning") or ""),
+                "items": items,
+                "tryon_image": tryon_image_url,
+                "_reconstructed": True,
+            }
+            outfit_dict.update(_empty_outfit_skeleton())
+            outfits.append(outfit_dict)
+
+        if not outfits:
+            continue
+
+        # Mutate the turn row in place so the downstream TurnListItem
+        # serializer picks up the reconstructed outfits.
+        next_rc = dict(turn.get("resolved_context_json") or {})
+        next_rc["outfits"] = outfits
+        next_rc["_outfits_hydrated"] = True
+        turn["resolved_context_json"] = next_rc
+
+
 def create_app() -> FastAPI:
     cfg = load_config()
     client = SupabaseRestClient(
@@ -733,6 +950,30 @@ def create_app() -> FastAPI:
     def list_conversation_turns(conversation_id: str) -> TurnListResponse:
         try:
             rows = repo.list_turns_for_conversation(conversation_id)
+            # Read-time hydration: reconstruct outfit cards for historical
+            # turns that were persisted before the Phase 14 "persist outfits
+            # in resolved_context" patch. Best-effort; no-op when the turn
+            # already has outfits or when no item IDs are recoverable.
+            try:
+                conversation = repo.get_conversation(conversation_id)
+            except Exception:
+                conversation = None
+            user_id = ""
+            if conversation:
+                user_id = str(conversation.get("user_id") or "")
+            if user_id and rows:
+                try:
+                    _hydrate_missing_outfits(
+                        client=client,
+                        repo=repo,
+                        user_id=user_id,
+                        turns=rows,
+                    )
+                except Exception:
+                    # Hydration is best-effort — a failure here must not
+                    # break the endpoint. The turn rows will just render
+                    # without their outfit cards (same as before the fix).
+                    pass
             items: list[TurnListItem] = []
             for row in rows:
                 items.append(

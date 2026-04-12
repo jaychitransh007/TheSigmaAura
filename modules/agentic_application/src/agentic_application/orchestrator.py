@@ -2092,6 +2092,10 @@ class AgenticOrchestrator:
                     "reasoning": reasoning,
                 }
             ],
+            # Persist the built outfit card so historical replay in the
+            # chat UI (loadConversation → renderOutfits) can re-render
+            # it identically to the live response.
+            "outfits": [outfit_card.model_dump()],
             "channel": channel,
         }
         if hybrid_used:
@@ -2525,6 +2529,9 @@ class AgenticOrchestrator:
                     if catalog_items else []
                 ),
             ],
+            # Persist outfit cards so historical replay (loadConversation →
+            # renderOutfits) re-renders them identically to the live response.
+            "outfits": [card.model_dump() for card in outfit_cards],
             "channel": channel,
         }
         self.repo.finalize_turn(
@@ -2757,6 +2764,9 @@ class AgenticOrchestrator:
                     "anchor_item_title": str(item.get("title") or ""),
                     "catalog_item_ids": [str(candidate.get("product_id") or "") for candidate in catalog_items],
                 },
+                # Persist the outfit card so historical replay re-renders
+                # the same card the live response showed.
+                "outfits": [outfit_card.model_dump()],
                 "channel": channel,
             },
         )

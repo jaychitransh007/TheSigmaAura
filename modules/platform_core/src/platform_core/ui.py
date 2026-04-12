@@ -15,41 +15,141 @@ def get_web_ui_html(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <script>(function(){try{var t=localStorage.getItem("aura_theme");if(!t){t=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light";}document.documentElement.setAttribute("data-theme",t);}catch(e){}}());</script>
   <title>Sigma Aura</title>
   <style>
-    /* ===== Design Tokens ===== */
+    /* ===== Design Tokens — Confident Luxe (see docs/DESIGN.md § Brand Direction) ===== */
     :root {
-      --bg: #f6f0ea;
-      --bg-soft: #efe6dc;
-      --surface: #fffaf5;
-      --surface-alt: #f7efe8;
-      --surface-deep: #f0e6dc;
-      --ink: #201915;
-      --muted: #6e655f;
-      --muted-soft: #938880;
-      --line: #dfd1c4;
-      --accent: #6f2f45;
-      --accent-soft: #b88b96;
-      --wardrobe: #5f6a52;
-      --gold: #b08a4e;
-      --shadow: 0 22px 60px rgba(54, 32, 24, 0.08);
-      --header-h: 44px;
+      /* Canvas & surfaces — warm ivory base */
+      --canvas: #F7F3EC;
+      --canvas-rgb: 247, 243, 236;
+      --surface: #FDFBF6;
+      --surface-sunk: #EEE8DD;
+      --bg: #F7F3EC;              /* legacy alias */
+      --bg-soft: #EEE8DD;          /* legacy alias */
+      --surface-alt: #EEE8DD;      /* legacy alias */
+      --surface-deep: #EEE8DD;     /* legacy alias */
+
+      /* Ink — espresso-black */
+      --ink: #16110E;
+      --ink-2: #2E2824;
+      --ink-3: #6B635C;
+      --ink-4: #A69C92;
+      --ink-rgb: 22, 17, 14;
+      --muted: #6B635C;            /* legacy alias -> ink-3 */
+      --muted-soft: #A69C92;       /* legacy alias -> ink-4 */
+
+      /* Lines — hairline-first */
+      --line: #E1D8C9;
+      --line-strong: #C9BCA8;
+
+      /* Accent — oxblood */
+      --accent: #5C1A1B;
+      --accent-soft: #7A2A2C;
+      --accent-rgb: 92, 26, 27;
+      --accent-soft-rgb: 122, 42, 44;
+
+      /* Signal — champagne, personal cues ONLY */
+      --signal: #C6A15B;
+      --signal-rgb: 198, 161, 91;
+      --gold: #C6A15B;             /* legacy alias -> signal */
+
+      /* Retired moss/wardrobe color remapped to neutral ink-2 (source labels now carry the wardrobe/catalog distinction, not color) */
+      --wardrobe: #2E2824;
+      --wardrobe-rgb: 46, 40, 36;
+
+      /* Text on accent */
+      --on-accent: #FDFBF6;
+
+      /* Semantic */
+      --danger: #8A2A2A;
+      --danger-rgb: 138, 42, 42;
+      --positive: #4A6B3A;
+
+      /* Shadow channel — warm ink in light, black in dark */
+      --shadow-rgb: 22, 17, 14;
+
+      /* Radii */
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 14px;
+      --radius-full: 999px;
+
+      /* Elevation — hairline-first; shadows reserved for floating surfaces */
+      --shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.04), 0 8px 24px rgba(var(--shadow-rgb), 0.06);
+      --shadow-pop: 0 1px 2px rgba(var(--shadow-rgb), 0.04), 0 8px 24px rgba(var(--shadow-rgb), 0.06);
+      --shadow-modal: 0 24px 80px rgba(var(--shadow-rgb), 0.18);
+
+      /* Motion — single easing curve */
+      --ease: cubic-bezier(.2, .7, .1, 1);
+      --dur-1: 120ms;
+      --dur-2: 240ms;
+      --dur-3: 480ms;
+
+      /* Layout */
+      --header-h: 56px;
       --rail-w: 280px;
     }
+
+    [data-theme="dark"] {
+      --canvas: #0E0B09;
+      --canvas-rgb: 14, 11, 9;
+      --surface: #15110E;
+      --surface-sunk: #0A0806;
+      --bg: #0E0B09;
+      --bg-soft: #0A0806;
+      --surface-alt: #0A0806;
+      --surface-deep: #0A0806;
+
+      --ink: #F4EFE5;
+      --ink-2: #D8D1C3;
+      --ink-3: #8A8176;
+      --ink-4: #544D45;
+      --ink-rgb: 244, 239, 229;
+      --muted: #8A8176;
+      --muted-soft: #544D45;
+
+      --line: #2A231D;
+      --line-strong: #3A312A;
+
+      --accent: #B34548;
+      --accent-soft: #C95A5D;
+      --accent-rgb: 179, 69, 72;
+      --accent-soft-rgb: 201, 90, 93;
+
+      --signal: #D6B373;
+      --signal-rgb: 214, 179, 115;
+      --gold: #D6B373;
+
+      --wardrobe: #D8D1C3;
+      --wardrobe-rgb: 216, 209, 195;
+
+      --on-accent: #F4EFE5;
+      --danger: #B3544F;
+      --danger-rgb: 179, 84, 79;
+      --positive: #6F9356;
+
+      --shadow-rgb: 0, 0, 0;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.5);
+      --shadow-pop: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.5);
+      --shadow-modal: 0 24px 80px rgba(0,0,0,0.65);
+    }
+
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; } }
 
     /* ===== Reset & Base ===== */
     *, *::before, *::after { box-sizing: border-box; margin: 0; }
     body {
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-family: "Inter", -apple-system, "Helvetica Neue", "Segoe UI", sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
       color: var(--ink);
-      background:
-        radial-gradient(circle at top left, rgba(184, 139, 150, 0.22), transparent 28%),
-        radial-gradient(circle at 85% 12%, rgba(176, 138, 78, 0.14), transparent 24%),
-        linear-gradient(180deg, #fbf6f1 0%, var(--bg) 42%, #f1e6da 100%);
+      background: var(--canvas);
       height: 100vh; overflow: hidden;
       display: flex; flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
@@ -65,54 +165,149 @@ def get_web_ui_html(
     body.view-edit-profile .page-profile { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body:not(.view-chat) .history-rail { display: none !important; }
 
+    /* ===== View-transition fade+rise — Confident Luxe motion § 3 ===== */
+    @keyframes aura-view-enter {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    body.view-chat .page-chat,
+    body.view-wardrobe .page-wardrobe,
+    body.view-results .page-results,
+    body.view-wishlist .page-wishlist,
+    body.view-trialroom .page-trialroom,
+    body.view-profile .page-profile {
+      animation: aura-view-enter var(--dur-3) var(--ease) both;
+    }
+
+    /* ===== Runway label track-in — the single motion detail per view ===== */
+    /* Applied to ONE header-level label per view. Labels slide in from 6px */
+    /* left and fade to full opacity. 360ms on the standard curve. */
+    @keyframes aura-track-in {
+      from { opacity: 0; transform: translateX(-6px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .wardrobe-title-block .wardrobe-count,
+    .results-header p,
+    .dossier-hero .dossier-statement {
+      animation: aura-track-in var(--dur-3) var(--ease) both;
+      animation-delay: 120ms;
+    }
+
+    /* ===== Staggered entrance — Looks grid only, 60ms stagger ===== */
+    @keyframes aura-card-rise {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .results-grid .result-card {
+      animation: aura-card-rise var(--dur-2) var(--ease) both;
+    }
+    .results-grid .result-card:nth-child(1)  { animation-delay:   0ms; }
+    .results-grid .result-card:nth-child(2)  { animation-delay:  60ms; }
+    .results-grid .result-card:nth-child(3)  { animation-delay: 120ms; }
+    .results-grid .result-card:nth-child(4)  { animation-delay: 180ms; }
+    .results-grid .result-card:nth-child(5)  { animation-delay: 240ms; }
+    .results-grid .result-card:nth-child(6)  { animation-delay: 300ms; }
+    .results-grid .result-card:nth-child(7)  { animation-delay: 360ms; }
+    .results-grid .result-card:nth-child(8)  { animation-delay: 420ms; }
+    .results-grid .result-card:nth-child(9)  { animation-delay: 480ms; }
+    .results-grid .result-card:nth-child(n+10) { animation-delay: 540ms; }
+
+    /* ===== Reduced-motion override — strip all entrance motion ===== */
+    @media (prefers-reduced-motion: reduce) {
+      body.view-chat .page-chat,
+      body.view-wardrobe .page-wardrobe,
+      body.view-results .page-results,
+      body.view-wishlist .page-wishlist,
+      body.view-trialroom .page-trialroom,
+      body.view-profile .page-profile,
+      .wardrobe-title-block .wardrobe-count,
+      .results-header p,
+      .dossier-hero .dossier-statement,
+      .results-grid .result-card { animation: none !important; }
+    }
+    /* History rail collapse (⌘K / Ctrl+K) */
+    body.rail-collapsed .history-rail { width: 0 !important; min-width: 0 !important; border-right: 0 !important; overflow: hidden !important; }
+    @media (prefers-reduced-motion: no-preference) {
+      .history-rail { transition: width var(--dur-2) var(--ease), min-width var(--dur-2) var(--ease); }
+    }
+
     /* ===== App Header ===== */
     .app-header {
       height: var(--header-h); flex-shrink: 0;
       position: relative; z-index: 10;
-      display: flex; align-items: center; gap: 16px;
-      padding: 0 20px;
-      background: rgba(255, 251, 246, 0.88);
+      display: flex; align-items: center; gap: 20px;
+      padding: 0 32px;
+      background: rgba(var(--canvas-rgb), 0.88);
       backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
       border-bottom: 1px solid var(--line);
     }
     .header-brand {
-      font-family: "Cormorant Garamond", Georgia, serif;
-      font-size: 20px; font-weight: 700; color: var(--accent);
-      letter-spacing: -0.02em; cursor: pointer; white-space: nowrap;
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-size: 22px; font-weight: 500;
+      color: var(--ink);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      cursor: pointer; white-space: nowrap;
     }
-    .header-nav { display: flex; gap: 4px; margin-left: 12px; }
+    .header-nav { display: flex; gap: 24px; margin-left: 32px; }
     .header-nav a {
-      padding: 6px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
-      color: var(--muted); transition: all 140ms ease; text-decoration: none;
+      padding: 4px 0;
+      border-bottom: 1px solid transparent;
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+      text-decoration: none;
+      transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
     }
-    .header-nav a:hover { background: rgba(111, 47, 69, 0.06); color: var(--ink); }
-    .header-nav a.active { background: rgba(111, 47, 69, 0.10); color: var(--accent); }
-    .header-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .header-nav a:hover { color: var(--ink-2); }
+    .header-nav a.active { color: var(--ink); border-bottom-color: var(--ink); }
+    .header-actions { margin-left: auto; display: flex; align-items: center; gap: 16px; }
     .new-chat-btn {
-      padding: 5px 14px; border-radius: 999px; border: 1px solid var(--line);
-      background: var(--surface); font-size: 12px; font-weight: 600; color: var(--ink);
-      cursor: pointer; transition: all 140ms ease;
+      padding: 6px 14px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line-strong);
+      background: transparent;
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-2);
+      cursor: pointer;
+      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
     }
-    .new-chat-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .new-chat-btn:hover { border-color: var(--ink); color: var(--ink); }
     .avatar-menu { position: relative; }
     .avatar-btn {
-      width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--line);
-      background: var(--surface-alt); font-size: 14px; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; transition: border-color 140ms ease;
+      width: 32px; height: 32px; border-radius: 50%;
+      border: 1px solid var(--line-strong);
+      background: var(--surface-sunk);
+      font-size: 14px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: border-color var(--dur-1) var(--ease);
     }
-    .avatar-btn:hover { border-color: var(--accent); }
+    .avatar-btn:hover { border-color: var(--ink); }
     .avatar-dropdown {
-      display: none; position: absolute; top: calc(100% + 6px); right: 0;
-      min-width: 170px; background: var(--surface); border: 1px solid var(--line);
-      border-radius: 12px; padding: 6px 0; box-shadow: var(--shadow); z-index: 200;
+      display: none; position: absolute; top: calc(100% + 8px); right: 0;
+      min-width: 180px; background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 6px 0;
+      box-shadow: var(--shadow-pop);
+      z-index: 200;
     }
     .avatar-dropdown.open { display: block; }
     .avatar-dropdown a, .avatar-dropdown button {
-      display: block; width: 100%; text-align: left; padding: 10px 18px;
-      font-size: 13px; font-weight: 500; color: var(--ink); background: none; border: none;
+      display: block; width: 100%; text-align: left;
+      padding: 10px 18px;
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-2);
+      background: none; border: none;
       cursor: pointer; text-decoration: none;
+      transition: color var(--dur-1) var(--ease);
     }
-    .avatar-dropdown a:hover, .avatar-dropdown button:hover { background: var(--surface-alt); }
+    .avatar-dropdown a:hover, .avatar-dropdown button:hover { color: var(--ink); }
     .avatar-dropdown .divider { height: 1px; background: var(--line); margin: 4px 0; }
 
     /* ===== App Body ===== */
@@ -120,167 +315,224 @@ def get_web_ui_html(
       flex: 1; display: flex; overflow: hidden; min-height: 0;
     }
 
-    /* ===== Chat History Sidebar ===== */
+    /* ===== Chat History Sidebar — Confident Luxe: hairline, no fills ===== */
     .history-rail {
       width: var(--rail-w); min-width: var(--rail-w); height: 100%;
       border-right: 1px solid var(--line);
-      background: rgba(255, 251, 246, 0.65);
+      background: var(--canvas);
       display: flex; flex-direction: column; overflow: hidden;
     }
     .history-header {
-      padding: 16px 18px 12px; display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 20px 12px; display: flex; align-items: center; justify-content: space-between;
     }
-    .history-header span { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
-    .history-list { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+    .history-header span {
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em;
+      color: var(--ink-3);
+    }
+    .history-list { flex: 1; overflow-y: auto; padding: 0 12px 16px; }
     .history-item {
-      display: block; width: 100%; text-align: left; padding: 10px 12px;
-      border-radius: 10px; border: none; background: none; cursor: pointer;
-      font-size: 13px; color: var(--ink); transition: background 100ms ease;
+      display: block; width: 100%; text-align: left; padding: 12px 14px 12px 16px;
+      border-radius: 0; border: none; border-left: 2px solid transparent;
+      background: none; cursor: pointer;
+      font-size: 13px; color: var(--ink-2);
+      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
       margin-bottom: 2px; position: relative;
     }
-    .history-item:hover { background: rgba(111, 47, 69, 0.06); }
-    .history-item.active { background: rgba(111, 47, 69, 0.10); font-weight: 600; }
+    .history-item:hover { color: var(--ink); border-left-color: var(--line-strong); }
+    .history-item.active { color: var(--ink); border-left-color: var(--accent); font-weight: 600; }
     .history-item .preview { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 44px; }
-    .history-item .ts { display: block; font-size: 11px; color: var(--muted-soft); margin-top: 2px; }
+    .history-item .ts {
+      display: block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--ink-4); margin-top: 4px;
+    }
     .history-actions {
       position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
       display: none; gap: 2px;
     }
     .history-item:hover .history-actions { display: flex; }
     .history-action-btn {
-      width: 22px; height: 22px; border: none; background: none; cursor: pointer;
-      border-radius: 6px; font-size: 12px; color: var(--muted); padding: 0;
+      width: 24px; height: 24px; border: none; background: none; cursor: pointer;
+      border-radius: var(--radius-sm); font-size: 12px; color: var(--ink-4); padding: 0;
       display: flex; align-items: center; justify-content: center;
+      transition: color var(--dur-1) var(--ease);
     }
-    .history-action-btn:hover { background: rgba(111, 47, 69, 0.12); color: var(--ink); }
+    .history-action-btn:hover { color: var(--ink); }
     .history-rename-input {
-      width: 100%; padding: 4px 8px; border: 1px solid var(--accent); border-radius: 6px;
-      font-family: inherit; font-size: 13px; color: var(--ink); background: #fff; outline: none;
+      width: 100%; padding: 4px 8px; border: 0; border-bottom: 1px solid var(--ink);
+      border-radius: 0;
+      font-family: inherit; font-size: 13px; color: var(--ink); background: transparent; outline: none;
     }
-    .history-empty { padding: 24px 18px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .history-empty {
+      padding: 24px 20px; font-size: 13px; color: var(--ink-3); line-height: 1.55;
+      font-style: italic;
+    }
 
     /* ===== Chat Main ===== */
-    /* Chat internals */
+    /* Chat internals — wider to give outfit PDP cards breathing room.
+       Bubbles self-limit via max-width: 82% (~780px) so text stays readable. */
     .chat-feed {
-      flex: 1; overflow-y: auto; padding: 24px 24px 12px; max-width: 780px;
+      flex: 1; overflow-y: auto; padding: 32px 32px 12px; max-width: 960px;
       margin: 0 auto; width: 100%;
     }
 
-    /* Welcome screen */
-    .feed-welcome { text-align: center; padding: 60px 16px 24px; }
-    .feed-welcome .eyebrow {
-      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em;
-      color: var(--accent-soft); margin-bottom: 10px;
+    /* Welcome — Confident Luxe empty state (see docs/DESIGN.md § Tonal Moments) */
+    .feed-welcome {
+      text-align: center;
+      padding: 18vh 24px 48px;
+      max-width: 760px;
+      margin: 0 auto;
     }
-    .feed-welcome h2 {
-      font-family: "Cormorant Garamond", Georgia, serif;
-      font-size: 28px; font-weight: 600; line-height: 1.15; margin-bottom: 8px; color: var(--ink);
+    .welcome-headline {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-style: italic;
+      font-weight: 400;
+      font-size: clamp(40px, 7vw, 72px);
+      line-height: 1.06;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+      margin: 0 0 18px 0;
     }
-    .feed-welcome p { font-size: 14px; color: var(--muted); max-width: 420px; margin: 0 auto 24px; line-height: 1.5; }
-    /* Primary action — one dominant entry point for first-time users */
-    .prompt-primary {
-      display: inline-flex; align-items: center; justify-content: center;
-      padding: 16px 28px; border-radius: 999px; border: 0;
-      background: linear-gradient(135deg, var(--accent), var(--accent-soft));
-      color: #fff; font-size: 15px; font-weight: 600; letter-spacing: 0.01em;
-      cursor: pointer; box-shadow: 0 6px 22px rgba(111, 47, 69, 0.20);
-      transition: transform 140ms ease, box-shadow 140ms ease;
+    .welcome-headline .welcome-dot { font-style: normal; color: var(--accent); }
+    .welcome-sub {
+      font-size: 14px;
+      color: var(--ink-3);
+      line-height: 1.55;
+      margin: 0 auto 40px;
+      max-width: 440px;
     }
-    .prompt-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(111, 47, 69, 0.26); }
-    .prompt-more-toggle {
-      display: inline-block; margin-top: 14px; padding: 6px 10px;
-      background: transparent; border: 0; cursor: pointer;
-      font-size: 12px; color: var(--muted); letter-spacing: 0.04em;
+    .welcome-prompts {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 28px;
+      max-width: 620px;
+      margin: 0 auto;
     }
-    .prompt-more-toggle:hover { color: var(--accent); }
-    .prompt-more-toggle .chev { display: inline-block; transition: transform 160ms ease; }
-    .prompt-more-toggle.open .chev { transform: rotate(180deg); }
-    .prompt-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 480px;
-      margin: 12px auto 0;
-      max-height: 0; overflow: hidden; opacity: 0;
-      transition: max-height 220ms ease, opacity 200ms ease, margin 200ms ease;
+    .welcome-prompt {
+      appearance: none;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      padding: 8px 2px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--ink-3);
+      cursor: pointer;
+      transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
     }
-    .prompt-grid.open { max-height: 320px; opacity: 1; margin: 16px auto 0; }
-    .prompt-card {
-      padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line);
-      background: var(--surface); cursor: pointer; text-align: left;
-      font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1.4;
-      transition: border-color 120ms ease, box-shadow 120ms ease;
+    .welcome-prompt:hover,
+    .welcome-prompt:focus-visible {
+      color: var(--ink);
+      border-bottom-color: var(--ink);
+      outline: none;
     }
-    .prompt-card:hover { border-color: var(--accent-soft); box-shadow: 0 2px 12px rgba(111, 47, 69, 0.08); }
     @media (prefers-reduced-motion: reduce) {
-      .prompt-grid, .prompt-more-toggle .chev, .prompt-primary { transition: none; }
+      .welcome-prompt { transition: none; }
+    }
+    @media (max-width: 640px) {
+      .feed-welcome { padding: 12vh 20px 32px; }
+      .welcome-prompts { gap: 18px 24px; }
     }
 
-    /* Bubbles */
+    /* Bubbles — Confident Luxe: agent as flowing editorial copy, user as quiet sunk pill */
     .bubble {
-      max-width: 85%; padding: 12px 16px; border-radius: 18px;
-      font-size: 14px; line-height: 1.55; margin-bottom: 8px; word-wrap: break-word;
+      max-width: 82%;
+      font-size: 15px;
+      line-height: 1.65;
+      margin-bottom: 16px;
+      word-wrap: break-word;
     }
-    /* Assistant bubble structured content (paragraphs + bullet lists)
-       — used by renderAssistantMarkup() to render StyleAdvisor /
-       explanation_request responses with proper semantic HTML. */
-    .bubble p { margin: 0 0 8px 0; }
+    .bubble p { margin: 0 0 10px 0; }
     .bubble p:last-child { margin-bottom: 0; }
-    .bubble ul { margin: 0 0 8px 0; padding-left: 20px; }
+    .bubble ul { margin: 0 0 10px 0; padding-left: 20px; }
     .bubble ul:last-child { margin-bottom: 0; }
-    .bubble li { margin-bottom: 4px; }
+    .bubble li { margin-bottom: 6px; }
     .bubble li:last-child { margin-bottom: 0; }
+    /* User message — right-aligned, sunk fill, no shadow */
     .bubble.user {
       margin-left: auto;
-      background: linear-gradient(135deg, rgba(111, 47, 69, 0.10), rgba(184, 139, 150, 0.16));
-      border-bottom-right-radius: 6px;
+      padding: 10px 16px;
+      background: var(--surface-sunk);
+      color: var(--ink);
+      border-radius: var(--radius-md);
     }
+    /* Assistant / stylist copy — no background, no border, 2px ink avatar rule on left */
     .bubble.assistant {
       margin-right: auto;
-      background: linear-gradient(135deg, var(--surface), var(--surface-alt));
-      border: 1px solid var(--line);
-      border-bottom-left-radius: 6px;
+      padding: 2px 0 2px 20px;
+      color: var(--ink);
+      border-left: 2px solid var(--ink);
+      background: transparent;
+      max-width: 100%;
     }
+    /* Agent stage / "thinking" bubble — small stylist-voice line, no chrome */
     .bubble.agent {
       margin-right: auto; background: transparent; font-size: 12px;
-      color: var(--muted); padding: 4px 16px;
+      color: var(--ink-3); padding: 4px 0 4px 20px;
+      border-left: 2px solid var(--line-strong);
       opacity: 1;
-      transition: opacity 360ms ease;
+      transition: opacity var(--dur-3) var(--ease);
+      font-style: italic;
     }
-    .bubble.agent .dot {
-      display: inline-block; width: 6px; height: 6px; border-radius: 50%;
-      background: var(--accent); margin-right: 6px; vertical-align: middle;
-      animation: pulse 1.2s infinite ease-in-out;
-    }
-    .bubble.agent.done .dot { animation: none; background: var(--wardrobe); }
+    .bubble.agent .dot { display: none; }
+    .bubble.agent.done { border-left-color: var(--positive); }
     .bubble.agent.fading { opacity: 0; pointer-events: none; }
     @media (prefers-reduced-motion: reduce) {
       .bubble.agent { transition: none; }
     }
-    .bubble.meta { font-size: 11px; color: var(--muted-soft); text-align: center; max-width: 100%; background: none; padding: 4px 0; }
-    @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+    .bubble.meta {
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--ink-4); text-align: center; max-width: 100%;
+      background: none; padding: 8px 0; margin-bottom: 12px;
+    }
 
-    /* Follow-up suggestions */
-    .followup-groups { margin: 12px 0; }
-    .followup-group { margin-bottom: 10px; }
-    .followup-group strong { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); display: block; margin-bottom: 6px; }
-    .followup-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    /* Follow-up suggestions — Confident Luxe: uppercase bucket headers, hairline chips */
+    .followup-groups { margin: 20px 0 8px; padding-left: 22px; }
+    .followup-group { margin-bottom: 14px; }
+    .followup-group:last-child { margin-bottom: 0; }
+    .followup-group strong {
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4); display: block; margin-bottom: 10px;
+    }
+    .followup-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .followup-chip {
+      appearance: none;
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-full);
+      padding: 7px 14px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ink-2);
+      cursor: pointer;
+      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+    }
+    .followup-chip:hover { border-color: var(--ink); color: var(--ink); }
 
-    /* Stage progress (subtle) */
+    /* Stage progress — stylist voice, italic, quiet */
     .stage-bar {
-      padding: 0 24px; max-width: 780px; margin: 0 auto; width: 100%;
-      font-size: 11px; color: var(--muted-soft); min-height: 18px;
+      padding: 0 32px; max-width: 960px; margin: 0 auto; width: 100%;
+      font-size: 12px; color: var(--ink-3); min-height: 18px;
+      font-style: italic;
     }
     .stage-bar:empty { display: none; }
 
-    /* ===== Chat Composer ===== */
+    /* ===== Chat Composer — Confident Luxe: hairline, focus-only elevation ===== */
     .composer-wrap {
-      padding: 8px 24px 16px; max-width: 780px; margin: 0 auto; width: 100%;
+      padding: 8px 32px 20px; max-width: 960px; margin: 0 auto; width: 100%;
     }
     .composer-outer {
-      background: var(--surface); border: 1.5px solid var(--line);
-      border-radius: 24px;
-      transition: border-color 140ms ease, box-shadow 140ms ease;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
     }
-    .composer-outer:focus-within { border-color: var(--accent-soft); box-shadow: 0 0 0 3px rgba(111, 47, 69, 0.06); }
-    .composer-outer.dragover { border-color: var(--accent); background: rgba(111, 47, 69, 0.03); }
+    .composer-outer:focus-within { border-color: var(--line-strong); box-shadow: var(--shadow-pop); }
+    .composer-outer.dragover { border-color: var(--accent); }
     .image-chip {
       display: none; align-items: center; gap: 8px;
       padding: 8px 12px 0; max-width: fit-content;
@@ -309,7 +561,7 @@ def get_web_ui_html(
       font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;
       transition: background 100ms ease, color 100ms ease;
     }
-    .plus-btn:hover { background: rgba(111, 47, 69, 0.08); color: var(--accent); }
+    .plus-btn:hover { background: rgba(var(--accent-rgb), 0.08); color: var(--accent); }
     .plus-popover {
       display: none; position: absolute; bottom: calc(100% + 8px); left: 0;
       min-width: 200px; background: var(--surface); border: 1px solid var(--line);
@@ -332,7 +584,7 @@ def get_web_ui_html(
     .composer textarea::placeholder { color: var(--muted-soft); }
     .send-btn {
       width: 32px; height: 32px; border-radius: 50%; border: none;
-      background: var(--accent); color: #fff; font-size: 15px;
+      background: var(--accent); color: var(--on-accent); font-size: 15px;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       flex-shrink: 0; align-self: flex-end;
       transition: opacity 140ms ease, transform 80ms ease;
@@ -341,124 +593,290 @@ def get_web_ui_html(
     .send-btn:active { transform: scale(0.94); }
     .send-btn:disabled { opacity: 0.35; cursor: default; }
     .send-btn .arrow { display: inline-block; transform: rotate(-90deg); }
-    .composer-error { font-size: 12px; color: #c62828; margin-top: 4px; min-height: 16px; }
+    .composer-error { font-size: 12px; color: var(--danger); margin-top: 4px; min-height: 16px; }
 
-    /* ===== Wardrobe Picker Modal ===== */
+    /* ===== Wardrobe Picker Modal — Confident Luxe ===== */
     .modal-overlay {
       display: none; position: fixed; inset: 0; z-index: 300;
-      background: rgba(32, 25, 21, 0.4); backdrop-filter: blur(4px);
+      background: rgba(var(--shadow-rgb), 0.5);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
       align-items: center; justify-content: center;
     }
     .modal-overlay.open { display: flex; }
     .modal-box {
-      background: var(--surface); border-radius: 18px; padding: 24px;
-      max-width: 560px; width: 92vw; max-height: 70vh; display: flex; flex-direction: column;
-      box-shadow: 0 24px 80px rgba(32, 25, 21, 0.18);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      max-width: 560px; width: 92vw; max-height: 80vh;
+      display: flex; flex-direction: column;
+      box-shadow: var(--shadow-modal);
     }
-    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-    .modal-header h3 { font-size: 16px; font-weight: 700; }
-    .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--muted); padding: 4px; }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .modal-header h3 {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-size: 24px; font-weight: 400; color: var(--ink); margin: 0;
+    }
+    .modal-close {
+      background: none; border: none; font-family: inherit;
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-3); padding: 4px 8px; cursor: pointer;
+      transition: color var(--dur-1) var(--ease);
+    }
     .modal-close:hover { color: var(--ink); }
     .modal-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
-      overflow-y: auto; flex: 1;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+      overflow-y: auto; flex: 1; padding: 2px;
     }
     .modal-item {
-      border: 2px solid var(--line); border-radius: 12px; overflow: hidden;
-      cursor: pointer; transition: border-color 100ms ease;
+      border: 0; border-radius: var(--radius-sm); overflow: hidden;
+      cursor: pointer;
+      background: transparent;
+      transition: opacity var(--dur-1) var(--ease);
     }
-    .modal-item:hover { border-color: var(--accent-soft); }
-    .modal-item img { width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block; }
-    .modal-item .label { padding: 6px 8px; font-size: 11px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .modal-empty { grid-column: 1/-1; text-align: center; padding: 32px; color: var(--muted); font-size: 13px; }
+    .modal-item:hover { opacity: 0.88; }
+    .modal-item img { width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block; border-radius: var(--radius-sm); }
+    .modal-item .label {
+      padding: 8px 2px 0;
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--ink-3);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .modal-empty {
+      grid-column: 1/-1; text-align: center; padding: 48px 24px;
+      color: var(--ink-3);
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-style: italic; font-size: 20px;
+    }
 
-    /* ===== Outfit Cards ===== */
+    /* ===== Outfit PDP Card — Confident Luxe ===== */
     .outfit-card {
-      display: grid; grid-template-columns: 80px 1fr 40%;
+      display: grid;
+      grid-template-columns: 1fr 36%;
       grid-template-rows: auto 1fr;
-      gap: 0; border-radius: 16px; border: 1px solid var(--line);
-      background: var(--surface); overflow: hidden; margin-bottom: 16px;
-      box-shadow: 0 4px 24px rgba(54, 32, 24, 0.06);
+      gap: 0;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+      background: var(--surface);
+      overflow: hidden;
+      margin-bottom: 24px;
     }
+    @media (max-width: 900px) {
+      .outfit-card { grid-template-columns: 1fr; }
+    }
+    /* Header spans full width */
     .outfit-header {
-      grid-column: 1 / -1; padding: 16px 18px 10px;
-      display: flex; flex-direction: column; gap: 4px;
+      grid-column: 1 / -1;
+      padding: 22px 28px 16px;
+      display: flex; flex-direction: column; gap: 8px;
       border-bottom: 1px solid var(--line);
     }
     .outfit-header-top {
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      display: flex; align-items: baseline; justify-content: space-between; gap: 20px;
     }
-    .outfit-header-top .outfit-feedback { margin: 0; }
-    .outfit-thumbs {
-      display: flex; flex-direction: column; gap: 4px;
-      padding: 10px 6px; overflow-y: auto; max-height: 480px;
+    /* Feedback strip — heart + prompt/textarea on one line */
+    .feedback-strip {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 0 4px;
+      margin-top: 8px;
+      border-top: 1px solid var(--line);
     }
-    .outfit-thumbs img {
-      width: 64px; height: 64px; object-fit: cover; border-radius: 8px;
-      border: 2px solid transparent; cursor: pointer; transition: border-color 120ms ease;
-    }
-    .outfit-thumbs img.active { border-color: var(--accent); }
-    .outfit-thumbs img:hover { border-color: var(--accent-soft); }
-    .outfit-main-img {
+    .fb-icon-btn {
+      appearance: none;
+      background: transparent;
+      border: 0;
+      padding: 4px;
+      color: var(--ink-4);
+      cursor: pointer;
       display: flex; align-items: center; justify-content: center;
-      background: var(--surface-alt); min-height: 200px; max-height: 720px; overflow: hidden;
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+      transition: color var(--dur-1) var(--ease);
     }
-    .outfit-main-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .fb-icon-btn svg { display: block; }
+    .fb-icon-btn:hover { color: var(--ink); }
+    .fb-icon-btn.fb-like:hover { color: var(--accent); }
+    .feedback-prompt {
+      appearance: none;
+      background: transparent;
+      border: 0;
+      padding: 0;
+      font-family: inherit;
+      font-size: 13px;
+      font-style: italic;
+      color: var(--ink-4);
+      cursor: pointer;
+      text-align: left;
+      transition: color var(--dur-1) var(--ease);
+    }
+    .feedback-prompt:hover { color: var(--ink-2); }
+    /* Textarea + submit hidden until .fb-open toggled */
+    .feedback-strip .feedback-textarea,
+    .feedback-strip .dislike-submit { display: none; }
+    .feedback-strip.fb-open .feedback-prompt { display: none; }
+    .feedback-strip.fb-open .feedback-textarea {
+      display: block;
+      flex: 1;
+      border: 0;
+      border-bottom: 1px solid var(--line-strong);
+      border-radius: 0;
+      padding: 4px 0;
+      font-family: inherit; font-size: 13px; font-style: italic;
+      color: var(--ink); background: transparent;
+      resize: none; outline: none;
+      min-height: 22px;
+      transition: border-color var(--dur-1) var(--ease);
+    }
+    .feedback-strip.fb-open .feedback-textarea::placeholder { color: var(--ink-4); }
+    .feedback-strip.fb-open .feedback-textarea:focus { border-bottom-color: var(--ink); }
+    .feedback-strip.fb-open .dislike-submit {
+      display: block;
+      flex-shrink: 0;
+    }
+    /* Hero image — 3:4 portrait ratio, edge-to-edge fill, no black bars */
+    .outfit-main-img {
+      position: relative;
+      background: var(--surface-sunk);
+      aspect-ratio: 3/4;
+      overflow: hidden;
+    }
+    .outfit-main-img img {
+      display: block;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      object-position: center 20%;
+    }
+    /* Image counter badge — bottom-right of hero, signals tap-to-cycle */
+    .outfit-img-counter {
+      position: absolute;
+      bottom: 12px; right: 12px;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 10px; font-weight: 500;
+      letter-spacing: 0.06em;
+      color: var(--on-accent);
+      background: rgba(var(--shadow-rgb), 0.5);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      z-index: 2;
+      pointer-events: none;
+    }
+    /* Thumbnails hidden — click/tap on the hero cycles images instead */
+    .outfit-thumbs { display: none; }
     .outfit-info {
-      padding: 16px 18px; overflow-y: auto; max-height: 720px;
-      display: flex; flex-direction: column; gap: 10px;
+      padding: 22px 28px; overflow-y: auto; max-height: 720px;
+      display: flex; flex-direction: column; gap: 12px;
     }
-    .outfit-rank { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+    .outfit-rank {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+    }
     .outfit-source-row { display: flex; gap: 6px; flex-wrap: wrap; }
+    /* Source labels — uppercase tracked, no fill. Confident Luxe § Voice & Microcopy. */
     .source-pill {
-      display: inline-block; padding: 3px 10px; border-radius: 999px;
-      font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
+      display: inline-block;
+      padding: 4px 0;
+      border: 0;
+      background: transparent;
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-3);
     }
-    .source-pill.wardrobe { background: rgba(95, 106, 82, 0.12); color: var(--wardrobe); }
-    .source-pill.catalog { background: rgba(111, 47, 69, 0.10); color: var(--accent); }
-    .source-pill.hybrid { background: rgba(176, 138, 78, 0.12); color: var(--gold); }
-    .source-mini-pill { font-size: 10px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
-    .source-mini-pill.wardrobe { background: rgba(95, 106, 82, 0.10); color: var(--wardrobe); }
-    .source-mini-pill.catalog { background: rgba(111, 47, 69, 0.08); color: var(--accent); }
-    .source-mini-pill.hybrid { background: rgba(176, 138, 78, 0.10); color: var(--gold); }
-    .outfit-title { font-family: "Cormorant Garamond", Georgia, serif; font-size: 20px; font-weight: 600; line-height: 1.2; }
+    .source-pill.wardrobe,
+    .source-pill.catalog { color: var(--ink-3); }
+    .source-pill.hybrid { color: var(--ink-3); }
+    .source-mini-pill {
+      display: inline-block;
+      padding: 2px 0;
+      background: transparent;
+      font-family: inherit;
+      font-size: 9px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+    }
+    .source-mini-pill.wardrobe,
+    .source-mini-pill.catalog,
+    .source-mini-pill.hybrid { color: var(--ink-4); }
+    /* Outfit title — Fraunces italic (tonal moment: the outfit name is a verdict) */
+    .outfit-title {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-size: 22px;
+      font-weight: 400;
+      font-style: italic;
+      line-height: 1.15;
+      color: var(--ink);
+    }
+    /* Summary — stylist caption, not headline */
     .outfit-summary { padding: 0; }
-    .outfit-summary-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-soft); margin-bottom: 4px; }
-    .outfit-summary-text { font-size: 13px; color: var(--ink); line-height: 1.5; margin: 0; }
-    .outfit-product { padding: 10px 0; border-bottom: 1px solid var(--line); }
-    .outfit-product:last-of-type { border-bottom: none; }
-    .outfit-product-title { font-weight: 600; font-size: 13px; display: block; margin-bottom: 2px; }
-    .product-price { font-size: 13px; font-weight: 700; color: var(--accent); display: block; margin-bottom: 6px; }
-    .product-cta { display: flex; gap: 6px; }
-    .btn-buy, .btn-wishlist {
-      padding: 6px 14px; border-radius: 8px; font-size: 11px; font-weight: 700;
-      text-decoration: none; white-space: nowrap; cursor: pointer;
-      border: 1px solid var(--line); text-align: center;
+    .outfit-summary-label {
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4); margin-bottom: 6px;
     }
-    .btn-buy { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .btn-buy:hover { opacity: 0.88; text-decoration: none; }
-    .btn-wishlist { background: var(--surface); color: var(--muted); }
-    .btn-wishlist:hover { border-color: var(--accent-soft); color: var(--ink); }
-    .btn-wishlist.wishlisted { color: var(--accent); border-color: var(--accent); }
-    .outfit-item-source { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
-    .chip { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: var(--surface-deep); color: var(--muted); font-weight: 600; }
-    /* Split polar bar chart — sits at the bottom of the .outfit-info
-       column (right column of the PDP card). The canvas is sized to
-       fit the column's usable width (~280px after padding) and uses
-       aspect-ratio + max-width: 100% so it scales DOWN proportionally
-       on narrower viewports without squishing the rings into ellipses.
-       Labels are arranged on a single circle (no staggering) for a
-       cleaner, more orderly visual rhythm. */
+    .outfit-summary-text {
+      font-size: 13px; font-style: italic;
+      color: var(--ink-3); line-height: 1.6; margin: 0;
+    }
+    /* Per-item source label injected above each product title */
+    .product-source-label {
+      display: block;
+      font-size: 9px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.16em;
+      color: var(--ink-4);
+      margin-bottom: 3px;
+    }
+    .outfit-product { padding: 14px 0; border-bottom: 1px solid var(--line); }
+    .outfit-product:last-of-type { border-bottom: none; }
+    .outfit-product-title { font-weight: 500; font-size: 13px; display: block; margin-bottom: 4px; color: var(--ink); }
+    .product-price {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 11px; font-weight: 500;
+      color: var(--ink-3);
+      display: block; margin-bottom: 10px;
+    }
+    .product-cta { display: flex; gap: 14px; align-items: center; }
+    .btn-buy, .btn-wishlist {
+      appearance: none;
+      padding: 4px 0;
+      background: transparent;
+      border: 0;
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      text-decoration: none; white-space: nowrap; cursor: pointer;
+      text-align: left;
+      transition: color var(--dur-1) var(--ease);
+    }
+    .btn-buy {
+      color: var(--ink);
+      border-bottom: 1px solid var(--ink);
+    }
+    .btn-buy:hover { color: var(--accent); border-bottom-color: var(--accent); text-decoration: none; }
+    .btn-wishlist { color: var(--ink-4); }
+    .btn-wishlist:hover { color: var(--ink); }
+    .btn-wishlist.wishlisted { color: var(--accent); }
+    .outfit-item-source { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+    .chip {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      padding: 0; background: transparent;
+      color: var(--ink-4);
+    }
+    /* Polar chart — always visible */
     .outfit-radar {
       text-align: center;
       padding: 8px 0 4px;
-      margin-top: 4px;
+      margin-top: 8px;
     }
     .outfit-radar canvas {
       display: block; margin: 0 auto;
       max-width: 100%; height: auto;
       aspect-ratio: 290 / 320;
     }
+    .radar-toggle { display: none; }
     .outfit-criteria { display: flex; flex-direction: column; gap: 6px; }
     .criteria-row { display: flex; align-items: center; gap: 8px; }
     .criteria-label { font-size: 11px; font-weight: 600; color: var(--muted); width: 100px; flex-shrink: 0; }
@@ -485,309 +903,865 @@ def get_web_ui_html(
     .fb-icon-btn:hover { filter: grayscale(0) opacity(1); }
     .outfit-feedback .secondary { background: var(--surface); color: var(--muted); }
     .outfit-feedback .secondary:hover { border-color: var(--accent-soft); color: var(--ink); }
-    .dislike-form { display: none; padding: 10px 0; }
+    /* Legacy dislike-form wrapper — no longer used in PDP; kept for safety */
+    .dislike-form { display: none; }
     .dislike-form.open { display: block; }
-    .reaction-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .reaction-row { display: none; flex-wrap: wrap; gap: 8px; padding: 8px 0 4px; }
+    .reaction-row.open { display: flex; }
     .reaction-chip {
-      padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line);
-      background: var(--surface); font-size: 12px; cursor: pointer; color: var(--ink);
+      appearance: none;
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--line);
+      background: transparent;
+      font-family: inherit;
+      font-size: 11px; font-weight: 500;
+      color: var(--ink-2);
+      cursor: pointer;
+      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
     }
-    .reaction-chip:hover { border-color: var(--accent-soft); }
+    .reaction-chip:hover { border-color: var(--ink); color: var(--ink); }
+    .reaction-chip.selected { border-color: var(--ink); color: var(--ink); font-weight: 600; }
+    /* Textarea + submit on the same row */
+    .dislike-input-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+    }
     .dislike-form textarea {
-      width: 100%; border: 1px solid var(--line); border-radius: 10px;
-      padding: 10px 12px; font-family: inherit; font-size: 13px; resize: none;
-      min-height: 60px; margin-bottom: 8px; outline: none; background: var(--surface);
+      flex: 1;
+      border: 0;
+      border-bottom: 1px solid var(--line-strong);
+      border-radius: 0;
+      padding: 8px 0;
+      font-family: inherit; font-size: 13px;
+      color: var(--ink); background: transparent;
+      resize: none;
+      min-height: 28px; outline: none;
+      transition: border-color var(--dur-1) var(--ease);
     }
-    .dislike-form textarea:focus { border-color: var(--accent-soft); }
-    .dislike-actions { display: flex; gap: 8px; }
-    .dislike-actions button {
-      padding: 7px 18px; border-radius: 999px; font-size: 12px; font-weight: 700;
-      cursor: pointer; border: 1px solid var(--line);
+    .dislike-form textarea::placeholder { color: var(--ink-4); font-style: italic; }
+    .dislike-form textarea:focus { border-bottom-color: var(--ink); }
+    .dislike-submit {
+      appearance: none;
+      flex-shrink: 0;
+      padding: 6px 16px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: var(--canvas);
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      cursor: pointer;
+      transition: background-color var(--dur-1) var(--ease);
     }
-    .dislike-actions button:first-child { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .dislike-actions button:first-child:hover { opacity: 0.88; }
-    .dislike-actions .secondary { background: var(--surface); color: var(--muted); }
-    .feedback-status { font-size: 12px; padding: 4px 0; min-height: 18px; }
-    .feedback-status.success { color: var(--wardrobe); }
-    .feedback-status.error { color: #c62828; }
+    .dislike-submit:hover { background: var(--ink-2); border-color: var(--ink-2); }
+    .feedback-status { font-size: 12px; font-style: italic; padding: 6px 0; min-height: 18px; }
+    .feedback-status.success { color: var(--positive); }
+    .feedback-status.error { color: var(--danger); }
 
     /* ===== Wardrobe Page ===== */
+    /* ===== Wardrobe — Confident Luxe closet ===== */
     .page-wardrobe {
-      padding: 24px 32px; width: 100%;
+      padding: 48px 48px 64px; max-width: 1440px; margin: 0 auto; width: 100%;
     }
-    .wardrobe-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
-    .wardrobe-header h2 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 24px; font-weight: 600; }
-    .wardrobe-stats {
-      display: flex; gap: 16px; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 16px;
+    .wardrobe-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      margin-bottom: 32px; gap: 24px; flex-wrap: wrap;
     }
-    .wardrobe-stats .stat-val { font-weight: 700; color: var(--ink); margin-right: 4px; }
-    .wardrobe-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
+    .wardrobe-title-block { display: flex; align-items: baseline; gap: 24px; flex-wrap: wrap; }
+    .wardrobe-header h2 {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-size: clamp(36px, 5vw, 48px);
+      font-weight: 400;
+      line-height: 1.05;
+      color: var(--ink);
+      margin: 0;
+    }
+    .wardrobe-count {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--ink-3);
+    }
+    .wardrobe-count .num { color: var(--ink); font-weight: 600; }
+    .wardrobe-header-actions { display: flex; align-items: center; gap: 12px; }
+    .wardrobe-stats { display: none; }  /* legacy stats row retired */
+    .wardrobe-filters {
+      display: flex; gap: 20px 24px; flex-wrap: wrap; margin-bottom: 14px;
+      padding-bottom: 14px; border-bottom: 1px solid var(--line);
+    }
     .filter-chip {
-      padding: 6px 14px; border-radius: 999px; font-size: 12px; font-weight: 700;
-      border: 1px solid var(--line); background: var(--surface); color: var(--ink);
-      cursor: pointer; transition: all 100ms ease;
+      appearance: none;
+      padding: 6px 0;
+      border: 0;
+      border-bottom: 1px solid transparent;
+      background: none;
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--ink-4);
+      cursor: pointer;
+      transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
     }
-    .filter-chip:hover { border-color: var(--wardrobe); color: var(--wardrobe); }
-    .filter-chip.active { background: rgba(95, 106, 82, 0.12); color: var(--wardrobe); border-color: rgba(95, 106, 82, 0.3); }
-    .closet-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
-    .closet-card {
-      border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
-      background: var(--surface); box-shadow: 0 2px 12px rgba(54, 32, 24, 0.05);
-      transition: transform 120ms ease, box-shadow 120ms ease;
+    .filter-chip:hover { color: var(--ink-2); }
+    .filter-chip.active { color: var(--ink); border-bottom-color: var(--ink); }
+    .filter-row {
+      display: flex; gap: 20px 24px; flex-wrap: wrap; margin-bottom: 20px;
+      padding-bottom: 14px; border-bottom: 1px solid var(--line);
     }
-    .closet-card:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(54, 32, 24, 0.10); }
-    .closet-image { aspect-ratio: 4/5; overflow: hidden; background: var(--surface-alt); }
-    .closet-image img { width: 100%; height: 100%; object-fit: cover; object-position: center 20%; display: block; }
-    .closet-placeholder {
-      width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-      font-size: 13px; color: var(--muted-soft);
-    }
-    .closet-body { padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 6px; }
-    .closet-body h3 { font-size: 14px; font-weight: 700; margin: 0; line-height: 1.3; color: var(--ink); }
-    .closet-body p { font-size: 12px; color: var(--muted); line-height: 1.4; margin: 0; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-    .tag-row { display: flex; gap: 5px; flex-wrap: wrap; }
-    .tag {
-      font-size: 10px; padding: 3px 10px; border-radius: 999px;
-      background: var(--surface-deep); color: var(--muted); font-weight: 600;
-      text-transform: capitalize;
-    }
-    .closet-actions { display: flex; gap: 6px; margin-top: 4px; }
-    .studio-btn {
-      flex: 1; padding: 8px 0; border-radius: 10px; font-size: 11px; font-weight: 700;
-      border: 1px solid var(--line); background: var(--surface); color: var(--ink);
-      cursor: pointer; text-align: center; transition: all 100ms ease;
-    }
-    .studio-btn:hover { border-color: var(--wardrobe); color: var(--wardrobe); background: rgba(111,47,69,0.04); }
-    .studio-btn.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
-    .studio-btn.primary:hover { background: var(--wardrobe); border-color: var(--wardrobe); color: #fff; }
-    .studio-btn.icon-only { flex: 0 0 auto; padding: 8px 12px; font-size: 14px; }
-    .studio-btn.danger { color: #9b2323; border-color: rgba(155,35,35,0.2); }
-    .studio-btn.danger:hover { border-color: #9b2323; background: rgba(155,35,35,0.04); }
     .wardrobe-search {
-      width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 999px;
-      font-family: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
-      margin-bottom: 12px; outline: none; transition: border-color 120ms ease;
+      flex: 0 0 auto;
+      min-width: 220px;
+      padding: 6px 0;
+      border: 0;
+      border-bottom: 1px solid var(--line-strong);
+      border-radius: 0;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--ink);
+      background: transparent;
+      outline: none;
+      transition: border-color var(--dur-1) var(--ease);
     }
-    .wardrobe-search:focus { border-color: var(--wardrobe); }
-    .wardrobe-search::placeholder { color: var(--muted-soft); }
-    .filter-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
-    .wardrobe-empty { text-align: center; padding: 48px 24px; color: var(--muted); font-size: 14px; }
-    .wardrobe-add-btn {
-      padding: 8px 20px; border-radius: 999px; border: 1.5px dashed var(--line);
-      background: none; font-size: 13px; font-weight: 600; color: var(--muted);
-      cursor: pointer; transition: all 100ms ease;
+    .wardrobe-search:focus { border-bottom-color: var(--ink); }
+    .wardrobe-search::placeholder { color: var(--ink-4); }
+    .closet-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 40px 28px;
+      margin-top: 32px;
     }
-    .wardrobe-add-btn:hover { border-color: var(--wardrobe); color: var(--wardrobe); }
-
-    /* ===== Results Page ===== */
-    .page-results {
-      padding: 24px 32px; max-width: 960px; margin: 0 auto; width: 100%;
+    /* Closet card — no border, no shadow, no background. Just photo + metadata below. */
+    .closet-card {
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      overflow: visible;
+      transition: none;
+      display: flex;
+      flex-direction: column;
     }
-    .results-header { margin-bottom: 20px; }
-    .results-header h2 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 24px; font-weight: 600; margin-bottom: 4px; }
-    .results-header p { font-size: 13px; color: var(--muted); }
-    .results-tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
-    .results-tabs button {
-      padding: 7px 16px; border-radius: 999px; font-size: 12px; font-weight: 700;
-      border: 1px solid var(--line); background: var(--surface); color: var(--muted);
-      cursor: pointer; transition: all 100ms ease;
+    .closet-card:hover { border-color: transparent; }
+    .closet-image {
+      aspect-ratio: 4/5;
+      overflow: hidden;
+      background: var(--surface-sunk);
+      border-radius: var(--radius-sm);
     }
-    .results-tabs button:hover { color: var(--ink); border-color: var(--accent-soft); }
-    .results-tabs button.active { background: rgba(111, 47, 69, 0.10); color: var(--accent); border-color: rgba(111, 47, 69, 0.2); }
-    .results-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
-    .results-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-    .result-card {
-      border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
-      background: var(--surface); cursor: pointer; transition: box-shadow 120ms ease;
+    .closet-image img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      object-position: center 20%;
+      display: block;
+      transition: opacity var(--dur-2) var(--ease);
     }
-    .result-card:hover { box-shadow: 0 4px 20px rgba(54, 32, 24, 0.08); }
-    .result-card .thumb { aspect-ratio: 4/3; background: var(--surface-alt); overflow: hidden; }
-    .result-card .thumb img { width: 100%; height: 100%; object-fit: cover; }
-    .result-card .thumb-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--muted-soft); font-size: 13px; }
-    .result-card .body { padding: 12px; }
-    .result-card .body .msg { font-size: 13px; font-weight: 600; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .result-card .body .meta-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-    .result-card .body .meta-row .ts { font-size: 11px; color: var(--muted-soft); }
-    .results-empty { text-align: center; padding: 48px; color: var(--muted); font-size: 14px; grid-column: 1/-1; }
-
-    /* ===== Add Wardrobe Item Modal ===== */
-    .modal-overlay {
-      position: fixed; inset: 0; z-index: 9000; background: rgba(32, 25, 21, 0.45);
+    .closet-card:hover .closet-image img { opacity: 0.92; }
+    .closet-placeholder {
+      width: 100%; height: 100%;
       display: flex; align-items: center; justify-content: center;
-      opacity: 0; pointer-events: none; transition: opacity 160ms ease;
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+    }
+    .closet-body {
+      padding: 14px 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .closet-body h3 {
+      font-size: 13px;
+      font-weight: 500;
+      margin: 0;
+      line-height: 1.35;
+      color: var(--ink);
+      transition: text-decoration var(--dur-1) var(--ease);
+    }
+    .closet-card:hover .closet-body h3 { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    .closet-body p {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-3);
+      line-height: 1.4;
+      margin: 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .tag-row { display: none; }  /* legacy pill tags retired — metadata lives in the UPPERCASE caption */
+    .closet-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      opacity: 0;
+      transition: opacity var(--dur-1) var(--ease);
+    }
+    .closet-card:hover .closet-actions,
+    .closet-card:focus-within .closet-actions { opacity: 1; }
+    @media (prefers-reduced-motion: reduce) {
+      .closet-actions { opacity: 1; }
+    }
+    .studio-btn {
+      appearance: none;
+      padding: 4px 0;
+      border: 0;
+      background: none;
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--ink-3);
+      cursor: pointer;
+      transition: color var(--dur-1) var(--ease);
+    }
+    .studio-btn:hover { color: var(--ink); }
+    .studio-btn.primary { color: var(--accent); }
+    .studio-btn.primary:hover { color: var(--accent-soft); }
+    .studio-btn.icon-only { padding: 4px 6px; }
+    .studio-btn.danger { color: var(--ink-4); }
+    .studio-btn.danger:hover { color: var(--danger); }
+    .wardrobe-empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 80px 24px;
+      color: var(--ink-3);
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-style: italic;
+      font-size: 28px;
+      line-height: 1.3;
+    }
+    .wardrobe-add-btn {
+      appearance: none;
+      padding: 10px 22px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: var(--canvas);
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      cursor: pointer;
+      transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+    }
+    .wardrobe-add-btn:hover { background: var(--ink-2); border-color: var(--ink-2); }
+
+    /* ===== Looks (Results) Page — Confident Luxe lookbook ===== */
+    .page-results {
+      padding: 48px 48px 64px; max-width: 1440px; margin: 0 auto; width: 100%;
+    }
+    .results-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 24px; flex-wrap: wrap; margin-bottom: 32px;
+    }
+    .results-header h2 {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-size: clamp(36px, 5vw, 48px);
+      font-weight: 400;
+      line-height: 1.05;
+      color: var(--ink);
+      margin: 0;
+    }
+    .results-header p {
+      font-size: 13px;
+      color: var(--ink-3);
+      font-style: italic;
+      line-height: 1.5;
+      margin: 8px 0 0;
+      max-width: 480px;
+    }
+    .results-tabs {
+      display: flex; gap: 20px 24px; flex-wrap: wrap;
+      margin-bottom: 14px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .results-tabs button {
+      appearance: none;
+      padding: 6px 0;
+      border: 0;
+      border-bottom: 1px solid transparent;
+      background: none;
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+      cursor: pointer;
+      transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+    }
+    .results-tabs button:hover { color: var(--ink-2); }
+    .results-tabs button.active { color: var(--ink); border-bottom-color: var(--ink); }
+    .results-filters {
+      display: flex; gap: 20px 24px; flex-wrap: wrap;
+      margin-bottom: 28px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 40px 28px;
+    }
+    /* Lookbook card — full-bleed image, display title overlay */
+    .result-card {
+      position: relative;
+      border: 0;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      background: var(--surface-sunk);
+      cursor: pointer;
+      aspect-ratio: 4/5;
+    }
+    .result-card:hover { border-color: transparent; }
+    .result-card .thumb {
+      position: absolute; inset: 0;
+      background: var(--surface-sunk);
+      overflow: hidden;
+    }
+    .result-card .thumb img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transition: opacity var(--dur-2) var(--ease);
+    }
+    .result-card:hover .thumb img { opacity: 0.88; }
+    .result-card .thumb-placeholder {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--ink-4);
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+    }
+    /* Top-right source label. Text sits over dark image gradient — always light ivory, regardless of theme. */
+    .result-card .body .meta-row .source-mini-pill {
+      position: absolute;
+      top: 14px; right: 16px;
+      color: var(--on-accent);
+      text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    }
+    /* Bottom-left title block with dark gradient overlay */
+    .result-card .body {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      padding: 20px 18px 18px;
+      background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.35) 60%, rgba(0,0,0,0.6) 100%);
+      color: var(--on-accent);
+    }
+    .result-card .body .msg {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-size: 20px; font-weight: 400;
+      font-style: italic;
+      line-height: 1.15;
+      margin-bottom: 8px;
+      color: var(--on-accent);
+      display: -webkit-box;
+      -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.35);
+    }
+    .result-card .body .meta-row {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    }
+    .result-card .body .meta-row .ts {
+      font-size: 9px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--on-accent);
+      opacity: 0.75;
+    }
+    /* Reposition intent chip at top-left */
+    .result-card .body .meta-row .source-mini-pill.catalog {
+      position: absolute;
+      top: 14px; left: 16px; right: auto;
+      color: var(--on-accent);
+      text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    }
+    .results-empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 80px 24px;
+      color: var(--ink-3);
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-style: italic;
+      font-size: 28px;
+      line-height: 1.3;
+    }
+
+    /* ===== Add / Edit Wardrobe Item Modal — Confident Luxe ===== */
+    /* NOTE: this block intentionally re-declares .modal-overlay and .modal-box
+       because #addItemModal and #editItemModal are loaded after the picker modal
+       CSS and need different behaviour (fade + drawer variant). */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 9000;
+      background: rgba(var(--shadow-rgb), 0.5);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity var(--dur-2) var(--ease);
     }
     .modal-overlay.open { opacity: 1; pointer-events: auto; }
     .modal-box {
-      background: var(--surface); border-radius: 20px; width: min(92vw, 480px);
-      max-height: 88vh; overflow-y: auto; padding: 28px;
-      box-shadow: 0 24px 80px rgba(32, 25, 21, 0.18);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      width: min(92vw, 520px);
+      max-height: 88vh;
+      overflow-y: auto;
+      padding: 36px 32px;
+      box-shadow: var(--shadow-modal);
     }
-    .modal-box h2 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 22px; font-weight: 600; margin-bottom: 20px; }
-    .modal-field { margin-bottom: 14px; }
-    .modal-field label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
+    /* Drawer variant — right-edge slide, used by #addItemModal via .drawer-right on box */
+    .modal-overlay.drawer-right { justify-content: flex-end; align-items: stretch; }
+    .modal-overlay.drawer-right .modal-box {
+      width: min(100vw, 480px);
+      max-height: 100vh;
+      height: 100%;
+      border-radius: 0;
+      border-left: 1px solid var(--line);
+      border-right: 0; border-top: 0; border-bottom: 0;
+      transform: translateX(24px);
+      transition: transform var(--dur-2) var(--ease);
+      padding: 48px 36px 36px;
+    }
+    .modal-overlay.drawer-right.open .modal-box { transform: translateX(0); }
+    @media (max-width: 640px) {
+      .modal-overlay.drawer-right .modal-box { width: 100vw; }
+    }
+    .modal-box h2 {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-size: 32px; font-weight: 400; line-height: 1.15;
+      color: var(--ink);
+      margin-bottom: 8px;
+    }
+    .modal-field { margin-bottom: 20px; }
+    .modal-field label {
+      display: block;
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4); margin-bottom: 8px;
+    }
     .modal-field input, .modal-field select {
-      width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px;
-      font-family: inherit; font-size: 14px; color: var(--ink); background: #fff;
+      width: 100%;
+      padding: 8px 0;
+      border: 0;
+      border-bottom: 1px solid var(--line-strong);
+      border-radius: 0;
+      font-family: inherit; font-size: 14px;
+      color: var(--ink); background: transparent;
+      outline: none;
+      transition: border-color var(--dur-1) var(--ease);
     }
-    .modal-field input[type="file"] { padding: 8px; }
-    .modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .modal-field input:focus, .modal-field select:focus { border-bottom-color: var(--ink); }
+    .modal-field input[type="file"] { padding: 8px; border: 1px dashed var(--line); border-radius: var(--radius-md); }
+    .modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .modal-actions {
+      display: flex; gap: 8px; justify-content: flex-end;
+      margin-top: 28px; padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
     .modal-actions .btn-cancel {
-      padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line);
-      background: none; font-size: 13px; font-weight: 600; color: var(--muted);
+      padding: 10px 18px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+      background: transparent;
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-3);
       cursor: pointer;
+      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
     }
-    .modal-error { color: #9b2323; font-size: 12px; margin-top: 8px; }
-    .modal-preview { width: 80px; height: 100px; border-radius: 10px; object-fit: cover; margin-top: 8px; border: 1px solid var(--line); }
+    .modal-actions .btn-cancel:hover { border-color: var(--ink); color: var(--ink); }
+    .modal-error { color: var(--danger); font-size: 12px; margin-top: 8px; font-style: italic; }
+    .modal-preview {
+      width: 80px; height: 100px;
+      border-radius: var(--radius-sm);
+      object-fit: cover;
+      margin-top: 8px;
+      border: 1px solid var(--line);
+    }
 
-    /* ===== Profile Page (unified view + edit) ===== */
+    /* ===== Profile — Style Dossier (Confident Luxe) ===== */
     .page-profile {
-      padding: 32px; max-width: 720px; margin: 0 auto; width: 100%;
+      padding: 48px 48px 80px;
+      max-width: 1040px; margin: 0 auto; width: 100%;
     }
-    .profile-card {
-      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
-      padding: 28px; margin-bottom: 20px;
+    /* Dossier hero — name in display-xl, one-line stylist statement */
+    .dossier-hero {
+      padding: 32px 0 40px;
+      margin-bottom: 40px;
+      border-bottom: 1px solid var(--line);
+    }
+    .dossier-hero h1 {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-size: clamp(48px, 7vw, 72px);
+      font-weight: 400;
+      line-height: 1.02;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      margin: 0 0 14px;
+    }
+    .dossier-hero .dossier-statement {
+      font-size: 14px;
+      font-style: italic;
+      line-height: 1.55;
+      color: var(--ink-3);
+      max-width: 560px;
+      margin: 0;
+    }
+    .dossier-hero .dossier-controls {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      margin-top: 24px;
+    }
+    /* Unified dossier card — all cards share one quiet treatment */
+    .profile-card,
+    .style-code-card,
+    .color-palette-card,
+    .analysis-card,
+    .profile-images-card {
+      background: transparent;
+      border: 0;
+      border-top: 1px solid var(--line);
+      border-radius: 0;
+      padding: 32px 0 40px;
+      margin-bottom: 0;
     }
     .profile-card-header {
-      display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 24px;
     }
-    .profile-card-header h2 {
-      font-family: "Cormorant Garamond", Georgia, serif;
-      font-size: 24px; font-weight: 600; margin: 0;
+    .profile-card-header h2,
+    .profile-card-header h3,
+    .style-code-card > h3,
+    .color-palette-card > h3,
+    .profile-images-card > h3,
+    .analysis-card h2 {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-size: 28px;
+      font-weight: 400;
+      line-height: 1.15;
+      color: var(--ink);
+      margin: 0 0 20px;
     }
-    .profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .profile-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 28px 32px; }
     .profile-field { }
-    .profile-field .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
-    .profile-field .value { font-size: 15px; font-weight: 500; }
-    .profile-field input, .profile-field select {
-      width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px;
-      font-family: inherit; font-size: 14px; color: var(--ink); background: #fff; outline: none;
-      display: none;
+    .profile-field .label {
+      display: block;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4); margin-bottom: 8px;
     }
-    .profile-field input:focus, .profile-field select:focus { border-color: var(--accent-soft); }
+    .profile-field .value {
+      font-size: 15px; font-weight: 500;
+      color: var(--ink);
+    }
+    .profile-field .value:empty::before {
+      content: "—"; color: var(--ink-4);
+    }
+    .profile-field input, .profile-field select {
+      width: 100%;
+      padding: 6px 0;
+      border: 0;
+      border-bottom: 1px solid var(--line-strong);
+      border-radius: 0;
+      font-family: inherit; font-size: 14px;
+      color: var(--ink); background: transparent;
+      outline: none;
+      display: none;
+      transition: border-color var(--dur-1) var(--ease);
+    }
+    .profile-field input:focus, .profile-field select:focus { border-bottom-color: var(--ink); }
     .profile-field.editing .value { display: none; }
     .profile-field.editing input, .profile-field.editing select { display: block; }
-    .profile-actions { display: flex; gap: 10px; margin-top: 20px; }
+    .profile-actions { display: flex; gap: 10px; margin-top: 24px; }
     .btn-primary {
-      padding: 10px 24px; border-radius: 999px; border: none;
-      background: var(--accent); color: #fff; font-size: 13px; font-weight: 700;
-      cursor: pointer; transition: opacity 120ms ease;
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: var(--canvas);
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      cursor: pointer;
+      transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
     }
-    .btn-primary:hover { opacity: 0.88; }
+    .btn-primary:hover { background: var(--ink-2); border-color: var(--ink-2); }
     .btn-secondary {
-      padding: 10px 24px; border-radius: 999px; border: 1px solid var(--line);
-      background: var(--surface); color: var(--muted); font-size: 13px; font-weight: 700;
-      cursor: pointer; transition: all 120ms ease;
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line-strong);
+      background: transparent;
+      color: var(--ink-3);
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      cursor: pointer;
+      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
     }
-    .btn-secondary:hover { border-color: var(--accent-soft); color: var(--ink); }
-    .edit-status { font-size: 12px; margin-top: 10px; min-height: 18px; }
-    .edit-status.success { color: var(--wardrobe); }
-    .edit-status.error { color: #c62828; }
-    .style-code-card {
-      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
-      padding: 28px; margin-bottom: 20px;
+    .btn-secondary:hover { border-color: var(--ink); color: var(--ink); }
+    .edit-status { font-size: 12px; margin-top: 10px; min-height: 18px; font-style: italic; }
+    .edit-status.success { color: var(--positive); }
+    .edit-status.error { color: var(--danger); }
+    /* Style code — adjectives as display-italic quote blocks */
+    .style-facts {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 28px;
     }
-    .style-code-card h3 { font-size: 18px; font-weight: 600; margin-bottom: 16px; font-family: "Cormorant Garamond", Georgia, serif; }
-    .style-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-    .style-fact { background: var(--surface-alt); border-radius: 10px; padding: 12px 14px; }
-    .style-fact .fact-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-soft); margin-bottom: 2px; }
-    .style-fact .fact-value { font-size: 14px; font-weight: 600; }
-    .style-summary { font-size: 14px; color: var(--muted); line-height: 1.6; }
-    /* ===== Analysis Status ===== */
-    .analysis-card {
-      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
-      padding: 28px; margin-bottom: 20px;
+    .style-fact {
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      padding: 0;
     }
-    .analysis-card h2 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 24px; font-weight: 600; margin: 0; }
-    .analysis-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .style-fact .fact-label {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+      margin-bottom: 2px;
+      display: none;  /* hide in dossier view — the adjective is the label */
+    }
+    .style-fact .fact-value {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-style: italic;
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 400;
+      line-height: 1.1;
+      color: var(--ink);
+    }
+    .style-summary {
+      font-size: 14px;
+      font-style: italic;
+      color: var(--ink-3);
+      line-height: 1.6;
+      max-width: 520px;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
+    /* ===== Analysis Status — hairline Confident Luxe ===== */
+    .analysis-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
     .analysis-badge {
-      padding: 6px 12px; border-radius: 999px; font-size: 11px; font-weight: 700;
-      letter-spacing: 0.06em; text-transform: uppercase;
-      background: var(--surface-alt); color: var(--muted);
+      padding: 0;
+      background: transparent;
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
     }
-    .analysis-badge.completed { background: rgba(95, 106, 82, 0.12); color: var(--wardrobe); }
-    .analysis-badge.running { background: rgba(111, 47, 69, 0.10); color: var(--accent); }
-    .analysis-badge.failed { background: rgba(155, 35, 35, 0.10); color: #9b2323; }
-    .analysis-progress { width: 100%; height: 8px; border-radius: 999px; background: var(--surface-deep); overflow: hidden; margin-bottom: 12px; }
-    .analysis-progress-bar { width: 14%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #b08a4e); transition: width 300ms ease; }
-    .analysis-text { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
-    .analysis-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .analysis-error { display: none; padding: 10px 14px; border-radius: 12px; background: rgba(155,35,35,0.06); color: #9b2323; font-size: 12px; margin-bottom: 12px; }
+    .analysis-badge.completed { color: var(--positive); }
+    .analysis-badge.running { color: var(--accent); }
+    .analysis-badge.failed { color: var(--danger); }
+    .analysis-progress {
+      width: 100%; height: 2px;
+      border-radius: 0;
+      background: var(--line);
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .analysis-progress-bar {
+      width: 14%; height: 100%;
+      border-radius: inherit;
+      background: var(--ink);
+      transition: width var(--dur-3) var(--ease);
+    }
+    .analysis-text { font-size: 13px; color: var(--ink-3); font-style: italic; margin-bottom: 16px; }
+    .analysis-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .analysis-error {
+      display: none; padding: 12px 16px;
+      border-left: 2px solid var(--danger);
+      background: transparent;
+      color: var(--danger);
+      font-size: 12px; font-style: italic;
+      margin-bottom: 14px;
+    }
     .analysis-error.show { display: block; }
-    .agent-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 16px; }
+    .agent-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 20px; }
     .agent-card {
-      border: 1px solid var(--line); border-radius: 14px; padding: 16px; background: #fff;
+      border: 0;
+      border-top: 1px solid var(--line);
+      border-radius: 0;
+      padding: 16px 0 0;
+      background: transparent;
     }
     .agent-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-    .agent-card h4 { font-size: 13px; font-weight: 700; margin: 0; }
-    .agent-card p { font-size: 12px; color: var(--muted); margin: 0; }
+    .agent-card h4 {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-3);
+      margin: 0;
+    }
+    .agent-card p { font-size: 13px; color: var(--ink-2); margin: 0; }
     .agent-rerun-btn {
-      padding: 5px 10px; font-size: 11px; font-weight: 600; border-radius: 8px;
-      border: 1px solid var(--line); background: var(--surface); color: var(--muted);
-      cursor: pointer; display: none;
+      padding: 4px 0;
+      background: transparent; border: 0;
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+      cursor: pointer;
+      display: none;
+      transition: color var(--dur-1) var(--ease);
     }
+    .agent-rerun-btn:hover { color: var(--ink); }
     .agent-rerun-btn.show { display: inline-block; }
-    .result-group { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; margin-bottom: 14px; }
-    .result-group-header {
-      padding: 10px 16px; background: var(--surface-alt); border-bottom: 1px solid var(--line);
-      font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 700;
+    .result-group {
+      border: 0;
+      border-top: 1px solid var(--line);
+      border-radius: 0;
+      background: transparent;
+      margin-bottom: 24px;
     }
-    .attr-row { display: grid; grid-template-columns: 160px 1fr 70px; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--surface-deep); align-items: start; font-size: 13px; }
+    .result-group-header {
+      padding: 12px 0 16px;
+      background: transparent;
+      border-bottom: 1px solid var(--line);
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+    }
+    .attr-row { display: grid; grid-template-columns: 160px 1fr 70px; gap: 10px; padding: 14px 0; border-bottom: 1px solid var(--line); align-items: start; font-size: 13px; }
     .attr-row:last-child { border-bottom: none; }
-    .attr-name { font-weight: 600; }
-    .attr-value { line-height: 1.4; }
-    .attr-value small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .attr-name {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-3);
+    }
+    .attr-value { line-height: 1.5; color: var(--ink); }
+    .attr-value small { display: block; margin-top: 4px; color: var(--ink-4); font-size: 11px; font-style: italic; }
     .attr-confidence {
-      justify-self: end; padding: 4px 8px; border-radius: 999px;
-      background: rgba(111, 47, 69, 0.08); color: var(--accent); font-size: 11px; font-weight: 700;
+      justify-self: end;
+      padding: 0;
+      background: transparent;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 11px; font-weight: 500;
+      color: var(--ink-3);
     }
 
     /* ===== Profile Images ===== */
-    .profile-images-card {
-      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
-      padding: 28px; margin-bottom: 20px;
+    .profile-images-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; max-width: 520px; }
+    .profile-image-slot { }
+    .profile-image-slot .slot-label {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+      margin-bottom: 10px;
     }
-    .profile-images-card h3 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 18px; font-weight: 600; margin-bottom: 16px; }
-    .profile-images-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .profile-image-slot { text-align: center; }
-    .profile-image-slot .slot-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-soft); margin-bottom: 8px; }
-    .profile-image-slot img { width: 100%; max-width: 200px; border-radius: 14px; border: 1px solid var(--line); aspect-ratio: 2/3; object-fit: cover; }
-    .profile-image-slot .slot-empty { width: 100%; max-width: 200px; aspect-ratio: 2/3; border-radius: 14px; border: 2px dashed var(--line); display: flex; align-items: center; justify-content: center; color: var(--muted-soft); font-size: 12px; margin: 0 auto; }
-    .profile-image-slot .slot-update { margin-top: 8px; }
+    .profile-image-slot img {
+      width: 100%;
+      border-radius: var(--radius-sm);
+      border: 0;
+      aspect-ratio: 2/3;
+      object-fit: cover;
+      background: var(--surface-sunk);
+    }
+    .profile-image-slot .slot-empty {
+      width: 100%;
+      aspect-ratio: 2/3;
+      border-radius: var(--radius-sm);
+      border: 1px dashed var(--line-strong);
+      background: var(--surface-sunk);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--ink-4);
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+    }
+    .profile-image-slot .slot-update { margin-top: 12px; }
     .profile-image-slot .slot-update label {
-      display: inline-block; padding: 5px 14px; border-radius: 999px; font-size: 11px; font-weight: 600;
-      border: 1px solid var(--line); color: var(--muted); cursor: pointer; transition: all 100ms ease;
+      display: inline-block;
+      padding: 4px 0;
+      background: transparent;
+      border: 0;
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+      cursor: pointer;
+      transition: color var(--dur-1) var(--ease);
     }
-    .profile-image-slot .slot-update label:hover { border-color: var(--accent-soft); color: var(--ink); }
+    .profile-image-slot .slot-update label:hover { color: var(--ink); }
     .profile-image-slot .slot-update input { display: none; }
-    .analysis-confidence-pct { font-size: 13px; font-weight: 600; color: var(--accent); margin-left: 8px; }
+    .analysis-confidence-pct {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 11px; font-weight: 500;
+      color: var(--ink-3);
+      margin-left: 12px;
+    }
 
+    /* Color palette — hairline swatch strip, champagne signal rule */
     .color-palette-card {
-      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
-      padding: 28px;
+      position: relative;
     }
-    .color-palette-card h3 { font-size: 18px; font-weight: 600; margin-bottom: 16px; font-family: "Cormorant Garamond", Georgia, serif; }
-    .palette-section { margin-bottom: 14px; }
+    .color-palette-card::before {
+      content: "";
+      position: absolute;
+      top: 32px; bottom: 40px; left: -14px;
+      width: 1px;
+      background: var(--signal);
+    }
+    .palette-section { margin-bottom: 20px; }
     .palette-section:last-child { margin-bottom: 0; }
-    .palette-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted-soft); margin-bottom: 6px; }
-    .palette-chips { display: flex; gap: 6px; flex-wrap: wrap; }
-    .palette-chip {
-      padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    .palette-label {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+      margin-bottom: 10px;
     }
-    .palette-chip.base { background: var(--surface-alt); color: var(--ink); }
-    .palette-chip.accent { background: rgba(111, 47, 69, 0.10); color: var(--accent); }
-    .palette-chip.avoid { background: rgba(155, 35, 35, 0.08); color: #9b2323; }
+    .palette-chips { display: flex; gap: 18px; flex-wrap: wrap; }
+    .palette-chip {
+      padding: 0 0 6px;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      font-family: inherit;
+      font-size: 11px; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--ink-2);
+    }
+    .palette-chip.base { color: var(--ink); border-bottom-color: var(--line-strong); }
+    .palette-chip.accent { color: var(--accent); border-bottom-color: var(--accent); }
+    .palette-chip.avoid { color: var(--ink-4); text-decoration: line-through; border-bottom-color: transparent; }
+
+    /* Theme toggle — lives in the dossier hero */
+    .theme-toggle {
+      appearance: none;
+      padding: 4px 0;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-3);
+      cursor: pointer;
+      transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+    }
+    .theme-toggle:hover { color: var(--ink); border-bottom-color: var(--ink); }
 
     /* ===== Responsive ===== */
+    @media (max-width: 1200px) {
+      .closet-grid { grid-template-columns: repeat(4, 1fr); gap: 32px 24px; }
+    }
     @media (max-width: 900px) {
       .history-rail { width: 220px; min-width: 220px; }
       .outfit-card { grid-template-columns: 1fr; }
       .outfit-thumbs { flex-direction: row; overflow-x: auto; padding: 8px; }
       .outfit-thumbs img { width: 56px; height: 56px; }
       .outfit-main-img img { max-height: 320px; }
-      .closet-grid { grid-template-columns: repeat(3, 1fr); }
+      .closet-grid { grid-template-columns: repeat(3, 1fr); gap: 28px 20px; }
       .results-grid { grid-template-columns: 1fr; }
       .profile-grid, .style-facts, .edit-grid { grid-template-columns: 1fr; }
+      .page-wardrobe { padding: 32px 24px; }
     }
     @media (max-width: 600px) {
       .app-header { padding: 0 12px; gap: 8px; }
@@ -797,18 +1771,19 @@ def get_web_ui_html(
       .hamburger-btn { display: flex !important; }
       .history-rail.mobile-open {
         display: flex !important; position: fixed; top: var(--header-h); left: 0; bottom: 0;
-        width: 280px; z-index: 150; background: var(--surface);
-        box-shadow: 4px 0 24px rgba(32, 25, 21, 0.12);
+        width: 280px; z-index: 150; background: var(--canvas);
+        box-shadow: var(--shadow-modal);
       }
       .chat-feed { padding: 16px 12px; }
       .composer-wrap { padding: 6px 12px 12px; }
-      .prompt-grid { grid-template-columns: 1fr; }
-      .page-wardrobe, .page-results, .page-profile { padding: 16px; }
-      .closet-grid { grid-template-columns: repeat(2, 1fr); }
+      .page-wardrobe { padding: 24px 16px; }
+      .page-results, .page-profile { padding: 16px; }
+      .closet-grid { grid-template-columns: repeat(2, 1fr); gap: 24px 16px; }
+      .wardrobe-search { margin-left: 0 !important; width: 100%; }
     }
     @media (max-width: 430px) {
       .header-brand { font-size: 18px; }
-      .closet-grid { grid-template-columns: 1fr; }
+      .closet-grid { gap: 20px 14px; }
     }
 
     /* Hamburger (hidden on desktop) */
@@ -840,11 +1815,12 @@ def get_web_ui_html(
   <nav class="header-nav">
     <a href="/?user={safe_user_id}&view=chat" class="{'active' if active_view == 'chat' else ''}">Chat</a>
     <a href="/?user={safe_user_id}&view=wardrobe" class="{'active' if active_view == 'wardrobe' else ''}">Wardrobe</a>
-    <a href="/?user={safe_user_id}&view=wishlist" class="{'active' if active_view == 'wishlist' else ''}">Wishlist</a>
+    <a href="/?user={safe_user_id}&view=results" class="{'active' if active_view == 'results' else ''}">Looks</a>
+    <a href="/?user={safe_user_id}&view=wishlist" class="{'active' if active_view == 'wishlist' else ''}">Saved</a>
     <a href="/?user={safe_user_id}&view=trialroom" class="{'active' if active_view == 'trialroom' else ''}">Trial Room</a>
   </nav>
   <div class="header-actions">
-    <button class="new-chat-btn" id="newChatBtn">+ New Chat</button>
+    <button class="new-chat-btn" id="newChatBtn">New chat</button>
     <div class="avatar-menu">
       <button class="avatar-btn" id="avatarBtn" aria-label="User menu">&#128100;</button>
       <div class="avatar-dropdown" id="avatarDropdown">
@@ -878,20 +1854,13 @@ def get_web_ui_html(
 <div class="page-view page-chat">
   <div id="feed" class="chat-feed" role="region" aria-live="polite">
     <div class="feed-welcome" id="feedWelcome">
-      <div class="eyebrow">Your Stylist Is Ready</div>
-      <h2>What are we styling today?</h2>
-      <p>Start with one ask. I'll style you from your wardrobe first, and pull from the catalog when there's a gap.</p>
-      <button class="prompt-primary prompt-card" data-prompt="Dress me for tonight using my wardrobe.">Dress me for tonight</button>
-      <div>
-        <button type="button" class="prompt-more-toggle" id="promptMoreToggle" aria-expanded="false" aria-controls="promptMoreGrid">
-          More ways to style <span class="chev">&#9662;</span>
-        </button>
-      </div>
-      <div class="prompt-grid" id="promptMoreGrid">
-        <button class="prompt-card" data-prompt="Find me a complete office look from the catalog.">Office look from catalog</button>
-        <button class="prompt-card" data-prompt="What goes well with this?">Pair a garment I have</button>
-        <button class="prompt-card" data-prompt="Plan my wardrobe for a 5-day beach vacation.">Plan a trip wardrobe</button>
-        <button class="prompt-card" data-prompt="How does this outfit look on me?">Check an outfit I'm wearing</button>
+      <h1 class="welcome-headline">What are we wearing<span class="welcome-dot">.</span></h1>
+      <p class="welcome-sub">From your wardrobe first. Catalog when there's a gap.</p>
+      <div class="welcome-prompts" id="welcomePrompts">
+        <button class="welcome-prompt" data-prompt="Dress me for tonight using my wardrobe.">Build a look</button>
+        <button class="welcome-prompt" data-prompt="What goes well with this?">Pair a garment</button>
+        <button class="welcome-prompt" data-prompt="Plan my wardrobe for a 5-day trip.">Plan a trip</button>
+        <button class="welcome-prompt" data-prompt="Is this worth buying?">Is it worth it</button>
       </div>
     </div>
   </div>
@@ -927,19 +1896,15 @@ def get_web_ui_html(
     html += f"""
 <div class="page-view page-wardrobe">
   <div class="wardrobe-header">
-    <h2>Your Wardrobe</h2>
-    <div style="display:flex;gap:8px;">
-      <button class="wardrobe-add-btn" id="wardrobeAddBtn">+ Add Item</button>
-      <button class="btn-secondary" id="wardrobeRefreshBtn">Refresh</button>
+    <div class="wardrobe-title-block">
+      <h2>Wardrobe</h2>
+      <div class="wardrobe-count"><span class="num" id="wStatCount">0</span> pieces</div>
+    </div>
+    <div class="wardrobe-header-actions">
+      <button class="wardrobe-add-btn" id="wardrobeAddBtn">Add piece</button>
     </div>
   </div>
-  <div class="wardrobe-stats" id="wardrobeStats">
-    <div><span class="stat-val" id="wStatCount">0</span> pieces</div>
-    <div><span class="stat-val" id="wStatComplete">0%</span> completeness</div>
-    <div id="wStatusPill" style="margin-left:auto;font-size:11px;color:var(--muted-soft);"></div>
-  </div>
-  <input type="search" id="wardrobeSearch" class="wardrobe-search" placeholder="Search wardrobe by name, brand, or description..." />
-  <div class="wardrobe-filters" id="wardrobeFilters">
+  <div class="wardrobe-filters" id="wardrobeFilters" role="tablist" aria-label="Category">
     <button class="filter-chip active" data-filter="all">All</button>
     <button class="filter-chip" data-filter="tops">Tops</button>
     <button class="filter-chip" data-filter="bottoms">Bottoms</button>
@@ -949,8 +1914,8 @@ def get_web_ui_html(
     <button class="filter-chip" data-filter="accessories">Accessories</button>
     <button class="filter-chip" data-filter="occasion">Occasion-ready</button>
   </div>
-  <div class="filter-row" id="wardrobeColorFilters">
-    <button class="filter-chip active" data-color="all">All Colors</button>
+  <div class="filter-row" id="wardrobeColorFilters" role="tablist" aria-label="Color">
+    <button class="filter-chip active" data-color="all">All colors</button>
     <button class="filter-chip" data-color="black">Black</button>
     <button class="filter-chip" data-color="white">White</button>
     <button class="filter-chip" data-color="blue">Blue</button>
@@ -961,41 +1926,42 @@ def get_web_ui_html(
     <button class="filter-chip" data-color="grey">Grey</button>
     <button class="filter-chip" data-color="beige">Beige</button>
     <button class="filter-chip" data-color="pink">Pink</button>
+    <input type="search" id="wardrobeSearch" class="wardrobe-search" placeholder="Search your closet…" style="margin-left:auto;" />
   </div>
   <div class="closet-grid" id="closetGrid">
-    <div class="wardrobe-empty">Loading wardrobe...</div>
+    <div class="wardrobe-empty">Your closet is empty.</div>
   </div>
 </div>
 """
 
-    # ── Add Wardrobe Item Modal ──
+    # ── Add Wardrobe Item Drawer (right-edge slide) ──
     html += """
-<div class="modal-overlay" id="addItemModal">
-  <div class="modal-box" style="text-align:center;">
-    <h2 style="margin-bottom:8px;">Add to Wardrobe</h2>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:20px;">Upload a photo and Aura will analyse it automatically.</p>
+<div class="modal-overlay drawer-right" id="addItemModal">
+  <div class="modal-box">
+    <h2>Add a piece</h2>
+    <p style="font-size:13px;color:var(--ink-3);margin-bottom:28px;font-style:italic;">Upload a photo. I'll read it automatically.</p>
     <form id="addItemForm">
-      <label for="addItemFile" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:32px 24px;border:2px dashed var(--line);border-radius:16px;cursor:pointer;transition:border-color 120ms ease;min-height:160px;" id="addItemDropzone">
-        <img class="modal-preview" id="addItemPreview" style="display:none;max-height:180px;border-radius:10px;" alt="" />
-        <span id="addItemPlaceholder" style="font-size:28px;">&#128248;</span>
-        <span id="addItemLabel" style="font-size:13px;color:var(--muted);font-weight:500;">Tap to select or drag a photo here</span>
+      <label for="addItemFile" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:48px 24px;border:1px dashed var(--line-strong);border-radius:var(--radius-md);cursor:pointer;transition:border-color var(--dur-1) var(--ease);min-height:240px;background:var(--surface-sunk);" id="addItemDropzone">
+        <img class="modal-preview" id="addItemPreview" style="display:none;max-height:200px;border-radius:var(--radius-sm);" alt="" />
+        <span id="addItemPlaceholder" style="font-size:32px;opacity:0.4;">&#128248;</span>
+        <span id="addItemLabel" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.14em;color:var(--ink-3);">Tap to upload or drag a photo</span>
         <input type="file" id="addItemFile" accept="image/*" required style="display:none;" />
       </label>
       <div class="modal-error" id="addItemError" style="text-align:center;"></div>
-      <div class="modal-actions" style="justify-content:center;">
+      <div class="modal-actions">
         <button type="button" class="btn-cancel" id="addItemCancel">Cancel</button>
-        <button type="submit" class="btn-primary" id="addItemSubmit">Add to Wardrobe</button>
+        <button type="submit" class="btn-primary" id="addItemSubmit">Add to closet</button>
       </div>
     </form>
   </div>
 </div>
 """
 
-    # ── Edit Wardrobe Item Modal ──
+    # ── Edit Wardrobe Item Modal (center) ──
     html += """
 <div class="modal-overlay" id="editItemModal">
   <div class="modal-box">
-    <h2 style="margin-bottom:8px;">Edit Item</h2>
+    <h2>Edit piece</h2>
     <form id="editItemForm">
       <input type="hidden" id="editItemId" />
       <div id="editItemImgWrap" style="text-align:center;margin-bottom:16px;">
@@ -1063,27 +2029,29 @@ def get_web_ui_html(
 </div>
 """
 
-    # ── Results Page ──
+    # ── Looks (Results) Page ──
     html += """
 <div class="page-view page-results">
   <div class="results-header">
-    <h2>Previous Results</h2>
-    <p>Your past styling recommendations, grouped by type.</p>
+    <div>
+      <h2>Looks</h2>
+      <p>Everything we've styled, in one place.</p>
+    </div>
   </div>
-  <div class="results-tabs" id="resultsTabs">
+  <div class="results-tabs" id="resultsTabs" role="tablist" aria-label="Look type">
     <button class="active" data-tab="all">All</button>
-    <button data-tab="occasion_recommendation">Outfit Picks</button>
-    <button data-tab="outfit_check">Outfit Checks</button>
+    <button data-tab="occasion_recommendation">Outfits</button>
+    <button data-tab="outfit_check">Checks</button>
     <button data-tab="pairing_request">Pairings</button>
-    <button data-tab="capsule_or_trip_planning">Capsules / Trips</button>
+    <button data-tab="capsule_or_trip_planning">Trips</button>
   </div>
-  <div class="results-filters" id="resultsFilters">
-    <button class="filter-chip active" data-source="all">All Sources</button>
-    <button class="filter-chip" data-source="wardrobe">Wardrobe</button>
-    <button class="filter-chip" data-source="catalog">Catalog</button>
+  <div class="results-filters" id="resultsFilters" role="tablist" aria-label="Source">
+    <button class="filter-chip active" data-source="all">All sources</button>
+    <button class="filter-chip" data-source="wardrobe">Yours</button>
+    <button class="filter-chip" data-source="catalog">Shop</button>
   </div>
   <div class="results-grid" id="resultsGrid">
-    <div class="results-empty">Loading results...</div>
+    <div class="results-empty">Loading.</div>
   </div>
 </div>
 """
@@ -1114,35 +2082,48 @@ def get_web_ui_html(
 </div>
 """
 
-    # ── Profile Page (unified: analysis + profile + style code + palette) ──
+    # ── Profile Page — Style Dossier (Confident Luxe) ──
     html += """
 <div class="page-view page-profile">
-  <div class="analysis-card" id="analysisCard">
-    <div class="analysis-header">
-      <h2>Profile Analysis</h2>
-      <div style="display:flex;align-items:center;gap:6px;">
-        <span class="analysis-confidence-pct" id="analysisConfidence"></span>
-        <div class="analysis-badge" id="analysisBadge">Loading</div>
-      </div>
-    </div>
-    <div class="analysis-progress" id="analysisProgressWrap"><div class="analysis-progress-bar" id="analysisProgressBar"></div></div>
-    <div class="analysis-text" id="analysisText">Checking analysis status...</div>
-    <div class="analysis-error" id="analysisError"></div>
-    <div class="analysis-actions" id="analysisActions">
-      <button class="btn-secondary" id="analysisRerunBtn" style="display:none;">Re-Run Analysis</button>
-      <button class="btn-secondary" id="analysisRetryBtn" style="display:none;">Retry</button>
-    </div>
-    <div class="agent-grid" id="analysisAgentGrid">
-      <div class="agent-card"><div class="agent-card-head"><h4>Body Type</h4><button class="agent-rerun-btn" data-agent="body_type_analysis">Re-Run</button></div><p id="agentStatus-body_type_analysis">—</p></div>
-      <div class="agent-card"><div class="agent-card-head"><h4>Color Analysis</h4><button class="agent-rerun-btn" data-agent="color_analysis_headshot">Re-Run</button></div><p id="agentStatus-color_analysis_headshot">—</p></div>
-      <div class="agent-card"><div class="agent-card-head"><h4>Other Details</h4><button class="agent-rerun-btn" data-agent="other_details_analysis">Re-Run</button></div><p id="agentStatus-other_details_analysis">—</p></div>
+  <div class="dossier-hero">
+    <h1 id="dossierName">Your dossier</h1>
+    <p class="dossier-statement" id="dossierStatement">A record of what we've learned about how you dress.</p>
+    <div class="dossier-controls">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle light and dark theme">Flip to dark</button>
     </div>
   </div>
+  <div class="style-code-card" id="styleCodeCard">
+    <div class="profile-card-header">
+      <h3>Style code</h3>
+    </div>
+    <div class="style-facts" id="styleFacts"></div>
+    <div class="style-summary" id="styleSummary"></div>
+  </div>
+  <div class="color-palette-card" id="colorPaletteCard">
+    <div class="profile-card-header">
+      <h3>Palette</h3>
+    </div>
+    <div id="colorPaletteContent"></div>
+  </div>
+  <div class="profile-card" id="profileCard">
+    <div class="profile-card-header">
+      <h3>Profile</h3>
+      <button class="btn-secondary" id="editToggleBtn">Edit</button>
+    </div>
+    <div class="profile-grid" id="profileGrid"></div>
+    <div class="profile-actions" id="profileEditActions" style="display:none;">
+      <button class="btn-primary" id="editSaveBtn">Save changes</button>
+      <button class="btn-secondary" id="editCancelBtn">Cancel</button>
+    </div>
+    <div class="edit-status" id="editStatus"></div>
+  </div>
   <div class="profile-images-card">
-    <h3>Your Photos</h3>
+    <div class="profile-card-header">
+      <h3>Photos</h3>
+    </div>
     <div class="profile-images-grid">
       <div class="profile-image-slot">
-        <div class="slot-label">Full Body</div>
+        <div class="slot-label">Full body</div>
         <div id="imgSlotFullBody"><div class="slot-empty">Not uploaded</div></div>
         <div class="slot-update"><label>Update<input type="file" accept="image/*" id="updateFullBody" /></label></div>
       </div>
@@ -1153,28 +2134,28 @@ def get_web_ui_html(
       </div>
     </div>
   </div>
-  <div id="analysisResultsWrap"></div>
-  <div class="profile-card" id="profileCard">
+  <div class="analysis-card" id="analysisCard">
     <div class="profile-card-header">
-      <h2>Your Profile</h2>
-      <button class="btn-secondary" id="editToggleBtn">Edit</button>
+      <h3>Analysis</h3>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="analysis-confidence-pct" id="analysisConfidence"></span>
+        <div class="analysis-badge" id="analysisBadge">Loading</div>
+      </div>
     </div>
-    <div class="profile-grid" id="profileGrid"></div>
-    <div class="profile-actions" id="profileEditActions" style="display:none;">
-      <button class="btn-primary" id="editSaveBtn">Save Changes</button>
-      <button class="btn-secondary" id="editCancelBtn">Cancel</button>
+    <div class="analysis-progress" id="analysisProgressWrap"><div class="analysis-progress-bar" id="analysisProgressBar"></div></div>
+    <div class="analysis-text" id="analysisText">Checking analysis status.</div>
+    <div class="analysis-error" id="analysisError"></div>
+    <div class="analysis-actions" id="analysisActions">
+      <button class="btn-secondary" id="analysisRerunBtn" style="display:none;">Re-run analysis</button>
+      <button class="btn-secondary" id="analysisRetryBtn" style="display:none;">Retry</button>
     </div>
-    <div class="edit-status" id="editStatus"></div>
+    <div class="agent-grid" id="analysisAgentGrid">
+      <div class="agent-card"><div class="agent-card-head"><h4>Body</h4><button class="agent-rerun-btn" data-agent="body_type_analysis">Re-run</button></div><p id="agentStatus-body_type_analysis">—</p></div>
+      <div class="agent-card"><div class="agent-card-head"><h4>Color</h4><button class="agent-rerun-btn" data-agent="color_analysis_headshot">Re-run</button></div><p id="agentStatus-color_analysis_headshot">—</p></div>
+      <div class="agent-card"><div class="agent-card-head"><h4>Other details</h4><button class="agent-rerun-btn" data-agent="other_details_analysis">Re-run</button></div><p id="agentStatus-other_details_analysis">—</p></div>
+    </div>
   </div>
-  <div class="style-code-card" id="styleCodeCard">
-    <h3>Your Style Code</h3>
-    <div class="style-facts" id="styleFacts"></div>
-    <div class="style-summary" id="styleSummary"></div>
-  </div>
-  <div class="color-palette-card" id="colorPaletteCard">
-    <h3>Your Color Palette</h3>
-    <div id="colorPaletteContent"></div>
-  </div>
+  <div id="analysisResultsWrap"></div>
 </div>
 """
 
@@ -1265,9 +2246,7 @@ def get_web_ui_html(
   var wardrobeFilters = document.getElementById("wardrobeFilters");
   var wardrobeColorFilters = document.getElementById("wardrobeColorFilters");
   var wardrobeSearchInput = document.getElementById("wardrobeSearch");
-  var wStatusPill = document.getElementById("wStatusPill");
   var wStatCount = document.getElementById("wStatCount");
-  var wStatComplete = document.getElementById("wStatComplete");
   // Results
   var resultsGrid = document.getElementById("resultsGrid");
   var resultsTabs = document.getElementById("resultsTabs");
@@ -1308,10 +2287,10 @@ def get_web_ui_html(
   }}
 
   function sourceBadgeLabel(source) {{
-    if (source === "wardrobe") return "From Your Wardrobe";
-    if (source === "catalog") return "Catalog Pick";
-    if (source === "hybrid") return "Wardrobe + Catalog";
-    return "Styled Look";
+    if (source === "wardrobe") return "YOURS";
+    if (source === "catalog") return "SHOP";
+    if (source === "hybrid") return "HYBRID";
+    return "FOR YOU";
   }}
 
   function sourceBadgeClass(source) {{
@@ -1802,21 +2781,13 @@ def get_web_ui_html(
     var header = document.createElement("div");
     header.className = "outfit-header";
 
-    // Top row: title on left, feedback icons on right
+    // Top row: title only (feedback moved to bottom of info panel)
     var headerTop = document.createElement("div");
     headerTop.className = "outfit-header-top";
     var titleEl = document.createElement("div");
     titleEl.className = "outfit-title";
     titleEl.textContent = outfit.title || "Styled Look";
     headerTop.appendChild(titleEl);
-
-    // Feedback icons in header
-    var fbWrap = document.createElement("div");
-    fbWrap.className = "outfit-feedback";
-    var likeBtn = document.createElement("button"); likeBtn.className = "fb-icon-btn fb-like"; likeBtn.innerHTML = "&#128077;"; likeBtn.title = "Like This";
-    var dislikeBtn = document.createElement("button"); dislikeBtn.className = "fb-icon-btn fb-dislike"; dislikeBtn.innerHTML = "&#128078;"; dislikeBtn.title = "Didn't Like This";
-    fbWrap.appendChild(likeBtn); fbWrap.appendChild(dislikeBtn);
-    headerTop.appendChild(fbWrap);
     header.appendChild(headerTop);
 
     // Summary row
@@ -1842,17 +2813,21 @@ def get_web_ui_html(
       var hasBuyLink = !!url;
       var itemSource = normalizeSourceToken(item.source);
       var isWardrobe = itemSource === "wardrobe";
-      var html = '<span class="outfit-product-title">' + escapeHtml(pTitle) + '</span>';
+      var html = '';
+      html += '<span class="outfit-product-title">' + escapeHtml(pTitle) + '</span>';
       if (isWardrobe) {{
-        html += '<span class="product-price" style="color:var(--wardrobe);">From your wardrobe</span>';
+        // no price row for wardrobe items
       }} else if (hasPrice) {{
-        html += '<span class="product-price">Rs. ' + escapeHtml(priceStr.replace(/^Rs\.?\s*/i, "")) + '</span>';
+        // Clean price: strip "Rs." prefix, remove trailing ".0", add comma separator
+        var cleanPrice = priceStr.replace(/^Rs\.?\s*/i, "").replace(/\.0+$/, "");
+        cleanPrice = cleanPrice.replace(/\B(?=(\d{{3}})+(?!\d))/g, ",");
+        html += '<span class="product-price">Rs. ' + escapeHtml(cleanPrice) + '</span>';
       }}
       var productId = item.product_id || "";
       if (!isWardrobe) {{
         html += '<div class="product-cta">';
-        if (hasBuyLink) html += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer" class="btn-buy">Buy Now</a>';
-        html += '<button type="button" class="btn-wishlist" data-product-id="' + escapeHtml(productId) + '" title="Add to Wishlist">&#9825;</button>';
+        if (hasBuyLink) html += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer" class="btn-buy">Buy now</a>';
+        html += '<button type="button" class="btn-wishlist" data-product-id="' + escapeHtml(productId) + '" title="Save">Save</button>';
         html += '</div>';
       }}
       prod.innerHTML = html;
@@ -1947,6 +2922,16 @@ def get_web_ui_html(
     polarCanvas.width = W * dpr; polarCanvas.height = H * dpr;
     polarCanvas.style.width = W + "px"; polarCanvas.style.height = H + "px";
     radarDiv.appendChild(polarCanvas);
+    // Toggle button — "See profile" / "Hide profile"
+    var radarToggle = document.createElement("button");
+    radarToggle.className = "radar-toggle";
+    radarToggle.type = "button";
+    radarToggle.textContent = "See profile";
+    radarToggle.addEventListener("click", function() {{
+      var isOpen = radarDiv.classList.toggle("open");
+      radarToggle.textContent = isOpen ? "Hide profile" : "See profile";
+    }});
+    info.appendChild(radarToggle);
     info.appendChild(radarDiv);
     var pCtx = polarCanvas.getContext("2d");
     pCtx.scale(dpr, dpr);
@@ -1965,8 +2950,22 @@ def get_web_ui_html(
     var pLabelR = 115;   // single-ring axis label radius (no staggering)
     var pMaxValue = 100;
 
+    // Read Confident Luxe tokens for archetype (champagne) + criteria (oxblood)
+    // and the grid ink channel. Using live CSS vars so light/dark mode flip
+    // automatically without re-rendering. Declared BEFORE first use to avoid
+    // var-hoisting undefined reads (the grid ring code below uses --ink-rgb
+    // and the drawProfile calls below use --signal-rgb / --accent-rgb).
+    var rootStyle = getComputedStyle(document.documentElement);
+    var gridInkRgb = (rootStyle.getPropertyValue("--ink-rgb") || "22, 17, 14").trim();
+    var signalRgb = (rootStyle.getPropertyValue("--signal-rgb") || "198, 161, 91").trim();
+    var accentRgb = (rootStyle.getPropertyValue("--accent-rgb") || "92, 26, 27").trim();
+    var signalStroke = "rgb(" + signalRgb + ")";
+    var signalFill = "rgba(" + signalRgb + ", 0.28)";
+    var accentStroke = "rgb(" + accentRgb + ")";
+    var accentFill = "rgba(" + accentRgb + ", 0.22)";
+
     // ── Grid rings (4 concentric circles at 25/50/75/100) ──
-    pCtx.strokeStyle = "rgba(0, 0, 0, 0.08)";
+    pCtx.strokeStyle = "rgba(" + gridInkRgb + ", 0.14)";
     pCtx.lineWidth = 0.5;
     for (var pRing = 1; pRing <= 4; pRing++) {{
       pCtx.beginPath();
@@ -1979,7 +2978,7 @@ def get_web_ui_html(
     pCtx.beginPath();
     pCtx.moveTo(pCx - pMaxR - 10, pCy);
     pCtx.lineTo(pCx + pMaxR + 10, pCy);
-    pCtx.strokeStyle = "rgba(0, 0, 0, 0.14)";
+    pCtx.strokeStyle = "rgba(" + gridInkRgb + ", 0.22)";
     pCtx.lineWidth = 0.75;
     pCtx.setLineDash([4, 4]);
     pCtx.stroke();
@@ -2049,23 +3048,26 @@ def get_web_ui_html(
       }}
     }}
 
-    // ── Top semicircle: style archetypes (always 8 axes) ──
+    // (Champagne / oxblood stroke + fill values were resolved above, before
+    // the grid rings, so drawProfile below can use them directly.)
+
+    // ── Top semicircle: style archetypes (always 8 axes) — champagne ──
     drawProfile(
       archetypes,
       archetypeValues,
-      "#7F77DD",                       // stroke + label colour
-      "rgba(127, 119, 221, 0.38)",     // fill
+      signalStroke,                    // stroke + label colour (--signal)
+      signalFill,                      // fill
       Math.PI,                         // start at 9 o'clock
       Math.PI                          // span the top semicircle
     );
 
-    // ── Bottom semicircle: filtered evaluation criteria ──
+    // ── Bottom semicircle: filtered evaluation criteria — oxblood ──
     if (hasCriteriaData) {{
       drawProfile(
         criteria,
         criteriaValues,
-        "#8B3055",
-        "rgba(139, 48, 85, 0.35)",
+        accentStroke,                  // stroke + label colour (--accent)
+        accentFill,                    // fill
         0,                             // start at 3 o'clock
         Math.PI                        // span the bottom semicircle
       );
@@ -2077,27 +3079,51 @@ def get_web_ui_html(
     // also frees a few pixels of vertical room inside the
     // .outfit-info column.
 
-    // Dislike form (stays in info panel, expands when thumbs-down clicked)
-    var dislikeForm = document.createElement("div");
-    dislikeForm.className = "dislike-form";
+    // ── Feedback strip at the bottom of info panel ──
+    // Heart for quick like | "What would you change?" expands chips + textarea
+    var fbStrip = document.createElement("div");
+    fbStrip.className = "feedback-strip";
+
+    var likeBtn = document.createElement("button");
+    likeBtn.className = "fb-icon-btn fb-like";
+    likeBtn.title = "I like this";
+    likeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
+
+    var changePrompt = document.createElement("button");
+    changePrompt.className = "feedback-prompt";
+    changePrompt.type = "button";
+    changePrompt.textContent = "What would you change?";
+
+    // Inline textarea + submit — hidden by default, replaces the prompt on the same line
+    var ta = document.createElement("textarea");
+    ta.className = "feedback-textarea";
+    ta.placeholder = "Tell me what felt off.";
+    ta.rows = 1;
+    var submitBtn = document.createElement("button");
+    submitBtn.className = "dislike-submit";
+    submitBtn.type = "button";
+    submitBtn.textContent = "Submit";
+
+    fbStrip.appendChild(likeBtn);
+    fbStrip.appendChild(changePrompt);
+    fbStrip.appendChild(ta);
+    fbStrip.appendChild(submitBtn);
+    info.appendChild(fbStrip);
+
+    // Reaction chips — appear below the feedback strip when expanded
     var reactionRow = document.createElement("div");
     reactionRow.className = "reaction-row";
-    var ta = document.createElement("textarea");
-    ta.placeholder = "What's missing or what would you prefer?";
-    ["Too safe", "Too much", "Not me", "Weird pairing", "Show softer", "Show sharper"].forEach(function(label) {{
+    ["Too much", "Not me", "Weird pairing"].forEach(function(label) {{
       var chip = document.createElement("button"); chip.type = "button"; chip.className = "reaction-chip"; chip.textContent = label;
-      chip.addEventListener("click", function() {{ ta.value = label; ta.focus(); }});
+      chip.addEventListener("click", function() {{
+        chip.classList.toggle("selected");
+        var selected = [];
+        reactionRow.querySelectorAll(".reaction-chip.selected").forEach(function(c) {{ selected.push(c.textContent); }});
+        ta.value = selected.join(", ");
+      }});
       reactionRow.appendChild(chip);
     }});
-    dislikeForm.appendChild(reactionRow);
-    dislikeForm.appendChild(ta);
-    var dislikeActions = document.createElement("div");
-    dislikeActions.className = "dislike-actions";
-    var submitBtn = document.createElement("button"); submitBtn.textContent = "Submit";
-    var cancelBtn = document.createElement("button"); cancelBtn.className = "secondary"; cancelBtn.textContent = "Cancel";
-    dislikeActions.appendChild(submitBtn); dislikeActions.appendChild(cancelBtn);
-    dislikeForm.appendChild(dislikeActions);
-    info.appendChild(dislikeForm);
+    info.appendChild(reactionRow);
 
     var fbStatus = document.createElement("div");
     fbStatus.className = "feedback-status";
@@ -2105,12 +3131,36 @@ def get_web_ui_html(
 
     var outfitRank = outfit.rank || 0;
     var itemIds = items.map(function(i) {{ return i.product_id || ""; }}).filter(Boolean);
-    likeBtn.addEventListener("click", function() {{ sendFeedback(convId, outfitRank, "like", "", itemIds, fbStatus, fbWrap, dislikeForm); }});
-    dislikeBtn.addEventListener("click", function() {{ dislikeForm.classList.add("open"); }});
-    cancelBtn.addEventListener("click", function() {{ dislikeForm.classList.remove("open"); ta.value = ""; }});
-    submitBtn.addEventListener("click", function() {{ sendFeedback(convId, outfitRank, "dislike", ta.value.trim(), itemIds, fbStatus, fbWrap, dislikeForm); }});
+    likeBtn.addEventListener("click", function() {{ sendFeedback(convId, outfitRank, "like", "", itemIds, fbStatus, fbStrip, reactionRow); }});
+    // Toggle: click prompt to show textarea+chips, click again to hide
+    changePrompt.addEventListener("click", function() {{
+      var opening = !fbStrip.classList.contains("fb-open");
+      fbStrip.classList.toggle("fb-open");
+      reactionRow.classList.toggle("open");
+      if (!opening) {{
+        ta.value = "";
+        reactionRow.querySelectorAll(".selected").forEach(function(c) {{ c.classList.remove("selected"); }});
+      }} else {{
+        ta.focus();
+      }}
+    }});
+    submitBtn.addEventListener("click", function() {{ sendFeedback(convId, outfitRank, "dislike", ta.value.trim(), itemIds, fbStatus, fbStrip, reactionRow); }});
 
-    card.appendChild(header); card.appendChild(thumbs); card.appendChild(heroWrap); card.appendChild(info);
+    // Click hero to cycle through images + counter badge
+    if (images.length > 1) {{
+      var heroIdx = defaultIdx;
+      var counterEl = document.createElement("span");
+      counterEl.className = "outfit-img-counter";
+      counterEl.textContent = (heroIdx + 1) + " / " + images.length;
+      heroWrap.appendChild(counterEl);
+      heroWrap.style.cursor = "pointer";
+      heroWrap.addEventListener("click", function() {{
+        heroIdx = (heroIdx + 1) % images.length;
+        heroImg.src = images[heroIdx].src;
+        counterEl.textContent = (heroIdx + 1) + " / " + images.length;
+      }});
+    }}
+    card.appendChild(header); card.appendChild(heroWrap); card.appendChild(info);
     return card;
   }}
 
@@ -2183,12 +3233,13 @@ def get_web_ui_html(
 
     groupsToRender.forEach(function(g) {{
       var section = document.createElement("div"); section.className = "followup-group";
-      var title = document.createElement("strong"); title.textContent = g.label;
+      var title = document.createElement("strong");
+      title.textContent = String(g.label || "").toUpperCase();
       var row = document.createElement("div"); row.className = "followup-row";
       g.items.forEach(function(text) {{
         var btn = document.createElement("button");
-        btn.className = "secondary";
-        btn.style.cssText = "font-size:13px;padding:6px 14px;border-radius:999px;";
+        btn.className = "followup-chip";
+        btn.type = "button";
         btn.textContent = text;
         btn.addEventListener("click", function() {{ messageEl.value = text; wrap.remove(); send(); }});
         row.appendChild(btn);
@@ -2199,22 +3250,24 @@ def get_web_ui_html(
     feed.scrollTop = feed.scrollHeight;
   }}
 
-  // Return the most recent stage that has a non-empty, human-facing
-  // message. Deliberately ignores stages whose template resolved to an
-  // empty string — those are intent-signalled "don't show this" events
+  // Return all stages that have a non-empty, human-facing message.
+  // Deliberately filters out stages whose template resolved to an empty
+  // string — those are intent-signalled "don't show this" events
   // (e.g. user_context_completed, outfit_assembly_completed).
-  function latestVisibleStage(stages) {{
-    if (!stages || !stages.length) return null;
-    for (var i = stages.length - 1; i >= 0; i--) {{
+  function visibleStages(stages) {{
+    if (!stages || !stages.length) return [];
+    var out = [];
+    for (var i = 0; i < stages.length; i++) {{
       var s = stages[i];
       var msg = s && s.message;
-      if (msg && String(msg).trim()) return s;
+      if (msg && String(msg).trim()) out.push(s);
     }}
-    return null;
+    return out;
   }}
 
   function renderStages(stages) {{
-    var latest = latestVisibleStage(stages);
+    var visible = visibleStages(stages);
+    var latest = visible.length ? visible[visible.length - 1] : null;
     stageBar.textContent = latest ? latest.message : "";
   }}
 
@@ -2245,46 +3298,60 @@ def get_web_ui_html(
   }}
 
   async function pollJob(convId, jobId) {{
-    // Single in-place "thinking" bubble per turn. Updates its text as new
-    // stages arrive, fades out on completion/failure. Matches modern
-    // chatbot UX (ChatGPT, Claude, Gemini) instead of stacking one bubble
-    // per stage. The subtle .stage-bar at the bottom remains as a
-    // secondary progress indicator for users who have scrolled up.
+    // Single in-place "thinking" bubble per turn. Advances through stages
+    // ONE AT A TIME so the user sees every step — not just the long-running
+    // outfit_architect call, which previously dominated the screen because
+    // it's the only stage still running when polls fire. Each visible stage
+    // gets at least one poll-tick of dwell time (400ms).
     var thinkingBubble = null;
     var lastStageText = "";
+    var shownIdx = -1;      // index in visibleStages() we're currently showing
+    var POLL_INTERVAL = 400;
     try {{
       while (true) {{
         var res = await fetch("/v1/conversations/" + convId + "/turns/" + jobId + "/status");
         var data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Polling failed");
         var stages = data.stages || [];
-        renderStages(stages);
-        // Update or create the single thinking bubble from the latest
-        // *visible* stage (skipping the deliberately-silent ones).
-        var latest = latestVisibleStage(stages);
-        var latestMsg = latest ? latest.message : "";
-        if (latestMsg && latestMsg !== lastStageText) {{
-          if (!thinkingBubble) {{
-            thinkingBubble = addAgentBubble(latestMsg);
-          }} else {{
-            // The bubble contains [dot, textNode]. Update the text node only.
-            if (thinkingBubble.lastChild) {{
-              thinkingBubble.lastChild.textContent = latestMsg;
+        var visible = visibleStages(stages);
+        // Advance one step per poll so earlier stages always get a tick.
+        // If new stages have arrived, we catch up by one; if we've caught
+        // up to the end, we stay on the latest.
+        if (visible.length > 0) {{
+          if (shownIdx < visible.length - 1) shownIdx += 1;
+          var target = visible[shownIdx];
+          var targetMsg = target ? target.message : "";
+          stageBar.textContent = targetMsg;
+          if (targetMsg && targetMsg !== lastStageText) {{
+            if (!thinkingBubble) {{
+              thinkingBubble = addAgentBubble(targetMsg);
+            }} else if (thinkingBubble.lastChild) {{
+              // The bubble contains [dot, textNode]. Update the text node only.
+              thinkingBubble.lastChild.textContent = targetMsg;
+              feed.scrollTop = feed.scrollHeight;
             }} else {{
-              thinkingBubble.appendChild(document.createTextNode(latestMsg));
+              thinkingBubble.appendChild(document.createTextNode(targetMsg));
+              feed.scrollTop = feed.scrollHeight;
             }}
-            // Keep it in view when new stages arrive.
-            feed.scrollTop = feed.scrollHeight;
+            lastStageText = targetMsg;
           }}
-          lastStageText = latestMsg;
         }}
         if (data.status === "completed") {{
+          // Flush any remaining stages the user hasn't seen yet before
+          // fading the bubble — one quick burst so the final lines flash.
+          if (visible.length > 0 && shownIdx < visible.length - 1) {{
+            var finalMsg = visible[visible.length - 1].message;
+            if (finalMsg && finalMsg !== lastStageText && thinkingBubble && thinkingBubble.lastChild) {{
+              thinkingBubble.lastChild.textContent = finalMsg;
+              lastStageText = finalMsg;
+            }}
+          }}
           fadeOutThinkingBubble(thinkingBubble);
           stageBar.textContent = "";
           return data.result;
         }}
         if (data.status === "failed") throw new Error(data.error || "Turn failed");
-        await new Promise(function(resolve) {{ setTimeout(resolve, 800); }});
+        await new Promise(function(resolve) {{ setTimeout(resolve, POLL_INTERVAL); }});
       }}
     }} catch (exc) {{
       fadeOutThinkingBubble(thinkingBubble);
@@ -2360,23 +3427,46 @@ def get_web_ui_html(
 
   sendBtn.addEventListener("click", send);
 
-  // Prompt cards
-  document.querySelectorAll(".prompt-card").forEach(function(card) {{
-    card.addEventListener("click", function() {{
-      messageEl.value = card.getAttribute("data-prompt") || card.textContent;
+  // Welcome prompts (Confident Luxe empty state)
+  document.querySelectorAll(".welcome-prompt").forEach(function(btn) {{
+    btn.addEventListener("click", function() {{
+      messageEl.value = btn.getAttribute("data-prompt") || btn.textContent;
       messageEl.focus();
       send();
     }});
   }});
 
-  // Progressive disclosure: "More ways to style" reveals secondary prompts
-  var promptMoreToggle = document.getElementById("promptMoreToggle");
-  var promptMoreGrid = document.getElementById("promptMoreGrid");
-  if (promptMoreToggle && promptMoreGrid) {{
-    promptMoreToggle.addEventListener("click", function() {{
-      var isOpen = promptMoreGrid.classList.toggle("open");
-      promptMoreToggle.classList.toggle("open", isOpen);
-      promptMoreToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  // ⌘K / Ctrl+K — toggle the history rail
+  document.addEventListener("keydown", function(e) {{
+    if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {{
+      e.preventDefault();
+      document.body.classList.toggle("rail-collapsed");
+      try {{ localStorage.setItem("aura_rail_collapsed", document.body.classList.contains("rail-collapsed") ? "1" : "0"); }} catch (_) {{}}
+    }}
+  }});
+  try {{
+    if (localStorage.getItem("aura_rail_collapsed") === "1") {{
+      document.body.classList.add("rail-collapsed");
+    }}
+  }} catch (_) {{}}
+
+  // Theme toggle — lives in the profile dossier, persists to localStorage
+  function currentTheme() {{
+    return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  }}
+  function syncThemeToggleLabel() {{
+    var btn = document.getElementById("themeToggle");
+    if (!btn) return;
+    btn.textContent = currentTheme() === "dark" ? "Flip to light" : "Flip to dark";
+  }}
+  var themeToggleBtn = document.getElementById("themeToggle");
+  if (themeToggleBtn) {{
+    syncThemeToggleLabel();
+    themeToggleBtn.addEventListener("click", function() {{
+      var next = currentTheme() === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try {{ localStorage.setItem("aura_theme", next); }} catch (_) {{}}
+      syncThemeToggleLabel();
     }});
   }}
 
@@ -2504,8 +3594,12 @@ def get_web_ui_html(
     try {{
       var res = await fetch("/v1/conversations/" + convId + "/turns");
       var data = await res.json();
-      if (!res.ok) return;
+      if (!res.ok) {{
+        console.warn("[AURA] loadConversation: fetch failed", res.status, data);
+        return;
+      }}
       var turns = data.turns || [];
+      console.log("[AURA] loadConversation", {{ convId: convId, turn_count: turns.length }});
       for (var i = 0; i < turns.length; i++) {{
         var t = turns[i];
         if (t.user_message) addBubble(t.user_message, "user");
@@ -2514,12 +3608,24 @@ def get_web_ui_html(
           // Render outfits from resolved context
           var ctx = t.resolved_context || {{}};
           var outfits = ctx.outfits || [];
+          console.log("[AURA] turn " + i, {{
+            has_resolved_context: !!t.resolved_context,
+            resolved_context_keys: t.resolved_context ? Object.keys(t.resolved_context) : [],
+            outfit_count: outfits.length,
+            first_outfit_title: outfits[0] && outfits[0].title,
+          }});
           if (outfits.length) {{
-            renderOutfits(outfits, convId, ctx);
+            try {{
+              renderOutfits(outfits, convId, ctx);
+            }} catch (exc) {{
+              console.error("[AURA] renderOutfits threw for turn " + i, exc);
+            }}
           }}
         }}
       }}
-    }} catch (_) {{}}
+    }} catch (exc) {{
+      console.error("[AURA] loadConversation threw", exc);
+    }}
   }}
 
   // New chat — creates a fresh conversation
@@ -2672,8 +3778,7 @@ def get_web_ui_html(
   }}
 
   async function loadWardrobeStudio() {{
-    if (!USER_ID) {{ wStatusPill.textContent = "No user"; return; }}
-    wStatusPill.textContent = "Loading...";
+    if (!USER_ID) {{ return; }}
     try {{
       var responses = await Promise.all([
         fetch("/v1/onboarding/wardrobe/" + encodeURIComponent(USER_ID)),
@@ -2686,9 +3791,7 @@ def get_web_ui_html(
       wardrobeSummary = summaryPayload || null;
       wardrobeItemsById = {{}};
       wardrobeItems.forEach(function(item) {{ wardrobeItemsById[item.id] = item; }});
-      wStatCount.textContent = String(wardrobeItems.length);
-      wStatComplete.textContent = String((wardrobeSummary && wardrobeSummary.completeness_score_pct) || 0) + "%";
-      wStatusPill.textContent = wardrobeItems.length ? "" : "No pieces yet";
+      if (wStatCount) wStatCount.textContent = String(wardrobeItems.length);
       // Restore persisted filters
       try {{
         var saved = JSON.parse(localStorage.getItem("aura_wardrobe_filters") || "null");
@@ -2703,7 +3806,6 @@ def get_web_ui_html(
       }} catch(_) {{}}
     }} catch (_) {{
       wardrobeItems = []; wardrobeSummary = null;
-      wStatusPill.textContent = "Unable to load";
     }}
     renderWardrobeCloset();
   }}
@@ -2927,7 +4029,7 @@ def get_web_ui_html(
 
   async function loadResults() {{
     if (!USER_ID) return;
-    resultsGrid.innerHTML = '<div class="results-empty">Loading...</div>';
+    resultsGrid.innerHTML = '<div class="results-empty">Loading.</div>';
     try {{
       var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/results");
       var data = await res.json();
@@ -2935,8 +4037,25 @@ def get_web_ui_html(
       allResults = data.results || [];
       renderResults();
     }} catch (_) {{
-      resultsGrid.innerHTML = '<div class="results-empty">Unable to load results.</div>';
+      resultsGrid.innerHTML = '<div class="results-empty">Couldn\\'t load your lookbook.</div>';
     }}
+  }}
+
+  var INTENT_LABEL = {{
+    "occasion_recommendation": "Outfit",
+    "outfit_check": "Check",
+    "pairing_request": "Pairing",
+    "capsule_or_trip_planning": "Trip",
+    "shopping_decision": "Verdict",
+    "style_advice": "Advice"
+  }};
+
+  function sourceForResult(r) {{
+    var s = (r && r.source) || "";
+    if (s.indexOf("wardrobe") !== -1 && s.indexOf("catalog") !== -1) return "hybrid";
+    if (s.indexOf("wardrobe") !== -1) return "wardrobe";
+    if (s.indexOf("catalog") !== -1) return "catalog";
+    return "";
   }}
 
   function renderResults() {{
@@ -2946,20 +4065,24 @@ def get_web_ui_html(
       return true;
     }});
     if (!filtered.length) {{
-      resultsGrid.innerHTML = '<div class="results-empty">No results match the current filters.</div>';
+      resultsGrid.innerHTML = '<div class="results-empty">Nothing saved yet. Let\\'s find something.</div>';
       return;
     }}
     resultsGrid.innerHTML = filtered.map(function(r) {{
       var thumbHtml = r.first_outfit_image
         ? '<img src="' + escapeHtml(r.first_outfit_image) + '" alt="" loading="lazy" />'
         : '<div class="thumb-placeholder">No preview</div>';
+      var sourceKey = sourceForResult(r);
+      var sourceLabel = sourceBadgeLabel(sourceKey);
+      var intentKey = r.intent || "";
+      var intentLabel = (INTENT_LABEL[intentKey] || intentKey.replace(/_/g, " ")).toUpperCase();
       return '<div class="result-card" data-conv="' + escapeHtml(r.conversation_id) + '">' +
         '<div class="thumb">' + thumbHtml + '</div>' +
         '<div class="body">' +
-          '<div class="msg">' + escapeHtml(r.user_message || "Styling request") + '</div>' +
+          (intentKey ? '<span class="source-mini-pill catalog">' + escapeHtml(intentLabel) + '</span>' : '') +
+          (sourceKey ? '<span class="source-mini-pill ' + sourceKey + '">' + escapeHtml(sourceLabel) + '</span>' : '') +
+          '<div class="msg">' + escapeHtml(r.user_message || "A styled look") + '</div>' +
           '<div class="meta-row">' +
-            (r.occasion ? '<span class="chip">' + escapeHtml(r.occasion) + '</span>' : '') +
-            (r.intent ? '<span class="source-mini-pill catalog">' + escapeHtml(r.intent.replace(/_/g, " ")) + '</span>' : '') +
             '<span class="ts">' + escapeHtml(relativeTime(r.created_at)) + '</span>' +
           '</div>' +
         '</div></div>';
@@ -3054,14 +4177,15 @@ def get_web_ui_html(
     var accent = profileListValue(derived.AccentColors);
     var avoid = profileListValue(derived.AvoidColors);
     if (!base.length && !accent.length && !avoid.length) {{
-      colorPaletteContent.innerHTML = '<div style="color:var(--muted);font-size:13px;">Complete your analysis to see your personalized color palette.</div>';
+      colorPaletteContent.innerHTML = '<div style="color:var(--ink-3);font-size:13px;font-style:italic;">Finish your analysis to see your colours.</div>';
       return;
     }}
     function chips(arr, cls) {{ return arr.map(function(c) {{ return '<span class="palette-chip ' + cls + '">' + escapeHtml(c) + '</span>'; }}).join(""); }}
-    colorPaletteContent.innerHTML =
-      '<div class="palette-section"><div class="palette-label">Base Colors</div><div class="palette-chips">' + chips(base, "base") + '</div></div>' +
-      '<div class="palette-section"><div class="palette-label">Accent Colors</div><div class="palette-chips">' + chips(accent, "accent") + '</div></div>' +
-      '<div class="palette-section"><div class="palette-label">Colors to Avoid</div><div class="palette-chips">' + chips(avoid, "avoid") + '</div></div>';
+    var html = "";
+    if (base.length) html += '<div class="palette-section"><div class="palette-label">Base</div><div class="palette-chips">' + chips(base, "base") + '</div></div>';
+    if (accent.length) html += '<div class="palette-section"><div class="palette-label">Accent</div><div class="palette-chips">' + chips(accent, "accent") + '</div></div>';
+    if (avoid.length) html += '<div class="palette-section"><div class="palette-label">Avoid</div><div class="palette-chips">' + chips(avoid, "avoid") + '</div></div>';
+    colorPaletteContent.innerHTML = html;
   }}
 
   function profileListValue(entry) {{
@@ -3178,6 +4302,10 @@ def get_web_ui_html(
     var contrast = profileValue(derived.ContrastLevel);
     var frame = profileValue(derived.FrameStructure);
     var bodyShape = profileValue(attributes.BodyShape);
+
+    // Style dossier adjective list — each value becomes an oversized
+    // italic display line, one per row. Ordered by importance so the
+    // strongest signals read first.
     var facts = [
       {{ label: "Primary Archetype", value: primary }},
       {{ label: "Secondary Archetype", value: secondary }},
@@ -3187,15 +4315,42 @@ def get_web_ui_html(
       {{ label: "Body Shape", value: bodyShape }},
     ].filter(function(f) {{ return f.value; }});
     if (styleFacts) {{
-      styleFacts.innerHTML = facts.map(function(f) {{
-        return '<div class="style-fact"><div class="fact-label">' + escapeHtml(f.label) + '</div><div class="fact-value">' + escapeHtml(f.value) + '</div></div>';
-      }}).join("");
+      if (!facts.length) {{
+        styleFacts.innerHTML = '<div class="style-fact"><div class="fact-value" style="font-size:22px;color:var(--ink-3);">Finish your analysis to unlock your style code.</div></div>';
+      }} else {{
+        styleFacts.innerHTML = facts.map(function(f) {{
+          return '<div class="style-fact"><div class="fact-label">' + escapeHtml(f.label) + '</div><div class="fact-value">' + escapeHtml(f.value) + '</div></div>';
+        }}).join("");
+      }}
     }}
+    // Short stylist-voice summary under the adjective list.
     if (styleSummary) {{
-      styleSummary.textContent = primary || seasonal
-        ? "Aura sees you through a " + [primary, secondary].filter(Boolean).join(" + ") + " lens, grounded in " + (seasonal || "your evolving palette") + " color direction and " + (frame || "balanced") + " shape guidance."
-        : "Complete your analysis to unlock your full style code.";
+      if (primary || seasonal) {{
+        var lensParts = [primary, secondary].filter(Boolean);
+        var lens = lensParts.join(" meets ").toLowerCase();
+        var seasonLine = seasonal ? ("Your palette lives in " + String(seasonal).toLowerCase() + ".") : "";
+        var frameLine = frame ? (" Your frame reads " + String(frame).toLowerCase() + ".") : "";
+        styleSummary.textContent = "I see you through a " + lens + " lens." + (seasonLine ? " " + seasonLine : "") + frameLine;
+      }} else {{
+        styleSummary.textContent = "Finish your analysis to unlock your full style code.";
+      }}
     }}
+
+    // Dossier hero — name + one-line style statement
+    var nameEl = document.getElementById("dossierName");
+    var statementEl = document.getElementById("dossierStatement");
+    if (nameEl) {{
+      var displayName = (profileData && (profileData.name || profileData.first_name)) || "";
+      nameEl.textContent = displayName ? displayName : "Your dossier";
+    }}
+    if (statementEl) {{
+      if (primary) {{
+        statementEl.textContent = "A " + String(primary).toLowerCase() + " with " + String(seasonal || "an evolving").toLowerCase() + " colouring.";
+      }} else {{
+        statementEl.textContent = "A record of what we've learned about how you dress.";
+      }}
+    }}
+
     renderColorPalette(derived);
   }}
 
@@ -3478,7 +4633,7 @@ def get_web_ui_html(
       items.forEach(function(item) {{
         var card = document.createElement("div");
         card.className = "closet-card";
-        card.style.cssText = "border-radius:14px; border:1px solid var(--line); overflow:hidden; background:var(--surface); box-shadow:0 2px 12px rgba(54,32,24,0.06);";
+        card.style.cssText = "border-radius:var(--radius-md); border:1px solid var(--line); overflow:hidden; background:var(--surface);";
         var imgUrl = item.image_url || "";
         var priceStr = item.price ? String(item.price).replace(/\\.0$/, "") : "";
         card.innerHTML = '<div class="closet-image" style="aspect-ratio:3/4; overflow:hidden; background:var(--surface-alt);">' +
@@ -3518,14 +4673,14 @@ def get_web_ui_html(
       items.forEach(function(item) {{
         var card = document.createElement("div");
         card.className = "closet-card";
-        card.style.cssText = "border-radius:14px; border:1px solid var(--line); overflow:hidden; background:var(--surface); box-shadow:0 2px 12px rgba(54,32,24,0.06); cursor:pointer; transition:transform 120ms ease, box-shadow 120ms ease;";
+        card.style.cssText = "border-radius:var(--radius-md); border:1px solid var(--line); overflow:hidden; background:var(--surface); cursor:pointer; transition:border-color var(--dur-1) var(--ease);";
         var imgUrl = item.image_url || "";
         card.innerHTML = '<div style="aspect-ratio:2/3; overflow:hidden; background:var(--surface-alt); position:relative;">' +
           (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="Try-on" loading="lazy" style="width:100%; height:100%; object-fit:cover; display:block;" />' : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;">No render</div>') +
-          '<div style="position:absolute; bottom:0; left:0; right:0; padding:8px 12px; background:linear-gradient(transparent, rgba(0,0,0,0.5)); color:#fff; font-size:11px; font-weight:500;">' + relativeTime(item.created_at) + '</div>' +
+          '<div style="position:absolute; bottom:0; left:0; right:0; padding:8px 12px; background:linear-gradient(transparent, rgba(0,0,0,0.5)); color:var(--on-accent); font-size:11px; font-weight:500;">' + relativeTime(item.created_at) + '</div>' +
         '</div>';
-        card.addEventListener("mouseenter", function() {{ card.style.transform = "translateY(-2px)"; card.style.boxShadow = "0 6px 20px rgba(54,32,24,0.12)"; }});
-        card.addEventListener("mouseleave", function() {{ card.style.transform = ""; card.style.boxShadow = "0 2px 12px rgba(54,32,24,0.06)"; }});
+        card.addEventListener("mouseenter", function() {{ card.style.borderColor = "var(--line-strong)"; }});
+        card.addEventListener("mouseleave", function() {{ card.style.borderColor = "var(--line)"; }});
         card.addEventListener("click", function() {{
           if (imgUrl) window.open(imgUrl, "_blank");
         }});

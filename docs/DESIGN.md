@@ -1,6 +1,6 @@
 # Design System And Experience Principles
 
-Last updated: April 8, 2026
+Last updated: April 11, 2026 — "Confident Luxe" refinement (see § Brand Direction — Confident Luxe). Migration to the refined token set is tracked as Phase 14 in `docs/CURRENT_STATE.md`; validation criteria are in `docs/DESIGN_SYSTEM_VALIDATION.md`.
 
 ## Purpose
 
@@ -16,7 +16,7 @@ It defines:
 
 All new web and mobile UI work should align with this document unless an explicit product decision overrides it.
 
-The design system is now applied uniformly across all surfaces: onboarding, profile analysis/processing, main chat app, profile, wardrobe, results, and catalog admin. All share the same warm/burgundy accent (`#6f2f45`), background gradients, Cormorant Garamond serif headings, and Avenir Next sans-serif body text.
+The design system is applied uniformly across all surfaces: onboarding, profile analysis/processing, main chat app, profile, wardrobe, results, and catalog admin. The **target** token set (post-Phase 14) is warm ivory (`#F7F3EC`) canvas, deep espresso ink (`#16110E`), oxblood accent (`#5C1A1B`), champagne signal (`#C6A15B`), Fraunces (variable, SIL OFL) for display type, and Inter for body/UI. The **legacy** tokens (`#f6f0ea` cream canvas, `#6f2f45` wine accent, Cormorant Garamond + Avenir Next) are being migrated away — any surface still carrying them is a Phase 14 follow-up, not the reference state.
 
 Key UI patterns implemented:
 - **Unified profile page**: Single page with inline edit toggle — view mode shows read-only fields, edit mode switches to inputs/selects in place. Includes style code card and personalized color palette card (base/accent/avoid chips).
@@ -41,6 +41,31 @@ Related docs:
 - [`docs/APPLICATION_SPECS.md`](APPLICATION_SPECS.md) — runtime contract (⚠️ *partially deprecated*)
 - [`docs/WORKFLOW_REFERENCE.md`](WORKFLOW_REFERENCE.md) — human-facing per-intent execution flows (not loaded at runtime)
 
+## Brand Direction — Confident Luxe
+
+Aura's brand direction is **Confident Luxe**: the hushed restraint of a private atelier combined with the personality and wit of a modern fashion-girl house. It is premium without being cold, distinctive without being loud, personal without being precious.
+
+**Mood in one line:** a maison that winks. Quiet where it matters, distinctive where it counts.
+
+**Three anchors** — every design decision should satisfy all three:
+
+1. **Bespoke** — the experience must feel one-of-one for the user. Personalization is never decoration, it is jewelry: small, precise, costly-looking. Champagne (`--signal`) is the colour of *you*, and it is never used anywhere else.
+2. **Assured** — the interface never pleads, explains, or apologises. Confidence comes from restraint: hairline borders instead of shadows, uppercase tracked labels instead of pills, one primary action per screen, no decorative micro-interactions, no AI-app visual clichés.
+3. **With a point of view** — the personality is concentrated in a few deliberate moments (empty states, verdict cards, the style dossier), not diffused across the surface. Those moments use oversized italic display type and voice-led copy. Everything else is quiet.
+
+**Mood references** (intent only — not direct clones):
+- Jacquemus at its most refined (recent campaigns, not the circus), Khaite, Phoebe Philo's new line
+- Bottega Veneta under Matthieu Blazy, Alaïa, The Row when it plays
+- Mytheresa Personal Shopping, Farfetch Private Client, a maison client studio
+
+**What Confident Luxe is not:**
+- A warm-craft boutique (the legacy cream + wine feel). That reads handmade, not maison.
+- A magazine or publication aesthetic (SSENSE / The Row cold monochrome, Vogue-style editorial layouts). That reads impersonal — Aura is *your* stylist, not a publication. **This is the direction that was considered and explicitly rejected.**
+- A trend-chasing fashion-girl costume (pink overload, glitter, "girlboss" tropes). That reads adolescent.
+- A productivity or AI-assistant shell. That reads generic.
+
+The direction sits deliberately between these failure modes: warm but sharp, feminine but unfussy, personal but disciplined.
+
 ## Product Design Goal
 
 Aura should feel like a personal stylist studio, not a generic AI tool and not a commodity shopping app.
@@ -54,7 +79,7 @@ The target emotional response is:
 - confident
 
 For the primary audience, women 20–35, the product must balance:
-- editorial beauty
+- maison-grade visual composure
 - everyday usefulness
 - emotional softness
 - practical trust
@@ -158,12 +183,14 @@ The tone should be:
 ### Brand Personality
 
 Aura should feel:
-- editorial
+- bespoke (one-of-one, not a template)
+- assured (confident without pleading)
 - intimate
 - polished
 - intelligent
 - reassuring
 - aspirational
+- with a point of view
 
 It should not feel:
 - corporate
@@ -171,6 +198,8 @@ It should not feel:
 - adolescent
 - loud
 - mass-market e-commerce
+- warm-craft or boutique-artisanal (the legacy direction)
+- magazine-like or publication-coded (the rejected "editorial" direction — Aura is a stylist, not a Vogue spread)
 
 ### Visual Metaphor
 
@@ -188,78 +217,151 @@ Aura is not:
 
 ### Color Principles
 
-Use a warm, fashion-forward neutral base with restrained dramatic accents.
+Use a warm-ivory base, a near-black espresso ink, and one confident accent (oxblood) that carries all the personality. Champagne is reserved exclusively for personal cues — never as decoration.
 
 Primary palette intent:
-- light, soft, warm backgrounds
-- strong ink contrast for elegance
-- muted romantic accent colors
+- warm-ivory canvas (not cream, not pure white, not grey)
+- near-black espresso ink for typographic authority
+- one confident accent — **oxblood** — used sparingly
+- **champagne** reserved *exclusively* for personalized moments (your season, your palette, your matched items, the 1px rule on personalized advice)
 - richer dark tones for sophistication
+- dark mode parity, not an afterthought
 
 Recommended palette roles:
-- `Background`: bone, porcelain, soft sand
-- `Surface`: warm ivory, cream, oat
-- `Primary text`: espresso, softened black
-- `Secondary text`: taupe-gray, warm slate
-- `Accent 1`: mulberry / oxblood
-- `Accent 2`: olive ink / moss slate
-- `Accent 3`: rose smoke
-- `Highlight`: muted antique gold, used sparingly
+- `Canvas`: warm ivory — the dominant background
+- `Surface`: slightly lifted off-ivory for cards and panels
+- `Surface-sunk`: slightly sunk for chips, secondary fills, user message bubbles
+- `Primary text`: espresso-black (near-black, not pure)
+- `Secondary text`: warm taupe-grey
+- `Tertiary text`: soft taupe for metadata, placeholders
+- `Line`: hairline warm-neutral for dividers; borders replace shadows on static cards
+- `Accent`: oxblood — primary actions, brand wordmark, active nav, 1px rule on personalized advice cards
+- `Signal`: champagne — **personal cues only**; never decorative
+- `Positive / Negative`: muted olive-green / muted terracotta — never bright
 
 Color usage rules:
-- backgrounds should not be flat white by default
-- avoid cold gray-heavy UI
-- avoid strong neon or synthetic gradients
-- use accent color sparingly and intentionally
-- separate wardrobe and catalog visually through subtle tonal signals, not loud labels
+- backgrounds should never be flat white
+- avoid cold grey-heavy UI and avoid nostalgic warm-cream craft palettes
+- avoid strong neon, synthetic gradients, or decorative colour
+- use oxblood sparingly and intentionally — never as a fill for large surfaces
+- use champagne **only** for personal cues; two surfaces with champagne in the same viewport is a violation
+- separate wardrobe and catalog visually through subtle tonal labels (`YOURS` / `SHOP`), not loud colour
+- dark mode is not optional — every surface must have a dark token equivalent
 
 ### Example Semantic Tokens
 
-These are platform direction tokens, not implementation-locked values.
+These are the target tokens for Phase 14 and beyond. Legacy tokens are listed at the end for traceability during migration only.
 
 ```css
 :root {
-  --bg-canvas: #f6f0ea;
-  --bg-soft: #efe6dc;
-  --surface-primary: #fffaf5;
-  --surface-secondary: #f7f1eb;
-  --ink-primary: #1f1a17;
-  --ink-secondary: #5f5853;
-  --ink-tertiary: #8b847d;
-  --line-subtle: #ddd2c7;
-  --accent-editorial: #6f2f45;
-  --accent-wardrobe: #58624d;
-  --accent-soft: #b98a8f;
-  --accent-gold: #b08a4e;
-  --success-soft: #6f8a72;
-  --warning-soft: #9b7b5a;
+  /* Light (default) */
+  --canvas:         #F7F3EC;   /* warm ivory — dominant background */
+  --surface:        #FDFBF6;   /* lifted surface for cards / panels */
+  --surface-sunk:   #EEE8DD;   /* sunk surface for chips, user bubbles */
+  --ink:            #16110E;   /* espresso-black — primary text */
+  --ink-2:          #2E2824;   /* body copy */
+  --ink-3:          #6B635C;   /* secondary text */
+  --ink-4:          #A69C92;   /* tertiary / placeholder */
+  --line:           #E1D8C9;   /* hairline dividers */
+  --line-strong:    #C9BCA8;   /* stronger hairline for inputs, active chips */
+  --accent:         #5C1A1B;   /* oxblood — primary action, brand wordmark */
+  --accent-soft:    #7A2A2C;   /* hover / pressed oxblood */
+  --signal:         #C6A15B;   /* champagne — PERSONAL CUES ONLY */
+  --positive:       #4A6B3A;   /* muted olive */
+  --negative:       #8A2A2A;   /* muted terracotta */
+
+  /* Radii */
+  --radius-sm:      4px;       /* chips, tags */
+  --radius-md:      8px;       /* buttons, inputs, cards */
+  --radius-lg:      14px;      /* modals, composer */
+  --radius-full:    999px;
+
+  /* Elevation — hairline borders replace shadows on static surfaces */
+  --shadow-pop:     0 1px 2px rgba(22,17,14,.04), 0 8px 24px rgba(22,17,14,.06);
+  --shadow-modal:   0 24px 80px rgba(22,17,14,.18);
+
+  /* Motion */
+  --ease:           cubic-bezier(.2, .7, .1, 1);  /* expo-out, single curve */
+  --dur-1:          120ms;     /* micro — hover, press */
+  --dur-2:          240ms;     /* standard — modal, drawer */
+  --dur-3:          480ms;     /* slow — view transition, hero reveal */
 }
+
+[data-theme="dark"] {
+  --canvas:         #0E0B09;
+  --surface:        #15110E;
+  --surface-sunk:   #0A0806;
+  --ink:            #F4EFE5;
+  --ink-2:          #D8D1C3;
+  --ink-3:          #8A8176;
+  --ink-4:          #544D45;
+  --line:           #2A231D;
+  --line-strong:    #3A312A;
+  --accent:         #B34548;   /* oxblood lifted for dark-mode contrast */
+  --accent-soft:    #C95A5D;
+  --signal:         #D6B373;
+  --positive:       #6F9356;
+  --negative:       #B3544F;
+  --shadow-pop:     0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
+  --shadow-modal:   0 24px 80px rgba(0,0,0,.65);
+}
+```
+
+**Legacy tokens being retired in Phase 14** (reference only — do not reintroduce):
+
+```css
+/* Legacy — do not use in new work */
+--bg-canvas: #f6f0ea;          /* warm cream — too craft, replaced by #F7F3EC ivory */
+--accent-editorial: #6f2f45;   /* rose-wine burgundy — replaced by #5C1A1B oxblood */
+--accent-wardrobe: #58624d;    /* retired — wardrobe/catalog distinction is now label-based, not colour-based */
+--accent-soft: #b98a8f;        /* retired — no rose-smoke in Confident Luxe */
+--accent-gold: #b08a4e;        /* replaced by --signal (#C6A15B), and usage is now restricted to personal cues only */
 ```
 
 ### Typography
 
-Typography must carry style authority.
+Typography carries the personality in Confident Luxe. The display face is where the "wink" lives — used oversized, often italic, on a small number of deliberate moments (see § Tonal Moments). Body type is a neutral, disciplined workhorse so that the display can do all the speaking.
 
-Recommended structure:
-- Display: serif with fashion/editorial character
-- UI/body: refined sans serif
-- Utility/meta: compact sans or restrained mono in rare cases
+**Target pairing** (Phase 14) — **all faces are free / SIL OFL licensed**. No paid dependencies.
+
+- **Display** — `Fraunces` (Undercase Type, SIL OFL, served by Google Fonts). Variable font with `opsz`, `wght`, `SOFT`, and `WONK` axes. Ball terminals, distinctive swash italic, warm curves without magazine-coding — it reads personal and composed, not publication. Used for hero headlines, view titles, verdict cards, style dossier adjectives, and empty states.
+- **Body / UI** — `Inter` (Rasmus Andersson, SIL OFL). Neutral grotesque, full weight range, excellent at small sizes. Used for chat body, form fields, buttons, descriptions, metadata.
+- **Label / Mono** — `JetBrains Mono` (SIL OFL). Used sparingly for uppercase tracked labels, garment counts, product codes, and system metadata.
+
+**Fallbacks** (for first load and web-font failure):
+- Display: `"Cormorant Garamond"`, Georgia, serif
+- Body: `-apple-system`, `"Helvetica Neue"`, sans-serif
+- Mono: `ui-monospace`, `"SF Mono"`, `Menlo`, monospace
+
+Cormorant Garamond + Avenir Next are the legacy pair being retired. Cormorant remains in the display fallback stack so no surface goes unstyled during the Phase 14 migration, but no new work should specify either directly. The entire target stack is free — no licensing friction, no commercial gate.
+
+**Type ramp** (modular 1.25, pinned tokens):
+
+| Token | Size / line | Weight | Use |
+|---|---|---|---|
+| `display-xl` | 72 / 76 | Fraunces 400 | Landing hero, empty states, dossier adjectives |
+| `display-lg` | 48 / 52 | Fraunces 400 / 400 italic | View titles (Wardrobe, Looks), verdict headlines |
+| `display-md` | 32 / 36 | Fraunces 500 | Section leads, profile name |
+| `title` | 20 / 28 | Inter 600 | Card titles, modal headers |
+| `body` | 15 / 24 | Inter 400 | Chat, descriptions |
+| `body-sm` | 13 / 20 | Inter 400 | Meta, captions, follow-up chip text |
+| `label` | 11 / 14 | Inter 600, uppercase, 0.08em tracked | Filter chips, source labels, nav |
+| `mono` | 12 / 16 | JetBrains Mono 500 | Product codes, counts, system metadata |
 
 Typography principles:
-- headlines should feel composed and luxurious
-- body copy should remain highly readable
-- use generous line spacing
+- headlines feel composed and luxurious — rely on size + italic for emphasis, not colour
+- body copy remains highly readable at 15px / 24 line-height
+- use generous line spacing; avoid tight leading
 - rely on hierarchy and spacing, not excessive font-size jumps
-
-Recommended pairing direction:
-- Display: Canela, Cormorant Garamond, Ivar, Editorial New, or similar
-- Body/UI: Avenir Next, Neue Haas Grotesk, Suisse, Manrope, or similar
+- italic display type is a personality moment — do not use it for body copy or chrome
+- all uppercase use must have ≥ 0.08em letter-spacing
 
 Usage guidance:
-- major page titles: serif
-- recommendation titles: serif or strong sans depending on layout
-- controls, chips, labels, form fields: sans
-- confidence / metadata labels: compact sans
+- major page titles: display (serif)
+- verdict / personal moments: display italic, oversized
+- recommendation titles: `title` (Inter 600)
+- controls, chips, labels, form fields: `label` (Inter uppercase tracked) or `body-sm`
+- confidence / metadata labels: `mono`
 
 ### Spacing And Layout
 
@@ -278,13 +380,15 @@ Layout principle:
 
 ### Shape Language
 
-The UI should use soft structure, not generic rounded SaaS cards everywhere.
+The UI uses soft structure, not generic rounded SaaS cards everywhere, and it uses **hairline borders over drop shadows** on static surfaces. This is the single largest visual shift in Confident Luxe.
 
 Rules:
-- use medium-to-large radii on primary surfaces
-- use cleaner, slightly tighter radii inside content modules
-- layer surfaces subtly
-- prefer framed image panels and elevated cards over plain bordered boxes
+- use the pinned radius tokens: `--radius-sm` (4px) for chips and tags, `--radius-md` (8px) for buttons / inputs / cards, `--radius-lg` (14px) for modals and the composer
+- **static surfaces use a 1px `--line` border, not a drop shadow.** Ambient drop shadows on cards is the biggest "warm-craft dashboard" tell and must be removed.
+- shadow is reserved for genuinely floating surfaces: modals, popovers, drawers, the composer on focus. Use `--shadow-pop` for popovers, `--shadow-modal` for modals.
+- avoid more than 2px of radius difference between siblings in the same module — the shape language should feel precise, not playful
+- prefer framed image panels. Garment cards carry no border and no background — just the image + metadata below it. The image *is* the card.
+- layer surfaces subtly using `--surface` and `--surface-sunk` rather than with shadow
 
 ### Imagery
 
@@ -294,30 +398,136 @@ Rules:
 - imagery should always be given room
 - use soft background framing behind garments
 - preserve aspect ratio and avoid awkward crops
-- main recommendation imagery should feel premium and editorial
+- main recommendation imagery should feel premium and composed — maison-grade, not catalog-flat
 - thumbnails should feel tactile and curated
 
 ## Motion System
 
-Motion should feel soft and intentional.
+Motion is soft, intentional, and built from a single easing curve and three durations. One curve + three durations = discipline. Variation comes from *what* moves, not *how*.
+
+Tokens (pinned):
+
+```css
+--ease:  cubic-bezier(.2, .7, .1, 1);   /* expo-out — the only curve */
+--dur-1: 120ms;                          /* micro — hover, press, chip state */
+--dur-2: 240ms;                          /* standard — modal, drawer, tab switch */
+--dur-3: 480ms;                          /* slow — view transition, hero reveal */
+```
 
 Allowed motion patterns:
-- fade + slight rise on content reveal
+- fade + slight vertical rise (4–8px) on content reveal
 - image crossfade on look switching
-- staggered entrance for outfit cards
-- gentle slide for chips and filters
-- subtle hover lift
+- staggered entrance for outfit cards (60ms stagger, `--dur-2`)
+- gentle lateral slide for chips, filters, and history drawer
+- subtle underline-reveal on nav and history items
+- uppercase labels tracking in from the left by 4–6px (the "runway program" detail — used once per view, not everywhere)
 
 Avoid:
-- bounce
-- spring-heavy motion everywhere
+- bounce and spring-heavy motion
+- scale transforms over 1.02 on hover (no zoom-in cards)
 - spinners as primary waiting experience
-- excessive shimmer
+- excessive shimmer or animated gradients
+- decorative micro-interactions that exist for their own sake
+- more than one easing curve anywhere in the product
 
 Loading patterns:
-- use elegant stage messaging for “stylist is thinking”
+- use elegant stage messaging for "stylist is thinking" (see § Voice & Microcopy for the copy rules)
 - where possible show partial progress in human language
 - loading should reassure, not entertain
+
+Accessibility:
+- respect `prefers-reduced-motion: reduce` — fall back to instant opacity changes, disable the tracking-in label detail, disable stagger
+
+## Tonal Moments — Where The Personality Lives
+
+Confident Luxe concentrates its fashion-girl personality in a small number of deliberate moments. Everything outside of these moments is hushed. The discipline is what keeps the product premium — if personality leaks into chrome, the surface becomes costume.
+
+The four sanctioned tonal moments:
+
+1. **Empty states** — oversized italic display type, short confident copy with no question marks.
+   - Chat empty state: *"Good evening, Mj. What are we wearing."* (72/76 display italic)
+   - Wardrobe empty-category state: *"Your outerwear lives here."* (48/52 display italic) + one ghost "Add a piece" button
+   - Looks empty state: *"Nothing saved yet. Let's find something."*
+
+2. **Verdict cards** (buy / skip / pairing) — the verdict word is set in oversized display italic, alone, over a full-bleed product image. No colour fill, no badge, no icon — just type and image.
+   - `Worth it.` — 48/52 display italic
+   - `Skip.` — 48/52 display italic
+   - `Maybe.` — 48/52 display italic (used for conditional verdicts)
+   - A single `body` line underneath explains *why* in one sentence.
+
+3. **Style dossier** (profile view) — style adjectives rendered as oversized quote blocks in display italic on the canvas, one per line, no punctuation.
+   - *Sculptural*
+   - *Unfussy*
+   - *Warm*
+   - The dossier as a whole is treated as a printed page, not a settings screen.
+
+4. **Motion detail** — the "runway program" track-in on uppercase labels (see § Motion System). Used *once per view*, typically on section labels, never on every element. One tasteful motion detail is the signature; many is noise.
+
+Rules for tonal moments:
+- italic display type only appears in these four contexts — never in body copy, nav, buttons, chips, or metadata
+- personality moments never carry chrome: no borders, no shadows, no backgrounds. Just type and image.
+- never dilute a tonal moment by adding a secondary CTA above or beside it. One idea per moment.
+
+## Voice & Microcopy
+
+Copy is a fashion-native voice, not AI-assistant voice. Short, composed, a little knowing, never cheerful-chatbot.
+
+**Source labels** (uppercase tracked, `label` type):
+
+| Label | Meaning | Where |
+|---|---|---|
+| `YOURS` | From the user's saved wardrobe | On garment and outfit cards, follow-up chips |
+| `SHOP` | From the catalog | On catalog-backed cards |
+| `HYBRID` | Mixed wardrobe + catalog | On outfit cards that combine sources |
+| `ON YOU` | Virtual try-on render | On try-on gallery tiles |
+| `FOR YOU` | Personalized pick keyed to palette / body shape / style code | Reserved for the champagne 1px-rule cards |
+
+**Verdict labels** (display italic):
+
+| Label | Meaning |
+|---|---|
+| `Worth it.` | Buy verdict |
+| `Skip.` | Skip verdict |
+| `Maybe.` | Conditional verdict |
+| `Not yours.` | Style-mismatch verdict (used gently) |
+
+**Follow-up bucket headings** (uppercase tracked, `label` type):
+
+- `IMPROVE IT`
+- `SHOW ALTERNATIVES`
+- `SHOP THE GAP`
+- `EXPLAIN WHY`
+- `SAVE FOR LATER`
+
+These replace generic follow-up copy and must be rendered as grouped headers, never a flat list.
+
+**Loading / thinking states** — short stylist-voice lines, no ellipsis animation:
+
+- *Laying pieces on the table.*
+- *Looking through your closet.*
+- *Pairing this back for you.*
+- *Finding something that fits.*
+
+**Copy rules:**
+- no exclamation marks anywhere in user-facing copy
+- no smileys, no emoji in chrome (emoji is permissible in user messages, not in system UI)
+- no "Hi!" / "Hey there!" / chatbot openers — greet by name and go
+- end empty-state copy with a period, not a question mark ("What are we wearing.")
+- never say "AI", "model", "prompt", "LLM", "agent" in user-facing copy
+
+## Dark Mode
+
+Dark mode is not optional and not an afterthought. Every surface must carry a dark token equivalent (see the `[data-theme="dark"]` block in § Example Semantic Tokens).
+
+Rules:
+- canvas is `#0E0B09` (espresso-black, not pure black, not grey) — the warmth must persist in dark mode
+- oxblood lifts to `#B34548` for AA contrast on dark surfaces
+- champagne lifts to `#D6B373` and remains restricted to personal cues only
+- no dark mode uses pure black (`#000`) — it flattens the warmth and reads generic
+- drop-shadow tokens shift to heavier opacities on dark (see dark token block) so floating surfaces still read as floating
+- all imagery must remain legible — avoid decorative dark-mode overlays or tints on product photos
+- the theme toggle is a one-sentence affordance in the profile view, plus a keyboard shortcut; it is not a header icon (we are not a dashboard)
+- default: honour `prefers-color-scheme`. Explicit user choice persists in localStorage and overrides the system preference.
 
 ## UX Architecture Principles
 
@@ -365,7 +575,7 @@ It must not feel like:
 - generic assistant shell
 
 Required first-run components:
-- editorial welcome state
+- Confident Luxe welcome moment (display-italic greeting, see § Tonal Moments)
 - quick-entry styling actions
 - visible style profile summary
 - visible wardrobe status or next wardrobe action
@@ -429,7 +639,7 @@ This navigation model should remain stable across web entry points, mobile layou
 The home screen should be a stylist hub.
 
 It should include:
-- editorial hero
+- stylist-studio hero (display headline, no publication framing)
 - quick entry actions
 - today’s recommended action
 - wardrobe health insight
@@ -626,7 +836,7 @@ Required mobile variants:
 Desktop should feel like a studio workspace.
 
 Desktop priorities:
-- editorial composition
+- composed, unhurried layout with strong vertical rhythm
 - generous whitespace
 - image focus with one supporting rail
 - clean task switching between chat, wardrobe, and look details
@@ -694,16 +904,21 @@ Before adding or changing a screen, validate:
 
 Before shipping a new component, validate:
 - does it feel stylist-led, not dashboard-led
-- does it harmonize with the warm editorial palette
-- does it preserve strong typography hierarchy
-- does it work on mobile first
-- does it avoid generic AI-app design tropes
+- does it harmonize with the Confident Luxe palette (ivory / espresso / oxblood / champagne-for-personal-only)
+- does it preserve strong typography hierarchy without leaking italic display type into chrome
+- does it work on mobile first, with dark-mode parity
+- does it avoid generic AI-app design tropes and warm-craft boutique tells (no drop shadows on static cards, no serif-over-serif collisions, no rose-wine accents)
 
 ## Non-Negotiables
 
 - Aura must not look like a generic chatbot.
 - Aura must not look like a generic shopping marketplace.
 - Aura must not rely on flat white screens and default UI kits.
+- Aura must not reintroduce the legacy warm-cream + rose-wine palette. `#f6f0ea` and `#6f2f45` are retired.
+- Aura must not use drop shadows on static cards. Hairline borders only.
+- Aura must not use italic display type outside the four sanctioned tonal moments (empty states, verdicts, dossier, runway motion detail).
+- Aura must not use champagne (`--signal`) anywhere that is not a personal cue. Two champagne surfaces in the same viewport is a violation.
+- Aura must not ship a light-only surface. Dark mode parity is required for every new screen.
 - The wardrobe must feel central to the product.
 - Recommendation answers must prioritize taste and guidance before metrics.
 - The experience must feel aspirational but usable in everyday life.
