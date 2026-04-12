@@ -1026,7 +1026,172 @@ Checklist:
 Success criteria:
 - we can say with evidence whether users are forming a real pre-buy / pre-dress dependency on the system
 
-## Phase 14: Confident Luxe Design Refinement (P0 — Current)
+## Phase 15: Intent-Organized UI Rearchitecture (P0 — Current)
+
+**Goal:** replace the chat-organized interface with an intent-organized, PDP-first discovery surface. Users interact via a query input and browse PDP carousels — not chat transcripts. History is grouped by intent (outfit recommendations, pairings, outfit checks), not by conversations.
+
+**Why now:** Chat is the wrong metaphor for a fashion product. Three failure modes confirmed by live usage:
+1. **Conversations are bad containers** — a user asking "wedding outfit" then "office look" in the same thread creates a jumbled transcript. Users think in intents ("my wedding looks"), not conversations.
+2. **Chat bubbles bury the product** — the outfit PDP card (which carries the real value) renders as an interruption inside a text stream. In fashion, the product IS the interface.
+3. **Vertical scroll is wrong for outfit comparison** — left/right carousel navigation matches shopping behaviour. Vertical scroll matches messaging. Aura should feel like shopping, not messaging.
+
+**Architectural shift:**
+- Landing page → **discovery surface**: centered input + PDP carousel for the active request + context summary + follow-up chips + recent intent groups below
+- Response rendering → **PDP carousels** (not chat bubbles): the same `buildOutfitCard` component, arrayed horizontally with swipe/arrow navigation
+- History → **intent-organized tabs** (not conversation sidebar): Outfits (recommendations + pairings + their try-ons), Checks (outfit check history)
+- Trial Room → **embedded in Outfits** (not a separate tab): try-on images live inside the intent group that generated them
+- Iterations → **stacked carousels within an intent group**: "Show alternatives" adds a new carousel row below the original, not a new chat bubble
+
+**Navigation model:**
+
+| Tab | What it shows | Data source |
+|---|---|---|
+| **Home** | Discovery input + active request PDP carousel + recent intent previews | Live pipeline response + `/v1/users/{id}/intent-history` |
+| **Outfits** | Intent-organized history for `occasion_recommendation` + `pairing_request` + `capsule_or_trip_planning`. Each group = context header + PDP carousel + embedded try-ons. Vertical scroll between groups, horizontal swipe within. | `/v1/users/{id}/intent-history?types=occasion_recommendation,pairing_request,capsule_or_trip_planning` |
+| **Checks** | Outfit check history. Uploaded photo + verdict card per check. | `/v1/users/{id}/intent-history?types=outfit_check` |
+| **Wardrobe** | Stays as-is (borderless closet grid) | Existing endpoints |
+| **Saved** | Stays as-is (wishlist) | Existing endpoints |
+
+**What stays (zero rework):**
+- Backend orchestrator, agents, pipeline, repos, schemas — the same pipeline that produces outfits today
+- PDP card component (`buildOutfitCard`) — hero image, products, chart, feedback strip
+- Wardrobe surface, Saved/Wishlist surface
+- Confident Luxe design tokens, typography, motion, dark mode
+- All outfit persistence, read-time hydration, stage messages
+- Conversation model in the DB (turns still belong to conversations; the frontend just groups by intent instead of exposing conversations)
+
+**What changes:**
+- `modules/platform_core/src/platform_core/ui.py` — landing page, response rendering, history surfaces, navigation
+- One new API endpoint (`/v1/users/{id}/intent-history`)
+- Navigation: Chat · Wardrobe · Looks · Saved · Trial Room → **Home · Outfits · Checks · Wardrobe · Saved**
+
+**PDP carousel interaction model:**
+- One PDP visible at a time on mobile, 2-up on desktop with peek of next
+- Swipe or arrow keys to navigate
+- `1/N` counter badge (reuses the existing image-counter pattern)
+- Follow-up chips below the carousel: clicking sends a new request → adds a new carousel row to the same intent group (iteration without starting over)
+- Context summary above each carousel: "3 looks for a summer wedding · wardrobe-first · Apr 10"
+
+**Iteration stacking:**
+- User asks: "Dress me for a wedding" → 3 PDP cards in carousel
+- User clicks "More formal" → same intent group, second carousel row: "Iteration 2 · more formal"
+- User types: "Try navy instead" → third carousel row: "Iteration 3 · navy direction"
+- All iterations live in the same group, scrollable. Context header updates.
+
+### Phase 15A — Intent-grouped history endpoint (backend)
+
+New `GET /v1/users/{id}/intent-history` endpoint.
+
+Checklist:
+- [ ] group turns by (`primary_intent`, `occasion_signal`, `conversation_id`, date)
+- [ ] for each group, return: intent type, occasion label, date, context summary, turn count
+- [ ] for each turn within a group, return: user message (as context), assistant message (as summary), resolved_context with outfits (using existing read-time hydration)
+- [ ] embed try-on images per group via existing `virtual_tryon_images` lookup
+- [ ] support `?types=` filter param for the Outfits vs Checks tab split
+- [ ] test coverage
+
+Verification:
+- endpoint returns grouped structure, not flat list
+- groups sort by most recent first
+- try-on images present where available
+- hydration fires for historical turns missing outfits
+
+### Phase 15B — Discovery landing page (frontend)
+
+Replace the chat feed with a discovery layout.
+
+Checklist:
+- [ ] centered input bar at the top (search-bar energy: wider, no +button popover, just text input + send)
+- [ ] italic Fraunces headline above: "What are we wearing." (reuse the welcome-headline)
+- [ ] on submit: PDP carousel slides in below the input
+- [ ] context summary line above the carousel (occasion · source · count)
+- [ ] horizontal swipe/arrow navigation between PDP cards within the carousel
+- [ ] `1/N` counter badge on the carousel (reuses image-counter pattern)
+- [ ] follow-up chips below the carousel (reuse existing follow-up chip rendering)
+- [ ] below the active request: compact preview cards for recent intent groups (tap to expand into the Outfits tab)
+- [ ] stage bar / "thinking" indicator renders as a subtle line below the input, not a chat bubble
+
+Verification:
+- no chat bubbles visible anywhere on the landing page
+- PDP cards render identically to the existing `buildOutfitCard` output
+- swipe/arrow navigation works on mobile and desktop
+- follow-up chips send a new request that appends a carousel row, not a chat message
+
+### Phase 15C — Outfits tab (intent-organized history)
+
+New tab replacing Looks + Trial Room.
+
+Checklist:
+- [ ] fetch from `/v1/users/{id}/intent-history?types=occasion_recommendation,pairing_request,capsule_or_trip_planning`
+- [ ] render each intent group as a section: context header + PDP carousel
+- [ ] try-on images embedded in PDP cards (via the existing click-to-cycle hero)
+- [ ] iterations within a group render as stacked carousel rows with iteration labels
+- [ ] vertical scroll between groups, horizontal swipe within each carousel
+- [ ] empty state: Fraunces italic "Nothing styled yet."
+- [ ] tap a group's context header to re-enter the conversation (loads the intent group into the Home tab's active request area for iteration)
+
+Verification:
+- groups appear in reverse chronological order
+- each group has a correct context header (intent · occasion · date · count)
+- PDP cards within each group match what the user saw live
+- try-on images present where the live flow generated them
+
+### Phase 15D — Checks tab
+
+Checklist:
+- [ ] fetch from `/v1/users/{id}/intent-history?types=outfit_check`
+- [ ] render each check as a card: uploaded outfit photo (from the turn's attached image) + stylist verdict text + check metrics
+- [ ] empty state: "No outfit checks yet."
+
+### Phase 15E — Remove legacy surfaces
+
+Checklist:
+- [ ] remove chat bubble rendering from the response flow (keep `renderAssistantMarkup` for the context summary text)
+- [ ] remove the conversation history sidebar (`history-rail`, `loadConversationHistory`, ⌘K toggle)
+- [ ] remove Trial Room tab (content now lives in Outfits via embedded try-ons)
+- [ ] merge Looks tab into Outfits (or keep as a "browse all" toggle: `BY INTENT · ALL`)
+- [ ] update header nav: Home · Outfits · Checks · Wardrobe · Saved
+- [ ] update view-switching CSS (`body.view-X` classes)
+
+Verification:
+- no chat bubbles in any user-facing surface
+- no conversation history sidebar
+- no standalone Trial Room tab
+- all 5 tabs render and navigate correctly
+- full test suite green
+
+### Phase 15F — Polish + iteration flow
+
+Checklist:
+- [ ] carousel transitions: CSS transform + `--dur-2` easing on slide
+- [ ] swipe gesture support: touch events on mobile, arrow keys on desktop
+- [ ] iteration stacking: follow-up request adds a new carousel row within the same intent group on the Home tab
+- [ ] iteration labels: "Iteration 2 · more formal" above each stacked carousel
+- [ ] input bar behaviour: typing a completely new request starts a new intent group; clicking a follow-up chip iterates the current one
+- [ ] responsive: mobile = full-width single-card swipe; desktop = 2-up with peek
+- [ ] Fraunces italic empty states on every tab
+- [ ] motion: carousel slide uses `--dur-2` + `--ease`, stagger entrance on Outfits tab groups
+
+### Success criteria (entire phase)
+
+- the product feels like a fashion discovery surface, not a chatbot
+- outfit PDP cards are the primary visual unit, not chat bubbles
+- history is organized by intent, not by conversation thread
+- users can iterate on any historical intent group by tapping it
+- try-on images live inside their outfit groups, not in a separate gallery
+- the backend is minimally changed (one new endpoint + existing pipeline)
+- Confident Luxe design tokens carry through every surface
+- full test suite green
+
+### Risks
+
+- **Loss of conversational nuance.** Some users may want to see the full transcript. Mitigation: store it (conversations stay in DB), add an expandable "View full conversation" link per intent group as a detail affordance.
+- **Grouping heuristic.** Deciding which turns belong to the same intent group is fuzzy when a user pivots mid-conversation. Mitigation: group by `conversation_id` + `primary_intent` + `occasion_signal`. Intent change within a conversation = new sub-group.
+- **Follow-up routing for old groups.** Iterating on a weeks-old intent group needs the right conversation context. Mitigation: intent group maps 1:1 to a conversation_id; clicking "iterate" reloads that conversation's session_context.
+
+---
+
+## Phase 14: Confident Luxe Design Refinement (P0 — Completed)
 
 **Goal:** migrate the live UI from the legacy warm-cream + rose-wine direction to the refined "Confident Luxe" token set defined in `docs/DESIGN.md` (§ Brand Direction — Confident Luxe). Phase 11A delivered the stylist-studio *architecture* (information architecture, component vocabulary, tab model). Phase 14 replaces the *visual language* on top of that architecture so the surface reads as premium fashion authority rather than warm-craft boutique.
 

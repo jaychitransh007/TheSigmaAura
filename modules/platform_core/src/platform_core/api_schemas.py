@@ -248,3 +248,36 @@ class TryonGalleryItem(BaseModel):
 class TryonGalleryResponse(BaseModel):
     user_id: str
     items: List[TryonGalleryItem] = Field(default_factory=list)
+
+
+# -- Intent-organized history (Phase 15) ------------------------------------
+
+
+class IntentHistoryTurn(BaseModel):
+    turn_id: str
+    user_message: str = ""
+    assistant_summary: str = ""
+    outfits: List[Dict[str, Any]] = Field(default_factory=list)
+    outfit_count: int = 0
+    first_outfit_image: str = ""
+    created_at: str = ""
+
+
+class IntentHistoryGroup(BaseModel):
+    group_key: str
+    conversation_id: str
+    intent: str = ""
+    occasion: str = ""
+    source: str = ""
+    context_summary: str = ""
+    turn_count: int = 0
+    total_outfit_count: int = 0
+    first_image: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    turns: List[IntentHistoryTurn] = Field(default_factory=list)
+
+
+class IntentHistoryResponse(BaseModel):
+    user_id: str
+    groups: List[IntentHistoryGroup] = Field(default_factory=list)

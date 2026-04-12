@@ -156,22 +156,28 @@ def get_web_ui_html(
 
     /* ===== View switching ===== */
     .page-view { display: none !important; }
-    body.view-chat .page-chat { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow: hidden; }
+    body.view-home .page-home { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
+    body.view-chat .page-home { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-wardrobe .page-wardrobe { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
+    body.view-outfits .page-outfits { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
+    body.view-checks .page-checks { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-results .page-results { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-wishlist .page-wishlist { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-trialroom .page-trialroom { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-profile .page-profile { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-edit-profile .page-profile { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
-    body:not(.view-chat) .history-rail { display: none !important; }
+    .history-rail { display: none !important; }
 
     /* ===== View-transition fade+rise — Confident Luxe motion § 3 ===== */
     @keyframes aura-view-enter {
       from { opacity: 0; transform: translateY(8px); }
       to   { opacity: 1; transform: translateY(0); }
     }
-    body.view-chat .page-chat,
+    body.view-home .page-home,
+    body.view-chat .page-home,
     body.view-wardrobe .page-wardrobe,
+    body.view-outfits .page-outfits,
+    body.view-checks .page-checks,
     body.view-results .page-results,
     body.view-wishlist .page-wishlist,
     body.view-trialroom .page-trialroom,
@@ -367,9 +373,202 @@ def get_web_ui_html(
       font-style: italic;
     }
 
-    /* ===== Chat Main ===== */
-    /* Chat internals — wider to give outfit PDP cards breathing room.
-       Bubbles self-limit via max-width: 82% (~780px) so text stays readable. */
+    /* ===== Discovery Surface (Home) — Phase 15 ===== */
+    .page-home {
+      padding: 0;
+      width: 100%;
+    }
+    /* Top section: headline + input */
+    .discovery-top {
+      padding: 12vh 32px 40px;
+      max-width: 800px;
+      margin: 0 auto;
+      width: 100%;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .discovery-top.has-result {
+      padding: 32px 32px 24px;
+    }
+    .discovery-top.has-result .welcome-headline { font-size: 28px; margin-bottom: 12px; }
+    .discovery-top.has-result .welcome-sub { display: none; }
+    .discovery-top.has-result .welcome-prompts { display: none; }
+    .discovery-input-wrap {
+      max-width: 680px;
+      margin: 0 auto;
+      position: relative;
+    }
+    .discovery-input {
+      width: 100%;
+      padding: 14px 52px 14px 20px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      font-family: inherit;
+      font-size: 15px;
+      color: var(--ink);
+      outline: none;
+      transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+    }
+    .discovery-input:focus { border-color: var(--line-strong); box-shadow: var(--shadow-pop); }
+    .discovery-input::placeholder { color: var(--ink-4); font-style: italic; }
+    .discovery-send {
+      position: absolute;
+      right: 8px; top: 50%; transform: translateY(-50%);
+      width: 36px; height: 36px;
+      border-radius: 50%; border: none;
+      background: var(--accent);
+      color: var(--on-accent);
+      font-size: 15px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: opacity var(--dur-1) var(--ease);
+    }
+    .discovery-send:hover { opacity: 0.88; }
+    .discovery-send:disabled { opacity: 0.3; cursor: default; }
+    .discovery-send .arrow { display: inline-block; transform: rotate(-90deg); }
+
+    /* Thinking indicator below input */
+    .discovery-thinking {
+      max-width: 680px;
+      margin: 8px auto 0;
+      font-size: 12px;
+      font-style: italic;
+      color: var(--ink-3);
+      min-height: 18px;
+      text-align: left;
+      padding: 0 4px;
+    }
+    .discovery-thinking:empty { display: none; }
+
+    /* Active result area */
+    .discovery-result {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 32px 32px;
+      width: 100%;
+    }
+    .discovery-result:empty { display: none; }
+    /* Context summary above the carousel */
+    .result-context {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--ink-4);
+      margin-bottom: 16px;
+      padding: 0 4px;
+    }
+    /* PDP carousel — horizontal scroll with snap */
+    .pdp-carousel {
+      display: flex;
+      gap: 24px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      padding: 4px 0 16px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .pdp-carousel::-webkit-scrollbar { display: none; }
+    .pdp-carousel > .outfit-card {
+      scroll-snap-align: start;
+      flex: 0 0 min(100%, 520px);
+      margin-bottom: 0;
+    }
+    @media (min-width: 900px) {
+      .pdp-carousel > .outfit-card { flex: 0 0 min(48%, 520px); }
+    }
+    /* Carousel counter + nav */
+    .carousel-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 36px 8px;
+    }
+    .carousel-counter {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 10px; font-weight: 500;
+      color: var(--ink-4);
+      letter-spacing: 0.06em;
+    }
+    .carousel-nav { display: flex; gap: 8px; }
+    .carousel-nav button {
+      appearance: none;
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--ink-3);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+    }
+    .carousel-nav button:hover { border-color: var(--ink); color: var(--ink); }
+
+    /* Follow-up chips below the carousel */
+    .discovery-followups {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 36px 24px;
+    }
+
+    /* Recent intent groups */
+    .recent-intents {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 32px 32px 64px;
+      border-top: 1px solid var(--line);
+    }
+    .recent-intents:empty { display: none; }
+    .recent-intents-label {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+      margin-bottom: 20px;
+    }
+    .recent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .recent-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      cursor: pointer;
+      transition: border-color var(--dur-1) var(--ease);
+      background: var(--surface);
+    }
+    .recent-card:hover { border-color: var(--line-strong); }
+    .recent-card-img {
+      aspect-ratio: 4/3;
+      background: var(--surface-sunk);
+      overflow: hidden;
+    }
+    .recent-card-img img { width: 100%; height: 100%; object-fit: cover; }
+    .recent-card-body { padding: 14px 16px; }
+    .recent-card-body .rc-context {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+      margin-bottom: 4px;
+    }
+    .recent-card-body .rc-summary {
+      font-size: 13px; color: var(--ink);
+      display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .recent-card-body .rc-meta {
+      font-size: 9px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+      margin-top: 8px;
+    }
+
+    /* ===== Chat Feed (legacy — kept for loadConversation replay) ===== */
     .chat-feed {
       flex: 1; overflow-y: auto; padding: 32px 32px 12px; max-width: 960px;
       margin: 0 auto; width: 100%;
@@ -1813,14 +2012,14 @@ def get_web_ui_html(
   <button class="hamburger-btn" id="hamburgerBtn" aria-label="Toggle sidebar">&#9776;</button>
   <div class="header-brand" id="brandLink">Aura</div>
   <nav class="header-nav">
-    <a href="/?user={safe_user_id}&view=chat" class="{'active' if active_view == 'chat' else ''}">Chat</a>
+    <a href="/?user={safe_user_id}&view=home" class="{'active' if active_view in ('home', 'chat') else ''}">Home</a>
+    <a href="/?user={safe_user_id}&view=outfits" class="{'active' if active_view == 'outfits' else ''}">Outfits</a>
+    <a href="/?user={safe_user_id}&view=checks" class="{'active' if active_view == 'checks' else ''}">Checks</a>
     <a href="/?user={safe_user_id}&view=wardrobe" class="{'active' if active_view == 'wardrobe' else ''}">Wardrobe</a>
-    <a href="/?user={safe_user_id}&view=results" class="{'active' if active_view == 'results' else ''}">Looks</a>
     <a href="/?user={safe_user_id}&view=wishlist" class="{'active' if active_view == 'wishlist' else ''}">Saved</a>
-    <a href="/?user={safe_user_id}&view=trialroom" class="{'active' if active_view == 'trialroom' else ''}">Trial Room</a>
   </nav>
   <div class="header-actions">
-    <button class="new-chat-btn" id="newChatBtn">New chat</button>
+    <button class="new-chat-btn" id="newChatBtn" style="display:none;">New chat</button>
     <div class="avatar-menu">
       <button class="avatar-btn" id="avatarBtn" aria-label="User menu">&#128100;</button>
       <div class="avatar-dropdown" id="avatarDropdown">
@@ -1837,57 +2036,56 @@ def get_web_ui_html(
     # ── App Body ──
     html += '<div class="app-body">\n'
 
-    # ── Chat History Sidebar ──
+    # ── Discovery Surface (Home) — Phase 15 ──
     html += f"""
-<aside class="history-rail" id="historyRail">
-  <div class="history-header">
-    <span>Conversations</span>
+<div class="page-view page-home">
+  <div class="discovery-top" id="discoveryTop">
+    <h1 class="welcome-headline">What are we wearing<span class="welcome-dot">.</span></h1>
+    <p class="welcome-sub">From your wardrobe first. Catalog when there's a gap.</p>
+    <div class="discovery-input-wrap">
+      <input type="text" class="discovery-input" id="discoveryInput" placeholder="Describe what you need..." aria-label="Describe what you need" />
+      <button class="discovery-send" id="discoverySend" type="button" aria-label="Send"><span class="arrow">&#10148;</span></button>
+    </div>
+    <div class="discovery-thinking" id="discoveryThinking"></div>
+    <div class="welcome-prompts" id="welcomePrompts">
+      <button class="welcome-prompt" data-prompt="Dress me for tonight using my wardrobe.">Build a look</button>
+      <button class="welcome-prompt" data-prompt="What goes well with this?">Pair a garment</button>
+      <button class="welcome-prompt" data-prompt="Plan my wardrobe for a 5-day trip.">Plan a trip</button>
+      <button class="welcome-prompt" data-prompt="Is this worth buying?">Is it worth it</button>
+    </div>
+    <div class="image-chip" id="imageChip">
+      <div class="chip-inner">
+        <img id="imageChipImg" src="" alt="Attached" />
+        <span class="name" id="imageChipName"></span>
+        <button class="remove" id="imageChipRemove" aria-label="Remove image">&times;</button>
+      </div>
+    </div>
   </div>
-  <div class="history-list" id="historyList">
-    <div class="history-empty">Start a conversation to see your history here.</div>
-  </div>
-</aside>
+  <div id="discoveryResultArea" class="discovery-result"></div>
+  <div id="discoveryFollowups" class="discovery-followups"></div>
+  <div id="recentIntents" class="recent-intents"></div>
+  <!-- Hidden legacy feed for loadConversation replay -->
+  <div id="feed" class="chat-feed" style="display:none;" role="region"></div>
+  <div class="composer-error" id="composerError" style="max-width:680px;margin:0 auto;padding:0 32px;"></div>
+</div>
 """
 
-    # ── Chat Page ──
-    html += f"""
-<div class="page-view page-chat">
-  <div id="feed" class="chat-feed" role="region" aria-live="polite">
-    <div class="feed-welcome" id="feedWelcome">
-      <h1 class="welcome-headline">What are we wearing<span class="welcome-dot">.</span></h1>
-      <p class="welcome-sub">From your wardrobe first. Catalog when there's a gap.</p>
-      <div class="welcome-prompts" id="welcomePrompts">
-        <button class="welcome-prompt" data-prompt="Dress me for tonight using my wardrobe.">Build a look</button>
-        <button class="welcome-prompt" data-prompt="What goes well with this?">Pair a garment</button>
-        <button class="welcome-prompt" data-prompt="Plan my wardrobe for a 5-day trip.">Plan a trip</button>
-        <button class="welcome-prompt" data-prompt="Is this worth buying?">Is it worth it</button>
-      </div>
-    </div>
+    # ── Outfits Tab (Phase 15C — intent-organized history) ──
+    html += """
+<div class="page-view page-outfits" style="padding: 48px 32px;">
+  <div class="results-header"><div><h2>Outfits</h2><p>Everything we've styled, grouped by what you asked for.</p></div></div>
+  <div id="outfitsContent" class="recent-intents" style="border-top:0;padding-top:0;">
+    <div class="results-empty">Loading.</div>
   </div>
-  <div class="stage-bar" id="stageBar"></div>
-  <div class="composer-wrap">
-    <div class="composer-outer" id="composerArea">
-      <div class="image-chip" id="imageChip">
-        <div class="chip-inner">
-          <img id="imageChipImg" src="" alt="Attached" />
-          <span class="name" id="imageChipName"></span>
-          <button class="remove" id="imageChipRemove" aria-label="Remove image">&times;</button>
-        </div>
-      </div>
-      <div class="composer">
-        <div class="plus-menu">
-          <button class="plus-btn" id="plusBtn" type="button" aria-label="Attach">+</button>
-          <div class="plus-popover" id="plusPopover">
-            <button type="button" id="uploadImageBtn"><span class="icon">&#128247;</span> Upload image</button>
-            <button type="button" id="selectWardrobeBtn"><span class="icon">&#128090;</span> Select from wardrobe</button>
-            <button type="button" id="selectWishlistBtn"><span class="icon">&#11088;</span> Select from wishlist</button>
-          </div>
-        </div>
-        <textarea id="messageInput" rows="1" placeholder="Message Aura..." aria-label="Message"></textarea>
-        <button class="send-btn" id="sendBtn" type="button" aria-label="Send"><span class="arrow">&#10148;</span></button>
-      </div>
-    </div>
-    <div class="composer-error" id="composerError"></div>
+</div>
+"""
+
+    # ── Checks Tab (Phase 15D) ──
+    html += """
+<div class="page-view page-checks" style="padding: 48px 32px;">
+  <div class="results-header"><div><h2>Checks</h2><p>Outfit checks you've run.</p></div></div>
+  <div id="checksContent" style="max-width:960px;margin:0 auto;">
+    <div class="results-empty">Loading.</div>
   </div>
 </div>
 """
@@ -2218,10 +2416,18 @@ def get_web_ui_html(
 
   // ── DOM refs ──
   var feed = document.getElementById("feed");
+  // Discovery surface elements (Phase 15)
+  var discoveryInput = document.getElementById("discoveryInput");
+  var discoverySend = document.getElementById("discoverySend");
+  var discoveryTop = document.getElementById("discoveryTop");
+  var discoveryThinking = document.getElementById("discoveryThinking");
+  var discoveryResultArea = document.getElementById("discoveryResultArea");
+  var discoveryFollowups = document.getElementById("discoveryFollowups");
+  var recentIntentsArea = document.getElementById("recentIntents");
   var feedWelcome = document.getElementById("feedWelcome");
-  var stageBar = document.getElementById("stageBar");
-  var messageEl = document.getElementById("messageInput");
-  var sendBtn = document.getElementById("sendBtn");
+  var stageBar = discoveryThinking;
+  var messageEl = discoveryInput;
+  var sendBtn = discoverySend;
   var err = document.getElementById("composerError");
   var composerArea = document.getElementById("composerArea");
   var chatImageFileEl = document.getElementById("chatImageFile");
@@ -3360,6 +3566,138 @@ def get_web_ui_html(
     }}
   }}
 
+  // ══════════════════════════════════════════════
+  // PDP CAROUSEL RENDERER (Phase 15)
+  // ══════════════════════════════════════════════
+
+  function renderPdpCarousel(outfits, convId, responseMetadata, container) {{
+    if (!outfits || !outfits.length) return;
+    container.innerHTML = "";
+    var carousel = document.createElement("div");
+    carousel.className = "pdp-carousel";
+    for (var i = 0; i < outfits.length; i++) {{
+      var card = buildOutfitCard(outfits[i], convId, responseMetadata || {{}});
+      carousel.appendChild(card);
+    }}
+    container.appendChild(carousel);
+    // Counter + nav
+    if (outfits.length > 1) {{
+      var meta = document.createElement("div");
+      meta.className = "carousel-meta";
+      var counter = document.createElement("span");
+      counter.className = "carousel-counter";
+      counter.textContent = "1 / " + outfits.length;
+      var nav = document.createElement("div");
+      nav.className = "carousel-nav";
+      var prevBtn = document.createElement("button"); prevBtn.innerHTML = "&#8592;"; prevBtn.title = "Previous";
+      var nextBtn = document.createElement("button"); nextBtn.innerHTML = "&#8594;"; nextBtn.title = "Next";
+      nav.appendChild(prevBtn); nav.appendChild(nextBtn);
+      meta.appendChild(counter); meta.appendChild(nav);
+      container.insertBefore(meta, carousel);
+      // Scroll snap navigation
+      var currentIdx = 0;
+      function scrollToIdx(idx) {{
+        var cards = carousel.querySelectorAll(".outfit-card");
+        if (cards[idx]) {{
+          cards[idx].scrollIntoView({{ behavior: "smooth", block: "nearest", inline: "start" }});
+          currentIdx = idx;
+          counter.textContent = (idx + 1) + " / " + outfits.length;
+        }}
+      }}
+      prevBtn.addEventListener("click", function() {{ if (currentIdx > 0) scrollToIdx(currentIdx - 1); }});
+      nextBtn.addEventListener("click", function() {{ if (currentIdx < outfits.length - 1) scrollToIdx(currentIdx + 1); }});
+    }}
+  }}
+
+  function renderDiscoveryFollowups(suggestions, structuredGroups, container) {{
+    container.innerHTML = "";
+    if ((!suggestions || !suggestions.length) && (!structuredGroups || !structuredGroups.length)) return;
+    var wrap = document.createElement("div");
+    wrap.className = "followup-groups";
+    var groupsToRender = [];
+    if (structuredGroups && structuredGroups.length) {{
+      structuredGroups.forEach(function(g) {{
+        var items = (g && g.suggestions) || [];
+        if (items.length) groupsToRender.push({{ label: g.label || "Suggestions", items: items }});
+      }});
+    }} else {{
+      var grouped = {{ "Improve It": [], "Show Alternatives": [], "Explain Why": [], "Shop The Gap": [], "Save For Later": [] }};
+      function bucketFor(text) {{
+        var n = String(text || "").toLowerCase();
+        if (n.indexOf("explain") !== -1 || n.indexOf("why") !== -1) return "Explain Why";
+        if (n.indexOf("save") !== -1 || n.indexOf("later") !== -1) return "Save For Later";
+        if (n.indexOf("catalog") !== -1 || n.indexOf("shop") !== -1 || n.indexOf("buy") !== -1) return "Shop The Gap";
+        if (n.indexOf("more") !== -1 || n.indexOf("different") !== -1 || n.indexOf("alternative") !== -1) return "Show Alternatives";
+        return "Improve It";
+      }}
+      for (var i = 0; i < suggestions.length; i++) grouped[bucketFor(suggestions[i])].push(suggestions[i]);
+      Object.entries(grouped).forEach(function(entry) {{
+        if (entry[1].length) groupsToRender.push({{ label: entry[0], items: entry[1] }});
+      }});
+    }}
+    groupsToRender.forEach(function(g) {{
+      var section = document.createElement("div"); section.className = "followup-group";
+      var title = document.createElement("strong");
+      title.textContent = String(g.label || "").toUpperCase();
+      var row = document.createElement("div"); row.className = "followup-row";
+      g.items.forEach(function(text) {{
+        var btn = document.createElement("button");
+        btn.className = "followup-chip";
+        btn.type = "button";
+        btn.textContent = text;
+        btn.addEventListener("click", function() {{ messageEl.value = text; container.innerHTML = ""; send(); }});
+        row.appendChild(btn);
+      }});
+      section.appendChild(title); section.appendChild(row); wrap.appendChild(section);
+    }});
+    container.appendChild(wrap);
+  }}
+
+  // ══════════════════════════════════════════════
+  // RECENT INTENT GROUPS (Home page bottom)
+  // ══════════════════════════════════════════════
+
+  async function loadRecentIntents() {{
+    if (!USER_ID || !recentIntentsArea) return;
+    try {{
+      var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/intent-history");
+      var data = await res.json();
+      if (!res.ok || !data.groups || !data.groups.length) {{
+        recentIntentsArea.innerHTML = "";
+        return;
+      }}
+      var html = '<div class="recent-intents-label">Recent</div><div class="recent-grid">';
+      data.groups.forEach(function(g) {{
+        var img = g.first_image
+          ? '<img src="' + escapeHtml(g.first_image) + '" alt="" loading="lazy" />'
+          : "";
+        var intentLabel = (g.intent || "styled look").replace(/_/g, " ").toUpperCase();
+        var summary = g.turns && g.turns.length ? g.turns[0].user_message : "";
+        html += '<div class="recent-card" data-conv="' + escapeHtml(g.conversation_id) + '">' +
+          '<div class="recent-card-img">' + img + '</div>' +
+          '<div class="recent-card-body">' +
+            '<div class="rc-context">' + escapeHtml(g.context_summary || intentLabel) + '</div>' +
+            '<div class="rc-summary">' + escapeHtml(summary) + '</div>' +
+            '<div class="rc-meta">' + escapeHtml(g.turn_count + (g.turn_count === 1 ? " look" : " looks") + " · " + relativeTime(g.updated_at)) + '</div>' +
+          '</div></div>';
+      }});
+      html += '</div>';
+      recentIntentsArea.innerHTML = html;
+      // Click a recent card → navigate to Outfits tab
+      recentIntentsArea.querySelectorAll(".recent-card").forEach(function(card) {{
+        card.addEventListener("click", function() {{
+          window.location.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=outfits";
+        }});
+      }});
+    }} catch (_) {{
+      recentIntentsArea.innerHTML = "";
+    }}
+  }}
+
+  // ══════════════════════════════════════════════
+  // SEND — Discovery surface flow (Phase 15)
+  // ══════════════════════════════════════════════
+
   async function send() {{
     err.textContent = "";
     var message = messageEl.value.trim();
@@ -3371,32 +3709,24 @@ def get_web_ui_html(
 
     sendBtn.disabled = true;
     messageEl.disabled = true;
+    // Collapse the discovery top to make room for results
+    if (discoveryTop) discoveryTop.classList.add("has-result");
+    if (discoveryResultArea) discoveryResultArea.innerHTML = "";
+    if (discoveryFollowups) discoveryFollowups.innerHTML = "";
+
     try {{
       var convId = await ensureConversation();
       var attachedImage = pendingImageData;
       var attachedWardrobeItemId = pendingWardrobeItemId;
-      var attachedWardrobeImg = pendingWardrobeImageUrl;
       var attachedWishlistProductId = pendingWishlistProductId;
-      var attachedWishlistImg = pendingWishlistImageUrl;
-      // Show the user's message with the attached image in the chat
-      // bubble. For wardrobe/wishlist selections, use the item's image
-      // URL so the bubble shows the garment.
-      var bubbleImage = attachedImage || attachedWardrobeImg || attachedWishlistImg || "";
       console.log("[AURA] Send: image =", !!attachedImage, "wardrobe =", attachedWardrobeItemId, "wishlist =", attachedWishlistProductId);
-      addBubble(message, "user", bubbleImage);
       messageEl.value = "";
-      messageEl.style.height = "auto";
       clearImagePreview();
       var payload = {{ user_id: USER_ID, message: message }};
       if (attachedImage) payload.image_data = attachedImage;
-      // When the user selected from wardrobe or wishlist (not uploaded a
-      // new image), send the ID so the backend loads the item directly.
-      if (attachedWardrobeItemId && !attachedImage) {{
-        payload.wardrobe_item_id = attachedWardrobeItemId;
-      }}
-      if (attachedWishlistProductId && !attachedImage && !attachedWardrobeItemId) {{
-        payload.wishlist_product_id = attachedWishlistProductId;
-      }}
+      if (attachedWardrobeItemId && !attachedImage) payload.wardrobe_item_id = attachedWardrobeItemId;
+      if (attachedWishlistProductId && !attachedImage && !attachedWardrobeItemId) payload.wishlist_product_id = attachedWishlistProductId;
+
       var res = await fetch("/v1/conversations/" + convId + "/turns/start", {{
         method: "POST",
         headers: {{ "Content-Type": "application/json" }},
@@ -3405,17 +3735,42 @@ def get_web_ui_html(
       var job = await res.json();
       if (!res.ok) throw new Error(job.detail || "Failed to start turn");
       var result = await pollJob(convId, job.job_id);
-      addBubble(result.assistant_message || "", "assistant");
+
+      // Render the result as a PDP carousel (not chat bubbles)
+      var outfits = result.outfits || [];
       var __md = result.metadata || {{}};
       var __groups = (__md && __md.follow_up_groups) || [];
-      if (result.response_type === "clarification") {{
-        renderQuickReplies(result.follow_up_suggestions || [], __groups);
-      }} else {{
-        renderOutfits(result.outfits || [], convId, __md);
-        renderQuickReplies(result.follow_up_suggestions || [], __groups);
+
+      if (outfits.length && discoveryResultArea) {{
+        // Context summary
+        var occasion = __md.occasion || "";
+        var source = __md.answer_source || "";
+        var contextParts = [];
+        if (occasion) contextParts.push(occasion.replace(/_/g, " "));
+        if (source) contextParts.push(source.replace(/_/g, " "));
+        contextParts.push(outfits.length + (outfits.length === 1 ? " look" : " looks"));
+        var ctxEl = document.createElement("div");
+        ctxEl.className = "result-context";
+        ctxEl.textContent = contextParts.join(" · ");
+        discoveryResultArea.appendChild(ctxEl);
+
+        renderPdpCarousel(outfits, convId, __md, discoveryResultArea);
+      }} else if (result.assistant_message) {{
+        // No outfits — show the text response (clarification, direct answer)
+        var textBlock = document.createElement("div");
+        textBlock.style.cssText = "max-width:680px;margin:0 auto;padding:16px 4px;font-size:15px;line-height:1.65;color:var(--ink);";
+        textBlock.appendChild(renderAssistantMarkup(result.assistant_message));
+        discoveryResultArea.appendChild(textBlock);
       }}
-      // Refresh sidebar
-      loadConversationHistory();
+
+      // Follow-up chips
+      if (discoveryFollowups) {{
+        renderDiscoveryFollowups(result.follow_up_suggestions || [], __groups, discoveryFollowups);
+      }}
+
+      // Refresh recent intents
+      loadRecentIntents();
+
     }} catch (e) {{
       err.textContent = e.message || String(e);
     }} finally {{
@@ -3425,9 +3780,18 @@ def get_web_ui_html(
     }}
   }}
 
-  sendBtn.addEventListener("click", send);
+  // Wire the discovery send button + Enter key
+  if (discoverySend) discoverySend.addEventListener("click", send);
+  if (discoveryInput) {{
+    discoveryInput.addEventListener("keydown", function(e) {{
+      if (e.key === "Enter" && !e.shiftKey) {{
+        e.preventDefault();
+        send();
+      }}
+    }});
+  }}
 
-  // Welcome prompts (Confident Luxe empty state)
+  // Welcome prompts
   document.querySelectorAll(".welcome-prompt").forEach(function(btn) {{
     btn.addEventListener("click", function() {{
       messageEl.value = btn.getAttribute("data-prompt") || btn.textContent;
@@ -3435,20 +3799,6 @@ def get_web_ui_html(
       send();
     }});
   }});
-
-  // ⌘K / Ctrl+K — toggle the history rail
-  document.addEventListener("keydown", function(e) {{
-    if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {{
-      e.preventDefault();
-      document.body.classList.toggle("rail-collapsed");
-      try {{ localStorage.setItem("aura_rail_collapsed", document.body.classList.contains("rail-collapsed") ? "1" : "0"); }} catch (_) {{}}
-    }}
-  }});
-  try {{
-    if (localStorage.getItem("aura_rail_collapsed") === "1") {{
-      document.body.classList.add("rail-collapsed");
-    }}
-  }} catch (_) {{}}
 
   // Theme toggle — lives in the profile dossier, persists to localStorage
   function currentTheme() {{
@@ -4555,55 +4905,90 @@ def get_web_ui_html(
       .catch(function() {{}});
   }}
 
-  // Load conversation history
-  if (ACTIVE_VIEW === "chat") {{
+  // Discovery surface — load recent intents on Home/Chat view
+  if (ACTIVE_VIEW === "chat" || ACTIVE_VIEW === "home") {{
+    loadRecentIntents();
     var urlParams = new URLSearchParams(window.location.search);
-
-    // Handle +New Chat from another view
-    if (urlParams.get("new") === "1") {{
-      window.history.replaceState(null, "", "/?user=" + encodeURIComponent(USER_ID) + "&view=chat");
-      fetch("/v1/conversations", {{
-        method: "POST",
-        headers: {{ "Content-Type": "application/json" }},
-        body: JSON.stringify({{ user_id: USER_ID }}),
-      }}).then(function(r) {{ return r.json(); }}).then(function(d) {{
-        if (d.conversation_id) conversationId = d.conversation_id;
-        loadConversationHistory();
-      }}).catch(function() {{ loadConversationHistory(); }});
-    }} else {{
-      loadConversationHistory();
-      if (INIT_CONV_ID) {{
-        loadConversation(INIT_CONV_ID);
-      }}
-    }}
     var seedPrompt = urlParams.get("prompt") || "";
-    var seedImg = urlParams.get("wardrobe_img") || "";
     if (seedPrompt) {{
-      // Clean URL without reloading
-      var cleanUrl = "/?user=" + encodeURIComponent(USER_ID) + "&view=chat";
+      var cleanUrl = "/?user=" + encodeURIComponent(USER_ID) + "&view=home";
       window.history.replaceState(null, "", cleanUrl);
-
-      if (seedImg) {{
-        fetch(seedImg)
-          .then(function(r) {{ return r.blob(); }})
-          .then(function(blob) {{
-            var reader = new FileReader();
-            reader.onload = function(ev) {{
-              setImagePreview(ev.target.result, "Wardrobe item");
-              messageEl.value = seedPrompt;
-              send();
-            }};
-            reader.readAsDataURL(blob);
-          }})
-          .catch(function() {{
-            messageEl.value = seedPrompt;
-            send();
-          }});
-      }} else {{
-        messageEl.value = seedPrompt;
-        send();
-      }}
+      messageEl.value = seedPrompt;
+      send();
     }}
+  }}
+
+  // Outfits tab — intent-organized history
+  if (ACTIVE_VIEW === "outfits") {{
+    (async function() {{
+      var area = document.getElementById("outfitsContent");
+      if (!area) return;
+      try {{
+        var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/intent-history?types=occasion_recommendation,pairing_request,capsule_or_trip_planning");
+        var data = await res.json();
+        if (!res.ok || !data.groups || !data.groups.length) {{
+          area.innerHTML = '<div class="results-empty">Nothing styled yet.</div>';
+          return;
+        }}
+        area.innerHTML = "";
+        data.groups.forEach(function(g) {{
+          var section = document.createElement("div");
+          section.style.cssText = "margin-bottom:48px;";
+          // Context header
+          var header = document.createElement("div");
+          header.className = "result-context";
+          header.style.marginBottom = "12px";
+          var intentLabel = (g.intent || "styled look").replace(/_/g, " ");
+          header.textContent = (g.context_summary || intentLabel).toUpperCase() + " · " + g.turn_count + (g.turn_count === 1 ? " LOOK" : " LOOKS") + " · " + relativeTime(g.updated_at).toUpperCase();
+          section.appendChild(header);
+          // Render each turn's outfits as a carousel
+          (g.turns || []).forEach(function(turn) {{
+            if (!turn.outfits || !turn.outfits.length) return;
+            var turnCtx = document.createElement("div");
+            turnCtx.style.cssText = "font-size:13px;font-style:italic;color:var(--ink-3);margin-bottom:12px;padding:0 4px;";
+            turnCtx.textContent = turn.user_message || "";
+            section.appendChild(turnCtx);
+            var carouselWrap = document.createElement("div");
+            carouselWrap.className = "discovery-result";
+            carouselWrap.style.padding = "0 0 16px";
+            renderPdpCarousel(turn.outfits, g.conversation_id, {{}}, carouselWrap);
+            section.appendChild(carouselWrap);
+          }});
+          area.appendChild(section);
+        }});
+      }} catch (_) {{
+        area.innerHTML = '<div class="results-empty">Couldn\\'t load your outfits.</div>';
+      }}
+    }})();
+  }}
+
+  // Checks tab
+  if (ACTIVE_VIEW === "checks") {{
+    (async function() {{
+      var area = document.getElementById("checksContent");
+      if (!area) return;
+      try {{
+        var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/intent-history?types=outfit_check");
+        var data = await res.json();
+        if (!res.ok || !data.groups || !data.groups.length) {{
+          area.innerHTML = '<div class="results-empty">No outfit checks yet.</div>';
+          return;
+        }}
+        area.innerHTML = "";
+        data.groups.forEach(function(g) {{
+          (g.turns || []).forEach(function(turn) {{
+            var card = document.createElement("div");
+            card.style.cssText = "border:1px solid var(--line);border-radius:var(--radius-md);padding:24px;margin-bottom:20px;background:var(--surface);";
+            card.innerHTML = '<div style="font-size:13px;font-style:italic;color:var(--ink-3);margin-bottom:8px;">' + escapeHtml(turn.user_message || "Outfit check") + '</div>' +
+              '<div style="font-size:15px;color:var(--ink);line-height:1.6;">' + escapeHtml(turn.assistant_summary || "") + '</div>' +
+              '<div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.14em;color:var(--ink-4);margin-top:12px;">' + escapeHtml(relativeTime(turn.created_at)) + '</div>';
+            area.appendChild(card);
+          }});
+        }});
+      }} catch (_) {{
+        area.innerHTML = '<div class="results-empty">Couldn\\'t load checks.</div>';
+      }}
+    }})();
   }}
 
   // Load wardrobe view
@@ -4611,7 +4996,7 @@ def get_web_ui_html(
     loadWardrobeStudio();
   }}
 
-  // Load results view
+  // Load results view (legacy — kept for backward compat with ?view=results URLs)
   if (ACTIVE_VIEW === "results") {{
     loadResults();
   }}

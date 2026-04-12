@@ -18,6 +18,9 @@ from platform_core.api_schemas import (
     CreateTurnRequest,
     DependencyReportResponse,
     FeedbackRequest,
+    IntentHistoryGroup,
+    IntentHistoryResponse,
+    IntentHistoryTurn,
     RenameConversationRequest,
     ResolveConversationRequest,
     ResolveConversationResponse,
@@ -407,16 +410,21 @@ def create_app() -> FastAPI:
             )
         else:
             resolved_view = str(view or "").strip().lower()
+            if resolved_view == "chat":
+                resolved_view = "home"
             if not resolved_view:
                 focus_map = {
-                    "chat": "chat",
-                    "planner": "chat",
-                    "tryon": "chat",
+                    "chat": "home",
+                    "home": "home",
+                    "planner": "home",
+                    "tryon": "home",
                     "profile": "profile",
                     "wardrobe": "wardrobe",
                     "results": "results",
+                    "outfits": "outfits",
+                    "checks": "checks",
                 }
-                resolved_view = focus_map.get(str(focus or "").strip().lower(), "chat")
+                resolved_view = focus_map.get(str(focus or "").strip().lower(), "home")
             html = get_web_ui_html(
                 user_id=user,
                 active_view=resolved_view,
@@ -1079,6 +1087,143 @@ def create_app() -> FastAPI:
     def dependency_report() -> DependencyReportResponse:
         try:
             return DependencyReportResponse(report=dependency_reporting.build_report())
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # -- Intent-organized history (Phase 15) -----------------------------------
+
+    @app.get("/v1/users/{user_id}/intent-history", response_model=IntentHistoryResponse)
+    def list_intent_history(user_id: str, types: str = "") -> IntentHistoryResponse:
+        """Return styling history grouped by intent session.
+
+        Groups turns by (conversation_id, primary_intent, occasion). Each
+        group is a self-contained intent session with its own PDP cards,
+        context summary, and try-on images. The frontend renders each
+        group as a swipeable PDP carousel.
+
+        Optional ``types`` query param filters to specific intents
+        (comma-separated, e.g. ``?types=occasion_recommendation,pairing_request``).
+        """
+        try:
+            from collections import OrderedDict
+            from urllib.parse import quote
+
+            user = repo.get_or_create_user(user_id)
+            internal_uid = str(user["id"])
+            rows = repo.list_recent_results_for_user(internal_uid, limit=100)
+
+            if not rows:
+                return IntentHistoryResponse(user_id=user_id, groups=[])
+
+            # Hydrate missing outfits (same as /turns endpoint)
+            try:
+                _hydrate_missing_outfits(
+                    client=client,
+                    repo=repo,
+                    user_id=internal_uid,
+                    turns=rows,
+                )
+            except Exception:
+                pass
+
+            # Parse the types filter
+            allowed_types = set()
+            if types:
+                allowed_types = {t.strip().lower() for t in types.split(",") if t.strip()}
+
+            # Group by (conversation_id, primary_intent, occasion)
+            groups: OrderedDict[str, dict] = OrderedDict()
+            for row in rows:
+                ctx = dict(row.get("resolved_context_json") or {})
+                metadata = dict(ctx.get("response_metadata") or {})
+                intent = str(
+                    metadata.get("primary_intent")
+                    or ctx.get("intent")
+                    or ctx.get("handler", "").split("_")[0]
+                    or ""
+                ).strip().lower()
+                occasion = str(ctx.get("occasion") or "").strip().lower()
+                conv_id = str(row.get("conversation_id") or "")
+                source = str(
+                    metadata.get("answer_source")
+                    or ctx.get("style_goal")
+                    or ctx.get("source_preference")
+                    or ""
+                )
+
+                if allowed_types and intent not in allowed_types:
+                    continue
+
+                group_key = f"{conv_id}:{intent}:{occasion}"
+
+                # Extract outfits for this turn
+                outfits = ctx.get("outfits") or []
+                first_img = ""
+                for o in outfits:
+                    tryon = str(o.get("tryon_image") or "").strip()
+                    if tryon:
+                        first_img = tryon
+                        break
+                if not first_img:
+                    for o in outfits:
+                        for item in (o.get("items") or []):
+                            img = str(item.get("image_url") or "").strip()
+                            if img:
+                                first_img = img
+                                break
+                        if first_img:
+                            break
+
+                turn_item = IntentHistoryTurn(
+                    turn_id=str(row.get("id") or ""),
+                    user_message=str(row.get("user_message") or ""),
+                    assistant_summary=str(row.get("assistant_message") or "")[:300],
+                    outfits=outfits,
+                    outfit_count=len(outfits),
+                    first_outfit_image=first_img,
+                    created_at=str(row.get("created_at") or ""),
+                )
+
+                if group_key not in groups:
+                    # Build a human-readable context summary
+                    occasion_label = occasion.replace("_", " ").strip() if occasion else ""
+                    intent_label = intent.replace("_", " ").strip() if intent else "styled look"
+                    summary_parts = []
+                    if occasion_label:
+                        summary_parts.append(occasion_label)
+                    if source and source not in ("auto", ""):
+                        summary_parts.append(source.replace("_", " "))
+                    context_summary = " · ".join(summary_parts) if summary_parts else intent_label
+
+                    groups[group_key] = {
+                        "group_key": group_key,
+                        "conversation_id": conv_id,
+                        "intent": intent,
+                        "occasion": occasion,
+                        "source": source,
+                        "context_summary": context_summary,
+                        "turn_count": 0,
+                        "total_outfit_count": 0,
+                        "first_image": "",
+                        "created_at": str(row.get("created_at") or ""),
+                        "updated_at": str(row.get("created_at") or ""),
+                        "turns": [],
+                    }
+
+                g = groups[group_key]
+                g["turns"].append(turn_item)
+                g["turn_count"] += 1
+                g["total_outfit_count"] += len(outfits)
+                if not g["first_image"] and first_img:
+                    g["first_image"] = first_img
+                g["updated_at"] = str(row.get("created_at") or g["updated_at"])
+
+            result_groups = [
+                IntentHistoryGroup(**g)
+                for g in groups.values()
+            ]
+
+            return IntentHistoryResponse(user_id=user_id, groups=result_groups)
         except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
