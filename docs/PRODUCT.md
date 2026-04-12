@@ -4,8 +4,9 @@ Last updated: April 8, 2026
 
 > **What is live today vs. aspirational:** This document describes the
 > **target** product, including personas and surfaces that are not yet
-> built. The currently live surfaces are **web** (onboarding, chat,
-> wardrobe, profile, admin catalog) only. WhatsApp inbound is *not* in
+> built. The currently live surfaces are **web** (onboarding, discovery
+> surface with PDP carousels, intent-organized outfit history, wardrobe,
+> profile, admin catalog) only. WhatsApp inbound is *not* in
 > the live system — the runtime was deliberately removed and is being
 > rebuilt as a separate workstream. Treat every mention of WhatsApp
 > below as roadmap, not production. For the authoritative "what
@@ -140,9 +141,9 @@ User outcome:
 - the user sees that the system is preparing a profile before giving advice
 
 Unlock requirement:
-- once analysis is complete, the user lands in a stylist dashboard rather than an empty chat box
+- once analysis is complete, the user lands in the discovery surface with prompt suggestions rather than an empty input
 
-### Stage 4: First Successful Chat
+### Stage 4: First Successful Styling Request
 
 The user asks a first real question on web.
 
@@ -205,7 +206,7 @@ This loop is the product’s intended habit system.
 ## First-Run Experience Contract
 
 Immediately after onboarding and analysis completion, the user should land in:
-- a stylist dashboard
+- the discovery surface with the italic headline and prompt suggestions
 - not an empty text field
 - not a processing residue state
 

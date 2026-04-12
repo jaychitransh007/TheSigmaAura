@@ -77,10 +77,13 @@ Implemented now:
 - quick-reply suggestion chips for clarification responses
 - profile as style dossier: display-xl Fraunces name hero, italic adjective list, champagne signal rule on palette card, underline-only edit inputs, theme toggle, flat analysis badges
 - chat: italic Fraunces welcome headline, borderless stylist bubbles (2px ink left rule on agent copy), ⌘K history rail toggle, follow-up uppercase bucket headers, stylist-voice stage messages (one-per-poll advance), 960px feed width
-- header nav: 56px, uppercase tracked label links with ink underline active state, Chat · Wardrobe · Looks · Saved · Trial Room
+- header nav: 56px, uppercase tracked label links with ink underline active state, Home · Outfits · Checks · Wardrobe · Saved (Phase 15: intent-organized, no chat tab)
 - wardrobe add-item drawer (right-edge slide) — photo-only upload with auto-enrichment (46 attributes via vision API)
 - catalog pipeline: auto-generated product_id from URL for CSVs lacking the column
-- Looks page (formerly Results): 3-column lookbook grid with full-bleed image cards, Fraunces italic title overlaid bottom-left, uppercase source/intent labels, staggered entrance animation; read-time hydration for historical turns missing outfits in `resolved_context_json`
+- Outfits tab (Phase 15 — replaces Looks + Trial Room): intent-grouped history with PDP carousels per occasion/intent section. Each section = Fraunces italic title + relative time + swipeable PDP cards. Try-on images embedded in PDP cards. Liked outfits persist with filled heart; hidden outfits filtered from history via (turn_id, outfit_rank) keys in feedback_events. Read-time hydration for historical turns missing outfits.
+- Checks tab (Phase 15): outfit check history — each check as a card with user message + stylist assessment
+- Home tab (Phase 15 — replaces Chat): discovery surface with centered input + PDP carousel for active request + recent intent group previews. No chat bubbles, no conversation sidebar.
+- Intent-history endpoint: `GET /v1/users/{id}/intent-history` groups turns by (intent, occasion), embeds try-on images, supports `?types=` filter, filters disliked outfits, tags liked outfits
 - Confident Luxe design system across onboarding, processing, main app, and admin — ivory `#F7F3EC` canvas, oxblood `#5C1A1B` accent, champagne `#C6A15B` signal (personal cues only), Fraunces (display) + Inter (body) + JetBrains Mono (labels), hairline borders replacing shadows on static cards, full dark mode parity via `[data-theme="dark"]`, motion system (single easing curve, 120/240/480ms durations, view-enter fade+rise, runway label track-in, staggered Looks grid entrance, `prefers-reduced-motion` override)
 
 Remaining work is now concentrated in hardening and live-environment validation rather than core intent/runtime capability gaps. See `docs/CURRENT_STATE.md` for the execution checklist.
@@ -91,7 +94,7 @@ This section defines the target product state. The current runtime implements th
 
 ### Product Definition
 
-> A mandatory-onboarding, memory-backed personal fashion copilot that helps the user make better shopping and dressing decisions over time through intent-routed chat.
+> A mandatory-onboarding, memory-backed personal fashion copilot that helps the user make better shopping and dressing decisions over time through an intent-organized discovery surface with PDP carousels.
 
 Core principles:
 - onboarding is required before chat access

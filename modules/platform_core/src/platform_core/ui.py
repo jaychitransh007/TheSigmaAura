@@ -459,51 +459,49 @@ def get_web_ui_html(
       margin-bottom: 16px;
       padding: 0 4px;
     }
-    /* PDP carousel — horizontal scroll with snap */
+    /* PDP carousel — one card rendered at a time, rebuilt on navigation */
     .pdp-carousel {
-      display: flex;
-      gap: 24px;
-      overflow-x: auto;
-      scroll-snap-type: x mandatory;
-      scroll-behavior: smooth;
-      padding: 4px 0 16px;
-      -webkit-overflow-scrolling: touch;
+      position: relative;
+      max-width: 880px;
+      margin: 0 auto;
     }
-    .pdp-carousel::-webkit-scrollbar { display: none; }
-    .pdp-carousel > .outfit-card {
-      scroll-snap-align: start;
-      flex: 0 0 min(100%, 520px);
-      margin-bottom: 0;
-    }
-    @media (min-width: 900px) {
-      .pdp-carousel > .outfit-card { flex: 0 0 min(48%, 520px); }
-    }
-    /* Carousel counter + nav */
-    .carousel-meta {
+    /* Carousel header: turn summary (left) + counter + arrows (right) — one line */
+    .carousel-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      max-width: 1080px;
+      gap: 16px;
+      padding: 0 4px 10px;
+      max-width: 880px;
       margin: 0 auto;
-      padding: 0 36px 8px;
+    }
+    .carousel-header .turn-summary {
+      flex: 1;
+      font-size: 13px;
+      font-style: italic;
+      color: var(--ink-3);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .carousel-counter {
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 10px; font-weight: 500;
       color: var(--ink-4);
       letter-spacing: 0.06em;
+      flex-shrink: 0;
     }
-    .carousel-nav { display: flex; gap: 8px; }
+    .carousel-nav { display: flex; gap: 6px; flex-shrink: 0; }
     .carousel-nav button {
       appearance: none;
-      width: 28px; height: 28px;
+      width: 26px; height: 26px;
       border-radius: 50%;
       border: 1px solid var(--line);
       background: transparent;
       color: var(--ink-3);
       cursor: pointer;
       display: flex; align-items: center; justify-content: center;
-      font-size: 14px;
+      font-size: 13px;
       transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
     }
     .carousel-nav button:hover { border-color: var(--ink); color: var(--ink); }
@@ -848,40 +846,38 @@ def get_web_ui_html(
       font-style: italic; font-size: 20px;
     }
 
-    /* ===== Outfit PDP Card — Confident Luxe ===== */
+    /* ===== Outfit PDP Card — 3-column: thumbs | hero | info ===== */
     .outfit-card {
       display: grid;
-      grid-template-columns: 1fr 36%;
+      grid-template-columns: 100px 1fr 44%;
       grid-template-rows: auto 1fr;
       gap: 0;
       border-radius: var(--radius-md);
       border: 1px solid var(--line);
       background: var(--surface);
       overflow: hidden;
-      margin-bottom: 24px;
+      margin-bottom: 0;
+      max-width: 880px;
     }
     @media (max-width: 900px) {
-      .outfit-card { grid-template-columns: 1fr; }
+      .outfit-card { grid-template-columns: 1fr; max-height: none; max-width: 100%; }
+      .outfit-thumbs { display: none; }
     }
-    /* Header spans full width */
+    /* Header spans full width — compact */
     .outfit-header {
       grid-column: 1 / -1;
-      padding: 22px 28px 16px;
-      display: flex; flex-direction: column; gap: 8px;
+      padding: 16px 22px 12px;
+      display: flex; flex-direction: column; gap: 4px;
       border-bottom: 1px solid var(--line);
     }
     .outfit-header-top {
-      display: flex; align-items: baseline; justify-content: space-between; gap: 20px;
+      display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
     }
-    /* Feedback strip — heart + prompt/textarea on one line */
-    .feedback-strip {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 14px 0 4px;
-      margin-top: 8px;
-      border-top: 1px solid var(--line);
+    .outfit-header-top .outfit-feedback {
+      display: flex; gap: 12px; flex-shrink: 0; align-items: center;
     }
+    /* Feedback strip — legacy, hidden (replaced by header icons + modal) */
+    .feedback-strip { display: none; }
     .fb-icon-btn {
       appearance: none;
       background: transparent;
@@ -934,42 +930,49 @@ def get_web_ui_html(
       display: block;
       flex-shrink: 0;
     }
-    /* Hero image — 3:4 portrait ratio, edge-to-edge fill, no black bars */
+    /* Hero image — contain (never crops). Background matches card so gaps are invisible. */
     .outfit-main-img {
       position: relative;
-      background: var(--surface-sunk);
-      aspect-ratio: 3/4;
+      background: var(--surface);
       overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
     }
     .outfit-main-img img {
       display: block;
-      width: 100%; height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    /* Thumbnails — vertical strip in the first grid column */
+    .outfit-thumbs {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 8px;
+      overflow-y: auto;
+      background: var(--surface);
+    }
+    .outfit-thumbs img {
+      width: 60px; aspect-ratio: 2/3; height: auto;
       object-fit: cover;
-      object-position: center 20%;
-    }
-    /* Image counter badge — bottom-right of hero, signals tap-to-cycle */
-    .outfit-img-counter {
-      position: absolute;
-      bottom: 12px; right: 12px;
-      font-family: "JetBrains Mono", ui-monospace, monospace;
-      font-size: 10px; font-weight: 500;
-      letter-spacing: 0.06em;
-      color: var(--on-accent);
-      background: rgba(var(--shadow-rgb), 0.5);
-      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-      padding: 4px 10px;
       border-radius: var(--radius-sm);
-      z-index: 2;
-      pointer-events: none;
+      border: 1px solid transparent;
+      cursor: pointer;
+      opacity: 0.6;
+      flex-shrink: 0;
+      transition: opacity var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
     }
-    /* Thumbnails hidden — click/tap on the hero cycles images instead */
-    .outfit-thumbs { display: none; }
+    .outfit-thumbs img.active { border-color: var(--ink); opacity: 1; }
+    .outfit-thumbs img:hover { opacity: 1; }
     .outfit-info {
-      padding: 22px 28px; overflow-y: auto; max-height: 720px;
-      display: flex; flex-direction: column; gap: 12px;
+      padding: 16px 20px; overflow: visible;
+      display: flex; flex-direction: column; gap: 8px;
     }
     .outfit-rank {
-      font-size: 10px; font-weight: 600;
+      font-size: 9px; font-weight: 600;
       text-transform: uppercase; letter-spacing: 0.14em;
       color: var(--ink-4);
     }
@@ -1000,24 +1003,25 @@ def get_web_ui_html(
     .source-mini-pill.wardrobe,
     .source-mini-pill.catalog,
     .source-mini-pill.hybrid { color: var(--ink-4); }
-    /* Outfit title — Fraunces italic (tonal moment: the outfit name is a verdict) */
+    /* Outfit title — Fraunces italic (compact) */
     .outfit-title {
       font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
-      font-size: 22px;
+      font-size: 18px;
       font-weight: 400;
       font-style: italic;
       line-height: 1.15;
       color: var(--ink);
     }
-    /* Summary — stylist caption, not headline */
+    /* Summary — stylist caption, compact */
     .outfit-summary { padding: 0; }
     .outfit-summary-label {
-      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;
-      color: var(--ink-4); margin-bottom: 6px;
+      font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4); margin-bottom: 4px;
     }
     .outfit-summary-text {
-      font-size: 13px; font-style: italic;
-      color: var(--ink-3); line-height: 1.6; margin: 0;
+      font-size: 12px; font-style: italic;
+      color: var(--ink-3); line-height: 1.5; margin: 0;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
     }
     /* Per-item source label injected above each product title */
     .product-source-label {
@@ -1027,14 +1031,14 @@ def get_web_ui_html(
       color: var(--ink-4);
       margin-bottom: 3px;
     }
-    .outfit-product { padding: 14px 0; border-bottom: 1px solid var(--line); }
+    .outfit-product { padding: 10px 0; border-bottom: 1px solid var(--line); }
     .outfit-product:last-of-type { border-bottom: none; }
-    .outfit-product-title { font-weight: 500; font-size: 13px; display: block; margin-bottom: 4px; color: var(--ink); }
+    .outfit-product-title { font-weight: 500; font-size: 14px; display: block; margin-bottom: 3px; color: var(--ink); }
     .product-price {
       font-family: "JetBrains Mono", ui-monospace, monospace;
-      font-size: 11px; font-weight: 500;
+      font-size: 10px; font-weight: 500;
       color: var(--ink-3);
-      display: block; margin-bottom: 10px;
+      display: block; margin-bottom: 6px;
     }
     .product-cta { display: flex; gap: 14px; align-items: center; }
     .btn-buy, .btn-wishlist {
@@ -1073,7 +1077,7 @@ def get_web_ui_html(
     .outfit-radar canvas {
       display: block; margin: 0 auto;
       max-width: 100%; height: auto;
-      aspect-ratio: 290 / 320;
+      aspect-ratio: 280 / 300;
     }
     .radar-toggle { display: none; }
     .outfit-criteria { display: flex; flex-direction: column; gap: 6px; }
@@ -1094,17 +1098,91 @@ def get_web_ui_html(
     .rationale-note { margin-bottom: 8px; font-size: 13px; line-height: 1.5; }
     .rationale-note strong { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 2px; }
     .rationale-note p { margin: 0; color: var(--ink); }
-    .outfit-feedback { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
-    .fb-icon-btn {
-      border: none; background: none; cursor: pointer; font-size: 18px; line-height: 1;
-      padding: 4px; filter: grayscale(1) opacity(0.5); transition: filter 120ms ease;
+    .outfit-feedback { display: flex; gap: 12px; flex-wrap: wrap; padding-top: 0; align-items: center; }
+    /* Feedback modal — full-screen overlay for dislike feedback */
+    .feedback-modal-overlay {
+      position: fixed; inset: 0; z-index: 9500;
+      background: rgba(var(--shadow-rgb), 0.5);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity var(--dur-2) var(--ease);
     }
-    .fb-icon-btn:hover { filter: grayscale(0) opacity(1); }
-    .outfit-feedback .secondary { background: var(--surface); color: var(--muted); }
-    .outfit-feedback .secondary:hover { border-color: var(--accent-soft); color: var(--ink); }
-    /* Legacy dislike-form wrapper — no longer used in PDP; kept for safety */
-    .dislike-form { display: none; }
-    .dislike-form.open { display: block; }
+    .feedback-modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .feedback-modal {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 36px 32px 28px;
+      width: min(92vw, 480px);
+      box-shadow: var(--shadow-modal);
+    }
+    .feedback-modal h3 {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-size: 24px; font-weight: 400; font-style: italic;
+      color: var(--ink); margin: 0 0 24px;
+    }
+    .feedback-modal .reaction-row {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      margin-bottom: 20px;
+    }
+    .feedback-modal .reaction-chip {
+      appearance: none;
+      padding: 8px 18px;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--line);
+      background: transparent;
+      font-family: inherit;
+      font-size: 13px; font-weight: 500;
+      color: var(--ink-2);
+      cursor: pointer;
+      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+    }
+    .feedback-modal .reaction-chip:hover { border-color: var(--ink); color: var(--ink); }
+    .feedback-modal .reaction-chip.selected { border-color: var(--ink); color: var(--ink); font-weight: 600; }
+    .feedback-modal textarea {
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid var(--line-strong);
+      border-radius: 0;
+      padding: 10px 0;
+      font-family: inherit; font-size: 14px; font-style: italic;
+      color: var(--ink); background: transparent;
+      resize: none; outline: none;
+      min-height: 48px;
+      margin-bottom: 24px;
+      transition: border-color var(--dur-1) var(--ease);
+    }
+    .feedback-modal textarea::placeholder { color: var(--ink-4); }
+    .feedback-modal textarea:focus { border-bottom-color: var(--ink); }
+    .feedback-modal .dislike-actions {
+      display: flex; gap: 12px; align-items: center;
+    }
+    .feedback-modal .dislike-actions button {
+      appearance: none;
+      padding: 10px 22px;
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      cursor: pointer;
+    }
+    .feedback-modal .dislike-actions button:first-child {
+      background: var(--ink); color: var(--canvas); border: 1px solid var(--ink);
+      transition: background-color var(--dur-1) var(--ease);
+    }
+    .feedback-modal .dislike-actions button:first-child:hover { background: var(--ink-2); border-color: var(--ink-2); }
+    .feedback-modal .dislike-actions .secondary {
+      background: transparent; color: var(--ink-3);
+      border: 1px solid var(--line-strong);
+      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+    }
+    .feedback-modal .dislike-actions .secondary:hover { border-color: var(--ink); color: var(--ink); }
+    .feedback-modal .feedback-status {
+      font-size: 12px; font-style: italic;
+      padding: 8px 0 0;
+      min-height: 18px;
+    }
     .reaction-row { display: none; flex-wrap: wrap; gap: 8px; padding: 8px 0 4px; }
     .reaction-row.open { display: flex; }
     .reaction-chip {
@@ -2987,13 +3065,27 @@ def get_web_ui_html(
     var header = document.createElement("div");
     header.className = "outfit-header";
 
-    // Top row: title only (feedback moved to bottom of info panel)
+    // Top row: title (left) + like/dislike icons (right)
     var headerTop = document.createElement("div");
     headerTop.className = "outfit-header-top";
     var titleEl = document.createElement("div");
     titleEl.className = "outfit-title";
     titleEl.textContent = outfit.title || "Styled Look";
     headerTop.appendChild(titleEl);
+    var fbWrap = document.createElement("div");
+    fbWrap.className = "outfit-feedback";
+    var isLiked = !!outfit._liked;
+    var likeBtn = document.createElement("button"); likeBtn.className = "fb-icon-btn fb-like"; likeBtn.title = "Like";
+    if (isLiked) {{
+      likeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
+      likeBtn.style.color = "var(--accent)";
+    }} else {{
+      likeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
+    }}
+    var dislikeBtn = document.createElement("button"); dislikeBtn.className = "fb-icon-btn fb-dislike"; dislikeBtn.title = "Hide this";
+    dislikeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/><path d="M14.12 14.12a3 3 0 11-4.24-4.24"/></svg>';
+    fbWrap.appendChild(likeBtn); fbWrap.appendChild(dislikeBtn);
+    headerTop.appendChild(fbWrap);
     header.appendChild(headerTop);
 
     // Summary row
@@ -3124,7 +3216,7 @@ def get_web_ui_html(
     var polarCanvas = document.createElement("canvas");
     polarCanvas.setAttribute("role", "img");
     polarCanvas.setAttribute("aria-label", "Style + fit profile chart");
-    var W = 290, H = 320, dpr = window.devicePixelRatio || 1;
+    var W = 280, H = 300, dpr = window.devicePixelRatio || 1;
     polarCanvas.width = W * dpr; polarCanvas.height = H * dpr;
     polarCanvas.style.width = W + "px"; polarCanvas.style.height = H + "px";
     radarDiv.appendChild(polarCanvas);
@@ -3152,8 +3244,8 @@ def get_web_ui_html(
     // ~45px horizontal separation at this radius, just enough to fit
     // their bounding boxes side by side at the 9px font size.
     var pCx = W / 2, pCy = H / 2;
-    var pMaxR = 85;      // outer ring radius
-    var pLabelR = 115;   // single-ring axis label radius (no staggering)
+    var pMaxR = 62;      // outer ring radius (compact)
+    var pLabelR = 86;    // single-ring axis label radius
     var pMaxValue = 100;
 
     // Read Confident Luxe tokens for archetype (champagne) + criteria (oxblood)
@@ -3285,40 +3377,21 @@ def get_web_ui_html(
     // also frees a few pixels of vertical room inside the
     // .outfit-info column.
 
-    // ── Feedback strip at the bottom of info panel ──
-    // Heart for quick like | "What would you change?" expands chips + textarea
-    var fbStrip = document.createElement("div");
-    fbStrip.className = "feedback-strip";
+    // ── Feedback: like in header, dislike opens a modal overlay ──
+    var outfitRank = outfit.rank || 0;
+    var itemIds = items.map(function(i) {{ return i.product_id || ""; }}).filter(Boolean);
 
-    var likeBtn = document.createElement("button");
-    likeBtn.className = "fb-icon-btn fb-like";
-    likeBtn.title = "I like this";
-    likeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
-
-    var changePrompt = document.createElement("button");
-    changePrompt.className = "feedback-prompt";
-    changePrompt.type = "button";
-    changePrompt.textContent = "What would you change?";
-
-    // Inline textarea + submit — hidden by default, replaces the prompt on the same line
-    var ta = document.createElement("textarea");
-    ta.className = "feedback-textarea";
-    ta.placeholder = "Tell me what felt off.";
-    ta.rows = 1;
-    var submitBtn = document.createElement("button");
-    submitBtn.className = "dislike-submit";
-    submitBtn.type = "button";
-    submitBtn.textContent = "Submit";
-
-    fbStrip.appendChild(likeBtn);
-    fbStrip.appendChild(changePrompt);
-    fbStrip.appendChild(ta);
-    fbStrip.appendChild(submitBtn);
-    info.appendChild(fbStrip);
-
-    // Reaction chips — appear below the feedback strip when expanded
+    // Build the dislike feedback modal (appended to document.body)
+    var fbOverlay = document.createElement("div");
+    fbOverlay.className = "feedback-modal-overlay";
+    var fbModal = document.createElement("div");
+    fbModal.className = "feedback-modal";
+    fbModal.innerHTML = '<h3>What would you change?</h3>';
     var reactionRow = document.createElement("div");
     reactionRow.className = "reaction-row";
+    reactionRow.style.display = "flex";
+    var ta = document.createElement("textarea");
+    ta.placeholder = "Tell me what felt off.";
     ["Too much", "Not me", "Weird pairing"].forEach(function(label) {{
       var chip = document.createElement("button"); chip.type = "button"; chip.className = "reaction-chip"; chip.textContent = label;
       chip.addEventListener("click", function() {{
@@ -3329,44 +3402,80 @@ def get_web_ui_html(
       }});
       reactionRow.appendChild(chip);
     }});
-    info.appendChild(reactionRow);
-
+    fbModal.appendChild(reactionRow);
+    fbModal.appendChild(ta);
+    var fbActions = document.createElement("div");
+    fbActions.className = "dislike-actions";
+    var submitBtn = document.createElement("button"); submitBtn.textContent = "Submit";
+    var cancelBtn = document.createElement("button"); cancelBtn.className = "secondary"; cancelBtn.textContent = "Cancel";
+    fbActions.appendChild(submitBtn); fbActions.appendChild(cancelBtn);
+    fbModal.appendChild(fbActions);
     var fbStatus = document.createElement("div");
     fbStatus.className = "feedback-status";
-    info.appendChild(fbStatus);
+    fbModal.appendChild(fbStatus);
+    fbOverlay.appendChild(fbModal);
+    document.body.appendChild(fbOverlay);
 
-    var outfitRank = outfit.rank || 0;
-    var itemIds = items.map(function(i) {{ return i.product_id || ""; }}).filter(Boolean);
-    likeBtn.addEventListener("click", function() {{ sendFeedback(convId, outfitRank, "like", "", itemIds, fbStatus, fbStrip, reactionRow); }});
-    // Toggle: click prompt to show textarea+chips, click again to hide
-    changePrompt.addEventListener("click", function() {{
-      var opening = !fbStrip.classList.contains("fb-open");
-      fbStrip.classList.toggle("fb-open");
-      reactionRow.classList.toggle("open");
-      if (!opening) {{
-        ta.value = "";
-        reactionRow.querySelectorAll(".selected").forEach(function(c) {{ c.classList.remove("selected"); }});
-      }} else {{
-        ta.focus();
-      }}
+    // Close on backdrop click
+    fbOverlay.addEventListener("click", function(e) {{
+      if (e.target === fbOverlay) {{ fbOverlay.classList.remove("open"); }}
     }});
-    submitBtn.addEventListener("click", function() {{ sendFeedback(convId, outfitRank, "dislike", ta.value.trim(), itemIds, fbStatus, fbStrip, reactionRow); }});
 
-    // Click hero to cycle through images + counter badge
-    if (images.length > 1) {{
-      var heroIdx = defaultIdx;
-      var counterEl = document.createElement("span");
-      counterEl.className = "outfit-img-counter";
-      counterEl.textContent = (heroIdx + 1) + " / " + images.length;
-      heroWrap.appendChild(counterEl);
-      heroWrap.style.cursor = "pointer";
-      heroWrap.addEventListener("click", function() {{
-        heroIdx = (heroIdx + 1) % images.length;
-        heroImg.src = images[heroIdx].src;
-        counterEl.textContent = (heroIdx + 1) + " / " + images.length;
-      }});
-    }}
-    card.appendChild(header); card.appendChild(heroWrap); card.appendChild(info);
+    // Wire buttons
+    var outfitTurnId = outfit._turn_id || "";
+    var outfitConvId = outfit._conv_id || convId;
+    likeBtn.onclick = function(e) {{
+      e.stopPropagation();
+      likeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
+      likeBtn.style.color = "var(--accent)";
+      sendFeedback(outfitConvId, outfitRank, "like", "", itemIds, fbStatus, fbWrap, fbOverlay, outfitTurnId);
+    }};
+    dislikeBtn.onclick = function(e) {{
+      e.stopPropagation();
+      console.log("[AURA] dislike clicked, opening modal");
+      fbOverlay.classList.add("open");
+    }};
+    cancelBtn.addEventListener("click", function() {{
+      fbOverlay.classList.remove("open");
+      ta.value = "";
+      reactionRow.querySelectorAll(".selected").forEach(function(c) {{ c.classList.remove("selected"); }});
+    }});
+    submitBtn.addEventListener("click", function() {{
+      sendFeedback(outfitConvId, outfitRank, "dislike", ta.value.trim(), itemIds, fbStatus, fbWrap, fbOverlay, outfitTurnId);
+      setTimeout(function() {{
+        fbOverlay.classList.remove("open");
+        // Remove this outfit from the carousel and advance
+        var slot = card.parentNode;
+        if (slot && slot._outfits && slot._showIdx) {{
+          // Find and remove from the outfits array
+          for (var ri = 0; ri < slot._outfits.length; ri++) {{
+            if (slot._outfits[ri].rank === outfit.rank && slot._outfits[ri].title === outfit.title) {{
+              slot._outfits.splice(ri, 1);
+              break;
+            }}
+          }}
+          // Update the counter
+          var ctr = slot.parentNode ? slot.parentNode.querySelector(".carousel-counter") : null;
+          if (slot._outfits.length > 0) {{
+            // Show next, or last if we were at the end
+            var cur = ctr ? parseInt(ctr.textContent) - 1 : 0;
+            var nextIdx = cur < slot._outfits.length ? cur : slot._outfits.length - 1;
+            slot._showIdx(nextIdx, true);
+          }} else {{
+            // All outfits hidden — remove the entire section
+            var sectionEl = slot.parentNode;
+            while (sectionEl && !sectionEl.hasAttribute("data-intent-section")) sectionEl = sectionEl.parentNode;
+            if (sectionEl) sectionEl.remove();
+          }}
+        }}
+      }}, 600);
+    }});
+
+    // 3-column grid: header spans all, then thumbs | hero | info
+    card.appendChild(header);
+    card.appendChild(thumbs);
+    card.appendChild(heroWrap);
+    card.appendChild(info);
     return card;
   }}
 
@@ -3374,14 +3483,16 @@ def get_web_ui_html(
   // FEEDBACK
   // ══════════════════════════════════════════════
 
-  async function sendFeedback(convId, outfitRank, eventType, notes, itemIds, statusEl, fbWrap, dislikeForm) {{
+  async function sendFeedback(convId, outfitRank, eventType, notes, itemIds, statusEl, fbWrap, dislikeForm, turnId) {{
     statusEl.textContent = "Sending...";
     statusEl.className = "feedback-status";
     try {{
+      var payload = {{ outfit_rank: outfitRank, event_type: eventType, notes: notes, item_ids: itemIds }};
+      if (turnId) payload.turn_id = turnId;
       var res = await fetch("/v1/conversations/" + convId + "/feedback", {{
         method: "POST",
         headers: {{ "Content-Type": "application/json" }},
-        body: JSON.stringify({{ outfit_rank: outfitRank, event_type: eventType, notes: notes, item_ids: itemIds }}),
+        body: JSON.stringify(payload),
       }});
       var data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Feedback failed");
@@ -3570,42 +3681,66 @@ def get_web_ui_html(
   // PDP CAROUSEL RENDERER (Phase 15)
   // ══════════════════════════════════════════════
 
-  function renderPdpCarousel(outfits, convId, responseMetadata, container) {{
+  function renderPdpCarousel(outfits, convId, responseMetadata, container, onSlideChange) {{
     if (!outfits || !outfits.length) return;
     container.innerHTML = "";
-    var carousel = document.createElement("div");
-    carousel.className = "pdp-carousel";
-    for (var i = 0; i < outfits.length; i++) {{
-      var card = buildOutfitCard(outfits[i], convId, responseMetadata || {{}});
-      carousel.appendChild(card);
-    }}
-    container.appendChild(carousel);
-    // Counter + nav
+
+    var currentIdx = 0;
+
+    // Carousel header: turn summary (left) + counter + arrows (right)
+    var headerRow = document.createElement("div");
+    headerRow.className = "carousel-header";
+    var summarySpan = document.createElement("span");
+    summarySpan.className = "turn-summary";
+    summarySpan.textContent = (outfits[0] && outfits[0]._turn_context) || "";
+    headerRow.appendChild(summarySpan);
+
+    var counter = null;
+    var prevBtn = null;
+    var nextBtn = null;
     if (outfits.length > 1) {{
-      var meta = document.createElement("div");
-      meta.className = "carousel-meta";
-      var counter = document.createElement("span");
+      counter = document.createElement("span");
       counter.className = "carousel-counter";
       counter.textContent = "1 / " + outfits.length;
+      headerRow.appendChild(counter);
       var nav = document.createElement("div");
       nav.className = "carousel-nav";
-      var prevBtn = document.createElement("button"); prevBtn.innerHTML = "&#8592;"; prevBtn.title = "Previous";
-      var nextBtn = document.createElement("button"); nextBtn.innerHTML = "&#8594;"; nextBtn.title = "Next";
+      prevBtn = document.createElement("button"); prevBtn.innerHTML = "&#8592;"; prevBtn.title = "Previous";
+      nextBtn = document.createElement("button"); nextBtn.innerHTML = "&#8594;"; nextBtn.title = "Next";
       nav.appendChild(prevBtn); nav.appendChild(nextBtn);
-      meta.appendChild(counter); meta.appendChild(nav);
-      container.insertBefore(meta, carousel);
-      // Scroll snap navigation
-      var currentIdx = 0;
-      function scrollToIdx(idx) {{
-        var cards = carousel.querySelectorAll(".outfit-card");
-        if (cards[idx]) {{
-          cards[idx].scrollIntoView({{ behavior: "smooth", block: "nearest", inline: "start" }});
-          currentIdx = idx;
-          counter.textContent = (idx + 1) + " / " + outfits.length;
-        }}
-      }}
-      prevBtn.addEventListener("click", function() {{ if (currentIdx > 0) scrollToIdx(currentIdx - 1); }});
-      nextBtn.addEventListener("click", function() {{ if (currentIdx < outfits.length - 1) scrollToIdx(currentIdx + 1); }});
+      headerRow.appendChild(nav);
+    }}
+    container.appendChild(headerRow);
+
+    var carouselSlot = document.createElement("div");
+    carouselSlot.className = "pdp-carousel";
+    container.appendChild(carouselSlot);
+
+    var _myOverlay = null;
+    // Build and show only one card at a time — avoids canvas/display:none issues
+    function showIdx(idx, isNav) {{
+      // Only clean up THIS carousel's overlay on navigation, not all overlays on the page
+      if (isNav && _myOverlay && _myOverlay.parentNode) {{ _myOverlay.remove(); _myOverlay = null; }}
+      carouselSlot.innerHTML = "";
+      var card = buildOutfitCard(outfits[idx], convId, responseMetadata || {{}});
+      carouselSlot.appendChild(card);
+      // Track the modal overlay so we can clean up only ours on nav
+      var overlay = document.body.querySelector(".feedback-modal-overlay:last-child");
+      if (overlay) _myOverlay = overlay;
+      currentIdx = idx;
+      if (counter) counter.textContent = (idx + 1) + " / " + outfits.length;
+      summarySpan.textContent = (outfits[idx] && outfits[idx]._turn_context) || summarySpan.textContent;
+      if (typeof onSlideChange === "function") onSlideChange(idx);
+    }}
+
+    // Attach to the slot element so buildOutfitCard can access them
+    carouselSlot._outfits = outfits;
+    carouselSlot._showIdx = showIdx;
+    showIdx(0, false);
+
+    if (outfits.length > 1) {{
+      prevBtn.addEventListener("click", function() {{ if (currentIdx > 0) showIdx(currentIdx - 1, true); }});
+      nextBtn.addEventListener("click", function() {{ if (currentIdx < outfits.length - 1) showIdx(currentIdx + 1, true); }});
     }}
   }}
 
@@ -4933,27 +5068,39 @@ def get_web_ui_html(
         area.innerHTML = "";
         data.groups.forEach(function(g) {{
           var section = document.createElement("div");
-          section.style.cssText = "margin-bottom:48px;";
+          section.setAttribute("data-intent-section", "1");
+          section.style.cssText = "margin-bottom:56px;";
           // Context header
           var header = document.createElement("div");
-          header.className = "result-context";
-          header.style.marginBottom = "12px";
-          var intentLabel = (g.intent || "styled look").replace(/_/g, " ");
-          header.textContent = (g.context_summary || intentLabel).toUpperCase() + " · " + g.turn_count + (g.turn_count === 1 ? " LOOK" : " LOOKS") + " · " + relativeTime(g.updated_at).toUpperCase();
+          header.style.cssText = "margin-bottom:20px;";
+          var sectionTitle = document.createElement("h3");
+          sectionTitle.style.cssText = "font-family:'Fraunces','Cormorant Garamond',Georgia,serif;font-size:28px;font-weight:400;font-style:italic;color:var(--ink);margin:0 0 4px;";
+          var occasion = (g.occasion || g.intent || "styled look").replace(/_/g, " ");
+          sectionTitle.textContent = occasion.charAt(0).toUpperCase() + occasion.slice(1);
+          var sectionMeta = document.createElement("div");
+          sectionMeta.style.cssText = "font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.14em;color:var(--ink-4);";
+          sectionMeta.textContent = relativeTime(g.updated_at).toUpperCase();
+          header.appendChild(sectionTitle);
+          header.appendChild(sectionMeta);
           section.appendChild(header);
-          // Render each turn's outfits as a carousel
+          // Flatten all turns' outfits into one carousel with per-card context
+          var allOutfits = [];
+          var outfitContexts = [];
           (g.turns || []).forEach(function(turn) {{
-            if (!turn.outfits || !turn.outfits.length) return;
-            var turnCtx = document.createElement("div");
-            turnCtx.style.cssText = "font-size:13px;font-style:italic;color:var(--ink-3);margin-bottom:12px;padding:0 4px;";
-            turnCtx.textContent = turn.user_message || "";
-            section.appendChild(turnCtx);
-            var carouselWrap = document.createElement("div");
-            carouselWrap.className = "discovery-result";
-            carouselWrap.style.padding = "0 0 16px";
-            renderPdpCarousel(turn.outfits, g.conversation_id, {{}}, carouselWrap);
-            section.appendChild(carouselWrap);
+            (turn.outfits || []).forEach(function(outfit) {{
+              outfit._turn_context = turn.user_message || "";
+              outfit._turn_id = turn.turn_id || "";
+              outfit._conv_id = turn.conversation_id || "";
+              allOutfits.push(outfit);
+              outfitContexts.push(turn.user_message || "");
+            }});
           }});
+          if (!allOutfits.length) return;
+          var carouselWrap = document.createElement("div");
+          carouselWrap.className = "discovery-result";
+          carouselWrap.style.padding = "0 0 16px";
+          renderPdpCarousel(allOutfits, g.conversation_id, {{}}, carouselWrap);
+          section.appendChild(carouselWrap);
           area.appendChild(section);
         }});
       }} catch (_) {{

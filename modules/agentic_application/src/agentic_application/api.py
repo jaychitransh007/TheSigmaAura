@@ -1126,6 +1126,18 @@ def create_app() -> FastAPI:
             except Exception:
                 pass
 
+            # Load liked/disliked outfit keys
+            liked_keys: set = set()
+            disliked_keys: set = set()
+            try:
+                liked_keys = repo.list_liked_outfit_keys(internal_uid)
+            except Exception:
+                pass
+            try:
+                disliked_keys = repo.list_disliked_outfit_keys(internal_uid)
+            except Exception:
+                pass
+
             # Parse the types filter
             allowed_types = set()
             if types:
@@ -1154,10 +1166,20 @@ def create_app() -> FastAPI:
                 if allowed_types and intent not in allowed_types:
                     continue
 
-                group_key = f"{conv_id}:{intent}:{occasion}"
+                group_key = f"{intent}:{occasion}" if occasion else f"{intent}:{conv_id}"
 
-                # Extract outfits for this turn
-                outfits = ctx.get("outfits") or []
+                # Extract outfits for this turn, filtering out disliked/hidden ones
+                # and tagging liked ones
+                turn_id_str = str(row.get("id") or "")
+                all_outfits = ctx.get("outfits") or []
+                outfits = []
+                for o in all_outfits:
+                    rank_val = int(o.get("rank") or 0)
+                    if (turn_id_str, rank_val) in disliked_keys:
+                        continue
+                    if (turn_id_str, rank_val) in liked_keys:
+                        o["_liked"] = True
+                    outfits.append(o)
                 first_img = ""
                 for o in outfits:
                     tryon = str(o.get("tryon_image") or "").strip()
@@ -1176,6 +1198,7 @@ def create_app() -> FastAPI:
 
                 turn_item = IntentHistoryTurn(
                     turn_id=str(row.get("id") or ""),
+                    conversation_id=conv_id,
                     user_message=str(row.get("user_message") or ""),
                     assistant_summary=str(row.get("assistant_message") or "")[:300],
                     outfits=outfits,

@@ -422,14 +422,11 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertNotIn("Fit profile", html)
         # Dashed divider markers
         self.assertIn("setLineDash([4, 4])", html, "dashed divider missing")
-        # Layout constants — pMaxR=85 outer in a 290×320 canvas sized
-        # to fit inside the .outfit-info column. All labels sit on a
-        # SINGLE ring at pLabelR=115 — the previous staggered double-
-        # ring pattern was visually noisy and read as random rather
-        # than orderly. The chart sits at the bottom of the info column,
-        # below the products list, where there's empty space.
-        self.assertIn("pMaxR = 85", html)
-        self.assertIn("pLabelR = 115", html)
+        # Layout constants — compact 220×240 canvas with pMaxR=62 outer
+        # ring and pLabelR=86 label ring so the PDP card fits in one
+        # viewport. Single-ring layout preserved.
+        self.assertIn("pMaxR = 62", html)
+        self.assertIn("pLabelR = 86", html)
         # Single-ring layout — pLabelOffset must be GONE; labels must
         # use pLabelR directly, not a staggered useLabelR.
         self.assertNotIn("pLabelOffset", html)
@@ -440,7 +437,7 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertIn("labelXNudge", html)
         # Chart canvas must fit inside the info column with proportional
         # CSS scaling for narrow viewports
-        self.assertIn("aspect-ratio: 290 / 320", html)
+        self.assertIn("aspect-ratio: 280 / 300", html)
         # The chart div is appended to info, not the card directly
         self.assertIn("info.appendChild(radarDiv)", html)
         # style_fit_pct must NOT appear as a Fit-profile axis — it's

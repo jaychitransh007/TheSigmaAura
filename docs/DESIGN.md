@@ -618,63 +618,45 @@ Required first-run components:
 3. Aura returns a wardrobe-first plan with hybrid fillers when needed
 4. user pivots into shopping list, day-specific edits, or packing logic
 
-### Primary Navigation Model
+### Primary Navigation Model (Phase 15 — Intent-Organized)
 
-Aura should be organized around user jobs, not internal modules.
+Aura is organized around intent-organized history, not chat threads.
 
-Primary experience categories:
-- Dress Me
-- Style This
-- Check Me
-- Know Me
-- Wardrobe
-- Trips
+Navigation tabs:
+- **Home** — discovery surface: centered input + PDP carousel for the active request + recent intent group previews
+- **Outfits** — intent-grouped history: occasion recommendations, pairings, trip planning. Each section = Fraunces italic title + PDP carousel. Try-ons embedded in cards.
+- **Checks** — outfit check history cards
+- **Wardrobe** — closet grid with filters
+- **Saved** — wishlist
 
-These can appear as tabs, entry cards, or navigation anchors depending on screen size.
+This navigation replaces the previous chat-organized model (Chat / Wardrobe / Looks / Saved / Trial Room). There is no conversation sidebar, no chat bubbles, no Trial Room tab.
 
-This navigation model should remain stable across web entry points, mobile layouts, and WhatsApp handoff destinations.
+### Home Experience (Discovery Surface)
 
-### Home Experience
-
-The home screen should be a stylist hub.
+The home screen is a discovery surface, not a chat.
 
 It should include:
-- stylist-studio hero (display headline, no publication framing)
-- quick entry actions
-- today’s recommended action
-- wardrobe health insight
-- style profile summary
-- recent threads / saved looks
+- Fraunces italic headline ("What are we wearing.")
+- centered input bar (search-bar energy, not chat-composer)
+- prompt suggestions below the input
+- on submit: PDP carousel with context summary + follow-up chips
+- recent intent group previews below the active result area
 
 It should not open with:
-- a blank chat box alone
+- a chat box
+- a conversation history sidebar
 - a technical dashboard
-- a dense settings-first layout
 
-### Chat Experience
+### Input Model
 
-Chat is the engine, not the entirety of the product.
+The input bar is the primary interaction point. It replaces the chat composer.
 
-The chat surface should:
-- make mode switching easy
-- support image, URL, and text-first input naturally
-- expose contextual chips before and after responses
-- keep the composer premium and prominent
+The input should support:
+- text queries describing what the user needs
+- image attach (upload, paste, wardrobe picker)
+- follow-up chips below PDP carousels for iteration within an intent
 
-The composer should support:
-- text
-- image attach
-- paste URL
-- context chips
-- source preference toggles when relevant
-
-Recommended context chips:
-- Use My Wardrobe
-- Catalog Only
-- For Work
-- For Dinner
-- Explain Why
-- Show Swaps
+Responses render as PDP carousels, not chat bubbles. The assistant’s text message becomes a brief context summary above the carousel.
 
 ### Recommendation Experience
 

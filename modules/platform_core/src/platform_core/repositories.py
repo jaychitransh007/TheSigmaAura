@@ -243,6 +243,53 @@ class ConversationRepository:
                 result.append(pid)
         return result
 
+    def list_liked_outfit_keys(self, user_id: str) -> set:
+        """Return a set of (turn_id, outfit_rank) tuples that the user has liked."""
+        try:
+            rows = self.client.select_many(
+                "feedback_events",
+                filters={
+                    "user_id": f"eq.{user_id}",
+                    "event_type": "eq.like",
+                },
+                columns="turn_id,outfit_rank",
+                order="created_at.desc",
+                limit=500,
+            )
+        except Exception:
+            return set()
+        result: set = set()
+        for row in rows or []:
+            tid = str(row.get("turn_id") or "").strip()
+            rank = row.get("outfit_rank")
+            if tid and rank is not None:
+                result.add((tid, int(rank)))
+        return result
+
+    def list_disliked_outfit_keys(self, user_id: str) -> set:
+        """Return a set of (turn_id, outfit_rank) tuples that the user has
+        disliked. Used by the intent-history endpoint to filter hidden outfits."""
+        try:
+            rows = self.client.select_many(
+                "feedback_events",
+                filters={
+                    "user_id": f"eq.{user_id}",
+                    "event_type": "eq.dislike",
+                },
+                columns="turn_id,outfit_rank",
+                order="created_at.desc",
+                limit=500,
+            )
+        except Exception:
+            return set()
+        result: set = set()
+        for row in rows or []:
+            tid = str(row.get("turn_id") or "").strip()
+            rank = row.get("outfit_rank")
+            if tid and rank is not None:
+                result.add((tid, int(rank)))
+        return result
+
     # -- saved_looks ---------------------------------------------------------
 
     def create_saved_look(

@@ -41,7 +41,7 @@ Project status:
 - wardrobe: ingestion, enrichment, retrieval, wardrobe-first occasion response, full CRUD UI (add/edit/delete), enhanced filters (search, category, color), and completeness scoring implemented
 - WhatsApp: removed from current codebase (previously had formatting and deep linking; runtime was never built)
 - safety: dual-layer image moderation (heuristic + vision), restricted category exclusion, try-on quality gate implemented
-- web UI: Confident Luxe design system (Phase 14) — ivory/oxblood/champagne palette, Fraunces + Inter + JetBrains Mono, hairline borders, full dark mode, motion system; 5-tab nav (Chat / Wardrobe / Looks / Saved / Trial Room) with 56px header and uppercase tracked label links
+- web UI: Confident Luxe design system (Phase 14) + intent-organized discovery surface (Phase 15) — ivory/oxblood/champagne palette, Fraunces + Inter + JetBrains Mono, hairline borders, full dark mode; 5-tab nav (Home / Outfits / Checks / Wardrobe / Saved) with 56px header. Home = discovery input + PDP carousel. Outfits = intent-grouped history with per-section carousels. Checks = outfit check cards. Chat-organized UI replaced entirely; no conversation sidebar, no chat bubbles.
 - profile: style dossier with display-xl name hero, italic adjective list, champagne signal rule on palette card, theme toggle, underline-only edit inputs
 - wardrobe: borderless 5-column closet grid with right-edge Add Item drawer — photo-only upload with auto-enrichment (46 attributes via vision API); edit modal with underline inputs; hover-reveal edit/delete text buttons
 - wardrobe filters: hairline-underline search, uppercase tracked label category chips (8), color filter row (11 colors), localStorage persistence

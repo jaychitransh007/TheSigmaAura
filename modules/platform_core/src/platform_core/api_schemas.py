@@ -255,6 +255,7 @@ class TryonGalleryResponse(BaseModel):
 
 class IntentHistoryTurn(BaseModel):
     turn_id: str
+    conversation_id: str = ""
     user_message: str = ""
     assistant_summary: str = ""
     outfits: List[Dict[str, Any]] = Field(default_factory=list)
