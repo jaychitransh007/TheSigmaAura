@@ -786,22 +786,25 @@ class AgenticOrchestrator:
                     filters={"product_id": f"eq.{wishlist_product_id}"},
                 )
                 if enriched:
+                    # catalog_enriched uses PascalCase columns; fall back to
+                    # snake_case for compatibility with any future migration.
                     attached_item = {
                         "id": str(enriched.get("product_id") or wishlist_product_id),
                         "title": str(enriched.get("title") or ""),
                         "image_url": str(
-                            enriched.get("images__0__src")
+                            enriched.get("images_0_src")
+                            or enriched.get("images__0__src")
                             or enriched.get("primary_image_url")
                             or ""
                         ),
                         "image_path": "",
-                        "garment_category": str(enriched.get("garment_category") or ""),
-                        "garment_subtype": str(enriched.get("garment_subtype") or ""),
-                        "primary_color": str(enriched.get("primary_color") or ""),
-                        "secondary_color": str(enriched.get("secondary_color") or ""),
-                        "formality_level": str(enriched.get("formality_level") or ""),
-                        "occasion_fit": str(enriched.get("occasion_fit") or ""),
-                        "pattern_type": str(enriched.get("pattern_type") or ""),
+                        "garment_category": str(enriched.get("GarmentCategory") or enriched.get("garment_category") or ""),
+                        "garment_subtype": str(enriched.get("GarmentSubtype") or enriched.get("garment_subtype") or ""),
+                        "primary_color": str(enriched.get("PrimaryColor") or enriched.get("primary_color") or ""),
+                        "secondary_color": str(enriched.get("SecondaryColor") or enriched.get("secondary_color") or ""),
+                        "formality_level": str(enriched.get("FormalityLevel") or enriched.get("formality_level") or ""),
+                        "occasion_fit": str(enriched.get("OccasionFit") or enriched.get("occasion_fit") or ""),
+                        "pattern_type": str(enriched.get("PatternType") or enriched.get("pattern_type") or ""),
                         "source": "catalog",
                         "attachment_source": "wishlist_selection",
                         "is_garment_photo": True,
@@ -1342,6 +1345,7 @@ class AgenticOrchestrator:
                 user_context=user_context,
                 profile_confidence=profile_confidence,
                 attached_item=attached_item,
+                raw_image_data=image_data,
             )
         elif plan_result.action == Action.RUN_GARMENT_EVALUATION:
             handler_result = self._handle_garment_evaluation(
@@ -4856,9 +4860,34 @@ class AgenticOrchestrator:
         user_context: Any,
         profile_confidence: ProfileConfidence,
         attached_item: Dict[str, Any] | None = None,
+        raw_image_data: str = "",
     ) -> Dict[str, Any]:
         occasion_signal = str(plan_result.resolved_context.occasion_signal or "").strip() or None
         image_path = str((attached_item or {}).get("image_path") or "").strip()
+
+        # Fallback: if the upload/enrichment pipeline failed but we still
+        # have the raw image data URL, save it to disk so the evaluator
+        # can see the actual outfit photo and we can set tryon_image.
+        if not image_path and raw_image_data:
+            try:
+                import base64, hashlib
+                from pathlib import Path
+                from datetime import datetime, timezone
+                raw = str(raw_image_data).strip()
+                if raw.startswith("data:") and ";base64," in raw:
+                    encoded = raw.split(",", 1)[1]
+                    file_bytes = base64.b64decode(encoded)
+                    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+                    name = hashlib.sha256(f"{external_user_id}_outfit_check_{ts}".encode()).hexdigest()
+                    img_dir = Path("data/onboarding/images/wardrobe")
+                    img_dir.mkdir(parents=True, exist_ok=True)
+                    dest = img_dir / f"{name}.jpg"
+                    with open(dest, "wb") as f:
+                        f.write(file_bytes)
+                    image_path = str(dest)
+                    _log.info("Outfit check fallback: saved raw image to %s", image_path)
+            except Exception:
+                _log.warning("Outfit check fallback image save failed", exc_info=True)
 
         # Phase 12B: outfit check uses VisualEvaluatorAgent on the user's photo
         # directly. No try-on (the user is already wearing the outfit in the
@@ -4989,11 +5018,11 @@ class AgenticOrchestrator:
                 daemon=True,
             ).start()
 
-        attached_image_path = str((attached_item or {}).get("image_path") or "").strip()
-        tryon_image = self._tryon_image_url(attached_image_path) if attached_image_path else None
+        # Use the already-resolved image_path (which includes the fallback)
+        tryon_image = self._tryon_image_url(image_path) if image_path else None
         outfit_card = OutfitCard(
             rank=1,
-            title="Outfit Check",
+            title=str(check.title or "").strip() or "Outfit Check",
             reasoning=check.overall_note,
             body_note=(check.strengths[0] if check.strengths else check.body_note),
             color_note=(check.strengths[1] if len(check.strengths) > 1 else check.color_note),

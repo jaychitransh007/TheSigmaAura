@@ -21,6 +21,10 @@ _RESTRICTED_GARMENT_TERMS = {
     "corset",
 }
 
+# Only check structured category/type fields — never free-text fields
+# like title, description, URL, brand, or tags. Those contain product
+# names, brand names, and URLs where restricted terms appear as
+# harmless substrings (e.g. "campusSutra" contains "bra").
 _RECORD_CATEGORY_FIELDS = (
     "garment_category",
     "garment_subtype",
@@ -28,23 +32,12 @@ _RECORD_CATEGORY_FIELDS = (
     "subcategory",
     "product_type",
     "product_category",
-    "title",
-    "description",
-    "notes",
-    "brand",
-    "url",
-    "product_url",
-    "handle",
-    "tags",
     "GarmentCategory",
     "GarmentSubtype",
     "Category",
     "Subcategory",
     "ProductType",
     "ProductCategory",
-    "Title",
-    "Description",
-    "Tags",
 )
 
 

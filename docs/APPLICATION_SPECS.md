@@ -1595,39 +1595,43 @@ This section describes the current chat UI outfit rendering, implemented in `mod
 
 #### Layout
 
-Full-width header row + 3-column body grid (`grid-template-rows: auto 1fr; grid-template-columns: 80px 1fr 40%`):
+**Recommendation cards** — 3-column body grid (`grid-template-columns: 100px 1fr 44%`):
 
 | Section | Content | Behavior |
 |---|---|---|
-| **Header** (full width, `grid-column: 1/-1`) | Outfit title (left) + like/dislike icons (right) + stylist summary (≤200 chars, no background) | Spans all columns above the 3-column body |
-| **Thumbnail rail** (80px) | Vertical stack of 64×64 clickable thumbnails | Click swaps hero; active thumb gets accent border |
-| **Hero image** (flex) | Full-height display of selected thumbnail (`object-fit: contain`, `max-height: 520px`) | Default: virtual try-on when present, else first garment |
-| **Info panel** (~40%) | Products + split polar bar chart | Scrollable if content overflows |
+| **Header** (full width, `grid-column: 1/-1`) | Outfit title (left) + Like/Hide icons (right) + full stylist reasoning (no truncation) | Spans all columns above the 3-column body |
+| **Thumbnail rail** (100px) | Vertical stack of clickable thumbnails | Click swaps hero; active thumb gets accent border |
+| **Hero image** (flex) | Full-height display of selected thumbnail (`object-fit: contain`) | Default: virtual try-on when present, else first garment |
+| **Info panel** (~44%) | Products + split polar bar chart | Scrollable if content overflows |
 
-Mobile (`max-width: 900px`) — single column: header → hero image → thumbnails → info panel.
+**Outfit check / garment evaluation cards** — 2-column layout (`grid-template-columns: 1fr 44%`):
+- No thumbnail rail (hidden entirely, not appended to DOM)
+- Hero shows the user's uploaded outfit photo (`tryon_image`)
+- Info panel shows item names only (no price, no Buy Now — user's own clothes)
+- Detected via `responseMetadata.primary_intent === "outfit_check" || "garment_evaluation"`
+
+Mobile (`max-width: 900px`) — single column: header → hero image → info panel.
 
 #### Info panel content (right column)
 
 Per-product block (3-row layout per garment):
-- Row 1: product title
-- Row 2: `Rs. X` price (or "From your wardrobe" for wardrobe items in wardrobe green)
-- Row 3: `Buy Now` button + wishlist heart icon (hidden for wardrobe items)
+- Row 1: product title + source label (`YOURS` / `SHOP`)
+- Row 2: `Rs. X` price in JetBrains Mono (hidden for wardrobe items)
+- Row 3: `Buy Now` text-link + `Save` button (hidden for wardrobe items)
 - Per-product wishlist: `POST /v1/products/{product_id}/wishlist` → persists to `catalog_interaction_history` with `interaction_type="save"`, heart fills on click
 
-Split polar bar chart — top semicircle (Canvas 300×272, archetypes, purple `#7F77DD`):
+Split polar bar chart — top semicircle (archetypes, champagne `--signal`):
 - Classic, Dramatic, Romantic, Natural, Minimalist, Creative, Sporty, Edgy
 
-Split polar bar chart — bottom semicircle (same canvas, evaluation criteria, burgundy `#8B3055`):
-- Body, Color, Style, Risk, Occasion, Comfort, Needs, Pairing
-- Scores multiplied by `analysis_confidence_pct` at render time (fetched once per page load from `/v1/onboarding/analysis/`)
+Split polar bar chart — bottom semicircle (evaluation criteria, oxblood `--accent`):
+- Body, Color, Risk, Comfort (always) + Pairing, Occasion, Needs, Weather (context-gated)
+- Raw evaluator scores — no profile confidence multiplication
 
 #### Feedback behavior
 
-- Like (thumbs up icon) — sends `event_type: "like"` immediately
-- Dislike (thumbs down icon) — expands textarea + reaction chips + Submit
-- Icons are bare (no borders/circles), greyscale by default, full color on hover
-- Cancel closes the textarea without sending
-- Loading spinner and error state on submission
+- **Like** (heart icon, top-right header) — one-tap, sends `event_type: "like"` immediately, heart fills with `--accent`
+- **Hide** (X icon, top-right header) — opens a feedback modal with reaction chips ("Too safe", "Not me", "Wrong color", "Weird pairing", "Too much") + freeform textarea + Submit/Cancel. On Submit: sends `event_type: "dislike"` with notes, removes the outfit from the carousel and advances to next card. If all outfits hidden, section is removed.
+- When no `item_ids` exist (e.g. outfit check), feedback is recorded with a synthetic `outfit:{conversation_id}:{rank}` placeholder
 
 #### Virtual try-on images
 

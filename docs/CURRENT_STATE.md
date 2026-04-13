@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: April 11, 2026 (Phase 14: Confident Luxe design refinement planned — ivory + oxblood + Fraunces (free OFL) + Inter, tonal moments, dark mode; Color analysis overhaul: 12 sub-season typing, draping removed, BodyShape→silhouette mapping, anti-hedging calibration, FrameStructure fix, onboarding reorder + incremental save + resume flow, phased analysis, search timeout retry)
+Last updated: April 13, 2026 (Phase 15E-F complete + bugfix round: legacy surfaces removed, carousel polish + iteration stacking + swipe/keyboard, Like/Hide feedback with modal, restricted category word-boundary fix, outfit check 2-column card + fallback image save + evaluator title, intent routing fix for garment_evaluation, wishlist PascalCase column fix, send() race condition guards, composer redesign with + menu, attachment mutual exclusion fix)
 
 Canonical references:
 - `docs/CURRENT_STATE.md`
@@ -41,7 +41,7 @@ Project status:
 - wardrobe: ingestion, enrichment, retrieval, wardrobe-first occasion response, full CRUD UI (add/edit/delete), enhanced filters (search, category, color), and completeness scoring implemented
 - WhatsApp: removed from current codebase (previously had formatting and deep linking; runtime was never built)
 - safety: dual-layer image moderation (heuristic + vision), restricted category exclusion, try-on quality gate implemented
-- web UI: Confident Luxe design system (Phase 14) + intent-organized discovery surface (Phase 15) — ivory/oxblood/champagne palette, Fraunces + Inter + JetBrains Mono, hairline borders, full dark mode; 5-tab nav (Home / Outfits / Checks / Wardrobe / Saved) with 56px header. Home = discovery input + PDP carousel. Outfits = intent-grouped history with per-section carousels. Checks = outfit check cards. Chat-organized UI replaced entirely; no conversation sidebar, no chat bubbles.
+- web UI: Confident Luxe design system (Phase 14) + intent-organized discovery surface (Phase 15 — complete) — ivory/oxblood/champagne palette, Fraunces + Inter + JetBrains Mono, hairline borders, full dark mode; 5-tab nav (Home / Outfits / Checks / Wardrobe / Saved) with 56px header. Home = discovery input + PDP carousel with CSS slide transitions, swipe/keyboard nav, iteration stacking. Outfits = intent-grouped history with per-section carousels and staggered entrance. Checks = outfit check cards. All legacy surfaces removed: no chat bubbles, no conversation sidebar, no Trial Room tab, no Looks page. Feedback redesigned as contextual strip (heart + "What would you change?" inline expansion).
 - profile: style dossier with display-xl name hero, italic adjective list, champagne signal rule on palette card, theme toggle, underline-only edit inputs
 - wardrobe: borderless 5-column closet grid with right-edge Add Item drawer — photo-only upload with auto-enrichment (46 attributes via vision API); edit modal with underline inputs; hover-reveal edit/delete text buttons
 - wardrobe filters: hairline-underline search, uppercase tracked label category chips (8), color filter row (11 colors), localStorage persistence
@@ -1026,7 +1026,7 @@ Checklist:
 Success criteria:
 - we can say with evidence whether users are forming a real pre-buy / pre-dress dependency on the system
 
-## Phase 15: Intent-Organized UI Rearchitecture (P0 — Current)
+## Phase 15: Intent-Organized UI Rearchitecture (P0 — Completed)
 
 **Goal:** replace the chat-organized interface with an intent-organized, PDP-first discovery surface. Users interact via a query input and browse PDP carousels — not chat transcripts. History is grouped by intent (outfit recommendations, pairings, outfit checks), not by conversations.
 
@@ -1146,12 +1146,12 @@ Checklist:
 ### Phase 15E — Remove legacy surfaces
 
 Checklist:
-- [ ] remove chat bubble rendering from the response flow (keep `renderAssistantMarkup` for the context summary text)
-- [ ] remove the conversation history sidebar (`history-rail`, `loadConversationHistory`, ⌘K toggle)
-- [ ] remove Trial Room tab (content now lives in Outfits via embedded try-ons)
-- [ ] merge Looks tab into Outfits (or keep as a "browse all" toggle: `BY INTENT · ALL`)
-- [ ] update header nav: Home · Outfits · Checks · Wardrobe · Saved
-- [ ] update view-switching CSS (`body.view-X` classes)
+- [x] remove chat bubble rendering from the response flow (keep `renderAssistantMarkup` for the context summary text)
+- [x] remove the conversation history sidebar (`history-rail`, `loadConversationHistory`, ⌘K toggle)
+- [x] remove Trial Room tab (content now lives in Outfits via embedded try-ons)
+- [x] merge Looks tab into Outfits (or keep as a "browse all" toggle: `BY INTENT · ALL`)
+- [x] update header nav: Home · Outfits · Checks · Wardrobe · Saved
+- [x] update view-switching CSS (`body.view-X` classes)
 
 Verification:
 - no chat bubbles in any user-facing surface
@@ -1163,14 +1163,14 @@ Verification:
 ### Phase 15F — Polish + iteration flow
 
 Checklist:
-- [ ] carousel transitions: CSS transform + `--dur-2` easing on slide
-- [ ] swipe gesture support: touch events on mobile, arrow keys on desktop
-- [ ] iteration stacking: follow-up request adds a new carousel row within the same intent group on the Home tab
-- [ ] iteration labels: "Iteration 2 · more formal" above each stacked carousel
-- [ ] input bar behaviour: typing a completely new request starts a new intent group; clicking a follow-up chip iterates the current one
-- [ ] responsive: mobile = full-width single-card swipe; desktop = 2-up with peek
-- [ ] Fraunces italic empty states on every tab
-- [ ] motion: carousel slide uses `--dur-2` + `--ease`, stagger entrance on Outfits tab groups
+- [x] carousel transitions: CSS transform + `--dur-2` easing on slide
+- [x] swipe gesture support: touch events on mobile, arrow keys on desktop
+- [x] iteration stacking: follow-up request adds a new carousel row within the same intent group on the Home tab
+- [x] iteration labels: "Iteration 2 · more formal" above each stacked carousel
+- [x] input bar behaviour: typing a completely new request starts a new intent group; clicking a follow-up chip iterates the current one
+- [x] responsive: mobile = full-width single-card swipe; desktop = 2-up with peek
+- [x] Fraunces italic empty states on every tab
+- [x] motion: carousel slide uses `--dur-2` + `--ease`, stagger entrance on Outfits tab groups
 
 ### Success criteria (entire phase)
 
@@ -1349,7 +1349,7 @@ Checklist:
 - [x] **Feedback icons** — SVG line-art heart (like) and X (dislike), `currentColor` inheriting
 - [x] **Chat feed widened** — 720px → 960px so cards have breathing room; bubbles self-limit via `max-width: 82%`
 - [x] **Dislike form restyled** — hairline chips, underline textarea, ink-fill Submit, hairline Cancel
-- [ ] **Feedback UX redesign** — move feedback from header to bottom of info panel as a contextual feedback strip:
+- [x] **Feedback UX redesign** — move feedback from header to bottom of info panel as a contextual feedback strip:
   - Left: heart icon for quick "I like this" (one-tap positive signal)
   - Right: *"What would you change?"* text prompt (looks like a placeholder, invites constructive feedback)
   - Clicking "What would you change?" expands the reaction chips + textarea inline below

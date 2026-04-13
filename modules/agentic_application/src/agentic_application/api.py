@@ -758,17 +758,11 @@ def create_app() -> FastAPI:
             if not item_ids:
                 item_ids = list(recommended_item_ids)
 
+            # When there are no item_ids (e.g. outfit check with no catalog
+            # products), record a single feedback event at the outfit level
+            # using the conversation_id as the garment_id placeholder.
             if not item_ids:
-                log_policy_event(
-                    policy_event_type="feedback_guardrail",
-                    input_class=Intent.FEEDBACK_SUBMISSION,
-                    reason_code="unresolved_feedback_items",
-                    user_id=external_uid,
-                    conversation_id=conversation_id,
-                    turn_id=turn_id or payload.turn_id,
-                    metadata_json={"outfit_rank": payload.outfit_rank},
-                )
-                raise HTTPException(status_code=400, detail=graceful_policy_message("unresolved_feedback_items"))
+                item_ids = [f"outfit:{conversation_id}:{payload.outfit_rank}"]
 
             reward = 1 if payload.event_type == "like" else -1
             count = 0
@@ -1148,7 +1142,7 @@ def create_app() -> FastAPI:
             for row in rows:
                 ctx = dict(row.get("resolved_context_json") or {})
                 metadata = dict(ctx.get("response_metadata") or {})
-                intent = str(
+                raw_intent = str(
                     metadata.get("primary_intent")
                     or ctx.get("intent")
                     or ctx.get("handler", "").split("_")[0]
@@ -1163,15 +1157,55 @@ def create_app() -> FastAPI:
                     or ""
                 )
 
+                # Override intent based on answer_source when they diverge.
+                # A follow-up "show me catalog alternatives" after an outfit
+                # check gets classified as outfit_check by the planner (same
+                # conversation), but answer_source reveals it went through the
+                # recommendation pipeline. Route it to Outfits, not Checks.
+                _recommendation_sources = ("catalog_only", "wardrobe_first", "hybrid", "catalog_first")
+                _check_handlers = ("outfit_check_handler", "garment_evaluation_handler")
+                if raw_intent in ("outfit_check", "garment_evaluation") and source.lower() not in _check_handlers:
+                    if source.lower() in _recommendation_sources:
+                        intent = "occasion_recommendation"
+                    else:
+                        intent = raw_intent
+                else:
+                    intent = raw_intent
+
                 if allowed_types and intent not in allowed_types:
                     continue
+
+                # Skip turns with no outfits (clarification responses).
+                all_outfits = ctx.get("outfits") or []
+                if not all_outfits:
+                    continue
+
+                # For outfit checks, require tryon_image (the user's uploaded
+                # photo). A wardrobe-matched item image is not a valid preview
+                # — it shows a random wardrobe piece, not the actual outfit.
+                # For recommendations, any image (tryon or product) is fine.
+                is_check = intent in ("outfit_check", "garment_evaluation")
+                if is_check:
+                    has_outfit_photo = any(
+                        str(o.get("tryon_image") or "").strip()
+                        for o in all_outfits
+                    )
+                    if not has_outfit_photo:
+                        continue
+                else:
+                    has_preview = any(
+                        str(o.get("tryon_image") or "").strip()
+                        or any(str(it.get("image_url") or "").strip() for it in (o.get("items") or []))
+                        for o in all_outfits
+                    )
+                    if not has_preview:
+                        continue
 
                 group_key = f"{intent}:{occasion}" if occasion else f"{intent}:{conv_id}"
 
                 # Extract outfits for this turn, filtering out disliked/hidden ones
                 # and tagging liked ones
                 turn_id_str = str(row.get("id") or "")
-                all_outfits = ctx.get("outfits") or []
                 outfits = []
                 for o in all_outfits:
                     rank_val = int(o.get("rank") or 0)

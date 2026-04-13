@@ -157,30 +157,22 @@ def get_web_ui_html(
     /* ===== View switching ===== */
     .page-view { display: none !important; }
     body.view-home .page-home { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
-    body.view-chat .page-home { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-wardrobe .page-wardrobe { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-outfits .page-outfits { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-checks .page-checks { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
-    body.view-results .page-results { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-wishlist .page-wishlist { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
-    body.view-trialroom .page-trialroom { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-profile .page-profile { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
     body.view-edit-profile .page-profile { display: flex !important; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; }
-    .history-rail { display: none !important; }
-
     /* ===== View-transition fade+rise — Confident Luxe motion § 3 ===== */
     @keyframes aura-view-enter {
       from { opacity: 0; transform: translateY(8px); }
       to   { opacity: 1; transform: translateY(0); }
     }
     body.view-home .page-home,
-    body.view-chat .page-home,
     body.view-wardrobe .page-wardrobe,
     body.view-outfits .page-outfits,
     body.view-checks .page-checks,
-    body.view-results .page-results,
     body.view-wishlist .page-wishlist,
-    body.view-trialroom .page-trialroom,
     body.view-profile .page-profile {
       animation: aura-view-enter var(--dur-3) var(--ease) both;
     }
@@ -199,42 +191,17 @@ def get_web_ui_html(
       animation-delay: 120ms;
     }
 
-    /* ===== Staggered entrance — Looks grid only, 60ms stagger ===== */
-    @keyframes aura-card-rise {
-      from { opacity: 0; transform: translateY(12px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    .results-grid .result-card {
-      animation: aura-card-rise var(--dur-2) var(--ease) both;
-    }
-    .results-grid .result-card:nth-child(1)  { animation-delay:   0ms; }
-    .results-grid .result-card:nth-child(2)  { animation-delay:  60ms; }
-    .results-grid .result-card:nth-child(3)  { animation-delay: 120ms; }
-    .results-grid .result-card:nth-child(4)  { animation-delay: 180ms; }
-    .results-grid .result-card:nth-child(5)  { animation-delay: 240ms; }
-    .results-grid .result-card:nth-child(6)  { animation-delay: 300ms; }
-    .results-grid .result-card:nth-child(7)  { animation-delay: 360ms; }
-    .results-grid .result-card:nth-child(8)  { animation-delay: 420ms; }
-    .results-grid .result-card:nth-child(9)  { animation-delay: 480ms; }
-    .results-grid .result-card:nth-child(n+10) { animation-delay: 540ms; }
-
     /* ===== Reduced-motion override — strip all entrance motion ===== */
     @media (prefers-reduced-motion: reduce) {
-      body.view-chat .page-chat,
+      body.view-home .page-home,
       body.view-wardrobe .page-wardrobe,
-      body.view-results .page-results,
+      body.view-outfits .page-outfits,
+      body.view-checks .page-checks,
       body.view-wishlist .page-wishlist,
-      body.view-trialroom .page-trialroom,
       body.view-profile .page-profile,
       .wardrobe-title-block .wardrobe-count,
       .results-header p,
-      .dossier-hero .dossier-statement,
-      .results-grid .result-card { animation: none !important; }
-    }
-    /* History rail collapse (⌘K / Ctrl+K) */
-    body.rail-collapsed .history-rail { width: 0 !important; min-width: 0 !important; border-right: 0 !important; overflow: hidden !important; }
-    @media (prefers-reduced-motion: no-preference) {
-      .history-rail { transition: width var(--dur-2) var(--ease), min-width var(--dur-2) var(--ease); }
+      .dossier-hero .dossier-statement { animation: none !important; }
     }
 
     /* ===== App Header ===== */
@@ -321,100 +288,61 @@ def get_web_ui_html(
       flex: 1; display: flex; overflow: hidden; min-height: 0;
     }
 
-    /* ===== Chat History Sidebar — Confident Luxe: hairline, no fills ===== */
-    .history-rail {
-      width: var(--rail-w); min-width: var(--rail-w); height: 100%;
-      border-right: 1px solid var(--line);
-      background: var(--canvas);
-      display: flex; flex-direction: column; overflow: hidden;
-    }
-    .history-header {
-      padding: 20px 20px 12px; display: flex; align-items: center; justify-content: space-between;
-    }
-    .history-header span {
-      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em;
-      color: var(--ink-3);
-    }
-    .history-list { flex: 1; overflow-y: auto; padding: 0 12px 16px; }
-    .history-item {
-      display: block; width: 100%; text-align: left; padding: 12px 14px 12px 16px;
-      border-radius: 0; border: none; border-left: 2px solid transparent;
-      background: none; cursor: pointer;
-      font-size: 13px; color: var(--ink-2);
-      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
-      margin-bottom: 2px; position: relative;
-    }
-    .history-item:hover { color: var(--ink); border-left-color: var(--line-strong); }
-    .history-item.active { color: var(--ink); border-left-color: var(--accent); font-weight: 600; }
-    .history-item .preview { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 44px; }
-    .history-item .ts {
-      display: block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
-      color: var(--ink-4); margin-top: 4px;
-    }
-    .history-actions {
-      position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-      display: none; gap: 2px;
-    }
-    .history-item:hover .history-actions { display: flex; }
-    .history-action-btn {
-      width: 24px; height: 24px; border: none; background: none; cursor: pointer;
-      border-radius: var(--radius-sm); font-size: 12px; color: var(--ink-4); padding: 0;
-      display: flex; align-items: center; justify-content: center;
-      transition: color var(--dur-1) var(--ease);
-    }
-    .history-action-btn:hover { color: var(--ink); }
-    .history-rename-input {
-      width: 100%; padding: 4px 8px; border: 0; border-bottom: 1px solid var(--ink);
-      border-radius: 0;
-      font-family: inherit; font-size: 13px; color: var(--ink); background: transparent; outline: none;
-    }
-    .history-empty {
-      padding: 24px 20px; font-size: 13px; color: var(--ink-3); line-height: 1.55;
-      font-style: italic;
-    }
+
 
     /* ===== Discovery Surface (Home) — Phase 15 ===== */
     .page-home {
       padding: 0;
       width: 100%;
     }
-    /* Top section: headline + input */
-    .discovery-top {
-      padding: 12vh 32px 40px;
+    /* Home layout: scrollable content + bottom-pinned input bar */
+    .home-scroll {
+      flex: 1; overflow-y: auto; min-height: 0;
+    }
+    .discovery-welcome {
+      padding: 16vh 32px 40px;
       max-width: 800px;
       margin: 0 auto;
       width: 100%;
       text-align: center;
+    }
+    .home-input-bar {
       flex-shrink: 0;
-    }
-    .discovery-top.has-result {
-      padding: 32px 32px 24px;
-    }
-    .discovery-top.has-result .welcome-headline { font-size: 28px; margin-bottom: 12px; }
-    .discovery-top.has-result .welcome-sub { display: none; }
-    .discovery-top.has-result .welcome-prompts { display: none; }
-    .discovery-input-wrap {
-      max-width: 680px;
+      padding: 12px 32px 24px;
+      max-width: 740px;
       margin: 0 auto;
-      position: relative;
-    }
-    .discovery-input {
       width: 100%;
-      padding: 14px 52px 14px 20px;
+    }
+    /* Once results arrive, shrink the welcome to just prompts hidden */
+    .home-scroll:has(.discovery-result:not(:empty)) .discovery-welcome { display: none; }
+    /* Composer — unified bordered container: chip row + input row */
+    .discovery-composer {
       border: 1px solid var(--line);
       border-radius: var(--radius-lg);
       background: var(--surface);
+      transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+    }
+    .discovery-composer:focus-within { border-color: var(--line-strong); box-shadow: var(--shadow-pop); }
+    .discovery-composer.dragover { border-color: var(--accent); }
+    .discovery-input-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      padding: 4px 6px 4px 4px;
+    }
+    .discovery-input {
+      flex: 1;
+      padding: 10px 8px;
+      border: none;
+      background: transparent;
       font-family: inherit;
       font-size: 15px;
       color: var(--ink);
       outline: none;
-      transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
     }
-    .discovery-input:focus { border-color: var(--line-strong); box-shadow: var(--shadow-pop); }
     .discovery-input::placeholder { color: var(--ink-4); font-style: italic; }
     .discovery-send {
-      position: absolute;
-      right: 8px; top: 50%; transform: translateY(-50%);
+      flex-shrink: 0;
       width: 36px; height: 36px;
       border-radius: 50%; border: none;
       background: var(--accent);
@@ -449,7 +377,48 @@ def get_web_ui_html(
       width: 100%;
     }
     .discovery-result:empty { display: none; }
+    /* Query preview card — shown while the pipeline is processing */
+    .query-preview {
+      max-width: 880px;
+      margin: 0 auto 20px;
+      padding: 20px 24px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+    }
+    .query-preview-text {
+      font-size: 15px;
+      font-style: italic;
+      color: var(--ink-2);
+      line-height: 1.5;
+      margin: 0;
+    }
+    .query-preview-img {
+      margin-top: 12px;
+      max-height: 160px;
+      border-radius: var(--radius-sm);
+      object-fit: cover;
+    }
+    .query-preview-stage {
+      margin-top: 10px;
+      font-size: 12px;
+      font-style: italic;
+      color: var(--ink-4);
+    }
     /* Context summary above the carousel */
+    /* Stylist message — rendered above the PDP carousel */
+    .stylist-message {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 8px 4px 20px;
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--ink);
+    }
+    .stylist-message p { margin: 0 0 10px; }
+    .stylist-message p:last-child { margin-bottom: 0; }
+    .stylist-message ul { margin: 0 0 10px; padding-left: 20px; }
+    .stylist-message li { margin-bottom: 6px; }
     .result-context {
       font-size: 10px;
       font-weight: 600;
@@ -459,11 +428,36 @@ def get_web_ui_html(
       margin-bottom: 16px;
       padding: 0 4px;
     }
-    /* PDP carousel — one card rendered at a time, rebuilt on navigation */
+    .intent-section { margin-bottom: 48px; }
+    .check-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      background: var(--surface);
+    }
+    .check-query {
+      font-size: 13px; font-style: italic;
+      color: var(--ink-3); margin-bottom: 8px;
+    }
+    .check-verdict {
+      font-size: 15px; color: var(--ink);
+      line-height: 1.6;
+    }
+    /* PDP carousel — one card rendered at a time, CSS transform slide transition */
     .pdp-carousel {
       position: relative;
       max-width: 880px;
       margin: 0 auto;
+      overflow: hidden;
+    }
+    .pdp-carousel .carousel-slide {
+      transition: transform var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
+    }
+    .pdp-carousel .carousel-slide.slide-enter-left {
+      transform: translateX(-40px); opacity: 0;
+    }
+    .pdp-carousel .carousel-slide.slide-enter-right {
+      transform: translateX(40px); opacity: 0;
     }
     /* Carousel header: turn summary (left) + counter + arrows (right) — one line */
     .carousel-header {
@@ -505,6 +499,33 @@ def get_web_ui_html(
       transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
     }
     .carousel-nav button:hover { border-color: var(--ink); color: var(--ink); }
+    /* Iteration label above stacked carousel rows */
+    .iteration-label {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-4);
+      padding: 12px 4px 4px;
+      max-width: 880px;
+      margin: 0 auto;
+    }
+    /* Staggered entrance for intent groups on the Outfits tab */
+    @keyframes aura-group-rise {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    [data-intent-section] {
+      animation: aura-group-rise var(--dur-2) var(--ease) both;
+    }
+    [data-intent-section]:nth-child(1) { animation-delay: 0ms; }
+    [data-intent-section]:nth-child(2) { animation-delay: 60ms; }
+    [data-intent-section]:nth-child(3) { animation-delay: 120ms; }
+    [data-intent-section]:nth-child(4) { animation-delay: 180ms; }
+    [data-intent-section]:nth-child(5) { animation-delay: 240ms; }
+    [data-intent-section]:nth-child(n+6) { animation-delay: 300ms; }
+    @media (prefers-reduced-motion: reduce) {
+      .pdp-carousel .carousel-slide,
+      [data-intent-section] { animation: none !important; transition: none !important; }
+    }
 
     /* Follow-up chips below the carousel */
     .discovery-followups {
@@ -513,72 +534,13 @@ def get_web_ui_html(
       padding: 0 36px 24px;
     }
 
-    /* Recent intent groups */
-    .recent-intents {
+    /* Outfits tab content container */
+    .outfits-content {
       max-width: 1080px;
       margin: 0 auto;
-      padding: 32px 32px 64px;
-      border-top: 1px solid var(--line);
-    }
-    .recent-intents:empty { display: none; }
-    .recent-intents-label {
-      font-size: 10px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.14em;
-      color: var(--ink-4);
-      margin-bottom: 20px;
-    }
-    .recent-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 20px;
-    }
-    .recent-card {
-      border: 1px solid var(--line);
-      border-radius: var(--radius-md);
-      overflow: hidden;
-      cursor: pointer;
-      transition: border-color var(--dur-1) var(--ease);
-      background: var(--surface);
-    }
-    .recent-card:hover { border-color: var(--line-strong); }
-    .recent-card-img {
-      aspect-ratio: 4/3;
-      background: var(--surface-sunk);
-      overflow: hidden;
-    }
-    .recent-card-img img { width: 100%; height: 100%; object-fit: cover; }
-    .recent-card-body { padding: 14px 16px; }
-    .recent-card-body .rc-context {
-      font-size: 10px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.14em;
-      color: var(--ink-4);
-      margin-bottom: 4px;
-    }
-    .recent-card-body .rc-summary {
-      font-size: 13px; color: var(--ink);
-      display: -webkit-box; -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical; overflow: hidden;
-    }
-    .recent-card-body .rc-meta {
-      font-size: 9px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.14em;
-      color: var(--ink-4);
-      margin-top: 8px;
+      padding: 0 32px 64px;
     }
 
-    /* ===== Chat Feed (legacy — kept for loadConversation replay) ===== */
-    .chat-feed {
-      flex: 1; overflow-y: auto; padding: 32px 32px 12px; max-width: 960px;
-      margin: 0 auto; width: 100%;
-    }
-
-    /* Welcome — Confident Luxe empty state (see docs/DESIGN.md § Tonal Moments) */
-    .feed-welcome {
-      text-align: center;
-      padding: 18vh 24px 48px;
-      max-width: 760px;
-      margin: 0 auto;
-    }
     .welcome-headline {
       font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
       font-style: italic;
@@ -630,60 +592,7 @@ def get_web_ui_html(
       .welcome-prompt { transition: none; }
     }
     @media (max-width: 640px) {
-      .feed-welcome { padding: 12vh 20px 32px; }
       .welcome-prompts { gap: 18px 24px; }
-    }
-
-    /* Bubbles — Confident Luxe: agent as flowing editorial copy, user as quiet sunk pill */
-    .bubble {
-      max-width: 82%;
-      font-size: 15px;
-      line-height: 1.65;
-      margin-bottom: 16px;
-      word-wrap: break-word;
-    }
-    .bubble p { margin: 0 0 10px 0; }
-    .bubble p:last-child { margin-bottom: 0; }
-    .bubble ul { margin: 0 0 10px 0; padding-left: 20px; }
-    .bubble ul:last-child { margin-bottom: 0; }
-    .bubble li { margin-bottom: 6px; }
-    .bubble li:last-child { margin-bottom: 0; }
-    /* User message — right-aligned, sunk fill, no shadow */
-    .bubble.user {
-      margin-left: auto;
-      padding: 10px 16px;
-      background: var(--surface-sunk);
-      color: var(--ink);
-      border-radius: var(--radius-md);
-    }
-    /* Assistant / stylist copy — no background, no border, 2px ink avatar rule on left */
-    .bubble.assistant {
-      margin-right: auto;
-      padding: 2px 0 2px 20px;
-      color: var(--ink);
-      border-left: 2px solid var(--ink);
-      background: transparent;
-      max-width: 100%;
-    }
-    /* Agent stage / "thinking" bubble — small stylist-voice line, no chrome */
-    .bubble.agent {
-      margin-right: auto; background: transparent; font-size: 12px;
-      color: var(--ink-3); padding: 4px 0 4px 20px;
-      border-left: 2px solid var(--line-strong);
-      opacity: 1;
-      transition: opacity var(--dur-3) var(--ease);
-      font-style: italic;
-    }
-    .bubble.agent .dot { display: none; }
-    .bubble.agent.done { border-left-color: var(--positive); }
-    .bubble.agent.fading { opacity: 0; pointer-events: none; }
-    @media (prefers-reduced-motion: reduce) {
-      .bubble.agent { transition: none; }
-    }
-    .bubble.meta {
-      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
-      color: var(--ink-4); text-align: center; max-width: 100%;
-      background: none; padding: 8px 0; margin-bottom: 12px;
     }
 
     /* Follow-up suggestions — Confident Luxe: uppercase bucket headers, hairline chips */
@@ -731,47 +640,60 @@ def get_web_ui_html(
     .composer-outer:focus-within { border-color: var(--line-strong); box-shadow: var(--shadow-pop); }
     .composer-outer.dragover { border-color: var(--accent); }
     .image-chip {
-      display: none; align-items: center; gap: 8px;
-      padding: 8px 12px 0; max-width: fit-content;
+      display: none;
+      padding: 8px 10px 0;
     }
-    .image-chip.visible { display: flex; }
+    .image-chip.visible { display: block; }
     .image-chip .chip-inner {
-      display: flex; align-items: center; gap: 8px;
-      padding: 4px 10px 4px 4px; border-radius: 10px;
-      background: var(--surface-alt); border: 1px solid var(--line);
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 4px 10px 4px 4px; border-radius: 8px;
+      background: var(--surface-sunk);
     }
-    .image-chip img { height: 36px; border-radius: 6px; }
-    .image-chip .name { font-size: 12px; color: var(--muted); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .image-chip img { height: 32px; width: 32px; object-fit: cover; border-radius: 6px; }
+    .image-chip .name { font-size: 12px; color: var(--ink-3); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .image-chip .remove {
       background: none; border: none; cursor: pointer;
-      font-size: 14px; color: var(--muted); padding: 2px 4px;
+      font-size: 13px; color: var(--ink-4); padding: 2px 4px;
+      transition: color var(--dur-1) var(--ease);
     }
-    .image-chip .remove:hover { color: var(--accent); }
+    .image-chip .remove:hover { color: var(--ink); }
     .composer {
       display: flex; align-items: flex-end; gap: 0;
       padding: 6px 8px 6px 6px;
     }
-    .plus-menu { position: relative; flex-shrink: 0; align-self: flex-end; }
+    .plus-menu { position: relative; flex-shrink: 0; }
     .plus-btn {
-      width: 32px; height: 32px; border-radius: 50%; border: none;
-      background: transparent; color: var(--muted);
-      font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;
-      transition: background 100ms ease, color 100ms ease;
+      width: 36px; height: 36px; border-radius: 50%;
+      border: none;
+      background: transparent; color: var(--ink-4);
+      font-size: 22px; font-weight: 300;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: color var(--dur-1) var(--ease);
     }
-    .plus-btn:hover { background: rgba(var(--accent-rgb), 0.08); color: var(--accent); }
+    .plus-btn:hover { color: var(--ink); }
     .plus-popover {
-      display: none; position: absolute; bottom: calc(100% + 8px); left: 0;
-      min-width: 200px; background: var(--surface); border: 1px solid var(--line);
-      border-radius: 12px; padding: 6px 0; box-shadow: var(--shadow); z-index: 50;
+      display: none; position: absolute; bottom: calc(100% + 10px); left: 0;
+      min-width: 190px; background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 4px 0;
+      box-shadow: var(--shadow-pop);
+      z-index: 50;
     }
     .plus-popover.open { display: block; }
     .plus-popover button {
       display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-      padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--ink);
+      padding: 9px 14px; font-size: 13px; font-weight: 500; color: var(--ink-2);
       background: none; border: none; cursor: pointer;
+      transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
     }
-    .plus-popover button:hover { background: var(--surface-alt); }
-    .plus-popover button .icon { font-size: 16px; width: 20px; text-align: center; }
+    .plus-popover button:hover { background: var(--surface-sunk); color: var(--ink); }
+    .plus-popover .pop-icon {
+      width: 18px; height: 18px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; color: var(--ink-4); flex-shrink: 0;
+    }
     .composer textarea {
       flex: 1; border: none; outline: none; background: transparent;
       font-family: inherit; font-size: 14px; color: var(--ink);
@@ -873,11 +795,8 @@ def get_web_ui_html(
     .outfit-header-top {
       display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
     }
-    .outfit-header-top .outfit-feedback {
-      display: flex; gap: 12px; flex-shrink: 0; align-items: center;
-    }
-    /* Feedback strip — legacy, hidden (replaced by header icons + modal) */
-    .feedback-strip { display: none; }
+    /* Feedback icons — top-right of card header */
+    .outfit-feedback { display: flex; gap: 10px; flex-shrink: 0; align-items: center; }
     .fb-icon-btn {
       appearance: none;
       background: transparent;
@@ -893,43 +812,7 @@ def get_web_ui_html(
     .fb-icon-btn svg { display: block; }
     .fb-icon-btn:hover { color: var(--ink); }
     .fb-icon-btn.fb-like:hover { color: var(--accent); }
-    .feedback-prompt {
-      appearance: none;
-      background: transparent;
-      border: 0;
-      padding: 0;
-      font-family: inherit;
-      font-size: 13px;
-      font-style: italic;
-      color: var(--ink-4);
-      cursor: pointer;
-      text-align: left;
-      transition: color var(--dur-1) var(--ease);
-    }
-    .feedback-prompt:hover { color: var(--ink-2); }
-    /* Textarea + submit hidden until .fb-open toggled */
-    .feedback-strip .feedback-textarea,
-    .feedback-strip .dislike-submit { display: none; }
-    .feedback-strip.fb-open .feedback-prompt { display: none; }
-    .feedback-strip.fb-open .feedback-textarea {
-      display: block;
-      flex: 1;
-      border: 0;
-      border-bottom: 1px solid var(--line-strong);
-      border-radius: 0;
-      padding: 4px 0;
-      font-family: inherit; font-size: 13px; font-style: italic;
-      color: var(--ink); background: transparent;
-      resize: none; outline: none;
-      min-height: 22px;
-      transition: border-color var(--dur-1) var(--ease);
-    }
-    .feedback-strip.fb-open .feedback-textarea::placeholder { color: var(--ink-4); }
-    .feedback-strip.fb-open .feedback-textarea:focus { border-bottom-color: var(--ink); }
-    .feedback-strip.fb-open .dislike-submit {
-      display: block;
-      flex-shrink: 0;
-    }
+    .fb-icon-btn.fb-hide:hover { color: var(--ink); }
     /* Hero image — contain (never crops). Background matches card so gaps are invisible. */
     .outfit-main-img {
       position: relative;
@@ -1019,9 +902,8 @@ def get_web_ui_html(
       color: var(--ink-4); margin-bottom: 4px;
     }
     .outfit-summary-text {
-      font-size: 12px; font-style: italic;
-      color: var(--ink-3); line-height: 1.5; margin: 0;
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      font-size: 13px; font-style: italic;
+      color: var(--ink-3); line-height: 1.55; margin: 0;
     }
     /* Per-item source label injected above each product title */
     .product-source-label {
@@ -1098,7 +980,7 @@ def get_web_ui_html(
     .rationale-note { margin-bottom: 8px; font-size: 13px; line-height: 1.5; }
     .rationale-note strong { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 2px; }
     .rationale-note p { margin: 0; color: var(--ink); }
-    .outfit-feedback { display: flex; gap: 12px; flex-wrap: wrap; padding-top: 0; align-items: center; }
+    /* outfit-feedback removed — feedback now lives in .feedback-strip at bottom of info panel */
     /* Feedback modal — full-screen overlay for dislike feedback */
     .feedback-modal-overlay {
       position: fixed; inset: 0; z-index: 9500;
@@ -1434,9 +1316,6 @@ def get_web_ui_html(
     .wardrobe-add-btn:hover { background: var(--ink-2); border-color: var(--ink-2); }
 
     /* ===== Looks (Results) Page — Confident Luxe lookbook ===== */
-    .page-results {
-      padding: 48px 48px 64px; max-width: 1440px; margin: 0 auto; width: 100%;
-    }
     .results-header {
       display: flex; align-items: flex-start; justify-content: space-between;
       gap: 24px; flex-wrap: wrap; margin-bottom: 32px;
@@ -1456,109 +1335,6 @@ def get_web_ui_html(
       line-height: 1.5;
       margin: 8px 0 0;
       max-width: 480px;
-    }
-    .results-tabs {
-      display: flex; gap: 20px 24px; flex-wrap: wrap;
-      margin-bottom: 14px;
-      padding-bottom: 14px;
-      border-bottom: 1px solid var(--line);
-    }
-    .results-tabs button {
-      appearance: none;
-      padding: 6px 0;
-      border: 0;
-      border-bottom: 1px solid transparent;
-      background: none;
-      font-family: inherit;
-      font-size: 10px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.14em;
-      color: var(--ink-4);
-      cursor: pointer;
-      transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
-    }
-    .results-tabs button:hover { color: var(--ink-2); }
-    .results-tabs button.active { color: var(--ink); border-bottom-color: var(--ink); }
-    .results-filters {
-      display: flex; gap: 20px 24px; flex-wrap: wrap;
-      margin-bottom: 28px;
-      padding-bottom: 14px;
-      border-bottom: 1px solid var(--line);
-    }
-    .results-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 40px 28px;
-    }
-    /* Lookbook card — full-bleed image, display title overlay */
-    .result-card {
-      position: relative;
-      border: 0;
-      border-radius: var(--radius-sm);
-      overflow: hidden;
-      background: var(--surface-sunk);
-      cursor: pointer;
-      aspect-ratio: 4/5;
-    }
-    .result-card:hover { border-color: transparent; }
-    .result-card .thumb {
-      position: absolute; inset: 0;
-      background: var(--surface-sunk);
-      overflow: hidden;
-    }
-    .result-card .thumb img {
-      width: 100%; height: 100%;
-      object-fit: cover;
-      transition: opacity var(--dur-2) var(--ease);
-    }
-    .result-card:hover .thumb img { opacity: 0.88; }
-    .result-card .thumb-placeholder {
-      width: 100%; height: 100%;
-      display: flex; align-items: center; justify-content: center;
-      color: var(--ink-4);
-      font-size: 11px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.14em;
-    }
-    /* Top-right source label. Text sits over dark image gradient — always light ivory, regardless of theme. */
-    .result-card .body .meta-row .source-mini-pill {
-      position: absolute;
-      top: 14px; right: 16px;
-      color: var(--on-accent);
-      text-shadow: 0 1px 2px rgba(0,0,0,0.4);
-    }
-    /* Bottom-left title block with dark gradient overlay */
-    .result-card .body {
-      position: absolute;
-      left: 0; right: 0; bottom: 0;
-      padding: 20px 18px 18px;
-      background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.35) 60%, rgba(0,0,0,0.6) 100%);
-      color: var(--on-accent);
-    }
-    .result-card .body .msg {
-      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
-      font-size: 20px; font-weight: 400;
-      font-style: italic;
-      line-height: 1.15;
-      margin-bottom: 8px;
-      color: var(--on-accent);
-      display: -webkit-box;
-      -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-      text-shadow: 0 1px 3px rgba(0,0,0,0.35);
-    }
-    .result-card .body .meta-row {
-      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    }
-    .result-card .body .meta-row .ts {
-      font-size: 9px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.14em;
-      color: var(--on-accent);
-      opacity: 0.75;
-    }
-    /* Reposition intent chip at top-left */
-    .result-card .body .meta-row .source-mini-pill.catalog {
-      position: absolute;
-      top: 14px; left: 16px; right: auto;
-      color: var(--on-accent);
-      text-shadow: 0 1px 2px rgba(0,0,0,0.4);
     }
     .results-empty {
       grid-column: 1 / -1;
@@ -2030,31 +1806,20 @@ def get_web_ui_html(
       .closet-grid { grid-template-columns: repeat(4, 1fr); gap: 32px 24px; }
     }
     @media (max-width: 900px) {
-      .history-rail { width: 220px; min-width: 220px; }
       .outfit-card { grid-template-columns: 1fr; }
       .outfit-thumbs { flex-direction: row; overflow-x: auto; padding: 8px; }
       .outfit-thumbs img { width: 56px; height: 56px; }
       .outfit-main-img img { max-height: 320px; }
       .closet-grid { grid-template-columns: repeat(3, 1fr); gap: 28px 20px; }
-      .results-grid { grid-template-columns: 1fr; }
       .profile-grid, .style-facts, .edit-grid { grid-template-columns: 1fr; }
       .page-wardrobe { padding: 32px 24px; }
     }
     @media (max-width: 600px) {
       .app-header { padding: 0 12px; gap: 8px; }
       .header-nav a { padding: 6px 10px; font-size: 12px; }
-      .new-chat-btn { display: none; }
-      .history-rail { display: none !important; }
-      .hamburger-btn { display: flex !important; }
-      .history-rail.mobile-open {
-        display: flex !important; position: fixed; top: var(--header-h); left: 0; bottom: 0;
-        width: 280px; z-index: 150; background: var(--canvas);
-        box-shadow: var(--shadow-modal);
-      }
-      .chat-feed { padding: 16px 12px; }
       .composer-wrap { padding: 6px 12px 12px; }
       .page-wardrobe { padding: 24px 16px; }
-      .page-results, .page-profile { padding: 16px; }
+      .page-profile { padding: 16px; }
       .closet-grid { grid-template-columns: repeat(2, 1fr); gap: 24px 16px; }
       .wardrobe-search { margin-left: 0 !important; width: 100%; }
     }
@@ -2063,14 +1828,6 @@ def get_web_ui_html(
       .closet-grid { gap: 20px 14px; }
     }
 
-    /* Hamburger (hidden on desktop) */
-    .hamburger-btn {
-      display: none; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line);
-      background: var(--surface); align-items: center; justify-content: center; cursor: pointer;
-      font-size: 16px; color: var(--muted);
-    }
-    .hamburger-btn:hover { border-color: var(--accent-soft); }
-
     /* Hidden file input */
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
   </style>
@@ -2078,7 +1835,13 @@ def get_web_ui_html(
 """
 
     safe_user_id = escape(user_id or "", quote=True)
-    safe_view = escape(active_view or "chat", quote=True)
+    # Redirect legacy views to their new equivalents
+    _view = active_view or "home"
+    if _view in ("results", "trialroom"):
+        _view = "outfits"
+    elif _view == "chat":
+        _view = "home"
+    safe_view = escape(_view, quote=True)
     safe_conv_id = escape(conversation_id or "", quote=True)
     safe_source = escape(source or "", quote=True)
 
@@ -2087,17 +1850,15 @@ def get_web_ui_html(
     # ── Header ──
     html += f"""
 <header class="app-header">
-  <button class="hamburger-btn" id="hamburgerBtn" aria-label="Toggle sidebar">&#9776;</button>
   <div class="header-brand" id="brandLink">Aura</div>
   <nav class="header-nav">
-    <a href="/?user={safe_user_id}&view=home" class="{'active' if active_view in ('home', 'chat') else ''}">Home</a>
-    <a href="/?user={safe_user_id}&view=outfits" class="{'active' if active_view == 'outfits' else ''}">Outfits</a>
-    <a href="/?user={safe_user_id}&view=checks" class="{'active' if active_view == 'checks' else ''}">Checks</a>
-    <a href="/?user={safe_user_id}&view=wardrobe" class="{'active' if active_view == 'wardrobe' else ''}">Wardrobe</a>
-    <a href="/?user={safe_user_id}&view=wishlist" class="{'active' if active_view == 'wishlist' else ''}">Saved</a>
+    <a href="/?user={safe_user_id}&view=home" class="{'active' if _view == 'home' else ''}">Home</a>
+    <a href="/?user={safe_user_id}&view=outfits" class="{'active' if _view == 'outfits' else ''}">Outfits</a>
+    <a href="/?user={safe_user_id}&view=checks" class="{'active' if _view == 'checks' else ''}">Checks</a>
+    <a href="/?user={safe_user_id}&view=wardrobe" class="{'active' if _view == 'wardrobe' else ''}">Wardrobe</a>
+    <a href="/?user={safe_user_id}&view=wishlist" class="{'active' if _view == 'wishlist' else ''}">Saved</a>
   </nav>
   <div class="header-actions">
-    <button class="new-chat-btn" id="newChatBtn" style="display:none;">New chat</button>
     <div class="avatar-menu">
       <button class="avatar-btn" id="avatarBtn" aria-label="User menu">&#128100;</button>
       <div class="avatar-dropdown" id="avatarDropdown">
@@ -2117,34 +1878,45 @@ def get_web_ui_html(
     # ── Discovery Surface (Home) — Phase 15 ──
     html += f"""
 <div class="page-view page-home">
-  <div class="discovery-top" id="discoveryTop">
-    <h1 class="welcome-headline">What are we wearing<span class="welcome-dot">.</span></h1>
-    <p class="welcome-sub">From your wardrobe first. Catalog when there's a gap.</p>
-    <div class="discovery-input-wrap">
-      <input type="text" class="discovery-input" id="discoveryInput" placeholder="Describe what you need..." aria-label="Describe what you need" />
-      <button class="discovery-send" id="discoverySend" type="button" aria-label="Send"><span class="arrow">&#10148;</span></button>
+  <div class="home-scroll" id="homeScroll">
+    <div class="discovery-welcome" id="discoveryWelcome">
+      <h1 class="welcome-headline">What are we wearing<span class="welcome-dot">.</span></h1>
+      <p class="welcome-sub">From your wardrobe first. Catalog when there's a gap.</p>
+      <div class="welcome-prompts" id="welcomePrompts">
+        <button class="welcome-prompt" data-prompt="Dress me for tonight using my wardrobe.">Build a look</button>
+        <button class="welcome-prompt" data-prompt="What goes well with this?">Pair a garment</button>
+        <button class="welcome-prompt" data-prompt="Plan my wardrobe for a 5-day trip.">Plan a trip</button>
+        <button class="welcome-prompt" data-prompt="Is this worth buying?">Is it worth it</button>
+      </div>
     </div>
+    <div id="discoveryResultArea" class="discovery-result"></div>
+    <div id="discoveryFollowups" class="discovery-followups"></div>
+    <div class="composer-error" id="composerError" style="max-width:680px;margin:0 auto;padding:0 32px;"></div>
+  </div>
+  <div class="home-input-bar" id="discoveryTop">
     <div class="discovery-thinking" id="discoveryThinking"></div>
-    <div class="welcome-prompts" id="welcomePrompts">
-      <button class="welcome-prompt" data-prompt="Dress me for tonight using my wardrobe.">Build a look</button>
-      <button class="welcome-prompt" data-prompt="What goes well with this?">Pair a garment</button>
-      <button class="welcome-prompt" data-prompt="Plan my wardrobe for a 5-day trip.">Plan a trip</button>
-      <button class="welcome-prompt" data-prompt="Is this worth buying?">Is it worth it</button>
-    </div>
-    <div class="image-chip" id="imageChip">
-      <div class="chip-inner">
-        <img id="imageChipImg" src="" alt="Attached" />
-        <span class="name" id="imageChipName"></span>
-        <button class="remove" id="imageChipRemove" aria-label="Remove image">&times;</button>
+    <div class="discovery-composer" id="composerArea">
+      <div class="image-chip" id="imageChip">
+        <div class="chip-inner">
+          <img id="imageChipImg" src="" alt="Attached" />
+          <span class="name" id="imageChipName"></span>
+          <button class="remove" id="imageChipRemove" aria-label="Remove image">&times;</button>
+        </div>
+      </div>
+      <div class="discovery-input-wrap">
+        <div class="plus-menu">
+          <button class="plus-btn" id="plusBtn" type="button" aria-label="Attach">+</button>
+          <div class="plus-popover" id="plusPopover">
+            <button id="uploadImageBtn"><span class="pop-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span> Upload image</button>
+            <button id="selectWardrobeBtn"><span class="pop-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.38 3.46L16 2 12 3.46 8 2 3.62 3.46a2 2 0 00-1.34 1.89v13.3a2 2 0 002.26 1.98L8 20l4-1.46L16 20l3.46.63a2 2 0 002.26-1.98V5.35a2 2 0 00-1.34-1.89z"/></svg></span> From wardrobe</button>
+            <button id="selectWishlistBtn"><span class="pop-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg></span> From saved</button>
+          </div>
+        </div>
+        <input type="text" class="discovery-input" id="discoveryInput" placeholder="Describe what you need..." aria-label="Describe what you need" />
+        <button class="discovery-send" id="discoverySend" type="button" aria-label="Send"><span class="arrow">&#10148;</span></button>
       </div>
     </div>
   </div>
-  <div id="discoveryResultArea" class="discovery-result"></div>
-  <div id="discoveryFollowups" class="discovery-followups"></div>
-  <div id="recentIntents" class="recent-intents"></div>
-  <!-- Hidden legacy feed for loadConversation replay -->
-  <div id="feed" class="chat-feed" style="display:none;" role="region"></div>
-  <div class="composer-error" id="composerError" style="max-width:680px;margin:0 auto;padding:0 32px;"></div>
 </div>
 """
 
@@ -2152,7 +1924,7 @@ def get_web_ui_html(
     html += """
 <div class="page-view page-outfits" style="padding: 48px 32px;">
   <div class="results-header"><div><h2>Outfits</h2><p>Everything we've styled, grouped by what you asked for.</p></div></div>
-  <div id="outfitsContent" class="recent-intents" style="border-top:0;padding-top:0;">
+  <div id="outfitsContent" class="outfits-content">
     <div class="results-empty">Loading.</div>
   </div>
 </div>
@@ -2305,33 +2077,6 @@ def get_web_ui_html(
 </div>
 """
 
-    # ── Looks (Results) Page ──
-    html += """
-<div class="page-view page-results">
-  <div class="results-header">
-    <div>
-      <h2>Looks</h2>
-      <p>Everything we've styled, in one place.</p>
-    </div>
-  </div>
-  <div class="results-tabs" id="resultsTabs" role="tablist" aria-label="Look type">
-    <button class="active" data-tab="all">All</button>
-    <button data-tab="occasion_recommendation">Outfits</button>
-    <button data-tab="outfit_check">Checks</button>
-    <button data-tab="pairing_request">Pairings</button>
-    <button data-tab="capsule_or_trip_planning">Trips</button>
-  </div>
-  <div class="results-filters" id="resultsFilters" role="tablist" aria-label="Source">
-    <button class="filter-chip active" data-source="all">All sources</button>
-    <button class="filter-chip" data-source="wardrobe">Yours</button>
-    <button class="filter-chip" data-source="catalog">Shop</button>
-  </div>
-  <div class="results-grid" id="resultsGrid">
-    <div class="results-empty">Loading.</div>
-  </div>
-</div>
-"""
-
     # ── Wishlist Page ──
     html += """
 <div class="page-view page-wishlist" style="padding: 24px;">
@@ -2341,19 +2086,6 @@ def get_web_ui_html(
   </div>
   <div class="closet-grid" id="wishlistGrid" style="gap: 18px; margin-top: 16px;">
     <div class="results-empty">Loading wishlist...</div>
-  </div>
-</div>
-"""
-
-    # ── Trial Room Page ──
-    html += """
-<div class="page-view page-trialroom" style="padding: 24px;">
-  <div class="results-header">
-    <h2>Trial Room</h2>
-    <p>See how outfits look on you — your virtual try-on gallery.</p>
-  </div>
-  <div class="closet-grid" id="tryonGalleryGrid" style="gap: 18px; margin-top: 16px;">
-    <div class="results-empty">Loading try-on gallery...</div>
   </div>
 </div>
 """
@@ -2482,18 +2214,12 @@ def get_web_ui_html(
   var wardrobeItemsById = {{}};
   var styleCodeData = null;
   var conversationId = INIT_CONV_ID;
-  var userAnalysisConfidencePct = 70;
-  var allResults = [];
-  var activeResultTab = "all";
-  var activeResultSource = "all";
-
   // ── Session persistence ──
   if (USER_ID) {{
     try {{ localStorage.setItem("aura_user_id", USER_ID); }} catch(_) {{}}
   }}
 
   // ── DOM refs ──
-  var feed = document.getElementById("feed");
   // Discovery surface elements (Phase 15)
   var discoveryInput = document.getElementById("discoveryInput");
   var discoverySend = document.getElementById("discoverySend");
@@ -2501,8 +2227,8 @@ def get_web_ui_html(
   var discoveryThinking = document.getElementById("discoveryThinking");
   var discoveryResultArea = document.getElementById("discoveryResultArea");
   var discoveryFollowups = document.getElementById("discoveryFollowups");
-  var recentIntentsArea = document.getElementById("recentIntents");
-  var feedWelcome = document.getElementById("feedWelcome");
+  var discoveryWelcome = document.getElementById("discoveryWelcome");
+  var homeScroll = document.getElementById("homeScroll");
   var stageBar = discoveryThinking;
   var messageEl = discoveryInput;
   var sendBtn = discoverySend;
@@ -2517,10 +2243,6 @@ def get_web_ui_html(
   var plusPopover = document.getElementById("plusPopover");
   var uploadImageBtn = document.getElementById("uploadImageBtn");
   var selectWardrobeBtn = document.getElementById("selectWardrobeBtn");
-  var historyList = document.getElementById("historyList");
-  var historyRail = document.getElementById("historyRail");
-  var hamburgerBtn = document.getElementById("hamburgerBtn");
-  var newChatBtn = document.getElementById("newChatBtn");
   var avatarBtn = document.getElementById("avatarBtn");
   var avatarDropdown = document.getElementById("avatarDropdown");
   var brandLink = document.getElementById("brandLink");
@@ -2531,10 +2253,6 @@ def get_web_ui_html(
   var wardrobeColorFilters = document.getElementById("wardrobeColorFilters");
   var wardrobeSearchInput = document.getElementById("wardrobeSearch");
   var wStatCount = document.getElementById("wStatCount");
-  // Results
-  var resultsGrid = document.getElementById("resultsGrid");
-  var resultsTabs = document.getElementById("resultsTabs");
-  var resultsFilters = document.getElementById("resultsFilters");
   // Profile
   var profileGrid = document.getElementById("profileGrid");
   var styleFacts = document.getElementById("styleFacts");
@@ -2558,7 +2276,13 @@ def get_web_ui_html(
   }}
 
   function firstImageUrl(item) {{
-    return item.image_url || item.primary_image_url || item.images__0__src || item.images_0_src || "";
+    var raw = item.image_url || item.primary_image_url || item.images__0__src || item.images_0_src || "";
+    if (!raw) return "";
+    // Bare file paths (from wardrobe items) need to go through the image endpoint
+    if (raw.indexOf("/v1/") === -1 && raw.indexOf("://") === -1 && raw.indexOf("data/") === 0) {{
+      return "/v1/onboarding/images/local?path=" + encodeURIComponent(raw);
+    }}
+    return raw;
   }}
 
   function normalizeSourceToken(value) {{
@@ -2614,8 +2338,10 @@ def get_web_ui_html(
     // style_fit_pct (it informs the holistic match_score and is used
     // in the purchase verdict), it just doesn't appear as a Fit
     // profile axis here.
-    var isOutfitCheck = String(responseMetadata && responseMetadata.primary_intent || "").toLowerCase() === "outfit_check"
-      || String(responseMetadata && responseMetadata.answer_source || "").toLowerCase().indexOf("outfit_check") !== -1;
+    var _evalIntent = String(responseMetadata && responseMetadata.primary_intent || "").toLowerCase();
+    var _evalSource = String(responseMetadata && responseMetadata.answer_source || "").toLowerCase();
+    var isOutfitCheck = _evalIntent === "outfit_check" || _evalIntent === "garment_evaluation"
+      || _evalSource.indexOf("outfit_check") !== -1 || _evalSource.indexOf("garment_evaluation") !== -1;
     if (isOutfitCheck) {{
       return [
         {{ key: "body_harmony_pct", label: "Body" }},
@@ -2664,24 +2390,9 @@ def get_web_ui_html(
   }}
 
   // ══════════════════════════════════════════════
-  // CHAT BUBBLES
+  // TEXT MARKUP RENDERER (used by discovery surface for non-outfit responses)
   // ══════════════════════════════════════════════
 
-  function dismissFeedWelcome() {{
-    if (feedWelcome) {{ feedWelcome.style.display = "none"; }}
-  }}
-
-  // Parse assistant text into paragraphs + bullet lists. Bullets are
-  // recognized by lines starting with bullet glyphs. Paragraph breaks
-  // are blank lines (double newline). The result is a DocumentFragment
-  // of paragraph and unordered-list nodes, all created via textContent
-  // so user-provided text is escaped automatically (no XSS risk).
-  //
-  // The StyleAdvisor and explanation_request handlers return a flat
-  // string with prose then a blank line then bulleted lines. Without
-  // this parser the chat bubble default white-space rule collapses the
-  // newlines and the bullets read as a single concatenated sentence.
-  // With the parser we get a semantic p and ul tree.
   function renderAssistantMarkup(text) {{
     var frag = document.createDocumentFragment();
     if (!text) return frag;
@@ -2704,8 +2415,6 @@ def get_web_ui_html(
         frag.appendChild(ul);
       }} else {{
         var p = document.createElement("p");
-        // Single newlines inside a paragraph become spaces (not <br>)
-        // so wrapped sentences read naturally.
         p.textContent = lines.map(function(l) {{ return l.trim(); }}).join(" ");
         frag.appendChild(p);
       }}
@@ -2713,54 +2422,16 @@ def get_web_ui_html(
     return frag;
   }}
 
-  function addBubble(text, kind, imageDataUrl) {{
-    dismissFeedWelcome();
-    var div = document.createElement("div");
-    div.className = "bubble " + kind;
-    if (imageDataUrl) {{
-      var img = document.createElement("img");
-      img.src = imageDataUrl;
-      img.style.cssText = "max-height:120px;border-radius:8px;display:block;margin-bottom:6px;";
-      img.onerror = function() {{ this.style.display = "none"; }};
-      div.appendChild(img);
-    }}
-    if (kind === "assistant" && text) {{
-      // Render assistant messages with paragraph + bullet structure so
-      // StyleAdvisor / explanation_request responses display as proper
-      // bulleted lists instead of a wall of text with inline • chars.
-      div.appendChild(renderAssistantMarkup(text));
-    }} else {{
-      div.appendChild(document.createTextNode(text));
-    }}
-    feed.appendChild(div);
-    feed.scrollTop = feed.scrollHeight;
-    return div;
-  }}
-
-  function addAgentBubble(text) {{
-    var div = document.createElement("div");
-    div.className = "bubble agent";
-    var dot = document.createElement("span");
-    dot.className = "dot";
-    div.appendChild(dot);
-    div.appendChild(document.createTextNode(text));
-    feed.appendChild(div);
-    feed.scrollTop = feed.scrollHeight;
-    return div;
-  }}
-
-  function addMeta(text) {{
-    var div = document.createElement("div");
-    div.className = "bubble meta";
-    div.textContent = text;
-    feed.appendChild(div);
-  }}
-
   // ══════════════════════════════════════════════
   // IMAGE HANDLING
   // ══════════════════════════════════════════════
 
   function setImagePreview(dataUrl, fileName) {{
+    // Clear any other attachment type first
+    pendingWardrobeItemId = "";
+    pendingWardrobeImageUrl = "";
+    pendingWishlistProductId = "";
+    pendingWishlistImageUrl = "";
     pendingImageData = dataUrl;
     imageChipImg.src = dataUrl;
     imageChipImg.onerror = function() {{ this.style.display = "none"; }};
@@ -2906,9 +2577,10 @@ def get_web_ui_html(
           el.innerHTML = (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || "Item") + '" loading="lazy" />' : '<div style="aspect-ratio:3/4;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;">No image</div>') +
             '<div class="label">' + escapeHtml(item.title || "Wardrobe Item") + '</div>';
           el.addEventListener("click", function() {{
-            // Send the wardrobe_item_id to the backend instead of re-
-            // fetching the image as base64. The backend loads the existing
-            // item directly — no re-enrichment, no duplicate wardrobe row.
+            // Clear any other attachment type first
+            pendingImageData = "";
+            pendingWishlistProductId = "";
+            pendingWishlistImageUrl = "";
             pendingWardrobeItemId = item.id || "";
             pendingWardrobeImageUrl = imgUrl || "";
             console.log("[AURA] Wardrobe picker: id =", pendingWardrobeItemId, "img =", pendingWardrobeImageUrl, "title =", item.title);
@@ -2976,6 +2648,10 @@ def get_web_ui_html(
             '<div class="label">' + escapeHtml(item.title || "Wishlist Item") + '</div>' +
             (item.price ? '<div class="label" style="color:var(--accent);font-weight:700;">Rs. ' + escapeHtml(item.price) + '</div>' : '');
           el.addEventListener("click", function() {{
+            // Clear any other attachment type first
+            pendingImageData = "";
+            pendingWardrobeItemId = "";
+            pendingWardrobeImageUrl = "";
             pendingWishlistProductId = item.product_id || "";
             pendingWishlistImageUrl = imgUrl || "";
             console.log("[AURA] Wishlist picker: product_id =", pendingWishlistProductId, "title =", item.title);
@@ -3021,22 +2697,30 @@ def get_web_ui_html(
   // ══════════════════════════════════════════════
 
   function buildOutfitCard(outfit, convId, responseMetadata) {{
+    var _cardIntent = String(responseMetadata && responseMetadata.primary_intent || "").toLowerCase();
+    var isOutfitCheckCard = _cardIntent === "outfit_check" || _cardIntent === "garment_evaluation";
+
     var card = document.createElement("div");
     card.className = "outfit-card";
+    // Outfit check: 2-column (hero + info), no thumbnail rail
+    if (isOutfitCheckCard) card.style.gridTemplateColumns = "1fr 44%";
 
-    // Col 1: Thumbnails
+    // Col 1: Thumbnails (hidden for outfit check)
     var thumbs = document.createElement("div");
     thumbs.className = "outfit-thumbs";
+    if (isOutfitCheckCard) thumbs.style.display = "none";
     var images = [];
     var items = outfit.items || [];
-    for (var ii = 0; ii < items.length; ii++) {{
-      var src = firstImageUrl(items[ii]);
-      if (src) images.push({{ src: src, label: items[ii].title || items[ii].garment_category || "Product" }});
+    if (!isOutfitCheckCard) {{
+      for (var ii = 0; ii < items.length; ii++) {{
+        var src = firstImageUrl(items[ii]);
+        if (src) images.push({{ src: src, label: items[ii].title || items[ii].garment_category || "Product" }});
+      }}
     }}
-    if (outfit.tryon_image) images.push({{ src: outfit.tryon_image, label: "Virtual Try-On" }});
+    if (outfit.tryon_image) images.push({{ src: outfit.tryon_image, label: isOutfitCheckCard ? "Your outfit" : "Virtual Try-On" }});
     var defaultIdx = outfit.tryon_image ? images.length - 1 : 0;
 
-    // Col 2: Hero image
+    // Col 2: Hero image — for outfit check, always the uploaded photo
     var heroWrap = document.createElement("div");
     heroWrap.className = "outfit-main-img";
     var heroImg = document.createElement("img");
@@ -3045,27 +2729,28 @@ def get_web_ui_html(
     if (images.length > 0) heroImg.src = images[defaultIdx].src;
     heroWrap.appendChild(heroImg);
 
-    images.forEach(function(img, idx) {{
-      var thumb = document.createElement("img");
-      thumb.src = img.src; thumb.alt = img.label; thumb.loading = "lazy";
-      if (idx === defaultIdx) thumb.className = "active";
-      thumb.addEventListener("click", function() {{
-        heroImg.src = img.src;
-        thumbs.querySelectorAll("img").forEach(function(t) {{ t.classList.remove("active"); }});
-        thumb.classList.add("active");
+    if (!isOutfitCheckCard) {{
+      images.forEach(function(img, idx) {{
+        var thumb = document.createElement("img");
+        thumb.src = img.src; thumb.alt = img.label; thumb.loading = "lazy";
+        if (idx === defaultIdx) thumb.className = "active";
+        thumb.addEventListener("click", function() {{
+          heroImg.src = img.src;
+          thumbs.querySelectorAll("img").forEach(function(t) {{ t.classList.remove("active"); }});
+          thumb.classList.add("active");
+        }});
+        thumbs.appendChild(thumb);
       }});
-      thumbs.appendChild(thumb);
-    }});
+    }}
 
     // ── Card header (full-width row above the 3 columns) ──
     var outfitSource = inferOutfitSource(outfit, responseMetadata);
     var summaryText = buildStylistSummary(outfit);
-    var profileConfPct = userAnalysisConfidencePct || 70;
 
     var header = document.createElement("div");
     header.className = "outfit-header";
 
-    // Top row: title (left) + like/dislike icons (right)
+    // Top row: title (left) + like/hide icons (right)
     var headerTop = document.createElement("div");
     headerTop.className = "outfit-header-top";
     var titleEl = document.createElement("div");
@@ -3082,29 +2767,33 @@ def get_web_ui_html(
     }} else {{
       likeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
     }}
-    var dislikeBtn = document.createElement("button"); dislikeBtn.className = "fb-icon-btn fb-dislike"; dislikeBtn.title = "Hide this";
-    dislikeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/><path d="M14.12 14.12a3 3 0 11-4.24-4.24"/></svg>';
-    fbWrap.appendChild(likeBtn); fbWrap.appendChild(dislikeBtn);
+    var hideBtn = document.createElement("button"); hideBtn.className = "fb-icon-btn fb-hide"; hideBtn.title = "Hide";
+    hideBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    fbWrap.appendChild(likeBtn); fbWrap.appendChild(hideBtn);
     headerTop.appendChild(fbWrap);
     header.appendChild(headerTop);
 
     // Summary row
-    var trimmedSummary = summaryText.length > 200 ? summaryText.substring(0, 197) + "..." : summaryText;
     var summaryCard = document.createElement("div");
     summaryCard.className = "outfit-summary";
-    summaryCard.innerHTML = '<p class="outfit-summary-text">' + escapeHtml(trimmedSummary) + '</p>';
+    summaryCard.innerHTML = '<p class="outfit-summary-text">' + escapeHtml(summaryText) + '</p>';
     header.appendChild(summaryCard);
 
     // ── Col 3: Info panel (products + radars only) ──
     var info = document.createElement("div");
     info.className = "outfit-info";
 
-    // Product specifications (3-row layout: title, price, CTAs)
+    // Product specifications — outfit check shows only item names, no price/CTA
     for (var pi = 0; pi < items.length; pi++) {{
       var item = items[pi];
       var prod = document.createElement("div");
       prod.className = "outfit-product";
       var pTitle = item.title || item.product_id || "Untitled";
+      if (isOutfitCheckCard) {{
+        prod.innerHTML = '<span class="outfit-product-title">' + escapeHtml(pTitle) + '</span>';
+        info.appendChild(prod);
+        continue;
+      }}
       var url = item.product_url || item.url || "";
       var priceStr = String(item.price || "").trim();
       var hasPrice = priceStr && priceStr !== "0" && priceStr.toLowerCase() !== "n/a";
@@ -3168,11 +2857,9 @@ def get_web_ui_html(
     //     always-evaluated dimensions are NOT subject to the zero-drop —
     //     a genuine 0 there is a meaningful signal worth showing.
     //
-    // The bottom-semicircle values are still multiplied by
-    // profileConfPct / 100 to preserve the Phase 12B confidence scaling.
-    // The top-semicircle archetype values are NOT confidence-scaled —
-    // archetypes describe the OUTFIT's aesthetic profile, not how
-    // confident we are about the user's profile.
+    // The top-semicircle archetype values describe the OUTFIT's aesthetic
+    // profile. The bottom-semicircle evaluation criteria are the raw
+    // evaluator scores — no confidence scaling applied.
     var CONTEXT_GATED_KEYS = {{
       "pairing_coherence_pct": true,
       "occasion_pct": true,
@@ -3196,9 +2883,8 @@ def get_web_ui_html(
       if (CONTEXT_GATED_KEYS[c.key] && v === 0) return false;
       return true;
     }});
-    var confFactor = profileConfPct / 100;
     var criteriaValues = criteria.map(function(c) {{
-      return Math.round((outfit[c.key] || 0) * confFactor);
+      return outfit[c.key] || 0;
     }});
     var hasCriteriaData = criteria.length > 0 && criteriaValues.some(function(v) {{ return v > 0; }});
 
@@ -3377,103 +3063,92 @@ def get_web_ui_html(
     // also frees a few pixels of vertical room inside the
     // .outfit-info column.
 
-    // ── Feedback: like in header, dislike opens a modal overlay ──
+    // ── Feedback wiring: Like + Hide in header ──
     var outfitRank = outfit.rank || 0;
     var itemIds = items.map(function(i) {{ return i.product_id || ""; }}).filter(Boolean);
+    var outfitTurnId = outfit._turn_id || "";
+    var outfitConvId = outfit._conv_id || convId;
 
-    // Build the dislike feedback modal (appended to document.body)
+    // Like — one-tap, heart fills
+    likeBtn.onclick = function(e) {{
+      e.stopPropagation();
+      likeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
+      likeBtn.style.color = "var(--accent)";
+      sendFeedback(outfitConvId, outfitRank, "like", "", itemIds, null, null, null, outfitTurnId);
+    }};
+
+    // Hide — opens feedback modal, then removes card on submit
     var fbOverlay = document.createElement("div");
     fbOverlay.className = "feedback-modal-overlay";
     var fbModal = document.createElement("div");
     fbModal.className = "feedback-modal";
     fbModal.innerHTML = '<h3>What would you change?</h3>';
     var reactionRow = document.createElement("div");
-    reactionRow.className = "reaction-row";
-    reactionRow.style.display = "flex";
-    var ta = document.createElement("textarea");
-    ta.placeholder = "Tell me what felt off.";
-    ["Too much", "Not me", "Weird pairing"].forEach(function(label) {{
+    reactionRow.className = "reaction-row open";
+    var fbTa = document.createElement("textarea");
+    fbTa.placeholder = "Tell us what felt off.";
+    fbTa.rows = 2;
+    ["Too safe", "Not me", "Wrong color", "Weird pairing", "Too much"].forEach(function(label) {{
       var chip = document.createElement("button"); chip.type = "button"; chip.className = "reaction-chip"; chip.textContent = label;
       chip.addEventListener("click", function() {{
         chip.classList.toggle("selected");
-        var selected = [];
-        reactionRow.querySelectorAll(".reaction-chip.selected").forEach(function(c) {{ selected.push(c.textContent); }});
-        ta.value = selected.join(", ");
+        var sel = [];
+        reactionRow.querySelectorAll(".reaction-chip.selected").forEach(function(c) {{ sel.push(c.textContent); }});
+        fbTa.value = sel.join(", ");
       }});
       reactionRow.appendChild(chip);
     }});
     fbModal.appendChild(reactionRow);
-    fbModal.appendChild(ta);
+    fbModal.appendChild(fbTa);
     var fbActions = document.createElement("div");
     fbActions.className = "dislike-actions";
-    var submitBtn = document.createElement("button"); submitBtn.textContent = "Submit";
-    var cancelBtn = document.createElement("button"); cancelBtn.className = "secondary"; cancelBtn.textContent = "Cancel";
-    fbActions.appendChild(submitBtn); fbActions.appendChild(cancelBtn);
+    var fbSubmit = document.createElement("button"); fbSubmit.textContent = "Submit";
+    var fbCancel = document.createElement("button"); fbCancel.className = "secondary"; fbCancel.textContent = "Cancel";
+    fbActions.appendChild(fbSubmit); fbActions.appendChild(fbCancel);
     fbModal.appendChild(fbActions);
-    var fbStatus = document.createElement("div");
-    fbStatus.className = "feedback-status";
-    fbModal.appendChild(fbStatus);
     fbOverlay.appendChild(fbModal);
     document.body.appendChild(fbOverlay);
+    fbOverlay.addEventListener("click", function(e) {{ if (e.target === fbOverlay) fbOverlay.classList.remove("open"); }});
 
-    // Close on backdrop click
-    fbOverlay.addEventListener("click", function(e) {{
-      if (e.target === fbOverlay) {{ fbOverlay.classList.remove("open"); }}
-    }});
-
-    // Wire buttons
-    var outfitTurnId = outfit._turn_id || "";
-    var outfitConvId = outfit._conv_id || convId;
-    likeBtn.onclick = function(e) {{
+    hideBtn.onclick = function(e) {{
       e.stopPropagation();
-      likeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
-      likeBtn.style.color = "var(--accent)";
-      sendFeedback(outfitConvId, outfitRank, "like", "", itemIds, fbStatus, fbWrap, fbOverlay, outfitTurnId);
-    }};
-    dislikeBtn.onclick = function(e) {{
-      e.stopPropagation();
-      console.log("[AURA] dislike clicked, opening modal");
       fbOverlay.classList.add("open");
+      fbTa.focus();
     }};
-    cancelBtn.addEventListener("click", function() {{
+    fbCancel.addEventListener("click", function() {{
       fbOverlay.classList.remove("open");
-      ta.value = "";
+      fbTa.value = "";
       reactionRow.querySelectorAll(".selected").forEach(function(c) {{ c.classList.remove("selected"); }});
     }});
-    submitBtn.addEventListener("click", function() {{
-      sendFeedback(outfitConvId, outfitRank, "dislike", ta.value.trim(), itemIds, fbStatus, fbWrap, fbOverlay, outfitTurnId);
-      setTimeout(function() {{
-        fbOverlay.classList.remove("open");
-        // Remove this outfit from the carousel and advance
-        var slot = card.parentNode;
-        if (slot && slot._outfits && slot._showIdx) {{
-          // Find and remove from the outfits array
-          for (var ri = 0; ri < slot._outfits.length; ri++) {{
-            if (slot._outfits[ri].rank === outfit.rank && slot._outfits[ri].title === outfit.title) {{
-              slot._outfits.splice(ri, 1);
-              break;
-            }}
-          }}
-          // Update the counter
-          var ctr = slot.parentNode ? slot.parentNode.querySelector(".carousel-counter") : null;
-          if (slot._outfits.length > 0) {{
-            // Show next, or last if we were at the end
-            var cur = ctr ? parseInt(ctr.textContent) - 1 : 0;
-            var nextIdx = cur < slot._outfits.length ? cur : slot._outfits.length - 1;
-            slot._showIdx(nextIdx, true);
-          }} else {{
-            // All outfits hidden — remove the entire section
-            var sectionEl = slot.parentNode;
-            while (sectionEl && !sectionEl.hasAttribute("data-intent-section")) sectionEl = sectionEl.parentNode;
-            if (sectionEl) sectionEl.remove();
+    fbSubmit.addEventListener("click", function() {{
+      var notes = fbTa.value.trim();
+      sendFeedback(outfitConvId, outfitRank, "dislike", notes, itemIds, null, null, null, outfitTurnId);
+      fbOverlay.classList.remove("open");
+      // Remove the outfit from the carousel
+      var slot = card.closest(".pdp-carousel");
+      if (slot && slot._outfits && slot._showIdx) {{
+        for (var ri = 0; ri < slot._outfits.length; ri++) {{
+          if (slot._outfits[ri].rank === outfit.rank && slot._outfits[ri].title === outfit.title) {{
+            slot._outfits.splice(ri, 1);
+            break;
           }}
         }}
-      }}, 600);
+        var ctr = slot.parentNode ? slot.parentNode.querySelector(".carousel-counter") : null;
+        if (slot._outfits.length > 0) {{
+          var cur = ctr ? parseInt(ctr.textContent) - 1 : 0;
+          var nextIdx = cur < slot._outfits.length ? cur : slot._outfits.length - 1;
+          slot._showIdx(nextIdx, true);
+        }} else {{
+          var sectionEl = slot.parentNode;
+          while (sectionEl && !sectionEl.hasAttribute("data-intent-section")) sectionEl = sectionEl.parentNode;
+          if (sectionEl) sectionEl.remove();
+        }}
+      }}
     }});
 
     // 3-column grid: header spans all, then thumbs | hero | info
     card.appendChild(header);
-    card.appendChild(thumbs);
+    if (!isOutfitCheckCard) card.appendChild(thumbs);
     card.appendChild(heroWrap);
     card.appendChild(info);
     return card;
@@ -3483,9 +3158,7 @@ def get_web_ui_html(
   // FEEDBACK
   // ══════════════════════════════════════════════
 
-  async function sendFeedback(convId, outfitRank, eventType, notes, itemIds, statusEl, fbWrap, dislikeForm, turnId) {{
-    statusEl.textContent = "Sending...";
-    statusEl.className = "feedback-status";
+  async function sendFeedback(convId, outfitRank, eventType, notes, itemIds, _a, _b, _c, turnId) {{
     try {{
       var payload = {{ outfit_rank: outfitRank, event_type: eventType, notes: notes, item_ids: itemIds }};
       if (turnId) payload.turn_id = turnId;
@@ -3494,78 +3167,15 @@ def get_web_ui_html(
         headers: {{ "Content-Type": "application/json" }},
         body: JSON.stringify(payload),
       }});
-      var data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Feedback failed");
-      statusEl.textContent = eventType === "like" ? "Thanks for your feedback!" : "Feedback submitted. Thank you!";
-      statusEl.className = "feedback-status success";
-      fbWrap.style.display = "none";
-      dislikeForm.classList.remove("open");
+      if (!res.ok) {{ var data = await res.json(); console.warn("[AURA] feedback failed:", data.detail); }}
     }} catch (e) {{
-      statusEl.textContent = "Error: " + (e.message || String(e));
-      statusEl.className = "feedback-status error";
+      console.warn("[AURA] feedback error:", e.message || e);
     }}
   }}
 
   // ══════════════════════════════════════════════
   // RENDER HELPERS
   // ══════════════════════════════════════════════
-
-  function renderOutfits(outfits, convId, responseMetadata) {{
-    if (!outfits || !outfits.length) return;
-    for (var i = 0; i < outfits.length; i++) {{
-      var card = buildOutfitCard(outfits[i], convId, responseMetadata || {{}});
-      feed.appendChild(card);
-    }}
-    feed.scrollTop = feed.scrollHeight;
-  }}
-
-  function renderQuickReplies(suggestions, structuredGroups) {{
-    if ((!suggestions || !suggestions.length) && (!structuredGroups || !structuredGroups.length)) return;
-    var wrap = document.createElement("div");
-    wrap.className = "followup-groups";
-
-    // Prefer structured groups emitted by the response_formatter (label + suggestions).
-    // Fall back to the legacy substring bucketing only when no structured payload exists.
-    var groupsToRender = [];
-    if (structuredGroups && structuredGroups.length) {{
-      structuredGroups.forEach(function(g) {{
-        var items = (g && g.suggestions) || [];
-        if (items.length) groupsToRender.push({{ label: g.label || "Suggestions", items: items }});
-      }});
-    }} else {{
-      var grouped = {{ "Improve It": [], "Show Alternatives": [], "Explain Why": [], "Shop The Gap": [], "Save For Later": [] }};
-      function bucketFor(text) {{
-        var n = String(text || "").toLowerCase();
-        if (n.indexOf("explain") !== -1 || n.indexOf("why") !== -1) return "Explain Why";
-        if (n.indexOf("save") !== -1 || n.indexOf("later") !== -1) return "Save For Later";
-        if (n.indexOf("catalog") !== -1 || n.indexOf("shop") !== -1 || n.indexOf("buy") !== -1) return "Shop The Gap";
-        if (n.indexOf("more") !== -1 || n.indexOf("different") !== -1 || n.indexOf("alternative") !== -1) return "Show Alternatives";
-        return "Improve It";
-      }}
-      for (var i = 0; i < suggestions.length; i++) grouped[bucketFor(suggestions[i])].push(suggestions[i]);
-      Object.entries(grouped).forEach(function(entry) {{
-        if (entry[1].length) groupsToRender.push({{ label: entry[0], items: entry[1] }});
-      }});
-    }}
-
-    groupsToRender.forEach(function(g) {{
-      var section = document.createElement("div"); section.className = "followup-group";
-      var title = document.createElement("strong");
-      title.textContent = String(g.label || "").toUpperCase();
-      var row = document.createElement("div"); row.className = "followup-row";
-      g.items.forEach(function(text) {{
-        var btn = document.createElement("button");
-        btn.className = "followup-chip";
-        btn.type = "button";
-        btn.textContent = text;
-        btn.addEventListener("click", function() {{ messageEl.value = text; wrap.remove(); send(); }});
-        row.appendChild(btn);
-      }});
-      section.appendChild(title); section.appendChild(row); wrap.appendChild(section);
-    }});
-    feed.appendChild(wrap);
-    feed.scrollTop = feed.scrollHeight;
-  }}
 
   // Return all stages that have a non-empty, human-facing message.
   // Deliberately filters out stages whose template resolved to an empty
@@ -3592,38 +3202,37 @@ def get_web_ui_html(
   // CONVERSATION & SENDING
   // ══════════════════════════════════════════════
 
+  var _convCreating = null; // in-flight conversation creation promise
   async function ensureConversation() {{
     if (conversationId) return conversationId;
-    var res = await fetch("/v1/conversations", {{
-      method: "POST",
-      headers: {{ "Content-Type": "application/json" }},
-      body: JSON.stringify({{ user_id: USER_ID }}),
-    }});
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Failed to create conversation");
-    conversationId = data.conversation_id;
-    loadConversationHistory();
-    return conversationId;
+    // If another send() is already creating a conversation, wait for it
+    if (_convCreating) return _convCreating;
+    _convCreating = (async function() {{
+      var res = await fetch("/v1/conversations", {{
+        method: "POST",
+        headers: {{ "Content-Type": "application/json" }},
+        body: JSON.stringify({{ user_id: USER_ID }}),
+      }});
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to create conversation");
+      conversationId = data.conversation_id;
+      _convCreating = null;
+      return conversationId;
+    }})();
+    return _convCreating;
   }}
 
   // Fade out and remove a thinking bubble. Safe to call with null.
-  function fadeOutThinkingBubble(bubble) {{
-    if (!bubble) return;
-    bubble.classList.add("fading");
-    // Match the 360ms opacity transition in the .bubble.agent CSS rule.
-    setTimeout(function() {{ if (bubble.parentNode) bubble.parentNode.removeChild(bubble); }}, 400);
-  }}
-
   async function pollJob(convId, jobId) {{
-    // Single in-place "thinking" bubble per turn. Advances through stages
-    // ONE AT A TIME so the user sees every step — not just the long-running
-    // outfit_architect call, which previously dominated the screen because
-    // it's the only stage still running when polls fire. Each visible stage
-    // gets at least one poll-tick of dwell time (400ms).
-    var thinkingBubble = null;
     var lastStageText = "";
-    var shownIdx = -1;      // index in visibleStages() we're currently showing
+    var shownIdx = -1;
     var POLL_INTERVAL = 400;
+    // Write stage text to the query preview card if present, else the stage bar
+    function setStage(msg) {{
+      var previewStage = document.getElementById("queryPreviewStage");
+      if (previewStage) previewStage.textContent = msg;
+      stageBar.textContent = msg;
+    }}
     try {{
       while (true) {{
         var res = await fetch("/v1/conversations/" + convId + "/turns/" + jobId + "/status");
@@ -3631,48 +3240,24 @@ def get_web_ui_html(
         if (!res.ok) throw new Error(data.detail || "Polling failed");
         var stages = data.stages || [];
         var visible = visibleStages(stages);
-        // Advance one step per poll so earlier stages always get a tick.
-        // If new stages have arrived, we catch up by one; if we've caught
-        // up to the end, we stay on the latest.
         if (visible.length > 0) {{
           if (shownIdx < visible.length - 1) shownIdx += 1;
           var target = visible[shownIdx];
           var targetMsg = target ? target.message : "";
-          stageBar.textContent = targetMsg;
           if (targetMsg && targetMsg !== lastStageText) {{
-            if (!thinkingBubble) {{
-              thinkingBubble = addAgentBubble(targetMsg);
-            }} else if (thinkingBubble.lastChild) {{
-              // The bubble contains [dot, textNode]. Update the text node only.
-              thinkingBubble.lastChild.textContent = targetMsg;
-              feed.scrollTop = feed.scrollHeight;
-            }} else {{
-              thinkingBubble.appendChild(document.createTextNode(targetMsg));
-              feed.scrollTop = feed.scrollHeight;
-            }}
+            setStage(targetMsg);
             lastStageText = targetMsg;
           }}
         }}
         if (data.status === "completed") {{
-          // Flush any remaining stages the user hasn't seen yet before
-          // fading the bubble — one quick burst so the final lines flash.
-          if (visible.length > 0 && shownIdx < visible.length - 1) {{
-            var finalMsg = visible[visible.length - 1].message;
-            if (finalMsg && finalMsg !== lastStageText && thinkingBubble && thinkingBubble.lastChild) {{
-              thinkingBubble.lastChild.textContent = finalMsg;
-              lastStageText = finalMsg;
-            }}
-          }}
-          fadeOutThinkingBubble(thinkingBubble);
-          stageBar.textContent = "";
+          setStage("");
           return data.result;
         }}
         if (data.status === "failed") throw new Error(data.error || "Turn failed");
         await new Promise(function(resolve) {{ setTimeout(resolve, POLL_INTERVAL); }});
       }}
     }} catch (exc) {{
-      fadeOutThinkingBubble(thinkingBubble);
-      stageBar.textContent = "";
+      setStage("");
       throw exc;
     }}
   }}
@@ -3714,17 +3299,33 @@ def get_web_ui_html(
 
     var carouselSlot = document.createElement("div");
     carouselSlot.className = "pdp-carousel";
+    carouselSlot.setAttribute("tabindex", "0");
+    carouselSlot.setAttribute("role", "region");
+    carouselSlot.setAttribute("aria-label", "Outfit carousel");
     container.appendChild(carouselSlot);
 
     var _myOverlay = null;
-    // Build and show only one card at a time — avoids canvas/display:none issues
-    function showIdx(idx, isNav) {{
-      // Only clean up THIS carousel's overlay on navigation, not all overlays on the page
+    var _reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function showIdx(idx, isNav, direction) {{
       if (isNav && _myOverlay && _myOverlay.parentNode) {{ _myOverlay.remove(); _myOverlay = null; }}
-      carouselSlot.innerHTML = "";
-      var card = buildOutfitCard(outfits[idx], convId, responseMetadata || {{}});
-      carouselSlot.appendChild(card);
-      // Track the modal overlay so we can clean up only ours on nav
+      // Slide transition via CSS class
+      if (isNav && !_reducedMotion) {{
+        var slideClass = direction === "left" ? "slide-enter-left" : "slide-enter-right";
+        carouselSlot.innerHTML = "";
+        var slideWrap = document.createElement("div");
+        slideWrap.className = "carousel-slide " + slideClass;
+        var card = buildOutfitCard(outfits[idx], convId, responseMetadata || {{}});
+        slideWrap.appendChild(card);
+        carouselSlot.appendChild(slideWrap);
+        // Trigger reflow then remove the enter class to animate in
+        void slideWrap.offsetWidth;
+        slideWrap.classList.remove(slideClass);
+      }} else {{
+        carouselSlot.innerHTML = "";
+        var card = buildOutfitCard(outfits[idx], convId, responseMetadata || {{}});
+        carouselSlot.appendChild(card);
+      }}
       var overlay = document.body.querySelector(".feedback-modal-overlay:last-child");
       if (overlay) _myOverlay = overlay;
       currentIdx = idx;
@@ -3733,14 +3334,38 @@ def get_web_ui_html(
       if (typeof onSlideChange === "function") onSlideChange(idx);
     }}
 
-    // Attach to the slot element so buildOutfitCard can access them
+    function goPrev() {{ if (currentIdx > 0) showIdx(currentIdx - 1, true, "left"); }}
+    function goNext() {{ if (currentIdx < outfits.length - 1) showIdx(currentIdx + 1, true, "right"); }}
+
     carouselSlot._outfits = outfits;
     carouselSlot._showIdx = showIdx;
     showIdx(0, false);
 
     if (outfits.length > 1) {{
-      prevBtn.addEventListener("click", function() {{ if (currentIdx > 0) showIdx(currentIdx - 1, true); }});
-      nextBtn.addEventListener("click", function() {{ if (currentIdx < outfits.length - 1) showIdx(currentIdx + 1, true); }});
+      prevBtn.addEventListener("click", goPrev);
+      nextBtn.addEventListener("click", goNext);
+
+      // Keyboard navigation (arrow keys when carousel is focused)
+      carouselSlot.addEventListener("keydown", function(e) {{
+        if (e.key === "ArrowLeft") {{ e.preventDefault(); goPrev(); }}
+        if (e.key === "ArrowRight") {{ e.preventDefault(); goNext(); }}
+      }});
+
+      // Touch/swipe support
+      var _touchStartX = 0;
+      var _touchStartY = 0;
+      carouselSlot.addEventListener("touchstart", function(e) {{
+        _touchStartX = e.touches[0].clientX;
+        _touchStartY = e.touches[0].clientY;
+      }}, {{ passive: true }});
+      carouselSlot.addEventListener("touchend", function(e) {{
+        var dx = e.changedTouches[0].clientX - _touchStartX;
+        var dy = e.changedTouches[0].clientY - _touchStartY;
+        // Only trigger on horizontal swipe (> 50px) and more horizontal than vertical
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {{
+          if (dx < 0) goNext(); else goPrev();
+        }}
+      }}, {{ passive: true }});
     }}
   }}
 
@@ -3780,7 +3405,7 @@ def get_web_ui_html(
         btn.className = "followup-chip";
         btn.type = "button";
         btn.textContent = text;
-        btn.addEventListener("click", function() {{ messageEl.value = text; container.innerHTML = ""; send(); }});
+        btn.addEventListener("click", function() {{ messageEl.value = text; container.innerHTML = ""; _isFollowUp = true; send(); }});
         row.appendChild(btn);
       }});
       section.appendChild(title); section.appendChild(row); wrap.appendChild(section);
@@ -3788,50 +3413,17 @@ def get_web_ui_html(
     container.appendChild(wrap);
   }}
 
-  // ══════════════════════════════════════════════
-  // RECENT INTENT GROUPS (Home page bottom)
-  // ══════════════════════════════════════════════
-
-  async function loadRecentIntents() {{
-    if (!USER_ID || !recentIntentsArea) return;
-    try {{
-      var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/intent-history");
-      var data = await res.json();
-      if (!res.ok || !data.groups || !data.groups.length) {{
-        recentIntentsArea.innerHTML = "";
-        return;
-      }}
-      var html = '<div class="recent-intents-label">Recent</div><div class="recent-grid">';
-      data.groups.forEach(function(g) {{
-        var img = g.first_image
-          ? '<img src="' + escapeHtml(g.first_image) + '" alt="" loading="lazy" />'
-          : "";
-        var intentLabel = (g.intent || "styled look").replace(/_/g, " ").toUpperCase();
-        var summary = g.turns && g.turns.length ? g.turns[0].user_message : "";
-        html += '<div class="recent-card" data-conv="' + escapeHtml(g.conversation_id) + '">' +
-          '<div class="recent-card-img">' + img + '</div>' +
-          '<div class="recent-card-body">' +
-            '<div class="rc-context">' + escapeHtml(g.context_summary || intentLabel) + '</div>' +
-            '<div class="rc-summary">' + escapeHtml(summary) + '</div>' +
-            '<div class="rc-meta">' + escapeHtml(g.turn_count + (g.turn_count === 1 ? " look" : " looks") + " · " + relativeTime(g.updated_at)) + '</div>' +
-          '</div></div>';
-      }});
-      html += '</div>';
-      recentIntentsArea.innerHTML = html;
-      // Click a recent card → navigate to Outfits tab
-      recentIntentsArea.querySelectorAll(".recent-card").forEach(function(card) {{
-        card.addEventListener("click", function() {{
-          window.location.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=outfits";
-        }});
-      }});
-    }} catch (_) {{
-      recentIntentsArea.innerHTML = "";
-    }}
-  }}
 
   // ══════════════════════════════════════════════
   // SEND — Discovery surface flow (Phase 15)
   // ══════════════════════════════════════════════
+
+  // Track iteration count for stacked carousels within one intent group
+  var _iterationCount = 0;
+  var _isFollowUp = false;
+  // Monotonic send counter — used to discard stale poll results when the
+  // user fires a second request before the first one finishes.
+  var _sendGeneration = 0;
 
   async function send() {{
     err.textContent = "";
@@ -3842,26 +3434,76 @@ def get_web_ui_html(
     if (!message && pendingWardrobeItemId) {{ message = "What goes with this wardrobe item?"; }}
     if (!message && pendingWishlistProductId) {{ message = "Should I buy this?"; }}
 
+    // Bump generation — any in-flight poll from a previous send() is now stale
+    var myGeneration = ++_sendGeneration;
+
     sendBtn.disabled = true;
     messageEl.disabled = true;
-    // Collapse the discovery top to make room for results
-    if (discoveryTop) discoveryTop.classList.add("has-result");
-    if (discoveryResultArea) discoveryResultArea.innerHTML = "";
+    if (discoveryWelcome) discoveryWelcome.style.display = "none";
+
+    // Image/wardrobe/wishlist attachments always start a new intent group
+    if (pendingImageData || pendingWardrobeItemId || pendingWishlistProductId) {{
+      _isFollowUp = false;
+    }}
+
+    // New request: clear the result area and start fresh.
+    // Follow-up: keep existing carousels, append below (iteration stacking).
+    if (!_isFollowUp) {{
+      if (discoveryResultArea) discoveryResultArea.innerHTML = "";
+      _iterationCount = 0;
+      conversationId = "";
+    }}
+    _iterationCount += 1;
     if (discoveryFollowups) discoveryFollowups.innerHTML = "";
+
+    // Capture ALL pending attachment state synchronously BEFORE any async work.
+    // This prevents a concurrent send()'s clearImagePreview() from wiping
+    // the variables during an await.
+    var attachedImage = pendingImageData;
+    var attachedWardrobeItemId = pendingWardrobeItemId;
+    var attachedWishlistProductId = pendingWishlistProductId;
+    var previewImgUrl = attachedImage || pendingWardrobeImageUrl || pendingWishlistImageUrl || "";
+    console.log("[AURA] Send: image =", !!attachedImage, "wardrobe =", attachedWardrobeItemId, "wishlist =", attachedWishlistProductId, "iteration =", _iterationCount);
+    messageEl.value = "";
+    clearImagePreview();
 
     try {{
       var convId = await ensureConversation();
-      var attachedImage = pendingImageData;
-      var attachedWardrobeItemId = pendingWardrobeItemId;
-      var attachedWishlistProductId = pendingWishlistProductId;
-      console.log("[AURA] Send: image =", !!attachedImage, "wardrobe =", attachedWardrobeItemId, "wishlist =", attachedWishlistProductId);
-      messageEl.value = "";
-      clearImagePreview();
+
+      // Stale check — if a newer send() fired during ensureConversation(), bail
+      if (myGeneration !== _sendGeneration) return;
+
+      // Show query preview card while processing
+      if (discoveryResultArea) {{
+        var preview = document.createElement("div");
+        preview.className = "query-preview";
+        preview.id = "queryPreview";
+        var pText = document.createElement("p");
+        pText.className = "query-preview-text";
+        pText.textContent = message;
+        preview.appendChild(pText);
+        if (previewImgUrl) {{
+          var pImg = document.createElement("img");
+          pImg.className = "query-preview-img";
+          pImg.src = previewImgUrl;
+          pImg.alt = "Attached";
+          pImg.onerror = function() {{ this.style.display = "none"; }};
+          preview.appendChild(pImg);
+        }}
+        var pStage = document.createElement("div");
+        pStage.className = "query-preview-stage";
+        pStage.id = "queryPreviewStage";
+        preview.appendChild(pStage);
+        discoveryResultArea.appendChild(preview);
+        if (homeScroll) homeScroll.scrollTop = homeScroll.scrollHeight;
+      }}
+
       var payload = {{ user_id: USER_ID, message: message }};
       if (attachedImage) payload.image_data = attachedImage;
       if (attachedWardrobeItemId && !attachedImage) payload.wardrobe_item_id = attachedWardrobeItemId;
       if (attachedWishlistProductId && !attachedImage && !attachedWardrobeItemId) payload.wishlist_product_id = attachedWishlistProductId;
 
+      if (myGeneration !== _sendGeneration) return;
       var res = await fetch("/v1/conversations/" + convId + "/turns/start", {{
         method: "POST",
         headers: {{ "Content-Type": "application/json" }},
@@ -3871,12 +3513,35 @@ def get_web_ui_html(
       if (!res.ok) throw new Error(job.detail || "Failed to start turn");
       var result = await pollJob(convId, job.job_id);
 
-      // Render the result as a PDP carousel (not chat bubbles)
+      // If a newer send() was fired while we were polling, discard this
+      // stale result — the newer send already cleared the result area.
+      if (myGeneration !== _sendGeneration) return;
+
+      // Remove the query preview card — replace with actual results
+      var oldPreview = document.getElementById("queryPreview");
+      if (oldPreview) oldPreview.remove();
+
       var outfits = result.outfits || [];
       var __md = result.metadata || {{}};
       var __groups = (__md && __md.follow_up_groups) || [];
 
+      // Stylist message — only render when there are NO outfits (clarification, direct answer).
+      // When outfits exist, the reasoning is shown inside each PDP card to avoid duplication.
+      if (!outfits.length && result.assistant_message) {{
+        var textBlock = document.createElement("div");
+        textBlock.className = "stylist-message";
+        textBlock.appendChild(renderAssistantMarkup(result.assistant_message));
+        discoveryResultArea.appendChild(textBlock);
+      }}
+
       if (outfits.length && discoveryResultArea) {{
+        // Iteration label for stacked carousels (iterations 2+)
+        if (_iterationCount > 1) {{
+          var iterLabel = document.createElement("div");
+          iterLabel.className = "iteration-label";
+          iterLabel.textContent = "Iteration " + _iterationCount + " \u00B7 " + message;
+          discoveryResultArea.appendChild(iterLabel);
+        }}
         // Context summary
         var occasion = __md.occasion || "";
         var source = __md.answer_source || "";
@@ -3886,29 +3551,29 @@ def get_web_ui_html(
         contextParts.push(outfits.length + (outfits.length === 1 ? " look" : " looks"));
         var ctxEl = document.createElement("div");
         ctxEl.className = "result-context";
-        ctxEl.textContent = contextParts.join(" · ");
+        ctxEl.textContent = contextParts.join(" \u00B7 ");
         discoveryResultArea.appendChild(ctxEl);
 
-        renderPdpCarousel(outfits, convId, __md, discoveryResultArea);
-      }} else if (result.assistant_message) {{
-        // No outfits — show the text response (clarification, direct answer)
-        var textBlock = document.createElement("div");
-        textBlock.style.cssText = "max-width:680px;margin:0 auto;padding:16px 4px;font-size:15px;line-height:1.65;color:var(--ink);";
-        textBlock.appendChild(renderAssistantMarkup(result.assistant_message));
-        discoveryResultArea.appendChild(textBlock);
+        var carouselContainer = document.createElement("div");
+        carouselContainer.className = "discovery-result";
+        carouselContainer.style.padding = "0 0 16px";
+        discoveryResultArea.appendChild(carouselContainer);
+        renderPdpCarousel(outfits, convId, __md, carouselContainer);
       }}
 
-      // Follow-up chips
+      // Follow-up chips — clicking them sets _isFollowUp = true
       if (discoveryFollowups) {{
         renderDiscoveryFollowups(result.follow_up_suggestions || [], __groups, discoveryFollowups);
+
+      // Scroll results into view
+      if (homeScroll) homeScroll.scrollTop = homeScroll.scrollHeight;
       }}
 
-      // Refresh recent intents
-      loadRecentIntents();
 
     }} catch (e) {{
       err.textContent = e.message || String(e);
     }} finally {{
+      _isFollowUp = false;
       sendBtn.disabled = false;
       messageEl.disabled = false;
       messageEl.focus();
@@ -3955,208 +3620,10 @@ def get_web_ui_html(
     }});
   }}
 
-  // ══════════════════════════════════════════════
-  // CHAT HISTORY SIDEBAR
-  // ══════════════════════════════════════════════
-
-  async function loadConversationHistory() {{
-    if (!USER_ID) return;
-    try {{
-      var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/conversations");
-      var data = await res.json();
-      if (!res.ok) return;
-      var convs = data.conversations || [];
-      if (!convs.length) {{
-        historyList.innerHTML = '<div class="history-empty">Start a conversation to see your history here.</div>';
-        return;
-      }}
-      historyList.innerHTML = "";
-      convs.forEach(function(c) {{
-        var btn = document.createElement("button");
-        btn.className = "history-item" + (c.conversation_id === conversationId ? " active" : "");
-        var label = c.title || c.preview || "Conversation";
-        btn.innerHTML = '<span class="preview">' + escapeHtml(label) + '</span>' +
-          '<span class="ts">' + escapeHtml(relativeTime(c.updated_at || c.created_at)) + '</span>' +
-          '<span class="history-actions">' +
-            '<span class="history-action-btn" data-hist-action="rename" data-conv-id="' + escapeHtml(c.conversation_id) + '" data-conv-label="' + escapeHtml(label) + '" title="Rename">&#9998;</span>' +
-            '<span class="history-action-btn" data-hist-action="delete" data-conv-id="' + escapeHtml(c.conversation_id) + '" title="Delete">&#128465;</span>' +
-          '</span>';
-        btn.addEventListener("click", function(e) {{
-          if (e.target.closest("[data-hist-action]")) return;
-          loadConversation(c.conversation_id);
-        }});
-        historyList.appendChild(btn);
-      }});
-    }} catch (_) {{}}
-  }}
-
-  // Chat history rename/delete actions
-  if (historyList) {{
-    historyList.addEventListener("click", async function(e) {{
-      var actionEl = e.target.closest("[data-hist-action]");
-      if (!actionEl) return;
-      e.stopPropagation();
-      var action = actionEl.getAttribute("data-hist-action");
-      var convId = actionEl.getAttribute("data-conv-id");
-
-      if (action === "delete") {{
-        if (!confirm("Delete this conversation?")) return;
-        // Immediately remove from sidebar for instant feedback
-        var histItem = actionEl.closest(".history-item");
-        if (histItem) histItem.remove();
-        if (conversationId === convId) {{
-          conversationId = null;
-          feed.innerHTML = "";
-          stageBar.textContent = "";
-        }}
-        try {{
-          var res = await fetch("/v1/conversations/" + encodeURIComponent(convId), {{ method: "DELETE" }});
-          if (!res.ok) {{ var err = await res.json(); throw new Error(err.detail || "Delete failed"); }}
-          loadConversationHistory();
-        }} catch(ex) {{
-          // Restore sidebar if delete failed
-          loadConversationHistory();
-          alert(ex.message || "Failed to delete conversation.");
-        }}
-      }}
-
-      if (action === "rename") {{
-        var histItem = actionEl.closest(".history-item");
-        if (!histItem) return;
-        var previewSpan = histItem.querySelector(".preview");
-        if (!previewSpan) return;
-        var currentLabel = actionEl.getAttribute("data-conv-label") || previewSpan.textContent || "";
-        var input = document.createElement("input");
-        input.type = "text";
-        input.className = "history-rename-input";
-        input.value = currentLabel;
-        previewSpan.textContent = "";
-        previewSpan.appendChild(input);
-        input.focus();
-        input.select();
-
-        async function commitRename() {{
-          var newTitle = input.value.trim();
-          if (!newTitle || newTitle === currentLabel) {{
-            previewSpan.textContent = currentLabel;
-            return;
-          }}
-          try {{
-            var res = await fetch("/v1/conversations/" + encodeURIComponent(convId), {{
-              method: "PATCH",
-              headers: {{ "Content-Type": "application/json" }},
-              body: JSON.stringify({{ title: newTitle }})
-            }});
-            if (!res.ok) {{ var err = await res.json(); throw new Error(err.detail || "Rename failed"); }}
-            loadConversationHistory();
-          }} catch(ex) {{
-            previewSpan.textContent = currentLabel;
-            alert(ex.message || "Failed to rename.");
-          }}
-        }}
-
-        var committed = false;
-        input.addEventListener("keydown", function(ke) {{
-          if (ke.key === "Enter") {{ ke.preventDefault(); if (!committed) {{ committed = true; commitRename(); }} }}
-          if (ke.key === "Escape") {{ previewSpan.textContent = currentLabel; }}
-        }});
-        input.addEventListener("blur", function() {{
-          if (!committed) {{ committed = true; commitRename(); }}
-        }});
-      }}
-    }});
-  }}
-
-  async function loadConversation(convId) {{
-    conversationId = convId;
-    feed.innerHTML = "";
-    stageBar.textContent = "";
-    // Highlight in sidebar
-    historyList.querySelectorAll(".history-item").forEach(function(el) {{ el.classList.remove("active"); }});
-    var items = historyList.querySelectorAll(".history-item");
-    // Re-highlight active
-    loadConversationHistory();
-    try {{
-      var res = await fetch("/v1/conversations/" + convId + "/turns");
-      var data = await res.json();
-      if (!res.ok) {{
-        console.warn("[AURA] loadConversation: fetch failed", res.status, data);
-        return;
-      }}
-      var turns = data.turns || [];
-      console.log("[AURA] loadConversation", {{ convId: convId, turn_count: turns.length }});
-      for (var i = 0; i < turns.length; i++) {{
-        var t = turns[i];
-        if (t.user_message) addBubble(t.user_message, "user");
-        if (t.assistant_message) {{
-          addBubble(t.assistant_message, "assistant");
-          // Render outfits from resolved context
-          var ctx = t.resolved_context || {{}};
-          var outfits = ctx.outfits || [];
-          console.log("[AURA] turn " + i, {{
-            has_resolved_context: !!t.resolved_context,
-            resolved_context_keys: t.resolved_context ? Object.keys(t.resolved_context) : [],
-            outfit_count: outfits.length,
-            first_outfit_title: outfits[0] && outfits[0].title,
-          }});
-          if (outfits.length) {{
-            try {{
-              renderOutfits(outfits, convId, ctx);
-            }} catch (exc) {{
-              console.error("[AURA] renderOutfits threw for turn " + i, exc);
-            }}
-          }}
-        }}
-      }}
-    }} catch (exc) {{
-      console.error("[AURA] loadConversation threw", exc);
-    }}
-  }}
-
-  // New chat — creates a fresh conversation
-  if (newChatBtn) {{
-    newChatBtn.addEventListener("click", async function() {{
-      if (ACTIVE_VIEW !== "chat") {{
-        window.location.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=chat&new=1";
-        return;
-      }}
-      // Create a new conversation immediately
-      try {{
-        var res = await fetch("/v1/conversations", {{
-          method: "POST",
-          headers: {{ "Content-Type": "application/json" }},
-          body: JSON.stringify({{ user_id: USER_ID }}),
-        }});
-        var data = await res.json();
-        if (res.ok && data.conversation_id) {{
-          conversationId = data.conversation_id;
-        }} else {{
-          conversationId = "";
-        }}
-      }} catch (_) {{
-        conversationId = "";
-      }}
-      feed.innerHTML = "";
-      stageBar.textContent = "";
-      if (feedWelcome) {{
-        feedWelcome.style.display = "";
-        feed.appendChild(feedWelcome);
-      }}
-      loadConversationHistory();
-      if (messageEl) messageEl.focus();
-    }});
-  }}
-
+  // Brand link → Home
   if (brandLink) {{
     brandLink.addEventListener("click", function() {{
-      window.location.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=chat";
-    }});
-  }}
-
-  // Hamburger (mobile)
-  if (hamburgerBtn) {{
-    hamburgerBtn.addEventListener("click", function() {{
-      if (historyRail) historyRail.classList.toggle("mobile-open");
+      window.location.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=home";
     }});
   }}
 
@@ -4507,108 +3974,6 @@ def get_web_ui_html(
       }}
     }});
   }}())
-
-  // ══════════════════════════════════════════════
-  // RESULTS VIEW
-  // ══════════════════════════════════════════════
-
-  async function loadResults() {{
-    if (!USER_ID) return;
-    resultsGrid.innerHTML = '<div class="results-empty">Loading.</div>';
-    try {{
-      var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/results");
-      var data = await res.json();
-      if (!res.ok) throw new Error("Failed");
-      allResults = data.results || [];
-      renderResults();
-    }} catch (_) {{
-      resultsGrid.innerHTML = '<div class="results-empty">Couldn\\'t load your lookbook.</div>';
-    }}
-  }}
-
-  var INTENT_LABEL = {{
-    "occasion_recommendation": "Outfit",
-    "outfit_check": "Check",
-    "pairing_request": "Pairing",
-    "capsule_or_trip_planning": "Trip",
-    "shopping_decision": "Verdict",
-    "style_advice": "Advice"
-  }};
-
-  function sourceForResult(r) {{
-    var s = (r && r.source) || "";
-    if (s.indexOf("wardrobe") !== -1 && s.indexOf("catalog") !== -1) return "hybrid";
-    if (s.indexOf("wardrobe") !== -1) return "wardrobe";
-    if (s.indexOf("catalog") !== -1) return "catalog";
-    return "";
-  }}
-
-  function renderResults() {{
-    var filtered = allResults.filter(function(r) {{
-      if (activeResultTab !== "all" && r.intent !== activeResultTab) return false;
-      if (activeResultSource !== "all" && r.source && r.source.indexOf(activeResultSource) === -1) return false;
-      return true;
-    }});
-    if (!filtered.length) {{
-      resultsGrid.innerHTML = '<div class="results-empty">Nothing saved yet. Let\\'s find something.</div>';
-      return;
-    }}
-    resultsGrid.innerHTML = filtered.map(function(r) {{
-      var thumbHtml = r.first_outfit_image
-        ? '<img src="' + escapeHtml(r.first_outfit_image) + '" alt="" loading="lazy" />'
-        : '<div class="thumb-placeholder">No preview</div>';
-      var sourceKey = sourceForResult(r);
-      var sourceLabel = sourceBadgeLabel(sourceKey);
-      var intentKey = r.intent || "";
-      var intentLabel = (INTENT_LABEL[intentKey] || intentKey.replace(/_/g, " ")).toUpperCase();
-      return '<div class="result-card" data-conv="' + escapeHtml(r.conversation_id) + '">' +
-        '<div class="thumb">' + thumbHtml + '</div>' +
-        '<div class="body">' +
-          (intentKey ? '<span class="source-mini-pill catalog">' + escapeHtml(intentLabel) + '</span>' : '') +
-          (sourceKey ? '<span class="source-mini-pill ' + sourceKey + '">' + escapeHtml(sourceLabel) + '</span>' : '') +
-          '<div class="msg">' + escapeHtml(r.user_message || "A styled look") + '</div>' +
-          '<div class="meta-row">' +
-            '<span class="ts">' + escapeHtml(relativeTime(r.created_at)) + '</span>' +
-          '</div>' +
-        '</div></div>';
-    }}).join("");
-  }}
-
-  // Result tabs
-  if (resultsTabs) {{
-    resultsTabs.addEventListener("click", function(e) {{
-      var btn = e.target.closest("button");
-      if (!btn) return;
-      activeResultTab = btn.getAttribute("data-tab") || "all";
-      resultsTabs.querySelectorAll("button").forEach(function(b) {{ b.classList.remove("active"); }});
-      btn.classList.add("active");
-      renderResults();
-    }});
-  }}
-
-  // Result source filters
-  if (resultsFilters) {{
-    resultsFilters.addEventListener("click", function(e) {{
-      var chip = e.target.closest(".filter-chip");
-      if (!chip) return;
-      activeResultSource = chip.getAttribute("data-source") || "all";
-      resultsFilters.querySelectorAll(".filter-chip").forEach(function(c) {{ c.classList.remove("active"); }});
-      chip.classList.add("active");
-      renderResults();
-    }});
-  }}
-
-  // Click result card -> open conversation
-  if (resultsGrid) {{
-    resultsGrid.addEventListener("click", function(e) {{
-      var card = e.target.closest(".result-card");
-      if (!card) return;
-      var convId = card.getAttribute("data-conv");
-      if (convId) {{
-        window.location.href = "/?user=" + encodeURIComponent(USER_ID) + "&view=chat&conversation_id=" + encodeURIComponent(convId);
-      }}
-    }});
-  }}
 
   // ══════════════════════════════════════════════
   // PROFILE VIEW (unified view + inline edit)
@@ -5018,31 +4383,8 @@ def get_web_ui_html(
   // INIT
   // ══════════════════════════════════════════════
 
-  // Fetch user analysis confidence (used to scale evaluation radar charts)
-  if (USER_ID) {{
-    fetch("/v1/onboarding/analysis/" + encodeURIComponent(USER_ID))
-      .then(function(r) {{ return r.ok ? r.json() : null; }})
-      .then(function(data) {{
-        if (!data) return;
-        var grouped = {{}};
-        ["body_type_analysis", "color_analysis_headshot", "other_details_analysis"].forEach(function(agent) {{
-          var raw = data[agent] || data["profile"] && data["profile"][agent] || {{}};
-          if (typeof raw === "object") grouped[agent] = raw;
-        }});
-        // Flatten attributes if they come as a flat dict
-        var attrs = data.attributes || {{}};
-        if (Object.keys(grouped).length === 0 && Object.keys(attrs).length > 0) {{
-          grouped["_flat"] = attrs;
-        }}
-        var derived = data.derived_interpretations || {{}};
-        userAnalysisConfidencePct = computeAnalysisConfidence(grouped, derived);
-      }})
-      .catch(function() {{}});
-  }}
-
-  // Discovery surface — load recent intents on Home/Chat view
-  if (ACTIVE_VIEW === "chat" || ACTIVE_VIEW === "home") {{
-    loadRecentIntents();
+  // Discovery surface — handle seed prompts from deep links
+  if (ACTIVE_VIEW === "home") {{
     var urlParams = new URLSearchParams(window.location.search);
     var seedPrompt = urlParams.get("prompt") || "";
     if (seedPrompt) {{
@@ -5069,37 +4411,46 @@ def get_web_ui_html(
         data.groups.forEach(function(g) {{
           var section = document.createElement("div");
           section.setAttribute("data-intent-section", "1");
-          section.style.cssText = "margin-bottom:56px;";
-          // Context header
-          var header = document.createElement("div");
-          header.style.cssText = "margin-bottom:20px;";
-          var sectionTitle = document.createElement("h3");
-          sectionTitle.style.cssText = "font-family:'Fraunces','Cormorant Garamond',Georgia,serif;font-size:28px;font-weight:400;font-style:italic;color:var(--ink);margin:0 0 4px;";
-          var occasion = (g.occasion || g.intent || "styled look").replace(/_/g, " ");
-          sectionTitle.textContent = occasion.charAt(0).toUpperCase() + occasion.slice(1);
-          var sectionMeta = document.createElement("div");
-          sectionMeta.style.cssText = "font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.14em;color:var(--ink-4);";
-          sectionMeta.textContent = relativeTime(g.updated_at).toUpperCase();
-          header.appendChild(sectionTitle);
-          header.appendChild(sectionMeta);
-          section.appendChild(header);
+          section.className = "intent-section";
+
           // Flatten all turns' outfits into one carousel with per-card context
+          // and extract response metadata from the first turn that has it
           var allOutfits = [];
-          var outfitContexts = [];
+          var groupMetadata = {{}};
           (g.turns || []).forEach(function(turn) {{
             (turn.outfits || []).forEach(function(outfit) {{
               outfit._turn_context = turn.user_message || "";
               outfit._turn_id = turn.turn_id || "";
               outfit._conv_id = turn.conversation_id || "";
               allOutfits.push(outfit);
-              outfitContexts.push(turn.user_message || "");
             }});
+            // Carry forward the first turn's metadata for the group
+            if (!groupMetadata.answer_source && turn.outfits && turn.outfits.length) {{
+              var firstOutfit = turn.outfits[0] || {{}};
+              groupMetadata.answer_source = g.source || "";
+              groupMetadata.occasion = g.occasion || "";
+              groupMetadata.primary_intent = g.intent || "";
+            }}
           }});
           if (!allOutfits.length) return;
+
+          // Context summary — same format as Home page
+          var contextParts = [];
+          var occasion = (g.occasion || g.intent || "styled look").replace(/_/g, " ");
+          if (occasion) contextParts.push(occasion);
+          var source = (g.source || "").replace(/_/g, " ");
+          if (source && source !== "auto") contextParts.push(source);
+          contextParts.push(allOutfits.length + (allOutfits.length === 1 ? " look" : " looks"));
+          contextParts.push(relativeTime(g.updated_at));
+          var ctxEl = document.createElement("div");
+          ctxEl.className = "result-context";
+          ctxEl.textContent = contextParts.join(" \u00B7 ");
+          section.appendChild(ctxEl);
+
           var carouselWrap = document.createElement("div");
           carouselWrap.className = "discovery-result";
           carouselWrap.style.padding = "0 0 16px";
-          renderPdpCarousel(allOutfits, g.conversation_id, {{}}, carouselWrap);
+          renderPdpCarousel(allOutfits, g.conversation_id, groupMetadata, carouselWrap);
           section.appendChild(carouselWrap);
           area.appendChild(section);
         }});
@@ -5109,13 +4460,13 @@ def get_web_ui_html(
     }})();
   }}
 
-  // Checks tab
+  // Checks tab — same rendering pattern as Outfits: context line + PDP carousel when outfits exist, card for text-only checks
   if (ACTIVE_VIEW === "checks") {{
     (async function() {{
       var area = document.getElementById("checksContent");
       if (!area) return;
       try {{
-        var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/intent-history?types=outfit_check");
+        var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/intent-history?types=outfit_check,garment_evaluation");
         var data = await res.json();
         if (!res.ok || !data.groups || !data.groups.length) {{
           area.innerHTML = '<div class="results-empty">No outfit checks yet.</div>';
@@ -5124,12 +4475,35 @@ def get_web_ui_html(
         area.innerHTML = "";
         data.groups.forEach(function(g) {{
           (g.turns || []).forEach(function(turn) {{
-            var card = document.createElement("div");
-            card.style.cssText = "border:1px solid var(--line);border-radius:var(--radius-md);padding:24px;margin-bottom:20px;background:var(--surface);";
-            card.innerHTML = '<div style="font-size:13px;font-style:italic;color:var(--ink-3);margin-bottom:8px;">' + escapeHtml(turn.user_message || "Outfit check") + '</div>' +
-              '<div style="font-size:15px;color:var(--ink);line-height:1.6;">' + escapeHtml(turn.assistant_summary || "") + '</div>' +
-              '<div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.14em;color:var(--ink-4);margin-top:12px;">' + escapeHtml(relativeTime(turn.created_at)) + '</div>';
-            area.appendChild(card);
+            // Only render checks that have an outfit with a photo
+            var checkOutfits = (turn.outfits || []).filter(function(o) {{
+              return String(o.tryon_image || "").trim();
+            }});
+            if (!checkOutfits.length) return;
+
+            var section = document.createElement("div");
+            section.setAttribute("data-intent-section", "1");
+            section.className = "intent-section";
+
+            // Context line
+            var contextParts = ["outfit check"];
+            contextParts.push(relativeTime(turn.created_at));
+            var ctxEl = document.createElement("div");
+            ctxEl.className = "result-context";
+            ctxEl.textContent = contextParts.join(" \u00B7 ");
+            section.appendChild(ctxEl);
+
+            checkOutfits.forEach(function(o) {{
+              o._turn_context = turn.user_message || "";
+              o._turn_id = turn.turn_id || "";
+              o._conv_id = turn.conversation_id || "";
+            }});
+            var carouselWrap = document.createElement("div");
+            carouselWrap.className = "discovery-result";
+            carouselWrap.style.padding = "0 0 16px";
+            renderPdpCarousel(checkOutfits, turn.conversation_id, {{ primary_intent: g.intent || "outfit_check" }}, carouselWrap);
+            section.appendChild(carouselWrap);
+            area.appendChild(section);
           }});
         }});
       }} catch (_) {{
@@ -5141,11 +4515,6 @@ def get_web_ui_html(
   // Load wardrobe view
   if (ACTIVE_VIEW === "wardrobe") {{
     loadWardrobeStudio();
-  }}
-
-  // Load results view (legacy — kept for backward compat with ?view=results URLs)
-  if (ACTIVE_VIEW === "results") {{
-    loadResults();
   }}
 
   // ── Wishlist page ──
@@ -5186,45 +4555,6 @@ def get_web_ui_html(
 
   if (ACTIVE_VIEW === "wishlist") {{
     loadWishlist();
-  }}
-
-  // ── Trial Room page ──
-  async function loadTryonGallery() {{
-    var grid = document.getElementById("tryonGalleryGrid");
-    if (!grid) return;
-    grid.innerHTML = '<div class="results-empty">Loading trial room...</div>';
-    try {{
-      var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/tryon-gallery");
-      var data = await res.json();
-      var items = data.items || [];
-      if (!items.length) {{
-        grid.innerHTML = '<div class="results-empty">No try-on renders yet. Chat with Aura and ask to try something on!</div>';
-        return;
-      }}
-      grid.innerHTML = "";
-      items.forEach(function(item) {{
-        var card = document.createElement("div");
-        card.className = "closet-card";
-        card.style.cssText = "border-radius:var(--radius-md); border:1px solid var(--line); overflow:hidden; background:var(--surface); cursor:pointer; transition:border-color var(--dur-1) var(--ease);";
-        var imgUrl = item.image_url || "";
-        card.innerHTML = '<div style="aspect-ratio:2/3; overflow:hidden; background:var(--surface-alt); position:relative;">' +
-          (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="Try-on" loading="lazy" style="width:100%; height:100%; object-fit:cover; display:block;" />' : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;">No render</div>') +
-          '<div style="position:absolute; bottom:0; left:0; right:0; padding:8px 12px; background:linear-gradient(transparent, rgba(0,0,0,0.5)); color:var(--on-accent); font-size:11px; font-weight:500;">' + relativeTime(item.created_at) + '</div>' +
-        '</div>';
-        card.addEventListener("mouseenter", function() {{ card.style.borderColor = "var(--line-strong)"; }});
-        card.addEventListener("mouseleave", function() {{ card.style.borderColor = "var(--line)"; }});
-        card.addEventListener("click", function() {{
-          if (imgUrl) window.open(imgUrl, "_blank");
-        }});
-        grid.appendChild(card);
-      }});
-    }} catch (_) {{
-      grid.innerHTML = '<div class="results-empty">Failed to load trial room.</div>';
-    }}
-  }}
-
-  if (ACTIVE_VIEW === "trialroom") {{
-    loadTryonGallery();
   }}
 
   // Load profile

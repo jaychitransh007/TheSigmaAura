@@ -315,19 +315,19 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertIn("outfit-main-img", html)
         self.assertIn("outfit-info", html)
         self.assertIn("outfit-feedback", html)
-        self.assertIn("dislike-form", html)
+        self.assertIn("fb-like", html)
+        self.assertIn("fb-hide", html)
         self.assertIn("sendFeedback", html)
         self.assertIn("buildOutfitCard", html)
-        self.assertIn("renderOutfits", html)
-        # Assistant bubble markup parser — StyleAdvisor / explanation
-        # responses arrive as a flat string with `\n\n` paragraph breaks
-        # and `• `-prefixed bullet lines. The parser turns those into
-        # semantic <p> + <ul><li> instead of a wall of text.
+        self.assertIn("renderPdpCarousel", html)
         self.assertIn("renderAssistantMarkup", html)
-        # Old classes should be gone
+        # Legacy surfaces should be gone (Phase 15E)
         self.assertNotIn("tryon-section", html)
         self.assertNotIn("tryon-label", html)
         self.assertNotIn("renderRecommendations", html)
+        self.assertNotIn("renderOutfits", html)
+        self.assertNotIn("addBubble", html)
+        self.assertNotIn("history-rail", html)
 
     def test_ui_html_inline_javascript_parses_cleanly(self) -> None:
         """The chat UI's inline <script> block is built via Python
@@ -628,7 +628,9 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertEqual("t9", call_kwargs["turn_id"])
         self.assertEqual("g9", call_kwargs["garment_id"])
 
-    def test_feedback_endpoint_rejects_unresolved_items(self) -> None:
+    def test_feedback_endpoint_accepts_empty_items_as_outfit_level(self) -> None:
+        """When there are no item_ids (e.g. outfit check), feedback succeeds
+        with a synthetic outfit-level garment_id placeholder."""
         repo_mock = Mock()
         repo_mock.get_conversation.return_value = {"user_id": "uid-1", "id": "c1"}
         repo_mock.get_user_by_id.return_value = {"external_user_id": "user-1"}
@@ -640,10 +642,10 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
             "outfit_rank": 1,
             "event_type": "like",
         })
-        self.assertEqual(400, resp.status_code)
-        self.assertIn("couldn't attach that feedback", resp.text)
-        repo_mock.create_policy_event.assert_called_once()
-        self.assertEqual("unresolved_feedback_items", repo_mock.create_policy_event.call_args.kwargs["reason_code"])
+        self.assertEqual(200, resp.status_code)
+        repo_mock.create_feedback_event.assert_called_once()
+        call_kwargs = repo_mock.create_feedback_event.call_args.kwargs
+        self.assertTrue(call_kwargs["garment_id"].startswith("outfit:"))
 
     def test_feedback_endpoint_rejects_items_outside_selected_outfit(self) -> None:
         repo_mock = Mock()
