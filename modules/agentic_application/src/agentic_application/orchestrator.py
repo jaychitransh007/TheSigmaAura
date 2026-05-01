@@ -5,7 +5,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 from platform_core.config import AuraRuntimeConfig
@@ -61,6 +61,17 @@ _log = logging.getLogger(__name__)
 
 
 _URL_RE = re.compile(r"https?://\S+")
+
+# Per-outfit confidence threshold (0-1). Outfits below this never reach the
+# user — instead we surface an honest "no confident match" message and offer
+# alternative paths. Applied uniformly to wardrobe-first selection
+# (normalized item score) and catalog-pipeline outfits (assembly_score).
+_RECOMMENDATION_CONFIDENCE_THRESHOLD = 0.75
+
+# Maximum raw score from `_select_wardrobe_occasion_outfit._score`:
+#   +3 occasion_fit exact match
+#   +1 formality_level matches occasion class
+_WARDROBE_SCORE_MAX = 4.0
 
 
 def extract_urls(message: str) -> List[str]:
@@ -2002,9 +2013,26 @@ class AgenticOrchestrator:
             required_roles=["top", "bottom", "shoe"],
         )
 
-        outfit = self._select_wardrobe_occasion_outfit(wardrobe_items=wardrobe_items, occasion=occasion)
+        outfit, wardrobe_match_confidence = self._select_wardrobe_occasion_outfit(
+            wardrobe_items=wardrobe_items, occasion=occasion,
+        )
         outfit, blocked_terms = self._filter_restricted_recommendation_items(outfit)
         if not outfit:
+            return None
+        # Confidence gate (May 1 2026): below 0.75 the wardrobe answer is
+        # not honest — fall through so the caller can try
+        # `_build_wardrobe_only_occasion_fallback` (which says "your wardrobe
+        # doesn't fully cover this — want catalog picks?") or the full
+        # catalog pipeline. The same threshold applies to hybrid mode
+        # below: shipping a hybrid as a "wardrobe-first" answer demands
+        # the wardrobe anchor genuinely match the occasion.
+        if wardrobe_match_confidence < _RECOMMENDATION_CONFIDENCE_THRESHOLD:
+            _log.info(
+                "wardrobe-first: skipping (confidence %.2f below %.2f) occasion=%s",
+                wardrobe_match_confidence,
+                _RECOMMENDATION_CONFIDENCE_THRESHOLD,
+                occasion,
+            )
             return None
         outfit_roles = {self._normalize_text_token(item.get("role") or "") for item in outfit}
         has_one_piece = "one_piece" in outfit_roles or "one piece" in outfit_roles
@@ -2118,7 +2146,7 @@ class AgenticOrchestrator:
             answer_mode="wardrobe_first_hybrid" if hybrid_used else "wardrobe_first",
             profile_confidence_score_pct=profile_confidence.analysis_confidence_pct,
             intent_confidence=float(intent.confidence),
-            top_match_score=0.88 if hybrid_used else 0.9,
+            top_match_score=wardrobe_match_confidence,
             second_match_score=0.0,
             retrieved_product_count=len(catalog_gap_fillers),
             candidate_count=1,
@@ -2192,7 +2220,7 @@ class AgenticOrchestrator:
                     "rank": 1,
                     "title": outfit_card.title,
                     "item_ids": [str(item.get("product_id") or "") for item in outfit_for_card],
-                    "match_score": 0.88 if hybrid_used else 0.9,
+                    "match_score": wardrobe_match_confidence,
                     "reasoning": reasoning,
                 }
             ],
@@ -2427,6 +2455,130 @@ class AgenticOrchestrator:
                 "Show me catalog picks to fill the gap",
                 "Show me hybrid wardrobe + catalog looks",
                 "Save more wardrobe staples",
+                str(catalog_upsell["cta"]),
+            ],
+            "metadata": metadata,
+        }
+
+    def _build_low_confidence_catalog_response(
+        self,
+        *,
+        message: str,
+        conversation_id: str,
+        turn_id: str,
+        channel: str,
+        intent: IntentClassification,
+        previous_context: Dict[str, Any],
+        live_context: LiveContext,
+        conversation_memory: Dict[str, Any],
+        profile_confidence: ProfileConfidence,
+        top_match_score: float,
+        candidates_seen: int,
+        hard_filters: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Honest no-match response when the catalog pipeline has no outfit
+        whose ``assembly_score`` clears the confidence threshold.
+
+        We never ship low-confidence outfits — that's the bargain with the
+        user. Instead we explain what happened, surface the best raw match
+        score we saw (so they know we tried), and offer to broaden the
+        request or refine it.
+        """
+        occasion = str(live_context.occasion_signal or "").strip()
+        occasion_label = occasion.replace("_", " ") if occasion else "this request"
+        assistant_message = (
+            f"I couldn't find a confident match for {occasion_label} in the catalog "
+            f"(best match scored {top_match_score:.0%}, below my {int(_RECOMMENDATION_CONFIDENCE_THRESHOLD * 100)}% bar). "
+            "Want to refine the request — different vibe, color, or formality — "
+            "or should I broaden the search and show the closest options I found?"
+        )
+        catalog_upsell = self._build_catalog_upsell(
+            rationale="The closest catalog matches didn't clear the confidence bar.",
+            entry_intent=intent.primary_intent,
+        )
+        source_selection = self._build_source_selection(
+            preferred_source="catalog",
+            fulfilled_source="catalog_low_confidence",
+        )
+        recommendation_confidence = evaluate_recommendation_confidence(
+            answer_mode="catalog_pipeline",
+            profile_confidence_score_pct=profile_confidence.analysis_confidence_pct,
+            intent_confidence=float(intent.confidence),
+            top_match_score=float(top_match_score),
+            second_match_score=0.0,
+            retrieved_product_count=0,
+            candidate_count=candidates_seen,
+            response_outfit_count=0,
+            wardrobe_items_used=0,
+            restricted_item_exclusion_count=0,
+        )
+        metadata = self._build_response_metadata(
+            channel=channel,
+            intent=intent,
+            profile_confidence=profile_confidence,
+            extra={
+                "answer_source": "catalog_low_confidence",
+                "source_selection": source_selection,
+                "catalog_upsell": catalog_upsell,
+                "recommendation_confidence": recommendation_confidence.model_dump(),
+                "low_confidence_top_match_score": float(top_match_score),
+                "low_confidence_threshold": _RECOMMENDATION_CONFIDENCE_THRESHOLD,
+                "low_confidence_candidates_seen": int(candidates_seen),
+            },
+        )
+        self.repo.finalize_turn(
+            turn_id=turn_id,
+            assistant_message=assistant_message,
+            resolved_context={
+                "request_summary": message.strip(),
+                "occasion": occasion,
+                "live_context": live_context.model_dump(),
+                "conversation_memory": conversation_memory,
+                "intent_classification": intent.model_dump(),
+                "profile_confidence": profile_confidence.model_dump(),
+                "response_metadata": metadata,
+                "handler": "catalog_pipeline_low_confidence",
+                "handler_payload": {
+                    "answer_source": "catalog_low_confidence",
+                    "source_selection": source_selection,
+                    "catalog_upsell": catalog_upsell,
+                    "top_match_score": float(top_match_score),
+                    "candidates_seen": int(candidates_seen),
+                },
+                "channel": channel,
+            },
+        )
+        self.repo.update_conversation_context(
+            conversation_id=conversation_id,
+            session_context={
+                **previous_context,
+                "memory": conversation_memory,
+                "last_occasion": occasion,
+                "last_live_context": live_context.model_dump(),
+                "last_response_metadata": metadata,
+                "last_assistant_message": assistant_message,
+                "last_user_message": message,
+                "last_channel": channel,
+                "last_intent": intent.primary_intent,
+                "consecutive_gate_blocks": 0,
+            },
+        )
+        return {
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "assistant_message": assistant_message,
+            "response_type": "recommendation",
+            "resolved_context": {
+                "request_summary": message.strip(),
+                "occasion": occasion,
+                "live_context": live_context.model_dump(),
+            },
+            "filters_applied": hard_filters,
+            "outfits": [],
+            "follow_up_suggestions": [
+                "Show me the closest matches anyway",
+                "Refine the request",
+                "Try a different occasion",
                 str(catalog_upsell["cta"]),
             ],
             "metadata": metadata,
@@ -2998,7 +3150,22 @@ class AgenticOrchestrator:
         *,
         wardrobe_items: List[Dict[str, Any]],
         occasion: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[List[Dict[str, Any]], float]:
+        """Return ``(items, confidence)`` for the best wardrobe outfit for the occasion.
+
+        ``confidence`` is normalized to [0, 1] from the per-item score.
+        Outfits with a single one-piece use that item's score; multi-item
+        outfits use the *minimum* item score (weakest link) so a top with
+        a perfect occasion match paired with a bottom that only matches
+        on formality is correctly surfaced as borderline rather than
+        averaging up to "looks good".
+
+        Why drop the empty-occasion_fit reward: previously, items with no
+        ``occasion_fit`` tag scored +1 (read: "not disqualified"). That
+        let untagged or differently-tagged items (e.g., festive ethnic
+        wear with empty/festive tag) win for unrelated occasions like
+        ``date_night``. Empty now scores 0 — the gate must be earned.
+        """
         def role_of(item: Dict[str, Any]) -> str:
             category = str(item.get("garment_category") or item.get("garment_subtype") or "").strip().lower()
             if category in {"dress", "jumpsuit", "suit"}:
@@ -3014,8 +3181,8 @@ class AgenticOrchestrator:
             item_occasion = str(item.get("occasion_fit") or "").strip().lower().replace(" ", "_")
             if item_occasion == occasion:
                 value += 3
-            elif not item_occasion:
-                value += 1
+            # Empty occasion_fit no longer earns a participation point —
+            # it's evidence we don't have, not evidence the item fits.
             formality = str(item.get("formality_level") or "").strip().lower()
             if occasion in {"office", "work", "work_meeting"} and formality in {"business_casual", "smart_casual", "semi_formal"}:
                 value += 1
@@ -3023,13 +3190,19 @@ class AgenticOrchestrator:
                 value += 1
             return value
 
+        def _norm(raw: int) -> float:
+            return max(0.0, min(float(raw) / _WARDROBE_SCORE_MAX, 1.0))
+
         ranked = sorted(
             [dict(item, _role=role_of(item), _score=score(item)) for item in wardrobe_items],
             key=lambda item: (-int(item.get("_score") or 0), str(item.get("title") or "").lower()),
         )
         one_piece = next((item for item in ranked if item.get("_role") == "one_piece" and int(item.get("_score") or 0) > 0), None)
         if one_piece is not None:
-            return [AgenticOrchestrator._wardrobe_item_to_outfit_item(one_piece)]
+            return (
+                [AgenticOrchestrator._wardrobe_item_to_outfit_item(one_piece)],
+                _norm(int(one_piece.get("_score") or 0)),
+            )
 
         top = next((item for item in ranked if item.get("_role") == "top" and int(item.get("_score") or 0) > 0), None)
         bottom = next(
@@ -3037,14 +3210,23 @@ class AgenticOrchestrator:
             None,
         )
         items: List[Dict[str, Any]] = []
+        item_scores: List[int] = []
         if top is not None:
             items.append(AgenticOrchestrator._wardrobe_item_to_outfit_item(top))
+            item_scores.append(int(top.get("_score") or 0))
         if bottom is not None:
             items.append(AgenticOrchestrator._wardrobe_item_to_outfit_item(bottom))
+            item_scores.append(int(bottom.get("_score") or 0))
         if items:
-            return items
+            return items, _norm(min(item_scores))
         fallback = [item for item in ranked if int(item.get("_score") or 0) > 0][:2]
-        return [AgenticOrchestrator._wardrobe_item_to_outfit_item(item) for item in fallback]
+        if not fallback:
+            return [], 0.0
+        fallback_scores = [int(it.get("_score") or 0) for it in fallback]
+        return (
+            [AgenticOrchestrator._wardrobe_item_to_outfit_item(item) for item in fallback],
+            _norm(min(fallback_scores)),
+        )
 
     @staticmethod
     def _browser_safe_image_url(value: Any) -> str:
@@ -4514,6 +4696,53 @@ class AgenticOrchestrator:
                 completion_tokens=_eval_usage.get("completion_tokens"),
                 total_tokens=_eval_usage.get("total_tokens"),
             )
+
+            # Confidence gate (May 1 2026): no outfit ever ships below the
+            # threshold. Filter `evaluated` against each candidate's
+            # `assembly_score` (the raw match-to-query signal). If nothing
+            # clears the bar, surface an honest "no confident match"
+            # response instead of shipping low-quality outfits.
+            assembly_score_by_cid: Dict[str, float] = {
+                str(c.candidate_id): float(getattr(c, "assembly_score", 0.0) or 0.0)
+                for c in candidates
+            }
+            top_assembly_score_seen = max(
+                (assembly_score_by_cid.get(str(e.candidate_id), 0.0) for e in evaluated),
+                default=0.0,
+            )
+            confident_evaluated = [
+                e for e in evaluated
+                if assembly_score_by_cid.get(str(e.candidate_id), 0.0) >= _RECOMMENDATION_CONFIDENCE_THRESHOLD
+            ][:3]
+            dropped_low_confidence = len(evaluated) - len(confident_evaluated)
+            if dropped_low_confidence:
+                _log.info(
+                    "confidence gate: dropped %d/%d outfits below %.2f (top seen=%.2f)",
+                    dropped_low_confidence,
+                    len(evaluated),
+                    _RECOMMENDATION_CONFIDENCE_THRESHOLD,
+                    top_assembly_score_seen,
+                )
+            if not confident_evaluated:
+                emit("confidence_gate", "blocked", ctx={
+                    "top_assembly_score": top_assembly_score_seen,
+                    "candidates_seen": len(candidates),
+                })
+                return self._build_low_confidence_catalog_response(
+                    message=message,
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    channel=channel,
+                    intent=intent,
+                    previous_context=previous_context,
+                    live_context=effective_live_context,
+                    conversation_memory=conversation_memory.model_dump(),
+                    profile_confidence=profile_confidence,
+                    top_match_score=top_assembly_score_seen,
+                    candidates_seen=len(candidates),
+                    hard_filters=hard_filters,
+                )
+            evaluated = confident_evaluated
 
             emit("response_formatting", "started")
             trace_start("response_formatting", input_summary=f"{len(evaluated)} evaluated")

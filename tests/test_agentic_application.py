@@ -640,7 +640,14 @@ class AgenticApplicationTests(unittest.TestCase):
 
     def test_pipeline_empty_response_message_is_replaced_with_fallback(self) -> None:
         """Even if the formatter completes but produces an empty message, the post-pipeline
-        guard must rewrite it to a graceful fallback before returning."""
+        guard must rewrite it to a graceful fallback before returning.
+
+        After the May-1 confidence gate landed: with the assembler returning
+        no candidates, the gate now intercepts before the formatter runs and
+        emits the "couldn't find a confident match" path. The invariant we
+        still care about is that the user never sees an empty assistant
+        message — the test just checks for graceful prose.
+        """
         repo, gw = self._build_minimal_orchestrator_repo_and_gateway()
 
         plan = RecommendationPlan( retrieval_count=8,
@@ -692,12 +699,18 @@ class AgenticApplicationTests(unittest.TestCase):
                 message="What should I wear to dinner tonight?",
             )
 
-        # The post-pipeline guard must have rewritten the empty message.
+        # The user must never see an empty assistant_message; whichever
+        # graceful path fires is fine.
         self.assertTrue(
             result.get("assistant_message"),
-            "Empty assistant_message was returned to the user — fallback guard did not fire",
+            "Empty assistant_message was returned to the user — graceful fallback did not fire",
         )
-        self.assertIn("wasn't able to put together", result["assistant_message"])
+        msg = result["assistant_message"].lower()
+        self.assertTrue(
+            "wasn't able to put together" in msg
+            or "couldn't find a confident match" in msg,
+            f"Unexpected fallback prose: {result['assistant_message']!r}",
+        )
 
     def test_orchestrator_persists_memory_and_turn_artifacts(self) -> None:
         repo = Mock()
@@ -1985,7 +1998,18 @@ class AgenticApplicationTests(unittest.TestCase):
                 config=Mock(),
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            # Give the assembler a high-scoring candidate so the gate
+            # (>=0.75) lets the catalog pipeline reach the formatter; the
+            # test cares only that wardrobe-first didn't fire.
+            orchestrator.outfit_assembler.assemble = Mock(return_value=[
+                OutfitCandidate(
+                    candidate_id="cat-1",
+                    direction_id="A",
+                    candidate_type="paired",
+                    items=[{"product_id": "p1", "title": "Top"}],
+                    assembly_score=0.85,
+                )
+            ])
             # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
@@ -2136,7 +2160,17 @@ class AgenticApplicationTests(unittest.TestCase):
                 config=Mock(),
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            # High-scoring candidate so the confidence gate (>=0.75) lets
+            # the catalog pipeline through to the formatter.
+            orchestrator.outfit_assembler.assemble = Mock(return_value=[
+                OutfitCandidate(
+                    candidate_id="cat-1",
+                    direction_id="A",
+                    candidate_type="paired",
+                    items=[{"product_id": "p1", "title": "Top"}],
+                    assembly_score=0.85,
+                )
+            ])
             # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
@@ -2300,7 +2334,15 @@ class AgenticApplicationTests(unittest.TestCase):
                 config=Mock(),
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            orchestrator.outfit_assembler.assemble = Mock(return_value=[
+                OutfitCandidate(
+                    candidate_id="cat-1",
+                    direction_id="A",
+                    candidate_type="complete",
+                    items=[{"product_id": "c1", "title": "Wool Trouser"}],
+                    assembly_score=0.85,
+                )
+            ])
             # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
@@ -3306,7 +3348,15 @@ class CopilotPlannerTests(unittest.TestCase):
             architect_cls.return_value.plan.return_value = fake_plan
             orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            orchestrator.outfit_assembler.assemble = Mock(return_value=[
+                OutfitCandidate(
+                    candidate_id="cat-1",
+                    direction_id="A",
+                    candidate_type="paired",
+                    items=[{"product_id": "p1", "title": "Top"}],
+                    assembly_score=0.85,
+                )
+            ])
             # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
@@ -3403,7 +3453,15 @@ class CopilotPlannerTests(unittest.TestCase):
                 config=self._make_planner_config(),
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            orchestrator.outfit_assembler.assemble = Mock(return_value=[
+                OutfitCandidate(
+                    candidate_id="cat-1",
+                    direction_id="A",
+                    candidate_type="complete",
+                    items=[{"product_id": "c1", "title": "Stone Trousers"}],
+                    assembly_score=0.85,
+                )
+            ])
             # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
@@ -4075,7 +4133,15 @@ class CopilotPlannerTests(unittest.TestCase):
                 config=self._make_planner_config(),
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            orchestrator.outfit_assembler.assemble = Mock(return_value=[
+                OutfitCandidate(
+                    candidate_id="cat-1",
+                    direction_id="A",
+                    candidate_type="complete",
+                    items=[{"product_id": "c1", "title": "Catalog Top"}],
+                    assembly_score=0.85,
+                )
+            ])
             # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
@@ -6371,6 +6437,344 @@ class RerankerWeightsAndDecisionLogTests(unittest.TestCase):
         dropped_ids = [d["candidate_id"] for d in payload["dropped"]]
         self.assertEqual(["c0", "c1"], kept_ids)
         self.assertEqual({"c2", "c3"}, set(dropped_ids))
+
+
+class ConfidenceThresholdGateTests(unittest.TestCase):
+    """May 1 2026 — wardrobe-first selector + catalog-pipeline gate.
+
+    These tests pin the contract: nothing reaches the user with confidence
+    below the 0.75 threshold, on either the wardrobe-first or
+    catalog-pipeline branches.
+    """
+
+    def test_wardrobe_selector_drops_empty_occasion_fit_reward(self) -> None:
+        """Items with empty occasion_fit no longer earn a participation
+        point — that was the bug that let an ivory kurta with empty/festive
+        tag win for date_night."""
+        items = [
+            {
+                "id": "kurta",
+                "title": "Ivory Long-Sleeve Kurta",
+                "garment_category": "top",
+                "occasion_fit": "",
+                "formality_level": "semi_formal",
+            },
+            {
+                "id": "trousers",
+                "title": "Ivory Trousers",
+                "garment_category": "bottom",
+                "occasion_fit": "",
+                "formality_level": "semi_formal",
+            },
+        ]
+        out, conf = AgenticOrchestrator._select_wardrobe_occasion_outfit(
+            wardrobe_items=items, occasion="date_night",
+        )
+        # Each item earns +1 (formality match) and 0 (empty occasion_fit).
+        # Min item score 1, normalized 1/4 = 0.25 — well below 0.75.
+        self.assertLess(conf, 0.75)
+        self.assertLessEqual(conf, 0.26)
+
+    def test_wardrobe_selector_passes_threshold_when_occasion_explicit(self) -> None:
+        items = [
+            {
+                "id": "dress",
+                "title": "Black Slip Dress",
+                "garment_category": "dress",
+                "occasion_fit": "date_night",
+                "formality_level": "smart_casual",
+            },
+        ]
+        out, conf = AgenticOrchestrator._select_wardrobe_occasion_outfit(
+            wardrobe_items=items, occasion="date_night",
+        )
+        # Score = 3 (occasion match) + 1 (formality match) = 4 → 1.0.
+        self.assertGreaterEqual(conf, 0.75)
+        self.assertEqual(1, len(out))
+
+    def test_wardrobe_selector_min_item_score_for_multi_item(self) -> None:
+        items = [
+            {
+                "id": "blazer",
+                "title": "Navy Blazer",
+                "garment_category": "top",
+                "occasion_fit": "office",
+                "formality_level": "business_casual",
+            },
+            {
+                "id": "jeans",
+                "title": "Blue Jeans",
+                "garment_category": "bottom",
+                # occasion_fit empty — only formality earns a point and even
+                # that doesn't trigger because jeans are typically casual.
+                "occasion_fit": "",
+                "formality_level": "casual",
+            },
+        ]
+        out, conf = AgenticOrchestrator._select_wardrobe_occasion_outfit(
+            wardrobe_items=items, occasion="office",
+        )
+        # Top: 3 + 1 = 4. Bottom: 0 + 0 = 0 (jeans casual not in office class).
+        # The selector requires _score > 0 to even include an item, so
+        # bottom is excluded from the picked outfit. With no bottom, the
+        # function still returns the top alone — score 4 → 1.0. The point
+        # of this test: the bug isn't masked by averaging away the weak
+        # link; an honest weak result either gets filtered or reflects.
+        if len(out) == 2:
+            self.assertLess(conf, 0.75)
+        else:
+            self.assertEqual(1, len(out))
+
+    def test_wardrobe_selector_returns_empty_when_no_item_qualifies(self) -> None:
+        items = [
+            {
+                "id": "tshirt",
+                "title": "White Tee",
+                "garment_category": "top",
+                "occasion_fit": "casual",
+                "formality_level": "casual",
+            },
+        ]
+        out, conf = AgenticOrchestrator._select_wardrobe_occasion_outfit(
+            wardrobe_items=items, occasion="wedding",
+        )
+        self.assertEqual([], out)
+        self.assertEqual(0.0, conf)
+
+    def test_catalog_pipeline_gate_blocks_when_all_below_threshold(self) -> None:
+        """Construct an orchestrator scenario where every assembled
+        candidate has assembly_score < 0.75; verify the no-confident-match
+        response path fires and ships zero outfits."""
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+            RecommendationPlan, DirectionSpec, QuerySpec, ResolvedContextBlock,
+            RecommendationResponse,
+        )
+
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1", "user_id": "db-user", "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
+        }
+        gw.get_wardrobe_items.return_value = []  # No wardrobe → straight to catalog pipeline
+        gw.get_person_image_path.return_value = ""
+
+        plan = RecommendationPlan(
+            directions=[
+                DirectionSpec(
+                    direction_id="d1",
+                    label="Test direction",
+                    direction_type="paired",
+                    rationale="Test",
+                    queries=[
+                        QuerySpec(query_id="A1", role="top", query_document="top"),
+                        QuerySpec(query_id="A2", role="bottom", query_document="bottom"),
+                    ],
+                )
+            ],
+            resolved_context=ResolvedContextBlock(),
+        )
+
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent=Intent.OCCASION_RECOMMENDATION,
+            intent_confidence=0.9,
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
+            context_sufficient=True,
+            assistant_message="Ok.",
+            follow_up_suggestions=[],
+            resolved_context=CopilotResolvedContext(occasion_signal="date_night"),
+            action_parameters=CopilotActionParameters(),
+        )
+
+        # Build candidates whose assembly_score is well under 0.75.
+        weak_candidates = [
+            OutfitCandidate(
+                candidate_id=f"c{i}",
+                direction_id="d1",
+                candidate_type="paired",
+                items=[{"product_id": f"p{i}", "title": f"Item {i}"}],
+                assembly_score=0.4 + (i * 0.05),  # 0.40, 0.45, 0.50
+            )
+            for i in range(3)
+        ]
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway") as gw_cls, patch(
+            "agentic_application.orchestrator.OutfitArchitect"
+        ) as architect_cls, patch(
+            "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock,
+        ), patch(
+            "agentic_application.orchestrator.CatalogSearchAgent"
+        ), patch(
+            "agentic_application.orchestrator.OutfitAssembler"
+        ) as assembler_cls:
+            architect_cls.return_value.plan.return_value = plan
+            assembler_cls.return_value.assemble.return_value = weak_candidates
+            gw_cls.return_value.get_catalog_inventory.return_value = [
+                {"id": f"p{i}", "title": f"Item {i}"} for i in range(3)
+            ]
+            gw_cls.return_value.search.return_value = []
+
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Romantic date night this weekend",
+            )
+
+        self.assertEqual([], result["outfits"])
+        self.assertEqual(
+            "catalog_low_confidence",
+            result["metadata"]["answer_source"],
+        )
+        self.assertIn("couldn't find a confident match", result["assistant_message"].lower())
+        # The graceful response should expose the best score we saw, so
+        # observability and UX can both reason about it.
+        self.assertIn("low_confidence_top_match_score", result["metadata"])
+        self.assertLess(result["metadata"]["low_confidence_top_match_score"], 0.75)
+
+    def test_catalog_pipeline_gate_keeps_only_confident_outfits(self) -> None:
+        """When some candidates pass the threshold and some don't, only
+        the confident ones ship — capped at 3."""
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+            RecommendationPlan, DirectionSpec, QuerySpec, ResolvedContextBlock,
+            OutfitCard, RecommendationResponse,
+        )
+
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1", "user_id": "db-user", "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
+        }
+        gw.get_wardrobe_items.return_value = []
+        gw.get_person_image_path.return_value = ""
+
+        plan = RecommendationPlan(
+            directions=[
+                DirectionSpec(
+                    direction_id="d1",
+                    label="Test direction",
+                    direction_type="paired",
+                    rationale="Test",
+                    queries=[
+                        QuerySpec(query_id="A1", role="top", query_document="top"),
+                        QuerySpec(query_id="A2", role="bottom", query_document="bottom"),
+                    ],
+                )
+            ],
+            resolved_context=ResolvedContextBlock(),
+        )
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent=Intent.OCCASION_RECOMMENDATION,
+            intent_confidence=0.9,
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
+            context_sufficient=True,
+            assistant_message="Ok.",
+            follow_up_suggestions=[],
+            resolved_context=CopilotResolvedContext(occasion_signal="casual"),
+            action_parameters=CopilotActionParameters(),
+        )
+
+        # Mix: 2 confident (>= 0.75), 3 below threshold.
+        candidates = [
+            OutfitCandidate(
+                candidate_id=f"hi{i}", direction_id="d1", candidate_type="paired",
+                items=[{"product_id": f"hi-p{i}", "title": f"Hi {i}"}],
+                assembly_score=0.85,
+            ) for i in range(2)
+        ] + [
+            OutfitCandidate(
+                candidate_id=f"lo{i}", direction_id="d1", candidate_type="paired",
+                items=[{"product_id": f"lo-p{i}", "title": f"Lo {i}"}],
+                assembly_score=0.5,
+            ) for i in range(3)
+        ]
+
+        formatter_called_with: dict = {}
+
+        def fake_format(evaluated, *args, **kwargs):
+            formatter_called_with["count"] = len(evaluated)
+            outfits = [
+                OutfitCard(
+                    rank=i + 1,
+                    title=f"Outfit {i + 1}",
+                    reasoning="r",
+                    occasion_note="r",
+                    items=[{"product_id": f"out-{i}", "title": f"Out {i}", "image_url": ""}],
+                )
+                for i in range(len(evaluated))
+            ]
+            return RecommendationResponse(
+                message="Here you go.",
+                outfits=outfits,
+                follow_up_suggestions=[],
+                metadata={},
+            )
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway") as gw_cls, patch(
+            "agentic_application.orchestrator.OutfitArchitect"
+        ) as architect_cls, patch(
+            "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock,
+        ), patch(
+            "agentic_application.orchestrator.CatalogSearchAgent"
+        ), patch(
+            "agentic_application.orchestrator.OutfitAssembler"
+        ) as assembler_cls, patch(
+            "agentic_application.orchestrator.ResponseFormatter"
+        ) as formatter_cls:
+            architect_cls.return_value.plan.return_value = plan
+            assembler_cls.return_value.assemble.return_value = candidates
+            gw_cls.return_value.get_catalog_inventory.return_value = [
+                {"id": f"hi-p{i}", "title": f"Hi {i}"} for i in range(2)
+            ] + [{"id": f"lo-p{i}", "title": f"Lo {i}"} for i in range(3)]
+            gw_cls.return_value.search.return_value = []
+            formatter_cls.return_value.format.side_effect = fake_format
+
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Casual coffee outfit",
+            )
+
+        # Only the 2 confident candidates should reach the formatter.
+        self.assertEqual(2, formatter_called_with.get("count"))
+        # And both should reach the user.
+        self.assertEqual(2, len(result["outfits"]))
 
 
 if __name__ == "__main__":
