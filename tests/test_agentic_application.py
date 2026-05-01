@@ -708,7 +708,7 @@ class AgenticApplicationTests(unittest.TestCase):
         msg = result["assistant_message"].lower()
         self.assertTrue(
             "wasn't able to put together" in msg
-            or "couldn't find a confident match" in msg,
+            or "couldn't find a strong match" in msg,
             f"Unexpected fallback prose: {result['assistant_message']!r}",
         )
 
@@ -1830,7 +1830,7 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertTrue(all(item["source"] == "wardrobe" for item in result["outfits"][0]["items"]))
         self.assertTrue(result["metadata"]["catalog_upsell"]["available"])
         self.assertIn("better catalog options", result["assistant_message"].lower())
-        self.assertIn("Show me better options from the catalog", result["follow_up_suggestions"])
+        self.assertIn("Show me options to buy", result["follow_up_suggestions"])
         resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
         self.assertEqual("occasion_recommendation_wardrobe_first", resolved_context["handler"])
         self.assertEqual("wardrobe_first", resolved_context["response_metadata"]["answer_source"])
@@ -2253,7 +2253,7 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("wardrobe_unavailable", result["metadata"]["answer_source"])
         self.assertEqual("wardrobe", result["metadata"]["source_selection"]["preferred_source"])
         self.assertEqual("wardrobe_unavailable", result["metadata"]["source_selection"]["fulfilled_source"])
-        self.assertIn("Show me better options from the catalog", result["follow_up_suggestions"])
+        self.assertIn("Show me options to buy", result["follow_up_suggestions"])
 
     def test_explicit_catalog_occasion_request_skips_wardrobe_first_and_returns_catalog_only(self) -> None:
         from agentic_application.schemas import (
@@ -3390,7 +3390,7 @@ class CopilotPlannerTests(unittest.TestCase):
                     "answer_source": "wardrobe_first",
                     "catalog_upsell": {
                         "available": True,
-                        "cta": "Show me better options from the catalog",
+                        "cta": "Show me options to buy",
                     },
                 },
             },
@@ -3490,7 +3490,7 @@ class CopilotPlannerTests(unittest.TestCase):
             result = orchestrator.process_turn(
                 conversation_id="c1",
                 external_user_id="user-1",
-                message="Show me better options from the catalog",
+                message="Show me options to buy",
             )
 
         architect_cls.return_value.plan.assert_called_once()
@@ -3522,7 +3522,7 @@ class CopilotPlannerTests(unittest.TestCase):
                     "answer_source": "wardrobe_first",
                     "catalog_upsell": {
                         "available": True,
-                        "cta": "Show me better options from the catalog",
+                        "cta": "Show me options to buy",
                     },
                 },
             },
@@ -3591,7 +3591,7 @@ class CopilotPlannerTests(unittest.TestCase):
             orchestrator.process_turn(
                 conversation_id="c1",
                 external_user_id="user-1",
-                message="Show me better options from the catalog",
+                message="Show me options to buy",
             )
 
         combined_context = architect_cls.return_value.plan.call_args.args[0]
@@ -3694,7 +3694,7 @@ class CopilotPlannerTests(unittest.TestCase):
         self.assertEqual("your tan loafers", result["metadata"][Intent.OUTFIT_CHECK]["wardrobe_suggestions"][0]["title"])
         self.assertTrue(result["metadata"]["catalog_upsell"]["available"])
         self.assertEqual(Intent.OUTFIT_CHECK, result["metadata"]["catalog_upsell"]["entry_intent"])
-        self.assertIn("Show me better options from the catalog", result["follow_up_suggestions"])
+        self.assertIn("Show me options to buy", result["follow_up_suggestions"])
         persisted_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
         self.assertEqual(Intent.OUTFIT_CHECK, persisted_context["response_metadata"]["primary_intent"])
         self.assertEqual("outfit_check_handler", persisted_context["response_metadata"]["answer_source"])
@@ -4080,7 +4080,7 @@ class CopilotPlannerTests(unittest.TestCase):
                     "catalog_upsell": {
                         "available": True,
                         "entry_intent": Intent.OUTFIT_CHECK,
-                        "cta": "Show me better options from the catalog",
+                        "cta": "Show me options to buy",
                     },
                 },
             },
@@ -4163,7 +4163,7 @@ class CopilotPlannerTests(unittest.TestCase):
             result = orchestrator.process_turn(
                 conversation_id="c1",
                 external_user_id="user-1",
-                message="Show me better options from the catalog",
+                message="Show me options to buy",
             )
 
         combined_context = architect_cls.return_value.plan.call_args.args[0]
@@ -6643,7 +6643,7 @@ class ConfidenceThresholdGateTests(unittest.TestCase):
             "catalog_low_confidence",
             result["metadata"]["answer_source"],
         )
-        self.assertIn("couldn't find a confident match", result["assistant_message"].lower())
+        self.assertIn("couldn't find a strong match", result["assistant_message"].lower())
         # The graceful response should expose the best score we saw, so
         # observability and UX can both reason about it.
         self.assertIn("low_confidence_top_match_score", result["metadata"])
