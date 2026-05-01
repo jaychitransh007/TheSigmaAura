@@ -429,6 +429,42 @@ def get_web_ui_html(
       padding: 0 4px;
     }
     .intent-section { margin-bottom: 48px; }
+
+    /* May 1, 2026 — Outfits tab theme blocks. */
+    .theme-block {
+      margin-bottom: 64px;
+      max-width: 1080px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .theme-block:last-child { margin-bottom: 24px; }
+    .theme-header {
+      padding: 0 4px 18px;
+      border-bottom: 1px solid var(--signal);
+      margin-bottom: 32px;
+    }
+    .theme-title {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-style: italic;
+      font-weight: 400;
+      font-size: 36px;
+      line-height: 1.1;
+      color: var(--ink);
+      margin: 0 0 6px;
+      letter-spacing: -0.005em;
+    }
+    .theme-subtitle {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin: 0;
+    }
+    .theme-groups { display: flex; flex-direction: column; gap: 32px; }
+    @media (max-width: 720px) {
+      .theme-title { font-size: 28px; }
+    }
     .check-card {
       border: 1px solid var(--line);
       border-radius: var(--radius-md);
@@ -1478,6 +1514,7 @@ def get_web_ui_html(
     .profile-card,
     .style-code-card,
     .color-palette-card,
+    .recent-signals-card,
     .analysis-card,
     .profile-images-card {
       background: transparent;
@@ -1486,6 +1523,47 @@ def get_web_ui_html(
       border-radius: 0;
       padding: 32px 0 40px;
       margin-bottom: 0;
+    }
+    .recent-signals-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .recent-signals-list li {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: baseline;
+      gap: 16px;
+      padding: 0 0 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .recent-signals-list li:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+    .recent-signals-list .signal-label {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-style: italic;
+      font-size: 18px;
+      line-height: 1.3;
+      color: var(--ink);
+    }
+    .recent-signals-list .signal-detail {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      white-space: nowrap;
+    }
+    .recent-signals-empty {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-style: italic;
+      color: var(--ink-3);
+      font-size: 16px;
     }
     .profile-card-header {
       display: flex; align-items: baseline; justify-content: space-between;
@@ -1883,10 +1961,15 @@ def get_web_ui_html(
       <h1 class="welcome-headline">What are we wearing<span class="welcome-dot">.</span></h1>
       <p class="welcome-sub">From your wardrobe first. Catalog when there's a gap.</p>
       <div class="welcome-prompts" id="welcomePrompts">
-        <button class="welcome-prompt" data-prompt="Dress me for tonight using my wardrobe.">Build a look</button>
-        <button class="welcome-prompt" data-prompt="What goes well with this?">Pair a garment</button>
-        <button class="welcome-prompt" data-prompt="Plan my wardrobe for a 5-day trip.">Plan a trip</button>
-        <button class="welcome-prompt" data-prompt="Is this worth buying?">Is it worth it</button>
+        <!-- Each chip prefills the composer (no auto-send); chips that need
+             an image open the file picker so the user understands the
+             missing detail at a glance. May 1, 2026. -->
+        <button class="welcome-prompt" data-prompt="Dress me for "
+                data-needs="occasion">Build a look</button>
+        <button class="welcome-prompt" data-prompt="What goes with this?"
+                data-needs="image">Pair a garment</button>
+        <button class="welcome-prompt" data-prompt="Is this worth buying?"
+                data-needs="image">Is it worth it</button>
       </div>
     </div>
     <div id="discoveryResultArea" class="discovery-result"></div>
@@ -2112,6 +2195,13 @@ def get_web_ui_html(
       <h3>Palette</h3>
     </div>
     <div id="colorPaletteContent"></div>
+  </div>
+  <div class="recent-signals-card" id="recentSignalsCard" style="display:none;">
+    <div class="profile-card-header">
+      <h3>Recent signals</h3>
+    </div>
+    <ol class="recent-signals-list" id="recentSignalsList"></ol>
+    <div class="recent-signals-empty" id="recentSignalsEmpty" style="display:none;">Aura is still learning your preferences.</div>
   </div>
   <div class="profile-card" id="profileCard">
     <div class="profile-card-header">
@@ -3591,12 +3681,33 @@ def get_web_ui_html(
     }});
   }}
 
-  // Welcome prompts
+  // Welcome prompts (May 1, 2026 redesign)
+  // Chips PREFILL the composer instead of auto-sending. The user sees
+  // the starter prompt, can edit it, and submits when ready. Chips
+  // marked data-needs="image" also open the file picker so the user
+  // immediately understands an attachment is required (avoiding the
+  // wasted round-trip where the planner would otherwise return a
+  // clarification asking for the missing image).
   document.querySelectorAll(".welcome-prompt").forEach(function(btn) {{
     btn.addEventListener("click", function() {{
-      messageEl.value = btn.getAttribute("data-prompt") || btn.textContent;
+      var prompt = btn.getAttribute("data-prompt") || btn.textContent || "";
+      var needs = btn.getAttribute("data-needs") || "";
+      messageEl.value = prompt;
       messageEl.focus();
-      send();
+      // Place cursor at end so user can keep typing immediately.
+      try {{
+        var endPos = messageEl.value.length;
+        messageEl.setSelectionRange(endPos, endPos);
+      }} catch (_) {{ /* not all input types support setSelectionRange */ }}
+      // Auto-grow the textarea since we just stuffed content into it.
+      try {{ messageEl.dispatchEvent(new Event("input")); }} catch (_) {{}}
+      // For chips that need an attachment, pop the file picker. The
+      // planner can't run pairing or garment_evaluation without one,
+      // and surfacing it now beats a clarification round-trip.
+      if (needs === "image") {{
+        var fileInput = document.getElementById("chatImageFile");
+        if (fileInput) fileInput.click();
+      }}
     }});
   }});
 
@@ -4044,6 +4155,38 @@ def get_web_ui_html(
     return Array.isArray(v) ? v : [];
   }}
 
+  // ── Recent Signals timeline (profile Phase 14 Step 5) ──
+  // Fetches /v1/users/{{user_id}}/recent-signals and renders one line per
+  // signal under the Palette card. Hides the card entirely when there are
+  // no signals AND no editorial empty-state copy is desired.
+  async function loadRecentSignals() {{
+    var card = document.getElementById("recentSignalsCard");
+    var listEl = document.getElementById("recentSignalsList");
+    var emptyEl = document.getElementById("recentSignalsEmpty");
+    if (!card || !listEl || !emptyEl) return;
+    try {{
+      var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/recent-signals?limit=5");
+      if (!res.ok) {{ card.style.display = "none"; return; }}
+      var data = await res.json();
+      var signals = (data && data.signals) || [];
+      // Show the card whenever we have any data OR when the user is
+      // far enough into onboarding that the editorial empty copy is
+      // useful — keep this simple: hide when there is nothing to say.
+      if (!signals.length) {{ card.style.display = "none"; return; }}
+      card.style.display = "";
+      emptyEl.style.display = "none";
+      listEl.innerHTML = signals.map(function(s) {{
+        return '<li>'
+          + '<span class="signal-label">' + escapeHtml(s.label || "") + '</span>'
+          + '<span class="signal-detail">' + escapeHtml(s.detail || "") + '</span>'
+          + '</li>';
+      }}).join("");
+    }} catch (e) {{
+      // Network / fetch errors should be silent — the card is optional.
+      card.style.display = "none";
+    }}
+  }}
+
   // ── Analysis status + polling ──
   var analysisBadge = document.getElementById("analysisBadge");
   var analysisProgressBar = document.getElementById("analysisProgressBar");
@@ -4202,6 +4345,7 @@ def get_web_ui_html(
     }}
 
     renderColorPalette(derived);
+    loadRecentSignals();
   }}
 
   // Image previews
@@ -4395,7 +4539,7 @@ def get_web_ui_html(
     }}
   }}
 
-  // Outfits tab — intent-organized history
+  // Outfits tab — themed history (May 1, 2026 Theme Taxonomy)
   if (ACTIVE_VIEW === "outfits") {{
     (async function() {{
       var area = document.getElementById("outfitsContent");
@@ -4403,18 +4547,19 @@ def get_web_ui_html(
       try {{
         var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/intent-history?types=occasion_recommendation,pairing_request,capsule_or_trip_planning");
         var data = await res.json();
-        if (!res.ok || !data.groups || !data.groups.length) {{
+        var themes = (data && data.themes) || [];
+        var fallbackGroups = (data && data.groups) || [];
+        if (!res.ok || (!themes.length && !fallbackGroups.length)) {{
           area.innerHTML = '<div class="results-empty">Nothing styled yet.</div>';
           return;
         }}
         area.innerHTML = "";
-        data.groups.forEach(function(g) {{
+
+        function renderGroup(g, parent) {{
           var section = document.createElement("div");
           section.setAttribute("data-intent-section", "1");
           section.className = "intent-section";
 
-          // Flatten all turns' outfits into one carousel with per-card context
-          // and extract response metadata from the first turn that has it
           var allOutfits = [];
           var groupMetadata = {{}};
           (g.turns || []).forEach(function(turn) {{
@@ -4424,9 +4569,7 @@ def get_web_ui_html(
               outfit._conv_id = turn.conversation_id || "";
               allOutfits.push(outfit);
             }});
-            // Carry forward the first turn's metadata for the group
             if (!groupMetadata.answer_source && turn.outfits && turn.outfits.length) {{
-              var firstOutfit = turn.outfits[0] || {{}};
               groupMetadata.answer_source = g.source || "";
               groupMetadata.occasion = g.occasion || "";
               groupMetadata.primary_intent = g.intent || "";
@@ -4452,8 +4595,44 @@ def get_web_ui_html(
           carouselWrap.style.padding = "0 0 16px";
           renderPdpCarousel(allOutfits, g.conversation_id, groupMetadata, carouselWrap);
           section.appendChild(carouselWrap);
-          area.appendChild(section);
-        }});
+          parent.appendChild(section);
+        }}
+
+        if (themes.length) {{
+          // May 1, 2026 — theme-folded rendering: one section per theme,
+          // groups nested inside. Backwards-compatible: if the server
+          // returns no themes (older build), fall back to flat groups.
+          themes.forEach(function(theme) {{
+            if (!theme.groups || !theme.groups.length) return;
+            var themeBlock = document.createElement("div");
+            themeBlock.className = "theme-block";
+            themeBlock.setAttribute("data-theme-key", theme.theme_key || "");
+
+            var header = document.createElement("div");
+            header.className = "theme-header";
+            var h2 = document.createElement("h2");
+            h2.className = "theme-title";
+            h2.textContent = theme.theme_label || theme.theme_key || "";
+            header.appendChild(h2);
+            var sub = document.createElement("p");
+            sub.className = "theme-subtitle";
+            var lookCount = theme.total_outfit_count || 0;
+            var groupCount = theme.group_count || (theme.groups || []).length;
+            sub.textContent =
+              lookCount + (lookCount === 1 ? " look across " : " looks across ") +
+              groupCount + (groupCount === 1 ? " session" : " sessions");
+            header.appendChild(sub);
+            themeBlock.appendChild(header);
+
+            var groupsWrap = document.createElement("div");
+            groupsWrap.className = "theme-groups";
+            (theme.groups || []).forEach(function(g) {{ renderGroup(g, groupsWrap); }});
+            themeBlock.appendChild(groupsWrap);
+            area.appendChild(themeBlock);
+          }});
+        }} else {{
+          fallbackGroups.forEach(function(g) {{ renderGroup(g, area); }});
+        }}
       }} catch (_) {{
         area.innerHTML = '<div class="results-empty">Couldn\\'t load your outfits.</div>';
       }}
