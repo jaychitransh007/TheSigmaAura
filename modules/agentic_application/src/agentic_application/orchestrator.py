@@ -4800,6 +4800,10 @@ class AgenticOrchestrator:
             _quality_passed: bool | None = None
 
             def _log_candidate_trace() -> None:
+                # garment_ids is always assigned in the enclosing scope
+                # before any call to this helper (see the outer block:
+                # garment_ids = sorted(...) runs before the first
+                # _log_candidate_trace() call).
                 latency = int((time.monotonic() - _candidate_started) * 1000)
                 try:
                     self.repo.log_tool_trace(
@@ -4808,7 +4812,7 @@ class AgenticOrchestrator:
                         tool_name="tryon_render",
                         input_json={
                             "candidate_id": str(getattr(candidate, "candidate_id", "")),
-                            "garment_ids": list(garment_ids) if "garment_ids" in dir() else [],
+                            "garment_ids": list(garment_ids),
                             "parent_step": "visual_evaluation",
                         },
                         output_json={

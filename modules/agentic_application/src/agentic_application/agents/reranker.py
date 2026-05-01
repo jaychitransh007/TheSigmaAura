@@ -146,16 +146,21 @@ def _loud_count(c: OutfitCandidate) -> int:
     return n
 
 
-def _relaxed_count(c: OutfitCandidate) -> int:
-    n = 0
+def _relaxed_count(c: OutfitCandidate) -> float:
+    """Comfort signal: full credit when fit AND drape both confirm
+    relaxed; half credit when only the fit attribute is present (drape
+    missing from the catalog enrichment for that item). Returns a float
+    so the half-credit lands precisely; the ``comfort_first``
+    tiebreaker uses it as a sort key."""
+    n = 0.0
     for it in _candidate_items(c):
         fit = _item_attr(it, "fit_type")
         drape = _item_attr(it, "fabric_drape")
         if fit in _RELAXED_FITS and drape in _SOFT_DRAPES:
-            n += 1
+            n += 1.0
         elif fit in _RELAXED_FITS:
             # half-credit for relaxed without drape evidence
-            n += 1
+            n += 0.5
     return n
 
 

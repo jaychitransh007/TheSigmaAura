@@ -242,11 +242,13 @@ def _fit_weights(
     #   weights["w_archetype_proximity"] = float(model.coef_[1])
     #   weights["w_weather_time_match"] = float(model.coef_[2])
     #   weights["w_prior_dislike"] = float(-model.coef_[3])
-    notes.append(
-        f"{len(labelled)} labelled turns available — full Ridge fit still a "
-        f"TODO. See _fit_weights() in this file."
+    return (
+        weights,
+        (
+            f"{len(labelled)} labelled turns available — full Ridge fit still a "
+            f"TODO. See _fit_weights() in this file."
+        ),
     )
-    return (weights, " | ".join(notes))
 
 
 def _emit(
