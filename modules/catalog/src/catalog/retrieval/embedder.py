@@ -1,4 +1,5 @@
 import logging
+from functools import cached_property
 from typing import Iterable, List
 
 from openai import OpenAI
@@ -15,8 +16,16 @@ EMBED_BATCH_SIZE = 50
 
 class CatalogEmbedder:
     def __init__(self, config: CatalogEmbeddingConfig) -> None:
+        # May 1, 2026 (CI fix): lazy OpenAI client. The retrieval gateway
+        # constructs CatalogEmbedder eagerly from the orchestrator's
+        # __init__ even in tests where the embedder is never used; deferring
+        # the API-key load until first embed_documents call keeps the
+        # constructor env-free.
         self._config = config
-        self._client = OpenAI(api_key=get_api_key())
+
+    @cached_property
+    def _client(self) -> OpenAI:
+        return OpenAI(api_key=get_api_key())
 
     def embed_documents(self, documents: Iterable[CatalogDocument]) -> List[CatalogEmbeddingRecord]:
         docs = list(documents)

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -271,11 +272,16 @@ class VisualEvaluatorAgent:
         # performs well. Runs 3-5x in parallel post-try-on so the
         # latency saving compounds. Score noise affects ranking-within-
         # pool only — retrieval is upstream and unaffected.
-        self._client = OpenAI(api_key=get_api_key())
+        #
+        # Lazy OpenAI client (see CopilotPlanner for the pattern).
         self._model = model
         self._system_prompt = _load_prompt()
         # Item 4 (May 1, 2026): orchestrator picks this up post-call.
         self.last_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    @cached_property
+    def _client(self) -> OpenAI:
+        return OpenAI(api_key=get_api_key())
 
     def evaluate_candidate(
         self,

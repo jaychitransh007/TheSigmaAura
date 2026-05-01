@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -220,13 +221,21 @@ class CopilotPlanner:
         # May 1, 2026: upgraded from gpt-5.4 to gpt-5.5. The planner
         # is the single highest-leverage call per turn — wrong intent
         # = wrong handler — so it gets the more capable model.
-        self._client = OpenAI(api_key=get_api_key())
+        #
+        # Lazy OpenAI client: do NOT touch get_api_key() here so the
+        # constructor stays env-free for tests that mock the agent.
+        # The client materialises on first attribute access via the
+        # cached_property below.
         self._model = model
         self._system_prompt = _load_prompt()
         # Item 4 (May 1, 2026): exposed for the orchestrator's log_model_call
         # site to pick up. Reset on every plan() entry so a stale read can't
         # mislabel a later turn.
         self.last_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    @cached_property
+    def _client(self) -> OpenAI:
+        return OpenAI(api_key=get_api_key())
 
     def plan(self, planner_input: Dict[str, Any]) -> CopilotPlanResult:
         from platform_core.cost_estimator import extract_token_usage

@@ -58,6 +58,47 @@ from agentic_application.schemas import (
 )
 
 
+def _make_planner_mock(
+    *,
+    intent: str = "occasion_recommendation",
+    action: str = "run_recommendation_pipeline",
+    occasion_signal: str | None = None,
+    formality_hint: str | None = None,
+    source_preference: str = "auto",
+    is_followup: bool = False,
+    followup_intent: str | None = None,
+    assistant_message: str = "Let me build that.",
+):
+    """Helper used by happy-path orchestrator tests that exercise
+    process_turn end-to-end. Returns a Mock whose .plan() yields a
+    CopilotPlanResult with the supplied routing — saves each test from
+    re-constructing the same boilerplate. May 1, 2026 (CI fix)."""
+    from unittest.mock import Mock as _Mock
+    from agentic_application.schemas import (
+        CopilotPlanResult,
+        CopilotResolvedContext,
+        CopilotActionParameters,
+    )
+    planner_mock = _Mock()
+    planner_mock.plan.return_value = CopilotPlanResult(
+        intent=intent,
+        intent_confidence=0.95,
+        action=action,
+        context_sufficient=True,
+        assistant_message=assistant_message,
+        follow_up_suggestions=[],
+        resolved_context=CopilotResolvedContext(
+            occasion_signal=occasion_signal,
+            formality_hint=formality_hint,
+            source_preference=source_preference,
+            is_followup=is_followup,
+            followup_intent=followup_intent,
+        ),
+        action_parameters=CopilotActionParameters(),
+    )
+    return planner_mock
+
+
 class AgenticApplicationTests(unittest.TestCase):
     @staticmethod
     def _png_data_url(*, color: tuple[int, int, int], size: tuple[int, int] = (512, 768)) -> tuple[str, str]:
@@ -553,6 +594,7 @@ class AgenticApplicationTests(unittest.TestCase):
             RetrievedSet(direction_id="A", query_id="A1", role="top", products=[]),
         ]
 
+        planner_mock = _make_planner_mock(occasion_signal="dinner")
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
             "agentic_application.orchestrator.OutfitArchitect"
         ) as architect_cls, patch(
@@ -561,6 +603,8 @@ class AgenticApplicationTests(unittest.TestCase):
             "agentic_application.orchestrator.OutfitAssembler"
         ) as assembler_cls, patch(
             "agentic_application.orchestrator.ResponseFormatter"
+        ), patch(
+            "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock
         ):
             architect_cls.return_value.plan.return_value = plan
             search_cls.return_value.search.return_value = retrieved_sets
@@ -622,6 +666,7 @@ class AgenticApplicationTests(unittest.TestCase):
  "plan_source": "llm"},
         )
 
+        planner_mock = _make_planner_mock(occasion_signal="dinner")
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
             "agentic_application.orchestrator.OutfitArchitect"
         ) as architect_cls, patch(
@@ -630,7 +675,9 @@ class AgenticApplicationTests(unittest.TestCase):
             "agentic_application.orchestrator.OutfitAssembler"
         ) as assembler_cls, patch(
             "agentic_application.orchestrator.ResponseFormatter"
-        ) as formatter_cls:
+        ) as formatter_cls, patch(
+            "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock
+        ):
             architect_cls.return_value.plan.return_value = plan
             search_cls.return_value.search.return_value = retrieved_sets
             assembler_cls.return_value.assemble.return_value = []
@@ -797,6 +844,13 @@ class AgenticApplicationTests(unittest.TestCase):
 
         onboarding_gateway.get_analysis_status.return_value = analysis_payload
 
+        planner_mock = _make_planner_mock(
+            intent="occasion_recommendation",
+            action="run_recommendation_pipeline",
+            occasion_signal="wedding",
+            formality_hint="formal",
+            is_followup=True,
+        )
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
             "agentic_application.orchestrator.OutfitArchitect"
         ) as architect_cls, patch(
@@ -805,7 +859,9 @@ class AgenticApplicationTests(unittest.TestCase):
             "agentic_application.orchestrator.OutfitAssembler"
         ) as assembler_cls, patch(
             "agentic_application.orchestrator.ResponseFormatter"
-        ) as formatter_cls:
+        ) as formatter_cls, patch(
+            "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock
+        ):
             architect_cls.return_value.plan.return_value = plan
             search_cls.return_value.search.return_value = retrieved_sets
             assembler_cls.return_value.assemble.return_value = candidates
@@ -1730,9 +1786,20 @@ class AgenticApplicationTests(unittest.TestCase):
         }
         repo.create_turn.return_value = {"id": "t1"}
 
+        # Note: source_preference="auto" — the wardrobe-first short-circuit
+        # is triggered by the orchestrator detecting full wardrobe coverage,
+        # NOT by the planner explicitly preferring wardrobe. The test
+        # verifies the short-circuit fires even when the planner returns
+        # neutral routing (which is the dominant case in production).
+        planner_mock = _make_planner_mock(
+            occasion_signal="office",
+            formality_hint="business_casual",
+        )
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
             "agentic_application.orchestrator.OutfitArchitect"
-        ) as architect_cls:
+        ) as architect_cls, patch(
+            "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock
+        ):
             orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=Mock())
             result = orchestrator.process_turn(
                 conversation_id="c1",
@@ -2715,8 +2782,15 @@ class CopilotPlannerTests(unittest.TestCase):
         repo.create_turn.return_value = {"id": "t1"}
         repo.list_disliked_product_ids_for_user.return_value = []
 
+        planner_mock = _make_planner_mock(
+            occasion_signal="office",
+            formality_hint="business_casual",
+            source_preference="wardrobe",
+        )
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
             "agentic_application.orchestrator.OutfitArchitect"
+        ), patch(
+            "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock
         ):
             orchestrator = AgenticOrchestrator(
                 repo=repo, onboarding_gateway=onboarding_gateway, config=Mock()
