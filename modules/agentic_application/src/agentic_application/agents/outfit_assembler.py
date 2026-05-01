@@ -121,6 +121,114 @@ def _followup_complete_adjustment(
     return adj, notes
 
 
+# ─── ranking_bias scoring coefficients ──────────────────────────────────
+#
+# Architect-emitted `ranking_bias` (one of: balanced, conservative, expressive,
+# formal_first, comfort_first) modulates how the assembler weighs penalties
+# and applies bias-specific bonuses on top of the base similarity score.
+#
+# `_pen` keys multiply existing penalties — values >1.0 amplify, <1.0 soften.
+# `_bonus` keys add to the *penalty* term (which is then subtracted from the
+# base score), so:
+#   - a NEGATIVE bonus value boosts the candidate (lowers penalty)
+#   - a POSITIVE bonus value penalises it (raises penalty)
+#
+# `loud_bonus` triggers on bold/expressive signals (non-solid pattern, high
+# saturation, or visible embellishment); `formal_bonus` triggers when both
+# items show high formality signal strength at semi_formal+ formality;
+# `comfort_bonus` triggers on relaxed fit + flowing/soft drape.
+_BIAS_COEFS: Dict[str, Dict[str, float]] = {
+    "balanced":      {"form_pen": 1.0, "occ_pen": 1.0, "vol_pen": 1.0, "pat_pen": 1.0, "loud_bonus": 0.0,   "formal_bonus": 0.0,   "comfort_bonus": 0.0},
+    "conservative":  {"form_pen": 1.5, "occ_pen": 1.5, "vol_pen": 1.3, "pat_pen": 1.5, "loud_bonus": +0.05, "formal_bonus": 0.0,   "comfort_bonus": 0.0},
+    "expressive":    {"form_pen": 0.7, "occ_pen": 0.9, "vol_pen": 0.8, "pat_pen": 0.6, "loud_bonus": -0.10, "formal_bonus": 0.0,   "comfort_bonus": 0.0},
+    "formal_first":  {"form_pen": 1.7, "occ_pen": 1.5, "vol_pen": 1.0, "pat_pen": 1.0, "loud_bonus": 0.0,   "formal_bonus": -0.10, "comfort_bonus": 0.0},
+    "comfort_first": {"form_pen": 0.8, "occ_pen": 0.9, "vol_pen": 0.6, "pat_pen": 1.0, "loud_bonus": 0.0,   "formal_bonus": 0.0,   "comfort_bonus": -0.08},
+}
+
+_FORMAL_HIGH_SIGNALS = {"high", "very_high", "strong", "very_strong"}
+_FORMAL_OK_LEVELS = {"semi_formal", "formal", "ultra_formal"}
+_LOUD_PATTERNS = {"floral", "geometric", "abstract", "stripe", "stripes", "check", "checks", "plaid", "graphic", "print", "embellished"}
+_LOUD_SATURATIONS = {"high", "vivid", "bold", "saturated"}
+_LOUD_EMBELLISHMENT = {"moderate", "heavy", "elaborate", "ornate", "statement"}
+_RELAXED_FITS = {"relaxed", "loose", "oversized"}
+_SOFT_DRAPES = {"flowing", "fluid", "soft", "drapey", "draped"}
+
+
+def _resolve_bias(combined_context: "CombinedContext | None") -> Dict[str, float]:
+    """Look up the bias coefficient row, defaulting to balanced."""
+    if combined_context is None:
+        return _BIAS_COEFS["balanced"]
+    bias = (combined_context.live.ranking_bias or "balanced").strip().lower()
+    return _BIAS_COEFS.get(bias, _BIAS_COEFS["balanced"])
+
+
+def _is_loud(product: RetrievedProduct) -> bool:
+    """True when a product carries strong expressive signals."""
+    pat = (_get_attr(product, "pattern_type") or _get_attr(product, "PatternType") or "").strip().lower()
+    sat = (_get_attr(product, "color_saturation") or _get_attr(product, "ColorSaturation") or "").strip().lower()
+    emb = (_get_attr(product, "embellishment_level") or _get_attr(product, "EmbellishmentLevel") or "").strip().lower()
+    if pat and pat != "solid" and pat in _LOUD_PATTERNS:
+        return True
+    if sat in _LOUD_SATURATIONS:
+        return True
+    if emb in _LOUD_EMBELLISHMENT:
+        return True
+    return False
+
+
+def _is_high_formality(product: RetrievedProduct) -> bool:
+    """True when a product shows high formality signal at semi_formal+ level."""
+    sig = (_get_attr(product, "formality_signal_strength") or _get_attr(product, "FormalitySignalStrength") or "").strip().lower()
+    lvl = (_get_attr(product, "formality_level") or _get_attr(product, "FormalityLevel") or "").strip().lower()
+    return sig in _FORMAL_HIGH_SIGNALS and lvl in _FORMAL_OK_LEVELS
+
+
+def _is_comfortable(product: RetrievedProduct) -> bool:
+    """True when a product reads as relaxed-fit + flowing drape."""
+    fit = (_get_attr(product, "fit_type") or _get_attr(product, "FitType") or "").strip().lower()
+    drape = (_get_attr(product, "fabric_drape") or _get_attr(product, "FabricDrape") or "").strip().lower()
+    return fit in _RELAXED_FITS and drape in _SOFT_DRAPES
+
+
+def _apply_bias_bonus(
+    products: List[RetrievedProduct], coefs: Dict[str, float],
+) -> Tuple[float, List[str]]:
+    """Compute bias-driven adjustment to the penalty + accompanying notes.
+
+    Returns ``(penalty_delta, notes)``. Negative delta = score boost (since
+    score = base - penalty). Iterates the supplied products and stacks
+    multi-item triggers (e.g. both items are loud → bonus applies twice).
+    """
+    delta = 0.0
+    notes: List[str] = []
+    if not products:
+        return 0.0, notes
+
+    loud = coefs.get("loud_bonus", 0.0)
+    formal = coefs.get("formal_bonus", 0.0)
+    comfort = coefs.get("comfort_bonus", 0.0)
+
+    if loud:
+        loud_count = sum(1 for p in products if _is_loud(p))
+        if loud_count:
+            adj = loud * loud_count
+            delta += adj
+            notes.append(f"bias loud_bonus {adj:+.3f}: {loud_count} expressive item(s)")
+    if formal:
+        # Only apply when ALL items in the outfit are high-formality.
+        if all(_is_high_formality(p) for p in products):
+            delta += formal
+            notes.append(f"bias formal_bonus {formal:+.3f}: high-formality outfit")
+    if comfort:
+        comfort_count = sum(1 for p in products if _is_comfortable(p))
+        if comfort_count:
+            adj = comfort * comfort_count
+            delta += adj
+            notes.append(f"bias comfort_bonus {adj:+.3f}: {comfort_count} relaxed/flowing item(s)")
+
+    return delta, notes
+
+
 # Formality compatibility: levels that can pair together.
 _FORMALITY_COMPAT: Dict[str, set] = {
     "casual": {"casual", "smart_casual"},
@@ -376,6 +484,7 @@ class OutfitAssembler:
         self, direction_id: str, sets: List[RetrievedSet], combined_context: CombinedContext | None = None,
     ) -> List[OutfitCandidate]:
         """Each complete product becomes one candidate."""
+        coefs = _resolve_bias(combined_context)
         candidates: List[OutfitCandidate] = []
         for rs in sets:
             if rs.role != "complete":
@@ -387,6 +496,10 @@ class OutfitAssembler:
                     adj, adj_notes = _followup_complete_adjustment(product, combined_context)
                     score = max(score - adj, 0.01)
                     notes.extend(adj_notes)
+                bias_delta, bias_notes = _apply_bias_bonus([product], coefs)
+                if bias_delta or bias_notes:
+                    score = max(score - bias_delta, 0.01)
+                    notes.extend(bias_notes)
                 candidates.append(
                     OutfitCandidate(
                         candidate_id=str(uuid4())[:8],
@@ -403,6 +516,7 @@ class OutfitAssembler:
         self, direction_id: str, sets: List[RetrievedSet], combined_context: CombinedContext | None = None,
     ) -> List[OutfitCandidate]:
         """Combine top + bottom products with compatibility pruning."""
+        coefs = _resolve_bias(combined_context)
         tops: List[RetrievedProduct] = []
         bottoms: List[RetrievedProduct] = []
         for rs in sets:
@@ -423,6 +537,10 @@ class OutfitAssembler:
             for bottom in bottoms:
                 score, notes = self._evaluate_pair(top, bottom, combined_context)
                 if score > 0:
+                    bias_delta, bias_notes = _apply_bias_bonus([top, bottom], coefs)
+                    if bias_delta or bias_notes:
+                        score = max(score - bias_delta, 0.01)
+                        notes = notes + bias_notes
                     scored_pairs.append((score, notes, top, bottom))
 
         # Sort by score descending, cap at MAX_PAIRED_CANDIDATES
@@ -450,6 +568,7 @@ class OutfitAssembler:
         self, direction_id: str, sets: List[RetrievedSet], combined_context: CombinedContext | None = None,
     ) -> List[OutfitCandidate]:
         """Combine top + bottom + outerwear products."""
+        coefs = _resolve_bias(combined_context)
         tops: List[RetrievedProduct] = []
         bottoms: List[RetrievedProduct] = []
         outerwear: List[RetrievedProduct] = []
@@ -491,6 +610,12 @@ class OutfitAssembler:
                     # Three-piece score: weighted average of pair + outerwear coherence
                     total_score = (pair_score * 0.6) + (outer_score * 0.4)
                     notes = pair_notes + outer_notes
+                    bias_delta, bias_notes = _apply_bias_bonus(
+                        [top, bottom, outer], coefs,
+                    )
+                    if bias_delta or bias_notes:
+                        total_score = max(total_score - bias_delta, 0.01)
+                        notes = notes + bias_notes
                     scored.append((total_score, notes, top, bottom, outer))
 
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -523,12 +648,16 @@ class OutfitAssembler:
         penalty = 0.0
         notes: List[str] = []
 
+        # ranking_bias coefficients shape penalty weights and unlock the
+        # bias-bonus pass at the bottom of this method.
+        coefs = _resolve_bias(combined_context)
+
         # Formality compatibility (soft penalty, not hard rejection)
         top_form = _get_attr(top, "formality_level") or _get_attr(top, "FormalityLevel")
         bot_form = _get_attr(bottom, "formality_level") or _get_attr(bottom, "FormalityLevel")
         ok, note = _formality_compatible(top_form, bot_form)
         if note:
-            penalty += 0.20
+            penalty += 0.20 * coefs["form_pen"]
             notes.append(note)
 
         # Occasion compatibility (soft penalty, not hard rejection)
@@ -536,7 +665,7 @@ class OutfitAssembler:
         bot_occ = _get_attr(bottom, "occasion_fit") or _get_attr(bottom, "OccasionFit")
         ok, note = _occasion_compatible(top_occ, bot_occ)
         if note:
-            penalty += 0.15
+            penalty += 0.15 * coefs["occ_pen"]
             notes.append(note)
 
         # Color temperature
@@ -554,7 +683,7 @@ class OutfitAssembler:
         bot_pat = _get_attr(bottom, "pattern_type") or _get_attr(bottom, "PatternType")
         ok, note = _pattern_compatible(top_pat, bot_pat)
         if note:
-            penalty += 0.05
+            penalty += 0.05 * coefs["pat_pen"]
             notes.append(note)
 
         # Volume (soft penalty, not hard rejection)
@@ -562,7 +691,7 @@ class OutfitAssembler:
         bot_vol = _get_attr(bottom, "volume_profile") or _get_attr(bottom, "VolumeProfile")
         ok, note = _volume_compatible(top_vol, bot_vol)
         if note:
-            penalty += 0.25
+            penalty += 0.25 * coefs["vol_pen"]
             notes.append(note)
 
         # Fit coherence — relaxed bottom with structured/regular top is a mismatch
@@ -594,6 +723,12 @@ class OutfitAssembler:
             fu_adj, fu_notes = _followup_pair_adjustment(top, bottom, combined_context)
             penalty += fu_adj
             notes.extend(fu_notes)
+
+        # NOTE: bias bonus is NOT applied here. It's applied once per
+        # candidate at the assembly-method level (`_assemble_paired`,
+        # `_assemble_complete`, `_assemble_three_piece`) so three-piece
+        # candidates don't double-count when this method is called twice
+        # (top+bottom and top+outer).
 
         return max(base_score - penalty, 0.01), notes
 

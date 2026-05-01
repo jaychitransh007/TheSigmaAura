@@ -103,6 +103,12 @@ class LiveContext(BaseModel):
     weather_context: str = ""
     time_of_day: str = ""
     target_product_type: str = ""
+    # Phase 13B + May 1, 2026: architect-emitted ranking signal mirrored
+    # from RecommendationPlan.resolved_context.ranking_bias so the
+    # assembler and reranker can read it without holding a reference to
+    # the plan object. One of: balanced, conservative, expressive,
+    # formal_first, comfort_first.
+    ranking_bias: str = "balanced"
 
 
 # --- Conversation Memory ---
