@@ -108,9 +108,15 @@ class UserAnalysisService:
         self,
         repo: OnboardingRepository,
         *,
-        model: str = "gpt-5.4",
+        model: str = "gpt-5.5",
         reasoning_effort: str = "high",
     ) -> None:
+        # May 1, 2026: upgraded from gpt-5.4 to gpt-5.5. Onboarding
+        # analysis (body type, color, other details) is one-time per
+        # user but the output drives every recommendation downstream.
+        # Better attribute extraction = better seasonal color group =
+        # better outfit recommendations forever after, so the upgrade
+        # is high-leverage even though it only fires once.
         self._repo = repo
         self._model = model
         self._reasoning_effort = reasoning_effort

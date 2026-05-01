@@ -1,0 +1,19 @@
+alert: aura_tryon_quality_gate_failure_rate_high
+description: |
+  Try-on quality gate failure rate above 25% for 1h — Gemini renders
+  are degrading. Healthy steady state is <15%; alert fires above 25%.
+expr: |
+  sum(rate(aura_tryon_quality_gate_total{passed="false"}[1h]))
+  /
+  sum(rate(aura_tryon_quality_gate_total[1h]))
+  > 0.25
+for: 1h
+severity: P2
+runbook: docs/OPERATIONS.md#panel-10--try-on-quality-gate-health-phase-12e
+panel: docs/OPERATIONS.md#panel-10--try-on-quality-gate-health-phase-12e
+labels:
+  team: aura
+  service: agentic_application
+annotations:
+  summary: Try-on quality gate failure rate above 25%
+  description: "{{ $value | humanizePercentage }} of try-on renders are failing the quality gate"

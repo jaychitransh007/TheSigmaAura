@@ -1,0 +1,20 @@
+alert: aura_pipeline_error_rate_high
+description: |
+  Aura pipeline error rate is above 5% over the trailing 5 minutes.
+  Indicates one or more upstream stages (planner / architect /
+  evaluator) are failing turns at scale.
+expr: |
+  sum(rate(aura_turn_total{status="error"}[5m]))
+  /
+  sum(rate(aura_turn_total[5m]))
+  > 0.05
+for: 30m
+severity: P1
+runbook: docs/OPERATIONS.md#a-empty-response-spike
+panel: docs/OPERATIONS.md#panel-4--pipeline-health-errors--empty-responses
+labels:
+  team: aura
+  service: agentic_application
+annotations:
+  summary: Aura turn error rate above 5%
+  description: "{{ $value | humanizePercentage }} of turns in the last 5m are failing"

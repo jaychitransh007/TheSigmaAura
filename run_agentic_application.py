@@ -27,6 +27,8 @@ for p in (
 
 import uvicorn  # noqa: E402
 
+from platform_core.logging_config import configure_logging  # noqa: E402
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run agentic application API server.")
@@ -38,6 +40,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    # AURA_LOG_FORMAT=json (or LOG_FORMAT=json) emits structured JSON
+    # records ready for Logflare / Datadog / Cloud Logging ingestion.
+    # Default stays plain text so local development is unchanged.
+    configure_logging()
     uvicorn.run(
         "agentic_application.api:create_app",
         host=args.host,

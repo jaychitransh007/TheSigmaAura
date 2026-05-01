@@ -269,7 +269,7 @@ class OnboardingTests(unittest.TestCase):
 
     def test_onboarding_html_contains_modular_step_flow_and_crop_frame(self) -> None:
         html = get_onboarding_html()
-        self.assertIn("Step 1 of 10", html)
+        self.assertIn("Step 1 of 9", html)
         # OTP step copy: "the OTP is fixed. Enter <strong>123456</strong>"
         self.assertIn("the OTP is fixed", html)
         self.assertIn("123456", html)
@@ -277,7 +277,7 @@ class OnboardingTests(unittest.TestCase):
         # Profession step uses lowercase "profession" throughout
         self.assertIn("Choose your profession", html)
         self.assertIn("step-profession", html)
-        self.assertIn("uploadHeadshotBtn", html)
+        self.assertIn("uploadBothBtn", html)
         self.assertIn("/v1/onboarding/images/normalize", html)
         self.assertIn("determineResumeDestination", html)
         # Resume destination redirects via "/?user=" + userId, not /onboard/processing

@@ -1,0 +1,20 @@
+alert: aura_supabase_p95_latency_high
+description: |
+  Supabase REST p95 latency above 1s for 15 minutes. Pipeline calls
+  the DB many times per turn; sustained slow responses cascade into
+  user-visible latency.
+expr: |
+  histogram_quantile(
+    0.95,
+    sum(rate(aura_external_call_duration_seconds_bucket{service="supabase"}[5m]))
+    by (le)
+  ) > 1.0
+for: 15m
+severity: P2
+runbook: docs/OPERATIONS.md#b-catalog--embeddings-missing
+labels:
+  team: aura
+  service: agentic_application
+annotations:
+  summary: Supabase REST p95 latency exceeds 1s
+  description: "p95 = {{ $value }}s; check Supabase compute tier and connection pool"

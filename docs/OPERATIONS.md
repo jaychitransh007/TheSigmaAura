@@ -541,11 +541,118 @@ the image as not-a-garment.
 4. When a panel definition changes, update **this file first** so the
    dashboard and the source of truth do not drift.
 
+## On-Call Runbook (First-50 Rollout)
+
+This section satisfies Gate 3 of `docs/RELEASE_READINESS.md`. Every on-call
+rotation must have an owner. Fill in the names below before the rollout and
+keep them current.
+
+### Rotation
+
+- **Primary:** _______________________  (paged first, P1 ack within 15 min)
+- **Secondary:** _____________________  (paged on no-ack escalation)
+- **Engineering owner:** ____________   (architectural decisions, post-mortem)
+- **Design / product owner:** _______   (UX-impacting incidents, copy review)
+
+### Channels
+
+- **Pages:** PagerDuty service `aura-firstfifty` (or equivalent) → on-call phone.
+- **Chat:** Slack `#aura-oncall` for working updates; `#aura-incidents` for active P1.
+- **Status:** internal status page `status.internal/aura` (link from this doc once provisioned).
+
+### Failure mode → response
+
+The four failure modes named in `docs/RELEASE_READINESS.md` Gate 3, with the
+specific dashboard signal, severity, and the first three actions to take. If
+the immediate fix isn't obvious, declare a P1 in `#aura-incidents` first and
+work the diagnosis there.
+
+#### A. Empty-response spike
+
+- **Signal:** Panel 4 — `empty_responses` rises above 0 for any single day, or
+  `error_rate_pct > 5` for the trailing hour.
+- **Severity:** P1 if `error_rate_pct > 10` for 30 minutes; P2 otherwise.
+- **First three actions:**
+  1. Pull recent `tool_traces` rows where `tool_name='outfit_architect'` and
+     status='error' — the error message identifies the upstream stage.
+  2. If errors point at the catalog (`catalog_unavailable`), follow B.
+  3. If errors point at the LLM provider (rate limit / 5xx), back off the
+     architect call rate and post status to `#aura-oncall`. If sustained,
+     temporarily route new turns to the assembly-score fallback by setting
+     env `AURA_DISABLE_ARCHITECT=1` (planned escape hatch — see Gate 3 follow-ups).
+
+#### B. Catalog / embeddings missing
+
+- **Signal:** Panel 4 — `catalog_unavailable_guardrail_hits` is non-zero. Any
+  hit pages on-call.
+- **Severity:** P1 — users see a guardrail message instead of recommendations.
+- **First three actions:**
+  1. Run `select count(*) from catalog_item_embeddings;` — if 0 or far below
+     the production target (~14k), restore from the last known-good
+     embeddings backup or rerun `POST /v1/admin/catalog/embeddings/resync`.
+  2. Verify `catalog_enriched` row count matches expectations (Gate 2
+     reference: 14,296 garment-only rows). If `catalog_enriched` shrank,
+     investigate the most recent admin job.
+  3. If the catalog rows look correct but pgvector queries time out, check
+     Panel 15 (Catalog Search Timeout Rate) and the Supabase compute tier;
+     consider rebuilding the HNSW index.
+
+#### C. Negative-signal spike on a single product
+
+- **Signal:** Panel 7 — any single `product_id` appears in the top-disliked
+  list for **3+ distinct users within 24h**.
+- **Severity:** P2 (no user-facing outage; quality issue).
+- **First three actions:**
+  1. Pull the offending product's `catalog_enriched` row and its image URL —
+     decide audit vs. hide.
+  2. To hide: set `is_active=false` (or `row_status='hidden'`) on the row;
+     re-run the embedding sync's skip-already-embedded path so it drops out
+     of retrieval. Confirm by re-running an affected user's last turn.
+  3. Open a ticket against the catalog admin team to investigate the
+     enrichment that produced the bad recommendation.
+
+#### D. Dependency report drift
+
+- **Signal:** `ops/scripts/validate_dependency_report.py` fails an assertion,
+  or Panel 1 shows `acquisition_source = 'unknown'` for **>50% of new users**
+  in the trailing 24h.
+- **Severity:** P2 — instrumentation regression, not user-facing.
+- **First three actions:**
+  1. Confirm the OTP-verify endpoint is still writing `acquisition_source`,
+     `acquisition_campaign`, `referral_code`, `icp_tag` (see
+     `modules/user/src/user/repository.py`).
+  2. Cross-check `dependency_validation_events` for the missing event type —
+     a recent code change probably removed an emit call.
+  3. File a code-fix ticket; the dashboards keep working with the existing
+     rows in the meantime.
+
+### Escalation timeline
+
+| Stage | Trigger | Action |
+|---|---|---|
+| 0:00 | Page fires | Primary acks within 15 min |
+| 0:15 | No primary ack | Secondary paged |
+| 0:30 | Active P1 not stabilised | Engineering owner pulled in; post in `#aura-incidents` |
+| 0:60 | P1 still active | Design / product owner pulled in if user-visible; user comms drafted |
+| 0:90 | P1 still active | Status page update |
+
+### Post-incident
+
+- Within 48h of a P1: written post-mortem in the engineering wiki linking to
+  the relevant dashboard panels and the fix PR.
+- Update this runbook if the incident exposed a missing alert, panel, or
+  escalation step.
+
 ## Related artifacts
 
 - `ops/scripts/smoke_test_full_flow.sh` — end-to-end smoke test against a
   live backend.
 - `ops/scripts/validate_dependency_report.py` — seeded validation harness
   for `build_dependency_report`.
+- `ops/scripts/calibrate_reranker.py` — skeleton calibration script for the
+  reranker (deferred curve fit; see `docs/CURRENT_STATE.md` Open Items Plan).
+- `ops/scripts/extract_dashboard_sql.py` — re-extracts every Panel's SQL
+  into `ops/dashboards/panel_NN_*.sql` for paste-into-dashboard use.
+- `ops/dashboards/` — auto-extracted SQL files, one per panel.
 - `docs/RELEASE_READINESS.md` — release-readiness criteria built on top of
   these dashboards.

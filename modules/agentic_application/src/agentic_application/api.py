@@ -6,8 +6,13 @@ from uuid import uuid4
 
 from catalog.admin_api import create_catalog_admin_router
 from catalog.ui import get_catalog_admin_html
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+
+from platform_core.request_context import (
+    set_request_id,
+    reset_request_id,
+)
 
 from platform_core.api_schemas import (
     ConversationListItem,
@@ -20,7 +25,10 @@ from platform_core.api_schemas import (
     FeedbackRequest,
     IntentHistoryGroup,
     IntentHistoryResponse,
+    IntentHistoryThemeBlock,
     IntentHistoryTurn,
+    RecentSignal,
+    RecentSignalsResponse,
     RenameConversationRequest,
     ResolveConversationRequest,
     ResolveConversationResponse,
@@ -280,6 +288,15 @@ def _hydrate_missing_outfits(
         turn["resolved_context_json"] = next_rc
 
 
+# May 1, 2026 — Theme Taxonomy: in-process dedup for the unmapped-
+# signal telemetry. We don't want every read of the Outfits tab to
+# spam tool_traces with the same signals over and over; this set
+# remembers what we've already logged in the current process. Process
+# restart re-logs (fine for ops). For multi-process deployments the
+# rate limit applies per worker — still bounded.
+_THEME_UNMAPPED_LOGGED: set[str] = set()
+
+
 def create_app() -> FastAPI:
     cfg = load_config()
     client = SupabaseRestClient(
@@ -297,6 +314,35 @@ def create_app() -> FastAPI:
     tryon_quality_gate = TryonQualityGate()
 
     app = FastAPI(title="Sigma Aura Agentic Application", version="3.0.0")
+
+    # Item 6 (May 1, 2026): OpenTelemetry distributed tracing. No-op
+    # when OTEL_EXPORTER_OTLP_ENDPOINT is unset; ships spans to the
+    # configured collector when set. Honours W3C Trace Context for
+    # join-up with frontend RUM and downstream services.
+    try:
+        from platform_core.otel_setup import configure_otel, instrument_fastapi
+        configure_otel("aura-agentic-application")
+        instrument_fastapi(app)
+    except Exception:  # noqa: BLE001 — never fail app construction on tracing setup
+        pass
+
+    # Item 2 (May 1, 2026): request_id correlation. Read incoming
+    # X-Request-Id (so upstream proxies / load balancers can supply
+    # one), generate when absent, echo on the response, and stash on
+    # a ContextVar so logs and observability rows can pick it up
+    # without explicit threading. The middleware lives on every route
+    # automatically — including /healthz and /metrics.
+    @app.middleware("http")
+    async def request_id_middleware(request: Request, call_next):
+        incoming = request.headers.get("x-request-id") or request.headers.get("X-Request-Id")
+        request_id = incoming if incoming else uuid4().hex
+        token = set_request_id(request_id)
+        try:
+            response = await call_next(request)
+            response.headers["x-request-id"] = request_id
+            return response
+        finally:
+            reset_request_id(token)
 
     def log_policy_event(
         *,
@@ -447,7 +493,50 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz")
     def healthz() -> dict:
+        """Liveness probe — fast, no external calls. Restart-decision input."""
         return {"ok": True}
+
+    @app.get("/readyz")
+    def readyz() -> Response:
+        """Readiness probe — verifies Supabase + OpenAI + Gemini reachability.
+
+        Item 3 (May 1, 2026): traffic-routing decision input. Returns 503
+        when any upstream is unreachable so an unhealthy instance is taken
+        out of the load balancer rotation immediately. Three checks run
+        in parallel with a 2s per-check timeout.
+        """
+        import os as _os
+        from platform_core.readiness import run_all_checks
+        report = run_all_checks(
+            supabase_rest_url=cfg.supabase_rest_url,
+            supabase_service_role_key=cfg.supabase_service_role_key,
+            openai_api_key=_os.getenv("OPENAI_API_KEY", "").strip(),
+            gemini_api_key=_os.getenv("GEMINI_API_KEY", "").strip(),
+        )
+        status_code = 200 if report["ready"] else 503
+        return Response(
+            content=__import__("json").dumps(report),
+            status_code=status_code,
+            media_type="application/json",
+        )
+
+    @app.get("/version")
+    def version() -> dict:
+        """Build / deploy identifiers — fed by AURA_COMMIT_SHA and AURA_DEPLOYED_AT
+        environment variables set by the deploy pipeline."""
+        from platform_core.readiness import version_info
+        return version_info()
+
+    @app.get("/metrics", include_in_schema=False)
+    def metrics() -> Response:
+        """Item 5 (May 1, 2026): Prometheus exposition for scrape collection.
+
+        Returns the canonical text-format metrics every Prometheus-compatible
+        scraper (Prometheus itself, Datadog Agent, Grafana Alloy, OpenTelemetry
+        Collector) ingests without further configuration.
+        """
+        from platform_core.metrics import generate_latest, CONTENT_TYPE_LATEST
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     @app.post("/v1/images/convert")
     def convert_image(payload: dict) -> dict:
@@ -1252,6 +1341,27 @@ def create_app() -> FastAPI:
                         summary_parts.append(source.replace("_", " "))
                     context_summary = " · ".join(summary_parts) if summary_parts else intent_label
 
+                    # May 1, 2026 — Theme Taxonomy: collapse the long
+                    # tail of occasion strings into 8 canonical themes.
+                    from .services.theme_taxonomy import map_to_theme, is_unmapped
+                    theme_key = map_to_theme(occasion, intent)
+                    # Telemetry: signals that have content but matched
+                    # zero keywords are the keyword-list's growth edge.
+                    # Dedup per-process so we log each unique unmapped
+                    # signal once until restart.
+                    if is_unmapped(occasion) and occasion not in _THEME_UNMAPPED_LOGGED:
+                        _THEME_UNMAPPED_LOGGED.add(occasion)
+                        try:
+                            repo.log_tool_trace(
+                                conversation_id=conv_id,
+                                turn_id=str(row.get("id") or ""),
+                                tool_name="theme_unmapped",
+                                input_json={"occasion_signal": occasion, "intent": intent},
+                                output_json={"theme_key": theme_key},
+                            )
+                        except Exception:
+                            pass
+
                     groups[group_key] = {
                         "group_key": group_key,
                         "conversation_id": conv_id,
@@ -1265,6 +1375,7 @@ def create_app() -> FastAPI:
                         "created_at": str(row.get("created_at") or ""),
                         "updated_at": str(row.get("created_at") or ""),
                         "turns": [],
+                        "theme_key": theme_key,
                     }
 
                 g = groups[group_key]
@@ -1280,7 +1391,81 @@ def create_app() -> FastAPI:
                 for g in groups.values()
             ]
 
-            return IntentHistoryResponse(user_id=user_id, groups=result_groups)
+            # May 1, 2026 — Theme Taxonomy: fold flat groups into
+            # theme blocks. Themes ordered by most-recent activity so
+            # whatever the user is currently planning floats to the
+            # top; ties broken by canonical theme order. Empty themes
+            # are dropped so the rendering stays clean.
+            from .services.theme_taxonomy import (
+                THEMES, theme_label, theme_description, theme_order,
+            )
+            from collections import defaultdict
+            theme_to_groups: Dict[str, List[IntentHistoryGroup]] = defaultdict(list)
+            theme_to_recent: Dict[str, str] = {}
+            for g in result_groups:
+                tk = g.theme_key or "style_sessions"
+                theme_to_groups[tk].append(g)
+                if g.updated_at and (tk not in theme_to_recent or g.updated_at > theme_to_recent[tk]):
+                    theme_to_recent[tk] = g.updated_at
+
+            theme_blocks: List[IntentHistoryThemeBlock] = []
+            for tk, gs in theme_to_groups.items():
+                gs_sorted = sorted(gs, key=lambda x: x.updated_at or "", reverse=True)
+                theme_blocks.append(
+                    IntentHistoryThemeBlock(
+                        theme_key=tk,
+                        theme_label=theme_label(tk),
+                        theme_description=theme_description(tk),
+                        group_count=len(gs_sorted),
+                        total_outfit_count=sum(g.total_outfit_count for g in gs_sorted),
+                        most_recent_at=theme_to_recent.get(tk, ""),
+                        groups=gs_sorted,
+                    )
+                )
+            # Recency-first sort, fallback to canonical order on ties.
+            theme_blocks.sort(
+                key=lambda b: (b.most_recent_at or "", -theme_order(b.theme_key)),
+                reverse=True,
+            )
+
+            return IntentHistoryResponse(
+                user_id=user_id,
+                groups=result_groups,  # back-compat
+                themes=theme_blocks,
+            )
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # -- Recent signals timeline (profile Phase 14 Step 5) ---------------------
+
+    @app.get("/v1/users/{user_id}/recent-signals", response_model=RecentSignalsResponse)
+    def list_recent_signals(user_id: str, limit: int = 5) -> RecentSignalsResponse:
+        """Return the deterministic profile signals timeline.
+
+        Reads from `user_comfort_learning`, `feedback_events`, and
+        `catalog_interaction_history` and shapes the rows into a small
+        list of stylist-voice copy strings. No LLM call. Newest first.
+        """
+        try:
+            from .services.recent_signals import build_recent_signals
+
+            user = repo.get_or_create_user(user_id)
+            internal_uid = str(user["id"])
+
+            comfort_rows = repo.get_comfort_signals(internal_uid)
+            feedback_rows = repo.list_feedback_events_for_user(internal_uid, limit=50)
+            catalog_rows = repo.list_catalog_interactions(internal_uid, limit=50)
+
+            signals = build_recent_signals(
+                comfort_rows=comfort_rows or [],
+                feedback_rows=feedback_rows or [],
+                catalog_rows=catalog_rows or [],
+                limit=max(1, min(20, int(limit))),
+            )
+            return RecentSignalsResponse(
+                user_id=user_id,
+                signals=[RecentSignal(**s) for s in signals],
+            )
         except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
