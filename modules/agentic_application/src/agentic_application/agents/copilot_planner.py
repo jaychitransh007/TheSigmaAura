@@ -216,12 +216,21 @@ def build_planner_input(
 
 
 class CopilotPlanner:
-    def __init__(self, model: str = "gpt-5.4") -> None:
+    def __init__(self, model: str = "gpt-5.5") -> None:
+        # May 1, 2026: upgraded from gpt-5.4 to gpt-5.5. The planner
+        # is the single highest-leverage call per turn — wrong intent
+        # = wrong handler — so it gets the more capable model.
         self._client = OpenAI(api_key=get_api_key())
         self._model = model
         self._system_prompt = _load_prompt()
+        # Item 4 (May 1, 2026): exposed for the orchestrator's log_model_call
+        # site to pick up. Reset on every plan() entry so a stale read can't
+        # mislabel a later turn.
+        self.last_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     def plan(self, planner_input: Dict[str, Any]) -> CopilotPlanResult:
+        from platform_core.cost_estimator import extract_token_usage
+        self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -241,6 +250,7 @@ class CopilotPlanner:
             ],
             text={"format": _PLAN_JSON_SCHEMA},
         )
+        self.last_usage = extract_token_usage(response)
 
         raw = json.loads(getattr(response, "output_text", "") or "{}")
         return self._parse_result(raw)

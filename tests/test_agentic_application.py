@@ -1642,6 +1642,58 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("profile", repo.create_confidence_history.call_args.kwargs["confidence_type"])
         repo.create_policy_event.assert_called_once()
         self.assertEqual("onboarding_gate", repo.create_policy_event.call_args.kwargs["policy_event_type"])
+        # Item 1 fix (May 1, 2026): the onboarding-blocked early return
+        # MUST persist a turn trace; without this the most-common
+        # clarification path is invisible in turn_traces.
+        repo.insert_turn_trace.assert_called_once()
+        trace_kwargs = repo.insert_turn_trace.call_args.kwargs
+        self.assertEqual("onboarding_gate", trace_kwargs["primary_intent"])
+        self.assertEqual("ask_clarification", trace_kwargs["action"])
+        self.assertEqual("clarification", trace_kwargs["evaluation"]["response_type"])
+
+    def test_orchestrator_planner_failure_persists_trace_with_error_stage(self) -> None:
+        """Item 1 (May 1, 2026): when the copilot planner raises, the early
+        return must still persist a trace row labelled with the failed stage
+        so operators can diagnose error spikes from turn_traces alone."""
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1", "user_id": "db-user", "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
+        }
+        gw.get_wardrobe_items.return_value = []
+        planner_mock = Mock()
+        planner_mock.plan.side_effect = RuntimeError("planner exploded")
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
+            "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock
+        ):
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            result = orchestrator.process_turn(
+                conversation_id="c1", external_user_id="user-1",
+                message="What should I wear?",
+            )
+
+        self.assertEqual("error", result["response_type"])
+        repo.insert_turn_trace.assert_called_once()
+        trace_kwargs = repo.insert_turn_trace.call_args.kwargs
+        self.assertEqual("error", trace_kwargs["action"])
+        self.assertEqual("error", trace_kwargs["evaluation"]["response_type"])
+        self.assertEqual("copilot_planner", trace_kwargs["evaluation"]["stage_failed"])
 
     def test_orchestrator_returns_wardrobe_first_occasion_recommendation(self) -> None:
         repo = Mock()
@@ -5689,7 +5741,7 @@ class TurnTraceBuilderTests(unittest.TestCase):
             user_message="What goes with this shirt?", has_image=True,
         )
         trace.add_step("validate_request", input_summary="user=u1", output_summary="ok", latency_ms=10)
-        trace.add_step("copilot_planner", model="gpt-5.4", input_summary="msg", output_summary="pairing_request", latency_ms=800)
+        trace.add_step("copilot_planner", model="gpt-5.5", input_summary="msg", output_summary="pairing_request", latency_ms=800)
         trace.set_intent(primary_intent="pairing_request", intent_confidence=0.95, action="run_recommendation_pipeline", reason_codes=["copilot_planner"])
         trace.set_context(
             profile_snapshot={"gender": "male", "primary_archetype": "natural"},
@@ -5711,7 +5763,7 @@ class TurnTraceBuilderTests(unittest.TestCase):
         self.assertIsNone(result["query_entities"]["occasion_signal"])
         self.assertEqual(2, len(result["steps"]))
         self.assertEqual("validate_request", result["steps"][0]["step"])
-        self.assertEqual("gpt-5.4", result["steps"][1]["model"])
+        self.assertEqual("gpt-5.5", result["steps"][1]["model"])
         self.assertEqual(800, result["steps"][1]["latency_ms"])
         self.assertEqual("visual", result["evaluation"]["evaluator_path"])
         self.assertIsInstance(result["total_latency_ms"], int)
@@ -5734,7 +5786,7 @@ class TurnTraceBuilderTests(unittest.TestCase):
         from agentic_application.tracing import TurnTraceBuilder
 
         trace = TurnTraceBuilder(turn_id="t3", conversation_id="c3", user_id="u3")
-        trace.add_step("outfit_architect", model="gpt-5.4", status="error", error="timeout after 30s")
+        trace.add_step("outfit_architect", model="gpt-5.5", status="error", error="timeout after 30s")
         result = trace.build()
         self.assertEqual(1, len(result["steps"]))
         self.assertEqual("error", result["steps"][0]["status"])
@@ -6016,6 +6068,235 @@ class Phase12EStageEmissionTests(unittest.TestCase):
 
         self.assertEqual("formal_first", plan.resolved_context.ranking_bias)
         self.assertEqual(1, len(plan.directions))
+
+
+class RankingBiasScoringTests(unittest.TestCase):
+    """May 1, 2026: ranking_bias is wired into the assembler scoring and
+    the reranker tie-break. These tests lock in the expected per-bias
+    behaviour against deterministic synthetic candidates.
+
+    Regressions here mean a future scoring tweak silently changed how
+    the bias signal weights penalties or bonuses — review the bias
+    matrix in `outfit_assembler._BIAS_COEFS` and `reranker._bias_tiebreaker`
+    before relaxing any assertion.
+    """
+
+    @staticmethod
+    def _ctx(bias: str) -> CombinedContext:
+        return CombinedContext(
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="x", ranking_bias=bias),
+        )
+
+    @staticmethod
+    def _plan() -> RecommendationPlan:
+        return RecommendationPlan(
+            retrieval_count=8,
+            directions=[DirectionSpec(direction_id="A", direction_type="paired", label="t", queries=[])],
+        )
+
+    @staticmethod
+    def _loud_top(pid: str = "t-loud") -> RetrievedProduct:
+        return RetrievedProduct(
+            product_id=pid, similarity=0.85,
+            enriched_data={
+                "primary_color": "navy", "occasion_fit": "casual",
+                "pattern_type": "floral", "color_saturation": "vivid",
+                "embellishment_level": "moderate", "garment_category": "top",
+            },
+            metadata={},
+        )
+
+    @staticmethod
+    def _calm_bottom(pid: str = "b-calm") -> RetrievedProduct:
+        return RetrievedProduct(
+            product_id=pid, similarity=0.85,
+            enriched_data={
+                "primary_color": "cream", "occasion_fit": "casual",
+                "pattern_type": "solid", "color_saturation": "muted",
+                "embellishment_level": "none", "garment_category": "bottom",
+            },
+            metadata={},
+        )
+
+    @staticmethod
+    def _formal_top(pid: str = "t-formal") -> RetrievedProduct:
+        return RetrievedProduct(
+            product_id=pid, similarity=0.85,
+            enriched_data={
+                "primary_color": "black", "occasion_fit": "formal",
+                "pattern_type": "solid", "formality_level": "formal",
+                "formality_signal_strength": "high", "garment_category": "top",
+            },
+            metadata={},
+        )
+
+    @staticmethod
+    def _formal_bottom(pid: str = "b-formal") -> RetrievedProduct:
+        return RetrievedProduct(
+            product_id=pid, similarity=0.85,
+            enriched_data={
+                "primary_color": "black", "occasion_fit": "formal",
+                "pattern_type": "solid", "formality_level": "formal",
+                "formality_signal_strength": "high", "garment_category": "bottom",
+            },
+            metadata={},
+        )
+
+    @staticmethod
+    def _comfy_top(pid: str = "t-comfy") -> RetrievedProduct:
+        return RetrievedProduct(
+            product_id=pid, similarity=0.85,
+            enriched_data={
+                "primary_color": "ivory", "occasion_fit": "casual",
+                "pattern_type": "solid", "fit_type": "relaxed",
+                "fabric_drape": "flowing", "garment_category": "top",
+            },
+            metadata={},
+        )
+
+    @staticmethod
+    def _comfy_bottom(pid: str = "b-comfy") -> RetrievedProduct:
+        return RetrievedProduct(
+            product_id=pid, similarity=0.85,
+            enriched_data={
+                "primary_color": "olive", "occasion_fit": "casual",
+                "pattern_type": "solid", "fit_type": "relaxed",
+                "fabric_drape": "soft", "garment_category": "bottom",
+            },
+            metadata={},
+        )
+
+    def _assemble_pair(
+        self,
+        bias: str,
+        top: RetrievedProduct,
+        bottom: RetrievedProduct,
+    ) -> OutfitCandidate:
+        sets = [
+            RetrievedSet(direction_id="A", query_id="q1", role="top", products=[top]),
+            RetrievedSet(direction_id="A", query_id="q2", role="bottom", products=[bottom]),
+        ]
+        candidates = OutfitAssembler().assemble(sets, self._plan(), self._ctx(bias))
+        self.assertTrue(candidates, f"bias={bias} produced no candidates")
+        return candidates[0]
+
+    def test_assembler_expressive_bias_boosts_loud_pair_above_balanced(self) -> None:
+        loud_pair_balanced = self._assemble_pair("balanced", self._loud_top(), self._calm_bottom())
+        loud_pair_expressive = self._assemble_pair("expressive", self._loud_top(), self._calm_bottom())
+        self.assertGreater(
+            loud_pair_expressive.assembly_score,
+            loud_pair_balanced.assembly_score,
+            "expressive bias should reward a loud item more than balanced",
+        )
+
+    def test_assembler_conservative_bias_penalizes_loud_pair_below_balanced(self) -> None:
+        loud_pair_balanced = self._assemble_pair("balanced", self._loud_top(), self._calm_bottom())
+        loud_pair_conservative = self._assemble_pair("conservative", self._loud_top(), self._calm_bottom())
+        self.assertLess(
+            loud_pair_conservative.assembly_score,
+            loud_pair_balanced.assembly_score,
+            "conservative bias should penalise loud items vs balanced",
+        )
+
+    def test_assembler_formal_first_bias_boosts_high_formality_pair(self) -> None:
+        formal_balanced = self._assemble_pair("balanced", self._formal_top(), self._formal_bottom())
+        formal_first = self._assemble_pair("formal_first", self._formal_top(), self._formal_bottom())
+        self.assertGreater(
+            formal_first.assembly_score,
+            formal_balanced.assembly_score,
+            "formal_first bias should reward a high-formality outfit",
+        )
+
+    def test_assembler_comfort_first_bias_boosts_relaxed_flowing_pair(self) -> None:
+        comfy_balanced = self._assemble_pair("balanced", self._comfy_top(), self._comfy_bottom())
+        comfy_first = self._assemble_pair("comfort_first", self._comfy_top(), self._comfy_bottom())
+        self.assertGreater(
+            comfy_first.assembly_score,
+            comfy_balanced.assembly_score,
+            "comfort_first bias should reward relaxed-fit + flowing-drape outfits",
+        )
+
+    def test_reranker_formal_first_breaks_score_tie_by_formality_rank(self) -> None:
+        from agentic_application.agents.reranker import Reranker
+
+        # Two candidates with effectively-tied assembly_score; one is
+        # high-formality, one is casual. formal_first should put the
+        # high-formality one first.
+        casual = OutfitCandidate(
+            candidate_id="casual", direction_id="A", candidate_type="paired",
+            items=[
+                {"role": "top", "formality_level": "casual"},
+                {"role": "bottom", "formality_level": "casual"},
+            ],
+            assembly_score=0.80,
+        )
+        formal = OutfitCandidate(
+            candidate_id="formal", direction_id="B", candidate_type="paired",
+            items=[
+                {"role": "top", "formality_level": "formal"},
+                {"role": "bottom", "formality_level": "formal"},
+            ],
+            assembly_score=0.79,
+        )
+        # Outside the tie window casual would win; inside, formal_first
+        # should flip them.
+        ranked_balanced = Reranker(final_top_n=2, pool_top_n=2).rerank(
+            [casual, formal], bias="balanced",
+        )
+        ranked_formal = Reranker(final_top_n=2, pool_top_n=2).rerank(
+            [casual, formal], bias="formal_first",
+        )
+        self.assertEqual("casual", ranked_balanced[0].candidate_id)
+        self.assertEqual("formal", ranked_formal[0].candidate_id,
+                         "formal_first should pull the higher-formality candidate to the top within the tie window")
+
+
+class RerankerWeightsAndDecisionLogTests(unittest.TestCase):
+    """May 1, 2026: reranker calibration plumbing — weights file loader and
+    decision-log callback. The actual curve fit stays deferred until staging
+    accumulates ≥200 labelled turns."""
+
+    def test_reranker_loads_default_weights_when_file_missing(self) -> None:
+        from agentic_application.agents.reranker import Reranker, _WEIGHTS_FILE
+
+        if _WEIGHTS_FILE.exists():
+            self.skipTest("weights file exists in this checkout — skip default-loader assertion")
+
+        r = Reranker()
+        self.assertEqual(1.0, r.weights["w_assembly_score"])
+        self.assertEqual(0.0, r.weights["w_archetype_proximity"])
+        self.assertEqual(0.0, r.weights["w_weather_time_match"])
+        self.assertEqual(0.0, r.weights["w_prior_dislike"])
+
+    def test_reranker_decision_log_receives_kept_and_dropped_ids(self) -> None:
+        from agentic_application.agents.reranker import Reranker
+
+        r = Reranker(final_top_n=2, pool_top_n=2)
+        candidates = [
+            OutfitCandidate(candidate_id=f"c{i}", direction_id="A", candidate_type="paired",
+                           items=[], assembly_score=score)
+            for i, score in enumerate([0.9, 0.7, 0.5, 0.3])
+        ]
+        captured: list[dict] = []
+        ranked = r.rerank(
+            candidates,
+            bias="balanced",
+            turn_id="t-test",
+            decision_log=captured.append,
+        )
+
+        self.assertEqual(2, len(ranked))
+        self.assertEqual(1, len(captured))
+        payload = captured[0]
+        self.assertEqual("t-test", payload["turn_id"])
+        self.assertEqual("balanced", payload["bias"])
+        self.assertEqual(4, payload["input_count"])
+        self.assertEqual(2, payload["kept_count"])
+        kept_ids = [k["candidate_id"] for k in payload["kept"]]
+        dropped_ids = [d["candidate_id"] for d in payload["dropped"]]
+        self.assertEqual(["c0", "c1"], kept_ids)
+        self.assertEqual({"c2", "c3"}, set(dropped_ids))
 
 
 if __name__ == "__main__":

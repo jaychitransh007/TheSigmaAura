@@ -787,6 +787,97 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         })
         self.assertEqual(422, resp.status_code)
 
+    def test_request_id_middleware_generates_when_header_missing(self) -> None:
+        """Item 2 (May 1, 2026): every response carries x-request-id."""
+        app, _, _, _, _ = self._patched_app()
+        client = TestClient(app)
+        resp = client.get("/healthz")
+        self.assertEqual(200, resp.status_code)
+        request_id = resp.headers.get("x-request-id", "")
+        self.assertTrue(request_id)
+        self.assertGreaterEqual(len(request_id), 16)  # uuid hex is 32 chars
+
+    def test_request_id_middleware_echoes_incoming_header(self) -> None:
+        """Item 2: when an upstream proxy supplies X-Request-Id, we echo it."""
+        app, _, _, _, _ = self._patched_app()
+        client = TestClient(app)
+        resp = client.get("/healthz", headers={"X-Request-Id": "upstream-trace-abc"})
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual("upstream-trace-abc", resp.headers.get("x-request-id"))
+
+    def test_healthz_returns_200_without_external_calls(self) -> None:
+        """Item 3 (May 1, 2026): /healthz is a liveness probe — never blocks
+        on upstream calls."""
+        app, _, _, _, _ = self._patched_app()
+        client = TestClient(app)
+        resp = client.get("/healthz")
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual({"ok": True}, resp.json())
+
+    def test_readyz_returns_200_when_all_checks_pass(self) -> None:
+        """Item 3: readiness probe aggregates parallel checks and 200s when ok."""
+        app, _, _, _, _ = self._patched_app()
+        from unittest.mock import patch as _patch
+        with _patch("platform_core.readiness.run_all_checks") as run_checks:
+            run_checks.return_value = {
+                "ready": True, "elapsed_ms": 35,
+                "checks": {
+                    "supabase": {"ok": True, "error": ""},
+                    "openai":   {"ok": True, "error": ""},
+                    "gemini":   {"ok": True, "error": ""},
+                },
+            }
+            client = TestClient(app)
+            resp = client.get("/readyz")
+        self.assertEqual(200, resp.status_code)
+        self.assertTrue(resp.json()["ready"])
+
+    def test_readyz_returns_503_when_any_check_fails(self) -> None:
+        """Item 3: a failing upstream takes the instance out of rotation."""
+        app, _, _, _, _ = self._patched_app()
+        from unittest.mock import patch as _patch
+        with _patch("platform_core.readiness.run_all_checks") as run_checks:
+            run_checks.return_value = {
+                "ready": False, "elapsed_ms": 2050,
+                "checks": {
+                    "supabase": {"ok": True, "error": ""},
+                    "openai":   {"ok": False, "error": "connection failed: timed out"},
+                    "gemini":   {"ok": True, "error": ""},
+                },
+            }
+            client = TestClient(app)
+            resp = client.get("/readyz")
+        self.assertEqual(503, resp.status_code)
+        body = resp.json()
+        self.assertFalse(body["ready"])
+        self.assertEqual("connection failed: timed out", body["checks"]["openai"]["error"])
+
+    def test_metrics_endpoint_returns_prometheus_text(self) -> None:
+        """Item 5 (May 1, 2026): /metrics returns Prometheus exposition format."""
+        app, _, _, _, _ = self._patched_app()
+        client = TestClient(app)
+        resp = client.get("/metrics")
+        self.assertEqual(200, resp.status_code)
+        # Prometheus text format starts with HELP/TYPE comments
+        self.assertIn("# HELP", resp.text)
+        # Our canonical metric name should be present
+        self.assertIn("aura_turn_total", resp.text)
+
+    def test_version_returns_commit_and_env(self) -> None:
+        """Item 3: /version surfaces the deploy identifiers for support."""
+        app, _, _, _, _ = self._patched_app()
+        from unittest.mock import patch as _patch
+        with _patch.dict("os.environ", {
+            "AURA_COMMIT_SHA": "abc1234",
+            "AURA_DEPLOYED_AT": "2026-05-01T08:00:00Z",
+            "APP_ENV": "staging",
+        }, clear=False):
+            client = TestClient(app)
+            resp = client.get("/version")
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual("abc1234", resp.json()["commit"])
+        self.assertEqual("staging", resp.json()["env"])
+
 
 if __name__ == "__main__":
     unittest.main()

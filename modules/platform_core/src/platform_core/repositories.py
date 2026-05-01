@@ -1,11 +1,21 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from .request_context import get_request_id
 from .supabase_rest import SupabaseRestClient
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _maybe_request_id(explicit: Optional[str]) -> str:
+    """Item 2 (May 1, 2026): pull the active request_id contextvar when
+    the caller hasn't supplied one explicitly. Empty string when neither
+    is set so the column persists a stable type."""
+    if explicit:
+        return explicit
+    return get_request_id() or ""
 
 
 class ConversationRepository:
@@ -161,7 +171,74 @@ class ConversationRepository:
         latency_ms: Optional[int] = None,
         status: str = "ok",
         error_message: str = "",
+        request_id: Optional[str] = None,
+        prompt_tokens: Optional[int] = None,
+        completion_tokens: Optional[int] = None,
+        total_tokens: Optional[int] = None,
+        estimated_cost_usd: Optional[float] = None,
+        image_count: Optional[int] = None,
+        redact_pii: bool = True,
     ) -> Dict[str, Any]:
+        """Persist an LLM/image-gen call with token counts + cost (Item 4, May 1, 2026).
+
+        ``prompt_tokens`` / ``completion_tokens`` / ``total_tokens``: token
+        counts pulled from the provider response. Pass via
+        ``platform_core.cost_estimator.extract_token_usage(response)``.
+
+        ``estimated_cost_usd``: when omitted but token counts are present,
+        the helper computes it via the central pricing table. Pass
+        ``image_count`` instead for image-gen models (Gemini try-on).
+
+        ``redact_pii`` (Item 7, May 1, 2026): when True (the default), the
+        request and response JSON go through ``pii_redactor.redact_value``
+        before insertion so emails / phones / SSNs in user input never
+        land on disk in raw form. Pass False explicitly for debug runs
+        where the full payload is needed.
+        """
+        from .cost_estimator import estimate_cost_usd as _estimate
+        if redact_pii:
+            from .pii_redactor import redact_value as _redact
+            request_json = _redact(request_json)
+            response_json = _redact(response_json)
+            error_message = _redact(error_message) if error_message else error_message
+
+        # Item 11 (May 1, 2026): optional body sampling. With volume,
+        # storing every request_json/response_json blob in full balloons
+        # the table; an env-driven sample rate keeps a representative
+        # slice while replacing the rest with a tiny summary stub.
+        # Default rate = 1.0 (everything stored) preserves today's
+        # behaviour. Set AURA_LOG_REQUEST_BODY_SAMPLE_RATE=0.1 to keep
+        # 10% of full bodies; sampled-out turns get a marker.
+        import os as _os
+        import random as _random
+
+        def _maybe_sample(body: Dict[str, Any], env_var: str) -> Dict[str, Any]:
+            try:
+                rate = float(_os.environ.get(env_var, "1.0"))
+            except ValueError:
+                rate = 1.0
+            if rate >= 1.0:
+                return body
+            if _random.random() < rate:
+                return body
+            return {
+                "sampled_out": True,
+                "model": model,
+                "approx_size_chars": len(str(body or "")),
+            }
+
+        request_json = _maybe_sample(request_json, "AURA_LOG_REQUEST_BODY_SAMPLE_RATE")
+        response_json = _maybe_sample(response_json, "AURA_LOG_RESPONSE_BODY_SAMPLE_RATE")
+        if estimated_cost_usd is None and (prompt_tokens or completion_tokens or image_count):
+            try:
+                estimated_cost_usd = _estimate(
+                    model=model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    image_count=image_count,
+                )
+            except Exception:  # noqa: BLE001 — never block logging on estimator
+                estimated_cost_usd = None
         payload: Dict[str, Any] = {
             "conversation_id": conversation_id,
             "turn_id": turn_id,
@@ -173,10 +250,32 @@ class ConversationRepository:
             "reasoning_notes_json": reasoning_notes,
             "status": status,
             "error_message": error_message,
+            "request_id": _maybe_request_id(request_id),
             "created_at": _now_iso(),
         }
         if latency_ms is not None:
             payload["latency_ms"] = latency_ms
+        if prompt_tokens is not None:
+            payload["prompt_tokens"] = prompt_tokens
+        if completion_tokens is not None:
+            payload["completion_tokens"] = completion_tokens
+        if total_tokens is not None:
+            payload["total_tokens"] = total_tokens
+        if estimated_cost_usd is not None:
+            payload["estimated_cost_usd"] = estimated_cost_usd
+        # Item 5 (May 1, 2026): mirror to Prometheus so LLM call rate /
+        # latency / cost percentiles are live without re-querying the DB.
+        try:
+            from .metrics import observe_llm_call
+            observe_llm_call(
+                service=service or "unknown",
+                model=model or "unknown",
+                status=status or "ok",
+                latency_ms=latency_ms,
+                estimated_cost_usd=estimated_cost_usd,
+            )
+        except Exception:  # noqa: BLE001
+            pass
         return self.client.insert_one("model_call_logs", payload)
 
     def create_feedback_event(
@@ -205,6 +304,24 @@ class ConversationRepository:
         if outfit_rank is not None:
             payload["outfit_rank"] = outfit_rank
         return self.client.insert_one("feedback_events", payload)
+
+    def list_feedback_events_for_user(
+        self,
+        user_id: str,
+        *,
+        limit: Optional[int] = 50,
+    ) -> List[Dict[str, Any]]:
+        """Return raw feedback rows for a user, newest first.
+
+        Used by the profile Recent-Signals timeline; capped to a small
+        window so the profile render stays cheap.
+        """
+        return self.client.select_many(
+            "feedback_events",
+            filters={"user_id": f"eq.{user_id}"},
+            order="created_at.desc",
+            limit=limit,
+        )
 
     def list_disliked_product_ids_for_user(
         self,
@@ -653,6 +770,7 @@ class ConversationRepository:
         latency_ms: Optional[int] = None,
         status: str = "ok",
         error_message: str = "",
+        request_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "conversation_id": conversation_id,
@@ -662,6 +780,7 @@ class ConversationRepository:
             "output_json": output_json,
             "status": status,
             "error_message": error_message,
+            "request_id": _maybe_request_id(request_id),
             "created_at": _now_iso(),
         }
         if latency_ms is not None:
@@ -751,8 +870,21 @@ class ConversationRepository:
         steps: Optional[List[Dict[str, Any]]] = None,
         evaluation: Optional[Dict[str, Any]] = None,
         total_latency_ms: Optional[int] = None,
+        request_id: Optional[str] = None,
+        redact_pii: bool = True,
     ) -> Dict[str, Any]:
-        """Insert a unified per-turn trace after process_turn completes."""
+        """Insert a unified per-turn trace after process_turn completes.
+
+        ``redact_pii`` (Item 7, May 1, 2026): when True (default), redact
+        the user_message string and fold height_cm / waist_cm /
+        date_of_birth into bands before insertion. Set False explicitly
+        when running a one-off debug rehearsal that needs raw values.
+        """
+        if redact_pii:
+            from .pii_redactor import redact_string as _redact_str, redact_profile as _redact_profile
+            user_message = _redact_str(user_message)
+            if profile_snapshot:
+                profile_snapshot = _redact_profile(profile_snapshot)
         payload: Dict[str, Any] = {
             "turn_id": turn_id,
             "conversation_id": conversation_id,
@@ -770,10 +902,83 @@ class ConversationRepository:
             "evaluation": evaluation or {},
             "user_response": {},
             "total_latency_ms": total_latency_ms,
+            "request_id": _maybe_request_id(request_id),
             "created_at": _now_iso(),
             "updated_at": _now_iso(),
         }
         return self.client.insert_one("turn_traces", payload)
+
+    def delete_user_observability_data(self, external_user_id: str) -> Dict[str, int]:
+        """Item 7 (May 1, 2026): GDPR data-subject deletion across observability.
+
+        Deletes every observability row attributable to the user across
+        the full audit-log set. Returns row counts per table for an
+        operations log.
+
+        Tables touched:
+            turn_traces, model_call_logs, tool_traces, policy_event_log,
+            feedback_events, dependency_validation_events,
+            catalog_interaction_history, user_comfort_learning,
+            confidence_history, virtual_tryon_images.
+
+        ``external_user_id`` is the public-facing user_id (the one users
+        and OTP flows see). The helper resolves it to the internal id
+        for tables that join on the internal users.id.
+        """
+        user_row = self.get_user_by_external_user_id(external_user_id)
+        internal_id = user_row.get("id") if user_row else None
+
+        counts: Dict[str, int] = {}
+        # Tables keyed by internal user_id.
+        for table in (
+            "turn_traces",
+            "feedback_events",
+            "dependency_validation_events",
+            "catalog_interaction_history",
+            "user_comfort_learning",
+            "confidence_history",
+            "virtual_tryon_images",
+        ):
+            if not internal_id:
+                counts[table] = 0
+                continue
+            try:
+                rows = self.client.select_many(
+                    table, filters={"user_id": f"eq.{internal_id}"}, columns="id",
+                )
+                for r in rows:
+                    self.client.delete_one(table, filters={"id": f"eq.{r['id']}"})
+                counts[table] = len(rows)
+            except Exception:
+                counts[table] = -1  # signal failure
+
+        # Tables that join only by conversation_id — find conversations first.
+        try:
+            conversations = (
+                self.client.select_many(
+                    "conversations", filters={"user_id": f"eq.{internal_id}"}, columns="id",
+                )
+                if internal_id else []
+            )
+            conversation_ids = [c["id"] for c in conversations]
+        except Exception:
+            conversation_ids = []
+
+        for table in ("model_call_logs", "tool_traces", "policy_event_log"):
+            counts[table] = 0
+            for cid in conversation_ids:
+                try:
+                    rows = self.client.select_many(
+                        table, filters={"conversation_id": f"eq.{cid}"}, columns="id",
+                    )
+                    for r in rows:
+                        self.client.delete_one(table, filters={"id": f"eq.{r['id']}"})
+                    counts[table] += len(rows)
+                except Exception:
+                    counts[table] = -1
+                    break
+
+        return counts
 
     def update_turn_trace_user_response(
         self,

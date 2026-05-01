@@ -22,10 +22,13 @@ from user_profiler.service import _image_to_input_url, store_image_artifact
 
 
 class UserProfilerTests(unittest.TestCase):
-    def test_visual_model_is_gpt_5_4_and_textual_is_gpt_5_4(self) -> None:
+    def test_visual_and_textual_models_default_to_gpt_5_5(self) -> None:
+        # May 1, 2026: User Analysis (the visual + textual profiler models)
+        # upgraded from gpt-5.4 to gpt-5.5 for better attribute extraction
+        # quality on body / color / other-details onboarding agents.
         cfg = UserProfilerConfig()
-        self.assertEqual("gpt-5.4", cfg.visual_model)
-        self.assertEqual("gpt-5.4", cfg.textual_model)
+        self.assertEqual("gpt-5.5", cfg.visual_model)
+        self.assertEqual("gpt-5.5", cfg.textual_model)
         self.assertEqual("high", cfg.visual_reasoning_effort)
 
     def test_visual_schema_has_all_body_fields_plus_gender_age(self) -> None:

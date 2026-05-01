@@ -277,8 +277,44 @@ class IntentHistoryGroup(BaseModel):
     created_at: str = ""
     updated_at: str = ""
     turns: List[IntentHistoryTurn] = Field(default_factory=list)
+    # May 1, 2026 — Outfits Tab Theme Taxonomy: theme_key is the
+    # canonical bucket the group belongs to. Groups still exist
+    # one-per-(intent, occasion, conversation); themes nest them.
+    theme_key: str = "style_sessions"
+
+
+class IntentHistoryThemeBlock(BaseModel):
+    """One theme section on the Outfits tab — collapses related
+    occasions (sangeet/mehendi/engagement/wedding) into a single
+    user-recognisable bucket. May 1, 2026."""
+
+    theme_key: str
+    theme_label: str
+    theme_description: str = ""
+    group_count: int = 0
+    total_outfit_count: int = 0
+    most_recent_at: str = ""
+    groups: List[IntentHistoryGroup] = Field(default_factory=list)
 
 
 class IntentHistoryResponse(BaseModel):
     user_id: str
     groups: List[IntentHistoryGroup] = Field(default_factory=list)
+    # May 1, 2026 — themed view for the Outfits tab. The flat ``groups``
+    # list above is preserved for back-compat; new clients render
+    # ``themes`` instead.
+    themes: List[IntentHistoryThemeBlock] = Field(default_factory=list)
+
+
+class RecentSignal(BaseModel):
+    """Single timeline entry for the profile Recent-Signals strip."""
+
+    label: str
+    detail: str
+    source: str  # comfort_learning | feedback | catalog
+    when: str    # ISO timestamp
+
+
+class RecentSignalsResponse(BaseModel):
+    user_id: str
+    signals: List[RecentSignal] = Field(default_factory=list)

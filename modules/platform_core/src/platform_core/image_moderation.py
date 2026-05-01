@@ -46,7 +46,12 @@ class ImageModerationResult:
 
 
 class ImageModerationService:
-    def __init__(self, *, model: str = "gpt-5.4") -> None:
+    def __init__(self, *, model: str = "gpt-5-mini") -> None:
+        # May 1, 2026: moved from gpt-5.4 to gpt-5-mini. Moderation is a
+        # binary allow/block decision with a one-line rationale; the
+        # heuristic layer (`_heuristic_scan`) catches the obvious cases
+        # so the model only fires on ambiguous uploads. mini handles
+        # this load comfortably and trims ~2-3s off every wardrobe save.
         self._model = model
 
     def moderate_bytes(

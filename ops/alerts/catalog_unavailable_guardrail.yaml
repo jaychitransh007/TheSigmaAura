@@ -1,0 +1,18 @@
+alert: aura_catalog_unavailable_guardrail_fired
+description: |
+  The catalog-unavailable guardrail fired — turn(s) hit the
+  no-embeddings fallback message instead of getting recommendations.
+  Pages immediately on first hit because users are seeing a degraded
+  experience.
+expr: |
+  increase(aura_turn_total{status="error",intent=~"occasion_recommendation|pairing_request"}[1m]) > 0
+for: 0m
+severity: P1
+runbook: docs/OPERATIONS.md#b-catalog--embeddings-missing
+panel: docs/OPERATIONS.md#panel-4--pipeline-health-errors--empty-responses
+labels:
+  team: aura
+  service: agentic_application
+annotations:
+  summary: Catalog unavailable — users seeing guardrail message
+  description: "Embeddings or catalog rows missing; restore via admin endpoint or backup"

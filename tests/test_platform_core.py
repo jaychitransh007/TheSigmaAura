@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 for p in (
     ROOT,
     ROOT / "modules" / "platform_core" / "src",
+    ROOT / "modules" / "user_profiler" / "src",
 ):
     sp = str(p)
     if sp not in sys.path:
@@ -271,6 +272,359 @@ class PlatformCoreTests(unittest.TestCase):
         self.assertEqual("eq.user-1", kwargs["filters"]["user_id"])
         self.assertEqual("eq.blocked", kwargs["filters"]["decision"])
         self.assertEqual(2, kwargs["limit"])
+
+
+class RequestContextTests(unittest.TestCase):
+    """Item 2 (May 1, 2026): contextvar-based correlation IDs flow into log
+    records and observability inserts."""
+
+    def setUp(self) -> None:
+        from platform_core import request_context as rc
+        self.rc = rc
+        # Clear any leaked state from a prior test in the same thread.
+        rc.set_request_id("")
+        rc.set_turn_id("")
+        rc.set_conversation_id("")
+        rc.set_external_user_id("")
+
+    def tearDown(self) -> None:
+        self.rc.set_request_id("")
+        self.rc.set_turn_id("")
+        self.rc.set_conversation_id("")
+        self.rc.set_external_user_id("")
+
+    def test_setters_and_getters_round_trip(self) -> None:
+        self.rc.set_request_id("req-xyz")
+        self.rc.set_turn_id("t-42")
+        self.rc.set_conversation_id("c-7")
+        self.rc.set_external_user_id("user-test")
+        self.assertEqual("req-xyz", self.rc.get_request_id())
+        self.assertEqual("t-42", self.rc.get_turn_id())
+        self.assertEqual("c-7", self.rc.get_conversation_id())
+        self.assertEqual("user-test", self.rc.get_external_user_id())
+
+    def test_snapshot_returns_all_four_ids(self) -> None:
+        self.rc.set_request_id("rid")
+        self.rc.set_turn_id("tid")
+        snap = self.rc.snapshot()
+        self.assertEqual("rid", snap["request_id"])
+        self.assertEqual("tid", snap["turn_id"])
+        self.assertEqual("", snap["conversation_id"])
+
+    def test_filter_injects_contextvars_into_log_record(self) -> None:
+        import logging as _logging
+        self.rc.set_request_id("req-abc")
+        self.rc.set_turn_id("t-99")
+        self.rc.set_conversation_id("c-3")
+        self.rc.set_external_user_id("user-u1")
+        record = _logging.LogRecord(
+            "test", _logging.INFO, "f", 1, "msg %s", ("arg",), None,
+        )
+        f = self.rc.RequestContextFilter()
+        self.assertTrue(f.filter(record))
+        self.assertEqual("req-abc", record.request_id)
+        self.assertEqual("t-99", record.turn_id)
+        self.assertEqual("c-3", record.conversation_id)
+        self.assertEqual("user-u1", record.external_user_id)
+
+    def test_filter_emits_empty_strings_when_unset(self) -> None:
+        import logging as _logging
+        record = _logging.LogRecord(
+            "test", _logging.INFO, "f", 1, "msg", (), None,
+        )
+        f = self.rc.RequestContextFilter()
+        f.filter(record)
+        self.assertEqual("", record.request_id)
+        self.assertEqual("", record.turn_id)
+
+
+class RepositoryRequestIdStampingTests(unittest.TestCase):
+    """Item 2 (May 1, 2026): repo helpers auto-stamp request_id from the
+    contextvar so observability rows correlate to logs without explicit
+    threading at every callsite."""
+
+    def setUp(self) -> None:
+        from platform_core import request_context as rc
+        rc.set_request_id("")
+
+    def tearDown(self) -> None:
+        from platform_core import request_context as rc
+        rc.set_request_id("")
+
+    def test_log_model_call_stamps_active_request_id(self) -> None:
+        from platform_core import request_context as rc
+        rc.set_request_id("req-from-context")
+        client = unittest.mock.Mock()
+        client.insert_one.return_value = {"id": "m1"}
+        repo = ConversationRepository(client)
+        repo.log_model_call(
+            conversation_id="c1", turn_id="t1",
+            service="agentic_application", call_type="copilot_planner",
+            model="gpt-5.4",
+            request_json={}, response_json={}, reasoning_notes=[],
+        )
+        payload = client.insert_one.call_args.args[1]
+        self.assertEqual("req-from-context", payload["request_id"])
+
+    def test_log_model_call_explicit_request_id_overrides_contextvar(self) -> None:
+        from platform_core import request_context as rc
+        rc.set_request_id("ambient")
+        client = unittest.mock.Mock()
+        client.insert_one.return_value = {"id": "m1"}
+        repo = ConversationRepository(client)
+        repo.log_model_call(
+            conversation_id="c1", turn_id="t1",
+            service="x", call_type="y", model="z",
+            request_json={}, response_json={}, reasoning_notes=[],
+            request_id="explicit-override",
+        )
+        payload = client.insert_one.call_args.args[1]
+        self.assertEqual("explicit-override", payload["request_id"])
+
+    def test_log_tool_trace_stamps_request_id_from_contextvar(self) -> None:
+        from platform_core import request_context as rc
+        rc.set_request_id("rid-tool")
+        client = unittest.mock.Mock()
+        client.insert_one.return_value = {"id": "tt1"}
+        repo = ConversationRepository(client)
+        repo.log_tool_trace(
+            conversation_id="c1", turn_id="t1",
+            tool_name="catalog_search_agent",
+            input_json={}, output_json={},
+        )
+        payload = client.insert_one.call_args.args[1]
+        self.assertEqual("rid-tool", payload["request_id"])
+
+    def test_insert_turn_trace_stamps_request_id_from_contextvar(self) -> None:
+        from platform_core import request_context as rc
+        rc.set_request_id("rid-turn")
+        client = unittest.mock.Mock()
+        client.insert_one.return_value = {"id": "tt1"}
+        repo = ConversationRepository(client)
+        repo.insert_turn_trace(
+            turn_id="t1", conversation_id="c1", user_id="u1",
+        )
+        payload = client.insert_one.call_args.args[1]
+        self.assertEqual("rid-turn", payload["request_id"])
+
+    def test_repo_helpers_emit_empty_request_id_when_unset(self) -> None:
+        client = unittest.mock.Mock()
+        client.insert_one.return_value = {"id": "m1"}
+        repo = ConversationRepository(client)
+        repo.log_model_call(
+            conversation_id="c1", turn_id="t1",
+            service="x", call_type="y", model="z",
+            request_json={}, response_json={}, reasoning_notes=[],
+        )
+        payload = client.insert_one.call_args.args[1]
+        self.assertEqual("", payload["request_id"])
+
+
+class CostEstimatorTests(unittest.TestCase):
+    """Item 4 (May 1, 2026): cost estimation per LLM/image-gen call."""
+
+    def test_text_model_uses_input_and_output_pricing(self) -> None:
+        from platform_core.cost_estimator import estimate_cost_usd
+        # gpt-5.4: $2.50 in / $10.00 out per 1M tokens
+        # 100k input + 50k output = 0.25 + 0.50 = $0.75
+        cost = estimate_cost_usd(model="gpt-5.4", prompt_tokens=100_000, completion_tokens=50_000)
+        self.assertEqual(0.75, cost)
+
+    def test_mini_model_pricing(self) -> None:
+        from platform_core.cost_estimator import estimate_cost_usd
+        # gpt-5-mini: $0.15 in / $0.60 out per 1M
+        # 1M input + 1M output = 0.75
+        cost = estimate_cost_usd(model="gpt-5-mini", prompt_tokens=1_000_000, completion_tokens=1_000_000)
+        self.assertEqual(0.75, cost)
+
+    def test_gemini_image_model_uses_per_image_pricing(self) -> None:
+        from platform_core.cost_estimator import estimate_cost_usd
+        cost = estimate_cost_usd(model="gemini-3.1-flash-image-preview", image_count=3)
+        self.assertAlmostEqual(0.117, cost, places=4)  # 3 * 0.039
+
+    def test_unknown_model_returns_zero(self) -> None:
+        from platform_core.cost_estimator import estimate_cost_usd
+        self.assertEqual(0.0, estimate_cost_usd(model="not-a-real-model", prompt_tokens=999, completion_tokens=999))
+
+    def test_extract_token_usage_handles_responses_api_shape(self) -> None:
+        from platform_core.cost_estimator import extract_token_usage
+        class _Usage:
+            input_tokens = 1234
+            output_tokens = 567
+            total_tokens = 1801
+        class _Response:
+            usage = _Usage()
+        out = extract_token_usage(_Response())
+        self.assertEqual(1234, out["prompt_tokens"])
+        self.assertEqual(567, out["completion_tokens"])
+        self.assertEqual(1801, out["total_tokens"])
+
+    def test_extract_token_usage_handles_chat_completion_shape(self) -> None:
+        from platform_core.cost_estimator import extract_token_usage
+        response = {"usage": {"prompt_tokens": 100, "completion_tokens": 200, "total_tokens": 300}}
+        out = extract_token_usage(response)
+        self.assertEqual(100, out["prompt_tokens"])
+        self.assertEqual(200, out["completion_tokens"])
+        self.assertEqual(300, out["total_tokens"])
+
+    def test_extract_token_usage_returns_zeros_when_usage_absent(self) -> None:
+        from platform_core.cost_estimator import extract_token_usage
+        out = extract_token_usage(object())
+        self.assertEqual(0, out["prompt_tokens"])
+        self.assertEqual(0, out["completion_tokens"])
+        self.assertEqual(0, out["total_tokens"])
+
+    def test_log_model_call_persists_token_columns(self) -> None:
+        client = unittest.mock.Mock()
+        client.insert_one.return_value = {"id": "m1"}
+        repo = ConversationRepository(client)
+        repo.log_model_call(
+            conversation_id="c1", turn_id="t1",
+            service="agentic_application", call_type="copilot_planner", model="gpt-5.4",
+            request_json={}, response_json={}, reasoning_notes=[],
+            prompt_tokens=1000, completion_tokens=500, total_tokens=1500,
+        )
+        payload = client.insert_one.call_args.args[1]
+        self.assertEqual(1000, payload["prompt_tokens"])
+        self.assertEqual(500, payload["completion_tokens"])
+        self.assertEqual(1500, payload["total_tokens"])
+        # Auto-computed cost from the pricing table: 1000/1M * 2.50 + 500/1M * 10.00 = 0.0025 + 0.005 = 0.0075
+        self.assertAlmostEqual(0.0075, payload["estimated_cost_usd"], places=6)
+
+    def test_log_model_call_back_compat_when_token_kwargs_omitted(self) -> None:
+        client = unittest.mock.Mock()
+        client.insert_one.return_value = {"id": "m1"}
+        repo = ConversationRepository(client)
+        repo.log_model_call(
+            conversation_id="c1", turn_id="t1",
+            service="x", call_type="y", model="z",
+            request_json={}, response_json={}, reasoning_notes=[],
+        )
+        payload = client.insert_one.call_args.args[1]
+        # Old callers don't pass token columns — payload omits them rather
+        # than persisting null/0 placeholder values.
+        self.assertNotIn("prompt_tokens", payload)
+        self.assertNotIn("completion_tokens", payload)
+        self.assertNotIn("estimated_cost_usd", payload)
+
+
+class PrometheusMetricsTests(unittest.TestCase):
+    """Item 5 (May 1, 2026): /metrics endpoint and helper observe_* shims."""
+
+    def test_metrics_module_exposes_canonical_names(self) -> None:
+        from platform_core import metrics
+        self.assertTrue(hasattr(metrics, "aura_turn_total"))
+        self.assertTrue(hasattr(metrics, "aura_turn_duration_seconds"))
+        self.assertTrue(hasattr(metrics, "aura_llm_call_total"))
+        self.assertTrue(hasattr(metrics, "aura_llm_call_duration_seconds"))
+        self.assertTrue(hasattr(metrics, "aura_external_call_duration_seconds"))
+        self.assertTrue(hasattr(metrics, "aura_in_flight_turns"))
+
+    def test_observe_turn_stage_is_safe_with_none(self) -> None:
+        from platform_core import metrics
+        # Should not raise when latency is missing.
+        metrics.observe_turn_stage("architect", None)
+
+    def test_observe_turn_outcome_increments_counter(self) -> None:
+        from platform_core import metrics
+        metrics.observe_turn_outcome(intent="occasion_recommendation", action="run_recommendation_pipeline", status="recommendation")
+        # Counter is global — value increases across runs but we just
+        # verify the call doesn't raise.
+
+    def test_observe_llm_call_records_latency_and_cost(self) -> None:
+        from platform_core import metrics
+        metrics.observe_llm_call(
+            service="agentic_application",
+            model="gpt-5.4",
+            status="ok",
+            latency_ms=1234.5,
+            estimated_cost_usd=0.0075,
+        )
+
+    def test_generate_latest_returns_prometheus_text(self) -> None:
+        from platform_core import metrics
+        # Increment something to ensure the registry has at least one sample.
+        metrics.observe_turn_outcome(intent="x", action="y", status="ok")
+        out = metrics.generate_latest()
+        self.assertIsInstance(out, (bytes, bytearray))
+        text = out.decode("utf-8") if isinstance(out, (bytes, bytearray)) else str(out)
+        self.assertIn("aura_turn_total", text)
+
+
+class StructuredLoggingConfigTests(unittest.TestCase):
+    """May 1, 2026: structured logging is opt-in via AURA_LOG_FORMAT=json.
+
+    Default (text) preserves the existing developer experience; json
+    emits sink-ready records every modern log aggregator can ingest
+    without further parsing.
+    """
+
+    def setUp(self) -> None:
+        import logging as _logging
+        self._root = _logging.getLogger()
+        self._saved_level = self._root.level
+        self._saved_handlers = list(self._root.handlers)
+
+    def tearDown(self) -> None:
+        for h in list(self._root.handlers):
+            self._root.removeHandler(h)
+        for h in self._saved_handlers:
+            self._root.addHandler(h)
+        self._root.setLevel(self._saved_level)
+
+    def _capture_json(self) -> dict:
+        import io
+        import json as _json
+        import logging as _logging
+        import os as _os
+        from unittest.mock import patch as _patch
+
+        from platform_core.logging_config import configure_logging
+
+        buf = io.StringIO()
+        with _patch.dict(_os.environ, {"AURA_LOG_FORMAT": "json"}, clear=False):
+            configure_logging()
+            for h in _logging.getLogger().handlers:
+                if isinstance(h, _logging.StreamHandler):
+                    h.stream = buf
+            log = _logging.getLogger("aura.test")
+            log.info("hello world", extra={"turn_id": "t-42", "rank": 0})
+        line = buf.getvalue().strip().splitlines()[-1]
+        return _json.loads(line)
+
+    def test_json_format_emits_required_fields(self) -> None:
+        payload = self._capture_json()
+        for key in ("ts", "level", "logger", "message", "module", "func", "line"):
+            self.assertIn(key, payload)
+        self.assertEqual("INFO", payload["level"])
+        self.assertEqual("aura.test", payload["logger"])
+        self.assertEqual("hello world", payload["message"])
+
+    def test_json_format_carries_extra_fields(self) -> None:
+        payload = self._capture_json()
+        self.assertEqual("t-42", payload["turn_id"])
+        self.assertEqual(0, payload["rank"])
+
+    def test_text_format_default_does_not_emit_json(self) -> None:
+        import io
+        import logging as _logging
+        import os as _os
+        from unittest.mock import patch as _patch
+
+        from platform_core.logging_config import configure_logging
+
+        buf = io.StringIO()
+        env = {k: v for k, v in _os.environ.items()
+               if k not in ("AURA_LOG_FORMAT", "LOG_FORMAT")}
+        with _patch.dict(_os.environ, env, clear=True):
+            configure_logging()
+            for h in _logging.getLogger().handlers:
+                if isinstance(h, _logging.StreamHandler):
+                    h.stream = buf
+            _logging.getLogger("aura.test").info("ping")
+        line = buf.getvalue().strip()
+        self.assertNotIn("{", line.splitlines()[-1])
+        self.assertIn("ping", line)
 
 
 if __name__ == "__main__":

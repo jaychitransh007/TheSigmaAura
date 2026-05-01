@@ -1,0 +1,16 @@
+alert: aura_llm_cost_daily_budget_exceeded
+description: |
+  LLM call cost has exceeded the daily $50 soft budget. Set the
+  threshold below to match your finance ceiling.
+expr: |
+  sum(increase(aura_llm_call_cost_usd_total[24h])) > 50
+for: 0m
+severity: P2
+runbook: docs/OPERATIONS.md
+labels:
+  team: aura
+  service: agentic_application
+  category: cost
+annotations:
+  summary: Daily LLM cost above $50
+  description: "$ {{ $value }} spent in the last 24h on LLM + image-gen calls"

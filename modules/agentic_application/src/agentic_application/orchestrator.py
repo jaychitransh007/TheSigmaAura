@@ -12,6 +12,11 @@ from platform_core.config import AuraRuntimeConfig
 from platform_core.fallback_messages import graceful_policy_message
 from platform_core.restricted_categories import detect_restricted_record
 from platform_core.repositories import ConversationRepository
+from platform_core.request_context import (
+    set_turn_id,
+    set_conversation_id,
+    set_external_user_id,
+)
 
 from .agents.catalog_search_agent import CatalogSearchAgent
 from .agents.copilot_planner import CopilotPlanner, build_planner_input
@@ -669,6 +674,11 @@ class AgenticOrchestrator:
         # ── Trace-aware emit: feeds both the SSE bubble and the trace ──
         _step_t0: dict[str, float] = {}
 
+        # Item 6 (May 1, 2026): per-stage OTel spans. We don't open them
+        # via context manager because trace_start/trace_end split across
+        # callsites; instead we lazily emit a span on trace_end with the
+        # measured latency. That gives the correct timing in the OTel
+        # waterfall while keeping the existing call pattern.
         def trace_start(step: str, *, model: str | None = None, input_summary: str = "") -> None:
             """Mark the start of a pipeline step for latency measurement."""
             _step_t0[step] = time.monotonic()
@@ -691,6 +701,39 @@ class AgenticOrchestrator:
                 status=status,
                 error=error,
             )
+            # Item 5 (May 1, 2026): mirror the latency into Prometheus
+            # histogram so /metrics shows live p50/p95/p99 per stage
+            # without operators needing to query Postgres.
+            try:
+                from platform_core.metrics import observe_turn_stage
+                observe_turn_stage(step, latency_ms)
+            except Exception:  # noqa: BLE001 — metrics never break the pipeline
+                pass
+            # Item 6 (May 1, 2026): emit a child OTel span for the stage
+            # so the waterfall view reflects what we already store in
+            # ``turn_traces.steps[]``. Uses start/end times derived from
+            # the latency we already measured to keep the cost trivial.
+            try:
+                if _otel_tracer is not None and isinstance(latency_ms, int):
+                    end_ns = int(time.time() * 1e9)
+                    start_ns = end_ns - int(latency_ms * 1e6)
+                    span = _otel_tracer.start_span(
+                        f"aura.{step}",
+                        start_time=start_ns,
+                        attributes={
+                            "aura.stage": step,
+                            "aura.status": status,
+                            "aura.model": model or "",
+                            "aura.input_summary": input_summary[:200],
+                            "aura.output_summary": output_summary[:200],
+                        },
+                    )
+                    if status != "ok":
+                        from opentelemetry.trace import Status, StatusCode
+                        span.set_status(Status(StatusCode.ERROR, error or status))
+                    span.end(end_time=end_ns)
+            except Exception:  # noqa: BLE001
+                pass
 
         # --- Validate request ---
         emit("validate_request", "started")
@@ -704,6 +747,33 @@ class AgenticOrchestrator:
         previous_context = dict(conversation.get("session_context_json") or {})
         turn = self.repo.create_turn(conversation_id=conversation_id, user_message=message)
         turn_id = str(turn["id"])
+
+        # Item 2 (May 1, 2026): set correlation contextvars so every
+        # downstream log record auto-tags with turn_id / conversation_id /
+        # external_user_id via the RequestContextFilter. No explicit reset
+        # — next call overwrites; empty default means stale values don't
+        # leak across requests served by the same thread.
+        set_turn_id(turn_id)
+        set_conversation_id(conversation_id)
+        set_external_user_id(external_user_id)
+
+        # Item 6 (May 1, 2026): tag the active OTel span (created by the
+        # FastAPI auto-instrumentation around the HTTP route) with our
+        # turn-level identifiers. Pipeline-stage child spans are created
+        # in trace_end below so the span tree mirrors the trace_traces
+        # ``steps[]`` structure.
+        try:
+            from platform_core.otel_setup import get_tracer
+            from opentelemetry import trace as _otel_trace
+            _otel_tracer = get_tracer("aura.orchestrator")
+            _current_span = _otel_trace.get_current_span()
+            if _current_span is not None:
+                _current_span.set_attribute("aura.turn_id", turn_id)
+                _current_span.set_attribute("aura.conversation_id", conversation_id)
+                _current_span.set_attribute("aura.external_user_id", external_user_id)
+                _current_span.set_attribute("aura.has_image", bool(image_data))
+        except Exception:  # noqa: BLE001
+            _otel_tracer = None
 
         # ── Trace builder ────────────────────────────────────────────
         # Accumulates the per-turn trace incrementally. Persisted at the
@@ -990,6 +1060,13 @@ class AgenticOrchestrator:
                     "memory_sources_written": ["confidence_history", "policy_events"],
                 },
             )
+            # Persist the trace before this early return — without this
+            # call the onboarding-gate-blocked turn never makes it into
+            # turn_traces, leaving operators blind to the most common
+            # clarification path. (May 1, 2026 fix.)
+            trace.set_intent(primary_intent="onboarding_gate", action="ask_clarification")
+            trace.set_evaluation({"response_type": "clarification", "answer_source": "onboarding_gate"})
+            self._persist_trace(trace)
             return {
                 "conversation_id": conversation_id,
                 "turn_id": turn_id,
@@ -1041,7 +1118,7 @@ class AgenticOrchestrator:
 
         # Run Copilot Planner
         emit("copilot_planner", "started")
-        trace_start("copilot_planner", model="gpt-5.4", input_summary=f"message={message[:80]}, has_image={bool(image_data)}")
+        trace_start("copilot_planner", model="gpt-5.5", input_summary=f"message={message[:80]}, has_image={bool(image_data)}")
         t0 = time.monotonic()
         try:
             plan_result = self._copilot_planner.plan(planner_input)
@@ -1053,7 +1130,7 @@ class AgenticOrchestrator:
                 turn_id=turn_id,
                 service="agentic_application",
                 call_type="copilot_planner",
-                model="gpt-5.4",
+                model="gpt-5.5",
                 request_json={"message": effective_message},
                 response_json={},
                 reasoning_notes=[],
@@ -1069,6 +1146,12 @@ class AgenticOrchestrator:
                 assistant_message=fallback_message,
                 resolved_context={"error": str(exc), "request_summary": message.strip()},
             )
+            # Persist the trace before this early return so the planner
+            # failure shows up in turn_traces with stage_failed=copilot_planner.
+            # (May 1, 2026 fix — was previously a coverage hole.)
+            trace.set_intent(primary_intent="", action="error")
+            trace.set_evaluation({"response_type": "error", "stage_failed": "copilot_planner", "error": str(exc)[:200]})
+            self._persist_trace(trace)
             return {
                 "conversation_id": conversation_id,
                 "turn_id": turn_id,
@@ -1081,12 +1164,14 @@ class AgenticOrchestrator:
                 "metadata": {"error": True},
             }
         planner_ms = int((time.monotonic() - t0) * 1000)
+        # Item 4 (May 1, 2026): pull token usage from the planner agent.
+        _planner_usage = getattr(self._copilot_planner, "last_usage", {}) or {}
         self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
             call_type="copilot_planner",
-            model="gpt-5.4",
+            model="gpt-5.5",
             request_json={"message": effective_message, "intent": plan_result.intent},
             response_json={
                 "intent": plan_result.intent,
@@ -1095,6 +1180,9 @@ class AgenticOrchestrator:
             },
             reasoning_notes=[],
             latency_ms=planner_ms,
+            prompt_tokens=_planner_usage.get("prompt_tokens"),
+            completion_tokens=_planner_usage.get("completion_tokens"),
+            total_tokens=_planner_usage.get("total_tokens"),
         )
         emit("copilot_planner", "completed", ctx={
             "intent": plan_result.intent,
@@ -1469,6 +1557,18 @@ class AgenticOrchestrator:
             # so the NEXT turn can correlate user_response.
             handler_result.setdefault("_trace_turn_id", turn_id)
         self._persist_trace(trace)
+        # Item 5 (May 1, 2026): aura_turn_total counter — labelled by intent
+        # / action / response_type. Increments on the happy-path return so
+        # alerts can target real outcomes.
+        try:
+            from platform_core.metrics import observe_turn_outcome
+            observe_turn_outcome(
+                intent=str((handler_result or {}).get("metadata", {}).get("primary_intent") or plan_result.intent or ""),
+                action=str(plan_result.action or ""),
+                status=str((handler_result or {}).get("response_type") or "ok"),
+            )
+        except Exception:  # noqa: BLE001
+            pass
         return handler_result or {"conversation_id": conversation_id, "turn_id": turn_id, "response_type": "error"}
 
     # ------------------------------------------------------------------
@@ -3183,9 +3283,14 @@ class AgenticOrchestrator:
 
     def _persist_trace(self, trace: TurnTraceBuilder) -> None:
         """Persist the accumulated per-turn trace. Best-effort: failures
-        here must never block the response to the user."""
+        here must never block the response to the user. Idempotent —
+        callable multiple times (e.g. once on the happy path and again
+        from a finally block) without producing duplicate rows."""
+        if getattr(trace, "_persisted", False):
+            return
         try:
             self.repo.insert_turn_trace(**trace.build())
+            trace._persisted = True  # type: ignore[attr-defined]
         except Exception:
             _log.warning("Failed to persist turn trace", exc_info=True)
 
@@ -4080,7 +4185,7 @@ class AgenticOrchestrator:
 
         # Run Outfit Architect
         emit("outfit_architect", "started")
-        trace_start("outfit_architect", model="gpt-5.4", input_summary=f"message={message[:80]}")
+        trace_start("outfit_architect", model="gpt-5.5", input_summary=f"message={message[:80]}")
         t0 = time.monotonic()
         try:
             plan = self.outfit_architect.plan(combined_context)
@@ -4093,7 +4198,7 @@ class AgenticOrchestrator:
                 turn_id=turn_id,
                 service="agentic_application",
                 call_type="outfit_architect",
-                model="gpt-5.4",
+                model="gpt-5.5",
                 request_json={"combined_context_summary": {"gender": user_context.gender, "message": message}},
                 response_json={},
                 reasoning_notes=[],
@@ -4130,16 +4235,22 @@ class AgenticOrchestrator:
                 is_followup=resolved.is_followup,
                 followup_intent=resolved.followup_intent,
                 anchor_garment=initial_live_context.anchor_garment,
+                weather_context=initial_live_context.weather_context,
+                time_of_day=initial_live_context.time_of_day,
+                target_product_type=initial_live_context.target_product_type,
+                ranking_bias=resolved.ranking_bias or "balanced",
             )
         else:
             effective_live_context = initial_live_context
 
+        # Item 4 (May 1, 2026): pull token usage from architect agent.
+        _arch_usage = getattr(self.outfit_architect, "last_usage", {}) or {}
         self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
             call_type="outfit_architect",
-            model="gpt-5.4",
+            model="gpt-5.5",
             request_json={
                 "combined_context_summary": {
                     "gender": user_context.gender,
@@ -4151,6 +4262,9 @@ class AgenticOrchestrator:
             response_json=plan.model_dump(),
             reasoning_notes=[],
             latency_ms=architect_ms,
+            prompt_tokens=_arch_usage.get("prompt_tokens"),
+            completion_tokens=_arch_usage.get("completion_tokens"),
+            total_tokens=_arch_usage.get("total_tokens"),
         )
         emit("outfit_architect", "completed", ctx={
             "direction_types": sorted({d.direction_type for d in plan.directions}),
@@ -4248,9 +4362,42 @@ class AgenticOrchestrator:
             # operator dashboard can track which one ran.
             emit("reranker", "started")
             trace_start("reranker", input_summary=f"{len(candidates)} candidates")
-            ranked_pool = self.reranker.rerank(candidates)
-            emit("reranker", "completed", ctx={"pool_size": len(ranked_pool)})
-            trace_end("reranker", output_summary=f"pool={len(ranked_pool)}")
+            # Phase 13B+: ranking_bias from architect modulates the
+            # tie-break ordering inside the reranker. The decision_log
+            # callback persists kept/dropped candidate ids into
+            # tool_traces (tool_name="reranker_decision") so offline
+            # calibration can correlate reranker output with downstream
+            # feedback events.
+            reranker_bias = (combined_context.live.ranking_bias or "balanced") if combined_context else "balanced"
+
+            def _persist_reranker_decision(payload: Dict[str, Any]) -> None:
+                try:
+                    self.repo.log_tool_trace(
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        tool_name="reranker_decision",
+                        input_json={
+                            "bias": payload.get("bias"),
+                            "input_count": payload.get("input_count"),
+                            "weights": payload.get("weights"),
+                        },
+                        output_json={
+                            "kept_count": payload.get("kept_count"),
+                            "kept": payload.get("kept"),
+                            "dropped": payload.get("dropped"),
+                        },
+                    )
+                except Exception:  # noqa: BLE001 — telemetry must never break pipeline
+                    _log.exception("reranker decision log failed; ignoring")
+
+            ranked_pool = self.reranker.rerank(
+                candidates,
+                bias=reranker_bias,
+                turn_id=turn_id,
+                decision_log=_persist_reranker_decision,
+            )
+            emit("reranker", "completed", ctx={"pool_size": len(ranked_pool), "bias": reranker_bias})
+            trace_end("reranker", output_summary=f"pool={len(ranked_pool)}, bias={reranker_bias}")
 
             person_image_path = self.onboarding_gateway.get_person_image_path(external_user_id)
             visual_path_attempted = False
@@ -4269,7 +4416,7 @@ class AgenticOrchestrator:
                 visual_path_attempted = True
                 try:
                     emit("visual_evaluation", "started", ctx={"target_count": self.reranker.final_top_n})
-                    trace_start("visual_evaluation", model="gpt-5.4", input_summary=f"pool={len(ranked_pool)}, target={self.reranker.final_top_n}")
+                    trace_start("visual_evaluation", model="gpt-5-mini", input_summary=f"pool={len(ranked_pool)}, target={self.reranker.final_top_n}")
                     rendered, tryon_stats = self._render_candidates_for_visual_eval(
                         candidates=ranked_pool,
                         person_image_path=str(person_image_path),
@@ -4344,12 +4491,17 @@ class AgenticOrchestrator:
                     )
 
             evaluator_ms = int((time.monotonic() - t0) * 1000)
+            # Item 4 (May 1, 2026): pull token usage from the visual
+            # evaluator. last_usage reflects the most recent candidate
+            # eval, which is the appropriate denominator since the
+            # parallel pool calls its agent per-candidate.
+            _eval_usage = getattr(self.visual_evaluator, "last_usage", {}) or {}
             self.repo.log_model_call(
                 conversation_id=conversation_id,
                 turn_id=turn_id,
                 service="agentic_application",
                 call_type="outfit_evaluator",
-                model="gpt-5.4",
+                model="gpt-5-mini",
                 request_json={
                     "candidate_count": len(candidates),
                     "evaluator_path": evaluator_path,
@@ -4358,6 +4510,9 @@ class AgenticOrchestrator:
                 response_json={"evaluation_count": len(evaluated)},
                 reasoning_notes=[],
                 latency_ms=evaluator_ms,
+                prompt_tokens=_eval_usage.get("prompt_tokens"),
+                completion_tokens=_eval_usage.get("completion_tokens"),
+                total_tokens=_eval_usage.get("total_tokens"),
             )
 
             emit("response_formatting", "started")
@@ -4632,7 +4787,42 @@ class AgenticOrchestrator:
         stats: Dict[str, int] = dict(empty_stats)
 
         def _render_one(candidate: OutfitCandidate) -> str:
-            """Render a single candidate via try-on; return file path or ''."""
+            """Render a single candidate via try-on; return file path or ''.
+
+            Item 10 (May 1, 2026): emits a per-candidate ``tool_traces``
+            row with ``tool_name="tryon_render"`` so a slow turn can be
+            traced down to which specific candidate dragged the
+            wallclock without rerunning the pipeline.
+            """
+            _candidate_started = time.monotonic()
+            _candidate_status = "ok"
+            _candidate_error: str | None = None
+            _quality_passed: bool | None = None
+
+            def _log_candidate_trace() -> None:
+                latency = int((time.monotonic() - _candidate_started) * 1000)
+                try:
+                    self.repo.log_tool_trace(
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        tool_name="tryon_render",
+                        input_json={
+                            "candidate_id": str(getattr(candidate, "candidate_id", "")),
+                            "garment_ids": list(garment_ids) if "garment_ids" in dir() else [],
+                            "parent_step": "visual_evaluation",
+                        },
+                        output_json={
+                            "status": _candidate_status,
+                            "quality_passed": _quality_passed,
+                            "error": _candidate_error,
+                        },
+                        latency_ms=latency,
+                        status=_candidate_status,
+                        error_message=_candidate_error or "",
+                    )
+                except Exception:  # noqa: BLE001
+                    _log.warning("Failed to persist per-candidate tryon trace", exc_info=True)
+
             garment_urls: list[tuple[str, str]] = []
             for item in candidate.items or []:
                 url = str(item.get("image_url") or "").strip()
@@ -4640,13 +4830,15 @@ class AgenticOrchestrator:
                     continue
                 role = str(item.get("role") or "").strip()
                 garment_urls.append((role or "garment", url))
-            if not garment_urls:
-                return ""
             garment_ids = sorted(
                 str(item.get("product_id", "")).strip()
                 for item in (candidate.items or [])
                 if str(item.get("product_id", "")).strip()
             )
+            if not garment_urls:
+                _candidate_status = "skipped_no_urls"
+                _log_candidate_trace()
+                return ""
             # Cache lookup — reuse a previously rendered image for the
             # same garment combination so repeat turns don't re-pay
             # Gemini latency.
@@ -4655,6 +4847,8 @@ class AgenticOrchestrator:
                 if cached and cached.get("file_path"):
                     cached_path = Path(cached["file_path"])
                     if cached_path.exists():
+                        _candidate_status = "cache_hit"
+                        _log_candidate_trace()
                         return str(cached_path)
             stats["tryon_attempted_count"] += 1
             try:
@@ -4663,11 +4857,21 @@ class AgenticOrchestrator:
                     garment_urls=garment_urls,
                 )
                 if not result.get("success"):
+                    _candidate_status = "tryon_failed"
+                    _candidate_error = str(result.get("error") or "tryon returned success=False")
+                    _log_candidate_trace()
                     return ""
                 quality = self.tryon_quality_gate.evaluate(
                     person_image_path=person_image_path,
                     tryon_result=result,
                 )
+                _quality_passed = bool(quality.get("passed"))
+                # Item 5: mirror to Prometheus.
+                try:
+                    from platform_core.metrics import observe_tryon_quality_gate
+                    observe_tryon_quality_gate(passed=_quality_passed)
+                except Exception:  # noqa: BLE001
+                    pass
                 if not quality.get("passed"):
                     stats["tryon_quality_gate_failures"] += 1
                     _log.info(
@@ -4675,15 +4879,24 @@ class AgenticOrchestrator:
                         candidate.candidate_id,
                         quality.get("reason_code") or "unknown",
                     )
+                    _candidate_status = "quality_gate_failed"
+                    _candidate_error = str(quality.get("reason_code") or "unknown")
+                    _log_candidate_trace()
                     return ""
                 image_b64 = result.get("image_base64") or ""
                 if not image_b64:
+                    _candidate_status = "tryon_no_image"
+                    _log_candidate_trace()
                     return ""
                 try:
                     image_bytes = base64.b64decode(image_b64)
                 except Exception:
+                    _candidate_status = "decode_failed"
+                    _log_candidate_trace()
                     return ""
                 if not image_bytes:
+                    _candidate_status = "decode_empty"
+                    _log_candidate_trace()
                     return ""
                 mime_type = result.get("mime_type") or "image/png"
                 ext = ".png" if "png" in mime_type else ".jpg"
@@ -4712,13 +4925,18 @@ class AgenticOrchestrator:
                 except Exception:
                     _log.warning("Failed to persist visual-eval tryon metadata", exc_info=True)
                 stats["tryon_succeeded_count"] += 1
+                _candidate_status = "ok"
+                _log_candidate_trace()
                 return str(dest)
-            except Exception:
+            except Exception as exc:
                 _log.warning(
                     "Visual eval try-on raised for candidate %s",
                     candidate.candidate_id,
                     exc_info=True,
                 )
+                _candidate_status = "error"
+                _candidate_error = str(exc)[:200]
+                _log_candidate_trace()
                 return ""
 
         # Walk the pool greedily — render the first `target_count` whose
@@ -4963,12 +5181,14 @@ class AgenticOrchestrator:
             outfit_check_scores.append(check.occasion_pct)
         overall_score_pct = int(sum(outfit_check_scores) / len(outfit_check_scores))
 
+        # Item 4 (May 1, 2026): pull token usage from visual evaluator.
+        _check_usage = getattr(self.visual_evaluator, "last_usage", {}) or {}
         self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
             call_type=Intent.OUTFIT_CHECK,
-            model="gpt-5.4",
+            model="gpt-5-mini",
             request_json={
                 "message": message,
                 "occasion_signal": occasion_signal,
@@ -4977,6 +5197,9 @@ class AgenticOrchestrator:
             },
             response_json=check.model_dump(),
             reasoning_notes=[],
+            prompt_tokens=_check_usage.get("prompt_tokens"),
+            completion_tokens=_check_usage.get("completion_tokens"),
+            total_tokens=_check_usage.get("total_tokens"),
         )
 
         wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
@@ -5400,12 +5623,14 @@ class AgenticOrchestrator:
                 error=str(exc),
             )
 
+        # Item 4 (May 1, 2026): pull token usage from visual evaluator.
+        _ge_usage = getattr(self.visual_evaluator, "last_usage", {}) or {}
         self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
             call_type=Intent.GARMENT_EVALUATION,
-            model="gpt-5.4",
+            model="gpt-5-mini",
             request_json={
                 "message": message,
                 "tryon_quality_passed": tryon_quality_passed,
@@ -5414,6 +5639,9 @@ class AgenticOrchestrator:
             },
             response_json=evaluation.model_dump(),
             reasoning_notes=[],
+            prompt_tokens=_ge_usage.get("prompt_tokens"),
+            completion_tokens=_ge_usage.get("completion_tokens"),
+            total_tokens=_ge_usage.get("total_tokens"),
         )
 
         # Stage 3: Deterministic wardrobe overlap + versatility (no LLM)

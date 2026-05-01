@@ -40,6 +40,12 @@ class SupabaseRestClient:
         if body is not None:
             data = json.dumps(body, ensure_ascii=True).encode("utf-8")
 
+        # Item 5 (May 1, 2026): track external-call latency for the
+        # /metrics endpoint so slow Supabase queries surface in
+        # dashboards without log scraping.
+        import time as _time
+        started = _time.monotonic()
+        status = "ok"
         req = Request(url=url, method=method, headers=headers, data=data)
         try:
             with urlopen(req, timeout=self.timeout_seconds) as resp:
@@ -49,7 +55,22 @@ class SupabaseRestClient:
                 return json.loads(raw)
         except HTTPError as exc:
             raw = exc.read().decode("utf-8", errors="replace")
+            status = f"http_{exc.code}"
             raise SupabaseError(f"Supabase request failed ({exc.code}) {method} {url}: {raw}") from exc
+        except Exception:
+            status = "error"
+            raise
+        finally:
+            try:
+                from .metrics import observe_external_call
+                observe_external_call(
+                    service="supabase",
+                    operation=f"{method} {path.split('?')[0]}",
+                    status=status,
+                    latency_ms=(_time.monotonic() - started) * 1000.0,
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
     def insert_one(self, table: str, row: Dict[str, Any]) -> Dict[str, Any]:
         out = self._request("POST", table, body=row)
@@ -124,6 +145,12 @@ class SupabaseRestClient:
         if out is None:
             return None
         raise SupabaseError(f"Unexpected update response for {table}: {out}")
+
+    def delete_one(self, table: str, *, filters: Dict[str, str]) -> None:
+        """Delete row(s) matching ``filters``. Used by GDPR data-subject
+        deletion (Item 7, May 1, 2026). Caller is responsible for using
+        a sufficiently narrow filter to avoid mass deletion."""
+        self._request("DELETE", table, query=filters, prefer="return=minimal")
 
     def rpc(self, function_name: str, payload: Dict[str, Any]) -> Any:
         return self._request("POST", f"rpc/{function_name}", body=payload)

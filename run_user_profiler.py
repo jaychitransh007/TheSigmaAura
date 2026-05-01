@@ -16,6 +16,7 @@ for p in (
     ROOT,
     ROOT / "modules" / "catalog" / "src",
     ROOT / "modules" / "user_profiler" / "src",
+    ROOT / "modules" / "platform_core" / "src",
 ):
     sp = str(p)
     if sp not in sys.path:
@@ -23,7 +24,10 @@ for p in (
 
 
 from user_profiler.main import main  # noqa: E402
+from platform_core.logging_config import configure_logging  # noqa: E402
 
 
 if __name__ == "__main__":
+    # Shared structured logging shim — see modules/platform_core/src/platform_core/logging_config.py
+    configure_logging()
     raise SystemExit(main())

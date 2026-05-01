@@ -4,8 +4,11 @@ import os
 
 @dataclass(frozen=True)
 class UserProfilerConfig:
-    visual_model: str = "gpt-5.4"
-    textual_model: str = "gpt-5.4"
+    # May 1, 2026: upgraded from gpt-5.4 to gpt-5.5 alongside the
+    # equivalent change in modules/user/src/user/analysis.py — keeps
+    # the standalone profiler runtime in sync with the in-app one.
+    visual_model: str = "gpt-5.5"
+    textual_model: str = "gpt-5.5"
     visual_reasoning_effort: str = "high"
     output_dir: str = "data/logs"
 

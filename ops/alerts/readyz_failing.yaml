@@ -1,0 +1,17 @@
+alert: aura_readyz_failing
+description: |
+  /readyz has been returning non-200 for 5 consecutive minutes.
+  Indicates Supabase, OpenAI, or Gemini are unreachable. The instance
+  should already be out of LB rotation; pages on-call to fix the
+  underlying upstream.
+expr: |
+  probe_success{instance=~".*aura.*", job=~".*readyz.*"} == 0
+for: 5m
+severity: P1
+runbook: docs/OPERATIONS.md#b-catalog--embeddings-missing
+labels:
+  team: aura
+  service: agentic_application
+annotations:
+  summary: Aura readyz failing — upstream unhealthy
+  description: "/readyz returning non-200; check OpenAI / Gemini / Supabase"

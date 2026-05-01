@@ -263,10 +263,19 @@ class VisualEvaluatorAgent:
     the orchestrator parallelizes via a ThreadPoolExecutor.
     """
 
-    def __init__(self, model: str = "gpt-5.4") -> None:
+    def __init__(self, model: str = "gpt-5-mini") -> None:
+        # May 1, 2026: moved from gpt-5.4 to gpt-5-mini. The evaluator
+        # emits structured per-candidate scores against a tight JSON
+        # schema (9 evaluation pcts + 8 archetype pcts); the schema
+        # constraint forces output into a narrow corridor where mini
+        # performs well. Runs 3-5x in parallel post-try-on so the
+        # latency saving compounds. Score noise affects ranking-within-
+        # pool only — retrieval is upstream and unaffected.
         self._client = OpenAI(api_key=get_api_key())
         self._model = model
         self._system_prompt = _load_prompt()
+        # Item 4 (May 1, 2026): orchestrator picks this up post-call.
+        self.last_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     def evaluate_candidate(
         self,
@@ -321,6 +330,7 @@ class VisualEvaluatorAgent:
                     "Could not attach image to visual evaluator: %s", image_path, exc_info=True
                 )
 
+        from platform_core.cost_estimator import extract_token_usage
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -335,6 +345,7 @@ class VisualEvaluatorAgent:
             ],
             text={"format": _EVAL_JSON_SCHEMA},
         )
+        self.last_usage = extract_token_usage(response)
         raw_text = getattr(response, "output_text", "") or "{}"
         raw = json.loads(raw_text)
         return _to_evaluated_recommendation(raw, candidate)

@@ -43,6 +43,20 @@ Pillow==11.2.1
 pillow-heif==1.3.0
 pillow-avif-plugin==1.5.5
 
+# ── Observability ─────────────────────────────────────────────────────
+# Prometheus exposition for the /metrics endpoint shipped May 1, 2026
+# (Item 5 of Observability Hardening). Used by platform_core/metrics.py
+# and surfaced in api.py for scrape collection.
+prometheus-client==0.21.1
+# OpenTelemetry distributed tracing — Item 6 of Observability Hardening.
+# Becomes a no-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset, so local
+# dev pays nothing. Production sets the endpoint to ship spans to
+# Honeycomb / Tempo / Datadog APM / Cloud Trace.
+opentelemetry-api>=1.27.0
+opentelemetry-sdk>=1.27.0
+opentelemetry-exporter-otlp>=1.27.0
+opentelemetry-instrumentation-fastapi>=0.48b0
+
 # ── Test runner ───────────────────────────────────────────────────────
 # pytest is used for @pytest.mark.parametrize decorators in
 # tests/test_qna_messages.py. CI's `unittest discover` ignores the

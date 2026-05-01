@@ -185,13 +185,21 @@ def _build_user_payload(ctx: CombinedContext) -> str:
 
 
 class OutfitArchitect:
-    def __init__(self, model: str = "gpt-5.4") -> None:
+    def __init__(self, model: str = "gpt-5.5") -> None:
+        # May 1, 2026: upgraded from gpt-5.4 to gpt-5.5. Architect quality
+        # drives retrieval quality across the entire pipeline (directions,
+        # hard filters, query documents) so we pay the bigger model on
+        # a single call to lift the output of every downstream stage.
         self._client = OpenAI(api_key=get_api_key())
         self._model = model
         self._system_prompt = _load_prompt()
+        # Item 4 (May 1, 2026): orchestrator picks this up post-call.
+        self.last_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     def plan(self, combined_context: CombinedContext) -> RecommendationPlan:
         """Generate a RecommendationPlan via LLM. Raises on failure."""
+        from platform_core.cost_estimator import extract_token_usage
+        self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -206,6 +214,7 @@ class OutfitArchitect:
             ],
             text={"format": _PLAN_JSON_SCHEMA},
         )
+        self.last_usage = extract_token_usage(response)
 
         raw = json.loads(getattr(response, "output_text", "") or "{}")
         plan = self._parse_plan(raw)

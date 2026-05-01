@@ -161,10 +161,17 @@ def _planner_entities_payload(plan_resolved_context: Any, plan_action_parameters
 class StyleAdvisorAgent:
     """LLM advisor for open-ended style_discovery and explanation_request."""
 
-    def __init__(self, model: str = "gpt-5.4") -> None:
+    def __init__(self, model: str = "gpt-5.5") -> None:
+        # May 1, 2026: upgraded from gpt-5.4 to gpt-5.5 alongside the
+        # planner / architect / user-analysis migration. Style Advisor
+        # produces free-form prose for style_discovery and explanation_request
+        # turns where voice quality is directly user-visible — the bigger
+        # model preserves the stylist tone the product positioning depends on.
         self._client = OpenAI(api_key=get_api_key())
         self._model = model
         self._system_prompt = _load_prompt()
+        # Item 4 (May 1, 2026): orchestrator picks this up post-call.
+        self.last_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     def advise(
         self,
@@ -199,6 +206,7 @@ class StyleAdvisorAgent:
             "profile_confidence_pct": int(profile_confidence_pct or 0),
         }
 
+        from platform_core.cost_estimator import extract_token_usage
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -218,6 +226,7 @@ class StyleAdvisorAgent:
             ],
             text={"format": _ADVICE_JSON_SCHEMA},
         )
+        self.last_usage = extract_token_usage(response)
         raw_text = getattr(response, "output_text", "") or "{}"
         raw = json.loads(raw_text)
         return StyleAdvice(raw)
