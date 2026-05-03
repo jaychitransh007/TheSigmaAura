@@ -5393,6 +5393,55 @@ class TurnTraceBuilderTests(unittest.TestCase):
         self.assertEqual("error", result["steps"][0]["status"])
         self.assertEqual("timeout after 30s", result["steps"][0]["error"])
 
+    def test_total_cost_usd_accumulates_into_evaluation(self):
+        """May 3, 2026 obs gap: every LLM / image / embedding call's
+        cost should fold into a single per-turn rollup so dashboards
+        don't need to sum model_call_logs themselves."""
+        from agentic_application.tracing import TurnTraceBuilder
+
+        trace = TurnTraceBuilder(turn_id="t4", conversation_id="c4", user_id="u4")
+        trace.add_cost(0.04272)  # planner
+        trace.add_cost(0.17631)  # architect
+        trace.add_model_cost_from_row({"estimated_cost_usd": 0.00543})  # composer
+        trace.add_model_cost_from_row({"estimated_cost_usd": 0.00611})  # rater
+        trace.add_model_cost_from_row({"estimated_cost_usd": 0.00012})  # embedding
+        trace.set_evaluation({"answer_source": "catalog_pipeline", "outfit_count": 3})
+
+        result = trace.build()
+        ev = result["evaluation"]
+        self.assertIn("total_cost_usd", ev)
+        # 0.04272 + 0.17631 + 0.00543 + 0.00611 + 0.00012 = 0.23069
+        self.assertAlmostEqual(0.23069, ev["total_cost_usd"], places=5)
+        # Existing evaluation fields preserved.
+        self.assertEqual("catalog_pipeline", ev["answer_source"])
+        self.assertEqual(3, ev["outfit_count"])
+
+    def test_zero_cost_skips_total_cost_usd_field(self):
+        """When no cost was tracked (e.g. fully cached turn), the
+        evaluation block stays as-is — total_cost_usd absent rather
+        than `0.0` so consumers can distinguish the two states."""
+        from agentic_application.tracing import TurnTraceBuilder
+
+        trace = TurnTraceBuilder(turn_id="t5", conversation_id="c5", user_id="u5")
+        trace.set_evaluation({"answer_source": "wardrobe_first"})
+        result = trace.build()
+        self.assertNotIn("total_cost_usd", result["evaluation"])
+
+    def test_add_cost_tolerates_none_and_strings(self):
+        """Defensive: some model_call_logs rows may have a None or
+        unparseable cost field. add_cost must never raise."""
+        from agentic_application.tracing import TurnTraceBuilder
+
+        trace = TurnTraceBuilder(turn_id="t6", conversation_id="c6", user_id="u6")
+        trace.add_cost(None)
+        trace.add_cost(0.05)
+        trace.add_model_cost_from_row(None)
+        trace.add_model_cost_from_row({})
+        trace.add_model_cost_from_row({"estimated_cost_usd": None})
+        trace.add_model_cost_from_row({"estimated_cost_usd": "not a number"})
+        result = trace.build()
+        self.assertAlmostEqual(0.05, result["evaluation"].get("total_cost_usd", 0), places=5)
+
 
 class Phase12EStageEmissionTests(unittest.TestCase):
     """Phase 12E end-to-end stage emission tests.

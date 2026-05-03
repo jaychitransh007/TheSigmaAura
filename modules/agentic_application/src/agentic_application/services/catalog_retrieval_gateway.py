@@ -24,6 +24,9 @@ class ApplicationCatalogRetrievalGateway:
         _log.info("RetrievalGateway: embedding %d text(s), first %d chars: %s",
                    len(texts), min(80, len(texts[0])) if texts else 0, (texts[0][:80] if texts else ""))
         result = self._embedder.embed_texts(texts)
+        # Expose the embedder's token usage so callers can roll cost
+        # into the per-turn total. May 3 2026 — closed observability gap.
+        self.last_usage = dict(getattr(self._embedder, "last_usage", {}) or {})
         if result:
             _log.info("RetrievalGateway: embedding OK, dims=%d", len(result[0]))
         else:

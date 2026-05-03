@@ -45,6 +45,13 @@ class TurnTraceBuilder:
         self._query_entities: Dict[str, Any] = {}
         self._steps: List[Dict[str, Any]] = []
         self._evaluation: Dict[str, Any] = {}
+        # Aggregate cost across all LLM / image-gen / embedding calls
+        # in this turn. Surfaced as `total_cost_usd` on build() so a
+        # consumer can see the per-turn dollar figure without summing
+        # `model_call_logs` themselves. May 3 2026 PR — addresses the
+        # observability gap surfaced when the user asked "what's this
+        # turn costing me end to end".
+        self._total_cost_usd: float = 0.0
 
     # ── Step accumulation ────────────────────────────────────────────
 
@@ -112,6 +119,27 @@ class TurnTraceBuilder:
     def set_evaluation(self, evaluation: Dict[str, Any]) -> None:
         self._evaluation = evaluation
 
+    def add_cost(self, amount: Optional[float]) -> None:
+        """Accumulate a single LLM / image / embedding call's cost into
+        the per-turn total. Tolerates None / 0 / strings — anything
+        non-numeric is treated as zero."""
+        if amount is None:
+            return
+        try:
+            self._total_cost_usd += float(amount)
+        except (TypeError, ValueError):
+            return
+
+    def add_model_cost_from_row(self, row: Optional[Dict[str, Any]]) -> None:
+        """Convenience: extract ``estimated_cost_usd`` from a
+        model_call_logs row and accumulate it. Used at every
+        ``repo.log_model_call(...)`` callsite so the per-turn cost
+        rollup mirrors the sum of all model_call_logs rows for the
+        turn."""
+        if not isinstance(row, dict):
+            return
+        self.add_cost(row.get("estimated_cost_usd"))
+
     # ── Build ────────────────────────────────────────────────────────
 
     def build(self) -> Dict[str, Any]:
@@ -131,6 +159,14 @@ class TurnTraceBuilder:
             "profile_snapshot": self._profile_snapshot,
             "query_entities": self._query_entities,
             "steps": self._steps,
-            "evaluation": self._evaluation,
+            # Fold total_cost_usd into the existing evaluation JSONB so
+            # no schema migration is needed. Rounded to 6 decimals —
+            # sub-millicent precision is enough. Skipped entirely when
+            # zero so consumers can distinguish "no cost" from "$0.00".
+            "evaluation": (
+                {**self._evaluation, "total_cost_usd": round(self._total_cost_usd, 6)}
+                if self._total_cost_usd > 0
+                else self._evaluation
+            ),
             "total_latency_ms": total_ms,
         }
