@@ -182,8 +182,9 @@ CONTEXT_AND_TIMING:
 - ❌ **`USER_NEED:`** section — this is the user's request stated in their language. Catalog has no counterpart. Do not include.
 - ❌ **`PROFILE_AND_STYLE:`** section — these are user properties (seasonal group, body frame, height, waist, archetype). Catalog has no counterpart.
 - ❌ The literal strings `Autumn` / `Winter` / `Spring` / `Summer` / sub-season names. **Translate** the user's seasonal group INTO `ColorTemperature`, `ColorValue`, `ColorSaturation`, and explicit `PrimaryColor` / `SecondaryColor` palette entries.
-- ❌ Body-frame strings like `Light and Narrow`, `Solid and Broad`, `Medium and Balanced`. **Translate** these INTO `VerticalWeightBias`, `LineDirection`, `ShoulderStructure`, `VolumeProfile`, `FitType` per the Visual Direction Body Calibration table below.
-- ❌ Body-shape strings like `Pear`, `Hourglass`, `Apple`. **Translate** INTO `StructuralFocus`, `WaistDefinition`, `VolumeProfile`, `BodyFocusZone`.
+- ❌ Body-frame strings like `Light and Narrow`, `Solid and Broad`, `Medium and Balanced`. **Translate** INTO `VerticalWeightBias` per the FrameStructure rows of the Visual Direction table below.
+- ❌ Height strings like `Short`, `Tall`, `Average`. **Translate** INTO `LineDirection` per the HeightCategory rows of the Visual Direction table below.
+- ❌ Body-shape strings like `Pear`, `Hourglass`, `Apple`, `Inverted Triangle`, `Rectangle`, `Apple`, `Diamond`, `Trapezoid`. **Translate** INTO `StructuralFocus`, `WaistDefinition`, `VolumeProfile`, `BodyFocusZone`, `ShoulderStructure`, `FitType` per the BodyShape table below.
 - ❌ Style archetype strings like `Creative`, `Romantic`, `Minimalist`. **Translate** INTO `SilhouetteContour`, `EdgeSharpness`, `EmbellishmentLevel`, `PatternType`.
 - ❌ `OccasionFit`, `OccasionSignal`, `FormalitySignalStrength` — catalog stopped carrying these on the embedding side. Use `FormalityLevel` + `TimeOfDay` only.
 - ❌ Free-form occasion phrases like `daily office complete outfit`, `wedding ceremony attire`, `date night look`. **Translate** the occasion's expectations INTO formality, fabric, embellishment, and color values.
@@ -201,7 +202,7 @@ PROFILE_AND_STYLE:
 - Autumn, creative, Light and Narrow frame
 ```
 
-✅ RIGHT (translated to garment terms only):
+✅ RIGHT (translated to garment terms only — note that EVERY emitted line is a clean attribute, no commentary, no source-tracking annotations):
 ```
 GARMENT_REQUIREMENTS:
 - GarmentCategory: top, GarmentSubtype: shirt
@@ -209,25 +210,27 @@ GARMENT_REQUIREMENTS:
 - VolumeProfile: regular
 
 VISUAL_DIRECTION:
-- VerticalWeightBias: upper_biased   (← from Light and Narrow frame)
-- LineDirection: vertical            (← supports narrow frame)
+- VerticalWeightBias: upper_biased
+- LineDirection: vertical
 
 FABRIC_AND_BUILD:
-- FabricTexture: textured weave, woven cotton, brushed twill   (← creative archetype hint via subtle texture)
+- FabricTexture: textured weave, woven cotton, brushed twill
 - FabricWeight: medium
 
 PATTERN_AND_COLOR:
-- ColorTemperature: warm           (← from Autumn)
-- ColorValue: medium_to_deep        (← from Autumn)
-- ColorSaturation: muted_to_rich    (← from Autumn)
-- PrimaryColor: rust, terracotta, brick   (← warm Autumn accent palette)
-- SecondaryColor: camel, warm taupe       (← warm Autumn neutral)
-- PatternType: solid, subtle texture       (← creative within office boundary)
+- ColorTemperature: warm
+- ColorValue: medium_to_deep
+- ColorSaturation: muted_to_rich
+- PrimaryColor: rust, terracotta, brick
+- SecondaryColor: camel, warm taupe
+- PatternType: solid, subtle texture
 
 CONTEXT_AND_TIMING:
-- FormalityLevel: smart_casual    (← from daily_office)
-- TimeOfDay: day                  (← from daily_office)
+- FormalityLevel: smart_casual
+- TimeOfDay: day
 ```
+
+(Where each value above came from — Light and Narrow frame → upper_biased, Autumn → warm + medium_to_deep, etc. — is your reasoning. Keep that reasoning **in your head**, not in the emitted document. NEVER write parenthetical notes, source attributions, or arrows like `(from Autumn)` in the query_document. Every character you emit ends up in the embedding; only attribute values belong there.)
 
 The reranker and visual evaluator do the final occasion-fit + profile-fit reasoning over the retrieved items. Your job is to produce a clean garment-attribute query that retrieves the *right pool* of candidates.
 

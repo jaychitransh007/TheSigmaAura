@@ -154,8 +154,8 @@ class SupabaseVectorStore:
         # May 3, 2026: per-batch try/except so a single Supabase 500 on a
         # bad row doesn't kill the whole resync. Self-healing on Postgres
         # statement_timeout (code 57014): _upsert_with_split halves the
-        # batch and retries down to MIN_UPSERT_BATCH_SIZE. A row only
-        # ends up in `failed_batches` if it fails even at batch size 1.
+        # batch and retries down to batch size 1. A row only ends up in
+        # `failed_batches` if it fails even at batch size 1.
         for i in range(0, len(rows), UPSERT_BATCH_SIZE):
             batch = rows[i : i + UPSERT_BATCH_SIZE]
             logger.info("Upserting embeddings batch %d–%d of %d", i + 1, i + len(batch), len(rows))
@@ -190,7 +190,7 @@ class SupabaseVectorStore:
             return list(res), []
         except Exception as exc:  # noqa: BLE001 — recover by halving
             err_str = str(exc)
-            is_timeout = "57014" in err_str or "statement timeout" in err_str
+            is_timeout = "57014" in err_str or "statement timeout" in err_str.lower()
             if is_timeout and len(batch) > 1:
                 mid = len(batch) // 2
                 logger.warning(
