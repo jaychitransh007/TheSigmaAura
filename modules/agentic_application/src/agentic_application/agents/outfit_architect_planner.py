@@ -95,7 +95,18 @@ _PLAN_SCHEMA: Dict[str, Any] = {
                                     "role": {"type": "string"},
                                     "hard_filters": {
                                         "type": "object",
-                                        "additionalProperties": True,
+                                        "additionalProperties": False,
+                                        "required": ["gender_expression", "garment_subtype"],
+                                        "properties": {
+                                            "gender_expression": {"type": ["string", "null"]},
+                                            "garment_subtype": {
+                                                "anyOf": [
+                                                    {"type": "string"},
+                                                    {"type": "array", "items": {"type": "string"}},
+                                                    {"type": "null"},
+                                                ],
+                                            },
+                                        },
                                     },
                                     "target_color_role": {"type": "string"},
                                     "target_formality": {"type": "string"},
