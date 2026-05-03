@@ -91,6 +91,21 @@ _RECOMMENDATION_FASHION_THRESHOLD = 75
 _WARDROBE_SCORE_MAX = 4.0
 
 
+# Module-level no-op trace stub. Used by handlers that accept an
+# optional `trace: Optional[TurnTraceBuilder]` so tests / one-off call
+# sites can pass nothing and still call `add_cost(...)` etc. without
+# null-checks. Keeping this a singleton (rather than redefining the
+# class on every handler call) avoids the small but real cost of
+# rebuilding the type each turn.
+class _NoOpTrace:
+    def add_cost(self, *_args, **_kwargs) -> None: pass
+    def add_model_cost_from_row(self, *_args, **_kwargs) -> None: pass
+    def set_evaluation(self, *_args, **_kwargs) -> None: pass
+
+
+_NO_OP_TRACE = _NoOpTrace()
+
+
 def _build_candidate_item(product: "RetrievedProduct", role: str = "") -> Dict[str, Any]:
     """Compact dict per item for an OutfitCandidate, fed to the visual
     evaluator and the response formatter.
@@ -4336,21 +4351,18 @@ class AgenticOrchestrator:
         emit: Any,
         trace_start: Any = None,
         trace_end: Any = None,
-        trace: Any = None,
+        trace: Optional[TurnTraceBuilder] = None,
     ) -> Dict[str, Any]:
         # Default trace functions to no-ops if not passed (e.g. in tests).
         if trace_start is None:
             trace_start = lambda *a, **kw: None
         if trace_end is None:
             trace_end = lambda *a, **kw: None
-        # `trace` is the TurnTraceBuilder; default to a stub for tests
-        # that exercise the handler without the full process_turn shell.
+        # Tests that exercise the handler without the full process_turn
+        # shell can pass trace=None — the module-level _NO_OP_TRACE
+        # singleton absorbs the cost / evaluation calls cleanly.
         if trace is None:
-            class _NoOpTrace:
-                def add_cost(self, *a, **kw): pass
-                def add_model_cost_from_row(self, *a, **kw): pass
-                def set_evaluation(self, *a, **kw): pass
-            trace = _NoOpTrace()
+            trace = _NO_OP_TRACE
 
         # Build live context from planner's resolved context
         rc = plan_result.resolved_context
@@ -5330,7 +5342,7 @@ class AgenticOrchestrator:
         conversation_id: str,
         turn_id: str,
         target_count: int,
-        trace: Any = None,
+        trace: Optional[TurnTraceBuilder] = None,
     ) -> tuple[List[tuple[OutfitCandidate, str]], Dict[str, int]]:
         """Render try-on for the top candidates with quality-gate over-generation.
 
