@@ -22,7 +22,10 @@ for p in (
 
 
 from agentic_application.agents.catalog_search_agent import CatalogSearchAgent
-from agentic_application.agents.outfit_assembler import OutfitAssembler
+# OutfitAssembler + Reranker removed (May 3 2026 — replaced by
+# OutfitComposer + OutfitRater). See PR #30.
+from agentic_application.agents.outfit_composer import OutfitComposer
+from agentic_application.agents.outfit_rater import OutfitRater
 # OutfitCheckAgent removed (Phase 12B cleanup, April 9 2026)
 from agentic_application.agents.response_formatter import ResponseFormatter
 from agentic_application.agents.outfit_architect import OutfitArchitect
@@ -42,6 +45,8 @@ from agentic_application.agents.response_formatter import _build_zero_result_fal
 from agentic_application.intent_registry import Action, FollowUpIntent, Intent
 from agentic_application.schemas import (
     CombinedContext,
+    ComposedOutfit,
+    ComposerResult,
     ConversationMemory,
     DirectionSpec,
     EvaluatedRecommendation,
@@ -49,6 +54,8 @@ from agentic_application.schemas import (
     OutfitCandidate,
     OutfitCard,
     QuerySpec,
+    RatedOutfit,
+    RaterResult,
     RecommendationPlan,
     RecommendationResponse,
     ResolvedContextBlock,
@@ -56,6 +63,172 @@ from agentic_application.schemas import (
     RetrievedSet,
     UserContext,
 )
+
+
+# ---------------------------------------------------------------------
+# Test helper for the LLM ranker pipeline (May 3 2026, PR #30)
+#
+# Many integration tests mock `outfit_assembler.assemble = Mock(...)`
+# directly to inject canned candidates into the recommendation pipeline.
+# The May-3 rewrite replaced the assembler+reranker with the LLM ranker
+# (Composer + Rater), so the equivalent fixture has to wire three
+# things: a non-empty retrieval pool, a ComposerResult with matching
+# IDs, and a RaterResult with the desired fashion_score.
+#
+# This helper does all three in one call so test bodies can stay close
+# to their pre-PR-30 shape: pass in OutfitCandidate objects and the
+# orchestrator pipeline will produce them as if they came from the
+# Rater.
+# ---------------------------------------------------------------------
+
+
+_ROLES_FOR_TYPE = {
+    "complete": ["complete"],
+    "paired": ["top", "bottom"],
+    "three_piece": ["top", "bottom", "outerwear"],
+}
+
+
+def _mock_llm_ranker(orchestrator, candidates: list[OutfitCandidate]) -> None:
+    """Wire orchestrator.catalog_search_agent.search + outfit_composer.compose
+    + outfit_rater.rate so process_turn produces the supplied candidates.
+
+    Empty list mocks the no-result path: empty retrieval, empty
+    Composer output. The orchestrator falls through to its
+    catalog_low_confidence handler.
+    """
+    if not candidates:
+        orchestrator.catalog_search_agent.search = Mock(return_value=[])
+        orchestrator.outfit_composer.compose = Mock(
+            return_value=ComposerResult(outfits=[], overall_assessment="unsuitable", pool_unsuitable=True)
+        )
+        orchestrator.outfit_rater.rate = Mock(
+            return_value=RaterResult(ranked_outfits=[], overall_assessment="weak")
+        )
+        return
+
+    composed: list[ComposedOutfit] = []
+    rated: list[RatedOutfit] = []
+    products: list[RetrievedProduct] = []
+    for c in candidates:
+        roles = _ROLES_FOR_TYPE.get(c.candidate_type, [])
+        item_ids: list[str] = []
+        for i, item in enumerate(c.items or []):
+            pid = str(item.get("product_id") or f"{c.candidate_id}_item_{i}")
+            item_ids.append(pid)
+            products.append(
+                RetrievedProduct(
+                    product_id=pid,
+                    similarity=0.9,
+                    metadata={"title": item.get("title", "")},
+                    enriched_data={
+                        "garment_subtype": item.get("garment_subtype", ""),
+                        "garment_category": item.get("garment_category", ""),
+                    },
+                )
+            )
+        if not item_ids:
+            # Candidate has no items — fabricate a stub so the
+            # orchestrator's _build_candidate_item lookup succeeds.
+            stub = f"{c.candidate_id}_stub"
+            item_ids.append(stub)
+            products.append(RetrievedProduct(product_id=stub, similarity=0.9))
+        composed.append(
+            ComposedOutfit(
+                composer_id=c.candidate_id,
+                direction_id=c.direction_id or "A",
+                direction_type=c.candidate_type or "complete",
+                item_ids=item_ids,
+                rationale=c.composer_rationale or "test rationale",
+            )
+        )
+        rated.append(
+            RatedOutfit(
+                composer_id=c.candidate_id,
+                rank=len(rated) + 1,
+                fashion_score=c.fashion_score or 85,
+                occasion_fit=c.occasion_fit or 85,
+                body_harmony=c.body_harmony or 85,
+                color_harmony=c.color_harmony or 85,
+                archetype_match=c.archetype_match or 85,
+                rationale=c.rater_rationale or "test rationale",
+                unsuitable=c.unsuitable,
+            )
+        )
+
+    retrieved_sets = [
+        RetrievedSet(direction_id="A", query_id="A1", role="complete", products=products),
+    ]
+    orchestrator.catalog_search_agent.search = Mock(return_value=retrieved_sets)
+    orchestrator.outfit_composer.compose = Mock(
+        return_value=ComposerResult(outfits=composed, overall_assessment="strong", pool_unsuitable=False)
+    )
+    orchestrator.outfit_rater.rate = Mock(
+        return_value=RaterResult(ranked_outfits=rated, overall_assessment="strong")
+    )
+
+
+def _wire_llm_ranker_via_patches(composer_cls, rater_cls, candidates: list[OutfitCandidate]):
+    """Same idea as `_mock_llm_ranker` but for tests that patch the
+    Composer/Rater classes at module level (rather than mutating an
+    already-built orchestrator).
+
+    Returns a list of RetrievedProduct that the caller should configure
+    on the mocked CatalogSearchAgent.search return value, so that the
+    orchestrator's `_build_candidate_item` lookups find matching products.
+    """
+    composed: list[ComposedOutfit] = []
+    rated: list[RatedOutfit] = []
+    products: list[RetrievedProduct] = []
+    for c in candidates:
+        item_ids: list[str] = []
+        for i, item in enumerate(c.items or []):
+            pid = str(item.get("product_id") or f"{c.candidate_id}_item_{i}")
+            item_ids.append(pid)
+            products.append(
+                RetrievedProduct(
+                    product_id=pid,
+                    similarity=0.9,
+                    metadata={"title": item.get("title", "")},
+                    enriched_data={
+                        "garment_subtype": item.get("garment_subtype", ""),
+                        "garment_category": item.get("garment_category", ""),
+                    },
+                )
+            )
+        if not item_ids:
+            stub = f"{c.candidate_id}_stub"
+            item_ids.append(stub)
+            products.append(RetrievedProduct(product_id=stub, similarity=0.9))
+        composed.append(
+            ComposedOutfit(
+                composer_id=c.candidate_id,
+                direction_id=c.direction_id or "A",
+                direction_type=c.candidate_type or "complete",
+                item_ids=item_ids,
+                rationale=c.composer_rationale or "test rationale",
+            )
+        )
+        rated.append(
+            RatedOutfit(
+                composer_id=c.candidate_id,
+                rank=len(rated) + 1,
+                fashion_score=c.fashion_score or 85,
+                occasion_fit=c.occasion_fit or 85,
+                body_harmony=c.body_harmony or 85,
+                color_harmony=c.color_harmony or 85,
+                archetype_match=c.archetype_match or 85,
+                rationale=c.rater_rationale or "test rationale",
+                unsuitable=c.unsuitable,
+            )
+        )
+    composer_cls.return_value.compose.return_value = ComposerResult(
+        outfits=composed, overall_assessment="strong", pool_unsuitable=False,
+    )
+    rater_cls.return_value.rate.return_value = RaterResult(
+        ranked_outfits=rated, overall_assessment="strong",
+    )
+    return products
 
 
 def _make_planner_mock(
@@ -515,66 +688,10 @@ class AgenticApplicationTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 architect.plan(context)
 
-    def test_outfit_assembler_penalizes_but_keeps_mismatched_occasion_pairs(self) -> None:
-        """April 9, 2026: occasion/formality/volume mismatches are now
-        soft penalties instead of hard rejections. The assembler must
-        still produce candidates even when the occasion tags differ —
-        the visual evaluator judges the actual rendered look. The
-        assembly_score is penalized so better-matched pairs rank higher,
-        but zero-candidate outcomes are avoided."""
-        assembler = OutfitAssembler()
-        plan = RecommendationPlan( directions=[
-                DirectionSpec(
-                    direction_id="B",
-                    direction_type="paired",
-                    label="Pairing",
-                    queries=[],
-                )
-            ],
-        )
-        retrieved_sets = [
-            RetrievedSet(
-                direction_id="B",
-                query_id="B1",
-                role="top",
-                products=[
-                    RetrievedProduct(
-                        product_id="top-1",
-                        similarity=0.9,
-                        metadata={"OccasionFit": "wedding", "FormalityLevel": "formal"},
-                        enriched_data={"occasion_fit": "wedding", "formality_level": "formal"},
-                    )
-                ],
-            ),
-            RetrievedSet(
-                direction_id="B",
-                query_id="B2",
-                role="bottom",
-                products=[
-                    RetrievedProduct(
-                        product_id="bottom-1",
-                        similarity=0.88,
-                        metadata={"OccasionFit": "office", "FormalityLevel": "formal"},
-                        enriched_data={"occasion_fit": "office", "formality_level": "formal"},
-                    )
-                ],
-            ),
-        ]
-
-        candidates = assembler.assemble(
-            retrieved_sets,
-            plan,
-            CombinedContext(
-                user=UserContext(user_id="u1", gender="female"),
-                live=LiveContext(user_need="Need pairings"),
-            ),
-        )
-
-        # The pair is NOT rejected — it's penalized but still produced.
-        self.assertEqual(1, len(candidates))
-        # The assembly_score should be lower than a perfectly matched pair
-        # (0.9 + 0.88) / 2 = 0.89 base, minus occasion gap penalty
-        self.assertLess(candidates[0].assembly_score, 0.89)
+    # OutfitAssembler-direct tests removed in May 3 2026 PR #30. The
+    # assembler is gone; the LLM Composer + Rater handle pairing logic
+    # via natural language judgment, not heuristics. See
+    # tests/test_outfit_composer.py and tests/test_outfit_rater.py.
 
     # ------------------------------------------------------------------
     # P0: Silent empty response on pipeline failure
@@ -636,8 +753,10 @@ class AgenticApplicationTests(unittest.TestCase):
         ) as architect_cls, patch(
             "agentic_application.orchestrator.CatalogSearchAgent"
         ) as search_cls, patch(
-            "agentic_application.orchestrator.OutfitAssembler"
-        ) as assembler_cls, patch(
+            "agentic_application.orchestrator.OutfitComposer"
+        ) as composer_cls, patch(
+            "agentic_application.orchestrator.OutfitRater"
+        ) as rater_cls, patch(
             "agentic_application.orchestrator.ResponseFormatter"
         ), patch(
             "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock
@@ -645,9 +764,10 @@ class AgenticApplicationTests(unittest.TestCase):
             architect_cls.return_value.plan.return_value = plan
             search_cls.return_value.search.return_value = retrieved_sets
             # Simulate the failure mode from the live conversation review:
-            # assembler crashes with an unhandled exception mid-pipeline.
-            assembler_cls.return_value.assemble.side_effect = RuntimeError(
-                "boom: simulated assembler crash"
+            # the LLM ranker (Composer) crashes mid-pipeline. The
+            # orchestrator must still return a graceful fallback.
+            composer_cls.return_value.compose.side_effect = RuntimeError(
+                "boom: simulated composer crash"
             )
 
             orchestrator = AgenticOrchestrator(
@@ -715,15 +835,24 @@ class AgenticApplicationTests(unittest.TestCase):
         ) as architect_cls, patch(
             "agentic_application.orchestrator.CatalogSearchAgent"
         ) as search_cls, patch(
-            "agentic_application.orchestrator.OutfitAssembler"
-        ) as assembler_cls, patch(
+            "agentic_application.orchestrator.OutfitComposer"
+        ) as composer_cls, patch(
+            "agentic_application.orchestrator.OutfitRater"
+        ) as rater_cls, patch(
             "agentic_application.orchestrator.ResponseFormatter"
         ) as formatter_cls, patch(
             "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock
         ):
             architect_cls.return_value.plan.return_value = plan
             search_cls.return_value.search.return_value = retrieved_sets
-            assembler_cls.return_value.assemble.return_value = []
+            # Empty Composer output → orchestrator short-circuits to
+            # the catalog_low_confidence handler before the Rater runs.
+            composer_cls.return_value.compose.return_value = ComposerResult(
+                outfits=[], overall_assessment="unsuitable", pool_unsuitable=True,
+            )
+            rater_cls.return_value.rate.return_value = RaterResult(
+                ranked_outfits=[], overall_assessment="weak",
+            )
             formatter_cls.return_value.format.return_value = empty_response
 
             orchestrator = AgenticOrchestrator(
@@ -825,7 +954,7 @@ class AgenticApplicationTests(unittest.TestCase):
                         "garment_category": "dress",
                     }
                 ],
-                assembly_score=0.91,
+                fashion_score=91,
             )
         ]
         evaluated = [
@@ -905,15 +1034,17 @@ class AgenticApplicationTests(unittest.TestCase):
         ) as architect_cls, patch(
             "agentic_application.orchestrator.CatalogSearchAgent"
         ) as search_cls, patch(
-            "agentic_application.orchestrator.OutfitAssembler"
-        ) as assembler_cls, patch(
+            "agentic_application.orchestrator.OutfitComposer"
+        ) as composer_cls, patch(
+            "agentic_application.orchestrator.OutfitRater"
+        ) as rater_cls, patch(
             "agentic_application.orchestrator.ResponseFormatter"
         ) as formatter_cls, patch(
             "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock
         ):
             architect_cls.return_value.plan.return_value = plan
             search_cls.return_value.search.return_value = retrieved_sets
-            assembler_cls.return_value.assemble.return_value = candidates
+            _wire_llm_ranker_via_patches(composer_cls, rater_cls, candidates)
             formatter_cls.return_value.format.return_value = response
 
             orchestrator = AgenticOrchestrator(
@@ -1055,7 +1186,7 @@ class AgenticApplicationTests(unittest.TestCase):
                         "product_url": "https://example.com/sku-2",
                     }
                 ],
-                assembly_score=0.8,
+                fashion_score=80,
             )
         ]
         context = CombinedContext(
@@ -1099,7 +1230,7 @@ class AgenticApplicationTests(unittest.TestCase):
                 direction_id="A",
                 candidate_type="complete",
                 items=[{"product_id": f"sku-{index}", "title": f"Item {index}"}],
-                assembly_score=1.0 - (index * 0.01),
+                fashion_score=100 - index,
             )
             for index in range(1, 8)
         ]
@@ -1146,14 +1277,14 @@ class AgenticApplicationTests(unittest.TestCase):
                 direction_id="A",
                 candidate_type="complete",
                 items=[{"product_id": "sku-blocked", "title": "Lingerie Set", "garment_category": "lingerie"}],
-                assembly_score=0.95,
+                fashion_score=95,
             ),
             OutfitCandidate(
                 candidate_id="cand-2",
                 direction_id="A",
                 candidate_type="complete",
                 items=[{"product_id": "sku-safe", "title": "Wool Blazer", "garment_category": "blazer"}],
-                assembly_score=0.9,
+                fashion_score=90,
             ),
         ]
         context = CombinedContext(
@@ -1187,323 +1318,11 @@ class AgenticApplicationTests(unittest.TestCase):
     # Concept-first paired planning tests
     # ------------------------------------------------------------------
 
-    # ------------------------------------------------------------------
-    # Edge-case refinement: change_color & similar_to_previous
-    # ------------------------------------------------------------------
-
-    def test_assembler_penalizes_color_overlap_for_change_color(self) -> None:
-        """Navy+cream pair with prior navy scores lower than burgundy+cream."""
-        context = CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(
-                user_need="Show me a different color",
-                is_followup=True,
-                followup_intent=FollowUpIntent.CHANGE_COLOR,
-            ),
-            previous_recommendations=[
-                {
-                    "candidate_id": "prev-1",
-                    "candidate_type": "paired",
-                    "primary_colors": ["navy"],
-                    "occasion_fits": ["date_night"],
-                    "roles": ["top", "bottom"],
-                }
-            ],
-        )
-        plan = RecommendationPlan( retrieval_count=8,
-            directions=[
-                DirectionSpec(
-                    direction_id="A",
-                    direction_type="paired",
-                    label="test",
-                    queries=[],
-                )
-            ],
-        )
-
-        def _make_product(pid: str, color: str) -> RetrievedProduct:
-            return RetrievedProduct(
-                product_id=pid,
-                similarity=0.85,
-                enriched_data={"primary_color": color, "occasion_fit": "date_night"},
-                metadata={},
-            )
-
-        # Pair 1: overlapping navy top + cream bottom
-        overlap_sets = [
-            RetrievedSet(direction_id="A", query_id="q1", role="top", products=[_make_product("t1", "navy")]),
-            RetrievedSet(direction_id="A", query_id="q2", role="bottom", products=[_make_product("b1", "cream")]),
-        ]
-        # Pair 2: non-overlapping burgundy top + cream bottom
-        fresh_sets = [
-            RetrievedSet(direction_id="A", query_id="q1", role="top", products=[_make_product("t2", "burgundy")]),
-            RetrievedSet(direction_id="A", query_id="q2", role="bottom", products=[_make_product("b2", "cream")]),
-        ]
-
-        assembler = OutfitAssembler()
-        overlap_candidates = assembler.assemble(overlap_sets, plan, context)
-        fresh_candidates = assembler.assemble(fresh_sets, plan, context)
-
-        self.assertTrue(len(overlap_candidates) > 0)
-        self.assertTrue(len(fresh_candidates) > 0)
-        # Navy overlaps with previous — should score lower
-        self.assertGreater(fresh_candidates[0].assembly_score, overlap_candidates[0].assembly_score)
-
-    def test_assembler_boosts_similar_occasion_for_similar_to_previous(self) -> None:
-        """Date_night pair with prior date_night scores higher than office pair."""
-        context = CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(
-                user_need="Show me something similar",
-                is_followup=True,
-                followup_intent=FollowUpIntent.SIMILAR_TO_PREVIOUS,
-            ),
-            previous_recommendations=[
-                {
-                    "candidate_id": "prev-1",
-                    "candidate_type": "paired",
-                    "primary_colors": ["navy"],
-                    "occasion_fits": ["date_night"],
-                    "roles": ["top", "bottom"],
-                }
-            ],
-        )
-        plan = RecommendationPlan( retrieval_count=8,
-            directions=[
-                DirectionSpec(
-                    direction_id="A",
-                    direction_type="paired",
-                    label="test",
-                    queries=[],
-                )
-            ],
-        )
-
-        def _make_product(pid: str, occasion: str, color: str = "navy") -> RetrievedProduct:
-            return RetrievedProduct(
-                product_id=pid,
-                similarity=0.85,
-                enriched_data={"primary_color": color, "occasion_fit": occasion},
-                metadata={},
-            )
-
-        # Pair 1: matching date_night + matching color
-        match_sets = [
-            RetrievedSet(direction_id="A", query_id="q1", role="top", products=[_make_product("t1", "date_night", "navy")]),
-            RetrievedSet(direction_id="A", query_id="q2", role="bottom", products=[_make_product("b1", "date_night", "cream")]),
-        ]
-        # Pair 2: different occasion, different color
-        diff_sets = [
-            RetrievedSet(direction_id="A", query_id="q1", role="top", products=[_make_product("t2", "office", "grey")]),
-            RetrievedSet(direction_id="A", query_id="q2", role="bottom", products=[_make_product("b2", "office", "white")]),
-        ]
-
-        assembler = OutfitAssembler()
-        match_candidates = assembler.assemble(match_sets, plan, context)
-        diff_candidates = assembler.assemble(diff_sets, plan, context)
-
-        self.assertTrue(len(match_candidates) > 0)
-        self.assertTrue(len(diff_candidates) > 0)
-        self.assertGreater(match_candidates[0].assembly_score, diff_candidates[0].assembly_score)
-
-    # ------------------------------------------------------------------
-    # P1: Cross-outfit diversity enforcement
-    #
-    # Contract: every product_id appears in AT MOST ONE accepted candidate,
-    # and that candidate is the one where the product scored highest
-    # ("the best it pairs with"). Over-cap candidates are DROPPED, not
-    # deferred — the evaluator must never see duplicates.
-    # ------------------------------------------------------------------
-
-    def test_assembler_caps_product_id_to_single_accepted_candidate(self) -> None:
-        """Each product_id appears in at most one accepted candidate, and it's
-        the highest-scoring pairing for that product."""
-        from agentic_application.agents.outfit_assembler import OutfitAssembler
-
-        context = CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(user_need="Office look"),
-        )
-        plan = RecommendationPlan( retrieval_count=8,
-            directions=[
-                DirectionSpec(
-                    direction_id="A",
-                    direction_type="paired",
-                    label="test",
-                    queries=[],
-                )
-            ],
-        )
-
-        # One dominant top + several different bottoms of varying similarity.
-        # Naive scoring would put the same top in every candidate; the
-        # diversity pass should drop all but the highest-scoring pair.
-        dominant_top = RetrievedProduct(
-            product_id="dominant_top",
-            similarity=0.99,
-            enriched_data={"primary_color": "navy", "occasion_fit": "office"},
-            metadata={},
-        )
-        # Give the bottoms different similarities so we can verify the
-        # accepted candidate is the one that pairs *best* (highest score).
-        bottoms = [
-            RetrievedProduct(
-                product_id=f"bottom_{i}",
-                similarity=0.90 - (i * 0.05),  # 0.90, 0.85, 0.80, 0.75, 0.70
-                enriched_data={"primary_color": "cream", "occasion_fit": "office"},
-                metadata={},
-            )
-            for i in range(5)
-        ]
-
-        retrieved_sets = [
-            RetrievedSet(direction_id="A", query_id="q1", role="top", products=[dominant_top]),
-            RetrievedSet(direction_id="A", query_id="q2", role="bottom", products=bottoms),
-        ]
-
-        assembler = OutfitAssembler()
-        candidates = assembler.assemble(retrieved_sets, plan, context)
-
-        # With 1 dominant top and 5 bottoms, there are 5 raw pairings but
-        # each re-uses dominant_top. The diversity pass must collapse to 1
-        # accepted candidate — the best pairing.
-        self.assertEqual(
-            1, len(candidates),
-            f"expected exactly 1 accepted candidate (dominant_top pairs with "
-            f"best bottom only), got {len(candidates)}",
-        )
-        accepted = candidates[0]
-        # The accepted candidate must pair dominant_top with bottom_0
-        # (similarity 0.90, the highest-scoring bottom).
-        item_ids = sorted(str(item.get("product_id") or "") for item in accepted.items)
-        self.assertEqual(
-            ["bottom_0", "dominant_top"],
-            item_ids,
-            f"expected dominant_top × bottom_0 (best pairing), got {item_ids}",
-        )
-        # The assembly notes should record that 4 duplicates were dropped
-        self.assertTrue(
-            any("dropped 4 duplicate" in note for note in accepted.assembly_notes),
-            f"expected drop counter in assembly_notes, got {accepted.assembly_notes}",
-        )
-
-    def test_assembler_diversity_rule_applies_symmetrically_to_both_items(self) -> None:
-        """With 3 tops × 3 bottoms (9 raw pairings), the diversity rule
-        forces each product to appear in exactly one outfit. With 3 of each
-        role the maximum diverse set is min(tops, bottoms) = 3 outfits."""
-        from agentic_application.agents.outfit_assembler import OutfitAssembler
-
-        context = CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(user_need="Office look"),
-        )
-        plan = RecommendationPlan( retrieval_count=8,
-            directions=[
-                DirectionSpec(
-                    direction_id="A",
-                    direction_type="paired",
-                    label="test",
-                    queries=[],
-                )
-            ],
-        )
-        tops = [
-            RetrievedProduct(
-                product_id=f"top_{i}",
-                similarity=0.90 - (i * 0.02),  # 0.90, 0.88, 0.86
-                enriched_data={"primary_color": "navy", "occasion_fit": "office"},
-                metadata={},
-            )
-            for i in range(3)
-        ]
-        bottoms = [
-            RetrievedProduct(
-                product_id=f"bottom_{i}",
-                similarity=0.90 - (i * 0.02),
-                enriched_data={"primary_color": "cream", "occasion_fit": "office"},
-                metadata={},
-            )
-            for i in range(3)
-        ]
-        retrieved_sets = [
-            RetrievedSet(direction_id="A", query_id="q1", role="top", products=tops),
-            RetrievedSet(direction_id="A", query_id="q2", role="bottom", products=bottoms),
-        ]
-        assembler = OutfitAssembler()
-        candidates = assembler.assemble(retrieved_sets, plan, context)
-
-        # The diversity rule can produce at most min(#tops, #bottoms) = 3
-        # non-overlapping pairings. It may produce fewer if score ordering
-        # forces a top to pair with its same-ranked bottom first.
-        self.assertLessEqual(len(candidates), 3)
-        self.assertGreater(len(candidates), 0)
-        # Each product appears in exactly one accepted candidate.
-        usage: Dict[str, int] = {}
-        for c in candidates:
-            for item in c.items:
-                pid = str(item.get("product_id") or "")
-                usage[pid] = usage.get(pid, 0) + 1
-        for pid, count in usage.items():
-            self.assertEqual(
-                1, count,
-                f"product {pid} used {count} times in accepted set — must be exactly 1",
-            )
-
-    def test_assembler_diversity_pass_is_noop_when_no_repetition_possible(self) -> None:
-        """If every candidate has fully unique products (disjoint pairings),
-        the diversity pass doesn't drop anything."""
-        from agentic_application.agents.outfit_assembler import OutfitAssembler
-
-        context = CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(user_need="Office look"),
-        )
-        plan = RecommendationPlan( retrieval_count=8,
-            directions=[
-                DirectionSpec(
-                    direction_id="A",
-                    direction_type="paired",
-                    label="test",
-                    queries=[],
-                )
-            ],
-        )
-        # Two disjoint "lanes": (top_0, bottom_0) and (top_1, bottom_1).
-        # There are 4 raw pairings but only 2 are truly disjoint.
-        tops = [
-            RetrievedProduct(
-                product_id=f"top_{i}",
-                similarity=0.90,
-                enriched_data={"primary_color": "navy", "occasion_fit": "office"},
-                metadata={},
-            )
-            for i in range(2)
-        ]
-        bottoms = [
-            RetrievedProduct(
-                product_id=f"bottom_{i}",
-                similarity=0.90,
-                enriched_data={"primary_color": "cream", "occasion_fit": "office"},
-                metadata={},
-            )
-            for i in range(2)
-        ]
-        retrieved_sets = [
-            RetrievedSet(direction_id="A", query_id="q1", role="top", products=tops),
-            RetrievedSet(direction_id="A", query_id="q2", role="bottom", products=bottoms),
-        ]
-        assembler = OutfitAssembler()
-        candidates = assembler.assemble(retrieved_sets, plan, context)
-        # Maximum matching on a 2×2 complete bipartite graph is 2 outfits.
-        self.assertLessEqual(len(candidates), 2)
-        self.assertGreater(len(candidates), 0)
-        # Verify no product_id repeats.
-        seen: set[str] = set()
-        for c in candidates:
-            for item in c.items:
-                pid = str(item.get("product_id") or "")
-                self.assertNotIn(pid, seen, f"{pid} appeared in 2 candidates")
-                seen.add(pid)
+    # Assembler-direct tests removed in May 3 2026 PR #30 — the
+    # OutfitAssembler is gone. Pairing logic, diversity, and
+    # follow-up scoring are now LLM judgments handled by the
+    # Composer + Rater. See tests/test_outfit_composer.py and
+    # tests/test_outfit_rater.py.
 
     # ------------------------------------------------------------------
     # P1: Disliked product suppression
@@ -1613,7 +1432,7 @@ class AgenticApplicationTests(unittest.TestCase):
         candidates = [
             OutfitCandidate(
                 candidate_id="cand-1", direction_id="A", candidate_type="complete",
-                items=[{"product_id": "sku-1", "title": "Dress"}], assembly_score=0.9,
+                items=[{"product_id": "sku-1", "title": "Dress"}], fashion_score=90,
             )
         ]
         plan = RecommendationPlan( retrieval_count=8, directions=[])
@@ -1645,7 +1464,7 @@ class AgenticApplicationTests(unittest.TestCase):
         candidates = [
             OutfitCandidate(
                 candidate_id="cand-1", direction_id="A", candidate_type="complete",
-                items=[{"product_id": "sku-1", "title": "Dress"}], assembly_score=0.9,
+                items=[{"product_id": "sku-1", "title": "Dress"}], fashion_score=90,
             )
         ]
         plan = RecommendationPlan( retrieval_count=8, directions=[])
@@ -2033,17 +1852,13 @@ class AgenticApplicationTests(unittest.TestCase):
                 onboarding_gateway=gw,
                 config=Mock(),
             )
-            orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            # Give the assembler a high-scoring candidate so the gate
-            # (>=0.75) lets the catalog pipeline reach the formatter; the
-            # test cares only that wardrobe-first didn't fire.
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[
+            _mock_llm_ranker(orchestrator, [
                 OutfitCandidate(
                     candidate_id="cat-1",
                     direction_id="A",
                     candidate_type="paired",
                     items=[{"product_id": "p1", "title": "Top"}],
-                    assembly_score=0.85,
+                    fashion_score=85,
                 )
             ])
             # outfit_evaluator removed (Phase 12B cleanup)
@@ -2195,16 +2010,13 @@ class AgenticApplicationTests(unittest.TestCase):
                 onboarding_gateway=gw,
                 config=Mock(),
             )
-            orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            # High-scoring candidate so the confidence gate (>=0.75) lets
-            # the catalog pipeline through to the formatter.
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[
+            _mock_llm_ranker(orchestrator, [
                 OutfitCandidate(
                     candidate_id="cat-1",
                     direction_id="A",
                     candidate_type="paired",
                     items=[{"product_id": "p1", "title": "Top"}],
-                    assembly_score=0.85,
+                    fashion_score=85,
                 )
             ])
             # outfit_evaluator removed (Phase 12B cleanup)
@@ -2369,14 +2181,13 @@ class AgenticApplicationTests(unittest.TestCase):
                 onboarding_gateway=gw,
                 config=Mock(),
             )
-            orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[
+            _mock_llm_ranker(orchestrator, [
                 OutfitCandidate(
                     candidate_id="cat-1",
                     direction_id="A",
                     candidate_type="complete",
                     items=[{"product_id": "c1", "title": "Wool Trouser"}],
-                    assembly_score=0.85,
+                    fashion_score=85,
                 )
             ])
             # outfit_evaluator removed (Phase 12B cleanup)
@@ -3062,7 +2873,7 @@ class CopilotPlannerTests(unittest.TestCase):
             )
             # Mock the remaining pipeline components
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            _mock_llm_ranker(orchestrator, [])
             # outfit_evaluator removed (Phase 12B cleanup)
 
             result = orchestrator.process_turn(
@@ -3236,7 +3047,7 @@ class CopilotPlannerTests(unittest.TestCase):
             architect_cls.return_value.plan.return_value = fake_plan
             orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            _mock_llm_ranker(orchestrator, [])
             # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
@@ -3322,7 +3133,7 @@ class CopilotPlannerTests(unittest.TestCase):
             architect_cls.return_value.plan.return_value = fake_plan
             orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            _mock_llm_ranker(orchestrator, [])
             # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
@@ -3383,14 +3194,13 @@ class CopilotPlannerTests(unittest.TestCase):
              patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
             architect_cls.return_value.plan.return_value = fake_plan
             orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
-            orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[
+            _mock_llm_ranker(orchestrator, [
                 OutfitCandidate(
                     candidate_id="cat-1",
                     direction_id="A",
                     candidate_type="paired",
                     items=[{"product_id": "p1", "title": "Top"}],
-                    assembly_score=0.85,
+                    fashion_score=85,
                 )
             ])
             # outfit_evaluator removed (Phase 12B cleanup)
@@ -3488,14 +3298,13 @@ class CopilotPlannerTests(unittest.TestCase):
                 onboarding_gateway=gw,
                 config=self._make_planner_config(),
             )
-            orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[
+            _mock_llm_ranker(orchestrator, [
                 OutfitCandidate(
                     candidate_id="cat-1",
                     direction_id="A",
                     candidate_type="complete",
                     items=[{"product_id": "c1", "title": "Stone Trousers"}],
-                    assembly_score=0.85,
+                    fashion_score=85,
                 )
             ])
             # outfit_evaluator removed (Phase 12B cleanup)
@@ -3621,7 +3430,7 @@ class CopilotPlannerTests(unittest.TestCase):
                 config=self._make_planner_config(),
             )
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            _mock_llm_ranker(orchestrator, [])
             # outfit_evaluator removed (Phase 12B cleanup)
 
             orchestrator.process_turn(
@@ -4168,14 +3977,13 @@ class CopilotPlannerTests(unittest.TestCase):
                 onboarding_gateway=gw,
                 config=self._make_planner_config(),
             )
-            orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[
+            _mock_llm_ranker(orchestrator, [
                 OutfitCandidate(
                     candidate_id="cat-1",
                     direction_id="A",
                     candidate_type="complete",
                     items=[{"product_id": "c1", "title": "Catalog Top"}],
-                    assembly_score=0.85,
+                    fashion_score=85,
                 )
             ])
             # outfit_evaluator removed (Phase 12B cleanup)
@@ -4270,7 +4078,7 @@ class CopilotPlannerTests(unittest.TestCase):
             architect_cls.return_value.plan.return_value = fake_plan
             orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
             orchestrator.catalog_search_agent.search = Mock(return_value=[])
-            orchestrator.outfit_assembler.assemble = Mock(return_value=[])
+            _mock_llm_ranker(orchestrator, [])
             # outfit_evaluator removed (Phase 12B cleanup)
             orchestrator.response_formatter.format = Mock(
                 return_value=RecommendationResponse(
@@ -4515,48 +4323,15 @@ class CopilotPlannerTests(unittest.TestCase):
 
 
 class Phase12BBuildingBlockTests(unittest.TestCase):
-    """Phase 12B: unit tests for the new building blocks (Reranker,
-    deterministic verdict, wardrobe overlap, versatility).
+    """Phase 12B: unit tests for the deterministic verdict, wardrobe
+    overlap, and versatility helpers. (Reranker tests deleted in May 3
+    2026 PR #30 — the deterministic Reranker was replaced by the LLM
+    Composer + Rater; see tests/test_outfit_composer.py and
+    tests/test_outfit_rater.py.)
 
     These don't construct an orchestrator — they test the deterministic
     helpers in isolation so the test suite has fast, focused coverage of
-    each new piece independent of LLM mocking."""
-
-    def test_reranker_sorts_by_assembly_score_and_caps_to_pool_size(self):
-        from agentic_application.agents.reranker import Reranker
-
-        r = Reranker(final_top_n=3, pool_top_n=5)
-        candidates = [
-            OutfitCandidate(candidate_id=f"c{i}", direction_id="A", candidate_type="paired",
-                           items=[], assembly_score=score)
-            for i, score in enumerate([0.4, 0.9, 0.7, 0.5, 0.95, 0.6, 0.8])
-        ]
-        ranked = r.rerank(candidates)
-        # Should keep top 5 in score order (0.95, 0.9, 0.8, 0.7, 0.6)
-        self.assertEqual(5, len(ranked))
-        self.assertEqual([0.95, 0.9, 0.8, 0.7, 0.6], [c.assembly_score for c in ranked])
-
-    def test_reranker_with_explicit_limit_returns_top_n(self):
-        from agentic_application.agents.reranker import Reranker
-
-        r = Reranker(final_top_n=3, pool_top_n=5)
-        candidates = [
-            OutfitCandidate(candidate_id=f"c{i}", direction_id="A", candidate_type="paired",
-                           items=[], assembly_score=score)
-            for i, score in enumerate([0.5, 0.9, 0.7])
-        ]
-        ranked = r.rerank(candidates, limit=2)
-        self.assertEqual(2, len(ranked))
-        self.assertEqual(0.9, ranked[0].assembly_score)
-        self.assertEqual(0.7, ranked[1].assembly_score)
-
-    def test_reranker_rejects_invalid_top_n(self):
-        from agentic_application.agents.reranker import Reranker
-
-        with self.assertRaises(ValueError):
-            Reranker(final_top_n=0, pool_top_n=5)
-        with self.assertRaises(ValueError):
-            Reranker(final_top_n=5, pool_top_n=3)
+    each one independent of LLM mocking."""
 
     def test_compute_purchase_verdict_strong_overlap_forces_skip(self):
         from agentic_application.orchestrator import AgenticOrchestrator
@@ -5012,361 +4787,11 @@ class Phase12DAnchorAndEnrichmentTests(unittest.TestCase):
       longer reproduces (image upload → enriched anchor → pairing returns
       complementary items, not a self-echo)"""
 
-    def test_diversity_pass_keeps_all_pairing_candidates_when_anchor_is_marked(self):
-        """Pairing requests inject the user's anchor into every paired
-        candidate. Without the is_anchor exemption, the diversity pass
-        would drop all but the first candidate, collapsing pairing turns
-        to a single outfit instead of 3."""
-        from agentic_application.agents.outfit_assembler import OutfitAssembler
-
-        anchor_id = "anchor_white_shirt"
-        candidates = [
-            OutfitCandidate(
-                candidate_id=f"c{i}",
-                direction_id="A",
-                candidate_type="paired",
-                items=[
-                    {"product_id": anchor_id, "title": "White Shirt", "role": "top", "is_anchor": True},
-                    {"product_id": f"trouser_{i}", "title": f"Trouser {i}", "role": "bottom"},
-                ],
-                assembly_score=0.9 - i * 0.05,
-            )
-            for i in range(3)
-        ]
-        result = OutfitAssembler._enforce_cross_outfit_diversity(candidates)
-        self.assertEqual(3, len(result))
-        # All 3 candidates carry the same anchor product
-        for c in result:
-            anchor_items = [item for item in c.items if item.get("is_anchor")]
-            self.assertEqual(1, len(anchor_items))
-            self.assertEqual(anchor_id, anchor_items[0]["product_id"])
-
-    def test_diversity_pass_still_drops_non_anchor_duplicates(self):
-        """The Phase 12D anchor exemption must NOT break the original
-        cross-outfit diversity rule for non-anchor products. A shared
-        non-anchor product across candidates should still cause the
-        lower-scoring candidate to be dropped."""
-        from agentic_application.agents.outfit_assembler import OutfitAssembler
-
-        candidates = [
-            OutfitCandidate(
-                candidate_id="c1",
-                direction_id="A",
-                candidate_type="paired",
-                items=[
-                    {"product_id": "shared_top"},
-                    {"product_id": "trouser_a"},
-                ],
-                assembly_score=0.9,
-            ),
-            OutfitCandidate(
-                candidate_id="c2",
-                direction_id="A",
-                candidate_type="paired",
-                items=[
-                    {"product_id": "shared_top"},
-                    {"product_id": "trouser_b"},
-                ],
-                assembly_score=0.85,
-            ),
-            OutfitCandidate(
-                candidate_id="c3",
-                direction_id="A",
-                candidate_type="paired",
-                items=[
-                    {"product_id": "different_top"},
-                    {"product_id": "trouser_c"},
-                ],
-                assembly_score=0.8,
-            ),
-        ]
-        result = OutfitAssembler._enforce_cross_outfit_diversity(candidates)
-        # c1 and c3 should survive; c2 dropped because of shared_top
-        self.assertEqual(2, len(result))
-        result_ids = {c.candidate_id for c in result}
-        self.assertEqual({"c1", "c3"}, result_ids)
-
-    def test_failed_enrichment_surfaces_clarification_for_pairing(self):
-        """Phase 12D regression of the staging bug from
-        user_03026279ecd6 conv 721e1963: when the upload's enrichment
-        returns empty critical fields (vision API hiccup, malformed
-        image, etc.), the orchestrator must NOT proceed to the pipeline
-        with an empty-attribute anchor. It must surface a clarification
-        asking the user to retry with a clearer photo."""
-        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
-        repo = Mock()
-        repo.client = Mock()
-        repo.get_or_create_user.return_value = {"id": "db-user"}
-        repo.get_conversation.return_value = {
-            "id": "c1",
-            "user_id": "db-user",
-            "session_context_json": {},
-        }
-        repo.create_turn.return_value = {"id": "t1"}
-        gw = Mock()
-        gw.get_onboarding_status.return_value = {
-            "profile_complete": True,
-            "style_preference_complete": True,
-            "images_uploaded": ["full_body", "headshot"],
-            "onboarding_complete": True,
-        }
-        gw.get_analysis_status.return_value = {
-            "status": "completed",
-            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
-            "attributes": {"BodyShape": {"value": "Hourglass"}},
-            "derived_interpretations": {"SeasonalColorGroup": {"value": "Autumn"}},
-        }
-        gw.get_wardrobe_items.return_value = []
-        gw.get_person_image_path.return_value = None
-        # Simulate the staging bug: enrichment failed, the row was saved
-        # but with empty critical fields and the new enrichment_status
-        # marker.
-        gw.save_uploaded_chat_wardrobe_item.return_value = {
-            "id": "garment-broken",
-            "image_path": "/tmp/garment.jpg",
-            "title": "",
-            "garment_category": "",
-            "garment_subtype": "",
-            "primary_color": "",
-            "enrichment_status": "failed",
-            "enrichment_error": "OpenAI API timeout",
-        }
-        planner_mock = Mock()
-        planner_mock.plan.return_value = CopilotPlanResult(
-            intent=Intent.PAIRING_REQUEST,
-            intent_confidence=0.95,
-            action=Action.RUN_RECOMMENDATION_PIPELINE,
-            context_sufficient=True,
-            assistant_message="",
-            follow_up_suggestions=[],
-            resolved_context=CopilotResolvedContext(),
-            action_parameters=CopilotActionParameters(target_piece="this shirt"),
-        )
-        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
-             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
-             patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
-             patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
-             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
-            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
-            result = orchestrator.process_turn(
-                conversation_id="c1",
-                external_user_id="user-1",
-                message="What goes with this shirt?",
-                image_data="data:image/jpeg;base64,/9j/4AAQ",
-            )
-
-        # Architect MUST NOT have been called — we short-circuit before
-        # the pipeline runs because the anchor is unenriched.
-        architect_cls.return_value.plan.assert_not_called()
-        # The clarification reason code is set
-        self.assertIn(
-            "wardrobe_enrichment_failed",
-            result["metadata"]["intent_reason_codes"],
-        )
-        # User-facing message asks for a clearer photo
-        self.assertIn("clearer", result["assistant_message"].lower())
-
-    def test_garment_evaluation_proceeds_even_with_failed_enrichment(self):
-        """garment_evaluation is exempt from the failed-enrichment guard
-        because the visual evaluator works on the image bytes directly
-        and doesn't need attribute enrichment."""
-        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
-        repo = Mock()
-        repo.client = Mock()
-        repo.get_or_create_user.return_value = {"id": "db-user"}
-        repo.get_conversation.return_value = {
-            "id": "c1",
-            "user_id": "db-user",
-            "session_context_json": {},
-        }
-        repo.create_turn.return_value = {"id": "t1"}
-        gw = Mock()
-        gw.get_onboarding_status.return_value = {
-            "profile_complete": True,
-            "style_preference_complete": True,
-            "images_uploaded": ["full_body", "headshot"],
-            "onboarding_complete": True,
-        }
-        gw.get_analysis_status.return_value = {
-            "status": "completed",
-            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
-            "attributes": {"BodyShape": {"value": "Hourglass"}},
-            "derived_interpretations": {"SeasonalColorGroup": {"value": "Autumn"}},
-        }
-        gw.get_wardrobe_items.return_value = []
-        gw.get_person_image_path.return_value = "/tmp/person.jpg"
-        gw.save_uploaded_chat_wardrobe_item.return_value = {
-            "id": "garment-broken-2",
-            "image_path": "/tmp/garment.jpg",
-            "title": "",
-            "garment_category": "",
-            "primary_color": "",
-            "enrichment_status": "failed",
-        }
-        planner_mock = Mock()
-        planner_mock.plan.return_value = CopilotPlanResult(
-            intent=Intent.GARMENT_EVALUATION,
-            intent_confidence=0.96,
-            action=Action.RUN_GARMENT_EVALUATION,
-            context_sufficient=True,
-            assistant_message="",
-            follow_up_suggestions=[],
-            resolved_context=CopilotResolvedContext(),
-            action_parameters=CopilotActionParameters(purchase_intent=False),
-        )
-        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
-             patch("agentic_application.orchestrator.OutfitArchitect"), \
-             patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
-             patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
-             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
-            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
-            orchestrator.tryon_service.generate_tryon = Mock(return_value={
-                "success": True,
-                "image_base64": "iVBORw0KGgo=",
-                "mime_type": "image/png",
-            })
-            orchestrator.tryon_quality_gate.evaluate = Mock(return_value={"passed": True, "quality_score_pct": 88})
-            orchestrator.visual_evaluator.evaluate_candidate.return_value = EvaluatedRecommendation(
-                candidate_id="garment-eval-1",
-                overall_verdict="good_with_tweaks",
-                overall_note="Honest assessment from the rendered image.",
-                body_harmony_pct=78,
-                color_suitability_pct=82,
-                style_fit_pct=80,
-                occasion_pct=75,
-                weather_time_pct=70,
-                pairing_coherence_pct=72,
-            )
-            result = orchestrator.process_turn(
-                conversation_id="c1",
-                external_user_id="user-1",
-                message="Would this suit me?",
-                image_data="data:image/jpeg;base64,/9j/4AAQ",
-            )
-
-        # garment_evaluation must NOT trigger the wardrobe_enrichment_failed override
-        self.assertNotIn(
-            "wardrobe_enrichment_failed",
-            result["metadata"]["intent_reason_codes"],
-        )
-        # Visual evaluator should have been called (the image bytes are
-        # all the agent needs)
-        orchestrator.visual_evaluator.evaluate_candidate.assert_called_once()
-        # Response is the garment_evaluation card, not a clarification
-        self.assertEqual("recommendation", result["response_type"])
-        self.assertEqual(1, len(result["outfits"]))
-
-    def test_product_to_item_resolves_wardrobe_image_path_and_tags_source(self):
-        """Phase 12D follow-up regression: a wardrobe row passed to
-        ``_product_to_item`` (e.g. via the orchestrator's anchor injection
-        for pairing requests) must resolve ``image_url`` from
-        ``image_path`` and tag ``source="wardrobe"``. Without this, the
-        try-on render path skips the wardrobe pullover when building
-        ``garment_urls`` and Gemini hallucinates a stand-in garment from
-        the prompt text instead of using the user's actual photo.
-        Verified against staging turn 9dff6f7e-9146-4d66-a277-a835e484334d
-        of user_03026279ecd6 where all 3 try-on outputs showed a
-        plausible-but-not-the-user's chocolate brown sweater."""
-        from agentic_application.agents.outfit_assembler import OutfitAssembler
-        from agentic_application.schemas import RetrievedProduct
-
-        wardrobe_row = {
-            "id": "754d88f7-2b71-46b4-a018-37bc731673d4",
-            "title": "Chocolate Brown Sweater",
-            "image_url": "",
-            "image_path": "data/onboarding/images/wardrobe/55213c9a.jpg",
-            "garment_category": "top",
-            "garment_subtype": "sweater",
-            "primary_color": "chocolate_brown",
-            "is_anchor": True,
-        }
-        anchor_product = RetrievedProduct(
-            product_id=wardrobe_row["id"],
-            similarity=1.0,
-            metadata={},
-            enriched_data=wardrobe_row,
-        )
-        item = OutfitAssembler._product_to_item(anchor_product, role="top")
-
-        self.assertEqual(
-            "data/onboarding/images/wardrobe/55213c9a.jpg",
-            item["image_url"],
-            "image_url must resolve from image_path so the try-on render path "
-            "doesn't drop the wardrobe anchor",
-        )
-        self.assertEqual("wardrobe", item.get("source"))
-        self.assertTrue(item.get("is_anchor"))
-        self.assertEqual("top", item.get("role"))
-
-    def test_product_to_item_keeps_catalog_source_for_catalog_rows(self):
-        """The wardrobe-detection heuristic in ``_product_to_item`` must
-        not mislabel real catalog rows. Catalog rows carry handle / store /
-        images__0__src and should keep ``source`` unset (or "catalog"),
-        which makes ``_detect_garment_source`` return "catalog"."""
-        from agentic_application.agents.outfit_assembler import OutfitAssembler
-        from agentic_application.schemas import RetrievedProduct
-
-        catalog_row = {
-            "id": "SHOWOFFFF_9856072188180_50510889910548",
-            "title": "Brown Wide-Leg Trouser",
-            "primary_image_url": "https://cdn.example.com/trouser.jpg",
-            "handle": "brown-wide-leg-trouser",
-            "store": "showofff",
-            "garment_category": "bottom",
-        }
-        catalog_product = RetrievedProduct(
-            product_id=catalog_row["id"],
-            similarity=0.9,
-            metadata={},
-            enriched_data=catalog_row,
-        )
-        item = OutfitAssembler._product_to_item(catalog_product, role="bottom")
-
-        self.assertEqual("https://cdn.example.com/trouser.jpg", item["image_url"])
-        # Catalog rows should NOT be tagged source="wardrobe"
-        self.assertNotEqual("wardrobe", item.get("source"))
-
-    def test_diversity_pass_marks_anchor_via_product_to_item_chain(self):
-        """End-to-end check that an anchor wardrobe row (built by the
-        orchestrator's anchor injection) flows through ``_product_to_item``
-        with the is_anchor flag intact, so the diversity pass exempts it.
-        This is the data-flow piece between orchestrator anchor injection
-        and the assembler's diversity rule."""
-        from agentic_application.agents.outfit_assembler import OutfitAssembler
-        from agentic_application.schemas import RetrievedProduct
-
-        wardrobe_row = dict(
-            id="anchor_wardrobe_pullover",
-            title="Pullover",
-            image_path="data/onboarding/images/wardrobe/abc.jpg",
-            garment_category="top",
-            is_anchor=True,
-        )
-        anchor_product = RetrievedProduct(
-            product_id=wardrobe_row["id"],
-            similarity=1.0,
-            metadata={},
-            enriched_data=wardrobe_row,
-        )
-        anchor_item = OutfitAssembler._product_to_item(anchor_product, role="top")
-        # Build 3 paired candidates that all share the wardrobe anchor.
-        candidates = [
-            OutfitCandidate(
-                candidate_id=f"c{i}",
-                direction_id="A",
-                candidate_type="paired",
-                items=[
-                    anchor_item,
-                    {"product_id": f"trouser_{i}", "title": f"Trouser {i}", "role": "bottom"},
-                ],
-                assembly_score=0.9 - i * 0.05,
-            )
-            for i in range(3)
-        ]
-        result = OutfitAssembler._enforce_cross_outfit_diversity(candidates)
-        # All 3 must survive — the anchor exemption requires is_anchor=True
-        # to have made it through _product_to_item.
-        self.assertEqual(3, len(result))
+    # Phase12D assembler-direct tests removed in May 3 2026 PR #30.
+    # The diversity pass logic and `_product_to_item` lived on the
+    # OutfitAssembler, which is gone. Anchor-passthrough is now
+    # handled inside the new module-level `_build_candidate_item`
+    # helper, exercised end-to-end through the orchestrator tests.
 
     def test_compute_wardrobe_overlap_excludes_attached_item_id(self):
         """Phase 12D follow-up regression: _compute_wardrobe_overlap must
@@ -6201,351 +5626,6 @@ class Phase12EStageEmissionTests(unittest.TestCase):
         self.assertEqual("three_piece", d.direction_type)
         self.assertEqual(3, len(d.queries))
 
-    def test_resolved_context_block_ranking_bias_default_and_override(self) -> None:
-        """ResolvedContextBlock.ranking_bias defaults to 'balanced' and accepts overrides."""
-        default = ResolvedContextBlock()
-        self.assertEqual("balanced", default.ranking_bias)
-
-        explicit = ResolvedContextBlock(ranking_bias="conservative")
-        self.assertEqual("conservative", explicit.ranking_bias)
-
-    def test_outfit_architect_parses_ranking_bias(self) -> None:
-        """_parse_plan must extract ranking_bias from the LLM response."""
-        from agentic_application.agents.outfit_architect import OutfitArchitect
-        from unittest.mock import patch
-
-        raw = {
-            "resolved_context": {
-                "occasion_signal": "office",
-                "formality_hint": "business_casual",
-                "time_hint": "daytime",
-                "specific_needs": [],
-                "is_followup": False,
-                "followup_intent": None,
-                "ranking_bias": "formal_first",
-            },
-            "retrieval_count": 12,
-            "directions": [
-                {
-                    "direction_id": "A",
-                    "direction_type": "paired",
-                    "label": "Office classic",
-                    "queries": [
-                        {"query_id": "A1", "role": "top", "hard_filters": {"garment_subtype": None, "gender_expression": "masculine"}, "query_document": "..."},
-                        {"query_id": "A2", "role": "bottom", "hard_filters": {"garment_subtype": None, "gender_expression": "masculine"}, "query_document": "..."},
-                    ],
-                }
-            ],
-        }
-
-        with patch("agentic_application.agents.outfit_architect.get_api_key", return_value="x"):
-            architect = OutfitArchitect.__new__(OutfitArchitect)
-            plan = architect._parse_plan(raw)
-
-        self.assertEqual("formal_first", plan.resolved_context.ranking_bias)
-        self.assertEqual(1, len(plan.directions))
-
-
-class RankingBiasScoringTests(unittest.TestCase):
-    """May 1, 2026: ranking_bias is wired into the assembler scoring and
-    the reranker tie-break. These tests lock in the expected per-bias
-    behaviour against deterministic synthetic candidates.
-
-    Regressions here mean a future scoring tweak silently changed how
-    the bias signal weights penalties or bonuses — review the bias
-    matrix in `outfit_assembler._BIAS_COEFS` and `reranker._bias_tiebreaker`
-    before relaxing any assertion.
-    """
-
-    @staticmethod
-    def _ctx(bias: str) -> CombinedContext:
-        return CombinedContext(
-            user=UserContext(user_id="u1", gender="female"),
-            live=LiveContext(user_need="x", ranking_bias=bias),
-        )
-
-    @staticmethod
-    def _plan() -> RecommendationPlan:
-        return RecommendationPlan(
-            retrieval_count=8,
-            directions=[DirectionSpec(direction_id="A", direction_type="paired", label="t", queries=[])],
-        )
-
-    @staticmethod
-    def _loud_top(pid: str = "t-loud") -> RetrievedProduct:
-        return RetrievedProduct(
-            product_id=pid, similarity=0.85,
-            enriched_data={
-                "primary_color": "navy", "occasion_fit": "casual",
-                "pattern_type": "floral", "color_saturation": "vivid",
-                "embellishment_level": "moderate", "garment_category": "top",
-            },
-            metadata={},
-        )
-
-    @staticmethod
-    def _calm_bottom(pid: str = "b-calm") -> RetrievedProduct:
-        return RetrievedProduct(
-            product_id=pid, similarity=0.85,
-            enriched_data={
-                "primary_color": "cream", "occasion_fit": "casual",
-                "pattern_type": "solid", "color_saturation": "muted",
-                "embellishment_level": "none", "garment_category": "bottom",
-            },
-            metadata={},
-        )
-
-    @staticmethod
-    def _formal_top(pid: str = "t-formal") -> RetrievedProduct:
-        return RetrievedProduct(
-            product_id=pid, similarity=0.85,
-            enriched_data={
-                "primary_color": "black", "occasion_fit": "formal",
-                "pattern_type": "solid", "formality_level": "formal",
-                "formality_signal_strength": "high", "garment_category": "top",
-            },
-            metadata={},
-        )
-
-    @staticmethod
-    def _formal_bottom(pid: str = "b-formal") -> RetrievedProduct:
-        return RetrievedProduct(
-            product_id=pid, similarity=0.85,
-            enriched_data={
-                "primary_color": "black", "occasion_fit": "formal",
-                "pattern_type": "solid", "formality_level": "formal",
-                "formality_signal_strength": "high", "garment_category": "bottom",
-            },
-            metadata={},
-        )
-
-    @staticmethod
-    def _comfy_top(pid: str = "t-comfy") -> RetrievedProduct:
-        return RetrievedProduct(
-            product_id=pid, similarity=0.85,
-            enriched_data={
-                "primary_color": "ivory", "occasion_fit": "casual",
-                "pattern_type": "solid", "fit_type": "relaxed",
-                "fabric_drape": "flowing", "garment_category": "top",
-            },
-            metadata={},
-        )
-
-    @staticmethod
-    def _comfy_bottom(pid: str = "b-comfy") -> RetrievedProduct:
-        return RetrievedProduct(
-            product_id=pid, similarity=0.85,
-            enriched_data={
-                "primary_color": "olive", "occasion_fit": "casual",
-                "pattern_type": "solid", "fit_type": "relaxed",
-                "fabric_drape": "soft", "garment_category": "bottom",
-            },
-            metadata={},
-        )
-
-    def _assemble_pair(
-        self,
-        bias: str,
-        top: RetrievedProduct,
-        bottom: RetrievedProduct,
-    ) -> OutfitCandidate:
-        sets = [
-            RetrievedSet(direction_id="A", query_id="q1", role="top", products=[top]),
-            RetrievedSet(direction_id="A", query_id="q2", role="bottom", products=[bottom]),
-        ]
-        candidates = OutfitAssembler().assemble(sets, self._plan(), self._ctx(bias))
-        self.assertTrue(candidates, f"bias={bias} produced no candidates")
-        return candidates[0]
-
-    def test_assembler_expressive_bias_boosts_loud_pair_above_balanced(self) -> None:
-        loud_pair_balanced = self._assemble_pair("balanced", self._loud_top(), self._calm_bottom())
-        loud_pair_expressive = self._assemble_pair("expressive", self._loud_top(), self._calm_bottom())
-        self.assertGreater(
-            loud_pair_expressive.assembly_score,
-            loud_pair_balanced.assembly_score,
-            "expressive bias should reward a loud item more than balanced",
-        )
-
-    def test_assembler_conservative_bias_penalizes_loud_pair_below_balanced(self) -> None:
-        loud_pair_balanced = self._assemble_pair("balanced", self._loud_top(), self._calm_bottom())
-        loud_pair_conservative = self._assemble_pair("conservative", self._loud_top(), self._calm_bottom())
-        self.assertLess(
-            loud_pair_conservative.assembly_score,
-            loud_pair_balanced.assembly_score,
-            "conservative bias should penalise loud items vs balanced",
-        )
-
-    def test_assembler_formal_first_bias_boosts_high_formality_pair(self) -> None:
-        formal_balanced = self._assemble_pair("balanced", self._formal_top(), self._formal_bottom())
-        formal_first = self._assemble_pair("formal_first", self._formal_top(), self._formal_bottom())
-        self.assertGreater(
-            formal_first.assembly_score,
-            formal_balanced.assembly_score,
-            "formal_first bias should reward a high-formality outfit",
-        )
-
-    def test_assembler_comfort_first_bias_boosts_relaxed_flowing_pair(self) -> None:
-        comfy_balanced = self._assemble_pair("balanced", self._comfy_top(), self._comfy_bottom())
-        comfy_first = self._assemble_pair("comfort_first", self._comfy_top(), self._comfy_bottom())
-        self.assertGreater(
-            comfy_first.assembly_score,
-            comfy_balanced.assembly_score,
-            "comfort_first bias should reward relaxed-fit + flowing-drape outfits",
-        )
-
-    def test_reranker_formal_first_breaks_score_tie_by_formality_rank(self) -> None:
-        from agentic_application.agents.reranker import Reranker
-
-        # Two candidates with effectively-tied assembly_score; one is
-        # high-formality, one is casual. formal_first should put the
-        # high-formality one first.
-        casual = OutfitCandidate(
-            candidate_id="casual", direction_id="A", candidate_type="paired",
-            items=[
-                {"role": "top", "formality_level": "casual"},
-                {"role": "bottom", "formality_level": "casual"},
-            ],
-            assembly_score=0.80,
-        )
-        formal = OutfitCandidate(
-            candidate_id="formal", direction_id="B", candidate_type="paired",
-            items=[
-                {"role": "top", "formality_level": "formal"},
-                {"role": "bottom", "formality_level": "formal"},
-            ],
-            assembly_score=0.79,
-        )
-        # Outside the tie window casual would win; inside, formal_first
-        # should flip them.
-        ranked_balanced = Reranker(final_top_n=2, pool_top_n=2).rerank(
-            [casual, formal], bias="balanced",
-        )
-        ranked_formal = Reranker(final_top_n=2, pool_top_n=2).rerank(
-            [casual, formal], bias="formal_first",
-        )
-        self.assertEqual("casual", ranked_balanced[0].candidate_id)
-        self.assertEqual("formal", ranked_formal[0].candidate_id,
-                         "formal_first should pull the higher-formality candidate to the top within the tie window")
-
-
-class RerankerWeightsAndDecisionLogTests(unittest.TestCase):
-    """May 1, 2026: reranker calibration plumbing — weights file loader and
-    decision-log callback. The actual curve fit stays deferred until staging
-    accumulates ≥200 labelled turns."""
-
-    def test_reranker_loads_default_weights_when_file_missing(self) -> None:
-        from agentic_application.agents.reranker import Reranker, _WEIGHTS_FILE
-
-        if _WEIGHTS_FILE.exists():
-            self.skipTest("weights file exists in this checkout — skip default-loader assertion")
-
-        r = Reranker()
-        self.assertEqual(1.0, r.weights["w_assembly_score"])
-        self.assertEqual(0.0, r.weights["w_archetype_proximity"])
-        self.assertEqual(0.0, r.weights["w_weather_time_match"])
-        self.assertEqual(0.0, r.weights["w_prior_dislike"])
-
-    def test_reranker_decision_log_receives_kept_and_dropped_ids(self) -> None:
-        from agentic_application.agents.reranker import Reranker
-
-        r = Reranker(final_top_n=2, pool_top_n=2)
-        candidates = [
-            OutfitCandidate(candidate_id=f"c{i}", direction_id="A", candidate_type="paired",
-                           items=[], assembly_score=score)
-            for i, score in enumerate([0.9, 0.7, 0.5, 0.3])
-        ]
-        captured: list[dict] = []
-        ranked = r.rerank(
-            candidates,
-            bias="balanced",
-            turn_id="t-test",
-            decision_log=captured.append,
-        )
-
-        self.assertEqual(2, len(ranked))
-        self.assertEqual(1, len(captured))
-        payload = captured[0]
-        self.assertEqual("t-test", payload["turn_id"])
-        self.assertEqual("balanced", payload["bias"])
-        self.assertEqual(4, payload["input_count"])
-        self.assertEqual(2, payload["kept_count"])
-        kept_ids = [k["candidate_id"] for k in payload["kept"]]
-        dropped_ids = [d["candidate_id"] for d in payload["dropped"]]
-        self.assertEqual(["c0", "c1"], kept_ids)
-        self.assertEqual({"c2", "c3"}, set(dropped_ids))
-
-    def test_reranker_threshold_skips_weak_directions_in_round_robin(self) -> None:
-        """May 1 2026 regression — wedding-query turn 07208157 shipped only
-        1 outfit because the round-robin pulled in two below-threshold
-        candidates from weak directions, then the orchestrator's downstream
-        confidence gate dropped them. Strong direction A's runner-up
-        candidates never reached visual eval.
-
-        With ``confidence_threshold=0.75``: weak directions B (0.576) and
-        C (0.672) are skipped entirely; the global fill stage backfills
-        with A's runner-ups, so the kept pool is 3 viable A candidates
-        instead of 1 strong + 2 weak.
-        """
-        from agentic_application.agents.reranker import Reranker
-
-        candidates = [
-            OutfitCandidate(candidate_id="a1", direction_id="A", candidate_type="paired",
-                           items=[], assembly_score=0.917),
-            OutfitCandidate(candidate_id="a2", direction_id="A", candidate_type="paired",
-                           items=[], assembly_score=0.916),
-            OutfitCandidate(candidate_id="a3", direction_id="A", candidate_type="paired",
-                           items=[], assembly_score=0.914),
-            OutfitCandidate(candidate_id="b1", direction_id="B", candidate_type="paired",
-                           items=[], assembly_score=0.576),
-            OutfitCandidate(candidate_id="c1", direction_id="C", candidate_type="paired",
-                           items=[], assembly_score=0.672),
-        ]
-        ranked = Reranker(final_top_n=3, pool_top_n=3).rerank(
-            candidates, limit=3, confidence_threshold=0.75,
-        )
-        self.assertEqual(3, len(ranked))
-        for c in ranked:
-            self.assertGreaterEqual(c.assembly_score, 0.75)
-            self.assertEqual("A", c.direction_id)
-        self.assertEqual({"a1", "a2", "a3"}, {c.candidate_id for c in ranked})
-
-    def test_reranker_threshold_returns_empty_when_no_candidate_qualifies(self) -> None:
-        """All candidates below threshold → empty kept pool. The
-        orchestrator's downstream "no confident match" path takes over
-        rather than shipping known-bad picks."""
-        from agentic_application.agents.reranker import Reranker
-
-        candidates = [
-            OutfitCandidate(candidate_id="x1", direction_id="A", candidate_type="paired",
-                           items=[], assembly_score=0.50),
-            OutfitCandidate(candidate_id="x2", direction_id="B", candidate_type="paired",
-                           items=[], assembly_score=0.60),
-        ]
-        ranked = Reranker(final_top_n=3, pool_top_n=3).rerank(
-            candidates, limit=3, confidence_threshold=0.75,
-        )
-        self.assertEqual(0, len(ranked))
-
-    def test_reranker_threshold_default_zero_preserves_legacy_behavior(self) -> None:
-        """Default ``confidence_threshold=0.0`` keeps all the existing
-        round-robin diversity semantics — callers that don't pass a
-        threshold see the pre-Option-1 behaviour."""
-        from agentic_application.agents.reranker import Reranker
-
-        candidates = [
-            OutfitCandidate(candidate_id="a1", direction_id="A", candidate_type="paired",
-                           items=[], assembly_score=0.90),
-            OutfitCandidate(candidate_id="a2", direction_id="A", candidate_type="paired",
-                           items=[], assembly_score=0.85),
-            OutfitCandidate(candidate_id="b1", direction_id="B", candidate_type="paired",
-                           items=[], assembly_score=0.40),
-        ]
-        ranked = Reranker(final_top_n=3, pool_top_n=3).rerank(candidates, limit=3)
-        # Round-robin keeps A's top + B's top, then fills with A's runner-up.
-        self.assertEqual(3, len(ranked))
-        kept_directions = [c.direction_id for c in ranked]
-        self.assertIn("B", kept_directions)
-
 
 class ConfidenceThresholdGateTests(unittest.TestCase):
     """May 1 2026 — wardrobe-first selector + catalog-pipeline gate.
@@ -6711,14 +5791,14 @@ class ConfidenceThresholdGateTests(unittest.TestCase):
             action_parameters=CopilotActionParameters(),
         )
 
-        # Build candidates whose assembly_score is well under 0.75.
+        # Build candidates whose fashion_score is well under the 75 gate.
         weak_candidates = [
             OutfitCandidate(
                 candidate_id=f"c{i}",
                 direction_id="d1",
                 candidate_type="paired",
                 items=[{"product_id": f"p{i}", "title": f"Item {i}"}],
-                assembly_score=0.4 + (i * 0.05),  # 0.40, 0.45, 0.50
+                fashion_score=40 + (i * 5),  # 40, 45, 50
             )
             for i in range(3)
         ]
@@ -6729,11 +5809,16 @@ class ConfidenceThresholdGateTests(unittest.TestCase):
             "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock,
         ), patch(
             "agentic_application.orchestrator.CatalogSearchAgent"
-        ), patch(
-            "agentic_application.orchestrator.OutfitAssembler"
-        ) as assembler_cls:
+        ) as search_cls, patch(
+            "agentic_application.orchestrator.OutfitComposer"
+        ) as composer_cls, patch(
+            "agentic_application.orchestrator.OutfitRater"
+        ) as rater_cls:
             architect_cls.return_value.plan.return_value = plan
-            assembler_cls.return_value.assemble.return_value = weak_candidates
+            products = _wire_llm_ranker_via_patches(composer_cls, rater_cls, weak_candidates)
+            search_cls.return_value.search.return_value = [
+                RetrievedSet(direction_id="A", query_id="A1", role="complete", products=products),
+            ]
             gw_cls.return_value.get_catalog_inventory.return_value = [
                 {"id": f"p{i}", "title": f"Item {i}"} for i in range(3)
             ]
@@ -6822,13 +5907,13 @@ class ConfidenceThresholdGateTests(unittest.TestCase):
             OutfitCandidate(
                 candidate_id=f"hi{i}", direction_id="d1", candidate_type="paired",
                 items=[{"product_id": f"hi-p{i}", "title": f"Hi {i}"}],
-                assembly_score=0.85,
+                fashion_score=85,
             ) for i in range(2)
         ] + [
             OutfitCandidate(
                 candidate_id=f"lo{i}", direction_id="d1", candidate_type="paired",
                 items=[{"product_id": f"lo-p{i}", "title": f"Lo {i}"}],
-                assembly_score=0.5,
+                fashion_score=50,
             ) for i in range(3)
         ]
 
@@ -6859,13 +5944,18 @@ class ConfidenceThresholdGateTests(unittest.TestCase):
             "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock,
         ), patch(
             "agentic_application.orchestrator.CatalogSearchAgent"
-        ), patch(
-            "agentic_application.orchestrator.OutfitAssembler"
-        ) as assembler_cls, patch(
+        ) as search_cls, patch(
+            "agentic_application.orchestrator.OutfitComposer"
+        ) as composer_cls, patch(
+            "agentic_application.orchestrator.OutfitRater"
+        ) as rater_cls, patch(
             "agentic_application.orchestrator.ResponseFormatter"
         ) as formatter_cls:
             architect_cls.return_value.plan.return_value = plan
-            assembler_cls.return_value.assemble.return_value = candidates
+            products = _wire_llm_ranker_via_patches(composer_cls, rater_cls, candidates)
+            search_cls.return_value.search.return_value = [
+                RetrievedSet(direction_id="A", query_id="A1", role="complete", products=products),
+            ]
             gw_cls.return_value.get_catalog_inventory.return_value = [
                 {"id": f"hi-p{i}", "title": f"Hi {i}"} for i in range(2)
             ] + [{"id": f"lo-p{i}", "title": f"Lo {i}"} for i in range(3)]
@@ -7029,7 +6119,9 @@ class TryonParallelRenderTests(unittest.TestCase):
         ), patch(
             "agentic_application.orchestrator.CatalogSearchAgent"
         ), patch(
-            "agentic_application.orchestrator.OutfitAssembler"
+            "agentic_application.orchestrator.OutfitComposer"
+        ), patch(
+            "agentic_application.orchestrator.OutfitRater"
         ):
             orch = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
         # Wire mocks
@@ -7050,7 +6142,7 @@ class TryonParallelRenderTests(unittest.TestCase):
             items=[
                 {"product_id": f"{cid}-top", "title": "T", "image_url": f"https://x/{cid}.png", "role": "top"},
             ],
-            assembly_score=0.9,
+            fashion_score=90,
         )
 
     def test_three_candidate_batch_renders_in_parallel(self) -> None:

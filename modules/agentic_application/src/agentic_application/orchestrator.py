@@ -23,13 +23,19 @@ from platform_core.request_context import (
 from .agents.catalog_search_agent import CatalogSearchAgent
 from .agents.copilot_planner import CopilotPlanner, build_planner_input
 from .agents.outfit_architect import OutfitArchitect
-from .agents.outfit_assembler import OutfitAssembler
+from .agents.outfit_composer import OutfitComposer
+from .agents.outfit_rater import OutfitRater
 # OutfitEvaluator removed (Phase 12B cleanup, April 9 2026) — the
 # VisualEvaluatorAgent is now the sole evaluator. The legacy text-only
 # fallback has been replaced with a graceful empty-response path that
 # lets the response formatter handle transient visual-evaluator failures.
-from .agents.reranker import Reranker
+#
+# OutfitAssembler + Reranker removed (May 3 2026) — replaced with the
+# OutfitComposer + OutfitRater LLM ranker pipeline. Cosine similarity is
+# now a retrieval primitive only; LLM judgment handles all reasoning
+# about whether items belong together.
 from .agents.response_formatter import ResponseFormatter
+from .product_links import resolve_product_url
 from .agents.style_advisor_agent import StyleAdvice, StyleAdvisorAgent
 from .agents.visual_evaluator_agent import VisualEvaluatorAgent
 from .tracing import TurnTraceBuilder
@@ -47,6 +53,7 @@ from .services.outfit_decomposition import decompose_outfit_image
 from .qna_messages import generate_stage_message
 from .schemas import (
     CombinedContext,
+    ComposedOutfit,
     CopilotPlanResult,
     EvaluatedRecommendation,
     IntentClassification,
@@ -64,16 +71,108 @@ _log = logging.getLogger(__name__)
 
 _URL_RE = re.compile(r"https?://\S+")
 
-# Per-outfit confidence threshold (0-1). Outfits below this never reach the
-# user — instead we surface an honest "no confident match" message and offer
-# alternative paths. Applied uniformly to wardrobe-first selection
-# (normalized item score) and catalog-pipeline outfits (assembly_score).
+# Per-outfit confidence threshold (0-1). Outfits below this never reach
+# the user — instead we surface an honest "no confident match" message
+# and offer alternative paths. Applied to wardrobe-first selection only
+# (normalized item score). The catalog pipeline uses
+# ``_RECOMMENDATION_FASHION_THRESHOLD`` against the LLM Rater's
+# integer fashion_score (0–100).
 _RECOMMENDATION_CONFIDENCE_THRESHOLD = 0.75
+
+# Catalog-pipeline gate (May 3 2026). After Composer + Rater + visual
+# evaluator, only outfits whose Rater fashion_score clears this floor
+# AND were not flagged ``unsuitable`` by the Rater reach the user.
+# 75/100 mirrors the wardrobe path's 0.75 floor on a 0–1 scale.
+_RECOMMENDATION_FASHION_THRESHOLD = 75
 
 # Maximum raw score from `_select_wardrobe_occasion_outfit._score`:
 #   +3 occasion_fit exact match
 #   +1 formality_level matches occasion class
 _WARDROBE_SCORE_MAX = 4.0
+
+
+def _build_candidate_item(product: "RetrievedProduct", role: str = "") -> Dict[str, Any]:
+    """Compact dict per item for an OutfitCandidate, fed to the visual
+    evaluator and the response formatter.
+
+    Matches the shape the legacy OutfitAssembler emitted (PR #30 keeps
+    the contract stable so downstream consumers — try-on render path,
+    response formatter, frontend renderers — don't need changes).
+    Pulls image URL, title, price, product URL, and the dozen
+    enrichment attributes the evaluator reads. Falls through CamelCase
+    + snake_case + metadata + enriched_data to handle both catalog and
+    wardrobe row shapes.
+    """
+    metadata = product.metadata
+    enriched = product.enriched_data
+    image_url = str(
+        metadata.get("images__0__src")
+        or metadata.get("images_0_src")
+        or enriched.get("images__0__src")
+        or enriched.get("images_0_src")
+        or enriched.get("primary_image_url")
+        or enriched.get("image_url")
+        or enriched.get("image_path")
+        or ""
+    )
+    title = str(metadata.get("title") or enriched.get("title") or product.product_id or "")
+    price = str(metadata.get("price") or enriched.get("price") or "")
+    product_url = resolve_product_url(
+        raw_url=str(metadata.get("url") or enriched.get("url") or enriched.get("product_url") or ""),
+        store=str(enriched.get("store") or metadata.get("store") or ""),
+        handle=str(enriched.get("handle") or metadata.get("handle") or ""),
+        image_url=image_url,
+    )
+    item: Dict[str, Any] = {
+        "product_id": product.product_id,
+        "similarity": product.similarity,
+        "title": title,
+        "image_url": image_url,
+        "price": price,
+        "product_url": product_url,
+        "garment_category": str(enriched.get("garment_category") or metadata.get("GarmentCategory") or ""),
+        "garment_subtype": str(enriched.get("garment_subtype") or metadata.get("GarmentSubtype") or ""),
+        "styling_completeness": str(enriched.get("styling_completeness") or metadata.get("StylingCompleteness") or ""),
+        "primary_color": str(enriched.get("primary_color") or metadata.get("PrimaryColor") or ""),
+        "formality_level": str(enriched.get("formality_level") or metadata.get("FormalityLevel") or ""),
+        "occasion_fit": str(enriched.get("occasion_fit") or metadata.get("OccasionFit") or ""),
+        "pattern_type": str(enriched.get("pattern_type") or metadata.get("PatternType") or ""),
+        "volume_profile": str(enriched.get("volume_profile") or metadata.get("VolumeProfile") or ""),
+        "fit_type": str(enriched.get("fit_type") or metadata.get("FitType") or ""),
+        "silhouette_type": str(enriched.get("silhouette_type") or metadata.get("SilhouetteType") or ""),
+    }
+    explicit_source = str(enriched.get("source") or "").strip().lower()
+    if explicit_source in ("wardrobe", "catalog"):
+        item["source"] = explicit_source
+    elif enriched.get("image_path") and not (enriched.get("handle") or enriched.get("store")):
+        item["source"] = "wardrobe"
+    if enriched.get("is_anchor"):
+        item["is_anchor"] = True
+    if role:
+        item["role"] = role
+    return item
+
+
+def _role_for_position(composed: "ComposedOutfit", items_so_far: List[Dict[str, Any]]) -> str:
+    """Assign the canonical role label for the next item in a composed outfit.
+
+    Composer outputs item_ids as a flat list. The downstream try-on
+    render path expects each item dict to carry a `role` field
+    (`top` / `bottom` / `outerwear` / `complete`) so it can position the
+    garment correctly on the user's body image. We re-derive the role
+    from the outfit's direction_type plus how many items have already
+    been built — composers preserve order (top, bottom, outerwear) per
+    the prompt, so position-by-index is reliable.
+    """
+    dt = composed.direction_type
+    if dt == "complete":
+        return "complete"
+    idx = len(items_so_far)
+    if dt == "paired":
+        return ["top", "bottom"][idx] if idx < 2 else ""
+    if dt == "three_piece":
+        return ["top", "bottom", "outerwear"][idx] if idx < 3 else ""
+    return ""
 
 
 def extract_urls(message: str) -> List[str]:
@@ -120,9 +219,14 @@ class AgenticOrchestrator:
             retrieval_gateway=self._retrieval_gateway,
             client=repo.client,
         )
-        self.outfit_assembler = OutfitAssembler()
-        self.reranker = Reranker()  # Phase 12B explicit pruning step
-        # OutfitEvaluator removed — see import block comment above.
+        # May 3 2026: OutfitAssembler + Reranker replaced by the Composer
+        # + Rater LLM ranker pipeline. See agents/outfit_composer.py and
+        # agents/outfit_rater.py.
+        self.outfit_composer = OutfitComposer()
+        self.outfit_rater = OutfitRater()
+        # Pool / final caps live here (no longer on a Reranker instance).
+        self.recommendation_final_top_n = 3
+        self.recommendation_pool_top_n = 5
         self.response_formatter = ResponseFormatter()
 
         self._copilot_planner = CopilotPlanner()
@@ -2493,13 +2597,14 @@ class AgenticOrchestrator:
         candidates_seen: int,
         hard_filters: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Honest no-match response when the catalog pipeline has no outfit
-        whose ``assembly_score`` clears the confidence threshold.
+        """Honest no-match response when the catalog pipeline has no
+        outfit whose Rater ``fashion_score`` clears the confidence
+        threshold (or when the Composer judged the pool unsuitable).
 
-        We never ship low-confidence outfits — that's the bargain with the
-        user. Instead we explain what happened, surface the best raw match
-        score we saw (so they know we tried), and offer to broaden the
-        request or refine it.
+        We never ship low-confidence outfits — that's the bargain with
+        the user. Instead we explain what happened, surface the best raw
+        match score we saw (so they know we tried), and offer to broaden
+        the request or refine it.
         """
         occasion = str(live_context.occasion_signal or "").strip()
         occasion_label = occasion.replace("_", " ") if occasion else "what you described"
@@ -3428,8 +3533,14 @@ class AgenticOrchestrator:
                     "candidate_id": candidate.candidate_id,
                     "direction_id": candidate.direction_id,
                     "candidate_type": candidate.candidate_type,
-                    "assembly_score": candidate.assembly_score,
-                    "assembly_notes": candidate.assembly_notes,
+                    "fashion_score": candidate.fashion_score,
+                    "occasion_fit": candidate.occasion_fit,
+                    "body_harmony": candidate.body_harmony,
+                    "color_harmony": candidate.color_harmony,
+                    "archetype_match": candidate.archetype_match,
+                    "composer_rationale": candidate.composer_rationale,
+                    "rater_rationale": candidate.rater_rationale,
+                    "unsuitable": candidate.unsuitable,
                     "item_ids": [str(item.get("product_id") or "") for item in candidate.items],
                 }
             )
@@ -4462,7 +4573,6 @@ class AgenticOrchestrator:
                 weather_context=initial_live_context.weather_context,
                 time_of_day=initial_live_context.time_of_day,
                 target_product_type=initial_live_context.target_product_type,
-                ranking_bias=resolved.ranking_bias or "balanced",
             )
         else:
             effective_live_context = initial_live_context
@@ -4572,56 +4682,227 @@ class AgenticOrchestrator:
                 _log.info("Injected anchor as sole %s — assembler will pair with %d complementary items",
                            anchor_role, sum(len(rs.products) for rs in retrieved_sets if rs.role != anchor_role))
 
-            emit("outfit_assembly", "started")
-            trace_start("outfit_assembly", input_summary=f"{total_products} products")
-            candidates = self.outfit_assembler.assemble(retrieved_sets, plan, combined_context)
-            emit("outfit_assembly", "completed", ctx={"candidate_count": len(candidates)})
-            trace_end("outfit_assembly", output_summary=f"{len(candidates)} candidates")
-
-            # Phase 12B: rerank → render top-N try-ons → visual evaluator
-            # (per-candidate, parallel) with legacy text evaluator as the
-            # fallback when no person photo is on file or the visual path
-            # raises. Stage emission distinguishes the two paths so the
-            # operator dashboard can track which one ran.
-            emit("reranker", "started")
-            trace_start("reranker", input_summary=f"{len(candidates)} candidates")
-            # Phase 13B+: ranking_bias from architect modulates the
-            # tie-break ordering inside the reranker. The decision_log
-            # callback persists kept/dropped candidate ids into
-            # tool_traces (tool_name="reranker_decision") so offline
-            # calibration can correlate reranker output with downstream
-            # feedback events.
-            reranker_bias = (combined_context.live.ranking_bias or "balanced") if combined_context else "balanced"
-
-            def _persist_reranker_decision(payload: Dict[str, Any]) -> None:
-                try:
-                    self.repo.log_tool_trace(
-                        conversation_id=conversation_id,
-                        turn_id=turn_id,
-                        tool_name="reranker_decision",
-                        input_json={
-                            "bias": payload.get("bias"),
-                            "input_count": payload.get("input_count"),
-                            "weights": payload.get("weights"),
-                        },
-                        output_json={
-                            "kept_count": payload.get("kept_count"),
-                            "kept": payload.get("kept"),
-                            "dropped": payload.get("dropped"),
-                        },
-                    )
-                except Exception:  # noqa: BLE001 — telemetry must never break pipeline
-                    _log.exception("reranker decision log failed; ignoring")
-
-            ranked_pool = self.reranker.rerank(
-                candidates,
-                bias=reranker_bias,
-                turn_id=turn_id,
-                decision_log=_persist_reranker_decision,
-                confidence_threshold=_RECOMMENDATION_CONFIDENCE_THRESHOLD,
+            # === LLM ranker (Composer + Rater) — May 3 2026 ===========
+            # Replaces the deterministic OutfitAssembler + Reranker pair.
+            # The Composer constructs up to 10 outfits from the retrieved
+            # pool; the Rater scores them on a 4-dim rubric and emits a
+            # fashion_score 0–100. Cosine similarity remains a retrieval
+            # primitive only — all reasoning about whether items belong
+            # together is now LLM judgment.
+            emit("outfit_composer", "started")
+            trace_start(
+                "outfit_composer",
+                model="gpt-5-mini",
+                input_summary=f"{total_products} products across {len(retrieved_sets)} sets",
             )
-            emit("reranker", "completed", ctx={"pool_size": len(ranked_pool), "bias": reranker_bias})
-            trace_end("reranker", output_summary=f"pool={len(ranked_pool)}, bias={reranker_bias}")
+            t_compose = time.monotonic()
+            composer_result = self.outfit_composer.compose(combined_context, retrieved_sets)
+            compose_ms = int((time.monotonic() - t_compose) * 1000)
+            emit(
+                "outfit_composer", "completed",
+                ctx={"outfit_count": len(composer_result.outfits)},
+            )
+            trace_end("outfit_composer", output_summary=f"{len(composer_result.outfits)} outfits")
+            # Persist Composer audit trail.
+            _comp_usage = getattr(self.outfit_composer, "last_usage", {}) or {}
+            self.repo.log_model_call(
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                service="agentic_application",
+                call_type="outfit_composer",
+                model="gpt-5-mini",
+                request_json={"pool_size": total_products, "directions": len({rs.direction_id for rs in retrieved_sets})},
+                response_json={"raw": composer_result.raw_response[:8000]},
+                reasoning_notes=[o.rationale for o in composer_result.outfits],
+                latency_ms=compose_ms,
+                prompt_tokens=_comp_usage.get("prompt_tokens"),
+                completion_tokens=_comp_usage.get("completion_tokens"),
+                total_tokens=_comp_usage.get("total_tokens"),
+            )
+            try:
+                self.repo.log_tool_trace(
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    tool_name="composer_decision",
+                    input_json={"pool_size": total_products},
+                    output_json={
+                        "outfit_count": len(composer_result.outfits),
+                        "overall_assessment": composer_result.overall_assessment,
+                        "pool_unsuitable": composer_result.pool_unsuitable,
+                        "outfits": [
+                            {
+                                "composer_id": o.composer_id,
+                                "direction_id": o.direction_id,
+                                "direction_type": o.direction_type,
+                                "item_ids": o.item_ids,
+                                "rationale": o.rationale,
+                            }
+                            for o in composer_result.outfits
+                        ],
+                    },
+                )
+            except Exception:  # noqa: BLE001 — telemetry must never break pipeline
+                _log.exception("composer decision log failed; ignoring")
+
+            if not composer_result.outfits:
+                # Composer either short-circuited the empty pool, judged
+                # the pool unsuitable, or hallucinated everything twice.
+                # Surface "no confident match" rather than press on.
+                emit("confidence_gate", "blocked", ctx={
+                    "top_match_score": 0.0,
+                    "candidates_seen": 0,
+                    "stage": "composer_empty",
+                })
+                return self._build_low_confidence_catalog_response(
+                    external_user_id=external_user_id,
+                    message=message,
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    channel=channel,
+                    intent=intent,
+                    previous_context=previous_context,
+                    live_context=effective_live_context,
+                    conversation_memory=conversation_memory.model_dump(),
+                    profile_confidence=profile_confidence,
+                    top_match_score=0.0,
+                    candidates_seen=0,
+                    hard_filters=hard_filters,
+                )
+
+            # --- Rater pass ------------------------------------------
+            emit("outfit_rater", "started")
+            trace_start(
+                "outfit_rater",
+                model="gpt-5-mini",
+                input_summary=f"{len(composer_result.outfits)} composed outfits",
+            )
+            t_rate = time.monotonic()
+            rater_result = self.outfit_rater.rate(
+                combined_context, composer_result.outfits, retrieved_sets,
+            )
+            rate_ms = int((time.monotonic() - t_rate) * 1000)
+            emit(
+                "outfit_rater", "completed",
+                ctx={
+                    "rated_count": len(rater_result.ranked_outfits),
+                    "overall_assessment": rater_result.overall_assessment,
+                },
+            )
+            trace_end("outfit_rater", output_summary=f"{len(rater_result.ranked_outfits)} rated")
+            _rate_usage = getattr(self.outfit_rater, "last_usage", {}) or {}
+            self.repo.log_model_call(
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                service="agentic_application",
+                call_type="outfit_rater",
+                model="gpt-5-mini",
+                request_json={"composed_count": len(composer_result.outfits)},
+                response_json={"raw": rater_result.raw_response[:8000]},
+                reasoning_notes=[r.rationale for r in rater_result.ranked_outfits],
+                latency_ms=rate_ms,
+                prompt_tokens=_rate_usage.get("prompt_tokens"),
+                completion_tokens=_rate_usage.get("completion_tokens"),
+                total_tokens=_rate_usage.get("total_tokens"),
+            )
+            try:
+                self.repo.log_tool_trace(
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    tool_name="rater_decision",
+                    input_json={"composed_count": len(composer_result.outfits)},
+                    output_json={
+                        "overall_assessment": rater_result.overall_assessment,
+                        "ranked_outfits": [
+                            {
+                                "composer_id": r.composer_id,
+                                "rank": r.rank,
+                                "fashion_score": r.fashion_score,
+                                "occasion_fit": r.occasion_fit,
+                                "body_harmony": r.body_harmony,
+                                "color_harmony": r.color_harmony,
+                                "archetype_match": r.archetype_match,
+                                "rationale": r.rationale,
+                                "unsuitable": r.unsuitable,
+                            }
+                            for r in rater_result.ranked_outfits
+                        ],
+                    },
+                )
+            except Exception:  # noqa: BLE001
+                _log.exception("rater decision log failed; ignoring")
+
+            # --- Build OutfitCandidate objects from the rated slate ---
+            # Look up the per-item product attrs from the retrieval pool
+            # so the candidate's `items` field matches the legacy shape
+            # the visual evaluator + try-on render expect.
+            products_by_id: Dict[str, RetrievedProduct] = {}
+            for rs in retrieved_sets:
+                for p in rs.products:
+                    products_by_id[p.product_id] = p
+            composed_by_id = {o.composer_id: o for o in composer_result.outfits}
+
+            candidates: List[OutfitCandidate] = []
+            for rated in rater_result.ranked_outfits:
+                composed = composed_by_id.get(rated.composer_id)
+                if composed is None:
+                    continue
+                items: List[Dict[str, Any]] = []
+                for iid in composed.item_ids:
+                    product = products_by_id.get(iid)
+                    if product is None:
+                        continue
+                    items.append(
+                        _build_candidate_item(product, role=_role_for_position(composed, items)),
+                    )
+                if not items:
+                    continue
+                candidates.append(
+                    OutfitCandidate(
+                        candidate_id=composed.composer_id,
+                        direction_id=composed.direction_id,
+                        candidate_type=composed.direction_type,
+                        items=items,
+                        fashion_score=rated.fashion_score,
+                        occasion_fit=rated.occasion_fit,
+                        body_harmony=rated.body_harmony,
+                        color_harmony=rated.color_harmony,
+                        archetype_match=rated.archetype_match,
+                        composer_id=composed.composer_id,
+                        composer_rationale=composed.rationale,
+                        rater_rationale=rated.rationale,
+                        unsuitable=rated.unsuitable,
+                    )
+                )
+
+            # Apply Rater veto + threshold gate BEFORE try-on render so
+            # we don't burn Gemini calls on outfits the gate would drop.
+            ranked_pool = [
+                c for c in candidates
+                if not c.unsuitable and c.fashion_score >= _RECOMMENDATION_FASHION_THRESHOLD
+            ][: self.recommendation_pool_top_n]
+
+            if not ranked_pool:
+                top_score = max((c.fashion_score for c in candidates), default=0)
+                emit("confidence_gate", "blocked", ctx={
+                    "top_match_score": top_score / 100.0,
+                    "candidates_seen": len(candidates),
+                    "stage": "rater_below_threshold",
+                })
+                return self._build_low_confidence_catalog_response(
+                    external_user_id=external_user_id,
+                    message=message,
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    channel=channel,
+                    intent=intent,
+                    previous_context=previous_context,
+                    live_context=effective_live_context,
+                    conversation_memory=conversation_memory.model_dump(),
+                    profile_confidence=profile_confidence,
+                    top_match_score=top_score / 100.0,
+                    candidates_seen=len(candidates),
+                    hard_filters=hard_filters,
+                )
 
             person_image_path = self.onboarding_gateway.get_person_image_path(external_user_id)
             visual_path_attempted = False
@@ -4639,15 +4920,15 @@ class AgenticOrchestrator:
             if person_image_path and ranked_pool:
                 visual_path_attempted = True
                 try:
-                    emit("visual_evaluation", "started", ctx={"target_count": self.reranker.final_top_n})
-                    trace_start("visual_evaluation", model="gpt-5-mini", input_summary=f"pool={len(ranked_pool)}, target={self.reranker.final_top_n}")
+                    emit("visual_evaluation", "started", ctx={"target_count": self.recommendation_final_top_n})
+                    trace_start("visual_evaluation", model="gpt-5-mini", input_summary=f"pool={len(ranked_pool)}, target={self.recommendation_final_top_n}")
                     rendered, tryon_stats = self._render_candidates_for_visual_eval(
                         candidates=ranked_pool,
                         person_image_path=str(person_image_path),
                         external_user_id=external_user_id,
                         conversation_id=conversation_id,
                         turn_id=turn_id,
-                        target_count=self.reranker.final_top_n,
+                        target_count=self.recommendation_final_top_n,
                     )
                     if rendered:
                         evaluated = self._evaluate_candidates_visually(
@@ -4662,7 +4943,7 @@ class AgenticOrchestrator:
                     trace_end("visual_evaluation", output_summary=f"{len(evaluated)} evaluated, path=visual")
                 except Exception as _ve_exc:
                     _log.warning(
-                        "Visual evaluator path failed; will fall back to assembly_score promotion",
+                        "Visual evaluator path failed; will fall back to fashion_score promotion",
                         exc_info=True,
                     )
                     emit("visual_evaluation", "error")
@@ -4670,37 +4951,32 @@ class AgenticOrchestrator:
                     evaluated = []
 
             if not evaluated:
-                # The visual evaluator either wasn't attempted or failed.
-                # Rather than returning zero outfits (which the user sees
-                # as a broken response), promote the top candidates by
-                # assembly_score with neutral evaluation scores. This is a
-                # lightweight inline fallback — NOT the deleted 540-line
-                # legacy OutfitEvaluator. The candidates already have
-                # catalog attributes; we just don't have vision-grounded
-                # dimension scores for them. The response will look
-                # reasonable (real products, real images) but won't have
-                # the per-candidate body/color/style analysis.
+                # Visual evaluator wasn't attempted (no person photo) or
+                # failed. Rather than ship zero outfits, promote the
+                # top-by-fashion_score candidates with neutral
+                # vision-grounded scores. Real products + real images,
+                # just no body/color/style breakdown for this turn.
                 _log.warning(
                     "Visual evaluator produced zero results for turn %s; "
-                    "promoting top candidates by assembly_score (inline fallback)",
+                    "promoting top candidates by fashion_score (inline fallback)",
                     turn_id,
                 )
-                evaluator_path = "assembly_score_fallback"
-                top_n = self.reranker.final_top_n
+                evaluator_path = "fashion_score_fallback"
+                top_n = self.recommendation_final_top_n
                 fallback_candidates = sorted(
                     ranked_pool,
-                    key=lambda c: float(getattr(c, "assembly_score", 0.0) or 0.0),
+                    key=lambda c: c.fashion_score,
                     reverse=True,
                 )[:top_n]
-                fallback_pct = 65  # neutral score — better than 0, not as good as visual
+                fallback_pct = 65  # neutral — better than 0, not as good as visual
                 for rank, candidate in enumerate(fallback_candidates, 1):
                     evaluated.append(
                         EvaluatedRecommendation(
                             candidate_id=candidate.candidate_id,
                             rank=rank,
-                            match_score=float(getattr(candidate, "assembly_score", 0.5) or 0.5),
+                            match_score=candidate.fashion_score / 100.0,
                             title=f"Outfit {rank}",
-                            reasoning="Scored by catalog compatibility (visual evaluator unavailable this turn).",
+                            reasoning=candidate.rater_rationale or "Rated by stylist (visual evaluator unavailable this turn).",
                             body_harmony_pct=fallback_pct,
                             color_suitability_pct=fallback_pct,
                             style_fit_pct=fallback_pct,
@@ -4739,35 +5015,35 @@ class AgenticOrchestrator:
                 total_tokens=_eval_usage.get("total_tokens"),
             )
 
-            # Confidence gate (May 1 2026): no outfit ever ships below the
-            # threshold. Filter `evaluated` against each candidate's
-            # `assembly_score` (the raw match-to-query signal). If nothing
-            # clears the bar, surface an honest "no confident match"
-            # response instead of shipping low-quality outfits.
-            assembly_score_by_cid: Dict[str, float] = {
-                str(c.candidate_id): float(getattr(c, "assembly_score", 0.0) or 0.0)
-                for c in candidates
+            # Confidence gate (May 3 2026): The Rater + threshold have
+            # already filtered the pre-render pool. This second pass is
+            # belt-and-suspenders — if the visual evaluator surfaces a
+            # candidate whose fashion_score somehow regressed (shouldn't
+            # happen since we built `candidates` from the rated slate),
+            # drop it. Also caps the kept set at the configured top_n.
+            fashion_score_by_cid: Dict[str, int] = {
+                str(c.candidate_id): c.fashion_score for c in candidates
             }
-            top_assembly_score_seen = max(
-                (assembly_score_by_cid.get(str(e.candidate_id), 0.0) for e in evaluated),
-                default=0.0,
-            )
+            top_match_score_seen = max(
+                (fashion_score_by_cid.get(str(e.candidate_id), 0) for e in evaluated),
+                default=0,
+            ) / 100.0
             confident_evaluated = [
                 e for e in evaluated
-                if assembly_score_by_cid.get(str(e.candidate_id), 0.0) >= _RECOMMENDATION_CONFIDENCE_THRESHOLD
-            ][:3]
+                if fashion_score_by_cid.get(str(e.candidate_id), 0) >= _RECOMMENDATION_FASHION_THRESHOLD
+            ][: self.recommendation_final_top_n]
             dropped_low_confidence = len(evaluated) - len(confident_evaluated)
             if dropped_low_confidence:
                 _log.info(
-                    "confidence gate: dropped %d/%d outfits below %.2f (top seen=%.2f)",
+                    "confidence gate: dropped %d/%d outfits below fashion_score=%d (top seen=%.2f)",
                     dropped_low_confidence,
                     len(evaluated),
-                    _RECOMMENDATION_CONFIDENCE_THRESHOLD,
-                    top_assembly_score_seen,
+                    _RECOMMENDATION_FASHION_THRESHOLD,
+                    top_match_score_seen,
                 )
             if not confident_evaluated:
                 emit("confidence_gate", "blocked", ctx={
-                    "top_assembly_score": top_assembly_score_seen,
+                    "top_match_score": top_match_score_seen,
                     "candidates_seen": len(candidates),
                 })
                 return self._build_low_confidence_catalog_response(
@@ -4781,7 +5057,7 @@ class AgenticOrchestrator:
                     live_context=effective_live_context,
                     conversation_memory=conversation_memory.model_dump(),
                     profile_confidence=profile_confidence,
-                    top_match_score=top_assembly_score_seen,
+                    top_match_score=top_match_score_seen,
                     candidates_seen=len(candidates),
                     hard_filters=hard_filters,
                 )
@@ -5376,7 +5652,7 @@ class AgenticOrchestrator:
         ``rank`` field set to its 1-indexed position in the list.
 
         Failures fall back to a low-fidelity ``EvaluatedRecommendation``
-        constructed from the candidate's assembly_score so the response
+        constructed from the candidate's fashion_score so the response
         still ships rather than dropping the slot.
         """
         if not rendered:
@@ -5397,11 +5673,11 @@ class AgenticOrchestrator:
                 return result.model_copy(update={"rank": rank})
             except Exception:
                 _log.warning(
-                    "Visual evaluator failed for candidate %s; using assembly_score fallback",
+                    "Visual evaluator failed for candidate %s; using fashion_score fallback",
                     candidate.candidate_id,
                     exc_info=True,
                 )
-                fallback_pct = max(0, min(100, int(getattr(candidate, "assembly_score", 0.0) * 100)))
+                fallback_pct = max(0, min(100, int(candidate.fashion_score)))
                 fallback_item_ids = [
                     str(item.get("product_id", ""))
                     for item in (candidate.items or [])
@@ -5410,9 +5686,9 @@ class AgenticOrchestrator:
                 return EvaluatedRecommendation(
                     candidate_id=candidate.candidate_id,
                     rank=rank,
-                    match_score=float(getattr(candidate, "assembly_score", 0.0) or 0.0),
+                    match_score=candidate.fashion_score / 100.0,
                     title="",
-                    reasoning="Ranked by retrieval similarity (visual evaluator unavailable).",
+                    reasoning=candidate.rater_rationale or "Ranked by stylist (visual evaluator unavailable).",
                     body_harmony_pct=fallback_pct,
                     color_suitability_pct=fallback_pct,
                     style_fit_pct=fallback_pct,
@@ -5492,7 +5768,7 @@ class AgenticOrchestrator:
             direction_id="outfit_check",
             candidate_type="user_outfit",
             items=[],
-            assembly_score=1.0,
+            fashion_score=100,
         )
         live_context_for_eval = LiveContext(
             user_need=message.strip(),
@@ -5967,7 +6243,7 @@ class AgenticOrchestrator:
             direction_id="garment_evaluation",
             candidate_type="single_garment",
             items=[self._attached_item_to_outfit_item(attached_item)],
-            assembly_score=1.0,
+            fashion_score=100,
         )
         live_context_for_eval = LiveContext(
             user_need=message.strip(),

@@ -103,12 +103,6 @@ class LiveContext(BaseModel):
     weather_context: str = ""
     time_of_day: str = ""
     target_product_type: str = ""
-    # Phase 13B + May 1, 2026: architect-emitted ranking signal mirrored
-    # from RecommendationPlan.resolved_context.ranking_bias so the
-    # assembler and reranker can read it without holding a reference to
-    # the plan object. One of: balanced, conservative, expressive,
-    # formal_first, comfort_first.
-    ranking_bias: str = "balanced"
 
 
 # --- Conversation Memory ---
@@ -171,9 +165,6 @@ class ResolvedContextBlock(BaseModel):
     specific_needs: List[str] = Field(default_factory=list)
     is_followup: bool = False
     followup_intent: Optional[str] = None
-    # Phase 13B: ranking intent signal for downstream reranker/assembler.
-    # conservative | balanced | expressive | formal_first | comfort_first
-    ranking_bias: str = "balanced"
 
 
 class RecommendationPlan(BaseModel):
@@ -201,16 +192,33 @@ class RetrievedSet(BaseModel):
     applied_filters: Dict[str, Any] = Field(default_factory=dict)
 
 
-# --- Assembly output ---
+# --- Outfit candidate (after Composer + Rater, May 3 2026) ---
+#
+# An outfit ready for try-on rendering and visual evaluation. Built
+# either by the LLM ranker (Composer + Rater) on the catalog pipeline,
+# or hand-constructed by the orchestrator on the wardrobe-anchored
+# pipeline. The wardrobe-anchored path skips the Rater and pre-fills
+# fashion_score = 100 (already-validated).
 
 
 class OutfitCandidate(BaseModel):
     candidate_id: str
     direction_id: str
-    candidate_type: str  # complete | paired
+    candidate_type: str  # complete | paired | three_piece
     items: List[Dict[str, Any]] = Field(default_factory=list)
-    assembly_score: float = 0.0
-    assembly_notes: List[str] = Field(default_factory=list)
+    # LLM-ranker scores. fashion_score is the gating field downstream;
+    # the four sub-scores stay attached so the response payload can show
+    # the breakdown in the UI later. For wardrobe items, the orchestrator
+    # sets fashion_score = 100 and the rest to neutral (0).
+    fashion_score: int = 0  # 0–100
+    occasion_fit: int = 0
+    body_harmony: int = 0
+    color_harmony: int = 0
+    archetype_match: int = 0
+    composer_id: str = ""  # Empty for wardrobe-anchored candidates.
+    composer_rationale: str = ""
+    rater_rationale: str = ""
+    unsuitable: bool = False  # Hard veto from the Rater.
 
 
 # --- LLM ranker output (Composer + Rater, May 3 2026) ---

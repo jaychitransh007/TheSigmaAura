@@ -226,7 +226,8 @@ def _candidate_payload(candidate: OutfitCandidate) -> Dict[str, Any]:
             }
             for item in (candidate.items or [])
         ],
-        "assembly_score": float(getattr(candidate, "assembly_score", 0.0) or 0.0),
+        "fashion_score": int(getattr(candidate, "fashion_score", 0) or 0),
+        "rater_rationale": str(getattr(candidate, "rater_rationale", "") or ""),
     }
 
 

@@ -18,10 +18,9 @@ Return strict JSON:
     "time_hint": "daytime | evening | null",
     "specific_needs": ["elongation", "slimming", "comfort_priority", ...],
     "is_followup": false,
-    "followup_intent": "increase_boldness | decrease_formality | change_color | ... | null",
-    "ranking_bias": "conservative | balanced | expressive | formal_first | comfort_first"
+    "followup_intent": "increase_boldness | decrease_formality | change_color | ... | null"
   },
-  "retrieval_count": 12,
+  "retrieval_count": 5,
   "directions": [
     {
       "direction_id": "A",
@@ -55,12 +54,6 @@ Do NOT inflate to compensate for low inventory.
 - `specific_needs`: body/styling needs (elongation, slimming, broadening, comfort_priority, authority, approachability, polish).
 - `is_followup`: true when refining or following up on prior recommendations.
 - `followup_intent` (only if `is_followup`): `increase_boldness | decrease_formality | increase_formality | change_color | full_alternative | more_options | similar_to_previous`. Tiebreaker priority: `change_color` > formality changes > `increase_boldness` > `full_alternative` > `similar_to_previous` > `more_options`.
-- `ranking_bias`:
-  - `conservative` — low riskTolerance, office context, "safe"/"classic"/"reliable"
-  - `balanced` — default
-  - `expressive` — high riskTolerance, "bold"/"creative"/"statement"
-  - `formal_first` — formality dominates (wedding ceremony, formal dinner)
-  - `comfort_first` — user prioritizes comfort
 
 Capture the FULL intent. If user says "rooftop bar farewell", extract both occasion + formality implications. Cultural events (sangeet, mehndi) → appropriate occasion_signal.
 

@@ -92,7 +92,6 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     "specific_needs",
                     "is_followup",
                     "followup_intent",
-                    "ranking_bias",
                 ],
                 "properties": {
                     "occasion_signal": {"type": ["string", "null"]},
@@ -104,16 +103,6 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     },
                     "is_followup": {"type": "boolean"},
                     "followup_intent": {"type": ["string", "null"]},
-                    "ranking_bias": {
-                        "type": "string",
-                        "enum": [
-                            "conservative",
-                            "balanced",
-                            "expressive",
-                            "formal_first",
-                            "comfort_first",
-                        ],
-                    },
                 },
             },
             "retrieval_count": {"type": "integer"},
@@ -331,7 +320,6 @@ class OutfitArchitect:
                 specific_needs=raw_resolved.get("specific_needs") or [],
                 is_followup=bool(raw_resolved.get("is_followup")),
                 followup_intent=raw_resolved.get("followup_intent"),
-                ranking_bias=str(raw_resolved.get("ranking_bias") or "balanced"),
             )
         return RecommendationPlan(
             retrieval_count=int(raw.get("retrieval_count", 5)),
