@@ -2408,9 +2408,7 @@ Main weak spots:
 
 ## What Is Not Finished
 
-See "Recently Completed Roadmap Items" in the gap analysis in `docs/PRODUCT.md`. Current open items are tracked in `docs/OPEN_TASKS.md`; the legacy P0/P1/P2 sections in this file are historical and all marked complete or removed. There is no
-items are tracked inline in the P0/P1/P2 sections above; there is no
-additional summary to call out here.
+See "Recently Completed Roadmap Items" in the gap analysis in `docs/PRODUCT.md`. Current open items are tracked in `docs/OPEN_TASKS.md`. The legacy P0/P1/P2 sections earlier in this file are historical and all marked complete or removed; there is no additional summary to call out here.
 
 
 ## Repo Reality
