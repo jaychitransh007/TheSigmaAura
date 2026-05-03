@@ -121,7 +121,7 @@ def _wardrobe_row_to_item_dict(row: Dict[str, Any]) -> Dict[str, Any]:
 def _catalog_row_to_item_dict(row: Dict[str, Any]) -> Dict[str, Any]:
     """Convert a catalog_enriched row into the item-dict shape the
     frontend buildOutfitCard expects. Mirrors the catalog side of
-    OutfitAssembler._product_to_item."""
+    orchestrator._build_candidate_item."""
     image_url = str(
         row.get("images__0__src")
         or row.get("images_0_src")
