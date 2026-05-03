@@ -25,20 +25,15 @@ Phase 2 finishes the cleanup on the catalog side:
 
 ---
 
-## Catalog vocabulary consolidation — Phase 3 of the May-3 occasion-tag refactor
+## Catalog vocabulary consolidation — rare-value cleanup (Phase 3 follow-up)
 
-**Status:** parked · **Cost:** small if no vision re-run · **Risk:** low
+**Status:** parked · **Cost:** small · **Risk:** low
 
-Once Phase 2 lands, the catalog still has a few intrinsic-attribute columns with rare or near-duplicate values worth consolidating:
+Phase 3 (May 3, 2026) consolidated the four near-duplicate values: `pants`→`trouser` (107), `jeggings`→`jeans` (9), `androgynous`→`unisex` (12), `night`→`evening` (8). Architect vocabulary list updated to match.
 
-- `GarmentSubtype`: merge `pants` (107 rows) → `trouser`; merge `jeggings` (9) → `jeans`; drop / re-tag the rare values with ≤5 items (`dungarees`, `ethnic_set`, `tracksuit`, `kaftan`, `leggings`, `poncho`).
-- `GenderExpression`: merge `androgynous` (12 rows) → `unisex`.
-- `TimeOfDay`: merge `night` (8 rows) → `evening`.
-- Drop the single `(null)` row across each categorical field (or fix it).
+What's left: the rare values with ≤5 rows each — `poncho` (5), `leggings` (4), `kaftan` (4), `tracksuit` (3), `ethnic_set` (2), `dungarees` (1). Each is a per-row content decision (re-tag to nearest valid subtype, or drop the row entirely from `catalog_item_embeddings`). Not vocabulary cleanup — content cleanup. Defer until a content reviewer can decide row by row.
 
-Pure SQL `UPDATE` migration — no LLM calls, no embedding changes.
-
-**Trigger to do this:** if the architect's `target_garment_subtypes` start producing zero-result hard-filter queries on the rare subtypes, or if a future migration audit flags the inconsistency.
+**Trigger to do this:** if any of the rare subtypes appears in `tool_traces.composer_decision` outputs (i.e., the LLM ranker actually picks one) or surfaces in a user complaint.
 
 ---
 
