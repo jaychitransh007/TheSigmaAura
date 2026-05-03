@@ -6835,8 +6835,68 @@ class ArchitectPromptAssemblyTests(unittest.TestCase):
         # tokens (~29K chars). Allow some headroom; alarm if it climbs
         # back to the pre-trim 11K (~46K chars).
         self.assertLess(
-            len(base), 38_000,
+            len(base), 42_000,
             f"Base architect prompt is {len(base)} chars — perf-trim looks reverted",
+        )
+
+    def test_query_document_template_excludes_user_side_sections(self) -> None:
+        """Option A (May 3, 2026): the architect's emitted query_document
+        must contain only intrinsic-garment sections. USER_NEED and
+        PROFILE_AND_STYLE describe the request and the user, neither has
+        a counterpart in catalog item embeddings, and including them
+        dilutes cosine similarity. The prompt's explicit "what NEVER
+        appears in query_document" enumeration is what enforces this on
+        the model side; this test pins it as a contract.
+        """
+        from agentic_application.agents.outfit_architect import _load_prompt
+        base = _load_prompt()
+        # The prompt MUST list these sections under the "what NEVER appears" section.
+        forbidden_in_query = ["USER_NEED", "PROFILE_AND_STYLE"]
+        for section in forbidden_in_query:
+            self.assertIn(
+                f"`{section}:`",
+                base,
+                f"Architect prompt must explicitly forbid {section} in query_document",
+            )
+        # Allowed sections in the query template — all intrinsic to the garment.
+        allowed_in_query = [
+            "GARMENT_REQUIREMENTS",
+            "EMBELLISHMENT",
+            "VISUAL_DIRECTION",
+            "FABRIC_AND_BUILD",
+            "PATTERN_AND_COLOR",
+            "CONTEXT_AND_TIMING",
+        ]
+        for section in allowed_in_query:
+            self.assertIn(
+                f"{section}:",
+                base,
+                f"Architect prompt must include {section} as an allowed query_document section",
+            )
+
+    def test_query_document_must_translate_user_strings(self) -> None:
+        """The prompt must explicitly list user-side strings the architect
+        is forbidden from leaving in the query_document literally — they
+        have to be translated into garment-attribute terms first.
+        """
+        from agentic_application.agents.outfit_architect import _load_prompt
+        base = _load_prompt()
+        # Spot-check that the prompt names the categories of user-side
+        # content that must be translated, not duplicated.
+        for forbidden_literal in [
+            "Autumn",      # seasonal palette names
+            "Light and Narrow",  # frame strings
+            "Pear",        # body shape strings
+        ]:
+            self.assertIn(
+                forbidden_literal, base,
+                f"Architect prompt must reference '{forbidden_literal}' in the translation guidance",
+            )
+        # The translation mandate itself must be explicit.
+        self.assertIn(
+            "translation must REPLACE the source text, not duplicate it",
+            base,
+            "Prompt must contain the explicit translation mandate",
         )
 
 

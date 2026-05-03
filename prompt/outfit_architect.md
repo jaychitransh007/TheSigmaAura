@@ -141,19 +141,15 @@ Hard filters EXCLUDE products — every filter risks missing valid items. Use sp
 
 Rule of thumb: occasion / style / mood requests are ALWAYS broad → `garment_subtype: null`. Only specific subtype when user literally names the type.
 
-## Query Document Format
+## Query Document Format — INTRINSIC GARMENT ATTRIBUTES ONLY
 
-Use this exact section structure with concise values (single terms or comma-separated lists, NOT full sentences):
+**Critical principle:** The `query_document` is matched via cosine similarity against catalog item embeddings. Catalog items describe **physical garment properties** (silhouette, fabric, color, fit, embellishment, construction) — they do NOT carry user-side properties like body shape, seasonal palette, or occasion. Anything you put in the query that isn't a physical garment attribute has no counterpart in the catalog vector and contributes ONLY noise: it pollutes the query vector's magnitude in dimensions the catalog can never match, dragging cosine similarity below where good matches deserve to land.
+
+**You are responsible for translating user/request context into physical garment attributes BEFORE emitting the query.** Reason about the user's profile + occasion in your head; emit only the physical attributes that follow from that reasoning. Do NOT also leave the user-side strings in the document — translation must REPLACE the source text, not duplicate it.
+
+### Required document structure — all six sections are physical garment attributes:
 
 ```
-USER_NEED:
-- request_summary, styling_goal
-
-PROFILE_AND_STYLE:
-- gender_expression_target, style_archetype_primary, style_archetype_secondary
-- seasonal_color_group, seasonal_color_group_additional (when present)
-- contrast_level, frame_structure, height_category, waist_size_band
-
 GARMENT_REQUIREMENTS:
 - GarmentCategory, GarmentSubtype, StylingCompleteness (complete | needs_bottomwear | needs_topwear)
 - SilhouetteContour, SilhouetteType, VolumeProfile, FitEase, FitType, GarmentLength
@@ -181,13 +177,59 @@ CONTEXT_AND_TIMING:
 - FormalityLevel, TimeOfDay
 ```
 
-**Critical — what NOT to include in `query_document`:**
+### What NEVER appears in `query_document` (NO EXCEPTIONS):
 
-- ❌ **`OccasionFit`** — DO NOT emit. Occasion is a property of the request, not the garment. The catalog does not carry occasion tags in any vocabulary that matches the architect's canonical occasion names. Embedding `OccasionFit: daily_office` into the query text is dead weight that dilutes cosine similarity against catalog rows whose stored occasion tags use different vocabulary.
-- ❌ **`OccasionSignal`** — same reason; do not emit.
-- ❌ **`FormalitySignalStrength`** — meta-claim about how strongly a garment signals formality; not a usable retrieval signal. Use `FormalityLevel` only.
+- ❌ **`USER_NEED:`** section — this is the user's request stated in their language. Catalog has no counterpart. Do not include.
+- ❌ **`PROFILE_AND_STYLE:`** section — these are user properties (seasonal group, body frame, height, waist, archetype). Catalog has no counterpart.
+- ❌ The literal strings `Autumn` / `Winter` / `Spring` / `Summer` / sub-season names. **Translate** the user's seasonal group INTO `ColorTemperature`, `ColorValue`, `ColorSaturation`, and explicit `PrimaryColor` / `SecondaryColor` palette entries.
+- ❌ Body-frame strings like `Light and Narrow`, `Solid and Broad`, `Medium and Balanced`. **Translate** these INTO `VerticalWeightBias`, `LineDirection`, `ShoulderStructure`, `VolumeProfile`, `FitType` per the Visual Direction Body Calibration table below.
+- ❌ Body-shape strings like `Pear`, `Hourglass`, `Apple`. **Translate** INTO `StructuralFocus`, `WaistDefinition`, `VolumeProfile`, `BodyFocusZone`.
+- ❌ Style archetype strings like `Creative`, `Romantic`, `Minimalist`. **Translate** INTO `SilhouetteContour`, `EdgeSharpness`, `EmbellishmentLevel`, `PatternType`.
+- ❌ `OccasionFit`, `OccasionSignal`, `FormalitySignalStrength` — catalog stopped carrying these on the embedding side. Use `FormalityLevel` + `TimeOfDay` only.
+- ❌ Free-form occasion phrases like `daily office complete outfit`, `wedding ceremony attire`, `date night look`. **Translate** the occasion's expectations INTO formality, fabric, embellishment, and color values.
 
-Instead, **reason from occasion → physical attributes** in the visible parts of the query document. Translate "daily office" into the intrinsic garment properties that someone would wear: structured smart_casual top, solid or subtle pattern, day-time palette, warm-neutral colors. Express those attributes in the relevant sections (`GARMENT_REQUIREMENTS`, `PATTERN_AND_COLOR`, `FABRIC_AND_BUILD`, `CONTEXT_AND_TIMING`). The reranker and visual evaluator handle final occasion fit using their own reasoning over the retrieved items.
+### Translation examples (this is the work the architect MUST do):
+
+**User: Autumn palette + Light and Narrow frame + Creative archetype + occasion=daily_office**
+
+❌ WRONG (carries user-side strings):
+```
+USER_NEED:
+- daily office complete outfit
+
+PROFILE_AND_STYLE:
+- Autumn, creative, Light and Narrow frame
+```
+
+✅ RIGHT (translated to garment terms only):
+```
+GARMENT_REQUIREMENTS:
+- GarmentCategory: top, GarmentSubtype: shirt
+- SilhouetteContour: structured, FitType: regular fit, ShoulderStructure: lightly structured
+- VolumeProfile: regular
+
+VISUAL_DIRECTION:
+- VerticalWeightBias: upper_biased   (← from Light and Narrow frame)
+- LineDirection: vertical            (← supports narrow frame)
+
+FABRIC_AND_BUILD:
+- FabricTexture: textured weave, woven cotton, brushed twill   (← creative archetype hint via subtle texture)
+- FabricWeight: medium
+
+PATTERN_AND_COLOR:
+- ColorTemperature: warm           (← from Autumn)
+- ColorValue: medium_to_deep        (← from Autumn)
+- ColorSaturation: muted_to_rich    (← from Autumn)
+- PrimaryColor: rust, terracotta, brick   (← warm Autumn accent palette)
+- SecondaryColor: camel, warm taupe       (← warm Autumn neutral)
+- PatternType: solid, subtle texture       (← creative within office boundary)
+
+CONTEXT_AND_TIMING:
+- FormalityLevel: smart_casual    (← from daily_office)
+- TimeOfDay: day                  (← from daily_office)
+```
+
+The reranker and visual evaluator do the final occasion-fit + profile-fit reasoning over the retrieved items. Your job is to produce a clean garment-attribute query that retrieves the *right pool* of candidates.
 
 **Allowed `FormalityLevel` values** (catalog vocabulary — these are the only values that match catalog rows):
 
