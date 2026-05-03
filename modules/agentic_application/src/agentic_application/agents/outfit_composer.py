@@ -161,10 +161,13 @@ def _user_context_block(ctx: CombinedContext) -> Dict[str, Any]:
         "formality_hint": ctx.live.formality_hint,
         "time_of_day": ctx.live.time_of_day,
         "weather_context": ctx.live.weather_context,
-        "previous_dislikes": [
-            {"product_id": d.get("product_id"), "reason": d.get("reason")}
-            for d in (ctx.previous_recommendations or {}).get("disliked", [])
-        ][:5],
+        # `disliked_product_ids` is the canonical source for previously
+        # disliked items — populated from feedback_events at turn start
+        # and used by catalog_search to exclude these IDs from retrieval.
+        # Surfacing them here lets the Composer reason about archetypal
+        # patterns (e.g., "user dislikes loud florals") even though the
+        # IDs themselves are already filtered out of the pool.
+        "previous_disliked_product_ids": list(ctx.disliked_product_ids or [])[:10],
     }
 
 

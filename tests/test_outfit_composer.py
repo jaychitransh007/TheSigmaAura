@@ -291,6 +291,48 @@ class OutfitComposerEdgeCaseTests(unittest.TestCase):
         self.assertEqual(0, len(result.outfits))
         self.assertEqual("unsuitable", result.overall_assessment)
 
+    def test_composer_handles_followup_turn_with_previous_recommendations(self) -> None:
+        """May 3, 2026 regression — turn `782216cd` crashed with
+        `'list' object has no attribute 'get'` because the user_context
+        block called `(ctx.previous_recommendations or {}).get(...)` on
+        what is actually a List[Dict]. Today the field isn't read at all
+        (we use `disliked_product_ids` instead); this test exercises the
+        follow-up code path with a populated list to lock in the fix."""
+        ctx = CombinedContext(
+            user=UserContext(user_id="u1", gender="male"),
+            live=LiveContext(
+                user_need="Make it more royal",
+                occasion_signal="wedding_ceremony",
+                formality_hint="ceremonial",
+                is_followup=True,
+            ),
+            hard_filters={"gender_expression": "masculine"},
+            # The shape that triggered the crash — a non-empty list of
+            # prior recommendations, not a dict.
+            previous_recommendations=[
+                {"candidate_id": "prev-1", "items": [{"product_id": "sku-1", "title": "Old kurta_set"}]},
+                {"candidate_id": "prev-2", "items": [{"product_id": "sku-2", "title": "Old suit_set"}]},
+            ],
+            disliked_product_ids=["disliked-sku-9"],
+        )
+        payload = {
+            "outfits": [
+                {"composer_id": "C1", "direction_id": "A", "direction_type": "complete",
+                 "item_ids": ["a1_set1"], "rationale": "Ceremonial kurta_set with deeper jewel tones."},
+            ],
+            "overall_assessment": "moderate",
+            "pool_unsuitable": False,
+        }
+        with patch("agentic_application.agents.outfit_composer.get_api_key", return_value="x"), _patch_composer() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(payload)
+            result = OutfitComposer().compose(ctx, _pool())
+
+        self.assertEqual(1, len(result.outfits))
+        # Verify the user_context block actually got built without
+        # AttributeError — the call would not have reached this point
+        # otherwise.
+        oc.return_value.responses.create.assert_called_once()
+
 
 class OutfitComposerHelperTests(unittest.TestCase):
     """Direct tests of the validation + payload-building helpers — the
