@@ -177,7 +177,7 @@ class ResolvedContextBlock(BaseModel):
 
 
 class RecommendationPlan(BaseModel):
-    retrieval_count: int = 12
+    retrieval_count: int = 5
     directions: List[DirectionSpec]
     plan_source: str = "llm"
     resolved_context: Optional[ResolvedContextBlock] = None
