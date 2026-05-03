@@ -198,13 +198,19 @@ class OutfitRater:
             ],
             text={"format": _RATER_JSON_SCHEMA},
         )
-        self.last_usage = extract_token_usage(response)
+        usage = extract_token_usage(response) or {}
+        # Mirror to last_usage for backwards-compat; consumers needing
+        # thread-safe usage should read RaterResult.usage instead.
+        self.last_usage = dict(usage)
         raw_text = getattr(response, "output_text", "") or "{}"
         try:
             raw = json.loads(raw_text)
         except json.JSONDecodeError as exc:
             _log.warning("OutfitRater: JSON parse failed (%s); returning empty result", exc)
-            return RaterResult(ranked_outfits=[], overall_assessment="weak", raw_response=raw_text)
+            return RaterResult(
+                ranked_outfits=[], overall_assessment="weak",
+                raw_response=raw_text, usage=dict(usage),
+            )
 
         valid_ids = {o.composer_id for o in composed_outfits}
         ranked: List[RatedOutfit] = []
@@ -217,11 +223,11 @@ class OutfitRater:
                 RatedOutfit(
                     composer_id=cid,
                     rank=int(raw_o.get("rank", 0) or 0),
-                    fashion_score=_clamp01(int(raw_o.get("fashion_score", 0) or 0)),
-                    occasion_fit=_clamp01(int(raw_o.get("occasion_fit", 0) or 0)),
-                    body_harmony=_clamp01(int(raw_o.get("body_harmony", 0) or 0)),
-                    color_harmony=_clamp01(int(raw_o.get("color_harmony", 0) or 0)),
-                    archetype_match=_clamp01(int(raw_o.get("archetype_match", 0) or 0)),
+                    fashion_score=_clamp_to_100(int(raw_o.get("fashion_score", 0) or 0)),
+                    occasion_fit=_clamp_to_100(int(raw_o.get("occasion_fit", 0) or 0)),
+                    body_harmony=_clamp_to_100(int(raw_o.get("body_harmony", 0) or 0)),
+                    color_harmony=_clamp_to_100(int(raw_o.get("color_harmony", 0) or 0)),
+                    archetype_match=_clamp_to_100(int(raw_o.get("archetype_match", 0) or 0)),
                     rationale=str(raw_o.get("rationale", "")),
                     unsuitable=bool(raw_o.get("unsuitable", False)),
                 )
@@ -238,10 +244,11 @@ class OutfitRater:
             ranked_outfits=ranked,
             overall_assessment=str(raw.get("overall_assessment") or "moderate"),
             raw_response=raw_text,
+            usage=dict(usage),
         )
 
 
-def _clamp01(value: int) -> int:
+def _clamp_to_100(value: int) -> int:
     """Clamp an int to 0..100. Defensive — the prompt asks for 0–100 but
     the model occasionally emits 0–10 or 0–1 scores during early-stage
     drift. Clamp first, calibrate later."""

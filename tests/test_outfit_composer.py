@@ -231,6 +231,28 @@ class OutfitComposerRetryTests(unittest.TestCase):
         self.assertEqual(1, len(result.outfits))
         self.assertEqual("b_t1", result.outfits[0].item_ids[0])
 
+    def test_composer_returns_usage_on_result(self) -> None:
+        """Token usage is carried on the result object, not on a shared
+        instance attribute, so concurrent turns don't race."""
+        payload = {
+            "outfits": [
+                {"composer_id": "C1", "direction_id": "A", "direction_type": "complete",
+                 "item_ids": ["a1_set1"], "rationale": "ok"},
+            ],
+            "overall_assessment": "moderate",
+            "pool_unsuitable": False,
+        }
+        mock_resp = Mock()
+        mock_resp.output_text = json.dumps(payload)
+        mock_resp.usage = Mock(input_tokens=600, output_tokens=200, total_tokens=800)
+        with patch("agentic_application.agents.outfit_composer.get_api_key", return_value="x"), _patch_composer() as oc:
+            oc.return_value.responses.create.return_value = mock_resp
+            result = OutfitComposer().compose(_ctx(), _pool())
+
+        self.assertIsInstance(result.usage, dict)
+        self.assertIn("prompt_tokens", result.usage)
+        self.assertIn("total_tokens", result.usage)
+
     def test_composer_no_retry_when_pool_unsuitable(self) -> None:
         """When the Composer self-reports pool_unsuitable, we trust it
         and don't burn another LLM call. Empty result, no retry."""

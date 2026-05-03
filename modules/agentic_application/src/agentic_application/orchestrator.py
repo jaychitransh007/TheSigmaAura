@@ -4703,8 +4703,9 @@ class AgenticOrchestrator:
                 ctx={"outfit_count": len(composer_result.outfits)},
             )
             trace_end("outfit_composer", output_summary=f"{len(composer_result.outfits)} outfits")
-            # Persist Composer audit trail.
-            _comp_usage = getattr(self.outfit_composer, "last_usage", {}) or {}
+            # Persist Composer audit trail. Read usage from the result
+            # so concurrent turns don't race over a shared instance attr.
+            _comp_usage = composer_result.usage or {}
             self.repo.log_model_call(
                 conversation_id=conversation_id,
                 turn_id=turn_id,
@@ -4789,7 +4790,7 @@ class AgenticOrchestrator:
                 },
             )
             trace_end("outfit_rater", output_summary=f"{len(rater_result.ranked_outfits)} rated")
-            _rate_usage = getattr(self.outfit_rater, "last_usage", {}) or {}
+            _rate_usage = rater_result.usage or {}
             self.repo.log_model_call(
                 conversation_id=conversation_id,
                 turn_id=turn_id,
