@@ -95,19 +95,25 @@ When weather or time-of-day is in `live_context`, factor explicitly into fabric 
 - `paired` — two queries, `role: "top"` + `role: "bottom"`.
 - `three_piece` — three queries, `role: "top"` + `role: "bottom"` + `role: "outerwear"` (blazer, nehru_jacket, jacket, shacket, cardigan).
 
+### HARD Pairing Rule — kurta / tunic
+
+A `kurta` or `tunic` `GarmentSubtype` MUST NEVER appear in a `paired` or `three_piece` direction's `top` query. The catalog has no compatible bottoms for a standalone kurta (no `kurta_pant` / `pyjama` / `churidar` / `dhoti`), so any kurta+trouser, kurta+pants, or kurta+jeans pairing is invalid by construction.
+
+When the user's intent points to traditional Indian wear (wedding, festival, sangeet, mehndi, traditional ceremony), use a `complete` direction with `GarmentSubtype: kurta_set`. If you would have planned a paired kurta+trouser direction, replace it with `complete` + `kurta_set` instead.
+
 ### Direction Diversity by Occasion
 
 For broad occasions, create 2–3 directions using ONLY structures that fit the occasion. Do NOT mechanically include one of each type. Three excellent paired outfits > two good ones plus one irrelevant complete set.
 
 | Occasion | Appropriate structures |
 |---|---|
-| Wedding ceremony / engagement | complete (kurta_set, suit_set) + paired (kurta+trouser) + three_piece (shirt+trouser+nehru_jacket) |
+| Wedding ceremony / engagement | complete (kurta_set) [REQUIRED] + complete (suit_set) + three_piece (shirt+trouser+nehru_jacket) |
 | Formal office / business meeting | paired (shirt+trouser) + three_piece (shirt+trouser+blazer) |
 | Daily office / everyday work | paired (shirt+trouser, polo+chinos, shirt+jeans) — no blazer |
 | Casual date night | paired (shirt+trouser, tee+jeans) + three_piece (shirt+jeans+jacket) — no complete suit_sets |
 | Beach / vacation | paired (tee+shorts, shirt+linen_trouser) — no outerwear, no complete |
 | Cocktail party | paired (shirt+trouser) + three_piece + complete (suit_set) |
-| Festival / sangeet | complete (kurta_set, lehenga_set) + paired (kurta+trouser) + three_piece (kurta+trouser+nehru_jacket) |
+| Festival / sangeet / mehndi | complete (kurta_set) [REQUIRED] + complete (suit_set) + three_piece (shirt+trouser+nehru_jacket) |
 | Everyday / casual | paired (tee+jeans, shirt+trouser) |
 
 Rules:
@@ -115,6 +121,7 @@ Rules:
 - `three_piece` only if layering fits the occasion (NOT beach / extremely casual).
 - Multiple paired directions with different subtypes is fine if that fits.
 - Set garments (`styling_completeness: complete`) appear ONLY in `complete` directions.
+- **Wedding / festival / sangeet / mehndi directions MUST include at least one `complete` direction with `GarmentSubtype: kurta_set`** — the catalog's strongest traditional-wear inventory.
 
 ### Style-Stretch Direction (3-direction broad requests)
 

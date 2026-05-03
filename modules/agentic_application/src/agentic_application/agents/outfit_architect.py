@@ -15,6 +15,41 @@ from ..schemas import CombinedContext, DirectionSpec, QuerySpec, RecommendationP
 _log = logging.getLogger(__name__)
 
 
+# GarmentSubtype values that have no compatible bottom in the masculine
+# catalog (no kurta_pant / pyjama / churidar / dhoti). A query whose top
+# role names any of these is only valid inside a `complete` direction.
+_KURTA_LIKE_SUBTYPES = {"kurta", "tunic"}
+
+
+def _has_kurta_or_tunic_top(queries: "List[QuerySpec]") -> bool:
+    """True when any `top` query in the direction lists kurta or tunic
+    in its hard_filters or query_document."""
+    for q in queries:
+        if (q.role or "").strip().lower() != "top":
+            continue
+        # Check hard_filters (structured) first.
+        hf = q.hard_filters or {}
+        sub = hf.get("garment_subtype") or hf.get("GarmentSubtype")
+        sub_values = []
+        if isinstance(sub, list):
+            sub_values = [str(s).strip().lower() for s in sub]
+        elif sub:
+            sub_values = [s.strip().lower() for s in str(sub).split(",")]
+        if any(s in _KURTA_LIKE_SUBTYPES for s in sub_values):
+            return True
+        # Check the query_document text as a backstop — the architect
+        # sometimes emits subtype only in the natural-language section.
+        # Match on a "GarmentSubtype: ... kurta" line specifically so we
+        # don't trip on the word "kurta" appearing in unrelated context.
+        for line in (q.query_document or "").splitlines():
+            stripped = line.strip().lower()
+            if stripped.startswith("- garmentsubtype:") or stripped.startswith("garmentsubtype:"):
+                if any(token in stripped for token in (": kurta", " kurta,", " kurta ", "tunic")):
+                    return True
+                break
+    return False
+
+
 def _find_prompt_dir() -> Path:
     """Locate the `prompt/` directory by walking up from this file."""
     here = Path(__file__).resolve()
@@ -313,10 +348,23 @@ class OutfitArchitect:
             ]
             if not queries:
                 continue
+            direction_type = direction.get("direction_type", "")
+            # Hard pairing rule: a kurta or tunic top in a paired/three_piece
+            # direction is invalid by construction (no catalog-side
+            # kurta_pant / pyjama / churidar). Drop the whole direction —
+            # the orchestrator's "no confident match" path is preferable
+            # to shipping kurta+trouser pairings.
+            if direction_type in ("paired", "three_piece") and _has_kurta_or_tunic_top(queries):
+                _log.warning(
+                    "Architect: dropping direction %s (%s) — kurta/tunic top in non-complete direction",
+                    direction.get("direction_id"),
+                    direction_type,
+                )
+                continue
             directions.append(
                 DirectionSpec(
                     direction_id=direction["direction_id"],
-                    direction_type=direction["direction_type"],
+                    direction_type=direction_type,
                     label=direction["label"],
                     queries=queries,
                 )
@@ -334,7 +382,7 @@ class OutfitArchitect:
                 ranking_bias=str(raw_resolved.get("ranking_bias") or "balanced"),
             )
         return RecommendationPlan(
-            retrieval_count=int(raw.get("retrieval_count", 12)),
+            retrieval_count=int(raw.get("retrieval_count", 5)),
             directions=directions,
             plan_source="llm",
             resolved_context=resolved_ctx,
