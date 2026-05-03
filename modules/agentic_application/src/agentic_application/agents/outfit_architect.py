@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import time
-from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Dict, List
@@ -271,20 +268,7 @@ class OutfitArchitect:
         )
 
     def plan(self, combined_context: CombinedContext) -> RecommendationPlan:
-        """Generate a RecommendationPlan via LLM. Raises on failure.
-
-        Mode is controlled by `OUTFIT_ARCHITECT_MODE`:
-          - `monolithic` (default) — single gpt-5.5 call, the legacy path.
-          - `split` — Stage A planner (gpt-5.5, small input) followed by
-            parallel Stage B query-builder calls per direction (gpt-5-mini).
-            See agents/outfit_architect_planner.py + outfit_architect_query_builder.py.
-        """
-        mode = os.environ.get("OUTFIT_ARCHITECT_MODE", "monolithic").strip().lower()
-        if mode == "split":
-            return self._plan_split(combined_context)
-        return self._plan_monolithic(combined_context)
-
-    def _plan_monolithic(self, combined_context: CombinedContext) -> RecommendationPlan:
+        """Generate a RecommendationPlan via LLM. Raises on failure."""
         from platform_core.cost_estimator import extract_token_usage
         self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         system_prompt = self._build_system_prompt(combined_context)
@@ -310,129 +294,6 @@ class OutfitArchitect:
         if not plan.directions:
             raise RuntimeError("Outfit architect returned a plan with no directions")
 
-        return plan
-
-    def _plan_split(self, combined_context: CombinedContext) -> RecommendationPlan:
-        """Two-stage plan with parallel query building.
-
-        Stage A: `OutfitArchitectPlanner` produces structure + seeds.
-        Stage B: `OutfitArchitectQueryBuilder` writes query_documents
-                 for each direction. Stage B calls run in parallel.
-
-        On any failure (Stage A error, Stage B error for a direction),
-        raises RuntimeError so the orchestrator's existing
-        architect-error handler kicks in.
-        """
-        from .outfit_architect_planner import OutfitArchitectPlanner
-        from .outfit_architect_query_builder import OutfitArchitectQueryBuilder
-
-        self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-        # Lazy-init the stage agents so legacy mode pays no construction cost.
-        if not hasattr(self, "_split_planner"):
-            self._split_planner = OutfitArchitectPlanner(model=self._model)
-        if not hasattr(self, "_split_builder"):
-            self._split_builder = OutfitArchitectQueryBuilder(model="gpt-5-mini")
-
-        t0 = time.monotonic()
-        plan_raw = self._split_planner.plan(combined_context)
-        stage_a_ms = int((time.monotonic() - t0) * 1000)
-
-        resolved_ctx = plan_raw.get("resolved_context") or {}
-        direction_plans = plan_raw.get("direction_plans") or []
-        if not direction_plans:
-            raise RuntimeError("Architect Planner returned no direction_plans")
-
-        # Stage B: parallel query writers, one per direction. Each call
-        # returns (queries, usage) so we can tally tokens accurately
-        # without racing on instance state across threads.
-        t1 = time.monotonic()
-        with ThreadPoolExecutor(max_workers=max(1, len(direction_plans))) as pool:
-            futures = [
-                (
-                    dp,
-                    pool.submit(
-                        self._split_builder.build,
-                        direction_plan=dp,
-                        combined_context=combined_context,
-                        resolved_context=resolved_ctx,
-                    ),
-                )
-                for dp in direction_plans
-            ]
-            results: List[tuple[Dict[str, Any], List[QuerySpec], Dict[str, int]]] = []
-            for dp, fut in futures:
-                queries, usage = fut.result()
-                results.append((dp, queries, usage))
-        stage_b_max_ms = int((time.monotonic() - t1) * 1000)
-
-        directions: List[DirectionSpec] = []
-        stage_b_usages: List[Dict[str, int]] = []
-        for dp, queries, usage in results:
-            if not queries:
-                raise RuntimeError(
-                    f"Architect Query Builder returned no queries for direction {dp.get('direction_id')}"
-                )
-            directions.append(
-                DirectionSpec(
-                    direction_id=str(dp.get("direction_id") or ""),
-                    direction_type=str(dp.get("direction_type") or ""),
-                    label=str(dp.get("label") or ""),
-                    queries=queries,
-                )
-            )
-            stage_b_usages.append(usage)
-
-        # Per-stage usage is what telemetry consumers want — Stage A and
-        # Stage B run on different models, so cost attribution requires
-        # them separately. The orchestrator emits TWO `model_call_logs`
-        # rows when `_mode == split`, one per stage.
-        a_usage = dict(self._split_planner.last_usage or {})
-        stage_b_total: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-        for u in stage_b_usages:
-            for k in stage_b_total:
-                stage_b_total[k] = int(stage_b_total[k]) + int(u.get(k, 0) or 0)
-
-        self.last_usage_stage_a = {
-            "prompt_tokens": int(a_usage.get("prompt_tokens", 0) or 0),
-            "completion_tokens": int(a_usage.get("completion_tokens", 0) or 0),
-            "total_tokens": int(a_usage.get("total_tokens", 0) or 0),
-            "model": self._model,
-            "latency_ms": stage_a_ms,
-        }
-        self.last_usage_stage_b = {
-            **stage_b_total,
-            "model": self._split_builder._model,
-            "latency_ms": stage_b_max_ms,
-            "n_calls": len(direction_plans),
-        }
-        # Backward-compat: keep `last_usage` populated with whole-architect
-        # totals + stage-timing breadcrumbs. Old callers that don't know
-        # about per-stage usage still see something reasonable.
-        self.last_usage = {
-            "prompt_tokens": self.last_usage_stage_a["prompt_tokens"] + stage_b_total["prompt_tokens"],
-            "completion_tokens": self.last_usage_stage_a["completion_tokens"] + stage_b_total["completion_tokens"],
-            "total_tokens": self.last_usage_stage_a["total_tokens"] + stage_b_total["total_tokens"],
-            "_stage_a_ms": stage_a_ms,
-            "_stage_b_max_ms": stage_b_max_ms,
-            "_n_directions": len(direction_plans),
-            "_mode": "split",
-        }
-
-        resolved_block = ResolvedContextBlock(
-            occasion_signal=resolved_ctx.get("occasion_signal"),
-            formality_hint=resolved_ctx.get("formality_hint"),
-            time_hint=resolved_ctx.get("time_hint"),
-            specific_needs=list(resolved_ctx.get("specific_needs") or []),
-            is_followup=bool(resolved_ctx.get("is_followup", False)),
-            followup_intent=resolved_ctx.get("followup_intent"),
-            ranking_bias=str(resolved_ctx.get("ranking_bias") or "balanced"),
-        )
-        plan = RecommendationPlan(
-            retrieval_count=int(plan_raw.get("retrieval_count") or 12),
-            directions=directions,
-            plan_source="llm",
-            resolved_context=resolved_block,
-        )
         return plan
 
     def _parse_plan(self, raw: Dict[str, Any]) -> RecommendationPlan:

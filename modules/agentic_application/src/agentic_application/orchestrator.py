@@ -4442,76 +4442,28 @@ class AgenticOrchestrator:
         else:
             effective_live_context = initial_live_context
 
-        # Item 4 (May 1, 2026): pull token usage from architect agent.
-        # May 3, 2026 — split-mode telemetry fix: when the architect ran
-        # in split mode, emit TWO model_call_logs rows so per-stage cost
-        # gets the right model attribution. Stage A is gpt-5.5; Stage B
-        # is gpt-5-mini and accounts for the bulk of the tokens. Logging
-        # one merged row at gpt-5.5 prices overstates cost by ~10×.
         _arch_usage = getattr(self.outfit_architect, "last_usage", {}) or {}
-        _arch_stage_a = getattr(self.outfit_architect, "last_usage_stage_a", None)
-        _arch_stage_b = getattr(self.outfit_architect, "last_usage_stage_b", None)
-        if _arch_usage.get("_mode") == "split" and _arch_stage_a and _arch_stage_b:
-            self.repo.log_model_call(
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                service="agentic_application",
-                call_type="architect_plan",
-                model=str(_arch_stage_a.get("model") or "gpt-5.5"),
-                request_json={
-                    "stage": "A",
+        self.repo.log_model_call(
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            service="agentic_application",
+            call_type="outfit_architect",
+            model="gpt-5.5",
+            request_json={
+                "combined_context_summary": {
+                    "gender": user_context.gender,
                     "occasion": effective_live_context.occasion_signal,
                     "message": message,
-                },
-                response_json={"n_directions": _arch_usage.get("_n_directions")},
-                reasoning_notes=[],
-                latency_ms=int(_arch_stage_a.get("latency_ms") or 0),
-                prompt_tokens=_arch_stage_a.get("prompt_tokens"),
-                completion_tokens=_arch_stage_a.get("completion_tokens"),
-                total_tokens=_arch_stage_a.get("total_tokens"),
-            )
-            self.repo.log_model_call(
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                service="agentic_application",
-                call_type="architect_query_builder",
-                model=str(_arch_stage_b.get("model") or "gpt-5-mini"),
-                request_json={
-                    "stage": "B",
-                    "n_calls": _arch_stage_b.get("n_calls"),
-                    "parallel": True,
-                },
-                response_json={"directions": [d.direction_id for d in plan.directions]},
-                reasoning_notes=[],
-                # Stage B latency = max(parallel calls), not sum, since
-                # ThreadPoolExecutor wallclock = slowest call.
-                latency_ms=int(_arch_stage_b.get("latency_ms") or 0),
-                prompt_tokens=_arch_stage_b.get("prompt_tokens"),
-                completion_tokens=_arch_stage_b.get("completion_tokens"),
-                total_tokens=_arch_stage_b.get("total_tokens"),
-            )
-        else:
-            self.repo.log_model_call(
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                service="agentic_application",
-                call_type="outfit_architect",
-                model="gpt-5.5",
-                request_json={
-                    "combined_context_summary": {
-                        "gender": user_context.gender,
-                        "occasion": effective_live_context.occasion_signal,
-                        "message": message,
-                        "is_followup": effective_live_context.is_followup,
-                    }
-                },
-                response_json=plan.model_dump(),
-                reasoning_notes=[],
-                latency_ms=architect_ms,
-                prompt_tokens=_arch_usage.get("prompt_tokens"),
-                completion_tokens=_arch_usage.get("completion_tokens"),
-                total_tokens=_arch_usage.get("total_tokens"),
-            )
+                    "is_followup": effective_live_context.is_followup,
+                }
+            },
+            response_json=plan.model_dump(),
+            reasoning_notes=[],
+            latency_ms=architect_ms,
+            prompt_tokens=_arch_usage.get("prompt_tokens"),
+            completion_tokens=_arch_usage.get("completion_tokens"),
+            total_tokens=_arch_usage.get("total_tokens"),
+        )
         emit("outfit_architect", "completed", ctx={
             "direction_types": sorted({d.direction_type for d in plan.directions}),
             "direction_count": len(plan.directions),
