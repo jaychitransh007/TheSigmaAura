@@ -5407,14 +5407,17 @@ class Phase12EStageEmissionTests(unittest.TestCase):
     - validate_request, onboarding_gate, user_context, copilot_planner
       always run first.
     - occasion_recommendation / pairing_request: outfit_architect →
-      catalog_search → outfit_assembly → reranker → visual_evaluation
-      (or outfit_evaluation legacy) → response_formatting → virtual_tryon
-    - garment_evaluation: no architect/assembler/search; just runs the
-      handler-internal try-on + visual evaluator
-    - outfit_check: no architect/assembler/search; visual evaluator on
-      the user photo
+      catalog_search → outfit_composer → outfit_rater →
+      visual_evaluation → response_formatting → virtual_tryon (when a
+      person photo is on file). May 3, 2026 (PR #30): the legacy
+      `outfit_assembly` and `reranker` stages were retired with the
+      assembler + reranker themselves.
+    - garment_evaluation: no architect / composer / search; just runs
+      the handler-internal try-on + visual evaluator.
+    - outfit_check: no architect / composer / search; visual evaluator
+      on the user photo.
     - style_discovery / explanation_request: validate → gate → planner →
-      direct response handler (no pipeline stages)
+      direct response handler (no pipeline stages).
     """
 
     @staticmethod
@@ -5503,11 +5506,11 @@ class Phase12EStageEmissionTests(unittest.TestCase):
         self.assertIn("onboarding_gate", stage_names)
         self.assertIn("user_context", stage_names)
         self.assertIn("copilot_planner", stage_names)
-        # NO pipeline stages — style_discovery doesn't go near search/assemble/evaluate
+        # NO pipeline stages — style_discovery doesn't go near search/compose/rate/evaluate
         self.assertNotIn("outfit_architect", stage_names)
         self.assertNotIn("catalog_search", stage_names)
-        self.assertNotIn("outfit_assembly", stage_names)
-        self.assertNotIn("outfit_evaluation", stage_names)
+        self.assertNotIn("outfit_composer", stage_names)
+        self.assertNotIn("outfit_rater", stage_names)
         self.assertNotIn("visual_evaluation", stage_names)
         self.assertNotIn("virtual_tryon", stage_names)
 

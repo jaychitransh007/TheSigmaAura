@@ -2079,7 +2079,7 @@ Files touched:
 
 **What can be added incrementally** (same `trace_start/trace_end` pattern, one edit per step):
 - `onboarding_gate`, `user_context` steps
-- `outfit_architect`, `catalog_search`, `outfit_assembly`, `reranker` steps
+- `outfit_architect`, `catalog_search`, `outfit_composer`, `outfit_rater` steps
 - `tryon_render`, `visual_evaluator`, `response_formatting` steps
 - Profile snapshot (profile_confidence_pct, gender, seasonal, body_shape, archetypes)
 - Wishlist + purchase click correlation
@@ -2107,7 +2107,7 @@ Files touched:
 | **10. Latency** | `total_latency_ms` | integer |
 | **Timestamps** | `created_at`, `updated_at` | timestamptz |
 
-**Steps array** — one element per pipeline stage (11 for a full pairing_request, 4-6 for simpler intents): `validate_request` → `onboarding_gate` → `wardrobe_enrichment` → `copilot_planner` → `outfit_architect` → `catalog_search` → `outfit_assembly` → `reranker` → `tryon_render` → `visual_evaluator` → `response_formatting`. Each element carries `{step, model, input_summary, output_summary, latency_ms, status, error}`.
+**Steps array** — one element per pipeline stage (11 for a full pairing_request, 4-6 for simpler intents): `validate_request` → `onboarding_gate` → `wardrobe_enrichment` → `copilot_planner` → `outfit_architect` → `catalog_search` → `outfit_composer` → `outfit_rater` → `tryon_render` → `visual_evaluator` → `response_formatting`. Each element carries `{step, model, input_summary, output_summary, latency_ms, status, error}`.
 
 **User response correlation** — `user_response` starts as `'{}'` and is updated retroactively when the next signal arrives: next message (from the following `process_turn`), feedback (from the feedback endpoint), wishlist (from the wishlist endpoint), or purchase click (when tracked). Single `UPDATE ... WHERE turn_id = ?`.
 
