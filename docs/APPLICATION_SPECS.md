@@ -2,18 +2,15 @@
 
 Last updated: May 3, 2026 (Model migration to gpt-5.5/gpt-5-mini; architect prompt modular assembly; confidence threshold 0.75; parallel try-on renders; Lever 3 split-architect deprecated and removed)
 
-> **⚠️ Partially deprecated.** Sections of this document still describe the
-> *legacy* routing layer (`intent_router.py`, `intent_handlers.py`,
-> `context_gate.py`, `context/occasion_resolver.py`) which has been **deleted**
-> from the codebase and replaced by the LLM copilot planner inlined into
-> `process_turn`. See `docs/CURRENT_STATE.md` § "Completed work (March 20,
-> 2026)" for the teardown record.
+> **⚠️ Header sections are partially deprecated; § Live System Reference (bottom) is authoritative.** The opening "Implementation Spec" sections of this document still describe the *legacy* routing layer (`intent_router.py`, `intent_handlers.py`, `context_gate.py`, `context/occasion_resolver.py`) which has been **deleted** from the codebase and replaced by the LLM copilot planner inlined into `process_turn`.
 >
-> When this file and `docs/CURRENT_STATE.md` disagree, **`CURRENT_STATE.md`
-> is the source of truth**. The accurate parts of this file are the agent
-> prompt structure, evaluator schema, and step-by-step pipeline narration.
-> Anything that names the deleted modules above is stale and should be
-> read as historical context only.
+> **The authoritative "what is running right now" view lives at the bottom of this file in § Live System Reference (May 3, 2026)** — migrated from the now-deleted `CURRENT_STATE.md`. When the legacy header sections disagree with § Live System Reference, the latter wins.
+>
+> Other docs that delegate to this one:
+> - `docs/PRODUCT.md` — product framing, personas, gap-versus-target
+> - `docs/WORKFLOW_REFERENCE.md` — per-intent execution flows + full Phase History decision log
+> - `docs/RELEASE_READINESS.md` — release gates + Recently Shipped (May 1) record
+> - `docs/OPERATIONS.md` — dashboards, on-call runbook, ops scripts, Supabase sync, run instructions
 
 ## Product Positioning
 
@@ -28,7 +25,7 @@ This document serves two purposes:
 - the prioritized build plan for closing the gap between current state (shopping-first recommendation engine) and target state (lifestyle stylist with shopping)
 
 For the user-facing product summary, personas, journeys, and stories, see `docs/PRODUCT.md`.
-For the current project state, gap analysis, and file layout, see `docs/CURRENT_STATE.md`.
+For the current project state, gap analysis, and file layout, see § Live System Reference at the bottom of this file.
 For detailed step-by-step execution flows, see `docs/WORKFLOW_REFERENCE.md`.
 
 Implemented now:
@@ -60,7 +57,7 @@ Implemented now:
 - wardrobe-first occasion, pairing, outfit-check follow-through, and capsule/trip support
 - pairing request image gate: asks user for garment image when message references "this shirt" but no image attached
 - anchor_garment on LiveContext: uploaded garment passed to architect with full enrichment attributes; architect skips anchor's role; anchor injected as sole item for its role before assembly
-- **P0 open: pairing pipeline end-to-end fix still needed** — anchor injection + role stripping code exists but deployment issues prevent validation; see `docs/CURRENT_STATE.md` for details
+- **P0 open: pairing pipeline end-to-end fix still needed** — anchor injection + role stripping code exists but deployment issues prevent validation; see § Live System Reference below for details
 - explicit source selection metadata: wardrobe-first, catalog-only, or hybrid
 - deterministic 12-sub-season color analysis (draping removed — deterministic interpreter is sole authority)
 - color palette system: base/accent/avoid colors derived from seasonal group, passed to copilot planner, outfit architect, and outfit check agents
@@ -89,7 +86,7 @@ Implemented now:
 - Intent-history endpoint: `GET /v1/users/{id}/intent-history` groups turns by (intent, occasion), embeds try-on images, supports `?types=` filter, filters disliked outfits, tags liked outfits
 - Confident Luxe design system across onboarding, processing, main app, and admin — ivory `#F7F3EC` canvas, oxblood `#5C1A1B` accent, champagne `#C6A15B` signal (personal cues only), Fraunces (display) + Inter (body) + JetBrains Mono (labels), hairline borders replacing shadows on static cards, full dark mode parity via `[data-theme="dark"]`, motion system (single easing curve, 120/240/480ms durations, view-enter fade+rise, runway label track-in, staggered Looks grid entrance, `prefers-reduced-motion` override)
 
-Remaining work is now concentrated in hardening and live-environment validation rather than core intent/runtime capability gaps. See `docs/CURRENT_STATE.md` for the execution checklist.
+Remaining work is now concentrated in hardening and live-environment validation rather than core intent/runtime capability gaps. See `docs/RELEASE_READINESS.md` for the execution checklist.
 
 ## Strategic Product Direction
 
@@ -2012,3 +2009,536 @@ The Application Layer is considered complete for v1 when:
 - `platform_core` holds shared runtime infrastructure; `agentic_application` is the canonical application module
 
 All features complete — no outstanding blockers.
+
+---
+
+# Live System Reference (May 3, 2026)
+
+_Migrated from `CURRENT_STATE.md` on May 3, 2026. This is the authoritative "what is running right now" view that other docs delegate to. The historical decision-log (Phase 9–15) lives at the bottom of `docs/WORKFLOW_REFERENCE.md`._
+
+## Active Runtime
+
+Primary app runtime:
+- `run_agentic_application.py`
+- `modules/agentic_application/src/agentic_application/api.py`
+- `modules/agentic_application/src/agentic_application/orchestrator.py`
+
+Supporting runtime surface still present:
+- `modules/platform_core`
+- `modules/user` (owns all user/onboarding runtime code)
+- `modules/catalog` (owns all catalog admin, enrichment, and retrieval code)
+
+Important current rule:
+- new recommendation work should treat `agentic_application` as the canonical application runtime
+
+
+## Performance Optimization (May 3, 2026)
+
+A trace audit on May 3, 2026 of the date-night turn for `user_03026279ecd6` measured 141.7 s end-to-end at $0.30 per turn. Three optimization levers were tried; two landed and shipped as the new default; the third was deprecated and removed.
+
+### Shipped (default-on)
+
+- **Lever 1 — Parallel Gemini try-on renders.** [orchestrator.py:_render_candidates_for_visual_eval](modules/agentic_application/src/agentic_application/orchestrator.py) now runs the top-N candidate renders in a `ThreadPoolExecutor` batch instead of sequentially. The cache lookup and quality gate continue to work per-candidate inside each thread; over-generation pool fallback runs the next batch in parallel too. INFO logs surface batch-start / batch-end wallclocks so parallelism is provable from server stdout. **Saves time only when there are 2+ cold renders in a turn**; on cache-heavy repeat turns the visible win is smaller.
+- **Lever 2 — Architect prompt trim + conditional assembly.** [prompt/outfit_architect.md](prompt/outfit_architect.md) trimmed from 11.6K → 4.8K tokens. Anchor-garment rules and follow-up-intent rules moved to separate modules ([outfit_architect_anchor.md](prompt/outfit_architect_anchor.md), [outfit_architect_followup.md](prompt/outfit_architect_followup.md)) loaded at request time only when the turn actually needs them. **Reproducible: −5,574 input tokens, −3 s architect latency, −$0.04 architect cost per turn.**
+
+### Deprecated and removed
+
+- **Lever 3 — Architect split (Plan + parallel Query Builder).** Premise: parallel per-direction LLM calls would beat monolithic on wallclock by sending each call less input. Empirically wrong — output streaming time, not input size, dominates Stage B wallclock. Each call must emit 2–3 multi-section `query_document` strings totaling 2–3K tokens; at gpt-5-mini's ~100 tok/s that's 20–30 s per parallel call regardless of input size. Three iterations of `max_output_tokens` tightening produced either truncation crashes or no latency win. Removed from the codebase in PR #10 (May 3, 2026). See git history for the full series (`git log --grep "architect-split"`).
+
+### Honest measured impact (Levers 1 + 2 only)
+
+Same query, same user, same anchor garment, comparing the pre-opt baseline against a 3-outfit response with all renders cold (apples-to-apples — no cache benefit folded in):
+
+| | Baseline | Post Levers 1+2 | Δ |
+|---|---:|---:|---:|
+| End-to-end latency | 141.7 s | ~118 s | −24 s (−17%) |
+| Architect input tokens | 15,264 | 9,690 | −37% |
+| Architect cost | $0.145 | $0.105 | −$0.040 (−24%) |
+| Total cost (cold renders) | ~$0.30 | ~$0.26 | −$0.04 (−13%) |
+
+A repeat-turn run (2 of 3 garment combos already in the per-user tryon image cache) measured 100.8 s / $0.15 — but that further reduction is the **pre-existing tryon cache**, not a benefit from this work.
+
+### Lever 1 doesn't always show
+
+Lever 1's win is conditional on **2+ cold renders in the same turn**. With heavy cache hits, it saves nothing extra over what the cache already gave you. The parallel-batch logging makes this directly visible — look for `tryon parallel batch: N/N succeeded (cold=K, cache_hit=M) in Xms wallclock` in the server logs. Sequential would show a wallclock ≈ sum of individual render times; parallel shows wallclock ≈ max.
+
+### Lessons
+
+1. **Output-volume scaling can dominate input-volume scaling for LLM latency.** Parallelizing across calls doesn't help when each one is output-bound. The Lever 3 design assumed the wrong constraint was binding.
+2. **Prompt-level output budgets aren't enforceable.** "≤350 tokens per query_document" in the prompt didn't constrain output. Only `max_output_tokens` does — and that brings truncation risk that has to be handled.
+3. **Cost-attribution telemetry must be per-model-call, not per-step.** Logging `outfit_architect` as one row at gpt-5.5 prices for tokens that mostly ran on gpt-5-mini overstated cost by ~10×.
+4. **Cache compounds.** The per-user tryon image cache delivered the biggest single-turn cost saving in steady-state runs — without any new code.
+5. **Ship behind a flag when uncertain.** Lever 3 looked good on paper, failed in practice, and was easy to roll back because it shipped behind `OUTFIT_ARCHITECT_MODE` and was always default-off.
+6. **Honest measurement > stubborn projection.** When the math says X and measurement says ¬X, believe the measurement and document why the model was wrong.
+
+## Bounded Context Status
+
+### User
+
+Status:
+- strong
+- functionally usable (verified by unit/integration tests; live end-to-end smoke against staging is still pending — see `docs/RELEASE_READINESS.md` Gate 2)
+
+Implemented:
+- OTP-based onboarding flow (fixed OTP: `123456`)
+- acquisition-source capture on OTP verification (`acquisition_source`, `acquisition_campaign`, `referral_code`, `icp_tag`)
+- onboarding profile persistence (name, DOB, gender, height_cm, waist_cm, profession)
+- image upload with SHA256-encrypted filenames (user_id + category + timestamp), enforced 3:2 aspect ratio on frontend
+- image categories: `full_body`, `headshot`
+- 3-agent analysis pipeline (model: `gpt-5.5` since May 1, 2026 — was `gpt-5.4` before; reasoning effort: high, runs in parallel via `ThreadPoolExecutor`):
+  1. `body_type_analysis` — uses full_body image → ShoulderToHipRatio, TorsoToLegRatio, BodyShape, VisualWeight, VerticalProportion, ArmVolume, MidsectionState, BustVolume
+  2. `color_analysis_headshot` — uses headshot → SkinSurfaceColor, HairColor, HairColorTemperature, EyeColor, EyeClarity
+  3. `other_details_analysis` — uses headshot + full_body → FaceShape, NeckLength, HairLength, JawlineDefinition, ShoulderSlope
+- Each agent returns JSON with `{value, confidence, evidence_note}` per attribute
+- Deterministic interpretation pipeline (`interpreter.py`) derives:
+  - `SeasonalColorGroup` — 4-season → 12 sub-season color analysis (deterministic from weighted warmth, depth, chroma). Digital draping removed.
+  - `BaseColors` — Foundation/neutral colors for outfit anchors (4-5 per season, e.g. Autumn: warm taupe, warm brown, olive, muted gold)
+  - `AccentColors` — Statement/pop colors that complement the user's coloring (4-5 per season, e.g. Autumn: terracotta, rust, burgundy, forest green, burnt orange)
+  - `AvoidColors` — Colors that clash with the user's natural coloring (4-5 per season, e.g. Autumn: icy blue, fuchsia, royal blue, stark white, silver)
+  - `HeightCategory` — Petite (<160cm) / Average (160-175cm) / Tall (>175cm)
+  - `WaistSizeBand` — Very Small / Small / Medium / Large / Very Large
+  - `ContrastLevel` — Low / Medium-Low / Medium / Medium-High / High (from depth spread across skin, hair, eyes)
+  - `FrameStructure` — Light and Narrow / Light and Broad / Medium and Balanced / Solid and Narrow / Solid and Broad
+- ~~**Digital draping**~~ (`user/draping.py` deleted) — was LLM-based 3-round vision chain, removed due to systematic cool-bias:
+  - R1: Warm vs Cool (gold vs silver overlay)
+  - R2: Within-branch (Spring vs Autumn, or Summer vs Winter)
+  - R3: Confirmation (winner vs cross-temperature neighbor)
+  - Produces probability distribution over 4 seasons; selects 1-2 groups
+  - Overrides deterministic SeasonalColorGroup when available
+  - Results stored in `user_effective_seasonal_groups` table
+- **Comfort learning** (`agentic_application/services/comfort_learning.py`) — behavioral signal system:
+  - High-intent signals: outfit likes for garments outside current seasonal groups
+  - Low-intent signals: explicit color keyword requests
+  - Threshold: 5 high-intent signals triggers seasonal group update
+  - Max 2 groups per user
+- Style archetype preference: user selects 3-5 archetypes across 3 layers → produces primaryArchetype, secondaryArchetype, blending ratios, risk tolerance, formality lean, pattern type, comfort boundaries
+- style archetype session images are served by the onboarding app from repo-backed assets under `archetypes/choices`, so local onboarding no longer depends on Supabase bucket sync
+- all user-facing pages (onboarding, profile analysis/processing, main app) share the unified warm/burgundy design system
+- Profile status / rerun support (single-agent targeted reruns with baseline preservation)
+
+Current ownership reality:
+- all runtime behavior lives under `modules/user`
+- `agentic_application` imports exclusively from `user.*` via `ApplicationUserGateway`
+- `modules/onboarding` shim has been removed (zero consumers remained)
+
+Main remaining gaps:
+- see the global gap-analysis checklist below; most remaining work is in cross-module routing and response quality, not missing user-module primitives
+
+### Catalog
+
+Status:
+- strong
+- functionally usable (enrichment + embedding pipeline verified by unit tests + manual catalog admin runs; embedding-similarity quality on the live staging dataset still requires human spot-check before the first-50 release)
+
+Implemented:
+- admin upload screen (`/admin/catalog`) with modern burgundy theme matching main app
+- CSV upload flow (saves to `data/catalog/uploads/`)
+- enrichment pipeline (50+ attributes organized in 8 sections)
+- sync into `catalog_enriched` (upsert on `product_id`)
+- embedding generation into `catalog_item_embeddings` (text-embedding-3-small, 1536 dimensions)
+- partial run support via `max_rows`
+- local/staging sync paths
+- canonical product URL persistence during ingestion (with backfill for older rows)
+- auto-generated `product_id`: CSVs lacking a `product_id` column get IDs derived from URL (e.g. `CAMPUSSUTRA_mens-crimson-red-shirt`) or title hash
+- auto-inferred `row_status`: CSVs lacking a `row_status` column get `"ok"` for rows with valid product_id + title, `"missing"` otherwise
+- only rows with `row_status` in `{ok, complete}` are embeddable by default; `include_incomplete` flag bypasses this filter
+- skip-already-embedded optimization: embedding sync fetches existing product IDs from Supabase and skips them, so only new/missing rows are embedded
+- job lifecycle tracking: every sync operation (items, URLs, embeddings) creates a `catalog_jobs` row with status transitions (running → completed/failed), params, row counts, and error messages
+- selective rerun support: `start_row`/`end_row` parameters on items sync and embeddings sync for range-based partial reruns
+- admin job history: `/status` endpoint returns running/failed job counts and recent job list; UI renders job history table with status pills, params, row counts, and truncated errors
+- default source CSV path: `data/catalog/enriched_catalog_upload.csv`
+- graceful handling when source CSV doesn't exist (status endpoint returns empty rows instead of 500)
+- `catalog_items` table removed (superseded by `catalog_enriched`)
+
+Catalog embedding document structure (8 labeled sections):
+1. `GARMENT_IDENTITY` — GarmentCategory, GarmentSubtype, GarmentLength, StylingCompleteness, GenderExpression
+2. `SILHOUETTE_AND_FIT` — SilhouetteContour, SilhouetteType, VolumeProfile, FitEase, FitType, ShoulderStructure, WaistDefinition, HipDefinition
+3. `NECKLINE_SLEEVE_EXPOSURE` — NecklineType, NecklineDepth, SleeveLength, SkinExposureLevel
+4. `FABRIC_AND_BUILD` — FabricDrape, FabricWeight, FabricTexture, StretchLevel, EdgeSharpness, ConstructionDetail
+5. `EMBELLISHMENT` — EmbellishmentLevel, EmbellishmentType, EmbellishmentZone
+6. `VISUAL_DIRECTION` — VerticalWeightBias, VisualWeightPlacement, StructuralFocus, BodyFocusZone, LineDirection
+7. `PATTERN_AND_COLOR` — PatternType, PatternScale, PatternOrientation, ContrastLevel, ColorTemperature, ColorSaturation, ColorValue, ColorCount, PrimaryColor, SecondaryColor
+8. `OCCASION_AND_SIGNAL` — FormalitySignalStrength, FormalityLevel, OccasionFit, OccasionSignal, TimeOfDay
+
+Each attribute is stored with a confidence score and included in the embedding document as `- AttributeName: value [confidence=X.XX]`.
+
+Embedding metadata (stored in `catalog_item_embeddings.metadata_json` for filtering):
+- garment_category, garment_subtype, styling_completeness, gender_expression, formality_level, occasion_fit, time_of_day, primary_color, price
+
+Current ownership reality:
+- all retrieval and enrichment code lives in `catalog/retrieval/` and `catalog/enrichment/` subdirectories
+- `modules/catalog_retrieval` and `modules/catalog_enrichment` shims have been removed (consumers migrated to `catalog.*`)
+- `agentic_application` imports only from `catalog.*`
+
+Main remaining gaps:
+- see the global gap-analysis checklist below; the main remaining work is how catalog paths are invoked and blended at runtime
+
+### Application
+
+Status:
+- active
+- usable end-to-end
+- not yet final-quality
+- verification basis: 92+ tests in `tests/test_agentic_application.py` cover orchestrator routing, the planner→architect→search→assemble→evaluate→format pipeline, wardrobe-first short-circuits, hybrid pivot, disliked-product suppression, cross-outfit diversity, and metadata persistence. Live verification against a staging Supabase + real catalog embeddings is governed by the gates in `docs/RELEASE_READINESS.md` and is **not** complete.
+
+Implemented:
+- orchestrated recommendation pipeline with LLM copilot planner front-end
+- copilot planner (`gpt-5.5` since May 1, 2026; was `gpt-5.4` before) classifies intent and decides action — replaces legacy keyword router + context gate
+- **intent registry** (`intent_registry.py`): single source of truth for all 12 intents, 9 actions, and 7 follow-up intents via Python `StrEnum` — consumed by planner, orchestrator, agents, API, and tests
+- planner actions: `run_recommendation_pipeline`, `run_outfit_check`, `run_shopping_decision`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`, `run_product_browse`
+- `response_type` field: `"recommendation"` | `"clarification"`
+- saved user context loading
+- conversation memory carry-forward
+- LLM-only architect planner — no deterministic fallback (model: `gpt-5.4`)
+- strict JSON schema with enum-constrained hard filter vocabulary
+- hard filters: `gender_expression` (always), `garment_subtype` (conditional — only when user names a specific garment type); `garment_category` and `styling_completeness` are **soft signals** in the query document text only (April 9 2026 tiering)
+- soft signals via embedding only: `occasion_fit`, `formality_level`, `time_of_day`
+- no filter relaxation — single search pass per query
+- direction-aware retrieval: `needs_bottomwear` / `needs_topwear` / `complete`
+- complete-outfit and paired top/bottom support
+- assembly layer with deterministic compatibility pruning
+- evaluator with graceful fallback (model: `gpt-5.4`), 8 style archetype percentage scoring (0–100 per archetype), and server-side output validation (score clamping, item_id verification, note backfill)
+- architect failure returns error to user (no silent degradation)
+- latency tracking via `time.monotonic()` on architect, search, evaluator (persisted as `latency_ms`)
+- style archetype override: user's saved `style_preference.primaryArchetype` is the default, but if the user's message or conversation history explicitly requests a different style, the architect uses the requested style instead; the response formatter reads the archetype from the plan's query documents (not just the profile) so the response message reflects the actual style used
+- response formatting (max 3 outfits) and UI rendering support
+- virtual try-on via Gemini (`gemini-3.1-flash-image-preview`), parallel generation for all outfits, persistent storage to disk + DB with cache reuse by garment ID set
+- turn artifact persistence
+- dependency-validation instrumentation: turn-completion events across web / WhatsApp, referral events, and retention reporting for first/second/third session behavior, cohort anchors, and memory-input lift
+
+Main remaining gaps:
+- none for the documented next-phase checklist
+
+
+## Application Layer: Current Behavioral Reality
+
+Current execution order:
+1. load user context
+2. build conversation memory from prior turn state
+3. copilot planner (gpt-5.4) — classifies intent, decides action (`run_recommendation_pipeline`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`), resolves context
+4. action dispatch — if `respond_directly` or `ask_clarification`, return planner response directly (skip stages 5-10)
+5. generate recommendation plan via outfit architect LLM (gpt-5.4) — no fallback, failure = error to user
+6. retrieve catalog products per query direction (text-embedding-3-small, single search pass)
+7. assemble outfit candidates (deterministic)
+8. evaluate and rank candidates (gpt-5.4, fallback: assembly_score)
+9. format response payload (max 3 outfits)
+10. generate virtual try-on images (gemini-3.1-flash-image-preview, parallel) — checks cache by user + garment IDs first; saves new results to disk + `virtual_tryon_images` table
+11. persist turn artifacts and updated conversation context
+
+Current supported plan modes:
+- `complete_only`
+- `paired_only`
+- `mixed` (standard for broad occasion requests — typically 1 complete + 1 paired + 1 three_piece)
+
+Current supported direction types:
+- `complete` — single query, role=complete (kurta_set, suit_set, dress)
+- `paired` — two queries: role=top + role=bottom
+- `three_piece` — three queries: role=top + role=bottom + role=outerwear (blazer, nehru_jacket, jacket)
+
+Current supported retrieval directions:
+- complete outfit
+- paired top
+- paired bottom
+
+Current follow-up support:
+- `increase_boldness`
+- `decrease_formality`
+- `increase_formality`
+- `change_color`
+- `full_alternative`
+- `more_options`
+- `similar_to_previous`
+
+Current nuance:
+- all follow-up intents are detected, persisted, and have structured runtime effect across architect, assembler, evaluator, and response formatter
+- `change_color`: architect preserves non-color dimensions while shifting colors; assembler penalizes +0.10 per overlapping color with previous; evaluator reports preserved non-color attributes in style_note; formatter opens with "fresh color direction" and shows intent-specific follow-up chips
+- `similar_to_previous`: architect preserves all dimensions from previous recommendation; assembler boosts -0.05 for matching occasion and -0.03 per shared color; evaluator reports all shared dimensions (colors, patterns, volume, fit, silhouette) in style_note; formatter opens with "similar style" and shows intent-specific follow-up chips
+- evaluator receives candidate-by-candidate deltas against the previous recommendation with 8 signals: colors, occasions, roles, formality levels, pattern types, volume profiles, fit types, silhouette types
+- evaluator payload includes `body_context_summary` (height_category, frame_structure, body_shape) for body-aware ranking
+- evaluator returns 16 percentage scores (all integers 0–100, clamped server-side):
+  - 8 evaluation criteria: body_harmony_pct, color_suitability_pct, style_fit_pct, risk_tolerance_pct, occasion_pct, comfort_boundary_pct, specific_needs_pct, pairing_coherence_pct — how well the outfit fits this user; fallback derives from assembly_score * 100
+  - 8 style archetype: classic_pct, dramatic_pct, romantic_pct, natural_pct, minimalist_pct, creative_pct, sporty_pct, edgy_pct — outfit's aesthetic profile, not user preference
+- full evaluation output (all notes, all 16 _pct fields) is persisted in turn artifacts
+- LLM evaluator outputs are normalized so sparse follow-up notes are backfilled from candidate deltas
+
+
+## Retrieval Reality
+
+Embedding stack:
+- model: `text-embedding-3-small`
+- dimensions: `1536`
+- vector search: pgvector cosine similarity
+
+Primary data sources:
+- vectors from `catalog_item_embeddings`
+- hydrated products from `catalog_enriched`
+
+Current filter behavior:
+- global hard filter: `gender_expression` (always applied, never relaxed)
+- direction hard filters: `styling_completeness` — role-specific values: `complete` for complete directions, `needs_bottomwear` for top role (all direction types), `needs_topwear` for bottom role, `["needs_innerwear"]` for outerwear role. Outerwear items are exclusively discoverable via the outerwear role — never in top or bottom.
+- architect explicit hard_filters: `garment_subtype` (conditional — set for specific requests, null for broad)
+- query-document lines are **soft signals for embedding similarity only** — `_QUERY_FILTER_MAPPING` is empty; no hard filters extracted from query document text (April 9 2026)
+- soft signals via embedding similarity only: `occasion_fit`, `formality_level`, `time_of_day`
+
+No filter relaxation — single search pass per query. No retry with dropped filters.
+
+Vector search function: `match_catalog_item_embeddings` uses a `MATERIALIZED` CTE in plpgsql to pre-filter rows before vector distance calculation. This prevents pgvector's HNSW index from scanning approximate nearest neighbors across the entire table and then post-filtering (which can eliminate all valid matches). The materialized CTE forces row-level WHERE filters to execute first, then runs exact cosine distance on the filtered subset.
+
+
+## Product Payload Reality
+
+Current runtime product cards carry:
+- image
+- title
+- price
+- product URL
+- similarity
+- garment_category
+- garment_subtype
+- primary_color
+- role
+- formality_level
+- occasion_fit
+- pattern_type
+- volume_profile
+- fit_type
+- silhouette_type
+
+Current response behavior:
+- UI renders `result.outfits` as 3-column PDP cards
+- `OutfitCard.tryon_image` is populated by the orchestrator with a serveable URL (not base64) pointing to a persisted try-on image on disk; rendered as the default hero image
+- `OutfitCard` carries 16 `_pct` fields: 8 evaluation criteria (rendered as progress bars) + 8 style archetypes (rendered as radar chart)
+- `response.metadata` includes `turn_id` for feedback correlation
+- both internal (`agentic_application/schemas.py`) and shared (`platform_core/api_schemas.py`) schemas are aligned
+
+
+## Persistence Reality
+
+Turn-level artifacts currently persisted:
+- raw user message
+- resolved live context
+- conversation memory
+- planner output
+- applied retrieval filters
+- retrieved product IDs / summaries
+- assembled candidate summaries
+- final recommendations
+
+Conversation-level state currently persisted:
+- latest live context
+- latest conversation memory
+- latest recommendation plan
+- latest recommendation summaries
+
+
+## Architecture Review Snapshot
+
+Current alignment level:
+- architectural alignment: strong — pipeline, schemas, persistence all clean
+- behavioral alignment: partial — system defaults to catalog-first; wardrobe-first and non-recommendation intents are the gap
+- color guidance: strong — seasonal color group drives base/accent/avoid color palettes passed to planner, architect, and outfit check agents
+- design consistency: strong — onboarding, main app, and admin share unified warm/burgundy visual language
+
+Main strengths:
+- intent registry (`intent_registry.py`) — StrEnum-based single source of truth for 12 intents, 9 actions, 7 follow-up intents; consumed by all runtime and test code
+- copilot planner routes 12 intents with action dispatch
+- typed context handoff between all pipeline stages
+- strict JSON schema with enum-constrained filter vocabulary
+- evaluator has graceful assembly_score fallback
+- follow-up state persisted server-side
+- latency tracked per agent and persisted
+- wardrobe ingestion and retrieval infrastructure exists
+- confidence engines (profile + recommendation) fully operational
+- dual-layer moderation with policy logging
+
+Main weak spots:
+- live-environment hardening still needs more manual verification than the unit/integration suite
+- trip/capsule catalog-path diversity still depends on deeper planner/assembler diversity work
+- disliked-product suppression across turns is still not implemented
+- first-50 rollout dashboards and release-readiness criteria still need operational definition
+
+
+## What Is Working
+
+### User Layer
+- OTP-based onboarding with acquisition source tracking
+- 3-agent parallel analysis pipeline (body type, color, other details) via gpt-5.4
+- ~~digital draping~~ — removed (was 3-round LLM vision chain, replaced by deterministic 12-sub-season interpreter)
+- deterministic interpretation engine (seasonal color, base/accent/avoid color palettes, height, waist, contrast, frame)
+- style archetype preference capture (3 layers → primary/secondary archetypes, risk tolerance, formality lean)
+- comfort learning — behavioral seasonal palette refinement from outfit likes
+- wardrobe ingestion with vision-API enrichment and dual-layer image moderation
+
+### Catalog Layer
+- CSV upload + enrichment pipeline (50+ attributes, 8 embedding sections)
+- embedding generation (text-embedding-3-small, 1536 dim, pgvector) with skip-already-embedded optimization
+- auto-generated `product_id` from URL for CSVs lacking the column; auto-inferred `row_status`; include-incomplete toggle for embedding
+- canonical product URL persistence with backfill support
+- job lifecycle tracking with admin UI
+- `catalog_items` table removed (superseded by `catalog_enriched`)
+
+### Application Layer
+- intent registry (`intent_registry.py`) — StrEnum single source of truth for 12 intents, 9 actions, 7 follow-up intents
+- copilot planner (gpt-5.4) — intent classification across 12 intents, 8 action dispatch
+- recommendation pipeline: architect → catalog search → assembly → evaluation → formatting → try-on
+- wardrobe-first occasion response (wardrobe retrieval + selection for occasion intents)
+- wardrobe item save from chat with moderation
+- virtual try-on via Gemini (gemini-3.1-flash-image-preview), parallel generation, quality gate, persistent disk + DB storage with cache reuse
+- 3-column PDP outfit cards with Buy Now, single split polar bar chart (8 archetypes top + dynamic 4-7 fit dimensions bottom), icon feedback
+- per-outfit feedback capture (Like / Didn't Like with notes)
+- follow-up turns with 7 follow-up intent types (increase boldness, change color, similar, etc.)
+- color palette system: base/accent/avoid colors derived from seasonal group, passed to planner, architect, and outfit check agents
+- profile confidence engine + recommendation confidence engine (9-factor, 0–100 scoring)
+- dual-layer image moderation (heuristic blocklist + vision API check)
+- restricted category exclusion in catalog retrieval
+- QnA stage narration with context-aware messages
+- results page with outfit preview thumbnails (extracted from outfits[].items[].image_url)
+- unified profile page with inline edit toggle, style code, and color palette display
+- wardrobe add-item modal (photo + metadata) from wardrobe page
+- chat composer + button with upload image / wardrobe picker popover
+
+### WhatsApp
+- removed from codebase (formatter, deep links, reengagement, runtime services all deleted)
+- WhatsApp remains a target retention surface in product strategy but has no implementation currently
+
+### Infrastructure
+- dependency/retention instrumentation (turn-completion events, cohort anchors, memory-input lift)
+- latency tracking per agent stage
+- turn artifact persistence (live context, memory, plan, filters, candidates, recommendations)
+
+## What Is Not Finished
+
+See "What needs to be built" in the gap analysis above. The current open
+items are tracked inline in the P0/P1/P2 sections above; there is no
+additional summary to call out here.
+
+
+## Repo Reality
+
+The repo currently contains more than one generation of the architecture.
+
+Active path:
+- `modules/agentic_application`
+
+Consolidation status:
+- `modules/onboarding`, `modules/catalog_retrieval`, and `modules/catalog_enrichment` shims have been removed
+- all code lives under its owning bounded context (`user`, `catalog`, `agentic_application`, `platform_core`)
+
+This means:
+- the system works
+- the architecture is clean — one generation, no overlapping layers
+
+
+## Database Table Inventory
+
+Supabase tables (36 migrations in `supabase/migrations/`):
+
+### Core platform tables
+- `users` — id, external_user_id, profile_json, profile_updated_at
+- `conversations` — id, user_id, status, title, session_context_json
+- `conversation_turns` — id, conversation_id, user_message, assistant_message, resolved_context_json
+- `model_calls` — logging for LLM calls (service, call_type, model, request/response JSON)
+- `tool_traces` — logging for tool executions (tool_name, input/output JSON)
+- `feedback_events` — user feedback tracking (user_id, conversation_id, garment_id, event_type, reward_value, notes, turn_id FK, outfit_rank)
+- `dependency_validation_events` — first-50 product-validation instrumentation (event_type, primary_intent, source_channel, metadata_json)
+
+### Onboarding tables
+- `onboarding_profiles` — user_id (unique), mobile (unique), otp fields, acquisition_source, acquisition_campaign, referral_code, icp_tag, name, date_of_birth, gender, height_cm, waist_cm, profession, profile_complete, onboarding_complete
+- `onboarding_images` — user_id, category (full_body/headshot), encrypted_filename, file_path, mime_type, file_size_bytes; unique on (user_id, category)
+- `user_analysis_runs` — tracks analysis snapshots per user (status, model_name, body_type_output, color_headshot_output, other_details_output, collated_output)
+- `user_derived_interpretations` — stores deterministic interpretations (SeasonalColorGroup, BaseColors, AccentColors, AvoidColors, HeightCategory, WaistSizeBand, ContrastLevel, FrameStructure) with value/confidence/evidence_note
+- `user_style_preference` — primary_archetype, secondary_archetype, risk_tolerance, formality_lean, pattern_type, selected_images
+- `user_analysis_snapshots` — `draping_output` column exists but no longer written (draping removed)
+- `user_interpretation_snapshots` — draping columns (`seasonal_color_distribution`, `seasonal_color_groups_json`, `seasonal_color_source`, `draping_chain_log`) exist but no longer written. New columns: `sub_season_*`, `skin_hair_contrast_*`, `color_dimension_profile_*`, `confidence_margin`
+- `user_effective_seasonal_groups` — source of truth for per-request seasonal color groups (user_id, seasonal_groups jsonb, source, superseded_at)
+- `user_comfort_learning` — behavioral comfort learning signals (user_id, signal_type, signal_source, detected_seasonal_direction, garment_id)
+
+### Catalog tables
+- `catalog_enriched` — product_id (unique), title, description, price, url, image_urls, row_status, raw_row_json, error_reason + 50+ enrichment attribute columns with confidence scores
+- `catalog_item_embeddings` — product_id, embedding (pgvector 1536), metadata_json; indexed on product_id
+- `catalog_jobs` — id (uuid), job_type (`items_sync` | `url_backfill` | `embeddings_sync`), status (`pending` | `running` | `completed` | `failed`), params_json (JSONB), processed_rows, saved_rows, missing_url_rows, error_message, started_at, completed_at, created_at, updated_at; indexed on job_type, status, created_at desc
+- `catalog_interaction_history` — user_id, product_id, interaction_type (view/click/save/dismiss/buy_skip_request/buy/skip), source_channel (web/whatsapp), source_surface, conversation_id, turn_id, metadata_json
+
+### Virtual try-on tables
+- `virtual_tryon_images` — user_id, conversation_id, turn_id, outfit_rank, garment_ids (text[]), garment_source (catalog/wardrobe/mixed), person_image_path, encrypted_filename, file_path, mime_type, file_size_bytes, generation_model, quality_score_pct, metadata_json; GIN index on garment_ids for cache lookup
+
+
+## Module File Layout
+
+```text
+modules/
+├── agentic_application/src/agentic_application/
+│   ├── intent_registry.py        # StrEnum registry: Intent(12), Action(9), FollowUpIntent(7) + metadata
+│   ├── api.py                    # FastAPI app factory, routes
+│   ├── orchestrator.py           # Copilot planner + 7-stage pipeline + virtual try-on
+│   ├── schemas.py                # Pydantic models
+│   ├── filters.py                # Hard filter construction (no relaxation)
+│   ├── qna_messages.py           # Template-based stage narration (QnA transparency)
+│   ├── product_links.py          # Canonical URL resolution
+│   ├── agents/
+│   │   ├── copilot_planner.py   # LLM intent classification + action routing (gpt-5.4)
+│   │   ├── outfit_architect.py   # LLM planning (gpt-5.4)
+│   │   ├── catalog_search_agent.py # Embedding search + hydration
+│   │   ├── outfit_assembler.py   # Compatibility pruning
+│   │   ├── outfit_evaluator.py   # LLM ranking (gpt-5.4)
+│   │   └── response_formatter.py # UI output generation (max 3 outfits)
+│   ├── context/
+│   │   ├── user_context_builder.py  # Profile loading + richness scoring
+│   │   └── conversation_memory.py   # Cross-turn state
+│   ├── recommendation_confidence.py # 9-factor recommendation confidence scoring
+│   ├── profile_confidence.py       # Profile completeness confidence scoring
+│   └── services/
+│       ├── onboarding_gateway.py    # App-facing user interface (ApplicationUserGateway) + person image lookup
+│       ├── catalog_retrieval_gateway.py # App-facing retrieval interface
+│       ├── tryon_service.py         # Virtual try-on via Gemini (gemini-3.1-flash-image-preview)
+│       ├── comfort_learning.py      # Behavioral seasonal palette refinement
+│       ├── dependency_reporting.py  # First-50 retention/dependency reporting
+│       └── outfit_decomposition.py  # Outfit decomposition for garment analysis
+├── user/src/user/
+│   ├── api.py                    # Onboarding REST endpoints
+│   ├── service.py                # OTP, profile, image handling, wardrobe operations
+│   ├── analysis.py               # 3-agent analysis pipeline
+│   ├── interpreter.py            # Deterministic interpretation derivation
+│   ├── (draping.py deleted)      # Was digital draping — removed
+│   ├── wardrobe_enrichment.py    # Vision-API wardrobe item analysis and attribute extraction
+│   ├── style_archetype.py        # Style preference selection
+│   ├── repository.py             # Supabase CRUD for onboarding + wardrobe tables
+│   ├── schemas.py                # Request/response models
+│   ├── context.py                # Saved user context builder
+│   └── ui.py                     # Onboarding + processing HTML
+├── catalog/src/catalog/
+│   ├── admin_api.py              # Catalog admin REST endpoints
+│   ├── admin_service.py          # CSV processing, enrichment sync, embedding sync, job lifecycle
+│   ├── ui.py                     # Admin UI HTML
+│   ├── retrieval/                # Embedding & vector search (was catalog_retrieval)
+│   │   ├── vector_store.py       # pgvector similarity search
+│   │   ├── document_builder.py   # Embedding document construction
+│   │   ├── embedder.py           # text-embedding-3-small batch embedding
+│   │   └── ...
+│   └── enrichment/               # Batch enrichment pipeline (was catalog_enrichment)
+│       ├── batch_builder.py      # OpenAI batch request construction
+│       ├── batch_runner.py       # Batch API orchestration
+│       ├── config_registry.py    # Garment attribute config loader
+│       └── ...
+├── platform_core/src/platform_core/
+│   ├── config.py                 # AuraRuntimeConfig, env file resolution
+│   ├── repositories.py           # ConversationRepository (users, conversations, turns, logging, archive, rename)
+│   ├── supabase_rest.py          # SupabaseRestClient (REST-based, no SDK)
+│   ├── api_schemas.py            # Shared REST API schemas (incl. RenameConversationRequest)
+│   ├── image_moderation.py       # Dual-layer image moderation (heuristic + vision API)
+│   └── ui.py                     # Chat UI HTML
+└── user_profiler/src/user_profiler/
+    └── ...                       # User profiling utilities
+```
+
+
+## Copilot Execution Rule
+
+For the next implementation phase, `docs/CURRENT_STATE.md` is the execution source of truth.
+
+Operating rule:
+- every meaningful implementation change should map to one checklist item below
+- before starting a new major implementation slice, check the next incomplete item in this document
+- after completing a slice, update the checklist state here
+- do not treat ad hoc chat plans as canonical when they diverge from this file
+
