@@ -178,11 +178,16 @@ class OutfitArchitectQueryBuilder:
         from platform_core.cost_estimator import extract_token_usage
         local_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         # max_output_tokens is the latency lever — empirical (May 3, 2026):
-        # without a cap the model emits 3.5K+ tokens per Stage B call,
-        # making split mode SLOWER than monolithic. The prompt sets a
-        # 1,200-token soft budget for the whole response (across 1–3
-        # query_documents); we set 1,500 here as the hard ceiling that
-        # still allows three-piece directions a tiny safety margin.
+        # without a cap, Stage B emits 3.5K+ tokens per call and split
+        # mode loses to monolithic. The first try at 1,500 was too
+        # tight: a paired direction emits 2 query_documents × ~400
+        # tokens + JSON envelope including \n escaping easily exceeds
+        # 1,500 and truncates mid-JSON. 3,000 leaves room for the
+        # full response while keeping each parallel call meaningfully
+        # bounded — at gpt-5-mini's ~100 tok/s, 3K tokens = ~30s
+        # wallclock per parallel call; with prompt-level output budget
+        # (≤ 1,200 tokens / response, ≤ 350 / query_document) the
+        # typical call lands well under the cap.
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -192,13 +197,38 @@ class OutfitArchitectQueryBuilder:
                 )}]},
             ],
             text={"format": _QUERY_SCHEMA},
-            max_output_tokens=1500,
+            max_output_tokens=3000,
         )
         local_usage = extract_token_usage(response) or local_usage
         # Best-effort instance attr for tests that look at last_usage.
         # Threaded callers should rely on the returned tuple, not this.
         self.last_usage = dict(local_usage)
-        raw = json.loads(getattr(response, "output_text", "") or "{}")
+        # Detect truncation by max_output_tokens — surface a clear
+        # error rather than the cryptic "no queries" the empty-array
+        # case used to produce.
+        incomplete = getattr(response, "incomplete_details", None)
+        if incomplete is not None:
+            reason = getattr(incomplete, "reason", None) or (
+                incomplete.get("reason") if isinstance(incomplete, dict) else None
+            )
+            if reason:
+                raise RuntimeError(
+                    f"Architect Query Builder response was incomplete (reason={reason}); "
+                    "try widening max_output_tokens or tightening the output budget in "
+                    "prompt/outfit_architect_query.md."
+                )
+        output_text = getattr(response, "output_text", "") or ""
+        try:
+            raw = json.loads(output_text) if output_text else {}
+        except json.JSONDecodeError as exc:
+            _log.warning(
+                "Architect Query Builder returned invalid JSON (likely truncated): %s",
+                str(exc)[:200],
+            )
+            raise RuntimeError(
+                "Architect Query Builder returned invalid JSON — likely truncated. "
+                f"Output length: {len(output_text)} chars."
+            ) from exc
         queries_raw = raw.get("queries") or []
         queries = [
             QuerySpec(
