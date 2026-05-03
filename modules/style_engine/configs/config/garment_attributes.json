@@ -28,14 +28,12 @@
       "nehru_jacket",
       "shacket",
       "trouser",
-      "pants",
       "jeans",
       "palazzo",
       "skirt",
       "shorts",
       "track_pants",
       "leggings",
-      "jeggings",
       "dungarees",
       "dress",
       "gown",
@@ -382,13 +380,11 @@
     "TimeOfDay": [
       "day",
       "evening",
-      "night",
       "day_to_night"
     ],
     "GenderExpression": [
       "masculine",
       "feminine",
-      "androgynous",
       "unisex"
     ],
     "StylingCompleteness": [
