@@ -161,13 +161,14 @@ def _user_context_block(ctx: CombinedContext) -> Dict[str, Any]:
         "formality_hint": ctx.live.formality_hint,
         "time_of_day": ctx.live.time_of_day,
         "weather_context": ctx.live.weather_context,
-        # `disliked_product_ids` is the canonical source for previously
-        # disliked items — populated from feedback_events at turn start
-        # and used by catalog_search to exclude these IDs from retrieval.
-        # Surfacing them here lets the Composer reason about archetypal
-        # patterns (e.g., "user dislikes loud florals") even though the
-        # IDs themselves are already filtered out of the pool.
-        "previous_disliked_product_ids": list(ctx.disliked_product_ids or [])[:10],
+        # `disliked_product_ids` is NOT surfaced to the Composer.
+        # The IDs are already filtered out of the retrieval pool by
+        # `catalog_search_agent`, so the Composer never sees them; and
+        # opaque IDs without item attributes don't help the LLM reason
+        # about archetypal dislikes ("loud florals", "boxy fits"). If
+        # we want archetypal-dislike awareness later, the right shape
+        # is to hydrate the disliked items' attributes (color, pattern,
+        # silhouette) and pass those — see PR #37 review thread.
     }
 
 
