@@ -6869,12 +6869,14 @@ class ArchitectSplitModeTests(unittest.TestCase):
             builder_call_times.append(_time.monotonic())
             _time.sleep(0.3)
             from agentic_application.schemas import QuerySpec
-            return [
+            queries = [
                 QuerySpec(query_id=str(seed["query_id"]), role=str(seed["role"]),
                           hard_filters=dict(seed["hard_filters"]),
                           query_document=f"doc for {seed['query_id']}")
                 for seed in direction_plan["query_seeds"]
             ]
+            usage = {"prompt_tokens": 2500, "completion_tokens": 400, "total_tokens": 2900}
+            return queries, usage
 
         planner_mock = Mock()
         planner_mock.plan.return_value = plan_raw
@@ -6882,6 +6884,7 @@ class ArchitectSplitModeTests(unittest.TestCase):
         builder_mock = Mock()
         builder_mock.build.side_effect = slow_build
         builder_mock.last_usage = {"prompt_tokens": 2500, "completion_tokens": 400, "total_tokens": 2900}
+        builder_mock._model = "gpt-5-mini"
 
         with _patch.dict(os.environ, {"OUTFIT_ARCHITECT_MODE": "split"}), _patch(
             "agentic_application.agents.outfit_architect_planner.OutfitArchitectPlanner",
@@ -6920,6 +6923,14 @@ class ArchitectSplitModeTests(unittest.TestCase):
         self.assertEqual(2, arch.last_usage["_n_directions"])
         # Stage A 1000 + Stage B 2500 × 2 directions = 6000.
         self.assertEqual(6000, arch.last_usage["prompt_tokens"])
+
+        # Per-stage usage attributes carry the right model + latencies
+        # so the orchestrator can emit two model_call_logs rows.
+        self.assertEqual("gpt-5.5", arch.last_usage_stage_a["model"])
+        self.assertEqual(1000, arch.last_usage_stage_a["prompt_tokens"])
+        self.assertEqual("gpt-5-mini", arch.last_usage_stage_b["model"])
+        self.assertEqual(5000, arch.last_usage_stage_b["prompt_tokens"])  # 2500 × 2
+        self.assertEqual(2, arch.last_usage_stage_b["n_calls"])
 
     def test_default_mode_is_monolithic(self) -> None:
         """When the env flag is unset, the dispatcher uses the legacy

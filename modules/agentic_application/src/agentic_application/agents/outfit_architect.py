@@ -342,7 +342,9 @@ class OutfitArchitect:
         if not direction_plans:
             raise RuntimeError("Architect Planner returned no direction_plans")
 
-        # Stage B: parallel query writers, one per direction.
+        # Stage B: parallel query writers, one per direction. Each call
+        # returns (queries, usage) so we can tally tokens accurately
+        # without racing on instance state across threads.
         t1 = time.monotonic()
         with ThreadPoolExecutor(max_workers=max(1, len(direction_plans))) as pool:
             futures = [
@@ -357,13 +359,15 @@ class OutfitArchitect:
                 )
                 for dp in direction_plans
             ]
-            results: List[tuple[Dict[str, Any], List[QuerySpec]]] = []
+            results: List[tuple[Dict[str, Any], List[QuerySpec], Dict[str, int]]] = []
             for dp, fut in futures:
-                results.append((dp, fut.result()))
+                queries, usage = fut.result()
+                results.append((dp, queries, usage))
         stage_b_max_ms = int((time.monotonic() - t1) * 1000)
 
         directions: List[DirectionSpec] = []
-        for dp, queries in results:
+        stage_b_usages: List[Dict[str, int]] = []
+        for dp, queries, usage in results:
             if not queries:
                 raise RuntimeError(
                     f"Architect Query Builder returned no queries for direction {dp.get('direction_id')}"
@@ -376,19 +380,38 @@ class OutfitArchitect:
                     queries=queries,
                 )
             )
+            stage_b_usages.append(usage)
 
-        # Combine Stage A + Stage B token usage so the orchestrator's
-        # `last_usage` consumer (model_call_logs writer) gets a whole-
-        # architect view. Stage B is per-direction; sum across.
-        a_usage = self._split_planner.last_usage or {}
-        b_usage = self._split_builder.last_usage or {}
+        # Per-stage usage is what telemetry consumers want — Stage A and
+        # Stage B run on different models, so cost attribution requires
+        # them separately. The orchestrator emits TWO `model_call_logs`
+        # rows when `_mode == split`, one per stage.
+        a_usage = dict(self._split_planner.last_usage or {})
+        stage_b_total: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        for u in stage_b_usages:
+            for k in stage_b_total:
+                stage_b_total[k] = int(stage_b_total[k]) + int(u.get(k, 0) or 0)
+
+        self.last_usage_stage_a = {
+            "prompt_tokens": int(a_usage.get("prompt_tokens", 0) or 0),
+            "completion_tokens": int(a_usage.get("completion_tokens", 0) or 0),
+            "total_tokens": int(a_usage.get("total_tokens", 0) or 0),
+            "model": self._model,
+            "latency_ms": stage_a_ms,
+        }
+        self.last_usage_stage_b = {
+            **stage_b_total,
+            "model": self._split_builder._model,
+            "latency_ms": stage_b_max_ms,
+            "n_calls": len(direction_plans),
+        }
+        # Backward-compat: keep `last_usage` populated with whole-architect
+        # totals + stage-timing breadcrumbs. Old callers that don't know
+        # about per-stage usage still see something reasonable.
         self.last_usage = {
-            "prompt_tokens": int(a_usage.get("prompt_tokens", 0) or 0)
-                + int(b_usage.get("prompt_tokens", 0) or 0) * len(direction_plans),
-            "completion_tokens": int(a_usage.get("completion_tokens", 0) or 0)
-                + int(b_usage.get("completion_tokens", 0) or 0) * len(direction_plans),
-            "total_tokens": int(a_usage.get("total_tokens", 0) or 0)
-                + int(b_usage.get("total_tokens", 0) or 0) * len(direction_plans),
+            "prompt_tokens": self.last_usage_stage_a["prompt_tokens"] + stage_b_total["prompt_tokens"],
+            "completion_tokens": self.last_usage_stage_a["completion_tokens"] + stage_b_total["completion_tokens"],
+            "total_tokens": self.last_usage_stage_a["total_tokens"] + stage_b_total["total_tokens"],
             "_stage_a_ms": stage_a_ms,
             "_stage_b_max_ms": stage_b_max_ms,
             "_n_directions": len(direction_plans),
