@@ -177,17 +177,17 @@ class OutfitArchitectQueryBuilder:
         per-call token counts without racing on instance state."""
         from platform_core.cost_estimator import extract_token_usage
         local_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-        # max_output_tokens is the latency lever — empirical (May 3, 2026):
-        # without a cap, Stage B emits 3.5K+ tokens per call and split
-        # mode loses to monolithic. The first try at 1,500 was too
-        # tight: a paired direction emits 2 query_documents × ~400
-        # tokens + JSON envelope including \n escaping easily exceeds
-        # 1,500 and truncates mid-JSON. 3,000 leaves room for the
-        # full response while keeping each parallel call meaningfully
-        # bounded — at gpt-5-mini's ~100 tok/s, 3K tokens = ~30s
-        # wallclock per parallel call; with prompt-level output budget
-        # (≤ 1,200 tokens / response, ≤ 350 / query_document) the
-        # typical call lands well under the cap.
+        # max_output_tokens — see docs/CURRENT_STATE.md "Lever 3 final
+        # outcome" section. Stage B writes structured multi-section
+        # query_documents and the model does not honor the prompt-level
+        # output budget tightly; 1,500 → 3,000 → 5,000 each truncated
+        # in turn. 5,000 is the empirical headroom that lets paired
+        # AND three_piece directions complete without truncation. At
+        # gpt-5-mini's ~100 tok/s a fully-maxed call would take ~50s,
+        # but typical calls land at ~2-3K tokens = 20-30s. This is
+        # why Lever 3 (split mode) is no longer recommended as default
+        # — even at this cap, total wallclock matches or exceeds
+        # monolithic. Flag is preserved for experimentation only.
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -197,7 +197,7 @@ class OutfitArchitectQueryBuilder:
                 )}]},
             ],
             text={"format": _QUERY_SCHEMA},
-            max_output_tokens=3000,
+            max_output_tokens=5000,
         )
         local_usage = extract_token_usage(response) or local_usage
         # Best-effort instance attr for tests that look at last_usage.
