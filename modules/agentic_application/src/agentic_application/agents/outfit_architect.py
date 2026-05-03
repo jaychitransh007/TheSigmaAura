@@ -26,9 +26,9 @@ def _find_prompt_dir() -> Path:
 
 
 def _load_prompt() -> str:
-    """Load the base architect system prompt (May 3, 2026: trimmed
-    from 11.5K → ~7K tokens. The anchor + follow-up modules are
-    appended at request time by `_assemble_system_prompt`."""
+    """Load the base architect system prompt (~4.8K tokens after the
+    May-3 trim). The anchor + follow-up modules are appended at request
+    time by `_assemble_system_prompt`."""
     return (_find_prompt_dir() / "outfit_architect.md").read_text(encoding="utf-8").strip()
 
 
