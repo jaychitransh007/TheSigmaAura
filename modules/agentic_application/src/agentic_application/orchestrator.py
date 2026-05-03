@@ -5111,11 +5111,43 @@ class AgenticOrchestrator:
                         _log_candidate_trace(garment_ids)
                         return _result(str(cached_path), attempted=False)
             try:
+                _tryon_t0 = time.monotonic()
                 result = self.tryon_service.generate_tryon_outfit(
                     person_image_path=person_image_path,
                     garment_urls=garment_urls,
                 )
-                if not result.get("success"):
+                _tryon_ms = int((time.monotonic() - _tryon_t0) * 1000)
+                # Cost capture (May 3, 2026 doc-cleanup item): every Gemini
+                # call is one billable image. We emit a `model_call_logs`
+                # row per cold render so per-turn cost rolls up correctly
+                # alongside the LLM rows. Cache hits and skipped-no-urls
+                # paths return earlier and don't reach this row.
+                _tryon_succeeded = bool(result.get("success"))
+                try:
+                    self.repo.log_model_call(
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        service="agentic_application",
+                        call_type="virtual_tryon",
+                        model="gemini-3.1-flash-image-preview",
+                        request_json={
+                            "candidate_id": str(getattr(candidate, "candidate_id", "")),
+                            "garment_ids": list(garment_ids),
+                            "garment_count": len(garment_urls),
+                        },
+                        response_json={
+                            "success": _tryon_succeeded,
+                            "mime_type": result.get("mime_type"),
+                        },
+                        reasoning_notes=[],
+                        latency_ms=_tryon_ms,
+                        status="ok" if _tryon_succeeded else "error",
+                        error_message=str(result.get("error") or "") if not _tryon_succeeded else "",
+                        image_count=1 if _tryon_succeeded else 0,
+                    )
+                except Exception:  # noqa: BLE001 — telemetry never breaks pipeline
+                    _log.warning("Failed to persist tryon model_call_log", exc_info=True)
+                if not _tryon_succeeded:
                     _candidate_status = "tryon_failed"
                     _candidate_error = str(result.get("error") or "tryon returned success=False")
                     _log_candidate_trace(garment_ids)

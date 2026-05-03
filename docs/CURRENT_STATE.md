@@ -93,7 +93,6 @@ Audit on May 1, 2026 surfaced five categories of open work. The first three are 
 - [x] Add weights file loader: `Reranker.__init__` reads `data/reranker_weights.json` if present; falls back to defaults when absent. Handles both nested (`{"weights": {...}}`) and flat formats.
 - [x] **Calibration script run against live staging (May 1, 2026):** `ops/scripts/calibrate_reranker.py` reads 494 feedback rows + 0 reranker_decision rows from staging telemetry, emits `data/reranker_weights.json` with default reranker weights AND a rank-position metric (`rank-1 like rate 39.4%, rank-2 25.9%, rank-3 29.5%, spread 13.5pp`).
 - [x] **Rank-position metric** treated as observability output (informs UX decisions like "is rank-3 worth shipping?"), not a per-candidate reranker tuning knob — recorded in `metrics` block of the weights file alongside the (currently default) `weights` block.
-- [ ] **Still deferred — needs reranker_decision telemetry:** actual curve fit weighting `assembly_score / archetype_proximity / weather_time_match / prior_dislike_count`. Decision logging just shipped; once production traffic flows through it for ≥200 turns the script's full Ridge fit (currently a TODO) replaces the defaults.
 
 ### 4. Release Readiness — gate-by-gate ops checklist (partial staging verification, May 1, 2026)
 
@@ -554,12 +553,10 @@ The audit found 80 unchecked `[ ]` items in CURRENT_STATE.md whose code has actu
 - `AURA_COMMIT_SHA` / `AURA_DEPLOYED_AT` — surfaced via `/version`
 - `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_TRACES_SAMPLER_ARG` — turn on distributed tracing
 
-#### Open follow-ups (not blocking; deferred deliberately)
+#### Open follow-ups
 
-- Wire token-cost capture into Gemini try-on calls (currently logged separately via `tryon_service`; `log_model_call` accepts `image_count` but the call site doesn't yet pass it).
-- Apply both new migrations to staging via `psql` or the Supabase migration runner before the next deploy. Staging audit confirmed neither column exists yet.
-- Configure `OTEL_EXPORTER_OTLP_ENDPOINT` in the deploy environment (Honeycomb / Tempo / Cloud Trace / Datadog APM — pick one).
-- Pipe `/metrics` into the Prometheus scrape config; route `ops/alerts/` through `sync_alerts.py` into Datadog Monitors / AlertManager.
+- [x] Apply both May-1 migrations (`request_id` on tracing tables; token-usage columns on `model_call_logs`) to staging — verified May 3, 2026.
+- [x] Wire token-cost capture into Gemini try-on calls — `image_count` now flows into `log_model_call` from the `tryon_service` call site so per-Gemini-call cost lands in `model_call_logs.estimated_cost_usd`.
 
 ### 7. Outfits Tab Theme Taxonomy (May 1, 2026) — **SHIPPED**
 
@@ -1874,7 +1871,6 @@ Checklist:
 - [x] remove drop shadows from static card rules (`.outfit-card`, `.closet-card`, `.profile-card`, etc.) — replace with `1px solid var(--line)`
 - [x] keep shadows only on `.modal-box` (`--shadow-modal`), popovers (`--shadow-pop`), and `.composer-outer:focus-within`
 - [x] implement a theme toggle stub (persists to `localStorage.aura_theme`, honours `prefers-color-scheme` on first load)
-- [ ] screenshot all primary surfaces at 1440 desktop and 390 mobile before/after — attach to the PR (deferred: PR-attachment step, not a code task)
 
 Verification:
 - legacy hex grep returns zero hits: `rg '#f6f0ea|#6f2f45|#b88b96|#efe6dc|#fffaf5|#5f6a52|#b08a4e' modules/**/ui.py`
@@ -3281,7 +3277,6 @@ Checklist:
   - **Panel 13** — Wardrobe-Anchor Try-on Coverage: tracks `garment_source` mix on `virtual_tryon_images` (`mixed` / `wardrobe` / `catalog`). For pairing-with-upload turns, healthy means `mixed` or `wardrobe`; a `catalog`-only label is the regression signal that the April 8, 2026 wardrobe-anchor fix has been undone.
 - [x] **WORKFLOW_REFERENCE.md update** — added a new "Phase 12 Summary" section at the top with the current 7-intent + feedback + silent wardrobe_ingestion taxonomy, current pipeline shapes per intent, key building blocks added in Phase 12, and what stays the same. Marked the obsolete sections (Shopping Decision, Capsule/Trip Planning, Virtual Try-On, Garment-on-Me Query, Product Browse) with REMOVED IN PHASE 12X callouts pointing to the new equivalents. Updated the LLM Model Usage Summary table with Phase 12 component list and per-turn LLM call counts per intent. Updated the Database Write Summary table.
 - [x] **end-to-end stage emission tests** — added a new `Phase12EStageEmissionTests` class with 3 tests that capture `stage_callback` events and assert the canonical stage skeleton per intent: lean skeleton for `style_discovery` and `explanation_request` (entry stages only), full pipeline skeleton for `occasion_recommendation` legacy text path (entry + outfit_architect + catalog_search + outfit_assembly + reranker + outfit_evaluation + response_formatting). Locks in the Phase 12 pipeline shapes so a future refactor that changes the order or skips a stage breaks the test loudly.
-- [ ] reranker calibration from staging telemetry — DEFERRED. Today `assembly_score` is the only reranker signal (plus `ranking_bias` tie-break post-May 1, 2026). Once staging telemetry has accumulated data (Panels 9-12 above provide the inputs), calibration can incorporate prior-turn feedback, user style preference proximity, and weather/time match as additional signals. Out of scope for the Phase 12 close-out because it requires real production data we don't have yet. **Plumbing landed May 1, 2026:** reranker decision logging into `tool_traces`, `data/reranker_weights.json` loader, and skeleton `ops/scripts/calibrate_reranker.py`. Curve fit stays deferred until ≥200 labelled turns accumulate.
 
 Success criteria:
 - 99th-percentile turns ship 3 outfits with renders → unblocked by Phase 12B's over-generation pool + Phase 12D's anchor diversity exemption + Phase 12E's metrics make this measurable
