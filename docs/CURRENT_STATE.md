@@ -661,7 +661,31 @@ The user-reported list of 14 group names collapsed to 5 themes exactly as planne
 
 ## Performance Optimization — Implementation Progress (May 3, 2026)
 
-**Status:** all three levers from the original plan are now **implemented and shipped behind tests**. Levers 1 and 2 are live by default; Lever 3 ships behind the `OUTFIT_ARCHITECT_MODE=split` env flag (default `monolithic`) pending a 2-week staging A/B against `recommendation_confidence` and feedback like-rate.
+**Status:** all three levers landed. **Levers 1 and 2 are live by default and confirmed wins by direct measurement (141.7 s → 89.9 s, –37%).** Lever 3 ships behind the `OUTFIT_ARCHITECT_MODE=split` flag (default `monolithic`); first empirical test showed split was a **latency regression** (90 s → 107 s) due to Stage B output-volume tax. A second iteration tightened Stage B's output budget and added per-stage telemetry — under evaluation pending a re-test.
+
+### Empirical results (same query, three runs)
+
+`Dress me for a date night`, anchored Chocolate Brown Sweater, user `user_03026279ecd6`:
+
+| | **Baseline** (pre-opts) | **Monolithic** (Levers 1+2) | **Split v1** (Lever 3 raw) |
+|---|---:|---:|---:|
+| Total wallclock | 141.7 s | **89.9 s (–37%)** | 107.2 s (+19% vs Mono) |
+| Architect | 28.5 s | 25.4 s | **41.4 s** ⚠️ |
+| Visual evaluation | 92.4 s | 47.1 s | 45.6 s |
+| Architect input tokens | 15,264 | **9,690 (–37%)** | 18,797 (split + Stage B copies) |
+| Architect output tokens | 2,273 | 2,059 | **11,058 ⚠️** |
+
+**Why Split v1 lost:** the prompt did not constrain output volume. Each Stage B call generated ~3.5K of structured prose (`PrimaryColor: terracotta, rust, burnt orange, warm brick, ...`, `FabricTexture: textured weave, jacquard, brocade, damask, ...`), and even running 3 calls in parallel, the per-call wallclock was bounded by output streaming time at gpt-5-mini's generation speed (~25–30 s for 3.5K tokens). The input-size advantage of the split architecture didn't compensate.
+
+### Lever 3 v2 (May 3, 2026 — output-budget compaction)
+
+Same architecture; tighter contract:
+
+- **Hard output budget in `prompt/outfit_architect_query.md`:** each `query_document` ≤ 350 tokens; total response ≤ 1,200 tokens; color synonym lists ≤ 3 terms; fabric clusters ≤ 3 terms; empty fields dropped (no `not_applicable`/`N/A` filler).
+- **`max_output_tokens=1500` on every Stage B API call** — hard ceiling so the model can't run away.
+- **Per-stage telemetry:** `OutfitArchitectQueryBuilder.build` now returns `(queries, usage)` (no more racing on instance state across threads). The architect dispatcher stores `last_usage_stage_a` and `last_usage_stage_b` separately. The orchestrator emits **two** `model_call_logs` rows in split mode: `call_type='architect_plan'` (gpt-5.5) and `call_type='architect_query_builder'` (gpt-5-mini), so per-stage cost gets the right model attribution. The May-3 first split run logged $0.43 because all 18.8K tokens were priced as gpt-5.5; the real cost was ~$0.04. Going forward dashboards will see that distinction.
+
+**Ship gate for v2:** re-run the same query under `OUTFIT_ARCHITECT_MODE=split`. If architect step ≤ 25 s AND `recommendation_confidence` parity holds, flip default to `split`. If not, the recommendation in CURRENT_STATE.md becomes: **keep `monolithic` as the default permanent runtime and ship Lever 3 as deprecated.** The Lever-1 + Lever-2 wins are independent and stay live regardless.
 
 ### What's done (May 3, 2026)
 

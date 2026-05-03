@@ -172,9 +172,17 @@ class OutfitArchitectQueryBuilder:
         direction_plan: Dict[str, Any],
         combined_context: CombinedContext,
         resolved_context: Dict[str, Any],
-    ) -> List[QuerySpec]:
+    ) -> tuple[List[QuerySpec], Dict[str, int]]:
+        """Return ``(queries, usage)`` so a parallel caller can tally
+        per-call token counts without racing on instance state."""
         from platform_core.cost_estimator import extract_token_usage
-        self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        local_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        # max_output_tokens is the latency lever — empirical (May 3, 2026):
+        # without a cap the model emits 3.5K+ tokens per Stage B call,
+        # making split mode SLOWER than monolithic. The prompt sets a
+        # 1,200-token soft budget for the whole response (across 1–3
+        # query_documents); we set 1,500 here as the hard ceiling that
+        # still allows three-piece directions a tiny safety margin.
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -184,11 +192,15 @@ class OutfitArchitectQueryBuilder:
                 )}]},
             ],
             text={"format": _QUERY_SCHEMA},
+            max_output_tokens=1500,
         )
-        self.last_usage = extract_token_usage(response)
+        local_usage = extract_token_usage(response) or local_usage
+        # Best-effort instance attr for tests that look at last_usage.
+        # Threaded callers should rely on the returned tuple, not this.
+        self.last_usage = dict(local_usage)
         raw = json.loads(getattr(response, "output_text", "") or "{}")
         queries_raw = raw.get("queries") or []
-        return [
+        queries = [
             QuerySpec(
                 query_id=str(q.get("query_id") or ""),
                 role=str(q.get("role") or ""),
@@ -197,3 +209,4 @@ class OutfitArchitectQueryBuilder:
             )
             for q in queries_raw
         ]
+        return queries, dict(local_usage)
