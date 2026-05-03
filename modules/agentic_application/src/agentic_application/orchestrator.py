@@ -13,9 +13,11 @@ from platform_core.fallback_messages import graceful_policy_message
 from platform_core.restricted_categories import detect_restricted_record
 from platform_core.repositories import ConversationRepository
 from platform_core.request_context import (
+    run_with_context,
     set_turn_id,
     set_conversation_id,
     set_external_user_id,
+    snapshot as _snapshot_request_context,
 )
 
 from .agents.catalog_search_agent import CatalogSearchAgent
@@ -1722,8 +1724,12 @@ class AgenticOrchestrator:
                 _log.warning("Try-on generation failed for outfit #%s", outfit.rank, exc_info=True)
             return outfit, ""
 
+        ctx_snapshot = _snapshot_request_context()
         with ThreadPoolExecutor(max_workers=3) as pool:
-            futures = {pool.submit(_generate_for_outfit, o): o for o in outfits}
+            futures = {
+                pool.submit(run_with_context, ctx_snapshot, _generate_for_outfit, o): o
+                for o in outfits
+            }
             for future in as_completed(futures):
                 outfit, tryon_url = future.result()
                 if tryon_url:
@@ -2473,6 +2479,7 @@ class AgenticOrchestrator:
     def _build_low_confidence_catalog_response(
         self,
         *,
+        external_user_id: str,
         message: str,
         conversation_id: str,
         turn_id: str,
@@ -2574,6 +2581,24 @@ class AgenticOrchestrator:
                 "last_channel": channel,
                 "last_intent": intent.primary_intent,
                 "consecutive_gate_blocks": 0,
+            },
+        )
+        # Emit a turn_completed dependency event so OPERATIONS Panel 16
+        # ("Low-Confidence Catalog Responses") can count these turns.
+        # Without this, the panel SQL filters on metadata_json->>'answer_source'
+        # = 'catalog_low_confidence' but never sees rows.
+        self._persist_dependency_turn_event(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            channel=channel,
+            primary_intent=intent.primary_intent,
+            response_type="recommendation",
+            metadata_json={
+                "answer_source": "catalog_low_confidence",
+                "low_confidence_top_match_score": float(top_match_score),
+                "low_confidence_threshold": _RECOMMENDATION_CONFIDENCE_THRESHOLD,
+                "low_confidence_candidates_seen": int(candidates_seen),
             },
         )
         return {
@@ -4397,7 +4422,7 @@ class AgenticOrchestrator:
                 turn_id=turn_id,
                 service="agentic_application",
                 call_type="outfit_architect",
-                model="gpt-5.5",
+                model=getattr(self.outfit_architect, "_model", "gpt-5.5"),
                 request_json={"combined_context_summary": {"gender": user_context.gender, "message": message}},
                 response_json={},
                 reasoning_notes=[],
@@ -4448,7 +4473,7 @@ class AgenticOrchestrator:
             turn_id=turn_id,
             service="agentic_application",
             call_type="outfit_architect",
-            model="gpt-5.5",
+            model=getattr(self.outfit_architect, "_model", "gpt-5.5"),
             request_json={
                 "combined_context_summary": {
                     "gender": user_context.gender,
@@ -4745,6 +4770,7 @@ class AgenticOrchestrator:
                     "candidates_seen": len(candidates),
                 })
                 return self._build_low_confidence_catalog_response(
+                    external_user_id=external_user_id,
                     message=message,
                     conversation_id=conversation_id,
                     turn_id=turn_id,
@@ -5268,16 +5294,32 @@ class AgenticOrchestrator:
                 len(batch),
                 ", ".join(str(c.candidate_id) for c in batch),
             )
+            # ContextVar propagation: snapshot the parent thread's
+            # request_id / turn_id / etc. once and re-set them inside
+            # each worker via run_with_context. Without this, model_call_logs
+            # rows written from threadpool workers have empty request_id
+            # and break cross-stage correlation in observability.
+            # We can't share a `contextvars.copy_context()` across workers
+            # — the same Context object can't be entered concurrently.
+            ctx_snapshot = _snapshot_request_context()
             with ThreadPoolExecutor(max_workers=len(batch)) as exec_pool:
-                future_to_cand = [(c, exec_pool.submit(_render_one, c)) for c in batch]
+                future_to_cand = [
+                    (c, exec_pool.submit(run_with_context, ctx_snapshot, _render_one, c))
+                    for c in batch
+                ]
                 results = [(c, fut.result()) for c, fut in future_to_cand]
             batch_wall_ms = int((time.monotonic() - batch_t0) * 1000)
-            n_attempted = sum(1 for _c, r in results if r.get("attempted"))
-            n_cache_hit = sum(1 for _c, r in results if not r.get("attempted") and r.get("path"))
+            # Each candidate's outcome is one of:
+            #   - cold success (attempted=True, path set)         → counted in cold_success + succeeded
+            #   - cache hit (attempted=False, path set)           → counted in cache_hit + succeeded
+            #   - cold failure (attempted=True, path empty)       → not counted in succeeded
             n_succeeded = sum(1 for _c, r in results if r.get("path"))
+            n_cache_hit = sum(1 for _c, r in results if not r.get("attempted") and r.get("path"))
+            n_cold_attempts = sum(1 for _c, r in results if r.get("attempted"))
+            n_cold_success = n_succeeded - n_cache_hit
             _log.info(
-                "tryon parallel batch: %d/%d succeeded (cold=%d, cache_hit=%d) in %dms wallclock",
-                n_succeeded, len(batch), n_attempted, n_cache_hit, batch_wall_ms,
+                "tryon parallel batch: %d/%d succeeded (cold_success=%d, cache_hit=%d, cold_attempts=%d) in %dms wallclock",
+                n_succeeded, len(batch), n_cold_success, n_cache_hit, n_cold_attempts, batch_wall_ms,
             )
             for cand, result in results:
                 if result.get("attempted"):
@@ -5386,8 +5428,12 @@ class AgenticOrchestrator:
         results: List[EvaluatedRecommendation] = [
             EvaluatedRecommendation(candidate_id="") for _ in payloads
         ]
+        ctx_snapshot = _snapshot_request_context()
         with ThreadPoolExecutor(max_workers=min(len(payloads), 3)) as pool:
-            futures = {pool.submit(_eval_one, payload): idx for idx, payload in enumerate(payloads)}
+            futures = {
+                pool.submit(run_with_context, ctx_snapshot, _eval_one, payload): idx
+                for idx, payload in enumerate(payloads)
+            }
             for future in as_completed(futures):
                 idx = futures[future]
                 results[idx] = future.result()

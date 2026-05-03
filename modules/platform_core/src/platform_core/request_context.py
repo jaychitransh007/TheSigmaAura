@@ -99,6 +99,38 @@ def snapshot() -> dict:
     }
 
 
+def run_with_context(snapshot_values: dict, fn, *args, **kwargs):
+    """Execute ``fn`` with correlation-ID context vars set from the
+    snapshot, then reset. Designed for ThreadPoolExecutor workers —
+    capture the parent thread's `snapshot()` once, pass the dict
+    into each worker submission, and call this helper at the worker's
+    entry to make `get_request_id()` / `get_turn_id()` / etc. inside
+    the worker return the parent's values.
+
+    Why not `contextvars.copy_context().run()`? A single Context object
+    can't be entered concurrently from multiple workers; sharing one
+    snapshot across a 3-worker pool raises "is already entered". This
+    helper sidesteps that by setting the context vars freshly in each
+    worker's thread-local context.
+    """
+    tokens = [
+        _REQUEST_ID.set(str(snapshot_values.get("request_id") or "")),
+        _TURN_ID.set(str(snapshot_values.get("turn_id") or "")),
+        _CONVERSATION_ID.set(str(snapshot_values.get("conversation_id") or "")),
+        _EXTERNAL_USER_ID.set(str(snapshot_values.get("external_user_id") or "")),
+    ]
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        # Reset in reverse order. A worker thread is a fresh Context
+        # so this isn't strictly necessary, but doing it keeps thread
+        # reuse (in long-lived pools) clean.
+        _REQUEST_ID.reset(tokens[0])
+        _TURN_ID.reset(tokens[1])
+        _CONVERSATION_ID.reset(tokens[2])
+        _EXTERNAL_USER_ID.reset(tokens[3])
+
+
 # ── Logging filter ────────────────────────────────────────────────────
 
 
