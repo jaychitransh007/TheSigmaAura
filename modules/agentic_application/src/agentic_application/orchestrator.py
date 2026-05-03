@@ -5274,9 +5274,27 @@ class AgenticOrchestrator:
                     stats["tryon_overgeneration_used"] = 1
             if not batch:
                 break
+            # Visible-in-stdout observability so the parallel-render
+            # behaviour is provable from server logs without re-querying
+            # tool_traces. Every cold render in this batch fires before
+            # any .result() blocks.
+            batch_t0 = time.monotonic()
+            _log.info(
+                "tryon parallel batch: submitting %d candidate(s) [%s]",
+                len(batch),
+                ", ".join(str(c.candidate_id) for c in batch),
+            )
             with ThreadPoolExecutor(max_workers=len(batch)) as exec_pool:
                 future_to_cand = [(c, exec_pool.submit(_render_one, c)) for c in batch]
                 results = [(c, fut.result()) for c, fut in future_to_cand]
+            batch_wall_ms = int((time.monotonic() - batch_t0) * 1000)
+            n_attempted = sum(1 for _c, r in results if r.get("attempted"))
+            n_cache_hit = sum(1 for _c, r in results if not r.get("attempted") and r.get("path"))
+            n_succeeded = sum(1 for _c, r in results if r.get("path"))
+            _log.info(
+                "tryon parallel batch: %d/%d succeeded (cold=%d, cache_hit=%d) in %dms wallclock",
+                n_succeeded, len(batch), n_attempted, n_cache_hit, batch_wall_ms,
+            )
             for cand, result in results:
                 if result.get("attempted"):
                     stats["tryon_attempted_count"] += 1
