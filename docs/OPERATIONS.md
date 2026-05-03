@@ -2,7 +2,7 @@
 
 This document defines the SQL queries and dashboard panels needed to monitor
 Aura during the first-50 user validation rollout. Every query targets the
-canonical Supabase tables documented in `docs/CURRENT_STATE.md` (§ Database
+canonical Supabase tables documented in `docs/APPLICATION_SPECS.md` (§ Database
 Table Inventory) and assumes you are connected as a read-only role.
 
 The queries are grouped by panel. Each panel maps to one operational
@@ -113,7 +113,7 @@ ORDER BY 1 DESC;
 ```
 
 The empty-response count should be **zero** after the silent-empty-response
-guard landed (`docs/CURRENT_STATE.md` P0 — Silent empty response, April 2026).
+guard landed (`docs/RELEASE_READINESS.md` § Recently Shipped — Silent empty response, April 2026).
 If it goes above zero, the post-pipeline guard regressed.
 
 ```sql
@@ -692,9 +692,129 @@ work the diagnosis there.
 - `ops/scripts/validate_dependency_report.py` — seeded validation harness
   for `build_dependency_report`.
 - `ops/scripts/calibrate_reranker.py` — skeleton calibration script for the
-  reranker (deferred curve fit; see `docs/CURRENT_STATE.md` Open Items Plan).
+  reranker (deferred curve fit — needs ≥200 labelled production turns).
 - `ops/scripts/extract_dashboard_sql.py` — re-extracts every Panel's SQL
   into `ops/dashboards/panel_NN_*.sql` for paste-into-dashboard use.
 - `ops/dashboards/` — auto-extracted SQL files, one per panel.
 - `docs/RELEASE_READINESS.md` — release-readiness criteria built on top of
   these dashboards.
+
+---
+
+# Operational Reference (migrated May 3, 2026)
+
+_Migrated from `CURRENT_STATE.md`. Operational scripts, run instructions, and Supabase sync notes consolidated here so OPERATIONS.md is the single home for ops concerns._
+
+## Ops Scripts
+
+| Script | Purpose |
+|---|---|
+| `ops/scripts/run_agentic_eval.py` | Focused eval harness for agentic pipeline |
+| `ops/scripts/check_supabase_sync.py` | Verify migration sync between local and staging |
+| `ops/scripts/bootstrap_env_files.py` | Create .env.local and .env.staging from .env.example |
+| `ops/scripts/backfill_catalog_urls.py` | Backfill missing canonical product URLs |
+| `ops/scripts/schema_audit.py` | Audit database schema |
+
+
+## How To Run
+
+Start the app:
+
+```bash
+APP_ENV=local python3 run_agentic_application.py --reload --port 8010
+```
+
+Run the smoke flow:
+
+```bash
+USER_ID=your_completed_user_id bash ops/scripts/smoke_test_agentic_application.sh
+```
+
+Run tests:
+
+```bash
+python3 -m pytest tests/ -v
+```
+
+268 tests passing across test files (1 pre-existing collection error in `test_catalog_retrieval.py`; 5 pre-existing failures in `test_agentic_application_api_ui.py` and `test_onboarding.py` verified unrelated to recent work).
+
+Focused application suites:
+
+```bash
+python3 -m pytest tests/test_agentic_application.py -v
+```
+
+### Test File Inventory
+
+| File | Coverage Area |
+|---|---|
+| `tests/test_agentic_application.py` | Core pipeline: orchestrator, planner, evaluator, assembler, formatter, context builders, filters, conversation memory, follow-up intents, recommendation summaries |
+| `tests/test_onboarding.py` | OTP flow, profile persistence, image upload, analysis pipeline, style preference, rerun support |
+| `tests/test_onboarding_interpreter.py` | Deterministic interpretation derivation: 4 seasonal color groups, height categories, waist bands, contrast levels, frame structures |
+| `tests/test_catalog_retrieval.py` | Embedding document builder, vector store operations, similarity search, filter application, confidence policy |
+| `tests/test_batch_builder.py` | Catalog enrichment batch processing |
+| `tests/test_platform_core.py` | SupabaseRestClient, ConversationRepository, config loading |
+| `tests/test_user_profiler.py` | User profiler utilities |
+| `tests/test_config_and_schema.py` | Configuration validation, schema consistency |
+| `tests/test_architecture_boundaries.py` | Module boundary enforcement, import validation |
+| ~~`tests/test_digital_draping.py`~~ | Deleted — digital draping removed |
+| `tests/test_comfort_learning.py` | Comfort learning: 4-season color mapping, high/low-intent signal detection, evaluate-and-update threshold logic, max 2 groups, supersede old rows |
+| `tests/test_qna_messages.py` | QnA narration: stage message templates, context-aware narration |
+
+### Key Test Coverage Areas
+
+**Application pipeline:** Copilot planner intent classification and action routing, LLM-only planning (no deterministic fallback), evaluator fallback to assembly_score, evaluator hard output cap (max 5), follow-up intents (7 types), assembly compatibility checks, response formatter bounds (max 3 outfits), concept-first paired planning, model configuration validation, conversation memory build/apply, QnA stage narration, profile-guidance intent routing (color direction, avoidance, suitability), profile-grounded zero-result fallback, style-discovery context continuity across follow-ups.
+
+**Onboarding:** 3-agent analysis with mock LLM responses, interpretation derivation across 4 seasonal color groups (Spring, Summer, Autumn, Winter), style archetype selection, single-agent rerun with baseline preservation.
+
+~~**Digital draping:**~~ Tests deleted — draping removed from codebase.
+
+**Comfort learning:** Season-to-color mapping (4 seasons, warm/cool), high-intent signal detection (outside current groups), low-intent signal detection (color keywords), evaluate-and-update threshold (5 high-intent), max 2 groups, supersede old effective rows, no duplicate direction.
+
+**Catalog:** Embedding document structure (8 sections), confidence-aware rendering, row status filtering, filter column normalization.
+
+**Architecture:** No direct cross-boundary imports, gateway pattern enforcement.
+
+
+## Supabase Sync
+
+### Env Convention
+
+- Local: `.env.local` / `APP_ENV=local`
+- Staging: `.env.staging` / `APP_ENV=staging`
+- Or explicit: `ENV_FILE=/path/to/file`
+
+Bootstrap missing env files:
+```bash
+python3 ops/scripts/bootstrap_env_files.py
+```
+
+Required staging keys: `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`
+
+### Link and Push
+
+```bash
+supabase link --project-ref zfbqkkegrfhdzqvjoytz --password '<db-password>' --yes
+supabase db push --yes
+python3 ops/scripts/check_supabase_sync.py --strict
+```
+
+### Key Table Relationships
+
+```text
+users
+  └── conversations (user_id)
+        └── conversation_turns (conversation_id)
+
+onboarding_profiles (user_id → users)
+  ├── onboarding_images (user_id, category unique)
+  ├── user_analysis_runs (user_id)
+  │     └── user_derived_interpretations (analysis_snapshot_id)
+  ├── user_style_preference (user_id)
+  ├── user_effective_seasonal_groups (user_id)
+  └── user_comfort_learning (user_id)
+
+catalog_enriched (product_id unique)
+  └── catalog_item_embeddings (product_id)
+```
+

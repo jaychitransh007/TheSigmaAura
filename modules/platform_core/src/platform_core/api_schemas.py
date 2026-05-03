@@ -89,7 +89,7 @@ class OutfitCard(BaseModel):
     # OutfitCard schema. None means "not evaluated this turn" because
     # the gating condition wasn't met. pairing_coherence_pct is null for
     # garment_evaluation / style_discovery / explanation_request. See
-    # the Phase 12B follow-ups (April 9 2026) in docs/CURRENT_STATE.md.
+    # the Phase 12B follow-ups (April 9 2026) in docs/WORKFLOW_REFERENCE.md § Phase History.
     occasion_pct: Optional[int] = None
     specific_needs_pct: Optional[int] = None
     weather_time_pct: Optional[int] = None

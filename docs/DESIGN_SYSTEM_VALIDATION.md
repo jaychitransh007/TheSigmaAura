@@ -1,10 +1,10 @@
 # Design System Validation Checklist
 
-Last updated: April 11, 2026 — refreshed for the "Confident Luxe" brand direction (see `docs/DESIGN.md` § Brand Direction — Confident Luxe). Phase 14 in `docs/CURRENT_STATE.md` tracks the migration from the legacy warm-cream + rose-wine tokens to the refined ivory + oxblood tokens. This checklist is the acceptance gate for Phase 14.
+Last updated: April 11, 2026 — refreshed for the "Confident Luxe" brand direction (see `docs/DESIGN.md` § Brand Direction — Confident Luxe). Phase 14 in `docs/WORKFLOW_REFERENCE.md` § Phase History tracks the migration from the legacy warm-cream + rose-wine tokens to the refined ivory + oxblood tokens. This checklist is the acceptance gate for Phase 14.
 
 This is the manual QA checklist a designer (not the implementing engineer)
 must complete before the first-50 release. It is the artifact behind the
-two open items in `docs/CURRENT_STATE.md` § Design System Validation:
+two open items in `docs/RELEASE_READINESS.md` Gate 4 / `docs/DESIGN.md` § Design System Validation:
 
 - Validate all primary screens mobile-first, then desktop
 - Ensure the entire surface feels feminine, premium, and fashion-native
@@ -311,7 +311,7 @@ single journey blocks the release.
 - [ ] Phase 14 Confident Luxe gate (light + dark, all journeys J and K green): ____________
 
 If this checklist is fully green, the two design-system items in
-`docs/CURRENT_STATE.md` can be ticked off, the Phase 14 success
-criteria in `docs/CURRENT_STATE.md` § Phase 14 can be marked
-complete, and the design gate in `docs/RELEASE_READINESS.md` Gate 4
-can be marked complete.
+`docs/RELEASE_READINESS.md` Gate 4 can be ticked off, the Phase 14
+success criteria in `docs/WORKFLOW_REFERENCE.md` § Phase History
+(Phase 14) can be marked complete, and the design gate in
+`docs/RELEASE_READINESS.md` Gate 4 can be marked complete.

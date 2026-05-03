@@ -99,8 +99,13 @@ class ConfigAndSchemaTests(unittest.TestCase):
                 self.assertIn(attr, garment_attrs)
 
     def test_context_file_exists(self) -> None:
-        self.assertTrue(Path("docs/CURRENT_STATE.md").exists())
-        text = Path("docs/CURRENT_STATE.md").read_text(encoding="utf-8")
+        # CURRENT_STATE.md was retired May 3, 2026 — its content was
+        # redistributed across PRODUCT.md / APPLICATION_SPECS.md /
+        # OPERATIONS.md / WORKFLOW_REFERENCE.md / RELEASE_READINESS.md /
+        # DESIGN.md. APPLICATION_SPECS.md § Live System Reference now
+        # carries the source-of-truth runtime content.
+        self.assertTrue(Path("docs/APPLICATION_SPECS.md").exists())
+        text = Path("docs/APPLICATION_SPECS.md").read_text(encoding="utf-8")
         self.assertIn("agentic_application", text)
 
     def test_garment_config_file_is_valid_json(self) -> None:

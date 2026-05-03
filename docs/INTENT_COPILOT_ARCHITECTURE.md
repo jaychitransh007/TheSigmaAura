@@ -35,7 +35,7 @@ Last updated: May 3, 2026
 >    anchor conflict resolution for all categories, query document field omission
 >    (not `not_applicable`), color synonym expansion, semantic fabric clusters,
 >    follow-up intent tiebreaker, and consolidated occasion calibration.
->    See `docs/CURRENT_STATE.md` Phase 13/13B for the full change list.
+>    See `docs/WORKFLOW_REFERENCE.md` § Phase History (Phase 13/13B) for the full change list.
 > 6. **Models migrated to gpt-5.5 / gpt-5-mini** (May 1, 2026). Copilot Planner,
 >    Outfit Architect, Style Advisor, and User Analysis run on `gpt-5.5`. Visual
 >    Evaluator, Image Moderation, and Outfit Decomposition run on `gpt-5-mini`.
@@ -56,8 +56,8 @@ Last updated: May 3, 2026
 >    and removed from the codebase.
 >
 > For the authoritative "what is running right now" view, always defer to
-> `docs/CURRENT_STATE.md`. When this document and `CURRENT_STATE.md`
-> disagree, `CURRENT_STATE.md` wins.
+> `docs/APPLICATION_SPECS.md` § Live System Reference. When this
+> document and APPLICATION_SPECS disagree, APPLICATION_SPECS wins.
 
 ## Purpose
 

@@ -22,8 +22,8 @@ Strict rules:
 - Empty states return an empty list — the caller renders the editorial
   "Aura is still learning your preferences" copy.
 
-This satisfies the deferred Phase 14 Step 5 item in
-``docs/CURRENT_STATE.md``.
+This satisfies the deferred Phase 14 Step 5 item — see
+``docs/WORKFLOW_REFERENCE.md`` § Phase History (Phase 14).
 """
 
 from __future__ import annotations

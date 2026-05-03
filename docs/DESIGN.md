@@ -1,6 +1,6 @@
 # Design System And Experience Principles
 
-Last updated: April 11, 2026 — "Confident Luxe" refinement (see § Brand Direction — Confident Luxe). Migration to the refined token set is tracked as Phase 14 in `docs/CURRENT_STATE.md`; validation criteria are in `docs/DESIGN_SYSTEM_VALIDATION.md`.
+Last updated: April 11, 2026 — "Confident Luxe" refinement (see § Brand Direction — Confident Luxe). Migration to the refined token set is tracked as Phase 14 in `docs/WORKFLOW_REFERENCE.md` § Phase History; validation criteria are in `docs/DESIGN_SYSTEM_VALIDATION.md`.
 
 ## Purpose
 
@@ -35,11 +35,10 @@ Key UI patterns implemented:
 
 Related docs:
 - [`docs/PRODUCT.md`](PRODUCT.md) — product definition and user journey
-- [`docs/CURRENT_STATE.md`](CURRENT_STATE.md) — **source of truth** for implementation state
-- [`docs/RELEASE_READINESS.md`](RELEASE_READINESS.md) — 4-gate release checklist
+- [`docs/APPLICATION_SPECS.md`](APPLICATION_SPECS.md) § Live System Reference — **source of truth** for implementation state, runtime, modules, persistence
+- [`docs/RELEASE_READINESS.md`](RELEASE_READINESS.md) — 4-gate release checklist + Recently Shipped record
 - [`docs/DESIGN_SYSTEM_VALIDATION.md`](DESIGN_SYSTEM_VALIDATION.md) — manual QA checklist a designer must complete before the design gate goes green
-- [`docs/APPLICATION_SPECS.md`](APPLICATION_SPECS.md) — runtime contract (⚠️ *partially deprecated*)
-- [`docs/WORKFLOW_REFERENCE.md`](WORKFLOW_REFERENCE.md) — human-facing per-intent execution flows (not loaded at runtime)
+- [`docs/WORKFLOW_REFERENCE.md`](WORKFLOW_REFERENCE.md) — per-intent execution flows + Phase History decision log
 
 ## Brand Direction — Confident Luxe
 
@@ -904,3 +903,74 @@ Before shipping a new component, validate:
 - The wardrobe must feel central to the product.
 - Recommendation answers must prioritize taste and guidance before metrics.
 - The experience must feel aspirational but usable in everyday life.
+
+---
+
+# Outfit Card UI Reference (migrated May 3, 2026)
+
+_Migrated from `CURRENT_STATE.md`. The Composer + 3-Column PDP layout specs previously lived in CURRENT_STATE.md and are consolidated here so DESIGN.md owns the UI specification._
+
+## Chat UI: Composer + Outfit Cards
+
+Chat composer features:
+- `+` button popover with two options: "Upload image" (triggers file picker) and "Select from wardrobe" (opens wardrobe picker modal)
+- image chip preview with remove button for attached images
+- paste support for images from clipboard
+- drag-and-drop image attach onto composer area
+- wardrobe picker modal loads user's wardrobe items as a grid; selecting an item attaches its image
+
+## Chat UI: Outfit Card — 3-Column PDP Layout + Feedback CTAs
+
+Status:
+- implemented
+
+Current UI behavior (implemented):
+- one unified PDP-style card per outfit (`.outfit-card` CSS class)
+- desktop: 3-column grid (`80px | flex | 40%`)
+  - Col 1: vertical thumbnail rail (product images + try-on, 64×64px, active accent border)
+  - Col 2: hero image viewer (full height, default to try-on when present)
+  - Col 3: info panel (title, stylist summary ≤100 chars, product specs with Rs. price + Buy Now, style archetype radar chart, evaluation criteria radar chart scaled by analysis_confidence_pct, icon feedback buttons)
+- mobile (`max-width: 900px`): hero image → horizontal thumbnail strip → info panel
+
+Thumbnail ordering:
+- paired outfit: topwear, bottomwear, virtual try-on
+- single-piece: garment, virtual try-on
+- default hero: try-on when present, otherwise first garment
+
+Feedback behavior:
+- `Like This` — sends `event_type: "like"` immediately via POST to `/v1/conversations/{id}/feedback`
+- `Didn't Like This` — expands textarea + Submit; cancel collapses
+- loading spinner and success/error state on submission
+- feedback hides CTAs after successful submission
+
+Feedback persistence:
+- UI is outfit-level; backend fans out to one `feedback_events` row per garment
+- `recommendation_run_id` has been removed from `feedback_events`; turn-level correlation now uses `turn_id` + `outfit_rank`
+- correlation: `conversation_id` + `turn_id` + `outfit_rank`
+- `feedback_events` columns: `turn_id` (FK to conversation_turns), `outfit_rank` (int)
+- `turn_id` injected into `response.metadata` by the orchestrator
+
+Data flow (implemented):
+- `response_formatter._build_item_card()` passes through 16 fields including 6 enrichment attributes
+- `response_formatter` passes through all 16 `_pct` fields (8 criteria + 8 archetype) from `EvaluatedRecommendation` to `OutfitCard`
+- `api_schemas.OutfitCard.tryon_image` aligned with internal `schemas.OutfitCard.tryon_image`
+- `api_schemas.OutfitCard` carries all 16 `_pct` fields aligned with internal schema
+- `api_schemas.OutfitItem` carries all enrichment attributes
+- `api_schemas.FeedbackRequest` validates `event_type` via regex pattern `^(like|dislike)$`
+
+Current catalog weakness:
+- some source catalogs do not persist canonical absolute `url`
+- some rows only provide `store` and `handle`
+
+Current ingestion behavior:
+- `catalog_enriched.url` and `catalog_enriched.product_url` are now canonicalized during ingestion
+- if a row lacks an absolute URL but has known `store + handle`, ingestion synthesizes the canonical absolute product URL
+- catalog admin and ops now expose an explicit URL backfill path for older stored rows missing canonical URLs
+
+Current runtime behavior:
+- runtime now trusts canonical persisted `url` values and only normalizes already-present URLs
+- local and staging backfill checks returned zero rows needing repair at the time of cleanup
+
+Correct long-term fix:
+- keep catalog ingestion/backfill healthy so runtime can remain dependent on canonical persisted URLs only
+
