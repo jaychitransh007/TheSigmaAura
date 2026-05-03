@@ -47,13 +47,88 @@ What's left: the rare values with ≤5 rows each — `poncho` (5), `leggings` (4
 
 ---
 
-## Wedding query staging retest
+## Pipeline latency — 4m31s end-to-end on `daily office wear` turn
 
-**Status:** queued · **Cost:** trivial · **Risk:** none · **Owner:** stylist
+**Status:** queued · **Cost:** dev time only · **Risk:** medium
 
-After PR #30 landed, the LLM ranker pipeline replaced the deterministic assembler + reranker. The wedding query that originally surfaced the failure mode (turn `62db2c1a-0800-4308-8234-e8db59971d6c` — "I need to attend my friend's wedding in traditional style") should now ship 3 strong outfits where it previously shipped 0. Confirm by issuing the same query in staging and checking that:
+Turn `86a0a95f-ae12-4cea-9b03-238b30d50b27` (May 3, 2026 — "Find me an outfit to buy for daily office wear") shipped successfully but took **4m31s end-to-end**. The dominant stages:
 
-- Architect emits at least one `complete (kurta_set)` direction.
-- Composer constructs ≥3 outfits with `kurta_set` items in Direction A.
-- Rater emits `fashion_score ≥ 75` for at least 3 of them.
-- Visual evaluator + 0.75 gate ship 3 outfits to the user.
+| Stage | Latency | Model |
+|---|---|---|
+| outfit_rater | 72.9s | gpt-5-mini |
+| outfit_composer | 72.0s | gpt-5-mini |
+| visual_evaluation | 64.3s | gpt-5-mini (×3 candidates) |
+| outfit_architect | 37.5s | gpt-5.5 |
+
+70+ second gpt-5-mini calls are abnormal — should be 5-10s each. Hypotheses to investigate:
+1. **Composer retry-on-hallucination firing too often.** The 16K total tokens for one Composer turn suggests two attempts. Look at `tool_traces.composer_decision` for retry-fire rate.
+2. **Long output tokens (10 outfits × full rationale).** Trim the Composer's `up to 10 outfits` cap to 5–6 if the speedup justifies it.
+3. **gpt-5-mini queue depth at the provider.** Check whether latency spikes correlate with time-of-day or burst traffic.
+
+**Trigger to act:** more than two production turns over 60s wallclock, OR the operations p95-latency dashboard crosses 30s.
+
+---
+
+## Per-turn cost too high — $0.29 on a single recommendation
+
+**Status:** queued · **Cost:** dev time only · **Risk:** low
+
+Same turn as above billed $0.29 USD. Breakdown:
+
+| Call | Cost | % of turn |
+|---|---|---|
+| outfit_architect (gpt-5.5) | $0.127 | 43% |
+| virtual_tryon ×3 (Gemini) | $0.117 | 40% |
+| copilot_planner (gpt-5.5) | $0.041 | 14% |
+| Everything else (Composer, Rater, visual_eval, embedding) | $0.012 | 4% |
+
+The architect alone pays nearly half the bill (10.5K tokens at gpt-5.5 pricing). Two angles to attack:
+
+- **Architect prompt size.** PR #29 trimmed it to 4.8K tokens but it can shrink further — anchor + follow-up modules are conditionally appended; review if the base prompt has dead sections.
+- **Try-on render count.** 3 × Gemini renders at $0.039 each. If the LLM Rater's `fashion_score` is highly predictive of which outfits would render well, render only the top 1 first and over-render only on visual-eval failure.
+
+**Trigger to act:** $0.30+/turn average sustained, or the LLM-cost-budget alert fires.
+
+---
+
+## Misleading `virtual_tryon` stage emit at end of pipeline
+
+**Status:** queued · **Cost:** small (telemetry-only, doc + rename) · **Risk:** none
+
+The `turn_traces.steps[]` shows `visual_evaluation` finishing BEFORE `virtual_tryon`, which reads as "we evaluated outfits before rendering try-ons." Reality: the actual Gemini renders happen INSIDE the `visual_evaluation` stage (via `_render_candidates_for_visual_eval`). The `virtual_tryon` emit at line 5229 of `orchestrator.py` is a post-formatting `_attach_tryon_images()` cache-lookup step — not a render. That's why its latency is 462ms (cache hits) while the actual renders sum to ~80s inside `visual_evaluation`.
+
+Two cleanup options:
+- **Rename** the late stage from `virtual_tryon` to `attach_tryon_images` so dashboards stop misreading "try-on takes 462ms".
+- **Restructure** so try-on render gets its own stage emit BEFORE `visual_evaluation` and the steps[] timeline reads chronologically: `... → tryon_render → visual_evaluation → response_formatting`.
+
+Renaming is the quick fix; restructuring is the right fix.
+
+---
+
+## Visual evaluator scope reduction — overlap with the LLM Rater
+
+**Status:** queued · **Cost:** small · **Risk:** medium (UI dependency)
+
+Since PR #30, the Composer + Rater LLM ranker scores outfits on `occasion_fit`, `body_harmony`, `color_harmony`, `archetype_match` (text-only, pre-render). The visual evaluator independently scores 5+4 dimensions from the rendered try-on image (post-render, vision-grounded). Some of these overlap.
+
+Three trim options to consider, in increasing aggressiveness:
+- **(a) Drop the 4 context-gated dimensions** from the visual evaluator (occasion_fit, weather_time, specific_needs, pairing_coherence) since they overlap with Rater. Keep the 5 always-evaluated (body, color, style, risk, comfort) — those need vision grounding.
+- **(b) Run visual_evaluator on top-1 only,** not all 3 candidates. Saves 2/3 of the cost + latency.
+- **(c) Drop visual_evaluator entirely.** Wire the Rater's 4 dim scores to the radar chart on the PDP card. Most aggressive — saves 64s of pipeline time AND $0.0025/turn AND simplifies the code path. Cost: lose the post-render image check (Gemini render artifacts won't get caught) AND the radar chart loses 5 dims it currently shows (need to redesign).
+
+**Trigger:** if pipeline latency follow-up confirms visual_eval is the slowest cuttable stage, OR if Rater quality is good enough that the post-render check is rarely catching anything.
+
+---
+
+## Cost rollup gap — `outfit_check` and `garment_evaluation` handlers
+
+**Status:** queued · **Cost:** small · **Risk:** none
+
+PR #38 wired `total_cost_usd` rollup for the recommendation pipeline (planner, architect, composer, rater, visual_evaluator, virtual_tryon, catalog_embedding). Two other handler paths still log to `model_call_logs` but their cost doesn't roll up to `turn_traces.evaluation.total_cost_usd`:
+
+- `_handle_outfit_check` — visual evaluator on the user's photo (`orchestrator.py:5862`)
+- `_handle_garment_evaluation` — try-on + visual evaluator on a garment upload (`orchestrator.py:6304`)
+
+Wire each `repo.log_model_call(...)` callsite there with `trace.add_model_cost_from_row(...)` — same pattern PR #38 used in the recommendation flow. Each handler signature also needs a `trace: Optional[TurnTraceBuilder] = None` parameter threaded from `process_turn`.
+
+**Trigger:** when ops needs per-turn cost on outfit_check / garment_evaluation paths (likely when those flows hit ≥10% of weekly volume).
