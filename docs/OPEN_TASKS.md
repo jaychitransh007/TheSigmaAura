@@ -42,46 +42,23 @@ Pure SQL `UPDATE` migration — no LLM calls, no embedding changes.
 
 ---
 
-## Catalog `OccasionFit` column — drop or keep?
+## Catalog `OccasionFit` column — keep for now
 
-**Status:** parked · **Cost:** small · **Risk:** low
+**Status:** decided (May 3, 2026) — **keep populating, do not drop**
 
-Phase 2 dropped `OccasionFit`, `OccasionSignal`, `FormalitySignalStrength` from the catalog item embedding text (PR #16) and Option A dropped them from architect query documents (PR #20). But `OccasionFit` is still emitted in the metadata dict by `build_catalog_document()` and persisted to the `occasion_fit` SQL column on `catalog_item_embeddings`. The column is no longer read by retrieval (since Option A makes the architect not query on it).
+`OccasionFit` is no longer read by retrieval (Option A in PR #20 stripped user-side sections from the architect's query_document; the LLM ranker doesn't filter on it either). But `build_catalog_document()` still emits it in the metadata dict and the `occasion_fit` SQL column on `catalog_item_embeddings` is still populated.
 
-Decide: keep populating it (cheap, future-proof if we ever need a hard-filter occasion path) or drop it from `metadata` + the column itself (cleaner schema, smaller row size). Currently keeping it for backward compat. PR #16 review noted the inconsistency with the PR description.
-
----
-
-## Confidence-scaling consistency across docs
-
-**Status:** queued · **Cost:** small (doc-only) · **Risk:** none
-
-`docs/APPLICATION_SPECS.md` lines 53 and 1630 give contradictory descriptions of whether the radar chart is scaled by `analysis_confidence_pct` or shows raw evaluator scores. Line 53 says scaled; line 1630 says raw. Code reality should be checked and one source of truth picked.
+**Decision:** keep. Cost of populating is negligible (a single field write per enrichment), and dropping the column would force a migration + a downstream impact audit (response payloads, CSV exports, ops dashboards may all reference `occasion_fit`). The cleaner schema is not worth the churn until we have a concrete second use for the schema slot. Revisit only if there's a load-bearing reason.
 
 ---
 
-## Test count harmonization
+## Wedding query staging retest
 
-**Status:** queued · **Cost:** small (doc-only) · **Risk:** none
+**Status:** queued · **Cost:** trivial · **Risk:** none · **Owner:** stylist
 
-Different doc sections cite different L0 test counts (130 / 268 / 329 / 382 / 387 / 423) reflecting different points in time. They were accurate when written. After this commit's bundle of changes, the live count is **384** (was 382 + 2 new architect-prompt assertions in PR #20). Harmonize all docs to read 384 and add a "(as of YYYY-MM-DD)" stamp so future drift is obvious.
+After PR #30 landed, the LLM ranker pipeline replaced the deterministic assembler + reranker. The wedding query that originally surfaced the failure mode (turn `62db2c1a-0800-4308-8234-e8db59971d6c` — "I need to attend my friend's wedding in traditional style") should now ship 3 strong outfits where it previously shipped 0. Confirm by issuing the same query in staging and checking that:
 
----
-
-## "Acquisition source instrumentation regressed" line
-
-**Status:** queued · **Cost:** small (doc-only) · **Risk:** none
-
-A line in the migrated phase-history claims "acquisition_source instrumentation regressed" without context. Either it's resolved (note the fix) or it's open (move to a known-issues section). Currently reads as ambiguous.
-
----
-
-## Reranker calibration curve fit
-
-**Status:** data-blocked · **Cost:** ~1 day of dev when data is ready · **Risk:** low
-
-The plumbing landed May 1, 2026: `reranker_decision` rows in `tool_traces`, `data/reranker_weights.json` loader, and the skeleton `ops/scripts/calibrate_reranker.py`. The skeleton runs against staging today and emits default weights + observability metrics (rank-position like-rate spread).
-
-The full Ridge fit replacing those defaults needs **≥200 labelled turns** to be statistically meaningful. Until staging traffic accumulates that volume, the script intentionally keeps emitting defaults.
-
-**Trigger to do this:** when `tool_traces` has ≥200 rows where `tool_name='reranker_decision'` AND `feedback_events` joins to those turns.
+- Architect emits at least one `complete (kurta_set)` direction.
+- Composer constructs ≥3 outfits with `kurta_set` items in Direction A.
+- Rater emits `fashion_score ≥ 75` for at least 3 of them.
+- Visual evaluator + 0.75 gate ship 3 outfits to the user.

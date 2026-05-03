@@ -1,6 +1,6 @@
 # Workflow Reference — Intent Execution Flows
 
-Last updated: May 3, 2026 (Model migration to gpt-5.5/gpt-5-mini; Lever 1+2 perf wins live; Lever 3 split-architect deprecated and removed; confidence threshold 0.75 gates all outfit responses)
+Last updated: May 3, 2026 (LLM ranker live — Composer + Rater replace OutfitAssembler + Reranker; cosine similarity is now retrieval-only; gate moves from `assembly_score` 0.75 to `fashion_score` 75)
 
 > **What this is (and isn't):** This is **reference documentation for humans
 > reading the codebase**. It describes how each intent is executed by the
@@ -25,7 +25,7 @@ The Phase 12 re-architecture (Phases 12A–12E, completed April 2026) consolidat
 
 | Intent | Action | Pipeline shape |
 |---|---|---|
-| `occasion_recommendation` | `RUN_RECOMMENDATION_PIPELINE` | architect → search → assemble → reranker → tryon (top-3, parallel) → visual_evaluator → format. Photo upload is mandatory; on transient visual-evaluator failure the response formatter returns a graceful "try again" empty response (the legacy text-only `OutfitEvaluator` fallback was removed April 9, 2026). Absorbs the old `product_browse` intent via `target_product_type`. |
+| `occasion_recommendation` | `RUN_RECOMMENDATION_PIPELINE` | architect → search → composer (LLM) → rater (LLM) → tryon (top-3, parallel) → visual_evaluator → format. Photo upload is mandatory; on transient visual-evaluator failure the response formatter returns a graceful "try again" empty response (the legacy text-only `OutfitEvaluator` fallback was removed April 9, 2026). Absorbs the old `product_browse` intent via `target_product_type`. |
 | `pairing_request` | `RUN_RECOMMENDATION_PIPELINE` | Same as occasion_recommendation, with `enriched_data["is_anchor"]=True` on the synthetic anchor `RetrievedProduct`. The diversity pass exempts anchors so all 3 outfits survive. |
 | `garment_evaluation` | `RUN_GARMENT_EVALUATION` | tryon → visual_evaluator → format with optional buy/skip verdict. Replaces `shopping_decision`, `garment_on_me_request`, and `virtual_tryon_request`. Photo-only input. `purchase_intent: bool` from the planner controls whether the verdict block renders. |
 | `outfit_check` | `RUN_OUTFIT_CHECK` | visual_evaluator on the user's photo → format → async decomposition. No try-on (the user is already wearing the outfit), no architect call. |
@@ -47,7 +47,8 @@ The Phase 12 re-architecture (Phases 12A–12E, completed April 2026) consolidat
 | Component | Phase | Purpose |
 |---|---|---|
 | `agents/visual_evaluator_agent.py` | 12B | Vision-grounded per-candidate evaluator — the **sole evaluator** in the system (legacy `OutfitEvaluator` and `OutfitCheckAgent` removed April 9, 2026). 9 dimension scores (5 always-evaluated + 4 context-gated), 8 archetype scores, optional `overall_verdict`/`strengths`/`improvements`. Three modes: `recommendation`, `single_garment`, `outfit_check`. |
-| `agents/reranker.py` | 12B | Direction-aware round-robin pruning before the try-on stage. Picks the top candidate from each direction first, then fills remaining slots by global `assembly_score`. `final_top_n=3`, `pool_top_n=5` defaults; the over-generation pool gives the orchestrator headroom when a try-on fails the quality gate. |
+| `agents/outfit_composer.py` | LLM ranker (May 3 2026, PR #29) | gpt-5-mini constructs up to 10 outfits from the retrieved item pool, grouped by direction (A/B/C). Emits per-outfit rationale; validates every item_id against the pool with a hallucination retry. Replaces the old `OutfitAssembler`. |
+| `agents/outfit_rater.py` | LLM ranker (May 3 2026, PR #29) | gpt-5-mini scores each composed outfit on a four-dimension rubric (`occasion_fit`, `body_harmony`, `color_harmony`, `archetype_match`), emits a blended `fashion_score` 0–100, ranks them, marks any `unsuitable`. Replaces the old `Reranker`. |
 | `agents/style_advisor_agent.py` | 12C | LLM advisor for open-ended `style_discovery` and `explanation_request` (against prior turn artifacts). Returns structured advice with prose answer + bullets + cited attributes + dominant directions. |
 | Four thinking directions | 12C | Reasoning axes propagated through architect / visual evaluator / advisor prompts: physical+color, comfort, occasion, weather/time. NOT fixed weights — the agent identifies which 1-2 dominate per turn. |
 | `weather_context` / `time_of_day` / `target_product_type` | 12A/C | New `CopilotResolvedContext` fields extracted by the planner, consumed by the architect and visual evaluator. |
@@ -101,7 +102,7 @@ Scope: correctness, robustness, and retrieval quality improvements to the archit
 | Change | Impact |
 |---|---|
 | `live_context` wired to architect | `weather_context`, `time_of_day`, `target_product_type` now reach the LLM via `_build_user_payload()`. Added to `LiveContext` schema, wired in `_build_effective_live_context()`. |
-| `ranking_bias` field | New field on `ResolvedContextBlock`: `conservative / balanced / expressive / formal_first / comfort_first`. Architect sets it based on riskTolerance and request framing. Downstream reranker wiring in Phase 14. |
+| `ranking_bias` field | Was a new field on `ResolvedContextBlock` (Phase 13B). **Removed May 3, 2026 (PR #30)** — the LLM Rater reads user context directly, no separate bias plumbing. |
 | Occasion-driven structure selection | Removed contradictory "exactly 3, one of each" rule. Architect now creates 2–3 directions using only structures appropriate for the occasion. |
 | Style-stretch direction | Third direction pushes user's style one notch beyond comfort zone, gated by riskTolerance. Hard-guarded: fabric/formality/embellishment/AvoidColors not relaxable. |
 | Weather-fabric override | Weather overrides occasion for fabric weight/breathability. Hot/humid wedding → silk/crepe not velvet. |
@@ -143,7 +144,7 @@ Tests: 127+ passing.
 
 ### What stays the same
 
-The catalog search agent (`CatalogSearchAgent`) now has timeout retry logic but its core responsibility (embed → search → hydrate) is unchanged. The assembler (`OutfitAssembler`), response formatter (`ResponseFormatter`), try-on service (`TryonService`), and try-on quality gate (`TryonQualityGate`) are unchanged. Phase 12 added new components alongside them; Phase 13/13B hardened the architect's planning quality and search resilience without changing the pipeline shape.
+The catalog search agent (`CatalogSearchAgent`) now has timeout retry logic but its core responsibility (embed → search → hydrate) is unchanged. The response formatter (`ResponseFormatter`), try-on service (`TryonService`), and try-on quality gate (`TryonQualityGate`) are unchanged. Phase 12 added new components alongside them; Phase 13/13B hardened the architect's planning quality and search resilience without changing the pipeline shape. **OutfitAssembler was removed in May 3 2026 PR #30**, replaced by the LLM ranker (Composer + Rater).
 
 ### How to read the per-intent sections below
 
@@ -248,7 +249,7 @@ User message
    │   │   │   risk_tolerance, occasion, comfort_boundary, specific_needs, pairing_coherence
    │   │   └── 8 style archetypes: classic, dramatic, romantic, natural,
    │   │       minimalist, creative, sporty, edgy
-   │   ├── Graceful fallback: criteria from assembly_score if LLM fails
+   │   ├── Graceful fallback: criteria from fashion_score if LLM fails
    │   ├── Hard cap: maximum 5 evaluated recommendations
    │   └── DB: repo.log_model_call(call_type="visual_evaluator")
    │
@@ -281,10 +282,10 @@ User message
 | Field | Value |
 |-------|-------|
 | `response_type` | `"recommendation"` |
-| `outfits` | Up to 3 `OutfitCard` objects with items, scores, tryon_image. The 0.75 confidence threshold (see `_RECOMMENDATION_CONFIDENCE_THRESHOLD` in `orchestrator.py`) drops any candidate whose `assembly_score` falls below; if **zero** candidates clear, `_build_low_confidence_catalog_response` runs instead and returns `outfits=[]` with an honest "I couldn't find a strong match" message + refine / show-closest / shop CTAs. |
+| `outfits` | Up to 3 `OutfitCard` objects with items, scores, tryon_image. The catalog-pipeline gate (`_RECOMMENDATION_FASHION_THRESHOLD = 75` in `orchestrator.py`) drops any candidate whose `fashion_score` falls below 75; if **zero** candidates clear, `_build_low_confidence_catalog_response` runs instead and returns `outfits=[]` with an honest "I couldn't find a strong match" message + refine / show-closest / shop CTAs. The wardrobe-first path uses the equivalent `_RECOMMENDATION_CONFIDENCE_THRESHOLD = 0.75` floor on its normalized item score. |
 | `metadata.answer_source` | `"wardrobe_first"`, `"catalog_pipeline"`, `"hybrid"`, or `"catalog_low_confidence"` (no outfits cleared the threshold) |
 | `metadata.recommendation_confidence` | 9-factor confidence object |
-| `metadata.low_confidence_top_match_score` | Only set when `answer_source == catalog_low_confidence` — the highest `assembly_score` seen, surfaced for ops dashboards (never shown to the user) |
+| `metadata.low_confidence_top_match_score` | Only set when `answer_source == catalog_low_confidence` — the highest `fashion_score` seen (normalized to 0–1 in this metadata field), surfaced for ops dashboards (never shown to the user) |
 | `follow_up_suggestions` | e.g., `"Show me options to buy"` (catalog upsell CTA — was `"Show me better options from the catalog"` pre-May 3), `"Show me bolder options"`, `"Refine the request"` |
 
 ---

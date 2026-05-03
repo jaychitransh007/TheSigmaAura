@@ -331,7 +331,7 @@ ORDER BY 1 DESC;
 
 Healthy steady state:
 - `quality_gate_failure_rate_pct` < 15% — anything above 25% means the
-  Gemini try-on output is degrading and Phase 12E reranker calibration
+  Gemini try-on output is degrading and the LLM ranker
   needs to start de-prioritizing low-quality candidates upstream
 - `turns_using_overgeneration` should be a small fraction of total turns;
   a sharp increase means the natural top-3 candidates are failing the
@@ -535,7 +535,7 @@ the image as not-a-garment.
 
 **Question:** how often does the 0.75 confidence threshold gate force a no-confident-match response instead of shipping outfits?
 
-**Context:** As of May 3, 2026 the orchestrator drops outfits whose `assembly_score < 0.75` and, when zero candidates clear, returns `answer_source = "catalog_low_confidence"` with `outfits=[]` and a graceful "I couldn't find a strong match" message + refine / show-closest / shop CTAs. This panel tracks that rate so the team can decide when the threshold is too aggressive (catalog needs broadening) vs working as intended (catalog has a real coverage gap).
+**Context:** As of May 3, 2026 the orchestrator drops outfits whose `fashion_score < 75` (LLM Rater 0–100 scale) and, when zero candidates clear, returns `answer_source = "catalog_low_confidence"` with `outfits=[]` and a graceful "I couldn't find a strong match" message + refine / show-closest / shop CTAs. This panel tracks that rate so the team can decide when the threshold is too aggressive (catalog needs broadening) vs working as intended (catalog has a real coverage gap).
 
 ```sql
 -- low_confidence_catalog_response_rate_last_7d
@@ -558,7 +558,7 @@ ORDER BY 1 DESC;
 
 **Healthy:** `low_conf_rate_pct` stays <5%. The avg blocked top score should sit close to but below 0.75 (i.e., the gate is catching genuinely borderline turns, not way-off ones).
 
-**Degraded:** `low_conf_rate_pct` 5–20%. Most likely a catalog gap or an architect drift producing weak query documents. Pull a sample of low-confidence turns from `turn_traces` (filter on `evaluation->>'answer_source' = 'catalog_low_confidence'`) and inspect each one's architect query documents + retrieved candidates manually — check whether the architect is targeting `garment_subtype` values the catalog doesn't carry well, or whether the user's seasonal palette / formality target has thin inventory. (A future Panel 17 would join `tool_traces.reranker_decision` to `catalog_enriched.GarmentSubtype` to surface this automatically.)
+**Degraded:** `low_conf_rate_pct` 5–20%. Most likely a catalog gap or an architect drift producing weak query documents. Pull a sample of low-confidence turns from `turn_traces` (filter on `evaluation->>'answer_source' = 'catalog_low_confidence'`) and inspect each one's architect query documents + retrieved candidates manually — check whether the architect is targeting `garment_subtype` values the catalog doesn't carry well, or whether the user's seasonal palette / formality target has thin inventory. (A future Panel 17 would join `tool_traces.composer_decision` / `rater_decision` to `catalog_enriched.GarmentSubtype` to surface this automatically.)
 
 **Unhealthy:** `low_conf_rate_pct` > 20% sustained. Either the threshold is too high for current catalog depth, or the architect / assembler is regressing. Pull a sample of low-confidence turns from `turn_traces` and inspect the query documents + retrieved products manually.
 
@@ -691,8 +691,6 @@ work the diagnosis there.
   live backend.
 - `ops/scripts/validate_dependency_report.py` — seeded validation harness
   for `build_dependency_report`.
-- `ops/scripts/calibrate_reranker.py` — skeleton calibration script for the
-  reranker (deferred curve fit — needs ≥200 labelled production turns).
 - `ops/scripts/extract_dashboard_sql.py` — re-extracts every Panel's SQL
   into `ops/dashboards/panel_NN_*.sql` for paste-into-dashboard use.
 - `ops/dashboards/` — auto-extracted SQL files, one per panel.
@@ -763,7 +761,7 @@ python3 -m pytest tests/test_agentic_application.py -v
 
 ### Key Test Coverage Areas
 
-**Application pipeline:** Copilot planner intent classification and action routing, LLM-only planning (no deterministic fallback), evaluator fallback to assembly_score, evaluator hard output cap (max 5), follow-up intents (7 types), assembly compatibility checks, response formatter bounds (max 3 outfits), concept-first paired planning, model configuration validation, conversation memory build/apply, QnA stage narration, profile-guidance intent routing (color direction, avoidance, suitability), profile-grounded zero-result fallback, style-discovery context continuity across follow-ups.
+**Application pipeline:** Copilot planner intent classification and action routing, LLM-only planning (no deterministic fallback), evaluator fallback to fashion_score, evaluator hard output cap (max 5), follow-up intents (7 types), assembly compatibility checks, response formatter bounds (max 3 outfits), concept-first paired planning, model configuration validation, conversation memory build/apply, QnA stage narration, profile-guidance intent routing (color direction, avoidance, suitability), profile-grounded zero-result fallback, style-discovery context continuity across follow-ups.
 
 **Onboarding:** 3-agent analysis with mock LLM responses, interpretation derivation across 4 seasonal color groups (Spring, Summer, Autumn, Winter), style archetype selection, single-agent rerun with baseline preservation.
 
