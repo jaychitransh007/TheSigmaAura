@@ -125,10 +125,10 @@ def run_with_context(snapshot_values: dict, fn, *args, **kwargs):
         # Reset in reverse order. A worker thread is a fresh Context
         # so this isn't strictly necessary, but doing it keeps thread
         # reuse (in long-lived pools) clean.
-        _REQUEST_ID.reset(tokens[0])
-        _TURN_ID.reset(tokens[1])
-        _CONVERSATION_ID.reset(tokens[2])
         _EXTERNAL_USER_ID.reset(tokens[3])
+        _CONVERSATION_ID.reset(tokens[2])
+        _TURN_ID.reset(tokens[1])
+        _REQUEST_ID.reset(tokens[0])
 
 
 # ── Logging filter ────────────────────────────────────────────────────

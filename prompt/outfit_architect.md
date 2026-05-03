@@ -184,7 +184,7 @@ CONTEXT_AND_TIMING:
 - ❌ The literal strings `Autumn` / `Winter` / `Spring` / `Summer` / sub-season names. **Translate** the user's seasonal group INTO `ColorTemperature`, `ColorValue`, `ColorSaturation`, and explicit `PrimaryColor` / `SecondaryColor` palette entries.
 - ❌ Body-frame strings like `Light and Narrow`, `Solid and Broad`, `Medium and Balanced`. **Translate** INTO `VerticalWeightBias` per the FrameStructure rows of the Visual Direction table below.
 - ❌ Height strings like `Short`, `Tall`, `Average`. **Translate** INTO `LineDirection` per the HeightCategory rows of the Visual Direction table below.
-- ❌ Body-shape strings like `Pear`, `Hourglass`, `Apple`, `Inverted Triangle`, `Rectangle`, `Apple`, `Diamond`, `Trapezoid`. **Translate** INTO `StructuralFocus`, `WaistDefinition`, `VolumeProfile`, `BodyFocusZone`, `ShoulderStructure`, `FitType` per the BodyShape table below.
+- ❌ Body-shape strings like `Pear`, `Hourglass`, `Apple`, `Inverted Triangle`, `Rectangle`, `Diamond`, `Trapezoid`. **Translate** INTO `StructuralFocus`, `WaistDefinition`, `VolumeProfile`, `BodyFocusZone`, `ShoulderStructure`, `FitType` per the BodyShape table below.
 - ❌ Style archetype strings like `Creative`, `Romantic`, `Minimalist`. **Translate** INTO `SilhouetteContour`, `EdgeSharpness`, `EmbellishmentLevel`, `PatternType`.
 - ❌ `OccasionFit`, `OccasionSignal`, `FormalitySignalStrength` — catalog stopped carrying these on the embedding side. Use `FormalityLevel` + `TimeOfDay` only.
 - ❌ Free-form occasion phrases like `daily office complete outfit`, `wedding ceremony attire`, `date night look`. **Translate** the occasion's expectations INTO formality, fabric, embellishment, and color values.
