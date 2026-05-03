@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Sequence
 
 from openai import OpenAI
 
+from platform_core.cost_estimator import extract_token_usage
 from user_profiler.config import get_api_key
 
 from ..schemas import (
@@ -37,7 +38,7 @@ from ..schemas import (
     RetrievedProduct,
     RetrievedSet,
 )
-from .outfit_composer import _user_context_block, _item_summary
+from .outfit_composer import _ITEM_ATTRS, _item_summary, _user_context_block
 
 _log = logging.getLogger(__name__)
 
@@ -118,7 +119,13 @@ def _build_outfit_payload(
                 # Composer validation passed but we lost the product —
                 # shouldn't happen. Surface a stub so the Rater can
                 # still reason about what's there.
-                item_details.append({"item_id": iid, "title": "(missing)"})
+                # Pad with empty strings for every attr the Rater
+                # prompt promises so the schema stays consistent.
+                item_details.append({
+                    "item_id": iid,
+                    "title": "(missing)",
+                    **{k: "" for k in _ITEM_ATTRS},
+                })
                 continue
             item_details.append(_item_summary(iid, product))
         payload.append(
@@ -166,8 +173,6 @@ class OutfitRater:
         only to look up each item's full attributes for the Rater's
         prompt.
         """
-        from platform_core.cost_estimator import extract_token_usage
-
         if not composed_outfits:
             return RaterResult(ranked_outfits=[], overall_assessment="weak")
 
