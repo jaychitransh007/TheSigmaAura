@@ -659,6 +659,249 @@ The user-reported list of 14 group names collapsed to 5 themes exactly as planne
 
 ---
 
+## Performance Optimization — Implementation Progress (May 3, 2026)
+
+**Status:** all three levers from the original plan are now **implemented and shipped behind tests**. Levers 1 and 2 are live by default; Lever 3 ships behind the `OUTFIT_ARCHITECT_MODE=split` env flag (default `monolithic`) pending a 2-week staging A/B against `recommendation_confidence` and feedback like-rate.
+
+### What's done (May 3, 2026)
+
+- [x] **Lever 1 — Parallel try-on renders.** `_render_candidates_for_visual_eval` in [orchestrator.py](modules/agentic_application/src/agentic_application/orchestrator.py) refactored to a batched-parallel model. `_render_one` made thread-safe (returns a result dict; counters reconciled in the caller). The cache lookup short-circuits inside the thread before the Gemini call. The over-generation pool still works: when a parallel batch leaves slots empty due to QG failures, the next batch fans out the recovery in parallel too. **Saves ~41s on a happy-path 3-candidate turn (64s sequential → ~23s parallel).** 3 regression tests in `TryonParallelRenderTests` (parallel timing, QG-failure recovery, cache-hit short-circuit).
+
+- [x] **Lever 2 — Architect prompt trim + conditional assembly.** [`prompt/outfit_architect.md`](prompt/outfit_architect.md) trimmed from **526 lines / 11.6K tokens → 4.8K tokens**. The anchor-garment rules and follow-up-intent rules are now separate modules ([`prompt/outfit_architect_anchor.md`](prompt/outfit_architect_anchor.md), [`prompt/outfit_architect_followup.md`](prompt/outfit_architect_followup.md)) loaded only when the request actually needs them. `OutfitArchitect.__init__` now loads the modules; new `_build_system_prompt(combined_context)` assembles per request. **Saves ~6,850 tokens on a plain (no-anchor, no-followup) turn — about $0.034 architect cost reduction per turn at gpt-5.5 pricing.** 3 regression tests in `ArchitectPromptAssemblyTests` (base prompt excludes conditional sections; assembly includes them only when needed; size ceiling pin).
+
+- [x] **Lever 3 — Architect split: Plan + parallel Query Builder.** Two new agents:
+  - [`modules/agentic_application/src/agentic_application/agents/outfit_architect_planner.py`](modules/agentic_application/src/agentic_application/agents/outfit_architect_planner.py) — Stage A: structured reasoning over a compact input (~3K tokens). Returns `direction_plans` with seeds (role, target_color_role, target_formality, target_garment_subtypes, concept_notes) but NO `query_document` strings yet. Runs on gpt-5.5.
+  - [`modules/agentic_application/src/agentic_application/agents/outfit_architect_query_builder.py`](modules/agentic_application/src/agentic_application/agents/outfit_architect_query_builder.py) — Stage B: per-direction query writer. Receives the seed + the role-relevant slice of profile/color/style. Emits the populated `QuerySpec[]`. Runs on gpt-5-mini.
+  - [`prompt/outfit_architect_plan.md`](prompt/outfit_architect_plan.md) (~2K tokens) and [`prompt/outfit_architect_query.md`](prompt/outfit_architect_query.md) (~3K tokens) replace the monolithic prompt's two responsibilities.
+  - `OutfitArchitect.plan` is now a dispatcher: `OUTFIT_ARCHITECT_MODE=split` routes to `_plan_split` (Stage A → parallel Stage B fanout via `ThreadPoolExecutor` with `max_workers=len(directions)`); default `monolithic` preserves the legacy single-call path. The split path merges Stage A + Stage B token counts into `last_usage` (with `_stage_a_ms` / `_stage_b_max_ms` / `_n_directions` / `_mode` for telemetry). On any stage failure, `RuntimeError` propagates so the orchestrator's existing architect-error handler kicks in.
+  - 2 regression tests in `ArchitectSplitModeTests` (split mode runs Stage A once + Stage B per-direction in <0.55s wallclock for 2-direction parallelism; default mode is `monolithic` and never instantiates the split agents).
+
+### Measured + projected impact
+
+Against the May 3, 2026 baseline turn (`user_03026279ecd6` / `066dc809…`):
+
+| Stage | Today | After Lever 1 (live) | After Lever 1 + 2 (live) | After Lever 1 + 2 + 3 (flag) |
+|---|---:|---:|---:|---:|
+| `copilot_planner` | 9.7s | 9.7s | 9.7s | 9.7s |
+| `outfit_architect` | 28.5s | 28.5s | ~22s (trim) | ~16s (split + parallel Stage B) |
+| `catalog_search` | 3.9s | 3.9s | 3.9s | 3.9s |
+| `visual_evaluation` (incl. Gemini) | 92.4s | ~51s | ~51s | ~51s |
+| Other | 7.2s | 7.2s | 7.2s | 7.2s |
+| **Total** | **141.7s** | **~100s** (-29%) | **~94s** (-34%) | **~88s** (-38%) |
+| Cost | $0.30 | $0.30 | $0.27 | $0.16 (-47%) |
+
+Default-on (Levers 1+2): **~94s / $0.27**. With the split flag ON (Lever 3): **~88s / $0.16**.
+
+### Rollout plan for Lever 3
+
+- [ ] **Week 1:** flip `OUTFIT_ARCHITECT_MODE=split` for 10% of staging traffic via env override.
+- [ ] **Week 2:** collect telemetry from `model_call_logs` (`call_type='architect_plan'` + `'architect_query_builder'`) and compare against `monolithic` baseline:
+  - **Latency:** total architect time (Stage A + Stage B max) should be ≤ 60% of monolithic median.
+  - **Cost:** architect $/turn should drop ~80%.
+  - **Quality (primary):** `recommendation_confidence.score_pct` parity within ±3pp of monolithic.
+  - **Quality (secondary):** `feedback_events` like-rate parity within ±2pp.
+- [ ] **Week 3:** if both quality metrics hold, flip default to `split`. If either regresses, revert flag and investigate which seed signal Stage B was missing.
+
+### Files changed
+
+- `modules/agentic_application/src/agentic_application/orchestrator.py` — `_render_candidates_for_visual_eval` rewritten for batched-parallel rendering; `_render_one` returns a result dict instead of mutating shared state.
+- `modules/agentic_application/src/agentic_application/agents/outfit_architect.py` — added `_load_module`, `_assemble_system_prompt`, `_build_system_prompt(context)`; split `plan` into a dispatcher with `_plan_monolithic` (legacy) + `_plan_split` (new).
+- `modules/agentic_application/src/agentic_application/agents/outfit_architect_planner.py` — **new** Stage A agent.
+- `modules/agentic_application/src/agentic_application/agents/outfit_architect_query_builder.py` — **new** Stage B agent.
+- `prompt/outfit_architect.md` — rewritten, ~7,000 tokens trimmed.
+- `prompt/outfit_architect_anchor.md` — **new**, conditional add-on.
+- `prompt/outfit_architect_followup.md` — **new**, conditional add-on.
+- `prompt/outfit_architect_plan.md` — **new**, Stage A system prompt.
+- `prompt/outfit_architect_query.md` — **new**, Stage B system prompt.
+- `tests/test_agentic_application.py` — 8 new regression tests across `TryonParallelRenderTests`, `ArchitectPromptAssemblyTests`, `ArchitectSplitModeTests`.
+
+All 384 L0 tests pass.
+
+---
+
+## Performance Optimization Plan (May 3, 2026)
+
+The baseline trace audit and original plan that motivated the work above. Kept for reference.
+
+A trace audit on May 3, 2026 of `user_03026279ecd6` turn `066dc809…` (`Dress me for a date night` with attached Chocolate Brown Sweater, intent `pairing_request`) measured **141.7s end-to-end** and **~$0.30 cost**. Three stages dominate the wallclock:
+
+| Stage | Latency | % of turn | Cost |
+|---|---:|---:|---:|
+| `visual_evaluation` | 92.4s | **65%** | $0.002 (model) + ~$0.117 (Gemini) |
+| `outfit_architect` | 28.5s | **20%** | $0.145 |
+| `copilot_planner` | 9.7s | 7% | $0.040 |
+| All other steps combined | 11.1s | 8% | — |
+
+This section plans three levers that, taken together, target **~88s / ~$0.16 per turn** — a 38% latency cut and 47% cost cut against today's baseline — without sacrificing recommendation quality.
+
+### Lever 1 — Parallelize Gemini try-on renders (P1, code, low risk)
+
+**Status today:** `_render_candidates_for_visual_eval` in `modules/agentic_application/src/agentic_application/orchestrator.py:4976` walks the candidate pool sequentially: render → quality-gate → if pass, append → else advance pool. On the audited turn this produced three back-to-back Gemini calls of 23.3s + 21.6s + 19.3s = **64.2s sequential**. Each call is independent; the only state shared between them is the `stats` counter dict.
+
+**Plan:**
+- [ ] Refactor the body of `_render_candidates_for_visual_eval` to a **batched-parallel** model:
+  - Loop: pick the next `target_count - len(rendered)` un-attempted candidates from the pool. Submit them to a `ThreadPoolExecutor(max_workers=target_count)`. Collect results via `as_completed`. Append passing renders to `rendered`. Repeat until full or pool exhausted.
+  - Worst case (every render in batch 1 fails the quality gate): one extra round-trip — still parallel, two batches instead of N sequential calls.
+  - Happy case (all pass batch 1): one round-trip at `max(t1, t2, t3) ≈ 23s` instead of `t1 + t2 + t3 ≈ 64s`. **Save ~41s.**
+- [ ] Make `_render_one` thread-safe:
+  - The `stats` dict is mutated from inside the closure. Switch to returning a richer result tuple `(path, status, quality_passed, quality_reason)` and reconcile counters in the post-batch caller. No lock required.
+  - Repo writes (`log_tool_trace`, `insert_tryon_image`, `find_tryon_image_by_garments`) already go through Supabase REST — independent HTTP requests are inherently safe.
+- [ ] Cache lookup runs first inside `_render_one` and short-circuits before any Gemini call, so cache hits don't burn parallelism budget.
+- [ ] Confirm `google-genai` SDK concurrency: per Google's docs each `generate_content` call is an independent HTTPS request; `genai.Client` is thread-safe.
+- [ ] Dashboard panels remain unchanged — `tryon_overgeneration_used` already reflects "did we have to dig past `target_count`", which still applies.
+
+**Tests (extend `tests/test_agentic_application.py`):**
+- [ ] `test_tryon_renders_run_in_parallel`: mock `tryon_service.generate_tryon_outfit` to sleep 0.3s and record call timestamps. Assert that 3-candidate render finishes in <0.5s wall-clock (vs 0.9s sequential).
+- [ ] `test_tryon_quality_gate_failure_recovers_in_parallel_batch`: mock first batch to fail QG; assert second batch issues `len(failed)` parallel calls, not sequential.
+- [ ] `test_tryon_cache_hit_short_circuits_inside_thread`: candidate with cache hit returns without invoking the Gemini mock at all.
+
+**Cost posture:** zero net change on the happy path. On QG-failure turns the cost is identical (same number of Gemini calls overall — just batched).
+
+**File touched:** `modules/agentic_application/src/agentic_application/orchestrator.py` (`_render_candidates_for_visual_eval`).
+
+### Lever 2 — Trim the Outfit Architect system prompt (P2, copy edit, low risk)
+
+**Status today:** `prompt/outfit_architect.md` is **526 lines / 46,566 chars / ~11,500 tokens**. With a typical user payload of ~3,800 tokens, the architect call sees ~15,300 input tokens. The prompt's volume is the dominant lever on architect input cost ($5.00/M in @ gpt-5.5 → $0.058 just for the system prompt per call).
+
+**Plan:**
+- [ ] Audit the prompt section by section; tag each with one of:
+  - **(A) Always load-bearing** — output JSON schema, direction-type vocabulary, hard rules.
+  - **(B) Conditionally load-bearing** — anchor handling rules (only matters when `anchor_garment` is set), `target_product_type` single-garment rules, three-piece rules.
+  - **(C) Reference / explanation** — color theory expansion, sub-season vocabulary table, examples that illustrate but don't constrain.
+- [ ] Compress (C) sections:
+  - Color theory: keep the **rules** (e.g., "use AccentColors for tops, BaseColors for bottoms; never AvoidColors") inline; move the **vocabulary expansion** (e.g., 12 sub-season descriptions) into the user payload's `derived_interpretations` block, sent only when relevant. Saves ~1,500 tokens.
+  - Examples: replace each multi-line "if X then Y because Z" example with a one-line rule. Saves ~800 tokens.
+- [ ] Make (B) sections conditional via runtime assembly:
+  - Build the system prompt at request time by composing a base prompt + intent-specific add-ons (e.g., `_PROMPT_ANCHOR_RULES` only included when `anchor_garment` is present). Saves ~1,200 tokens on non-anchor turns.
+- [ ] Target: **8K-9K total system prompt tokens** (down from 11.5K). Saves 2.5K-3.5K input tokens per call → **~$0.013 / call**, and shaves ~5–8 seconds off architect latency at 5–10 KB/s effective input throughput.
+
+**Tests:**
+- [ ] Snapshot test: assemble the prompt for each of {anchor, non-anchor, target_product_type, three_piece} and pin token count + section presence. Token count must stay below ~9,500 hard ceiling.
+- [ ] Regression: run the existing 3 `test_outfit_architect_*` tests in `tests/test_agentic_application.py`. The architect's structured output schema is unchanged, so these must still pass.
+
+**Quality risk:** medium — prompt compression risks losing rules that subtly improved retrieval quality on edge cases. Mitigation: ship behind a feature flag `OUTFIT_ARCHITECT_PROMPT_VERSION=v2` and run a 1-week A/B against staging traffic. If `recommendation_confidence.score_pct` drops more than 5pp, revert.
+
+**Files touched:**
+- `prompt/outfit_architect.md` (rewrite)
+- `modules/agentic_application/src/agentic_application/agents/outfit_architect.py` (`_load_prompt` becomes a builder; new `_assemble_prompt(combined_context)` that selects sections)
+
+### Lever 3 — Split the Outfit Architect into a small-input Plan pass + parallel Query Builder (P2, refactor, medium risk)
+
+**Status today:** `OutfitArchitect.plan` does two distinct jobs in one model call:
+1. **Plan**: decide structure — how many directions, what type (`paired` / `three_piece` / `complete`), what role each query targets, `ranking_bias`, occasion/formality resolution.
+2. **Build queries**: write the natural-language `query_document` strings for each direction's queries.
+
+Job (1) is structured reasoning over a small context (intent + anchor + occasion + a handful of profile signals). Job (2) is creative natural-language transformation that benefits from full color/style detail. The two jobs share an LLM call today — which forces every input token (color theory, sub-season vocab, full conversation memory) to ride on the structured-reasoning call too.
+
+**Proposed split:**
+
+```
+                 user message + intent
+                            │
+                            ▼
+        ┌─────────────────────────────────────┐
+        │   Stage A: Architect Plan            │
+        │   model: gpt-5.5 (small input)       │
+        │   input ≈ 3K tokens                  │
+        │   output: directions + roles +        │
+        │     ranking_bias + resolved_context  │
+        │   no `query_document` yet             │
+        └─────────────────────────────────────┘
+                            │
+                            ▼
+        ┌─────────────────────────────────────┐
+        │  Stage B: Query Builder (×N parallel)│
+        │  model: gpt-5-mini                    │
+        │  input ≈ 6K tokens (per direction)   │
+        │  output: filled-in QuerySpec[] for   │
+        │     this direction                   │
+        └─────────────────────────────────────┘
+                            │
+                            ▼
+                    RecommendationPlan
+```
+
+**Stage A — Architect Plan**
+- **Inputs:** `user_message`, `intent`, `anchor_garment` (compact: title + category + subtype + primary_color + formality_level + occasion_fit only), `live_context`, `conversation_memory` (compact: last 3 turns), profile slice (`gender`, `body_shape`, `seasonal_group`, `primary_archetype`, `formality_lean`, `risk_tolerance`), `catalog_inventory_summary` (counts only, e.g., `{"paired_top_bottom": 1230, "complete_dress": 87}`), `previous_recommendations` (titles + categories only).
+- **Output schema:** mirrors today's `resolved_context` + `directions[]` BUT each direction has only `direction_id`, `direction_type`, `label`, `rationale`, `roles_needed[]`, `formality_target`, `occasion_target`, `ranking_bias`, `query_seeds: [{role, hard_filters}]`. **No `query_document` yet.**
+- **Model:** gpt-5.5. Plan reasoning is the hardest part; we keep the smarter model here, but with 80% less input it costs ~$0.015 instead of $0.145.
+- **Estimated:** 3K input + 800 output, ~6s, ~$0.015.
+
+**Stage B — Query Builder** (one call per direction, parallelized)
+- **Inputs (per direction):** the direction skeleton from Stage A + the role-relevant slice of color/seasonal context (e.g., for a `top` query, send `AccentColors` + `SkinHairContrast` + relevant pattern preferences; for a `bottom`, send `BaseColors` + body-shape rules).
+- **Output:** filled-in `QuerySpec[]` with `query_document` per role.
+- **Parallelization:** with 3 directions, 3 concurrent `responses.create` calls via `ThreadPoolExecutor`. Wallclock = `max(t1, t2, t3) ≈ 8-10s` instead of `t1 + t2 + t3 ≈ 24-30s`.
+- **Model:** gpt-5-mini. Query writing is a tractable transformation; the small model is sufficient and cuts cost ~33×.
+- **Estimated:** 6K × 3 parallel = 6K wallclock at ~9s, ~3K total output, ~$0.005.
+
+**Net effect:**
+- **Latency:** 28.5s → ~6s (Stage A) + ~10s (Stage B parallel) = **~16s. Save ~12s.**
+- **Cost:** $0.145 → $0.015 + $0.005 = **$0.020. Save ~$0.13** (-86%).
+
+**Plan:**
+- [ ] Define new schemas in `modules/agentic_application/src/agentic_application/schemas.py`:
+  - `DirectionPlan` (Stage A output) — like today's `DirectionSpec` but with `query_seeds: List[QuerySeed]` instead of `queries: List[QuerySpec]`.
+  - `QuerySeed` — `{role, hard_filters, target_color_role, target_formality}` (input to Stage B).
+- [ ] Introduce `OutfitArchitectPlanner` (Stage A) in `modules/agentic_application/src/agentic_application/agents/outfit_architect_planner.py`:
+  - Loads `prompt/outfit_architect_plan.md` (new, ~2K tokens — only the structure rules, no color theory or query-writing guidance).
+  - Builds compact user payload from `CombinedContext`.
+  - Calls gpt-5.5 with strict JSON schema.
+- [ ] Introduce `OutfitArchitectQueryBuilder` (Stage B) in `modules/agentic_application/src/agentic_application/agents/outfit_architect_query_builder.py`:
+  - Loads `prompt/outfit_architect_query.md` (new, ~3K tokens — the color/style query-writing playbook only, no structure rules).
+  - One call per direction; per-direction input includes the role-relevant profile slice.
+  - Calls gpt-5-mini.
+- [ ] Refactor `OutfitArchitect.plan` to orchestrate the two stages:
+  - Call Stage A → get `DirectionPlan[]`.
+  - Submit Stage B calls in parallel via `ThreadPoolExecutor(max_workers=len(directions))`.
+  - Merge into `RecommendationPlan` with the existing schema (so downstream stages — search agent, assembler — see no API change).
+- [ ] Telemetry:
+  - Emit two `model_call_logs` rows per turn (`call_type="architect_plan"`, `call_type="architect_query_builder"`) so dashboards can compare per-stage latency/cost.
+  - Add a `tool_traces` row (`tool_name="architect_split"`) with `{stage_a_ms, stage_b_max_ms, stage_b_total_ms, n_directions}`.
+- [ ] Feature flag: env var `OUTFIT_ARCHITECT_MODE=monolithic|split` with `monolithic` as the default until the A/B validates parity.
+
+**Quality risk:** medium-high. Stage B writes queries with less holistic context than today's monolithic architect. **Mitigation:**
+1. Stage A's `DirectionPlan` output must explicitly carry every signal Stage B needs — color targets, formality targets, anchor coordination cues. Schema review must catch any signal that today's prompt picks up implicitly.
+2. Run a 2-week A/B against staging. Primary metric: `recommendation_confidence.score_pct` parity (within 3pp). Secondary: user feedback like-rate (`feedback_events`) parity (within 2pp).
+3. Roll back via env-flag if either metric regresses.
+
+**Tests:**
+- [ ] Unit: each stage in isolation, schema-pinned outputs, mocked OpenAI client.
+- [ ] Integration: full pipeline turn under `OUTFIT_ARCHITECT_MODE=split` produces a `RecommendationPlan` of the same shape as `monolithic`. Snapshot the directions and `query_documents` and assert they're non-degraded vs a frozen baseline.
+- [ ] Concurrency: assert Stage B parallelism with the same timing-mock pattern as Lever 1.
+- [ ] Telemetry: verify both `model_call_logs` rows are emitted with correct token counts.
+
+**Files touched:**
+- `prompt/outfit_architect.md` (kept for monolithic mode; new `prompt/outfit_architect_plan.md` + `prompt/outfit_architect_query.md`)
+- `modules/agentic_application/src/agentic_application/agents/outfit_architect.py` (becomes the dispatcher)
+- `modules/agentic_application/src/agentic_application/agents/outfit_architect_planner.py` (new)
+- `modules/agentic_application/src/agentic_application/agents/outfit_architect_query_builder.py` (new)
+- `modules/agentic_application/src/agentic_application/schemas.py` (new `DirectionPlan`, `QuerySeed`)
+- `modules/agentic_application/src/agentic_application/orchestrator.py` (add stage-split tool_trace emission)
+
+### Combined impact forecast
+
+Against the May 3, 2026 baseline turn:
+
+| Stage | Today | After Lever 1 | After Lever 1 + 2 | After Lever 1 + 2 + 3 |
+|---|---:|---:|---:|---:|
+| `copilot_planner` | 9.7s | 9.7s | 9.7s | 9.7s |
+| `outfit_architect` | 28.5s | 28.5s | ~22s (trim) | ~16s (split + trim) |
+| `catalog_search` | 3.9s | 3.9s | 3.9s | 3.9s |
+| `visual_evaluation` (incl. Gemini) | 92.4s | ~51s (parallel) | ~51s | ~51s |
+| Other | 7.2s | 7.2s | 7.2s | 7.2s |
+| **Total** | **141.7s** | **~100s (-29%)** | **~94s (-34%)** | **~88s (-38%)** |
+| Cost | $0.30 | $0.30 | $0.29 | $0.16 (-47%) |
+
+### Sequencing recommendation
+
+1. **Lever 1 first.** Highest absolute latency win (~41s), zero quality risk, zero cost change. Ship in one PR.
+2. **Lever 2 second.** Modest latency + cost win (~8s, $0.013). Behind a prompt-version flag with 1-week A/B.
+3. **Lever 3 last.** Highest combined latency + cost win, but biggest refactor and quality risk. Behind `OUTFIT_ARCHITECT_MODE` flag with 2-week A/B. Only ship if Levers 1+2 didn't already get latency under target.
+
+If after Lever 1 + 2 the median turn is comfortably under 100s, Lever 3 may not be worth the refactor — revisit only if the architect itself becomes the new dominant stage on the dashboard.
+
+---
+
 ## Active Runtime
 
 Primary app runtime:

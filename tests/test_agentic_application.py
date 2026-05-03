@@ -6777,5 +6777,415 @@ class ConfidenceThresholdGateTests(unittest.TestCase):
         self.assertEqual(2, len(result["outfits"]))
 
 
+class ArchitectSplitModeTests(unittest.TestCase):
+    """May 3, 2026 — Lever 3: split the architect into a Plan stage
+    (gpt-5.5, small input) and parallel Query Builder stages (gpt-5-mini).
+    Default mode is `monolithic`; tests here cover the `split` flag.
+    """
+
+    def _make_combined_context(self):
+        from agentic_application.schemas import (
+            CombinedContext, LiveContext, UserContext, ConversationMemory,
+        )
+        return CombinedContext(
+            user=UserContext(
+                user_id="u1",
+                gender="masculine",
+                analysis_attributes={"BodyShape": {"value": "Trapezoid"}},
+                derived_interpretations={
+                    "FrameStructure": {"value": "Medium and Balanced"},
+                    "HeightCategory": {"value": "Average"},
+                    "SeasonalColorGroup": {"value": "Warm Autumn"},
+                    "BaseColors": {"value": ["camel", "warm taupe"]},
+                    "AccentColors": {"value": ["terracotta", "rust"]},
+                    "AvoidColors": {"value": ["icy blue", "magenta"]},
+                },
+                style_preference={"primaryArchetype": "classic", "riskTolerance": "medium"},
+                profile_richness="full",
+            ),
+            live=LiveContext(user_need="Dress me for a date night"),
+            hard_filters={"gender_expression": "masculine"},
+            previous_recommendations=[],
+            conversation_memory=ConversationMemory(),
+            catalog_inventory=[
+                {"gender_expression": "masculine", "garment_subtype": "shirt", "count": 758},
+                {"gender_expression": "masculine", "garment_subtype": "trouser", "count": 540},
+            ],
+        )
+
+    def test_split_mode_runs_plan_then_parallel_queries(self) -> None:
+        """Split mode must call Stage A once + Stage B per-direction in
+        parallel; result must be a valid RecommendationPlan."""
+        import os
+        import time as _time
+        from unittest.mock import patch as _patch
+        from agentic_application.agents.outfit_architect import OutfitArchitect
+
+        ctx = self._make_combined_context()
+
+        plan_raw = {
+            "resolved_context": {
+                "occasion_signal": "date_night", "formality_hint": "smart_casual",
+                "time_hint": "evening", "specific_needs": [], "is_followup": False,
+                "followup_intent": None, "ranking_bias": "balanced",
+            },
+            "retrieval_count": 12,
+            "direction_plans": [
+                {
+                    "direction_id": "A", "direction_type": "paired",
+                    "label": "Polished date night", "rationale": "smart casual evening",
+                    "query_seeds": [
+                        {"query_id": "A1", "role": "top",
+                         "hard_filters": {"gender_expression": "masculine"},
+                         "target_color_role": "accent", "target_formality": "smart_casual",
+                         "target_garment_subtypes": ["shirt"], "concept_notes": "fitted silk"},
+                        {"query_id": "A2", "role": "bottom",
+                         "hard_filters": {"gender_expression": "masculine"},
+                         "target_color_role": "base", "target_formality": "smart_casual",
+                         "target_garment_subtypes": ["trouser"], "concept_notes": "slim wool"},
+                    ],
+                },
+                {
+                    "direction_id": "B", "direction_type": "paired",
+                    "label": "Relaxed date night", "rationale": "less structured",
+                    "query_seeds": [
+                        {"query_id": "B1", "role": "top",
+                         "hard_filters": {"gender_expression": "masculine"},
+                         "target_color_role": "accent", "target_formality": "smart_casual",
+                         "target_garment_subtypes": ["shirt"], "concept_notes": "relaxed cotton"},
+                        {"query_id": "B2", "role": "bottom",
+                         "hard_filters": {"gender_expression": "masculine"},
+                         "target_color_role": "base", "target_formality": "smart_casual",
+                         "target_garment_subtypes": ["trouser"], "concept_notes": "straight cotton"},
+                    ],
+                },
+            ],
+        }
+
+        # Track Stage B parallelism by sleeping inside the mocked builder.
+        builder_call_times: list[float] = []
+
+        def slow_build(*, direction_plan, combined_context, resolved_context):
+            builder_call_times.append(_time.monotonic())
+            _time.sleep(0.3)
+            from agentic_application.schemas import QuerySpec
+            return [
+                QuerySpec(query_id=str(seed["query_id"]), role=str(seed["role"]),
+                          hard_filters=dict(seed["hard_filters"]),
+                          query_document=f"doc for {seed['query_id']}")
+                for seed in direction_plan["query_seeds"]
+            ]
+
+        planner_mock = Mock()
+        planner_mock.plan.return_value = plan_raw
+        planner_mock.last_usage = {"prompt_tokens": 1000, "completion_tokens": 200, "total_tokens": 1200}
+        builder_mock = Mock()
+        builder_mock.build.side_effect = slow_build
+        builder_mock.last_usage = {"prompt_tokens": 2500, "completion_tokens": 400, "total_tokens": 2900}
+
+        with _patch.dict(os.environ, {"OUTFIT_ARCHITECT_MODE": "split"}), _patch(
+            "agentic_application.agents.outfit_architect_planner.OutfitArchitectPlanner",
+            return_value=planner_mock,
+        ), _patch(
+            "agentic_application.agents.outfit_architect_query_builder.OutfitArchitectQueryBuilder",
+            return_value=builder_mock,
+        ), _patch.object(OutfitArchitect, "_load_prompt_done", create=True, new=True):
+            arch = OutfitArchitect(model="gpt-5.5")
+            # Manually inject the mocks since they're imported lazily inside _plan_split.
+            arch._split_planner = planner_mock
+            arch._split_builder = builder_mock
+
+            t0 = _time.monotonic()
+            plan = arch.plan(ctx)
+            elapsed = _time.monotonic() - t0
+
+        # Plan structure invariants
+        self.assertEqual(2, len(plan.directions))
+        self.assertEqual(["A", "B"], [d.direction_id for d in plan.directions])
+        self.assertEqual(2, len(plan.directions[0].queries))
+        self.assertEqual("date_night", plan.resolved_context.occasion_signal)
+        self.assertEqual(12, plan.retrieval_count)
+
+        # Parallelism — 2 builder calls each sleeping 0.3s should land in <0.5s wallclock.
+        self.assertEqual(2, builder_mock.build.call_count)
+        self.assertLess(
+            elapsed, 0.55,
+            f"Split-mode 2 directions took {elapsed:.2f}s — likely sequential (expected <0.55s)",
+        )
+        # Both builder calls started within ~0.1s of each other.
+        self.assertLess(abs(builder_call_times[1] - builder_call_times[0]), 0.15)
+
+        # last_usage merges Stage A + Stage B counts.
+        self.assertEqual("split", arch.last_usage["_mode"])
+        self.assertEqual(2, arch.last_usage["_n_directions"])
+        # Stage A 1000 + Stage B 2500 × 2 directions = 6000.
+        self.assertEqual(6000, arch.last_usage["prompt_tokens"])
+
+    def test_default_mode_is_monolithic(self) -> None:
+        """When the env flag is unset, the dispatcher uses the legacy
+        single-call path — no Stage A/B agents instantiated."""
+        import os
+        from unittest.mock import patch as _patch
+        from agentic_application.agents.outfit_architect import OutfitArchitect
+
+        ctx = self._make_combined_context()
+        with _patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("OUTFIT_ARCHITECT_MODE", None)
+            arch = OutfitArchitect(model="gpt-5.5")
+            with _patch.object(arch, "_plan_monolithic", return_value=Mock(directions=[Mock()])) as monolith, \
+                 _patch.object(arch, "_plan_split") as split:
+                arch.plan(ctx)
+                monolith.assert_called_once()
+                split.assert_not_called()
+
+
+class ArchitectPromptAssemblyTests(unittest.TestCase):
+    """May 3, 2026 — Lever 2 of the perf plan: anchor + follow-up rules
+    are loaded only when the request actually needs them, trimming
+    ~1,100 tokens off non-anchor / non-followup turns.
+    """
+
+    def test_base_prompt_excludes_anchor_and_followup_sections(self) -> None:
+        from agentic_application.agents.outfit_architect import (
+            _assemble_system_prompt, _load_prompt, _load_module,
+        )
+        base = _load_prompt()
+        anchor_mod = _load_module("anchor")
+        followup_mod = _load_module("followup")
+        # The base prompt itself must NOT carry the conditional sections —
+        # otherwise we're double-loading them on relevant turns.
+        self.assertNotIn("Anchor Garment Rules", base)
+        self.assertNotIn("Follow-Up Intent Rules", base)
+        # And the modules must be non-empty (the loader found them).
+        self.assertIn("Anchor Garment Rules", anchor_mod)
+        self.assertIn("Follow-Up Intent Rules", followup_mod)
+
+    def test_assembled_prompt_includes_anchor_only_when_anchor_present(self) -> None:
+        from agentic_application.agents.outfit_architect import (
+            _assemble_system_prompt, _load_prompt, _load_module,
+        )
+        base = _load_prompt()
+        anchor = _load_module("anchor")
+        followup = _load_module("followup")
+
+        plain = _assemble_system_prompt(base, has_anchor=False, is_followup=False,
+                                        anchor_module=anchor, followup_module=followup)
+        self.assertNotIn("Anchor Garment Rules", plain)
+        self.assertNotIn("Follow-Up Intent Rules", plain)
+
+        with_anchor = _assemble_system_prompt(base, has_anchor=True, is_followup=False,
+                                              anchor_module=anchor, followup_module=followup)
+        self.assertIn("Anchor Garment Rules", with_anchor)
+        self.assertNotIn("Follow-Up Intent Rules", with_anchor)
+
+        with_followup = _assemble_system_prompt(base, has_anchor=False, is_followup=True,
+                                                anchor_module=anchor, followup_module=followup)
+        self.assertNotIn("Anchor Garment Rules", with_followup)
+        self.assertIn("Follow-Up Intent Rules", with_followup)
+
+        full = _assemble_system_prompt(base, has_anchor=True, is_followup=True,
+                                       anchor_module=anchor, followup_module=followup)
+        self.assertIn("Anchor Garment Rules", full)
+        self.assertIn("Follow-Up Intent Rules", full)
+
+    def test_base_prompt_size_below_ceiling(self) -> None:
+        """Pin a soft ceiling on base prompt size. If this fires, the
+        prompt has been re-bloated and the perf gain reverted."""
+        from agentic_application.agents.outfit_architect import _load_prompt
+        base = _load_prompt()
+        # ~4 chars per token estimate. The May-3 trimmed base is ~7.2K
+        # tokens (~29K chars). Allow some headroom; alarm if it climbs
+        # back to the pre-trim 11K (~46K chars).
+        self.assertLess(
+            len(base), 38_000,
+            f"Base architect prompt is {len(base)} chars — perf-trim looks reverted",
+        )
+
+
+class TryonParallelRenderTests(unittest.TestCase):
+    """May 3, 2026 — Lever 1 of the perf plan: parallelize Gemini try-on
+    renders so a 3-candidate batch completes in ~max(t1,t2,t3) instead
+    of t1+t2+t3.
+    """
+
+    def _make_orchestrator(self, generate_side_effect, quality_passed: bool = True):
+        import time as _time
+        from unittest.mock import Mock, MagicMock
+        repo = Mock()
+        repo.find_tryon_image_by_garments.return_value = None
+        repo.insert_tryon_image.return_value = None
+        repo.log_tool_trace.return_value = None
+        gw = Mock()
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
+            "agentic_application.orchestrator.OutfitArchitect"
+        ), patch(
+            "agentic_application.orchestrator.CopilotPlanner"
+        ), patch(
+            "agentic_application.orchestrator.CatalogSearchAgent"
+        ), patch(
+            "agentic_application.orchestrator.OutfitAssembler"
+        ):
+            orch = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+        # Wire mocks
+        orch.tryon_service = Mock()
+        orch.tryon_service.generate_tryon_outfit.side_effect = generate_side_effect
+        orch.tryon_quality_gate = Mock()
+        orch.tryon_quality_gate.evaluate.return_value = {
+            "passed": quality_passed, "reason_code": "" if quality_passed else "ssim_low",
+            "quality_score_pct": 90 if quality_passed else 30,
+        }
+        return orch
+
+    def _make_candidate(self, cid: str) -> OutfitCandidate:
+        return OutfitCandidate(
+            candidate_id=cid,
+            direction_id="d1",
+            candidate_type="paired",
+            items=[
+                {"product_id": f"{cid}-top", "title": "T", "image_url": f"https://x/{cid}.png", "role": "top"},
+            ],
+            assembly_score=0.9,
+        )
+
+    def test_three_candidate_batch_renders_in_parallel(self) -> None:
+        """Three concurrent renders sleeping 0.3s each should finish in
+        <0.6s wallclock, not >0.9s (which would indicate sequential)."""
+        import time as _time
+        import base64
+
+        small_png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 100).decode()
+
+        def slow_generate(person_image_path, garment_urls):
+            _time.sleep(0.3)
+            return {"success": True, "image_base64": small_png, "mime_type": "image/png"}
+
+        orch = self._make_orchestrator(slow_generate, quality_passed=True)
+        candidates = [self._make_candidate(f"c{i}") for i in range(3)]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            import os
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                t0 = _time.monotonic()
+                rendered, stats = orch._render_candidates_for_visual_eval(
+                    candidates=candidates,
+                    person_image_path="/tmp/person.png",
+                    external_user_id="u1",
+                    conversation_id="c1",
+                    turn_id="t1",
+                    target_count=3,
+                )
+                elapsed = _time.monotonic() - t0
+            finally:
+                os.chdir(cwd)
+
+        self.assertEqual(3, len(rendered))
+        self.assertEqual(3, stats["tryon_succeeded_count"])
+        self.assertLess(
+            elapsed, 0.7,
+            f"3 parallel renders took {elapsed:.2f}s — likely sequential (expected <0.7s, sequential would be ~0.9s)",
+        )
+
+    def test_quality_gate_failures_recover_in_parallel_batch(self) -> None:
+        """When the first 3-candidate batch fails QG entirely, the next
+        batch (from the over-generation pool) is also issued in parallel,
+        not one-at-a-time."""
+        import time as _time
+        import base64
+
+        small_png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 100).decode()
+        # All 5 candidates render in 0.3s each. First 3 fail QG, last 2 pass.
+        call_count = {"n": 0}
+
+        def gen(person_image_path, garment_urls):
+            call_count["n"] += 1
+            _time.sleep(0.3)
+            return {"success": True, "image_base64": small_png, "mime_type": "image/png"}
+
+        orch = self._make_orchestrator(gen, quality_passed=True)
+        # Quality gate: first 3 calls fail, rest pass.
+        qg_calls = {"n": 0}
+        def qg_eval(person_image_path, tryon_result):
+            qg_calls["n"] += 1
+            if qg_calls["n"] <= 3:
+                return {"passed": False, "reason_code": "ssim_low", "quality_score_pct": 20}
+            return {"passed": True, "reason_code": "", "quality_score_pct": 90}
+        orch.tryon_quality_gate.evaluate.side_effect = qg_eval
+
+        candidates = [self._make_candidate(f"c{i}") for i in range(5)]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            import os
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                t0 = _time.monotonic()
+                rendered, stats = orch._render_candidates_for_visual_eval(
+                    candidates=candidates,
+                    person_image_path="/tmp/person.png",
+                    external_user_id="u1",
+                    conversation_id="c1",
+                    turn_id="t1",
+                    target_count=3,
+                )
+                elapsed = _time.monotonic() - t0
+            finally:
+                os.chdir(cwd)
+
+        # Two parallel batches: first batch (3 fail QG) + second batch
+        # (2 pass). Wallclock should be ~0.6s, not ~1.5s sequential.
+        self.assertLess(
+            elapsed, 1.0,
+            f"QG-failure recovery took {elapsed:.2f}s — likely sequential (expected <1.0s)",
+        )
+        self.assertGreaterEqual(stats["tryon_quality_gate_failures"], 3)
+        self.assertEqual(1, stats["tryon_overgeneration_used"])
+
+    def test_cache_hit_short_circuits_inside_thread(self) -> None:
+        """A candidate with a cache-hit tryon image must skip the Gemini
+        call entirely, even when running concurrently with renders."""
+        import base64
+
+        small_png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 100).decode()
+
+        def gen(person_image_path, garment_urls):
+            return {"success": True, "image_base64": small_png, "mime_type": "image/png"}
+
+        orch = self._make_orchestrator(gen, quality_passed=True)
+        # First candidate: cache hit. Others: normal render.
+        with tempfile.TemporaryDirectory() as tmp:
+            cached_file = Path(tmp) / "cached.png"
+            cached_file.write_bytes(b"cached")
+            def cache_lookup(uid, gids):
+                if "c0-top" in gids:
+                    return {"file_path": str(cached_file)}
+                return None
+            orch.repo.find_tryon_image_by_garments.side_effect = cache_lookup
+
+            import os
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                rendered, stats = orch._render_candidates_for_visual_eval(
+                    candidates=[self._make_candidate(f"c{i}") for i in range(3)],
+                    person_image_path="/tmp/person.png",
+                    external_user_id="u1",
+                    conversation_id="c1",
+                    turn_id="t1",
+                    target_count=3,
+                )
+            finally:
+                os.chdir(cwd)
+
+        # 3 results total, but only 2 actual Gemini calls (the cache-hit
+        # candidate didn't call generate_tryon_outfit).
+        self.assertEqual(3, len(rendered))
+        self.assertEqual(2, orch.tryon_service.generate_tryon_outfit.call_count)
+        # The cache-hit candidate should appear at its original rank
+        # (rank 0), not at the end.
+        self.assertEqual("c0", rendered[0][0].candidate_id)
+
+
 if __name__ == "__main__":
     unittest.main()
