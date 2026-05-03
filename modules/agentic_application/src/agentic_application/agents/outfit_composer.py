@@ -41,13 +41,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from openai import OpenAI
+from pydantic import ValidationError
 
+from platform_core.cost_estimator import extract_token_usage
 from user_profiler.config import get_api_key
 
 from ..schemas import (
     CombinedContext,
     ComposedOutfit,
     ComposerResult,
+    RetrievedProduct,
     RetrievedSet,
 )
 
@@ -185,7 +188,7 @@ _ITEM_ATTRS = (
 )
 
 
-def _item_summary(product_id: str, product) -> Dict[str, Any]:
+def _item_summary(product_id: str, product: RetrievedProduct) -> Dict[str, Any]:
     """Extract a compact dict of stylist-relevant attrs from a product."""
     md = getattr(product, "metadata", {}) or {}
     en = getattr(product, "enriched_data", {}) or {}
@@ -316,7 +319,6 @@ class OutfitComposer:
     ) -> ComposerResult:
         """Build outfits from the retrieved pool. One LLM call (plus an
         optional retry on full-pool hallucination)."""
-        from platform_core.cost_estimator import extract_token_usage
         self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         if not retrieved_sets:
@@ -353,8 +355,6 @@ class OutfitComposer:
         self, user_payload: str, pool_ids_by_direction: Dict[str, set]
     ) -> ComposerResult:
         """Single LLM round-trip + post-processing. Internal."""
-        from platform_core.cost_estimator import extract_token_usage
-
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -386,7 +386,7 @@ class OutfitComposer:
                     item_ids=[str(x) for x in (raw_outfit.get("item_ids") or [])],
                     rationale=str(raw_outfit.get("rationale", "")),
                 )
-            except Exception as exc:  # noqa: BLE001 — defensive parse
+            except (ValidationError, TypeError, AttributeError, ValueError) as exc:  # defensive parse
                 _log.warning("OutfitComposer: malformed outfit payload (%s); skipping", exc)
                 continue
             err = _validate_outfit(outfit, pool_ids_by_direction)
