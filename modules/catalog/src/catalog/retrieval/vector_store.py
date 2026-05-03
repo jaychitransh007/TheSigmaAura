@@ -152,40 +152,68 @@ class SupabaseVectorStore:
         saved: List[Dict[str, Any]] = []
         failed_batches: List[Dict[str, Any]] = []
         # May 3, 2026: per-batch try/except so a single Supabase 500 on a
-        # bad row doesn't kill the whole resync. The original failure mode
-        # (entire job → status=failed, zero rows saved, ~$3 of embedding
-        # work wasted) was unfixable without per-batch error isolation.
+        # bad row doesn't kill the whole resync. Self-healing on Postgres
+        # statement_timeout (code 57014): _upsert_with_split halves the
+        # batch and retries down to MIN_UPSERT_BATCH_SIZE. A row only
+        # ends up in `failed_batches` if it fails even at batch size 1.
         for i in range(0, len(rows), UPSERT_BATCH_SIZE):
             batch = rows[i : i + UPSERT_BATCH_SIZE]
             logger.info("Upserting embeddings batch %d–%d of %d", i + 1, i + len(batch), len(rows))
-            try:
-                saved.extend(
-                    self._client.upsert_many(
-                        "catalog_item_embeddings",
-                        batch,
-                        on_conflict="product_id,embedding_model,embedding_dimensions",
-                    )
-                )
-            except Exception as exc:  # noqa: BLE001 — telemetry / continue
-                first_pid = batch[0].get("product_id") if batch else "(empty)"
-                last_pid = batch[-1].get("product_id") if batch else "(empty)"
-                logger.error(
-                    "Embedding batch %d–%d FAILED (first=%s, last=%s): %s",
-                    i + 1, i + len(batch), first_pid, last_pid, str(exc)[:500],
-                )
-                failed_batches.append({
-                    "batch_start": i + 1,
-                    "batch_end": i + len(batch),
-                    "first_product_id": first_pid,
-                    "last_product_id": last_pid,
-                    "error": str(exc)[:500],
-                })
+            batch_saved, batch_failures = self._upsert_with_split(batch, i + 1)
+            saved.extend(batch_saved)
+            failed_batches.extend(batch_failures)
         if failed_batches:
             logger.warning(
                 "insert_embeddings: %d batch(es) failed; %d/%d rows saved",
                 len(failed_batches), len(saved), len(rows),
             )
         return saved
+
+    def _upsert_with_split(
+        self, batch: List[Dict[str, Any]], offset: int,
+    ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Upsert ``batch``; on Postgres statement_timeout (code 57014)
+        halve and retry recursively until each piece succeeds or the
+        chunk is a single row.
+
+        Returns ``(saved, failed)``. ``failed`` is a list of one entry
+        per chunk that couldn't be persisted even at chunk size 1.
+        """
+        if not batch:
+            return [], []
+        try:
+            res = self._client.upsert_many(
+                "catalog_item_embeddings",
+                batch,
+                on_conflict="product_id,embedding_model,embedding_dimensions",
+            )
+            return list(res), []
+        except Exception as exc:  # noqa: BLE001 — recover by halving
+            err_str = str(exc)
+            is_timeout = "57014" in err_str or "statement timeout" in err_str
+            if is_timeout and len(batch) > 1:
+                mid = len(batch) // 2
+                logger.warning(
+                    "Embedding batch %d–%d hit statement_timeout; halving to %d + %d",
+                    offset, offset + len(batch) - 1, mid, len(batch) - mid,
+                )
+                left_saved, left_failed = self._upsert_with_split(batch[:mid], offset)
+                right_saved, right_failed = self._upsert_with_split(batch[mid:], offset + mid)
+                return left_saved + right_saved, left_failed + right_failed
+            # Non-timeout error, or single-row timeout — give up on this chunk
+            first_pid = batch[0].get("product_id") if batch else "(empty)"
+            last_pid = batch[-1].get("product_id") if batch else "(empty)"
+            logger.error(
+                "Embedding batch %d–%d FAILED (first=%s, last=%s): %s",
+                offset, offset + len(batch) - 1, first_pid, last_pid, err_str[:500],
+            )
+            return [], [{
+                "batch_start": offset,
+                "batch_end": offset + len(batch) - 1,
+                "first_product_id": first_pid,
+                "last_product_id": last_pid,
+                "error": err_str[:500],
+            }]
 
     def embedded_product_ids(self) -> set[str]:
         """Return the set of product_ids that already have embeddings."""
