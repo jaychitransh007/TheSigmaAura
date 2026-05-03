@@ -6,7 +6,12 @@ from platform_core.supabase_rest import SupabaseRestClient
 
 logger = logging.getLogger(__name__)
 
-UPSERT_BATCH_SIZE = 50
+# May 3, 2026: dropped from 50 → 25. The resync of all 14,296 rows against
+# staging Postgres + pgvector failed every batch at 50 with HTTP 500 from
+# PostgREST. 25 is more conservative for vector-index updates with
+# on_conflict resolution at scale. If 25 still fails, the next step is
+# diagnostic — see per-batch error logs.
+UPSERT_BATCH_SIZE = 25
 
 from .schemas import CatalogEmbeddingRecord
 
@@ -145,15 +150,40 @@ class SupabaseVectorStore:
         if not rows:
             return []
         saved: List[Dict[str, Any]] = []
+        failed_batches: List[Dict[str, Any]] = []
+        # May 3, 2026: per-batch try/except so a single Supabase 500 on a
+        # bad row doesn't kill the whole resync. The original failure mode
+        # (entire job → status=failed, zero rows saved, ~$3 of embedding
+        # work wasted) was unfixable without per-batch error isolation.
         for i in range(0, len(rows), UPSERT_BATCH_SIZE):
             batch = rows[i : i + UPSERT_BATCH_SIZE]
             logger.info("Upserting embeddings batch %d–%d of %d", i + 1, i + len(batch), len(rows))
-            saved.extend(
-                self._client.upsert_many(
-                    "catalog_item_embeddings",
-                    batch,
-                    on_conflict="product_id,embedding_model,embedding_dimensions",
+            try:
+                saved.extend(
+                    self._client.upsert_many(
+                        "catalog_item_embeddings",
+                        batch,
+                        on_conflict="product_id,embedding_model,embedding_dimensions",
+                    )
                 )
+            except Exception as exc:  # noqa: BLE001 — telemetry / continue
+                first_pid = batch[0].get("product_id") if batch else "(empty)"
+                last_pid = batch[-1].get("product_id") if batch else "(empty)"
+                logger.error(
+                    "Embedding batch %d–%d FAILED (first=%s, last=%s): %s",
+                    i + 1, i + len(batch), first_pid, last_pid, str(exc)[:500],
+                )
+                failed_batches.append({
+                    "batch_start": i + 1,
+                    "batch_end": i + len(batch),
+                    "first_product_id": first_pid,
+                    "last_product_id": last_pid,
+                    "error": str(exc)[:500],
+                })
+        if failed_batches:
+            logger.warning(
+                "insert_embeddings: %d batch(es) failed; %d/%d rows saved",
+                len(failed_batches), len(saved), len(rows),
             )
         return saved
 
