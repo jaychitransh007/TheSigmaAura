@@ -223,6 +223,7 @@ class Reranker:
         bias: str = "balanced",
         turn_id: str = "",
         decision_log: Any | None = None,
+        confidence_threshold: float = 0.0,
     ) -> List[OutfitCandidate]:
         """Return candidates sorted by assembly_score (desc), capped at ``limit``.
 
@@ -236,6 +237,14 @@ class Reranker:
         the user sees variety across the architect's different outfit
         concepts rather than N copies from whichever direction scored best.
 
+        ``confidence_threshold`` (default 0.0): a direction's top is only
+        kept if its ``assembly_score`` clears the threshold; the global
+        fill stage applies the same gate. This prevents the round-robin
+        from spending kept-pool slots on weak directions that the
+        orchestrator's downstream confidence gate will drop anyway —
+        which previously starved the visual evaluator of viable
+        candidates and shipped fewer outfits than the user requested.
+
         ``bias`` shifts the ordering within each ``_TIE_WINDOW`` band so
         formal_first biases toward higher-formality outfits, expressive
         toward louder ones, conservative away from them, and comfort_first
@@ -247,6 +256,7 @@ class Reranker:
         """
         cap = self.pool_top_n if limit is None else max(1, int(limit))
         candidate_list = list(candidates)
+        threshold = float(confidence_threshold or 0.0)
 
         # Primary order: assembly_score desc, then bias tiebreaker desc
         # (only meaningful within the _TIE_WINDOW band — we collapse the
@@ -266,36 +276,47 @@ class Reranker:
 
         ordered = sorted(candidate_list, key=_primary_key)
 
-        # --- Direction-aware round-robin ---
-        # 1. Pick the top candidate from each direction.
+        # --- Direction-aware round-robin (threshold-gated) ---
+        # 1. Pick the top candidate from each direction whose score
+        #    clears ``threshold``. A weak direction is skipped entirely
+        #    rather than burning a slot the confidence gate will drop.
         picked_ids: set[str] = set()
         result: List[OutfitCandidate] = []
         seen_directions: set[str] = set()
         for c in ordered:
             d = getattr(c, "direction_id", "")
+            score = float(getattr(c, "assembly_score", 0.0) or 0.0)
             if d and d not in seen_directions:
                 seen_directions.add(d)
+                if score < threshold:
+                    continue
                 result.append(c)
                 picked_ids.add(str(getattr(c, "candidate_id", "")))
                 if len(result) >= cap:
                     break
 
-        # 2. Fill remaining slots globally by score.
+        # 2. Fill remaining slots globally by score, gated by the same
+        #    threshold so we don't backfill with rejects either.
         if len(result) < cap:
             for c in ordered:
                 cid = str(getattr(c, "candidate_id", ""))
-                if cid not in picked_ids:
-                    result.append(c)
-                    picked_ids.add(cid)
-                    if len(result) >= cap:
-                        break
+                if cid in picked_ids:
+                    continue
+                score = float(getattr(c, "assembly_score", 0.0) or 0.0)
+                if score < threshold:
+                    continue
+                result.append(c)
+                picked_ids.add(cid)
+                if len(result) >= cap:
+                    break
 
         _log.info(
-            "Reranker: input=%d → kept=%d (cap=%d, directions=%d, bias=%s, final_top_n=%d, pool_top_n=%d)",
+            "Reranker: input=%d → kept=%d (cap=%d, directions=%d, threshold=%.2f, bias=%s, final_top_n=%d, pool_top_n=%d)",
             len(ordered),
             len(result),
             cap,
             len(seen_directions),
+            threshold,
             bias,
             self.final_top_n,
             self.pool_top_n,
@@ -316,6 +337,7 @@ class Reranker:
                 decision_log({
                     "turn_id": turn_id,
                     "bias": bias,
+                    "confidence_threshold": threshold,
                     "input_count": len(candidate_list),
                     "kept_count": len(result),
                     "kept": [

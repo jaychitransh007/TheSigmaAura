@@ -6438,6 +6438,78 @@ class RerankerWeightsAndDecisionLogTests(unittest.TestCase):
         self.assertEqual(["c0", "c1"], kept_ids)
         self.assertEqual({"c2", "c3"}, set(dropped_ids))
 
+    def test_reranker_threshold_skips_weak_directions_in_round_robin(self) -> None:
+        """May 1 2026 regression — wedding-query turn 07208157 shipped only
+        1 outfit because the round-robin pulled in two below-threshold
+        candidates from weak directions, then the orchestrator's downstream
+        confidence gate dropped them. Strong direction A's runner-up
+        candidates never reached visual eval.
+
+        With ``confidence_threshold=0.75``: weak directions B (0.576) and
+        C (0.672) are skipped entirely; the global fill stage backfills
+        with A's runner-ups, so the kept pool is 3 viable A candidates
+        instead of 1 strong + 2 weak.
+        """
+        from agentic_application.agents.reranker import Reranker
+
+        candidates = [
+            OutfitCandidate(candidate_id="a1", direction_id="A", candidate_type="paired",
+                           items=[], assembly_score=0.917),
+            OutfitCandidate(candidate_id="a2", direction_id="A", candidate_type="paired",
+                           items=[], assembly_score=0.916),
+            OutfitCandidate(candidate_id="a3", direction_id="A", candidate_type="paired",
+                           items=[], assembly_score=0.914),
+            OutfitCandidate(candidate_id="b1", direction_id="B", candidate_type="paired",
+                           items=[], assembly_score=0.576),
+            OutfitCandidate(candidate_id="c1", direction_id="C", candidate_type="paired",
+                           items=[], assembly_score=0.672),
+        ]
+        ranked = Reranker(final_top_n=3, pool_top_n=3).rerank(
+            candidates, limit=3, confidence_threshold=0.75,
+        )
+        self.assertEqual(3, len(ranked))
+        for c in ranked:
+            self.assertGreaterEqual(c.assembly_score, 0.75)
+            self.assertEqual("A", c.direction_id)
+        self.assertEqual({"a1", "a2", "a3"}, {c.candidate_id for c in ranked})
+
+    def test_reranker_threshold_returns_empty_when_no_candidate_qualifies(self) -> None:
+        """All candidates below threshold → empty kept pool. The
+        orchestrator's downstream "no confident match" path takes over
+        rather than shipping known-bad picks."""
+        from agentic_application.agents.reranker import Reranker
+
+        candidates = [
+            OutfitCandidate(candidate_id="x1", direction_id="A", candidate_type="paired",
+                           items=[], assembly_score=0.50),
+            OutfitCandidate(candidate_id="x2", direction_id="B", candidate_type="paired",
+                           items=[], assembly_score=0.60),
+        ]
+        ranked = Reranker(final_top_n=3, pool_top_n=3).rerank(
+            candidates, limit=3, confidence_threshold=0.75,
+        )
+        self.assertEqual(0, len(ranked))
+
+    def test_reranker_threshold_default_zero_preserves_legacy_behavior(self) -> None:
+        """Default ``confidence_threshold=0.0`` keeps all the existing
+        round-robin diversity semantics — callers that don't pass a
+        threshold see the pre-Option-1 behaviour."""
+        from agentic_application.agents.reranker import Reranker
+
+        candidates = [
+            OutfitCandidate(candidate_id="a1", direction_id="A", candidate_type="paired",
+                           items=[], assembly_score=0.90),
+            OutfitCandidate(candidate_id="a2", direction_id="A", candidate_type="paired",
+                           items=[], assembly_score=0.85),
+            OutfitCandidate(candidate_id="b1", direction_id="B", candidate_type="paired",
+                           items=[], assembly_score=0.40),
+        ]
+        ranked = Reranker(final_top_n=3, pool_top_n=3).rerank(candidates, limit=3)
+        # Round-robin keeps A's top + B's top, then fills with A's runner-up.
+        self.assertEqual(3, len(ranked))
+        kept_directions = [c.direction_id for c in ranked]
+        self.assertIn("B", kept_directions)
+
 
 class ConfidenceThresholdGateTests(unittest.TestCase):
     """May 1 2026 — wardrobe-first selector + catalog-pipeline gate.
