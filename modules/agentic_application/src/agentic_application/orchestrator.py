@@ -134,7 +134,11 @@ class AgenticOrchestrator:
         return {
             "available": True,
             "entry_intent": entry_intent,
-            "cta": "Show me better options from the catalog",
+            # User-facing copy: keep this in shopper vocabulary, not
+            # internal-system vocabulary ("catalog"). The routing handler
+            # `_message_requests_catalog_followup` matches against this
+            # exact string AND the legacy phrasing for backward compat.
+            "cta": "Show me options to buy",
             "rationale": rationale,
         }
 
@@ -422,6 +426,12 @@ class AgenticOrchestrator:
         catalog_upsell = dict(last_response_metadata.get("catalog_upsell") or {})
         cta = self._normalize_text_token(catalog_upsell.get("cta"))
         if cta and normalized == cta:
+            return True
+        # New shopper-vocabulary CTA ("Show me options to buy") + legacy
+        # phrasings. The "catalog" keyword still triggers for free-form
+        # asks like "show me catalog alternatives".
+        shop_phrases = ("options to buy", "shop", "buy")
+        if any(phrase in normalized for phrase in shop_phrases) and any(token in normalized for token in ("show me", "show", "see", "browse")):
             return True
         if "catalog" in normalized and any(token in normalized for token in ("show me", "better option", "better options", "alternative", "alternatives")):
             return True
@@ -2485,12 +2495,15 @@ class AgenticOrchestrator:
         request or refine it.
         """
         occasion = str(live_context.occasion_signal or "").strip()
-        occasion_label = occasion.replace("_", " ") if occasion else "this request"
+        occasion_label = occasion.replace("_", " ") if occasion else "what you described"
+        # User-facing copy never references the threshold or raw match
+        # score — those are operations metrics, not user vocabulary.
+        # `low_confidence_top_match_score` and `low_confidence_threshold`
+        # in `metadata` carry the same data for dashboards.
         assistant_message = (
-            f"I couldn't find a confident match for {occasion_label} in the catalog "
-            f"(best match scored {top_match_score:.0%}, below my {int(_RECOMMENDATION_CONFIDENCE_THRESHOLD * 100)}% bar). "
-            "Want to refine the request — different vibe, color, or formality — "
-            "or should I broaden the search and show the closest options I found?"
+            f"I couldn't find a strong match for {occasion_label} just yet. "
+            "Tell me a bit more — vibe, color, or how dressy you want to look — "
+            "and I'll take another pass. Or I can show you options to buy."
         )
         catalog_upsell = self._build_catalog_upsell(
             rationale="The closest catalog matches didn't clear the confidence bar.",
@@ -2575,10 +2588,14 @@ class AgenticOrchestrator:
             },
             "filters_applied": hard_filters,
             "outfits": [],
+            # Every suggestion here either (a) clarifies the request or
+            # (b) pivots to catalog purchase. We deliberately omit
+            # "Try a different occasion" because the user already gave us
+            # an occasion; firing a new turn without clarity just hides
+            # the underlying mismatch.
             "follow_up_suggestions": [
                 "Show me the closest matches anyway",
                 "Refine the request",
-                "Try a different occasion",
                 str(catalog_upsell["cta"]),
             ],
             "metadata": metadata,
