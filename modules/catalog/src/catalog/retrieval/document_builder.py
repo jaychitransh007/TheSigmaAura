@@ -9,6 +9,24 @@ from .schemas import CatalogDocument
 _log = logging.getLogger(__name__)
 
 
+# May 3, 2026 — Phase 2 of the occasion-tag refactor.
+# `OccasionFit`, `OccasionSignal`, `FormalitySignalStrength` are dropped
+# from the embedding text. They're a query-time concept, not a property
+# of the garment, and the catalog vocabulary on these columns
+# (`OccasionFit: festive | smart_casual | casual ...`) doesn't match the
+# canonical occasion names the architect reasons in (e.g., `daily_office`,
+# `wedding_ceremony`). Embedding them was creating asymmetric vector
+# pollution that dragged cosine similarity down.
+#
+# `FormalityLevel` and `TimeOfDay` stay — both are intrinsic to the
+# garment (FormalityLevel from construction; TimeOfDay from palette /
+# embellishment density). The columns themselves stay populated in
+# `catalog_enriched` for historical compatibility, but they're no
+# longer fed into `text-embedding-3-small`.
+#
+# Phase 1 dropped these from architect query_documents (May 3, 2026).
+# Phase 2 (this commit) drops them from catalog embeddings. Both sides
+# now symmetric — cosine similarity matches on intrinsic attributes only.
 ATTRIBUTE_SECTIONS: List[Tuple[str, List[str]]] = [
     ("GARMENT_IDENTITY", ["GarmentCategory", "GarmentSubtype", "GarmentLength", "StylingCompleteness", "GenderExpression"]),
     ("SILHOUETTE_AND_FIT", ["SilhouetteContour", "SilhouetteType", "VolumeProfile", "FitEase", "FitType", "ShoulderStructure", "WaistDefinition", "HipDefinition"]),
@@ -17,7 +35,7 @@ ATTRIBUTE_SECTIONS: List[Tuple[str, List[str]]] = [
     ("EMBELLISHMENT", ["EmbellishmentLevel", "EmbellishmentType", "EmbellishmentZone"]),
     ("VISUAL_DIRECTION", ["VerticalWeightBias", "VisualWeightPlacement", "StructuralFocus", "BodyFocusZone", "LineDirection"]),
     ("PATTERN_AND_COLOR", ["PatternType", "PatternScale", "PatternOrientation", "ContrastLevel", "ColorTemperature", "ColorSaturation", "ColorValue", "ColorCount", "PrimaryColor", "SecondaryColor"]),
-    ("OCCASION_AND_SIGNAL", ["FormalitySignalStrength", "FormalityLevel", "OccasionFit", "OccasionSignal", "TimeOfDay"]),
+    ("CONTEXT_AND_TIMING", ["FormalityLevel", "TimeOfDay"]),
 ]
 EMBEDDABLE_ROW_STATUS = {"ok", "complete"}
 
