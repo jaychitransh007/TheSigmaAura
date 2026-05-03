@@ -4618,6 +4618,7 @@ class AgenticOrchestrator:
                 bias=reranker_bias,
                 turn_id=turn_id,
                 decision_log=_persist_reranker_decision,
+                confidence_threshold=_RECOMMENDATION_CONFIDENCE_THRESHOLD,
             )
             emit("reranker", "completed", ctx={"pool_size": len(ranked_pool), "bias": reranker_bias})
             trace_end("reranker", output_summary=f"pool={len(ranked_pool)}, bias={reranker_bias}")
