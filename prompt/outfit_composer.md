@@ -23,6 +23,16 @@ Build **up to 10 outfits** from the pool. Each outfit must come from one of the 
 - A **paired** outfit uses exactly **one top + one bottom** from Direction B.
 - A **three_piece** outfit uses exactly **one top + one bottom + one outerwear** from Direction C.
 
+### Item order in `item_ids` (CRITICAL)
+
+`item_ids` is an ordered list. The downstream try-on render uses **position** to assign roles to items, so the order must be exact:
+
+- `complete` → `[set_id]`
+- `paired` → `[top_id, bottom_id]` — top first, then bottom.
+- `three_piece` → `[top_id, bottom_id, outerwear_id]` — top first, then bottom, then outerwear.
+
+If you reverse top and bottom, the render will place the kurta on the legs and the trousers on the torso. Treat this rule as absolute.
+
 Mix outfits across directions — diversity is good. If one direction has stronger candidates, take more from there. Distribute roughly 3–5 from the strongest direction, 2–3 from each of the others.
 
 ## Hard rules (never break)

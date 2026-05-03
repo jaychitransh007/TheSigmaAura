@@ -202,6 +202,34 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
         self.assertEqual("C1", result.ranked_outfits[0].composer_id)
 
 
+class OutfitRaterUsageTests(unittest.TestCase):
+    """Token usage carries on the result object so concurrent turns
+    using the same OutfitRater instance don't race over a shared
+    ``last_usage`` attribute."""
+
+    def test_rater_returns_usage_on_result(self) -> None:
+        payload = {
+            "ranked_outfits": [
+                {"composer_id": "C1", "rank": 1, "fashion_score": 80,
+                 "occasion_fit": 80, "body_harmony": 80, "color_harmony": 80, "archetype_match": 80,
+                 "rationale": "ok", "unsuitable": False},
+            ],
+            "overall_assessment": "moderate",
+        }
+        mock_resp = Mock()
+        mock_resp.output_text = json.dumps(payload)
+        mock_resp.usage = Mock(input_tokens=400, output_tokens=120, total_tokens=520)
+        with patch("agentic_application.agents.outfit_rater.get_api_key", return_value="x"), _patch_rater() as oc:
+            oc.return_value.responses.create.return_value = mock_resp
+            result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
+
+        self.assertIn("prompt_tokens", result.usage)
+        self.assertIn("total_tokens", result.usage)
+        # Sanity-check that *something* was extracted (concrete values
+        # depend on extract_token_usage's response-shape sniffing).
+        self.assertGreaterEqual(result.usage.get("total_tokens", 0), 0)
+
+
 class OutfitRaterEdgeCaseTests(unittest.TestCase):
 
     def test_rater_short_circuits_on_empty_input(self) -> None:

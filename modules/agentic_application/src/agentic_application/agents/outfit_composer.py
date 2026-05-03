@@ -318,7 +318,13 @@ class OutfitComposer:
         retry_on_hallucination: bool = True,
     ) -> ComposerResult:
         """Build outfits from the retrieved pool. One LLM call (plus an
-        optional retry on full-pool hallucination)."""
+        optional retry on full-pool hallucination).
+
+        Token usage for the call (summed across the retry pass when one
+        runs) is returned on ``ComposerResult.usage``. The legacy
+        ``self.last_usage`` is also updated for backwards-compat with
+        agents that haven't migrated to the result-carried pattern.
+        """
         self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         if not retrieved_sets:
@@ -334,7 +340,8 @@ class OutfitComposer:
             )
 
         user_payload = _build_user_payload(combined_context, retrieved_sets)
-        result = self._invoke(user_payload, pool_ids_by_direction)
+        accumulated: Dict[str, int] = {}
+        result = self._invoke(user_payload, pool_ids_by_direction, accumulated)
 
         if not result.outfits and retry_on_hallucination and not result.pool_unsuitable:
             # Full hallucination — every outfit had bad item_ids and
@@ -347,14 +354,28 @@ class OutfitComposer:
                 + "Valid IDs per direction:\n"
                 + json.dumps({d: sorted(ids) for d, ids in pool_ids_by_direction.items()}, indent=2)
             )
-            result = self._invoke(stricter, pool_ids_by_direction)
+            result = self._invoke(stricter, pool_ids_by_direction, accumulated)
 
+        result.usage = dict(accumulated)
+        # Mirror to the legacy instance attribute. Concurrent turns
+        # using the same OutfitComposer will race on this; consumers
+        # that need thread-safe usage should read result.usage instead.
+        self.last_usage = dict(accumulated)
         return result
 
     def _invoke(
-        self, user_payload: str, pool_ids_by_direction: Dict[str, set]
+        self,
+        user_payload: str,
+        pool_ids_by_direction: Dict[str, set],
+        accumulated_usage: Dict[str, int],
     ) -> ComposerResult:
-        """Single LLM round-trip + post-processing. Internal."""
+        """Single LLM round-trip + post-processing. Internal.
+
+        ``accumulated_usage`` is a mutable dict the caller owns; this
+        method adds the call's token counts into it. Lets `compose`
+        sum usage across the retry pass without leaking state through
+        instance attributes.
+        """
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -364,10 +385,8 @@ class OutfitComposer:
             text={"format": _COMPOSER_JSON_SCHEMA},
         )
         usage = extract_token_usage(response)
-        # Accumulate across retries so the orchestrator's cost estimate
-        # reflects the full Composer cost, not just the last attempt.
         for k, v in usage.items():
-            self.last_usage[k] = self.last_usage.get(k, 0) + (v or 0)
+            accumulated_usage[k] = accumulated_usage.get(k, 0) + (v or 0)
 
         raw_text = getattr(response, "output_text", "") or "{}"
         try:
