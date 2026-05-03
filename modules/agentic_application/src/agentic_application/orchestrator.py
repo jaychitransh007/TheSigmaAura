@@ -98,9 +98,14 @@ _WARDROBE_SCORE_MAX = 4.0
 # class on every handler call) avoids the small but real cost of
 # rebuilding the type each turn.
 class _NoOpTrace:
-    def add_cost(self, *_args, **_kwargs) -> None: pass
-    def add_model_cost_from_row(self, *_args, **_kwargs) -> None: pass
-    def set_evaluation(self, *_args, **_kwargs) -> None: pass
+    def add_cost(self, *_args, **_kwargs) -> None:
+        pass
+
+    def add_model_cost_from_row(self, *_args, **_kwargs) -> None:
+        pass
+
+    def set_evaluation(self, *_args, **_kwargs) -> None:
+        pass
 
 
 _NO_OP_TRACE = _NoOpTrace()
@@ -5376,6 +5381,12 @@ class AgenticOrchestrator:
         from datetime import datetime, timezone
         from pathlib import Path
 
+        # Match the contract _handle_planner_pipeline already uses:
+        # callers may pass trace=None (e.g. tests), and the singleton
+        # absorbs cost-tracking calls without per-callsite null checks.
+        if trace is None:
+            trace = _NO_OP_TRACE
+
         empty_stats: Dict[str, int] = {
             "tryon_attempted_count": 0,
             "tryon_succeeded_count": 0,
@@ -5507,8 +5518,7 @@ class AgenticOrchestrator:
                         error_message=str(result.get("error") or "") if not _tryon_succeeded else "",
                         image_count=1 if _tryon_succeeded else 0,
                     )
-                    if trace is not None:
-                        trace.add_model_cost_from_row(_tryon_row)
+                    trace.add_model_cost_from_row(_tryon_row)
                 except Exception:  # noqa: BLE001 — telemetry never breaks pipeline
                     _log.warning("Failed to persist tryon model_call_log", exc_info=True)
                 if not _tryon_succeeded:
