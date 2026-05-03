@@ -682,10 +682,33 @@ The user-reported list of 14 group names collapsed to 5 themes exactly as planne
 Same architecture; tighter contract:
 
 - **Hard output budget in `prompt/outfit_architect_query.md`:** each `query_document` ≤ 350 tokens; total response ≤ 1,200 tokens; color synonym lists ≤ 3 terms; fabric clusters ≤ 3 terms; empty fields dropped (no `not_applicable`/`N/A` filler).
-- **`max_output_tokens=1500` on every Stage B API call** — hard ceiling so the model can't run away.
-- **Per-stage telemetry:** `OutfitArchitectQueryBuilder.build` now returns `(queries, usage)` (no more racing on instance state across threads). The architect dispatcher stores `last_usage_stage_a` and `last_usage_stage_b` separately. The orchestrator emits **two** `model_call_logs` rows in split mode: `call_type='architect_plan'` (gpt-5.5) and `call_type='architect_query_builder'` (gpt-5-mini), so per-stage cost gets the right model attribution. The May-3 first split run logged $0.43 because all 18.8K tokens were priced as gpt-5.5; the real cost was ~$0.04. Going forward dashboards will see that distinction.
+- **`max_output_tokens` cap on every Stage B API call** — escalated 1,500 → 3,000 → 5,000 across iterations as truncation kept biting (the model does not honor the prompt-level output budget tightly; with 2–3 multi-section `query_document` strings per response, paired + three_piece directions consistently overflowed the lower caps). 5,000 is the empirical headroom that lets every direction shape complete without truncation.
+- **Per-stage telemetry:** `OutfitArchitectQueryBuilder.build` returns `(queries, usage)` (no more racing on instance state across threads). The architect dispatcher stores `last_usage_stage_a` and `last_usage_stage_b` separately. The orchestrator emits **two** `model_call_logs` rows in split mode: `call_type='architect_plan'` (gpt-5.5) and `call_type='architect_query_builder'` (gpt-5-mini), so per-stage cost gets the right model attribution. The May-3 first split run logged $0.43 because all 18.8K tokens were priced as gpt-5.5; the real cost was ~$0.04. Dashboards now see that distinction.
 
-**Ship gate for v2:** re-run the same query under `OUTFIT_ARCHITECT_MODE=split`. If architect step ≤ 25 s AND `recommendation_confidence` parity holds, flip default to `split`. If not, the recommendation in CURRENT_STATE.md becomes: **keep `monolithic` as the default permanent runtime and ship Lever 3 as deprecated.** The Lever-1 + Lever-2 wins are independent and stay live regardless.
+### Lever 3 — final outcome (May 3, 2026)
+
+**Split mode is preserved as a flag-gated experiment but is NOT recommended for production.** `OUTFIT_ARCHITECT_MODE` defaults to `monolithic` permanently.
+
+**Why the architectural premise didn't pay off:** Lever 3's design assumed parallel per-direction LLM calls would beat monolithic on wallclock because each parallel call sees less input. That premise turned out wrong empirically — output streaming time, not input size, dominates Stage B wallclock. Each Stage B call must emit 2–3 structured `query_document` strings (each with PROFILE / GARMENT / EMBELLISHMENT / VISUAL / FABRIC / PATTERN / OCCASION sections), totaling 2–3K tokens of JSON-escaped output. At gpt-5-mini's ~100 tok/s generation speed, that's 20–30 s per parallel call, AND the prompt's "≤350 tokens per query_document" budget isn't enforceable on the model side — escalating `max_output_tokens` from 1,500 → 3,000 → 5,000 across three iterations was needed just to avoid truncation crashes.
+
+Net result: `_plan_split` consistently lands in the same 30–40 s range as monolithic at 25 s — same ballpark or worse, never faster. The cost win (Stage B on gpt-5-mini ~10× cheaper than gpt-5.5) is real, but at the price of equal-or-worse latency rather than the projected –42%.
+
+**The split agents (`outfit_architect_planner.py`, `outfit_architect_query_builder.py`) stay in the codebase** behind the env flag for two reasons: (1) the per-stage telemetry plumbing is reusable if a future split design uses a different output shape (e.g., deterministic Python templating for query_documents instead of LLM generation), and (2) the prompt files are a useful reference for what a structure-only vs query-writing split looks like.
+
+### Final shipped configuration
+
+| Lever | Status | Default | Empirical impact |
+|---|---|---|---|
+| 1 — Parallel try-on renders | ✅ Live | on | **−45 s on visual_evaluation** (92.4 s → 47.1 s) |
+| 2 — Architect prompt trim | ✅ Live | on | **−5,574 input tokens / −3 s** on architect; **−$0.034 per turn** |
+| 3 — Architect split | Deprecated, flag-gated | off (permanent) | No wallclock win observed; cost win not worth latency parity |
+
+**Total measured improvement on the same query**: 141.7 s → 89.9 s (−37%), $0.30 → ~$0.23 (−24%). All from Levers 1 + 2.
+
+### Open follow-ups
+
+- [ ] If the architect itself becomes the dominant remaining stage on the dashboard after Levers 1+2 land in production, revisit a *different* split design — e.g., Stage A produces direction skeletons + Stage B uses Python template assembly (no LLM) to write query_documents from the seeds + profile slice. Drops architect to ~Stage A only (~6 s) at the cost of more prescriptive query phrasing. Out of scope for the May-3 series.
+- [ ] Consider deleting the `outfit_architect_planner.py` / `outfit_architect_query_builder.py` agents and the `OUTFIT_ARCHITECT_MODE` flag if they sit unused for 60+ days (June 2026 review).
 
 ### What's done (May 3, 2026)
 
