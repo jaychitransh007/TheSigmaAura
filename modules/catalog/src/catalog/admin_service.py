@@ -241,6 +241,15 @@ class CatalogAdminService:
         state from the database and **upserts** embeddings for items that
         already exist.  Use this after running a re-enrichment batch to
         refresh vectors and filter columns.
+
+        May 3, 2026 — disk cache: embeddings are written to
+        ``data/catalog/embeddings/resync_cache.jsonl`` as soon as
+        OpenAI returns them, BEFORE the Supabase upsert. If the upsert
+        fails (or any subsequent step), retrying the resync skips the
+        OpenAI call entirely and loads from cache. Cache is invalidated
+        only when document_text changes (i.e., when the underlying enriched
+        row text or document_builder code changes); otherwise the cache
+        hit is free retry.
         """
         params: Dict[str, Any] = {
             "product_id_prefix": product_id_prefix,
@@ -275,11 +284,20 @@ class CatalogAdminService:
                     "mode": "embeddings_resync",
                     "job_id": job_id,
                 }
-            embeddings = CatalogEmbedder(config).embed_documents(documents)
+            cache_path = Path("data/catalog/embeddings/resync_cache.jsonl")
+            embeddings = self._load_or_generate_embeddings(documents, config, cache_path)
             saved = self.vector_store.insert_embeddings(embeddings)
             self.vector_store.complete_job(
                 job_id, processed_rows=len(documents), saved_rows=len(saved),
             )
+            # Only delete cache after a clean upload; partial failures keep
+            # the cache so the next retry can pick up where this one left.
+            if len(saved) == len(embeddings) and cache_path.exists():
+                try:
+                    cache_path.unlink()
+                    logger.info("resync_catalog_embeddings: cleared embedding cache after full success")
+                except OSError:
+                    pass
             return {
                 "input_csv_path": "catalog_enriched",
                 "processed_rows": len(documents),
@@ -290,6 +308,83 @@ class CatalogAdminService:
         except Exception:
             self.vector_store.fail_job(job_id, _format_exc())
             raise
+
+    def _load_or_generate_embeddings(self, documents, config, cache_path: Path):
+        """Load embeddings from disk if a fresh cache exists, else generate
+        via OpenAI and write to disk before returning.
+
+        "Fresh" = cache covers every input document_text exactly. Cache is
+        keyed by (row_id, document_text hash) per row. If the documents
+        passed in this call don't exactly match the cache, we regenerate
+        (because the underlying enriched data or builder code changed).
+        """
+        import hashlib
+        import json
+        from .retrieval.schemas import CatalogEmbeddingRecord
+
+        wanted: Dict[str, str] = {}  # product_id -> sha256 of document_text
+        for d in documents:
+            wanted[d.product_id] = hashlib.sha256(d.document_text.encode("utf-8")).hexdigest()
+
+        if cache_path.exists():
+            try:
+                cached_records: Dict[str, CatalogEmbeddingRecord] = {}
+                with cache_path.open("r", encoding="utf-8") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        obj = json.loads(line)
+                        cached_records[obj["product_id"]] = CatalogEmbeddingRecord(
+                            row_id=str(obj.get("row_id", "")),
+                            product_id=str(obj.get("product_id", "")),
+                            model=str(obj.get("model", "")),
+                            dimensions=int(obj.get("dimensions", 1536)),
+                            metadata=dict(obj.get("metadata") or {}),
+                            document_text=str(obj.get("document_text", "")),
+                            embedding=list(obj.get("embedding") or []),
+                        )
+                # Validate cache covers every wanted doc with matching text hash
+                valid = True
+                for pid, want_hash in wanted.items():
+                    rec = cached_records.get(pid)
+                    if rec is None:
+                        valid = False
+                        break
+                    have_hash = hashlib.sha256(rec.document_text.encode("utf-8")).hexdigest()
+                    if have_hash != want_hash:
+                        valid = False
+                        break
+                if valid:
+                    logger.info(
+                        "resync_catalog_embeddings: loaded %d embeddings from cache %s (skipping OpenAI)",
+                        len(documents), cache_path,
+                    )
+                    # Return in input order
+                    return [cached_records[d.product_id] for d in documents]
+                else:
+                    logger.info(
+                        "resync_catalog_embeddings: cache %s is stale (text hashes differ); regenerating",
+                        cache_path,
+                    )
+            except Exception as exc:  # noqa: BLE001 — corrupt cache is recoverable
+                logger.warning(
+                    "resync_catalog_embeddings: failed to read cache %s (%s); regenerating",
+                    cache_path, exc,
+                )
+
+        # Generate fresh embeddings + persist before returning
+        logger.info("resync_catalog_embeddings: generating %d embeddings via OpenAI", len(documents))
+        embeddings = CatalogEmbedder(config).embed_documents(documents)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with cache_path.open("w", encoding="utf-8") as fh:
+            for record in embeddings:
+                fh.write(json.dumps(record.as_dict(), ensure_ascii=True) + "\n")
+        logger.info(
+            "resync_catalog_embeddings: cached %d embeddings to %s for retry resilience",
+            len(embeddings), cache_path,
+        )
+        return embeddings
 
     def _latest_uploads(self, limit: int = 10) -> List[Dict[str, str]]:
         uploads_dir = Path("data/catalog/uploads")
