@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Dict, List
@@ -15,13 +18,62 @@ from ..schemas import CombinedContext, DirectionSpec, QuerySpec, RecommendationP
 _log = logging.getLogger(__name__)
 
 
+def _find_prompt_dir() -> Path:
+    """Locate the `prompt/` directory by walking up from this file."""
+    here = Path(__file__).resolve()
+    for base in [here.parent] + list(here.parents):
+        candidate = base / "prompt"
+        if candidate.is_dir() and (candidate / "outfit_architect.md").exists():
+            return candidate
+    raise FileNotFoundError("Could not locate prompt/ directory containing outfit_architect.md")
+
+
 def _load_prompt() -> str:
-    prompt_dir = Path(__file__).resolve()
-    for base in [prompt_dir.parent] + list(prompt_dir.parents):
-        candidate = base / "prompt" / "outfit_architect.md"
-        if candidate.exists():
-            return candidate.read_text(encoding="utf-8").strip()
-    raise FileNotFoundError("Could not locate prompt/outfit_architect.md")
+    """Load the base architect system prompt (May 3, 2026: trimmed
+    from 11.5K → ~7K tokens. The anchor + follow-up modules are
+    appended at request time by `_assemble_system_prompt`."""
+    return (_find_prompt_dir() / "outfit_architect.md").read_text(encoding="utf-8").strip()
+
+
+def _load_module(name: str) -> str:
+    """Load a conditional prompt module from prompt/outfit_architect_<name>.md.
+
+    Returns the trimmed file contents on success; on missing-file or read
+    error, logs a warning and returns an empty string so the base prompt
+    still ships (degraded but functional).
+    """
+    try:
+        path = _find_prompt_dir() / f"outfit_architect_{name}.md"
+        if not path.exists():
+            _log.warning("Architect prompt module missing: %s", path)
+            return ""
+        return path.read_text(encoding="utf-8").strip()
+    except (OSError, FileNotFoundError) as exc:  # noqa: BLE001
+        _log.warning("Failed to load architect prompt module %s: %s", name, exc)
+        return ""
+
+
+def _assemble_system_prompt(
+    base: str,
+    *,
+    has_anchor: bool,
+    is_followup: bool,
+    anchor_module: str = "",
+    followup_module: str = "",
+) -> str:
+    """Conditionally append modules to the base prompt at request time.
+
+    Lever 2 of the May 3, 2026 perf plan: the anchor + follow-up rule
+    sections used to live in the always-loaded base prompt at ~1,100
+    tokens of dead weight on every non-anchor / non-followup turn. We
+    now load them only when the request actually needs them.
+    """
+    parts: List[str] = [base]
+    if has_anchor and anchor_module:
+        parts.append(anchor_module)
+    if is_followup and followup_module:
+        parts.append(followup_module)
+    return "\n\n".join(parts)
 
 
 _PLAN_JSON_SCHEMA: Dict[str, Any] = {
@@ -194,7 +246,9 @@ class OutfitArchitect:
         #
         # Lazy OpenAI client (see CopilotPlanner for the pattern).
         self._model = model
-        self._system_prompt = _load_prompt()
+        self._system_prompt_base = _load_prompt()
+        self._anchor_module = _load_module("anchor")
+        self._followup_module = _load_module("followup")
         # Item 4 (May 1, 2026): orchestrator picks this up post-call.
         self.last_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
@@ -202,16 +256,44 @@ class OutfitArchitect:
     def _client(self) -> OpenAI:
         return OpenAI(api_key=get_api_key())
 
+    def _build_system_prompt(self, combined_context: CombinedContext) -> str:
+        """Assemble the system prompt at request time, including only the
+        modules relevant to this turn. See `_assemble_system_prompt`."""
+        has_anchor = bool(getattr(combined_context.live, "anchor_garment", None))
+        history = combined_context.conversation_history or []
+        is_followup = bool(history) or bool(combined_context.previous_recommendations)
+        return _assemble_system_prompt(
+            self._system_prompt_base,
+            has_anchor=has_anchor,
+            is_followup=is_followup,
+            anchor_module=self._anchor_module,
+            followup_module=self._followup_module,
+        )
+
     def plan(self, combined_context: CombinedContext) -> RecommendationPlan:
-        """Generate a RecommendationPlan via LLM. Raises on failure."""
+        """Generate a RecommendationPlan via LLM. Raises on failure.
+
+        Mode is controlled by `OUTFIT_ARCHITECT_MODE`:
+          - `monolithic` (default) — single gpt-5.5 call, the legacy path.
+          - `split` — Stage A planner (gpt-5.5, small input) followed by
+            parallel Stage B query-builder calls per direction (gpt-5-mini).
+            See agents/outfit_architect_planner.py + outfit_architect_query_builder.py.
+        """
+        mode = os.environ.get("OUTFIT_ARCHITECT_MODE", "monolithic").strip().lower()
+        if mode == "split":
+            return self._plan_split(combined_context)
+        return self._plan_monolithic(combined_context)
+
+    def _plan_monolithic(self, combined_context: CombinedContext) -> RecommendationPlan:
         from platform_core.cost_estimator import extract_token_usage
         self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        system_prompt = self._build_system_prompt(combined_context)
         response = self._client.responses.create(
             model=self._model,
             input=[
                 {
                     "role": "system",
-                    "content": [{"type": "input_text", "text": self._system_prompt}],
+                    "content": [{"type": "input_text", "text": system_prompt}],
                 },
                 {
                     "role": "user",
@@ -228,6 +310,106 @@ class OutfitArchitect:
         if not plan.directions:
             raise RuntimeError("Outfit architect returned a plan with no directions")
 
+        return plan
+
+    def _plan_split(self, combined_context: CombinedContext) -> RecommendationPlan:
+        """Two-stage plan with parallel query building.
+
+        Stage A: `OutfitArchitectPlanner` produces structure + seeds.
+        Stage B: `OutfitArchitectQueryBuilder` writes query_documents
+                 for each direction. Stage B calls run in parallel.
+
+        On any failure (Stage A error, Stage B error for a direction),
+        raises RuntimeError so the orchestrator's existing
+        architect-error handler kicks in.
+        """
+        from .outfit_architect_planner import OutfitArchitectPlanner
+        from .outfit_architect_query_builder import OutfitArchitectQueryBuilder
+
+        self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        # Lazy-init the stage agents so legacy mode pays no construction cost.
+        if not hasattr(self, "_split_planner"):
+            self._split_planner = OutfitArchitectPlanner(model=self._model)
+        if not hasattr(self, "_split_builder"):
+            self._split_builder = OutfitArchitectQueryBuilder(model="gpt-5-mini")
+
+        t0 = time.monotonic()
+        plan_raw = self._split_planner.plan(combined_context)
+        stage_a_ms = int((time.monotonic() - t0) * 1000)
+
+        resolved_ctx = plan_raw.get("resolved_context") or {}
+        direction_plans = plan_raw.get("direction_plans") or []
+        if not direction_plans:
+            raise RuntimeError("Architect Planner returned no direction_plans")
+
+        # Stage B: parallel query writers, one per direction.
+        t1 = time.monotonic()
+        with ThreadPoolExecutor(max_workers=max(1, len(direction_plans))) as pool:
+            futures = [
+                (
+                    dp,
+                    pool.submit(
+                        self._split_builder.build,
+                        direction_plan=dp,
+                        combined_context=combined_context,
+                        resolved_context=resolved_ctx,
+                    ),
+                )
+                for dp in direction_plans
+            ]
+            results: List[tuple[Dict[str, Any], List[QuerySpec]]] = []
+            for dp, fut in futures:
+                results.append((dp, fut.result()))
+        stage_b_max_ms = int((time.monotonic() - t1) * 1000)
+
+        directions: List[DirectionSpec] = []
+        for dp, queries in results:
+            if not queries:
+                raise RuntimeError(
+                    f"Architect Query Builder returned no queries for direction {dp.get('direction_id')}"
+                )
+            directions.append(
+                DirectionSpec(
+                    direction_id=str(dp.get("direction_id") or ""),
+                    direction_type=str(dp.get("direction_type") or ""),
+                    label=str(dp.get("label") or ""),
+                    queries=queries,
+                )
+            )
+
+        # Combine Stage A + Stage B token usage so the orchestrator's
+        # `last_usage` consumer (model_call_logs writer) gets a whole-
+        # architect view. Stage B is per-direction; sum across.
+        a_usage = self._split_planner.last_usage or {}
+        b_usage = self._split_builder.last_usage or {}
+        self.last_usage = {
+            "prompt_tokens": int(a_usage.get("prompt_tokens", 0) or 0)
+                + int(b_usage.get("prompt_tokens", 0) or 0) * len(direction_plans),
+            "completion_tokens": int(a_usage.get("completion_tokens", 0) or 0)
+                + int(b_usage.get("completion_tokens", 0) or 0) * len(direction_plans),
+            "total_tokens": int(a_usage.get("total_tokens", 0) or 0)
+                + int(b_usage.get("total_tokens", 0) or 0) * len(direction_plans),
+            "_stage_a_ms": stage_a_ms,
+            "_stage_b_max_ms": stage_b_max_ms,
+            "_n_directions": len(direction_plans),
+            "_mode": "split",
+        }
+
+        resolved_block = ResolvedContextBlock(
+            occasion_signal=resolved_ctx.get("occasion_signal"),
+            formality_hint=resolved_ctx.get("formality_hint"),
+            time_hint=resolved_ctx.get("time_hint"),
+            specific_needs=list(resolved_ctx.get("specific_needs") or []),
+            is_followup=bool(resolved_ctx.get("is_followup", False)),
+            followup_intent=resolved_ctx.get("followup_intent"),
+            ranking_bias=str(resolved_ctx.get("ranking_bias") or "balanced"),
+        )
+        plan = RecommendationPlan(
+            retrieval_count=int(plan_raw.get("retrieval_count") or 12),
+            directions=directions,
+            plan_source="llm",
+            resolved_context=resolved_block,
+        )
         return plan
 
     def _parse_plan(self, raw: Dict[str, Any]) -> RecommendationPlan:

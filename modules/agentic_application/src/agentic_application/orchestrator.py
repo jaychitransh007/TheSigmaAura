@@ -5028,28 +5028,32 @@ class AgenticOrchestrator:
         tryon_dir = Path("data/tryon/images")
         tryon_dir.mkdir(parents=True, exist_ok=True)
 
-        # Mutable counters captured by the inner closure so we can track
-        # quality-gate failures vs generation errors separately.
         stats: Dict[str, int] = dict(empty_stats)
 
-        def _render_one(candidate: OutfitCandidate) -> str:
-            """Render a single candidate via try-on; return file path or ''.
+        def _render_one(candidate: OutfitCandidate) -> Dict[str, Any]:
+            """Render one candidate via try-on; return a result dict.
 
-            Item 10 (May 1, 2026): emits a per-candidate ``tool_traces``
-            row with ``tool_name="tryon_render"`` so a slow turn can be
-            traced down to which specific candidate dragged the
-            wallclock without rerunning the pipeline.
+            May 3, 2026 — refactored to be thread-safe: returns a pure
+            result dict instead of mutating closure-captured counters or
+            shared state. The caller reconciles `stats` after each
+            parallel batch completes. tool_traces writes happen here
+            (each row is independent so HTTP-via-Supabase-REST is fine
+            from multiple threads).
+
+            Result keys:
+              path: str — saved file path on success, '' otherwise
+              attempted: bool — True if we issued a Gemini call (vs cache hit / skipped)
+              quality_passed: bool|None — None if no QG ran
+              quality_gate_failed: bool — True iff QG ran and rejected
+              status: str — short category for telemetry
+              error: str|None — short error message
             """
             _candidate_started = time.monotonic()
             _candidate_status = "ok"
             _candidate_error: str | None = None
             _quality_passed: bool | None = None
 
-            def _log_candidate_trace() -> None:
-                # garment_ids is always assigned in the enclosing scope
-                # before any call to this helper (see the outer block:
-                # garment_ids = sorted(...) runs before the first
-                # _log_candidate_trace() call).
+            def _log_candidate_trace(garment_ids_local: List[str]) -> None:
                 latency = int((time.monotonic() - _candidate_started) * 1000)
                 try:
                     self.repo.log_tool_trace(
@@ -5058,7 +5062,7 @@ class AgenticOrchestrator:
                         tool_name="tryon_render",
                         input_json={
                             "candidate_id": str(getattr(candidate, "candidate_id", "")),
-                            "garment_ids": list(garment_ids),
+                            "garment_ids": list(garment_ids_local),
                             "parent_step": "visual_evaluation",
                         },
                         output_json={
@@ -5072,6 +5076,16 @@ class AgenticOrchestrator:
                     )
                 except Exception:  # noqa: BLE001
                     _log.warning("Failed to persist per-candidate tryon trace", exc_info=True)
+
+            def _result(path: str, *, attempted: bool, qg_failed: bool = False) -> Dict[str, Any]:
+                return {
+                    "path": path,
+                    "attempted": attempted,
+                    "quality_passed": _quality_passed,
+                    "quality_gate_failed": qg_failed,
+                    "status": _candidate_status,
+                    "error": _candidate_error,
+                }
 
             garment_urls: list[tuple[str, str]] = []
             for item in candidate.items or []:
@@ -5087,20 +5101,16 @@ class AgenticOrchestrator:
             )
             if not garment_urls:
                 _candidate_status = "skipped_no_urls"
-                _log_candidate_trace()
-                return ""
-            # Cache lookup — reuse a previously rendered image for the
-            # same garment combination so repeat turns don't re-pay
-            # Gemini latency.
+                _log_candidate_trace(garment_ids)
+                return _result("", attempted=False)
             if garment_ids:
                 cached = self.repo.find_tryon_image_by_garments(external_user_id, garment_ids)
                 if cached and cached.get("file_path"):
                     cached_path = Path(cached["file_path"])
                     if cached_path.exists():
                         _candidate_status = "cache_hit"
-                        _log_candidate_trace()
-                        return str(cached_path)
-            stats["tryon_attempted_count"] += 1
+                        _log_candidate_trace(garment_ids)
+                        return _result(str(cached_path), attempted=False)
             try:
                 result = self.tryon_service.generate_tryon_outfit(
                     person_image_path=person_image_path,
@@ -5109,21 +5119,19 @@ class AgenticOrchestrator:
                 if not result.get("success"):
                     _candidate_status = "tryon_failed"
                     _candidate_error = str(result.get("error") or "tryon returned success=False")
-                    _log_candidate_trace()
-                    return ""
+                    _log_candidate_trace(garment_ids)
+                    return _result("", attempted=True)
                 quality = self.tryon_quality_gate.evaluate(
                     person_image_path=person_image_path,
                     tryon_result=result,
                 )
                 _quality_passed = bool(quality.get("passed"))
-                # Item 5: mirror to Prometheus.
                 try:
                     from platform_core.metrics import observe_tryon_quality_gate
                     observe_tryon_quality_gate(passed=_quality_passed)
                 except Exception:  # noqa: BLE001
                     pass
                 if not quality.get("passed"):
-                    stats["tryon_quality_gate_failures"] += 1
                     _log.info(
                         "Visual eval try-on failed quality gate for candidate %s: %s",
                         candidate.candidate_id,
@@ -5131,23 +5139,23 @@ class AgenticOrchestrator:
                     )
                     _candidate_status = "quality_gate_failed"
                     _candidate_error = str(quality.get("reason_code") or "unknown")
-                    _log_candidate_trace()
-                    return ""
+                    _log_candidate_trace(garment_ids)
+                    return _result("", attempted=True, qg_failed=True)
                 image_b64 = result.get("image_base64") or ""
                 if not image_b64:
                     _candidate_status = "tryon_no_image"
-                    _log_candidate_trace()
-                    return ""
+                    _log_candidate_trace(garment_ids)
+                    return _result("", attempted=True)
                 try:
                     image_bytes = base64.b64decode(image_b64)
                 except Exception:
                     _candidate_status = "decode_failed"
-                    _log_candidate_trace()
-                    return ""
+                    _log_candidate_trace(garment_ids)
+                    return _result("", attempted=True)
                 if not image_bytes:
                     _candidate_status = "decode_empty"
-                    _log_candidate_trace()
-                    return ""
+                    _log_candidate_trace(garment_ids)
+                    return _result("", attempted=True)
                 mime_type = result.get("mime_type") or "image/png"
                 ext = ".png" if "png" in mime_type else ".jpg"
                 ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
@@ -5162,7 +5170,7 @@ class AgenticOrchestrator:
                         user_id=external_user_id,
                         conversation_id=conversation_id,
                         turn_id=turn_id,
-                        outfit_rank=0,  # rank set by formatter later
+                        outfit_rank=0,
                         garment_ids=garment_ids,
                         garment_source=self._detect_garment_source(candidate),
                         person_image_path=person_image_path,
@@ -5174,10 +5182,9 @@ class AgenticOrchestrator:
                     )
                 except Exception:
                     _log.warning("Failed to persist visual-eval tryon metadata", exc_info=True)
-                stats["tryon_succeeded_count"] += 1
                 _candidate_status = "ok"
-                _log_candidate_trace()
-                return str(dest)
+                _log_candidate_trace(garment_ids)
+                return _result(str(dest), attempted=True)
             except Exception as exc:
                 _log.warning(
                     "Visual eval try-on raised for candidate %s",
@@ -5186,42 +5193,65 @@ class AgenticOrchestrator:
                 )
                 _candidate_status = "error"
                 _candidate_error = str(exc)[:200]
-                _log_candidate_trace()
-                return ""
+                _log_candidate_trace(garment_ids)
+                return _result("", attempted=True)
 
-        # Walk the pool greedily — render the first `target_count` whose
-        # try-on passes the quality gate. Pull from positions beyond
-        # `target_count` (the over-generation pool) when earlier slots fail.
+        # Batched-parallel rendering (May 3, 2026 — Lever 1 of the
+        # performance plan). Each batch fans out up to
+        # `(target_count - len(rendered))` candidates to a thread pool;
+        # the next batch only fires if the prior one's quality-gate
+        # failures left slots empty. Compared with the prior sequential
+        # walk this preserves the same total Gemini call count on every
+        # outcome while collapsing 3 sequential 20-second renders into a
+        # single ~20-second wallclock for the happy path.
         pool = list(candidates)
         rendered: List[tuple[OutfitCandidate, str]] = []
         pool_idx = 0
         attempted_ids: set[str] = set()
+        # Map candidate_id → (rank in pool) so we can sort the rendered
+        # list back into rank order at the end.
+        rank_by_id: Dict[str, int] = {
+            str(c.candidate_id): i for i, c in enumerate(pool)
+        }
         while len(rendered) < target_count and pool_idx < len(pool):
-            candidate = pool[pool_idx]
-            pool_idx += 1
-            if candidate.candidate_id in attempted_ids:
-                continue
-            attempted_ids.add(candidate.candidate_id)
-            # Phase 12E: detect when we've started pulling from the
-            # over-generation pool (positions beyond target_count). This
-            # is the operational signal that the quality gate forced us
-            # to dig deeper than the natural top-N.
-            if pool_idx > target_count:
-                stats["tryon_overgeneration_used"] = 1
-            tryon_path = _render_one(candidate)
-            if tryon_path:
-                rendered.append((candidate, tryon_path))
-            elif len(rendered) + (len(pool) - pool_idx) < target_count:
-                # Pool exhausted — accept the candidate without a tryon
-                # rather than dropping it. The visual evaluator can still
-                # score the bare items via attribute fallback.
-                rendered.append((candidate, ""))
-        if len(rendered) < target_count and pool_idx >= len(pool):
-            for candidate in pool:
-                if candidate.candidate_id not in attempted_ids:
-                    rendered.append((candidate, ""))
+            batch: List[OutfitCandidate] = []
+            slots_remaining = target_count - len(rendered)
+            while pool_idx < len(pool) and len(batch) < slots_remaining:
+                cand = pool[pool_idx]
+                pool_idx += 1
+                if cand.candidate_id in attempted_ids:
+                    continue
+                attempted_ids.add(cand.candidate_id)
+                batch.append(cand)
+                if pool_idx > target_count:
+                    stats["tryon_overgeneration_used"] = 1
+            if not batch:
+                break
+            with ThreadPoolExecutor(max_workers=len(batch)) as exec_pool:
+                future_to_cand = [(c, exec_pool.submit(_render_one, c)) for c in batch]
+                results = [(c, fut.result()) for c, fut in future_to_cand]
+            for cand, result in results:
+                if result.get("attempted"):
+                    stats["tryon_attempted_count"] += 1
+                if result.get("quality_gate_failed"):
+                    stats["tryon_quality_gate_failures"] += 1
+                if result.get("path"):
+                    stats["tryon_succeeded_count"] += 1
+                    rendered.append((cand, result["path"]))
+        # Pool exhausted with empty slots remaining — accept candidates
+        # without a tryon image rather than dropping them. The visual
+        # evaluator can still score the bare items via attribute fallback.
+        if len(rendered) < target_count:
+            for cand in pool:
+                already_rendered = any(rc.candidate_id == cand.candidate_id for rc, _ in rendered)
+                if not already_rendered:
+                    rendered.append((cand, ""))
                 if len(rendered) >= target_count:
                     break
+        # Restore rank order — parallel completion order doesn't preserve
+        # it. Stable sort keeps unrendered candidates after rendered ones
+        # at the same rank (which can happen during pool exhaustion).
+        rendered.sort(key=lambda rc: rank_by_id.get(str(rc[0].candidate_id), 1_000_000))
         rendered = rendered[:target_count]
         stats["rendered_with_image_count"] = sum(1 for _c, p in rendered if p)
         stats["rendered_without_image_count"] = sum(1 for _c, p in rendered if not p)
