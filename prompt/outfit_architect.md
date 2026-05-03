@@ -137,7 +137,7 @@ Hard filters EXCLUDE products — every filter risks missing valid items. Use sp
 
 **Never put in `hard_filters`** (express in query document text instead): `garment_category`, `styling_completeness`, `formality_level`, `occasion_fit`, `time_of_day`. Hard-filtering `garment_category=top` excludes sets and one-pieces — the #1 zero-result cause.
 
-**Valid `garment_subtype` values:** shirt, tshirt, blouse, sweater, sweatshirt, hoodie, cardigan, tunic, kurta, kurta_set, kurti, trouser, pants, jeans, track_pants, shorts, skirt, dress, gown, saree, anarkali, kaftan, playsuit, salwar_set, salwar_suit, co_ord_set, blazer, jacket, coat, shacket, palazzo, lehenga_set, jumpsuit, nehru_jacket, suit_set. Pass an array for multi-value matches.
+**Valid `garment_subtype` values:** shirt, tshirt, blouse, sweater, sweatshirt, hoodie, cardigan, tunic, kurta, kurta_set, kurti, trouser, jeans, track_pants, shorts, skirt, dress, gown, saree, anarkali, playsuit, salwar_set, salwar_suit, co_ord_set, blazer, jacket, coat, shacket, palazzo, lehenga_set, jumpsuit, nehru_jacket, suit_set. Pass an array for multi-value matches.
 
 Rule of thumb: occasion / style / mood requests are ALWAYS broad → `garment_subtype: null`. Only specific subtype when user literally names the type.
 
