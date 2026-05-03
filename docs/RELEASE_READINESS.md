@@ -22,15 +22,19 @@ The pipeline must produce a usable answer for every primary intent without
 manual intervention.
 
 - [ ] All tests across `tests/` pass against the current branch
-      (verified April 11, 2026: 130 in test_agentic_application + 3 in
-      test_architecture_boundaries + 36 in test_qna_messages.
-      Phase 13/13B added 6 regression tests: live_context payload,
-      ranking_bias schema/parsing, three_piece direction, anchor payload.
-      Prior scope: three outfit structures + all 46 attributes
-      in query docs + parallel retrieval ~4x speedup + occasion-fabric
-      coupling + time-of-day inference + role-category validation +
-      outerwear recategorization + plan_type removed + catalog 14,296
-      garment-only items, zero nulls, 90 accessories purged).
+      (verified May 3, 2026: **382 L0 tests, 1 skipped, 0 failures**).
+      Cumulative scope: Phase 13/13B regression tests (live_context
+      payload, ranking_bias schema/parsing, three_piece direction,
+      anchor payload); May-1 confidence threshold tests
+      (`ConfidenceThresholdGateTests` × 6) verifying outfits below 0.75
+      never reach the user; May-3 perf-series tests
+      (`TryonParallelRenderTests` × 3 for parallel rendering;
+      `ArchitectPromptAssemblyTests` × 3 for conditional anchor/followup
+      module assembly). Prior baseline: three outfit structures + all 46
+      attributes in query docs + parallel retrieval ~4× speedup +
+      occasion-fabric coupling + time-of-day inference + role-category
+      validation + outerwear recategorization + catalog 14,296 garment
+      items.
 - [ ] `ops/scripts/validate_dependency_report.py` runs to completion with
       zero failed assertions.
 - [ ] `ops/scripts/smoke_test_full_flow.sh` runs to completion against a
@@ -75,9 +79,12 @@ The environment we ship to must have the data the pipeline depends on.
 
 You cannot ship what you cannot watch.
 
-- [ ] All 8 dashboard panels in `docs/OPERATIONS.md` exist in the chosen
+- [ ] All 16 dashboard panels in `docs/OPERATIONS.md` exist in the chosen
       dashboard tool (Supabase Studio / Metabase / Grafana) and refresh on
-      the cadence specified there.
+      the cadence specified there. Panel 16 — Low-Confidence Catalog
+      Responses (May 2026) tracks the rate at which the 0.75 threshold
+      gate forces a no-confident-match response; healthy steady state
+      is < 5%.
 - [ ] **Pipeline Health** panel shows zero empty responses and a defined
       error rate over the last 24h.
 - [ ] **Catalog-unavailable guardrail** panel shows zero hits in production
@@ -90,6 +97,8 @@ You cannot ship what you cannot watch.
   - empty responses spike
   - catalog/embeddings missing
   - feedback dislikes spike on a single product
+  - try-on render slowness (visual_evaluation step > 70s sustained — see
+    Operations runbook section E)
   - dependency report shows acquisition_source = unknown for >50% of
     new users (instrumentation regressed)
 - [ ] Logs from `_log.error` / `_log.warning` in `orchestrator.py`,

@@ -531,6 +531,39 @@ the image as not-a-garment.
 
 ---
 
+## Panel 16 — Low-Confidence Catalog Responses (May 3, 2026)
+
+**Question:** how often does the 0.75 confidence threshold gate force a no-confident-match response instead of shipping outfits?
+
+**Context:** As of May 3, 2026 the orchestrator drops outfits whose `assembly_score < 0.75` and, when zero candidates clear, returns `answer_source = "catalog_low_confidence"` with `outfits=[]` and a graceful "I couldn't find a strong match" message + refine / show-closest / shop CTAs. This panel tracks that rate so the team can decide when the threshold is too aggressive (catalog needs broadening) vs working as intended (catalog has a real coverage gap).
+
+```sql
+-- low_confidence_catalog_response_rate_last_7d
+SELECT
+    date_trunc('day', created_at) AS day,
+    SUM(CASE WHEN metadata_json->>'answer_source' = 'catalog_low_confidence' THEN 1 ELSE 0 END) AS low_conf_turns,
+    COUNT(*) AS total_turns,
+    round(
+        100.0 * SUM(CASE WHEN metadata_json->>'answer_source' = 'catalog_low_confidence' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0),
+        2
+    ) AS low_conf_rate_pct,
+    round(avg((metadata_json->>'low_confidence_top_match_score')::numeric), 3) AS avg_top_match_score_when_blocked
+FROM dependency_validation_events
+WHERE event_type = 'turn_completed'
+  AND primary_intent IN ('occasion_recommendation', 'pairing_request')
+  AND created_at >= now() - interval '7 days'
+GROUP BY 1
+ORDER BY 1 DESC;
+```
+
+**Healthy:** `low_conf_rate_pct` stays <5%. The avg blocked top score should sit close to but below 0.75 (i.e., the gate is catching genuinely borderline turns, not way-off ones).
+
+**Degraded:** `low_conf_rate_pct` 5–20%. Most likely a catalog gap or an architect drift producing weak query documents. Check Panel 6 (catalog engagement) for unusual subtype mixes; check whether new occasions or styles are showing up that the catalog doesn't carry.
+
+**Unhealthy:** `low_conf_rate_pct` > 20% sustained. Either the threshold is too high for current catalog depth, or the architect / assembler is regressing. Pull a sample of low-confidence turns from `turn_traces` and inspect the query documents + retrieved products manually.
+
+---
+
 ## How to refresh
 
 1. Open Supabase Studio (or your preferred SQL client) connected to staging.
@@ -625,6 +658,15 @@ work the diagnosis there.
      a recent code change probably removed an emit call.
   3. File a code-fix ticket; the dashboards keep working with the existing
      rows in the meantime.
+
+#### E. Try-on render slowness
+
+- **Signal:** `visual_evaluation` step latency in `turn_traces.steps[]` jumps above ~70 s on a sustained basis. The expected steady state is ~25 s for 3 parallel cold renders, less when the per-user tryon image cache is warm.
+- **Severity:** P2 unless it pushes total turn latency above ~120 s, then P1.
+- **First three actions:**
+  1. Grep the application stdout for the parallel-batch log lines: `tryon parallel batch: N/N succeeded (cold=K, cache_hit=M) in Xms wallclock`. If `cold` count is low and `wallclock` is still high, Gemini is the bottleneck. If `cold` count is high, the cache may be cold (new user / new garments).
+  2. If wallclock per cold render >> 30 s, the Gemini API is degraded — check Google's status page and consider a graceful degrade (skip try-on, ship text-only outfits with attribute-fallback evaluator scores).
+  3. Cross-check Panel 10 (try-on quality gate) — high QG-failure rates trigger over-generation, which adds a second parallel batch and roughly doubles the rendering wallclock.
 
 ### Escalation timeline
 

@@ -1,6 +1,6 @@
 # Intent-Driven Fashion Copilot Architecture
 
-Last updated: April 10, 2026
+Last updated: May 3, 2026
 
 > **⚠️ Target-state document — substantially superseded by Phase 12 + Phase 13.** This
 > file describes the *aspirational* architecture (web + WhatsApp,
@@ -36,6 +36,24 @@ Last updated: April 10, 2026
 >    (not `not_applicable`), color synonym expansion, semantic fabric clusters,
 >    follow-up intent tiebreaker, and consolidated occasion calibration.
 >    See `docs/CURRENT_STATE.md` Phase 13/13B for the full change list.
+> 6. **Models migrated to gpt-5.5 / gpt-5-mini** (May 1, 2026). Copilot Planner,
+>    Outfit Architect, Style Advisor, and User Analysis run on `gpt-5.5`. Visual
+>    Evaluator, Image Moderation, and Outfit Decomposition run on `gpt-5-mini`.
+>    Try-on still on `gemini-3.1-flash-image-preview`.
+> 7. **Confidence threshold 0.75 gates every outfit** (May 1, 2026). Outfits with
+>    `assembly_score < 0.75` are dropped before reaching the user; if zero
+>    candidates clear, `_build_low_confidence_catalog_response` returns an honest
+>    "I couldn't find a strong match" message + refine / show-closest / shop CTAs
+>    instead of low-confidence picks. The same threshold applies to wardrobe-first
+>    selection (normalized item score < 0.75 → fall through). User-facing copy
+>    never references the threshold or raw scores.
+> 8. **Lever 1+2 perf wins live; Lever 3 deprecated** (May 3, 2026). Try-on
+>    renders for the top-N candidates run in a `ThreadPoolExecutor` parallel batch.
+>    Architect system prompt was trimmed 11.6K → 4.8K tokens with anchor and
+>    follow-up rules now loaded at request time only when needed. The split-architect
+>    experiment (Stage A planner + parallel Stage B query builders) was tried,
+>    failed empirically (output streaming time dominates parallelism advantage),
+>    and removed from the codebase.
 >
 > For the authoritative "what is running right now" view, always defer to
 > `docs/CURRENT_STATE.md`. When this document and `CURRENT_STATE.md`
