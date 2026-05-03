@@ -42,6 +42,40 @@ Pure SQL `UPDATE` migration — no LLM calls, no embedding changes.
 
 ---
 
+## Catalog `OccasionFit` column — drop or keep?
+
+**Status:** parked · **Cost:** small · **Risk:** low
+
+Phase 2 dropped `OccasionFit`, `OccasionSignal`, `FormalitySignalStrength` from the catalog item embedding text (PR #16) and Option A dropped them from architect query documents (PR #20). But `OccasionFit` is still emitted in the metadata dict by `build_catalog_document()` and persisted to the `occasion_fit` SQL column on `catalog_item_embeddings`. The column is no longer read by retrieval (since Option A makes the architect not query on it).
+
+Decide: keep populating it (cheap, future-proof if we ever need a hard-filter occasion path) or drop it from `metadata` + the column itself (cleaner schema, smaller row size). Currently keeping it for backward compat. PR #16 review noted the inconsistency with the PR description.
+
+---
+
+## Confidence-scaling consistency across docs
+
+**Status:** queued · **Cost:** small (doc-only) · **Risk:** none
+
+`docs/APPLICATION_SPECS.md` lines 53 and 1630 give contradictory descriptions of whether the radar chart is scaled by `analysis_confidence_pct` or shows raw evaluator scores. Line 53 says scaled; line 1630 says raw. Code reality should be checked and one source of truth picked.
+
+---
+
+## Test count harmonization
+
+**Status:** queued · **Cost:** small (doc-only) · **Risk:** none
+
+Different doc sections cite different L0 test counts (130 / 268 / 329 / 382 / 387 / 423) reflecting different points in time. They were accurate when written. After this commit's bundle of changes, the live count is **384** (was 382 + 2 new architect-prompt assertions in PR #20). Harmonize all docs to read 384 and add a "(as of YYYY-MM-DD)" stamp so future drift is obvious.
+
+---
+
+## "Acquisition source instrumentation regressed" line
+
+**Status:** queued · **Cost:** small (doc-only) · **Risk:** none
+
+A line in the migrated phase-history claims "acquisition_source instrumentation regressed" without context. Either it's resolved (note the fix) or it's open (move to a known-issues section). Currently reads as ambiguous.
+
+---
+
 ## Reranker calibration curve fit
 
 **Status:** data-blocked · **Cost:** ~1 day of dev when data is ready · **Risk:** low

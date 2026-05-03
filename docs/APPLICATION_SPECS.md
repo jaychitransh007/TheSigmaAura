@@ -2038,8 +2038,8 @@ A trace audit on May 3, 2026 of the date-night turn for `user_03026279ecd6` meas
 
 ### Shipped (default-on)
 
-- **Lever 1 — Parallel Gemini try-on renders.** [orchestrator.py:_render_candidates_for_visual_eval](modules/agentic_application/src/agentic_application/orchestrator.py) now runs the top-N candidate renders in a `ThreadPoolExecutor` batch instead of sequentially. The cache lookup and quality gate continue to work per-candidate inside each thread; over-generation pool fallback runs the next batch in parallel too. INFO logs surface batch-start / batch-end wallclocks so parallelism is provable from server stdout. **Saves time only when there are 2+ cold renders in a turn**; on cache-heavy repeat turns the visible win is smaller.
-- **Lever 2 — Architect prompt trim + conditional assembly.** [prompt/outfit_architect.md](prompt/outfit_architect.md) trimmed from 11.6K → 4.8K tokens. Anchor-garment rules and follow-up-intent rules moved to separate modules ([outfit_architect_anchor.md](prompt/outfit_architect_anchor.md), [outfit_architect_followup.md](prompt/outfit_architect_followup.md)) loaded at request time only when the turn actually needs them. **Reproducible: −5,574 input tokens, −3 s architect latency, −$0.04 architect cost per turn.**
+- **Lever 1 — Parallel Gemini try-on renders.** [orchestrator.py:_render_candidates_for_visual_eval](../modules/agentic_application/src/agentic_application/orchestrator.py) now runs the top-N candidate renders in a `ThreadPoolExecutor` batch instead of sequentially. The cache lookup and quality gate continue to work per-candidate inside each thread; over-generation pool fallback runs the next batch in parallel too. INFO logs surface batch-start / batch-end wallclocks so parallelism is provable from server stdout. **Saves time only when there are 2+ cold renders in a turn**; on cache-heavy repeat turns the visible win is smaller.
+- **Lever 2 — Architect prompt trim + conditional assembly.** [prompt/outfit_architect.md](../prompt/outfit_architect.md) trimmed from 11.6K → 4.8K tokens. Anchor-garment rules and follow-up-intent rules moved to separate modules ([outfit_architect_anchor.md](../prompt/outfit_architect_anchor.md), [outfit_architect_followup.md](../prompt/outfit_architect_followup.md)) loaded at request time only when the turn actually needs them. **Reproducible: −5,574 input tokens, −3 s architect latency, −$0.04 architect cost per turn.**
 
 ### Deprecated and removed
 
@@ -2053,7 +2053,7 @@ Same query, same user, same anchor garment, comparing the pre-opt baseline again
 |---|---:|---:|---:|
 | End-to-end latency | 141.7 s | ~118 s | −24 s (−17%) |
 | Architect input tokens | 15,264 | 9,690 | −37% |
-| Architect cost | $0.145 | $0.105 | −$0.040 (−24%) |
+| Architect cost | $0.145 | $0.105 | −$0.040 (−28%) |
 | Total cost (cold renders) | ~$0.30 | ~$0.26 | −$0.04 (−13%) |
 
 A repeat-turn run (2 of 3 garment combos already in the per-user tryon image cache) measured 100.8 s / $0.15 — but that further reduction is the **pre-existing tryon cache**, not a benefit from this work.
@@ -2189,7 +2189,7 @@ Implemented:
 - `response_type` field: `"recommendation"` | `"clarification"`
 - saved user context loading
 - conversation memory carry-forward
-- LLM-only architect planner — no deterministic fallback (model: `gpt-5.4`)
+- LLM-only architect planner — no deterministic fallback (model: `gpt-5.5`)
 - strict JSON schema with enum-constrained hard filter vocabulary
 - hard filters: `gender_expression` (always), `garment_subtype` (conditional — only when user names a specific garment type); `garment_category` and `styling_completeness` are **soft signals** in the query document text only (April 9 2026 tiering)
 - soft signals via embedding only: `occasion_fit`, `formality_level`, `time_of_day`
@@ -2197,7 +2197,7 @@ Implemented:
 - direction-aware retrieval: `needs_bottomwear` / `needs_topwear` / `complete`
 - complete-outfit and paired top/bottom support
 - assembly layer with deterministic compatibility pruning
-- evaluator with graceful fallback (model: `gpt-5.4`), 8 style archetype percentage scoring (0–100 per archetype), and server-side output validation (score clamping, item_id verification, note backfill)
+- evaluator with graceful fallback (model: `gpt-5-mini`), 8 style archetype percentage scoring (0–100 per archetype), and server-side output validation (score clamping, item_id verification, note backfill)
 - architect failure returns error to user (no silent degradation)
 - latency tracking via `time.monotonic()` on architect, search, evaluator (persisted as `latency_ms`)
 - style archetype override: user's saved `style_preference.primaryArchetype` is the default, but if the user's message or conversation history explicitly requests a different style, the architect uses the requested style instead; the response formatter reads the archetype from the plan's query documents (not just the profile) so the response message reflects the actual style used
@@ -2215,12 +2215,12 @@ Main remaining gaps:
 Current execution order:
 1. load user context
 2. build conversation memory from prior turn state
-3. copilot planner (gpt-5.4) — classifies intent, decides action (`run_recommendation_pipeline`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`), resolves context
+3. copilot planner (gpt-5.5) — classifies intent, decides action (`run_recommendation_pipeline`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`), resolves context
 4. action dispatch — if `respond_directly` or `ask_clarification`, return planner response directly (skip stages 5-10)
-5. generate recommendation plan via outfit architect LLM (gpt-5.4) — no fallback, failure = error to user
+5. generate recommendation plan via outfit architect LLM (gpt-5.5) — no fallback, failure = error to user
 6. retrieve catalog products per query direction (text-embedding-3-small, single search pass)
 7. assemble outfit candidates (deterministic)
-8. evaluate and rank candidates (gpt-5.4, fallback: assembly_score)
+8. evaluate and rank candidates (gpt-5-mini, fallback: assembly_score)
 9. format response payload (max 3 outfits)
 10. generate virtual try-on images (gemini-3.1-flash-image-preview, parallel) — checks cache by user + garment IDs first; saves new results to disk + `virtual_tryon_images` table
 11. persist turn artifacts and updated conversation context
@@ -2362,7 +2362,7 @@ Main weak spots:
 
 ### User Layer
 - OTP-based onboarding with acquisition source tracking
-- 3-agent parallel analysis pipeline (body type, color, other details) via gpt-5.4
+- 3-agent parallel analysis pipeline (body type, color, other details) via gpt-5.5
 - ~~digital draping~~ — removed (was 3-round LLM vision chain, replaced by deterministic 12-sub-season interpreter)
 - deterministic interpretation engine (seasonal color, base/accent/avoid color palettes, height, waist, contrast, frame)
 - style archetype preference capture (3 layers → primary/secondary archetypes, risk tolerance, formality lean)
@@ -2379,7 +2379,7 @@ Main weak spots:
 
 ### Application Layer
 - intent registry (`intent_registry.py`) — StrEnum single source of truth for 12 intents, 9 actions, 7 follow-up intents
-- copilot planner (gpt-5.4) — intent classification across 12 intents, 8 action dispatch
+- copilot planner (gpt-5.5) — intent classification across 7 advisory intents, 7 action dispatch
 - recommendation pipeline: architect → catalog search → assembly → evaluation → formatting → try-on
 - wardrobe-first occasion response (wardrobe retrieval + selection for occasion intents)
 - wardrobe item save from chat with moderation
@@ -2408,7 +2408,7 @@ Main weak spots:
 
 ## What Is Not Finished
 
-See "What needs to be built" in the gap analysis above. The current open
+See "Recently Completed Roadmap Items" in the gap analysis above (now in `docs/PRODUCT.md`). The current open
 items are tracked inline in the P0/P1/P2 sections above; there is no
 additional summary to call out here.
 
@@ -2476,11 +2476,11 @@ modules/
 │   ├── qna_messages.py           # Template-based stage narration (QnA transparency)
 │   ├── product_links.py          # Canonical URL resolution
 │   ├── agents/
-│   │   ├── copilot_planner.py   # LLM intent classification + action routing (gpt-5.4)
-│   │   ├── outfit_architect.py   # LLM planning (gpt-5.4)
+│   │   ├── copilot_planner.py   # LLM intent classification + action routing (gpt-5.5)
+│   │   ├── outfit_architect.py   # LLM planning (gpt-5.5)
 │   │   ├── catalog_search_agent.py # Embedding search + hydration
 │   │   ├── outfit_assembler.py   # Compatibility pruning
-│   │   ├── outfit_evaluator.py   # LLM ranking (gpt-5.4)
+│   │   ├── visual_evaluator_agent.py # Visual ranking (gpt-5-mini, vision input)
 │   │   └── response_formatter.py # UI output generation (max 3 outfits)
 │   ├── context/
 │   │   ├── user_context_builder.py  # Profile loading + richness scoring
@@ -2534,7 +2534,7 @@ modules/
 
 ## Copilot Execution Rule
 
-For the next implementation phase, `docs/CURRENT_STATE.md` is the execution source of truth.
+For the next implementation phase, `docs/PRODUCT.md` § "Current Gap Versus Target State" is the execution source of truth.
 
 Operating rule:
 - every meaningful implementation change should map to one checklist item below

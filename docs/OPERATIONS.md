@@ -558,7 +558,7 @@ ORDER BY 1 DESC;
 
 **Healthy:** `low_conf_rate_pct` stays <5%. The avg blocked top score should sit close to but below 0.75 (i.e., the gate is catching genuinely borderline turns, not way-off ones).
 
-**Degraded:** `low_conf_rate_pct` 5–20%. Most likely a catalog gap or an architect drift producing weak query documents. Check Panel 6 (catalog engagement) for unusual subtype mixes; check whether new occasions or styles are showing up that the catalog doesn't carry.
+**Degraded:** `low_conf_rate_pct` 5–20%. Most likely a catalog gap or an architect drift producing weak query documents. Pull a sample of low-confidence turns from `turn_traces` (filter on `evaluation->>'answer_source' = 'catalog_low_confidence'`) and inspect each one's architect query documents + retrieved candidates manually — check whether the architect is targeting `garment_subtype` values the catalog doesn't carry well, or whether the user's seasonal palette / formality target has thin inventory. (A future Panel 17 would join `tool_traces.reranker_decision` to `catalog_enriched.GarmentSubtype` to surface this automatically.)
 
 **Unhealthy:** `low_conf_rate_pct` > 20% sustained. Either the threshold is too high for current catalog depth, or the architect / assembler is regressing. Pull a sample of low-confidence turns from `turn_traces` and inspect the query documents + retrieved products manually.
 

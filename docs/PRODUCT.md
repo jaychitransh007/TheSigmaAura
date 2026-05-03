@@ -461,7 +461,7 @@ Success means users come back before real decisions: should I buy this, what goe
 - dependency/retention instrumentation
 - follow-up turns with persisted context and 7 follow-up intent types
 
-### What needs to be built:
+### Recently Completed Roadmap Items:
 
 #### P0 — Design System And Experience Realignment
 - [x] update all primary user journeys to match the stylist-studio product model in `docs/DESIGN.md`
