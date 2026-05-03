@@ -14,7 +14,7 @@ Return strict JSON:
 {
   "resolved_context": {
     "occasion_signal": "wedding | party | office | date_night | ... | null",
-    "formality_hint": "casual | smart_casual | business_casual | semi_formal | formal | ultra_formal | null",
+    "formality_hint": "casual | smart_casual | semi_formal | formal | ceremonial | null",
     "time_hint": "daytime | evening | null",
     "specific_needs": ["elongation", "slimming", "comfort_priority", ...],
     "is_followup": false,
@@ -50,7 +50,7 @@ Do NOT inflate to compensate for low inventory.
 ### `resolved_context` rules
 
 - `occasion_signal`: snake_case occasion. Office sub-occasions: "daily" / "everyday" / "regular" / "routine" → `daily_office`; meetings / presentations / interviews → `office`. Default generic office → `daily_office`.
-- `formality_hint`: infer from explicit + implicit cues ("tech startup interview" → `business_casual`).
+- `formality_hint`: infer from explicit + implicit cues. Allowed values are the catalog vocabulary: `casual | smart_casual | semi_formal | formal | ceremonial`. Map office/business-meeting intent → `smart_casual`; map wedding-ceremony / black-tie intent → `ceremonial`. Never emit `business_casual` or `ultra_formal` — those don't exist in catalog rows and dilute downstream matching.
 - `time_hint`: see Time-of-Day Inference below.
 - `specific_needs`: body/styling needs (elongation, slimming, broadening, comfort_priority, authority, approachability, polish).
 - `is_followup`: true when refining or following up on prior recommendations.
@@ -177,9 +177,25 @@ PATTERN_AND_COLOR:
 - ContrastLevel, ColorTemperature, ColorSaturation, ColorValue, ColorCount
 - PrimaryColor, SecondaryColor
 
-OCCASION_AND_SIGNAL:
-- FormalitySignalStrength, FormalityLevel, OccasionFit, OccasionSignal, TimeOfDay
+CONTEXT_AND_TIMING:
+- FormalityLevel, TimeOfDay
 ```
+
+**Critical — what NOT to include in `query_document`:**
+
+- ❌ **`OccasionFit`** — DO NOT emit. Occasion is a property of the request, not the garment. The catalog does not carry occasion tags in any vocabulary that matches the architect's canonical occasion names. Embedding `OccasionFit: daily_office` into the query text is dead weight that dilutes cosine similarity against catalog rows whose stored occasion tags use different vocabulary.
+- ❌ **`OccasionSignal`** — same reason; do not emit.
+- ❌ **`FormalitySignalStrength`** — meta-claim about how strongly a garment signals formality; not a usable retrieval signal. Use `FormalityLevel` only.
+
+Instead, **reason from occasion → physical attributes** in the visible parts of the query document. Translate "daily office" into the intrinsic garment properties that someone would wear: structured smart_casual top, solid or subtle pattern, day-time palette, warm-neutral colors. Express those attributes in the relevant sections (`GARMENT_REQUIREMENTS`, `PATTERN_AND_COLOR`, `FABRIC_AND_BUILD`, `CONTEXT_AND_TIMING`). The reranker and visual evaluator handle final occasion fit using their own reasoning over the retrieved items.
+
+**Allowed `FormalityLevel` values** (catalog vocabulary — these are the only values that match catalog rows):
+
+```
+casual | smart_casual | semi_formal | formal | ceremonial
+```
+
+`business_casual` is NOT a catalog value; map intent to `smart_casual` for office contexts. `ultra_formal` is NOT a catalog value; map to `ceremonial` for wedding-ceremony / black-tie contexts.
 
 **Populate fields with a physical counterpart on the garment. Omit fields with no counterpart** — do NOT write `not_applicable` / `N/A`. Per-role guide: top/outerwear/complete = all fields; bottom = omit `NecklineType`, `NecklineDepth`, `ShoulderStructure`, `SleeveLength`.
 
@@ -195,13 +211,13 @@ Calibrate to the SPECIFIC sub-occasion, not parent category:
 
 | Sub-occasion | Formality | Fabric | Embellishment | Avoid |
 |---|---|---|---|---|
-| Wedding ceremony | formal | silk, brocade, heavy jacquard, sherwani fabric | moderate–heavy / embroidery, sequins, beading / allover or neckline | casual cotton, plain textures |
+| Wedding ceremony | ceremonial | silk, brocade, heavy jacquard, sherwani fabric | moderate–heavy / embroidery, sequins, beading / allover or neckline | casual cotton, plain textures |
 | Wedding engagement | semi_formal | silk, structured wool, velvet, satin | subtle–moderate / embroidery, sequins / neckline or hem | heavy embroidery, sherwanis, brocade |
 | Wedding reception | semi_formal–formal | silk, satin, velvet | moderate / embroidery, sequins / neckline | overly casual or overly bridal |
 | Sangeet / mehndi | smart_casual–semi_formal | silk, cotton-silk blend, printed | subtle–moderate / print, mixed / allover or neckline | somber colors, stiff formal suiting |
 | Cocktail party | semi_formal | suiting wool, silk, structured | minimal–subtle / print, mixed / neckline | embroidery, traditional motifs |
 | Date night | smart_casual | fine cotton, silk blend, knit | none–subtle / print / neckline | heavy embellishment, ceremony fabrics |
-| Formal office / business meeting | business_casual–smart_casual | cotton, wool blend, fine suiting | none–minimal / print (subtle) | embellishment, festive fabrics |
+| Formal office / business meeting | smart_casual–semi_formal | cotton, wool blend, fine suiting | none–minimal / print (subtle) | embellishment, festive fabrics |
 | Daily office | smart_casual–casual | cotton, linen, jersey, light knit | none | heavy fabrics, anything that reads "event" |
 | Casual outing | casual | cotton, linen, jersey, denim | none | anything that reads "event" |
 
