@@ -1252,7 +1252,7 @@ class AgenticOrchestrator:
         except Exception as exc:
             planner_ms = int((time.monotonic() - t0) * 1000)
             _log.error("Copilot planner failed: %s", exc, exc_info=True)
-            self.repo.log_model_call(
+            trace.add_model_cost_from_row(self.repo.log_model_call(
                 conversation_id=conversation_id,
                 turn_id=turn_id,
                 service="agentic_application",
@@ -1264,7 +1264,7 @@ class AgenticOrchestrator:
                 latency_ms=planner_ms,
                 status="error",
                 error_message=str(exc),
-            )
+            ))
             emit("copilot_planner", "error")
             trace_end("copilot_planner", status="error", error=str(exc)[:200])
             fallback_message = "I'm having trouble processing your request right now. Please try again."
@@ -1293,7 +1293,7 @@ class AgenticOrchestrator:
         planner_ms = int((time.monotonic() - t0) * 1000)
         # Item 4 (May 1, 2026): pull token usage from the planner agent.
         _planner_usage = getattr(self._copilot_planner, "last_usage", {}) or {}
-        self.repo.log_model_call(
+        trace.add_model_cost_from_row(self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
@@ -1310,7 +1310,7 @@ class AgenticOrchestrator:
             prompt_tokens=_planner_usage.get("prompt_tokens"),
             completion_tokens=_planner_usage.get("completion_tokens"),
             total_tokens=_planner_usage.get("total_tokens"),
-        )
+        ))
         emit("copilot_planner", "completed", ctx={
             "intent": plan_result.intent,
             "action": plan_result.action,
@@ -1409,11 +1409,13 @@ class AgenticOrchestrator:
             if "non_garment_image" not in override_reasons:
                 override_reasons.append("non_garment_image")
 
-        # ── Close the planner trace step and snapshot the intent ──
-        trace_end(
-            "copilot_planner",
-            output_summary=f"intent={plan_result.intent}, action={plan_result.action}, overrides={override_reasons}",
-        )
+        # ── Snapshot the intent ──
+        # NOTE: trace_end("copilot_planner") fires once at line 1318
+        # right after the planner LLM call returns. Calling it again
+        # here used to write a second `copilot_planner` row to
+        # `turn_traces.steps` (with model=None, latency=None) because
+        # `_step_t0` had already been popped. Override info lives on
+        # `set_intent.reason_codes` below — that's the right home.
         trace.set_intent(
             primary_intent=plan_result.intent,
             intent_confidence=plan_result.intent_confidence,
@@ -1546,6 +1548,7 @@ class AgenticOrchestrator:
                 emit=emit,
                 trace_start=trace_start,
                 trace_end=trace_end,
+                trace=trace,
             )
         elif plan_result.action == Action.RUN_OUTFIT_CHECK:
             handler_result = self._handle_outfit_check(
@@ -4333,12 +4336,21 @@ class AgenticOrchestrator:
         emit: Any,
         trace_start: Any = None,
         trace_end: Any = None,
+        trace: Any = None,
     ) -> Dict[str, Any]:
         # Default trace functions to no-ops if not passed (e.g. in tests).
         if trace_start is None:
             trace_start = lambda *a, **kw: None
         if trace_end is None:
             trace_end = lambda *a, **kw: None
+        # `trace` is the TurnTraceBuilder; default to a stub for tests
+        # that exercise the handler without the full process_turn shell.
+        if trace is None:
+            class _NoOpTrace:
+                def add_cost(self, *a, **kw): pass
+                def add_model_cost_from_row(self, *a, **kw): pass
+                def set_evaluation(self, *a, **kw): pass
+            trace = _NoOpTrace()
 
         # Build live context from planner's resolved context
         rc = plan_result.resolved_context
@@ -4528,7 +4540,7 @@ class AgenticOrchestrator:
             architect_ms = int((time.monotonic() - t0) * 1000)
             trace_end("outfit_architect", status="error", error=str(exc)[:200])
             _log.error("Outfit architect failed: %s", exc, exc_info=True)
-            self.repo.log_model_call(
+            trace.add_model_cost_from_row(self.repo.log_model_call(
                 conversation_id=conversation_id,
                 turn_id=turn_id,
                 service="agentic_application",
@@ -4540,7 +4552,7 @@ class AgenticOrchestrator:
                 latency_ms=architect_ms,
                 status="error",
                 error_message=str(exc),
-            )
+            ))
             emit("outfit_architect", "error")
             self.repo.finalize_turn(
                 turn_id=turn_id,
@@ -4578,7 +4590,7 @@ class AgenticOrchestrator:
             effective_live_context = initial_live_context
 
         _arch_usage = getattr(self.outfit_architect, "last_usage", {}) or {}
-        self.repo.log_model_call(
+        trace.add_model_cost_from_row(self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
@@ -4598,7 +4610,7 @@ class AgenticOrchestrator:
             prompt_tokens=_arch_usage.get("prompt_tokens"),
             completion_tokens=_arch_usage.get("completion_tokens"),
             total_tokens=_arch_usage.get("total_tokens"),
-        )
+        ))
         emit("outfit_architect", "completed", ctx={
             "direction_types": sorted({d.direction_type for d in plan.directions}),
             "direction_count": len(plan.directions),
@@ -4649,6 +4661,27 @@ class AgenticOrchestrator:
                     output_json={"result_count": len(rs.products)},
                     latency_ms=search_ms,
                 )
+            # Capture the embedding API cost for the per-turn rollup.
+            # The retrieval gateway exposes `last_usage` after the
+            # batched embed call; tokens × text-embedding-3-small
+            # pricing folds into total_cost_usd. Without this row, the
+            # embedding bill (~$0.0001-0.0003/turn) was invisible to
+            # turn-level cost dashboards.
+            _embed_usage = getattr(self._retrieval_gateway, "last_usage", {}) or {}
+            if _embed_usage.get("total_tokens"):
+                trace.add_model_cost_from_row(self.repo.log_model_call(
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    service="agentic_application",
+                    call_type="catalog_embedding",
+                    model="text-embedding-3-small",
+                    request_json={"query_count": len(plan.directions)},
+                    response_json={"embedding_count": sum(len(d.queries) for d in plan.directions)},
+                    reasoning_notes=[],
+                    latency_ms=search_ms,
+                    prompt_tokens=_embed_usage.get("prompt_tokens"),
+                    total_tokens=_embed_usage.get("total_tokens"),
+                ))
             total_products = sum(len(rs.products) for rs in retrieved_sets)
             emit("catalog_search", "completed", ctx={
                 "product_count": total_products,
@@ -4706,7 +4739,7 @@ class AgenticOrchestrator:
             # Persist Composer audit trail. Read usage from the result
             # so concurrent turns don't race over a shared instance attr.
             _comp_usage = composer_result.usage or {}
-            self.repo.log_model_call(
+            trace.add_model_cost_from_row(self.repo.log_model_call(
                 conversation_id=conversation_id,
                 turn_id=turn_id,
                 service="agentic_application",
@@ -4719,7 +4752,7 @@ class AgenticOrchestrator:
                 prompt_tokens=_comp_usage.get("prompt_tokens"),
                 completion_tokens=_comp_usage.get("completion_tokens"),
                 total_tokens=_comp_usage.get("total_tokens"),
-            )
+            ))
             try:
                 self.repo.log_tool_trace(
                     conversation_id=conversation_id,
@@ -4791,7 +4824,7 @@ class AgenticOrchestrator:
             )
             trace_end("outfit_rater", output_summary=f"{len(rater_result.ranked_outfits)} rated")
             _rate_usage = rater_result.usage or {}
-            self.repo.log_model_call(
+            trace.add_model_cost_from_row(self.repo.log_model_call(
                 conversation_id=conversation_id,
                 turn_id=turn_id,
                 service="agentic_application",
@@ -4804,7 +4837,7 @@ class AgenticOrchestrator:
                 prompt_tokens=_rate_usage.get("prompt_tokens"),
                 completion_tokens=_rate_usage.get("completion_tokens"),
                 total_tokens=_rate_usage.get("total_tokens"),
-            )
+            ))
             try:
                 self.repo.log_tool_trace(
                     conversation_id=conversation_id,
@@ -4930,6 +4963,7 @@ class AgenticOrchestrator:
                         conversation_id=conversation_id,
                         turn_id=turn_id,
                         target_count=self.recommendation_final_top_n,
+                        trace=trace,
                     )
                     if rendered:
                         evaluated = self._evaluate_candidates_visually(
@@ -4997,7 +5031,7 @@ class AgenticOrchestrator:
             # eval, which is the appropriate denominator since the
             # parallel pool calls its agent per-candidate.
             _eval_usage = getattr(self.visual_evaluator, "last_usage", {}) or {}
-            self.repo.log_model_call(
+            trace.add_model_cost_from_row(self.repo.log_model_call(
                 conversation_id=conversation_id,
                 turn_id=turn_id,
                 service="agentic_application",
@@ -5014,7 +5048,7 @@ class AgenticOrchestrator:
                 prompt_tokens=_eval_usage.get("prompt_tokens"),
                 completion_tokens=_eval_usage.get("completion_tokens"),
                 total_tokens=_eval_usage.get("total_tokens"),
-            )
+            ))
 
             # Confidence gate (May 3 2026): The Rater + threshold have
             # already filtered the pre-render pool. This second pass is
@@ -5143,6 +5177,17 @@ class AgenticOrchestrator:
                     "stage": "planner_pipeline",
                 },
             )
+            # Mirror the failure into turn_traces.evaluation so dashboards
+            # querying turn_traces alone (without joining tool_traces) can
+            # surface the error stage + message. Matches the pattern used
+            # for the planner failure path at line ~1280.
+            trace.set_evaluation({
+                "response_type": "error",
+                "stage_failed": "planner_pipeline",
+                "error": str(exc)[:200],
+                "answer_source": "pipeline_error",
+            })
+            self._persist_trace(trace)
             return {
                 "conversation_id": conversation_id,
                 "turn_id": turn_id,
@@ -5285,6 +5330,7 @@ class AgenticOrchestrator:
         conversation_id: str,
         turn_id: str,
         target_count: int,
+        trace: Any = None,
     ) -> tuple[List[tuple[OutfitCandidate, str]], Dict[str, int]]:
         """Render try-on for the top candidates with quality-gate over-generation.
 
@@ -5428,7 +5474,7 @@ class AgenticOrchestrator:
                 # paths return earlier and don't reach this row.
                 _tryon_succeeded = bool(result.get("success"))
                 try:
-                    self.repo.log_model_call(
+                    _tryon_row = self.repo.log_model_call(
                         conversation_id=conversation_id,
                         turn_id=turn_id,
                         service="agentic_application",
@@ -5449,6 +5495,8 @@ class AgenticOrchestrator:
                         error_message=str(result.get("error") or "") if not _tryon_succeeded else "",
                         image_count=1 if _tryon_succeeded else 0,
                     )
+                    if trace is not None:
+                        trace.add_model_cost_from_row(_tryon_row)
                 except Exception:  # noqa: BLE001 — telemetry never breaks pipeline
                     _log.warning("Failed to persist tryon model_call_log", exc_info=True)
                 if not _tryon_succeeded:

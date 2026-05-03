@@ -22,6 +22,11 @@ class CatalogEmbedder:
         # the API-key load until first embed_documents call keeps the
         # constructor env-free.
         self._config = config
+        # Token usage from the most recent embed_texts call. Surfaced
+        # for the orchestrator's per-turn cost rollup so the embedding
+        # bill (text-embedding-3-small, ~$0.02/1M tokens) gets captured
+        # alongside the LLM and try-on costs.
+        self.last_usage: dict = {"prompt_tokens": 0, "total_tokens": 0}
 
     @cached_property
     def _client(self) -> OpenAI:
@@ -52,12 +57,29 @@ class CatalogEmbedder:
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         if not texts:
+            self.last_usage = {"prompt_tokens": 0, "total_tokens": 0}
             return []
         all_embeddings: List[List[float]] = []
+        # Sum usage across batches so callers see one number per call,
+        # not per-batch. text-embedding-3-small reports `prompt_tokens`
+        # and `total_tokens`; both are equal for embedding endpoints
+        # (no completion). Stored on `self.last_usage` so the
+        # orchestrator can pull it after the call without changing the
+        # public return type.
+        prompt_tokens = 0
+        total_tokens = 0
         for i in range(0, len(texts), EMBED_BATCH_SIZE):
             batch = texts[i : i + EMBED_BATCH_SIZE]
             response = self._embedding_response(batch)
             all_embeddings.extend(list(item.embedding) for item in response.data)
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
+                total_tokens += int(getattr(usage, "total_tokens", 0) or 0)
+        self.last_usage = {
+            "prompt_tokens": prompt_tokens,
+            "total_tokens": total_tokens or prompt_tokens,
+        }
         return all_embeddings
 
     def _embedding_response(self, texts: List[str]):
