@@ -22,16 +22,15 @@ The pipeline must produce a usable answer for every primary intent without
 manual intervention.
 
 - [ ] All tests across `tests/` pass against the current branch
-      (verified May 3, 2026: **382 L0 tests, 1 skipped, 0 failures**).
+      (verified May 3, 2026 post-PR-#32: **434 L0 tests, 1 skipped, 0 failures**).
       Cumulative scope: Phase 13/13B regression tests (live_context
-      payload, ranking_bias schema/parsing, three_piece direction,
-      anchor payload); May-1 confidence threshold tests
-      (`ConfidenceThresholdGateTests` × 6) verifying outfits below 0.75
-      never reach the user; May-3 perf-series tests
-      (`TryonParallelRenderTests` × 3 for parallel rendering;
-      `ArchitectPromptAssemblyTests` × 3 for conditional anchor/followup
-      module assembly). Prior baseline: three outfit structures + all 46
-      attributes in query docs + parallel retrieval ~4× speedup +
+      payload, three_piece direction, anchor payload); May-1 confidence
+      threshold tests (`ConfidenceThresholdGateTests` × 6) verifying
+      outfits below the threshold never reach the user; May-3 perf-series
+      tests (`TryonParallelRenderTests` × 3, `ArchitectPromptAssemblyTests`
+      × 3); May-3 LLM ranker tests (`test_outfit_composer.py` × 11,
+      `test_outfit_rater.py` × 8). Prior baseline: three outfit structures +
+      all 46 attributes in query docs + parallel retrieval ~4× speedup +
       occasion-fabric coupling + time-of-day inference + role-category
       validation + outerwear recategorization + catalog 14,296 garment
       items.
@@ -102,8 +101,9 @@ You cannot ship what you cannot watch.
   - dependency report shows acquisition_source = unknown for >50% of
     new users (instrumentation regressed)
 - [ ] Logs from `_log.error` / `_log.warning` in `orchestrator.py`,
-      `catalog_search_agent.py`, and `outfit_assembler.py` are captured
-      somewhere queryable (cloud logging, Logflare, etc.) — not just stdout.
+      `catalog_search_agent.py`, `outfit_composer.py`, and
+      `outfit_rater.py` are captured somewhere queryable (cloud
+      logging, Logflare, etc.) — not just stdout.
 
 ## Gate 4 — Product & UX
 
@@ -156,22 +156,32 @@ These are explicit non-goals — do not block the release on them:
 
 _Migrated from `CURRENT_STATE.md`. The May-1 "Open Items Plan" — every item now ✅ shipped — is preserved here as a record of work landed during the platform pass. For ongoing release readiness criteria see the Gates above._
 
+## May 3, 2026 — LLM ranker rollout
+
+| PR | Title | Net change |
+|---|---|---|
+| #27 | Architect kurta hard rule + retrieval_count 12→5 | Catalog has zero compatible bottoms for a standalone kurta, so paired/three_piece kurta directions are now rejected at the prompt level; retrieval pool drops to 5 per query. |
+| #28 | Drop kurta code-side check, rely on prompt | Removed the parser-level kurta validator added in #27; prompt rule alone enforces the contract. |
+| #29 | Scaffold OutfitComposer + OutfitRater LLM agents | Two new gpt-5-mini agents + prompts + schemas, behind a flag. No orchestrator wiring yet. |
+| #30 | Switch orchestrator to LLM ranker, delete assembler + reranker | Replaces ~600 lines of heuristic pairing code + the deterministic Reranker with the Composer + Rater pipeline. `assembly_score` (0–1) → `fashion_score` (0–100); `ranking_bias` retired. |
+| #31 | Address PR #29 review notes | Top-level imports, type hints, tightened exception handling, rater stub schema consistency. |
+| #32 | Address PR #30 review notes | Composer prompt mandates item order in `item_ids`; thread-safe `usage` carried on result objects; `_clamp01` → `_clamp_to_100`. |
+
+**Pipeline change:**
+- Before: `Architect → Retrieval → Assembler (heuristic) → Reranker (det) → ...`
+- After: `Architect → Retrieval → Composer (LLM) → Rater (LLM) → ...`
+
+**Observability:** new `tool_traces.composer_decision` + `rater_decision` rows carry per-outfit rationale + the four-dimension score breakdown. `model_call_logs` gets the full raw LLM JSON.
+
+**L0 tests:** 434 pass (up from 382 pre-rollout; net change includes ~25 deleted assembler/reranker unit tests and ~50 new Composer + Rater tests).
+
 ## Open Items Plan (May 1, 2026)
 
 Audit on May 1, 2026 surfaced five categories of open work. The first three are real code-pending tasks; the fourth is ops/deployment work gated on a staging environment; the fifth is a documentation hygiene sweep.
 
-### 1. Wire `ranking_bias` into assembler + reranker (P1, code)
+### 1. Wire `ranking_bias` into assembler + reranker — superseded May 3 2026
 
-**Status today:** The architect emits `ranking_bias` (5 values: `conservative | balanced | expressive | formal_first | comfort_first`) and it lands in `combined_context.live.ranking_bias`. Both `OutfitAssembler` and `Reranker` ignore it.
-
-**Plan:**
-- [x] Add `_BIAS_COEFS` table in `outfit_assembler.py` — per-bias multipliers on the existing formality / occasion / volume / pattern penalties + additive bonus deltas for formality strength, loud/expressive items, and comfort fits.
-- [x] Modify `_evaluate_pair` to multiply each penalty by the bias-specific coefficient.
-- [x] Add `_apply_bias_bonus()` helper for `formal_first` (boost when both items are high-formality), `expressive` (boost on non-solid pattern / high saturation / embellishment), `conservative` (penalize the same loud signals), `comfort_first` (boost relaxed fit + flowing drape).
-- [x] Apply bias bonus in `_assemble_complete` (single product) and to the outerwear leg of `_assemble_three_piece`.
-- [x] Extend `Reranker.rerank()` to accept `bias` and tie-break score-ties (within ±0.05) by bias-specific signal: formality level rank for `formal_first`, saturation/pattern for `expressive`, calmness for `conservative`, relaxed-fit count for `comfort_first`.
-- [x] Pass `combined_context.live.ranking_bias` into `reranker.rerank()` from the orchestrator.
-- [x] Add 5 regression tests covering each bias direction.
+**Status:** The deterministic OutfitAssembler + Reranker were replaced with the LLM ranker (Composer + Rater) in PRs #29 / #30. `ranking_bias` is gone from the schema; the Rater reads user context directly. This entry is preserved as historical record only.
 
 ### 2. Stale onboarding test (P0, trivial)
 
@@ -180,16 +190,11 @@ Audit on May 1, 2026 surfaced five categories of open work. The first three are 
 **Plan:**
 - [x] Update the assertion to `"Step 1 of 9"`.
 
-### 3. Reranker calibration plumbing (partial calibration shipped, May 1, 2026)
+### 3. Reranker calibration plumbing — superseded May 3 2026
 
-**Status today:** `Reranker` sorts by `assembly_score` + round-robin by direction + `ranking_bias` tie-break. Decision logging shipped May 1; running against staging now produces a real `data/reranker_weights.json` with telemetry metrics. The full per-feature curve fit (`assembly_score` × `archetype_proximity` × `weather_time_match` × `prior_dislike`) still needs production traffic flowing through the new logging.
+**Status:** The deterministic Reranker is gone (PR #30). `data/reranker_weights.json`, `ops/scripts/calibrate_reranker.py`, and `tool_traces.reranker_decision` rows are obsolete. The orphan files were removed in the May-3 doc-cleanup PR.
 
-**Plan:**
-- [x] Add reranker decision logging into `tool_traces` (`tool_name="reranker_decision"`) capturing the kept/dropped candidate set per turn for every rerank call.
-- [x] Pass `turn_id` from orchestrator to `reranker.rerank()`.
-- [x] Add weights file loader: `Reranker.__init__` reads `data/reranker_weights.json` if present; falls back to defaults when absent. Handles both nested (`{"weights": {...}}`) and flat formats.
-- [x] **Calibration script run against live staging (May 1, 2026):** `ops/scripts/calibrate_reranker.py` reads 494 feedback rows + 0 reranker_decision rows from staging telemetry, emits `data/reranker_weights.json` with default reranker weights AND a rank-position metric (`rank-1 like rate 39.4%, rank-2 25.9%, rank-3 29.5%, spread 13.5pp`).
-- [x] **Rank-position metric** treated as observability output (informs UX decisions like "is rank-3 worth shipping?"), not a per-candidate reranker tuning knob — recorded in `metrics` block of the weights file alongside the (currently default) `weights` block.
+The LLM Rater is now the sole ranker. New observability rows live in `tool_traces` as `composer_decision` and `rater_decision`. Future calibration is informed by joining `rater_decision.fashion_score` to `feedback_events` — see `docs/OPERATIONS.md` Panel 16 for the reference query.
 
 ### 4. Release Readiness — gate-by-gate ops checklist (partial staging verification, May 1, 2026)
 
@@ -205,8 +210,7 @@ Audit on May 1, 2026 surfaced five categories of open work. The first three are 
 | `catalog_item_embeddings` row count | **14,296** ✅ exact 1:1 with embeddable subset |
 | Embedding orphan check | 0 enrichable rows missing an embedding; 1 stale embedding (cleanup PR-worthy, not blocking) |
 | `feedback_events` count | 672 (237 likes / 435 dislikes); all rows have `turn_id`, `outfit_rank`, `event_type` |
-| `tool_traces.reranker_decision` rows | **0** — decision logging just shipped May 1; needs production traffic to accumulate |
-| `data/reranker_weights.json` (calibrated against staging) | Defaults preserved (no decision rows yet); rank-position metric captured: rank-1 like rate 39.4%, rank-2 25.9%, rank-3 29.5% (spread 13.5pp). Operational signal, not a reranker tuning knob. |
+| `tool_traces.composer_decision` / `rater_decision` rows | LLM ranker logging shipped May 3 (PR #29 / #30) — needs production traffic to accumulate |
 
 **Live finding — Gate 1 escalation D is firing in staging:** acquisition_source = `unknown` for **100% of 11 onboarded users** (threshold is >50%). The OTP-verify endpoint is no longer writing `acquisition_source` / `acquisition_campaign` / `referral_code` / `icp_tag`. Tracked as a follow-up — see Gate 1 below.
 
@@ -218,7 +222,7 @@ Audit on May 1, 2026 surfaced five categories of open work. The first three are 
 - run `ops/scripts/smoke_test_full_flow.sh` end-to-end against staging (deferred — needs deployed app + explicit approval to incur LLM token costs for the architect call. Read-only checks below cover the parts that don't need a live HTTP server.)
 - catalog-unavailable test in staging: temporarily empty `catalog_item_embeddings`, POST a turn, assert guardrail copy fires (deferred — destructive against shared staging, needs explicit approval)
 - ~~confirm wardrobe-first hybrid pivot user-story test exists~~ ✅ verified May 1, 2026: `test_single_item_wardrobe_first_does_not_short_circuit_catalog_pipeline` (catalog pivot path) at `tests/test_agentic_application.py:1770` and `test_explicit_wardrobe_occasion_request_returns_gap_fallback_when_coverage_is_missing` (gap fallback path) at `tests/test_agentic_application.py:2048`
-- ⚠️ **acquisition_source instrumentation regressed** (May 1, 2026): live staging shows 11/11 onboarded users with `acquisition_source = 'unknown'`. The OTP-verify endpoint at `modules/user/src/user/api.py` needs to be re-checked — likely a missing field in the request body schema or the persistence path. Not blocking the rollout but the dependency report can't attribute users to cohorts until this is fixed.
+- ⚠️ **acquisition_source instrumentation — known issue, code path verified intact** (May 1, 2026 → audit May 3, 2026): live staging snapshot showed 11/11 onboarded users with `acquisition_source = 'unknown'`. Code audit on May 3 confirmed the OTP-verify endpoint (`modules/user/src/user/api.py:91`), `verify_otp` service (`modules/user/src/user/service.py:279`), and the `VerifyOtpRequest` schema (`modules/user/src/user/schemas.py:48`) all carry `acquisition_source` end to end. The most likely cause of the staging numbers is the frontend not populating the field on the request — verify by capturing a live OTP-verify request body before the next staging readout. Not blocking; the dependency report can't attribute users to cohorts until this is verified.
 
 **Gate 2 — Data & Environment Readiness:**
 - ~~catalog row count ≥ 500 with `row_status in ('ok','complete')`~~ ✅ May 1, 2026: **14,295** in `(ok,complete)` against staging, 14,296 total.

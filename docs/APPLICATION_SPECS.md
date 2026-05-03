@@ -51,7 +51,7 @@ Implemented now:
 - response formatting for recommendation-pipeline turns (max 3 outfits) with 16-field item cards; dedicated handlers can return bounded multi-look outputs beyond that
 - virtual try-on via Gemini (`gemini-3.1-flash-image-preview`) with parallel generation, quality gate, persistent disk + DB storage (`virtual_tryon_images` table), and cache reuse by user + garment ID set
 - 2-column PDP outfit cards (hero 3:4 aspect `object-fit: cover` + 36% info panel) with click-to-cycle hero + `1/N` counter badge, split polar bar chart (Nightingale-style: top semicircle = 8-axis style archetype profile in champagne `--signal`, bottom semicircle = dynamic 5-9 axis fit/evaluation profile in oxblood `--accent`, colours read from CSS custom properties via `getComputedStyle` so they flip for dark mode), feedback strip at bottom (heart SVG icon for like + "What would you change?" inline textarea with reaction chips for constructive dislike feedback)
-- `analysis_confidence_pct` — attribute-level analysis confidence used to scale evaluation scores at render time
+- `analysis_confidence_pct` — attribute-level analysis confidence reported in metadata. Surfaced for downstream consumers; the PDP polar chart shows raw evaluator scores, not scaled.
 - per-outfit feedback capture with turn-level correlation
 - wardrobe ingestion from chat with vision-API enrichment and dual-layer image moderation
 - wardrobe-first occasion, pairing, outfit-check follow-through, and capsule/trip support
@@ -63,7 +63,8 @@ Implemented now:
 - color palette system: base/accent/avoid colors derived from seasonal group, passed to copilot planner, outfit architect, and outfit check agents
 - comfort learning: behavioral seasonal palette refinement from outfit likes
 - profile confidence engine and recommendation confidence engine (9-factor, 0–100 scoring)
-- **0.75 outfit confidence threshold** (May 2026): outfits with `assembly_score < 0.75` are dropped before they reach the user; if zero candidates clear, `_build_low_confidence_catalog_response` returns `outfits=[]` with an honest "I couldn't find a strong match" message + refine / show-closest / shop CTAs. Same threshold gates wardrobe-first selection (normalized item score must be ≥ 0.75 — empty `occasion_fit` no longer counts as a participation point). User-facing copy never references the threshold or raw scores.
+- **Outfit confidence threshold** (May 2026): catalog-pipeline outfits with `fashion_score < 75` (LLM Rater 0–100 scale, see `_RECOMMENDATION_FASHION_THRESHOLD` in `orchestrator.py`) are dropped before they reach the user; if zero candidates clear, `_build_low_confidence_catalog_response` returns `outfits=[]` with an honest "I couldn't find a strong match" message + refine / show-closest / shop CTAs. Wardrobe-first selection uses the equivalent 0.75 floor on its normalized item score (`_RECOMMENDATION_CONFIDENCE_THRESHOLD`; empty `occasion_fit` no longer counts as a participation point). User-facing copy never references the threshold or raw scores.
+- **LLM ranker** (May 3 2026, PRs #29 / #30): the deterministic OutfitAssembler (combinatorial pairing + heuristic compatibility scoring) and Reranker (cosine sort + bias tie-break) were replaced with two gpt-5-mini calls — OutfitComposer constructs up to 10 outfits from the retrieved item pool; OutfitRater scores each on a four-dimension rubric (`occasion_fit`, `body_harmony`, `color_harmony`, `archetype_match`) and emits a blended `fashion_score`. Cosine similarity is now a retrieval primitive only.
 - **parallel try-on renders** (May 2026): top-N candidate Gemini renders run in a `ThreadPoolExecutor` batch (`max_workers=N`), with per-batch INFO log lines (`tryon parallel batch: N/N succeeded (cold=K, cache_hit=M) in Xms wallclock`). Cache hits short-circuit inside the thread before the Gemini call. Quality-gate failures recover via a second parallel batch from the over-generation pool, not sequential retry.
 - **architect prompt modular assembly** (May 2026): system prompt is built per-request from a 4.8K-token base + optional anchor module (when `anchor_garment` is set) + optional follow-up module (when `is_followup`). Saves ~6,850 input tokens on plain turns vs the pre-trim 11.6K monolithic prompt.
 - dual-layer image moderation (heuristic blocklist + vision API)
@@ -782,7 +783,7 @@ Active models used by application agents:
 | Query Embedding | `text-embedding-3-small` | OpenAI | 1536-dimensional vector |
 | Virtual Try-on | `gemini-3.1-flash-image-preview` | Google | Image generation |
 
-May 1, 2026: model migration consolidated reasoning paths on `gpt-5.5` and vision/transformation paths on `gpt-5-mini`. The architect has no fallback — failure returns an error to the user. The visual evaluator ranks by `assembly_score` when its LLM call fails. Try-on uses Google Gemini with direct API key authentication (not Vertex AI / service accounts).
+May 1, 2026: model migration consolidated reasoning paths on `gpt-5.5` and vision/transformation paths on `gpt-5-mini`. The architect has no fallback — failure returns an error to the user. The visual evaluator ranks by `fashion_score` when its LLM call fails. Try-on uses Google Gemini with direct API key authentication (not Vertex AI / service accounts).
 
 ## Active Catalog Reality
 
@@ -832,7 +833,7 @@ Orchestrator (agentic_application/orchestrator.py)
 6. Outfit Assembler (deterministic compatibility pruning)
     |
     v
-7. Visual Evaluator (gpt-5-mini, JSON schema, fallback: assembly_score ranking; runs after parallel try-on render batch)
+7. Visual Evaluator (gpt-5-mini, JSON schema, fallback: fashion_score ranking; runs after parallel try-on render batch)
     |
     v
 8. Response Formatter (max 3 outfits)
@@ -1142,12 +1143,12 @@ async def handle_recommendation_request(request: RecommendationRequest) -> dict:
 - No filter relaxation — single search pass per query.
 - `gender_expression` is always applied and never relaxed.
 - Architect has no fallback — LLM failure returns an error to the user.
-- Evaluator has a graceful fallback: ranks by `assembly_score` if LLM fails.
+- Evaluator has a graceful fallback: ranks by `fashion_score` if LLM fails.
 - Latency is tracked per agent via `time.monotonic()` and persisted as `latency_ms` on `model_call_logs` and `tool_traces`.
 
 ## 7. Outfit Architect
 
-> Updated: April 10, 2026 (Phase 13/13B remediation — prompt hardening, live_context wiring, ranking_bias, occasion-driven structures, retrieval quality improvements)
+> Updated: April 10, 2026 (Phase 13/13B remediation — prompt hardening, live_context wiring, occasion-driven structures, retrieval quality improvements)
 
 ### Purpose
 
@@ -1181,8 +1182,7 @@ class ResolvedContextBlock:
     specific_needs: list[str]
     is_followup: bool
     followup_intent: str | None
-    ranking_bias: str              # conservative | balanced | expressive | formal_first | comfort_first
-```
+    ```
 
 ### Direction types
 
@@ -1221,7 +1221,7 @@ These fields are added to `LiveContext` in `schemas.py` and wired from `CopilotR
 
 ### Ranking bias (Phase 13B)
 
-The `resolved_context` includes a `ranking_bias` field: `conservative | balanced | expressive | formal_first | comfort_first`. Set by the architect based on the user's riskTolerance and request framing. Downstream reranker wiring is planned for Phase 14.
+_The `ranking_bias` field was removed in May 3 2026 (PR #30) along with the Reranker. The LLM ranker (Composer + Rater) reads user context directly._
 
 ### Catalog inventory awareness
 
@@ -1434,7 +1434,7 @@ class OutfitCandidate:
     direction_id: str
     candidate_type: str          # complete | paired
     items: list[dict]            # each item carries: product_id, similarity, title, image_url, price, product_url, garment_category, garment_subtype, styling_completeness, primary_color, formality_level, occasion_fit, pattern_type, volume_profile, fit_type, silhouette_type, role (for paired)
-    assembly_score: float
+    fashion_score: int  # 0–100, replaces assembly_score (May 3 2026, PR #30)
     assembly_notes: list[str]
 ```
 
@@ -1527,7 +1527,7 @@ class EvaluatedRecommendation:
 ```
 
 The evaluator outputs two sets of percentage scores (all integers 0–100):
-- **9 evaluation criteria scores** — how well the outfit fits this specific user. 5 always-evaluated (body harmony, color suitability, style fit, risk tolerance, comfort boundary) + 4 context-gated (pairing coherence, occasion, weather/time, specific needs) per the Phase 12B follow-ups (April 9 2026). Stored as raw scores (0-100) in the database; the 4 context-gated dimensions are stored as `null` when their gating condition is not met. Displayed in the **bottom semicircle** of the split polar bar chart, multiplied by `analysis_confidence_pct` at render time. Null/zero context-gated values are dropped from the chart entirely. Fallback path derives these from `assembly_score * 100`.
+- **9 evaluation criteria scores** — how well the outfit fits this specific user. 5 always-evaluated (body harmony, color suitability, style fit, risk tolerance, comfort boundary) + 4 context-gated (pairing coherence, occasion, weather/time, specific needs) per the Phase 12B follow-ups (April 9 2026). Stored as raw scores (0-100) in the database; the 4 context-gated dimensions are stored as `null` when their gating condition is not met. Displayed in the **bottom semicircle** of the split polar bar chart as **raw evaluator scores** (no `analysis_confidence_pct` scaling — the chart reads what the evaluator actually output). Null/zero context-gated values are dropped from the chart entirely. Fallback path derives these from `fashion_score`.
 - **8 style archetype scores** — how strongly the outfit expresses each archetype's aesthetic, based on garment characteristics not user preference (classic, dramatic, romantic, natural, minimalist, creative, sporty, edgy). Displayed in the **top semicircle** of the same split polar bar chart (not confidence-weighted).
 
 Full evaluation output (all notes, all 16 `_pct` fields) is persisted in turn artifacts.
@@ -1540,7 +1540,7 @@ Similarity is retrieval input, not recommendation truth.
 
 ### Fallback behavior
 
-If the LLM evaluator fails, the fallback ranks candidates by `assembly_score` (average similarity minus compatibility penalties). The fallback also generates synthetic reasoning notes. For follow-up intents, the fallback uses candidate-by-candidate deltas against the previous recommendation to explain color/silhouette shifts.
+If the LLM evaluator fails, the fallback ranks candidates by `fashion_score` (the LLM Rater's blended score). The fallback also generates synthetic reasoning notes. For follow-up intents, the fallback uses candidate-by-candidate deltas against the previous recommendation to explain color/silhouette shifts.
 
 ### Output normalization and validation
 
@@ -1585,7 +1585,7 @@ Each outfit card should contain:
 - per-product title, price, and "Buy Now" button (links to product URL when available)
 - single split polar bar chart (Nightingale-style):
   - top semicircle: 8 archetype axes (classic, dramatic, romantic, natural, minimalist, creative, sporty, edgy) in purple
-  - bottom semicircle: 5-9 fit/evaluation axes (dynamic per context-gating rules) in burgundy, scores × analysis_confidence_pct
+  - bottom semicircle: 5-9 fit/evaluation axes (dynamic per context-gating rules) in burgundy, raw evaluator scores
   - dashed horizontal divider through the centre
   - shared 0-100 grid rings + color-coded legend below the canvas
 - one or more product cards
@@ -1804,7 +1804,7 @@ If architect fails:
 - do NOT silently fall back to a deterministic plan
 
 If evaluator fails:
-- return a simpler deterministic ranking using `assembly_score`
+- return a simpler deterministic ranking using `fashion_score`
 - generate synthetic reasoning notes from candidate deltas
 
 If no results:
@@ -1880,7 +1880,7 @@ Use:
 ### Step 4
 
 Build:
-- `outfit_assembler.py`
+- `outfit_composer.py`, `outfit_rater.py` (LLM ranker; replaced `outfit_assembler.py` + `reranker.py` in May 3 2026 PR #30)
 
 Support:
 - complete outfit passthrough
@@ -2220,7 +2220,7 @@ Current execution order:
 5. generate recommendation plan via outfit architect LLM (gpt-5.5) — no fallback, failure = error to user
 6. retrieve catalog products per query direction (text-embedding-3-small, single search pass)
 7. assemble outfit candidates (deterministic)
-8. evaluate and rank candidates (gpt-5-mini, fallback: assembly_score)
+8. evaluate and rank candidates (gpt-5-mini, fallback: fashion_score)
 9. format response payload (max 3 outfits)
 10. generate virtual try-on images (gemini-3.1-flash-image-preview, parallel) — checks cache by user + garment IDs first; saves new results to disk + `virtual_tryon_images` table
 11. persist turn artifacts and updated conversation context
@@ -2256,7 +2256,7 @@ Current nuance:
 - evaluator receives candidate-by-candidate deltas against the previous recommendation with 8 signals: colors, occasions, roles, formality levels, pattern types, volume profiles, fit types, silhouette types
 - evaluator payload includes `body_context_summary` (height_category, frame_structure, body_shape) for body-aware ranking
 - evaluator returns 16 percentage scores (all integers 0–100, clamped server-side):
-  - 8 evaluation criteria: body_harmony_pct, color_suitability_pct, style_fit_pct, risk_tolerance_pct, occasion_pct, comfort_boundary_pct, specific_needs_pct, pairing_coherence_pct — how well the outfit fits this user; fallback derives from assembly_score * 100
+  - 8 evaluation criteria: body_harmony_pct, color_suitability_pct, style_fit_pct, risk_tolerance_pct, occasion_pct, comfort_boundary_pct, specific_needs_pct, pairing_coherence_pct — how well the outfit fits this user; fallback derives from fashion_score
   - 8 style archetype: classic_pct, dramatic_pct, romantic_pct, natural_pct, minimalist_pct, creative_pct, sporty_pct, edgy_pct — outfit's aesthetic profile, not user preference
 - full evaluation output (all notes, all 16 _pct fields) is persisted in turn artifacts
 - LLM evaluator outputs are normalized so sparse follow-up notes are backfilled from candidate deltas
@@ -2344,7 +2344,7 @@ Main strengths:
 - copilot planner routes 12 intents with action dispatch
 - typed context handoff between all pipeline stages
 - strict JSON schema with enum-constrained filter vocabulary
-- evaluator has graceful assembly_score fallback
+- evaluator has graceful fashion_score fallback
 - follow-up state persisted server-side
 - latency tracked per agent and persisted
 - wardrobe ingestion and retrieval infrastructure exists
@@ -2477,7 +2477,8 @@ modules/
 │   │   ├── copilot_planner.py   # LLM intent classification + action routing (gpt-5.5)
 │   │   ├── outfit_architect.py   # LLM planning (gpt-5.5)
 │   │   ├── catalog_search_agent.py # Embedding search + hydration
-│   │   ├── outfit_assembler.py   # Compatibility pruning
+│   │   ├── outfit_composer.py    # LLM outfit constructor (replaced outfit_assembler.py in PR #30)
+│   │   ├── outfit_rater.py       # LLM outfit scorer (replaced reranker.py in PR #30)
 │   │   ├── visual_evaluator_agent.py # Visual ranking (gpt-5-mini, vision input)
 │   │   └── response_formatter.py # UI output generation (max 3 outfits)
 │   ├── context/

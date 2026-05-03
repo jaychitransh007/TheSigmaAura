@@ -31,22 +31,34 @@ Last updated: May 3, 2026
 > 5. **Outfit architect substantially hardened in Phase 13/13B** (April 10, 2026).
 >    The architect prompt now includes: occasion-driven structure selection (not
 >    mechanical one-of-each), `live_context` wiring (weather/time/target_product_type),
->    `ranking_bias` signal, style-stretch directions, weather-fabric climate override,
->    anchor conflict resolution for all categories, query document field omission
->    (not `not_applicable`), color synonym expansion, semantic fabric clusters,
+>    style-stretch directions, weather-fabric climate override, anchor conflict
+>    resolution for all categories, query document field omission (not
+>    `not_applicable`), color synonym expansion, semantic fabric clusters,
 >    follow-up intent tiebreaker, and consolidated occasion calibration.
 >    See `docs/WORKFLOW_REFERENCE.md` § Phase History (Phase 13/13B) for the full change list.
 > 6. **Models migrated to gpt-5.5 / gpt-5-mini** (May 1, 2026). Copilot Planner,
 >    Outfit Architect, Style Advisor, and User Analysis run on `gpt-5.5`. Visual
->    Evaluator, Image Moderation, and Outfit Decomposition run on `gpt-5-mini`.
->    Try-on still on `gemini-3.1-flash-image-preview`.
-> 7. **Confidence threshold 0.75 gates every outfit** (May 1, 2026). Outfits with
->    `assembly_score < 0.75` are dropped before reaching the user; if zero
->    candidates clear, `_build_low_confidence_catalog_response` returns an honest
->    "I couldn't find a strong match" message + refine / show-closest / shop CTAs
->    instead of low-confidence picks. The same threshold applies to wardrobe-first
->    selection (normalized item score < 0.75 → fall through). User-facing copy
->    never references the threshold or raw scores.
+>    Evaluator, Image Moderation, Outfit Decomposition, and the LLM ranker
+>    (Composer + Rater) run on `gpt-5-mini`. Try-on still on
+>    `gemini-3.1-flash-image-preview`.
+> 7. **Confidence threshold gates every outfit** (May 1, 2026; rebased to
+>    `fashion_score` on May 3, 2026). Catalog-pipeline outfits with
+>    `fashion_score < 75` (LLM Rater 0–100 scale) are dropped before
+>    reaching the user; wardrobe-first uses the equivalent 0.75 floor on
+>    its normalized item score. If zero candidates clear,
+>    `_build_low_confidence_catalog_response` returns an honest "I couldn't
+>    find a strong match" message + refine / show-closest / shop CTAs
+>    instead of low-confidence picks. User-facing copy never references
+>    the threshold or raw scores.
+> 9. **LLM ranker replaces deterministic assembler + reranker** (May 3,
+>    2026, PRs #29 / #30). Cosine similarity is now a retrieval primitive
+>    only. The OutfitComposer (gpt-5-mini) constructs up to 10 outfits
+>    from the retrieved pool; the OutfitRater (gpt-5-mini) scores each on
+>    a four-dimension rubric (`occasion_fit`, `body_harmony`,
+>    `color_harmony`, `archetype_match`) and emits a blended
+>    `fashion_score`. The 600-line OutfitAssembler heuristic compatibility
+>    matrix and the deterministic Reranker are gone, along with
+>    `ranking_bias` and `assembly_score`.
 > 8. **Lever 1+2 perf wins live; Lever 3 deprecated** (May 3, 2026). Try-on
 >    renders for the top-N candidates run in a `ThreadPoolExecutor` parallel batch.
 >    Architect system prompt was trimmed 11.6K → 4.8K tokens with anchor and
