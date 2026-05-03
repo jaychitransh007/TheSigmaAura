@@ -1,6 +1,6 @@
 # Application Layer — Implementation Specification
 
-Last updated: April 11, 2026 (Color overhaul: 12 sub-season, draping removed, BodyShape mapping)
+Last updated: May 3, 2026 (Model migration to gpt-5.5/gpt-5-mini; architect prompt modular assembly; confidence threshold 0.75; parallel try-on renders; Lever 3 split-architect deprecated and removed)
 
 > **⚠️ Partially deprecated.** Sections of this document still describe the
 > *legacy* routing layer (`intent_router.py`, `intent_handlers.py`,
@@ -33,7 +33,7 @@ For detailed step-by-step execution flows, see `docs/WORKFLOW_REFERENCE.md`.
 
 Implemented now:
 - **intent registry** (`intent_registry.py`): StrEnum-based single source of truth for the post-Phase 12A taxonomy — 7 advisory intents + silent `wardrobe_ingestion` (8 total `Intent` members), 7 actions (`Action`), and 7 follow-up intents (`FollowUpIntent`) — with metadata registries and JSON schema helpers; consumed by planner, orchestrator, agents, API, and tests. Phase 12A folded `shopping_decision` / `garment_on_me_request` / `virtual_tryon_request` into `garment_evaluation`, `product_browse` into `occasion_recommendation` (via `target_product_type`), and deferred `capsule_or_trip_planning`.
-- copilot planner (gpt-5.4) — intent classification across the 7 advisory intents + feedback, 7-action dispatch (JSON schema enums generated from registry)
+- copilot planner (gpt-5.5) — intent classification across the 7 advisory intents + feedback, 7-action dispatch (JSON schema enums generated from registry)
 - active runtime entrypoint in `agentic_application/api.py` with `AgenticOrchestrator`
 - saved user-context loading from onboarding/profile-analysis/style-preference persistence
 - server-side conversation-memory carry-forward across follow-up turns
@@ -66,6 +66,9 @@ Implemented now:
 - color palette system: base/accent/avoid colors derived from seasonal group, passed to copilot planner, outfit architect, and outfit check agents
 - comfort learning: behavioral seasonal palette refinement from outfit likes
 - profile confidence engine and recommendation confidence engine (9-factor, 0–100 scoring)
+- **0.75 outfit confidence threshold** (May 2026): outfits with `assembly_score < 0.75` are dropped before they reach the user; if zero candidates clear, `_build_low_confidence_catalog_response` returns `outfits=[]` with an honest "I couldn't find a strong match" message + refine / show-closest / shop CTAs. Same threshold gates wardrobe-first selection (normalized item score must be ≥ 0.75 — empty `occasion_fit` no longer counts as a participation point). User-facing copy never references the threshold or raw scores.
+- **parallel try-on renders** (May 2026): top-N candidate Gemini renders run in a `ThreadPoolExecutor` batch (`max_workers=N`), with per-batch INFO log lines (`tryon parallel batch: N/N succeeded (cold=K, cache_hit=M) in Xms wallclock`). Cache hits short-circuit inside the thread before the Gemini call. Quality-gate failures recover via a second parallel batch from the over-generation pool, not sequential retry.
+- **architect prompt modular assembly** (May 2026): system prompt is built per-request from a 4.8K-token base + optional anchor module (when `anchor_garment` is set) + optional follow-up module (when `is_followup`). Saves ~6,850 input tokens on plain turns vs the pre-trim 11.6K monolithic prompt.
 - dual-layer image moderation (heuristic blocklist + vision API)
 - restricted category exclusion in catalog retrieval
 - conversation management: rename (PATCH) and delete/archive (DELETE) endpoints with sidebar UI
@@ -769,18 +772,20 @@ Active models used by application agents:
 
 | Agent | Model | Provider | Output Mode |
 |---|---|---|---|
-| Outfit Architect | `gpt-5.4` | OpenAI | JSON schema (strict) |
-| Outfit Evaluator | `gpt-5.4` | OpenAI | JSON schema (strict) |
-| Orchestrator (intent + memory) | `gpt-5.4` | OpenAI | JSON schema (strict) |
-| User Profiler (visual) | `gpt-5.4` | OpenAI | JSON schema (strict), reasoning effort: high |
-| User Profiler (textual) | `gpt-5.4` | OpenAI | JSON schema (strict) |
-| User Analysis (onboarding) | `gpt-5.4` | OpenAI | JSON schema (strict), reasoning effort: high |
-| Digital Draping | `gpt-5.4` | OpenAI | JSON schema (strict), 3-round vision chain |
+| Copilot Planner | `gpt-5.5` | OpenAI | JSON schema (strict) |
+| Outfit Architect | `gpt-5.5` | OpenAI | JSON schema (strict). System prompt assembled at request time: 4.8K-token base + optional anchor module + optional follow-up module. |
+| Visual Evaluator | `gpt-5-mini` | OpenAI | JSON schema (strict), vision input |
+| Style Advisor | `gpt-5.5` | OpenAI | JSON schema (strict) |
+| User Profiler (visual) | `gpt-5.5` | OpenAI | JSON schema (strict), reasoning effort: high |
+| User Profiler (textual) | `gpt-5.5` | OpenAI | JSON schema (strict) |
+| User Analysis (onboarding) | `gpt-5.5` | OpenAI | JSON schema (strict), reasoning effort: high |
+| Catalog Enrichment | `gpt-5-mini` | OpenAI | JSON schema |
+| Outfit Decomposition | `gpt-5-mini` | OpenAI | JSON schema, vision input |
+| Image Moderation | `gpt-5-mini` | OpenAI | JSON schema, vision input |
 | Query Embedding | `text-embedding-3-small` | OpenAI | 1536-dimensional vector |
 | Virtual Try-on | `gemini-3.1-flash-image-preview` | Google | Image generation |
-| Catalog Enrichment | `gpt-5-mini` | OpenAI | JSON schema |
 
-Architect, evaluator, orchestrator, and profiler use OpenAI's `json_schema` response format with strict validation. The architect has no fallback — failure returns an error to the user. The evaluator has a graceful fallback that ranks by assembly_score. Virtual try-on uses Google Gemini with direct API key authentication (not Vertex AI / service accounts).
+May 1, 2026: model migration consolidated reasoning paths on `gpt-5.5` and vision/transformation paths on `gpt-5-mini`. The architect has no fallback — failure returns an error to the user. The visual evaluator ranks by `assembly_score` when its LLM call fails. Try-on uses Google Gemini with direct API key authentication (not Vertex AI / service accounts).
 
 ## Active Catalog Reality
 
@@ -814,7 +819,7 @@ Orchestrator (agentic_application/orchestrator.py)
     |         +--> bypass: "surprise me", follow-up turns, max 2 consecutive blocks
     |
     v
-4. Outfit Architect (gpt-5.4, JSON schema)
+4. Outfit Architect (gpt-5.5, JSON schema; conditional anchor/followup prompt modules)
     |
     v
 5. Catalog Search Agent (batched embed + parallel search)
@@ -830,7 +835,7 @@ Orchestrator (agentic_application/orchestrator.py)
 6. Outfit Assembler (deterministic compatibility pruning)
     |
     v
-7. Outfit Evaluator (gpt-5.4, JSON schema, fallback: assembly_score ranking)
+7. Visual Evaluator (gpt-5-mini, JSON schema, fallback: assembly_score ranking; runs after parallel try-on render batch)
     |
     v
 8. Response Formatter (max 3 outfits)

@@ -1,6 +1,6 @@
 # Workflow Reference — Intent Execution Flows
 
-Last updated: April 11, 2026 (Color overhaul: 12 sub-season, draping removed, BodyShape mapping, onboarding reorder)
+Last updated: May 3, 2026 (Model migration to gpt-5.5/gpt-5-mini; Lever 1+2 perf wins live; Lever 3 split-architect deprecated and removed; confidence threshold 0.75 gates all outfit responses)
 
 > **What this is (and isn't):** This is **reference documentation for humans
 > reading the codebase**. It describes how each intent is executed by the
@@ -159,7 +159,7 @@ User message
     → Load user context via OnboardingGateway
     → Build conversation memory from prior turn state
     → Build planner input (message + context + history + profile richness)
-    → Copilot Planner [gpt-5.4] → classifies intent + selects action
+    → Copilot Planner [gpt-5.5] → classifies intent + selects action
     → Apply planner overrides (wardrobe-first, pairing detection, source preference)
     → Dispatch to handler based on action
 ```
@@ -175,7 +175,7 @@ User message
 ### Step-by-Step Flow
 
 ```
-1. Copilot Planner [gpt-5.4]
+1. Copilot Planner [gpt-5.5]
    ├── Input: message + user context + conversation history
    ├── Output: intent=occasion_recommendation, action=run_recommendation_pipeline
    ├── Extracts: occasion_signal, formality_hint, time_hint, style_goal
@@ -215,7 +215,7 @@ User message
 
 4. Full Recommendation Pipeline (if wardrobe path not taken)
    │
-   ├── Stage 1: Outfit Architect [gpt-5.4]
+   ├── Stage 1: Outfit Architect [gpt-5.5]
    │   ├── Input: CombinedContext (profile, live context, hard filters, previous recs)
    │   ├── Output: ArchitectPlan with directions (direction_type per direction, query specs)
    │   ├── 2-3 directions, structure chosen by occasion (not mechanical one-of-each)
@@ -241,7 +241,7 @@ User message
    │   ├── Compatibility checks: formality, occasion, color temp, pattern, volume, fit, texture
    │   └── MAX_PAIRED_CANDIDATES = 30
    │
-   ├── Stage 4: Outfit Evaluation [gpt-5.4]
+   ├── Stage 4: Outfit Evaluation [gpt-5-mini]
    │   ├── Input: all candidates + user context + previous recommendation deltas
    │   ├── Scores per outfit (16 fields):
    │   │   ├── 8 evaluation criteria: body_harmony, color_suitability, style_fit,
@@ -281,10 +281,11 @@ User message
 | Field | Value |
 |-------|-------|
 | `response_type` | `"recommendation"` |
-| `outfits` | Up to 3 `OutfitCard` objects with items, scores, tryon_image |
-| `metadata.answer_source` | `"wardrobe_first"` or `"catalog_pipeline"` |
+| `outfits` | Up to 3 `OutfitCard` objects with items, scores, tryon_image. The 0.75 confidence threshold (see `_RECOMMENDATION_CONFIDENCE_THRESHOLD` in `orchestrator.py`) drops any candidate whose `assembly_score` falls below; if **zero** candidates clear, `_build_low_confidence_catalog_response` runs instead and returns `outfits=[]` with an honest "I couldn't find a strong match" message + refine / show-closest / shop CTAs. |
+| `metadata.answer_source` | `"wardrobe_first"`, `"catalog_pipeline"`, `"hybrid"`, or `"catalog_low_confidence"` (no outfits cleared the threshold) |
 | `metadata.recommendation_confidence` | 9-factor confidence object |
-| `follow_up_suggestions` | e.g., "Show me bolder options", "Change the color palette" |
+| `metadata.low_confidence_top_match_score` | Only set when `answer_source == catalog_low_confidence` — the highest `assembly_score` seen, surfaced for ops dashboards (never shown to the user) |
+| `follow_up_suggestions` | e.g., `"Show me options to buy"` (catalog upsell CTA — was `"Show me better options from the catalog"` pre-May 3), `"Show me bolder options"`, `"Refine the request"` |
 
 ---
 
@@ -297,7 +298,7 @@ User message
 ### Step-by-Step Flow
 
 ```
-1. Copilot Planner [gpt-5.4]
+1. Copilot Planner [gpt-5.5]
    └── May classify as occasion_recommendation initially
 
 2. Image Requirement Gate [deterministic — before dispatch]
@@ -320,7 +321,7 @@ User message
 
 4. Full Pipeline (same 6 stages as occasion recommendation — no short-circuit paths)
    │
-   ├── Stage 1: Outfit Architect [gpt-5.4]
+   ├── Stage 1: Outfit Architect [gpt-5.5]
    │   ├── Receives anchor_garment in LiveContext (title, category, subtype, color, source)
    │   ├── Architect prompt instructs: "Do NOT generate a query for the anchor's role"
    │   ├── Only searches for complementary roles (e.g., anchor=top → search bottom, shoes)
@@ -337,7 +338,7 @@ User message
    ├── Stage 3: Outfit Assembly [deterministic]
    │   └── Pairs anchor (top) with retrieved complementary items (bottoms)
    │
-   ├── Stage 4: Outfit Evaluation [gpt-5.4]
+   ├── Stage 4: Outfit Evaluation [gpt-5-mini]
    │   └── Scores all candidates (8 criteria + 8 archetypes)
    │
    ├── Stage 5: Response Formatting
@@ -366,7 +367,7 @@ User message
 ### Step-by-Step Flow
 
 ```
-1. Copilot Planner [gpt-5.4]
+1. Copilot Planner [gpt-5.5]
    └── intent=style_discovery, action=respond_directly
 
 2. Dispatch → _handle_direct_response() → _handle_style_discovery()
@@ -418,7 +419,7 @@ User message
 ### Step-by-Step Flow
 
 ```
-1. Copilot Planner [gpt-5.4]
+1. Copilot Planner [gpt-5.5]
    └── intent=explanation_request, action=respond_directly
 
 2. Dispatch → _handle_direct_response() → _handle_explanation_request()
@@ -458,7 +459,7 @@ User message
 ### Step-by-Step Flow
 
 ```
-1. Copilot Planner [gpt-5.4]
+1. Copilot Planner [gpt-5.5]
    └── intent=outfit_check, action=run_outfit_check
 
 2. Planner Override: _message_requests_outfit_check()
@@ -467,7 +468,7 @@ User message
 
 3. Dispatch → _handle_outfit_check()
 
-4. Vision-Based Outfit Evaluation [gpt-5.4]
+4. Vision-Based Outfit Evaluation [gpt-5-mini]
    ├── Agent: VisualEvaluatorAgent.evaluate_candidate() (mode="outfit_check")
    ├── Input: user_context, outfit_description, occasion_signal, image_path
    ├── Output: OutfitCheckResult
@@ -535,7 +536,7 @@ User message
 ### Step-by-Step Flow
 
 ```
-1. Copilot Planner [gpt-5.4]
+1. Copilot Planner [gpt-5.5]
    └── intent=shopping_decision, action=run_shopping_decision
 
 2. Dispatch → _handle_shopping_decision()
@@ -600,7 +601,7 @@ User message
 ### Step-by-Step Flow
 
 ```
-1. Copilot Planner [gpt-5.4]
+1. Copilot Planner [gpt-5.5]
    └── intent=capsule_or_trip_planning, action=respond_directly
 
 2. Dispatch → _handle_direct_response() → _handle_capsule_or_trip_planning()
@@ -672,7 +673,7 @@ User message
 ### Step-by-Step Flow
 
 ```
-1. Copilot Planner [gpt-5.4]
+1. Copilot Planner [gpt-5.5]
    └── intent=virtual_tryon_request, action=run_virtual_tryon
 
 2. Dispatch → _handle_planner_virtual_tryon()
@@ -723,7 +724,7 @@ User message
 ### Step-by-Step Flow
 
 ```
-1. Copilot Planner [gpt-5.4]
+1. Copilot Planner [gpt-5.5]
    ├── intent=garment_on_me_request, action=respond_directly
    └── Generates personalized answer using profile context
 
@@ -754,7 +755,7 @@ User message
 ### Step-by-Step Flow
 
 ```
-1. Copilot Planner [gpt-5.4]
+1. Copilot Planner [gpt-5.5]
    └── intent=wardrobe_ingestion, action=save_wardrobe_item
 
 2. Dispatch → _handle_planner_wardrobe_save()
@@ -794,7 +795,7 @@ User message
 ### Step-by-Step Flow
 
 ```
-1. Copilot Planner [gpt-5.4]
+1. Copilot Planner [gpt-5.5]
    └── intent=feedback_submission, action=save_feedback
 
 2. Dispatch → _handle_planner_feedback()
@@ -841,7 +842,7 @@ User message
 ### Step-by-Step Flow
 
 ```
-1. Copilot Planner [gpt-5.4]
+1. Copilot Planner [gpt-5.5]
    └── intent=product_browse, action=run_product_browse
 
 2. Dispatch → _handle_product_browse()
@@ -919,14 +920,12 @@ Follow-up intents are detected by the copilot planner via `resolved_context.foll
 
 | Component | Model | When Called | Intents |
 |-----------|-------|------------|---------|
-| Copilot Planner | gpt-5.4 | Every turn | All 7 advisory + feedback + silent wardrobe_ingestion |
-| Outfit Architect | gpt-5.4 | Recommendation pipeline | occasion_recommendation, pairing_request |
-| Visual Evaluator (Phase 12B) | gpt-5.4 (vision) | Per-candidate after try-on; sole evaluator in the system (legacy agents removed) | occasion_recommendation, pairing_request, garment_evaluation, outfit_check |
-| Outfit Evaluator (legacy) | gpt-5.4 | Fallback when user has no full-body photo or visual path raises | occasion_recommendation, pairing_request |
-| Style Advisor (Phase 12C) | gpt-5.4 | Open-ended style discovery + explanation against prior recommendations | style_discovery (general topic), explanation_request (when previous_recommendations exists) |
+| Copilot Planner | gpt-5.5 | Every turn | All 7 advisory + feedback + silent wardrobe_ingestion |
+| Outfit Architect | gpt-5.5 | Recommendation pipeline. System prompt is composed at request time: 4.8K-token base + optional anchor module (when `anchor_garment` set) + optional follow-up module (when `is_followup`). | occasion_recommendation, pairing_request |
+| Visual Evaluator | gpt-5-mini (vision) | Per-candidate after try-on; sole evaluator in the system (legacy agents removed) | occasion_recommendation, pairing_request, garment_evaluation, outfit_check |
+| Style Advisor | gpt-5.5 | Open-ended style discovery + explanation against prior recommendations | style_discovery (general topic), explanation_request (when previous_recommendations exists) |
 | Wardrobe Enrichment | gpt-5-mini (vision) | On every chat-uploaded garment image + outfit decomposition | wardrobe_ingestion (silent), pairing_request (when image attached), outfit_check (async decomposition), garment_evaluation (when image attached) |
-| Try-On Service | gemini-3.1-flash-image-preview | Inline before visual evaluator (Phase 12B) for all top-3 candidates in parallel | occasion_recommendation, pairing_request, garment_evaluation |
-| Outfit Check Agent (legacy) | gpt-5.4 | Kept until tests are migrated off it; not called by the Phase 12 outfit_check path | (none in production after Phase 12B rewire) |
+| Try-On Service | gemini-3.1-flash-image-preview | Inline before visual evaluator for the top-3 candidates. Renders run in a `ThreadPoolExecutor` parallel batch; cache hits (per `find_tryon_image_by_garments`) short-circuit inside the thread before the Gemini call. INFO logs emit `tryon parallel batch: N/N succeeded (cold=K, cache_hit=M) in Xms wallclock` per batch. | occasion_recommendation, pairing_request, garment_evaluation |
 
 **No LLM calls** (deterministic only):
 - `feedback_submission`

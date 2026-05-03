@@ -1,6 +1,6 @@
 # Product Overview
 
-Last updated: April 8, 2026
+Last updated: May 3, 2026
 
 > **What is live today vs. aspirational:** This document describes the
 > **target** product, including personas and surfaces that are not yet
@@ -278,6 +278,7 @@ Expected behavior:
 - wardrobe-first should work when the user wants an outfit from owned items
 - catalog-only should work when the user explicitly wants options from the catalog
 - the response should make the source mode explicit: wardrobe-first, catalog-only, or hybrid
+- when no outfit clears the confidence threshold, the response should be honest about that and offer paths forward (refine the request, see closest matches, shop the catalog) rather than shipping a low-confidence pick
 
 ### US-03: Pairing request
 
@@ -324,7 +325,7 @@ As an onboarded user, I want to rate or check my current outfit and get suggesti
 Expected behavior:
 - the critique should suggest wardrobe swaps first
 - catalog follow-up should stay optional, not forced
-- a later `Show me better options from the catalog` should pivot with the same outfit context
+- a later `Show me options to buy` (catalog upsell CTA) should pivot with the same outfit context
 
 ### US-11: Trip / capsule planning
 
@@ -347,6 +348,7 @@ User success is:
 - feeling remembered across channels
 - seeing explanations and confidence when needed
 - experiencing wardrobe-first value, not only catalog upsell
+- never being shown a low-confidence outfit dressed up as a recommendation — when the system can't match the request, it says so and offers a way forward
 
 ## First-50 Product Success
 
