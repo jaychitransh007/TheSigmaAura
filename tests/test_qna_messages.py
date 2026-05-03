@@ -26,8 +26,9 @@ class TestStaticTemplates:
             ("context_builder", "started"),
             ("outfit_architect", "started"),
             ("catalog_search", "started"),
-            ("outfit_assembly", "started"),
-            ("outfit_evaluation", "completed"),
+            # May 3 2026: outfit_assembly retired → outfit_composer.
+            ("outfit_composer", "started"),
+            ("visual_evaluation", "completed"),
             ("response_formatting", "started"),
             ("virtual_tryon", "started"),
             ("outfit_architect", "error"),
@@ -56,7 +57,8 @@ class TestIntentionallySilentStages:
         ("onboarding_gate", "completed"),
         ("user_context", "completed"),
         ("context_builder", "completed"),
-        ("outfit_assembly", "completed"),
+        ("outfit_composer", "completed"),
+        ("outfit_rater", "completed"),
         ("response_formatting", "completed"),
         ("virtual_tryon", "completed"),
     ]
@@ -69,7 +71,7 @@ class TestIntentionallySilentStages:
         """Passing context to a silent stage must still return empty, not
         crash or leak raw keys."""
         assert generate_stage_message("user_context", "completed", {"richness": "full"}) == ""
-        assert generate_stage_message("outfit_assembly", "completed", {"candidate_count": 15}) == ""
+        assert generate_stage_message("outfit_composer", "completed", {"outfit_count": 7}) == ""
         assert generate_stage_message("response_formatting", "completed", {"outfit_count": 3}) == ""
 
 
@@ -136,9 +138,14 @@ class TestCatalogSearchCompleted:
         assert msg
 
 
-class TestOutfitEvaluationStarted:
+class TestVisualEvaluationStarted:
+    """May 3, 2026: stage renamed from `outfit_evaluation` to
+    `visual_evaluation` when the legacy text evaluator was retired and
+    the LLM Composer + Rater + visual_evaluator became the canonical
+    pipeline."""
+
     def test_all_factors(self):
-        msg = generate_stage_message("outfit_evaluation", "started", {
+        msg = generate_stage_message("visual_evaluation", "started", {
             "has_body_data": True,
             "has_color_season": True,
             "has_style_pref": True,
@@ -148,14 +155,14 @@ class TestOutfitEvaluationStarted:
         assert "style preferences" in msg
 
     def test_single_factor(self):
-        msg = generate_stage_message("outfit_evaluation", "started", {
+        msg = generate_stage_message("visual_evaluation", "started", {
             "has_body_data": True,
         })
         assert "body type" in msg
         assert "and" not in msg
 
     def test_two_factors(self):
-        msg = generate_stage_message("outfit_evaluation", "started", {
+        msg = generate_stage_message("visual_evaluation", "started", {
             "has_body_data": True,
             "has_color_season": True,
         })
@@ -163,7 +170,29 @@ class TestOutfitEvaluationStarted:
         assert "color season" in msg
 
     def test_no_factors_fallback(self):
-        msg = generate_stage_message("outfit_evaluation", "started")
+        msg = generate_stage_message("visual_evaluation", "started")
         assert "overall fit and style" in msg
+
+    def test_target_count_appears_when_provided(self):
+        msg = generate_stage_message("visual_evaluation", "started", {
+            "has_body_data": True,
+            "target_count": 3,
+        })
+        assert "3 looks" in msg
+
+
+class TestOutfitRaterStarted:
+    """The Rater is the new LLM scoring stage between Composer and
+    visual evaluator (May 3, 2026)."""
+
+    def test_with_count(self):
+        msg = generate_stage_message("outfit_rater", "started", {"composed_count": 7})
+        assert "7" in msg
+        assert "Rating" in msg
+
+    def test_without_count_falls_back(self):
+        msg = generate_stage_message("outfit_rater", "started")
+        assert msg
+        assert "Rating" in msg
 
 

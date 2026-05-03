@@ -29,10 +29,17 @@ _TEMPLATES: Dict[str, str] = {
     "catalog_search_started": "Looking through the catalog.",
     "catalog_search_completed": "",  # dynamic
     "catalog_search_blocked": "The catalog isn't loaded in this environment — I can't put together recommendations right now.",
-    "outfit_assembly_started": "Pairing this back for you.",
-    "outfit_assembly_completed": "",  # silent — raw candidate count is noise
-    "outfit_evaluation_started": "",  # dynamic
-    "outfit_evaluation_completed": "Finding something that fits.",
+    # May 3, 2026: outfit_assembly + outfit_evaluation stages were retired
+    # when the LLM ranker (Composer + Rater) replaced the deterministic
+    # assembler + reranker + legacy text evaluator. The orchestrator now
+    # emits outfit_composer → outfit_rater → visual_evaluation.
+    "outfit_composer_started": "Pairing this back for you.",
+    "outfit_composer_completed": "",  # silent — raw outfit count is noise
+    "outfit_rater_started": "",  # dynamic
+    "outfit_rater_completed": "",  # silent — the visual evaluator follows
+    "visual_evaluation_started": "",  # dynamic
+    "visual_evaluation_completed": "Finding something that fits.",
+    "visual_evaluation_error": "",  # silent — fallback path takes over
     "response_formatting_started": "Writing it up.",
     "response_formatting_completed": "",  # silent — the answer is about to appear
     "response_formatting_error": "I couldn't pull that together this time. Try me again.",
@@ -61,7 +68,7 @@ def _catalog_search_completed(ctx: Dict[str, Any]) -> str:
     return msg
 
 
-def _outfit_evaluation_started(ctx: Dict[str, Any]) -> str:
+def _visual_evaluation_started(ctx: Dict[str, Any]) -> str:
     factors = []
     if ctx.get("has_body_data"):
         factors.append("body type")
@@ -69,10 +76,20 @@ def _outfit_evaluation_started(ctx: Dict[str, Any]) -> str:
         factors.append("color season")
     if ctx.get("has_style_pref"):
         factors.append("style preferences")
+    target_count = ctx.get("target_count")
     if factors:
         label = ", ".join(factors[:-1]) + " and " + factors[-1] if len(factors) > 1 else factors[0]
+        if target_count:
+            return f"Evaluating {target_count} looks for your {label}..."
         return f"Evaluating outfits for your {label}..."
     return "Evaluating outfits for overall fit and style..."
+
+
+def _outfit_rater_started(ctx: Dict[str, Any]) -> str:
+    n = ctx.get("composed_count") or ctx.get("input_summary")
+    if n:
+        return f"Rating {n} candidates..."
+    return "Rating candidates..."
 
 
 def _copilot_planner_completed(ctx: Dict[str, Any]) -> str:
@@ -86,7 +103,8 @@ _DYNAMIC_HANDLERS = {
     "copilot_planner_completed": _copilot_planner_completed,
     "outfit_architect_completed": _outfit_architect_completed,
     "catalog_search_completed": _catalog_search_completed,
-    "outfit_evaluation_started": _outfit_evaluation_started,
+    "outfit_rater_started": _outfit_rater_started,
+    "visual_evaluation_started": _visual_evaluation_started,
 }
 
 

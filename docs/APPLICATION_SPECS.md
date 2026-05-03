@@ -1928,10 +1928,11 @@ Stages emitted during async processing:
 4. `context_gate` — may short-circuit here with `insufficient` (returns clarification response)
 5. `outfit_architect`
 6. `catalog_search`
-7. `outfit_assembly`
-8. `outfit_evaluation`
-9. `response_formatting`
-10. `virtual_tryon`
+7. `outfit_composer` (LLM ranker — replaced `outfit_assembly` May 3 2026)
+8. `outfit_rater` (LLM ranker — replaces the deterministic reranker)
+9. `visual_evaluation` (replaced `outfit_evaluation` May 3 2026; `confidence_gate` may emit `blocked` here)
+10. `response_formatting`
+11. `virtual_tryon`
 
 Each stage emits `started` and `completed` (or `failed` / `insufficient` / `sufficient`) events with timestamps.
 
