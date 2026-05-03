@@ -384,7 +384,7 @@ class OutfitComposer:
             ],
             text={"format": _COMPOSER_JSON_SCHEMA},
         )
-        usage = extract_token_usage(response)
+        usage = extract_token_usage(response) or {}
         for k, v in usage.items():
             accumulated_usage[k] = accumulated_usage.get(k, 0) + (v or 0)
 
