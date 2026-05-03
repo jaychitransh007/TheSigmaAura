@@ -2378,8 +2378,8 @@ Main weak spots:
 - `catalog_items` table removed (superseded by `catalog_enriched`)
 
 ### Application Layer
-- intent registry (`intent_registry.py`) — StrEnum single source of truth for 12 intents, 9 actions, 7 follow-up intents
-- copilot planner (gpt-5.5) — intent classification across 7 advisory intents, 7 action dispatch
+- intent registry (`intent_registry.py`) — StrEnum single source of truth for **8 Intent members** (7 advisory + 1 silent `wardrobe_ingestion`), **7 Actions**, **7 FollowUpIntents**. Phase 12A consolidated the prior 12-intent / 9-action taxonomy: `shopping_decision` / `garment_on_me_request` / `virtual_tryon_request` folded into `garment_evaluation`; `product_browse` folded into `occasion_recommendation` (via `target_product_type`); `capsule_or_trip_planning` deferred.
+- copilot planner (gpt-5.5) — intent classification across the 7 advisory intents (`wardrobe_ingestion` is silent / not exposed in the planner prompt), 7-action dispatch
 - recommendation pipeline: architect → catalog search → assembly → evaluation → formatting → try-on
 - wardrobe-first occasion response (wardrobe retrieval + selection for occasion intents)
 - wardrobe item save from chat with moderation
@@ -2408,7 +2408,7 @@ Main weak spots:
 
 ## What Is Not Finished
 
-See "Recently Completed Roadmap Items" in the gap analysis above (now in `docs/PRODUCT.md`). The current open
+See "Recently Completed Roadmap Items" in the gap analysis in `docs/PRODUCT.md`. Current open items are tracked in `docs/OPEN_TASKS.md`; the legacy P0/P1/P2 sections in this file are historical and all marked complete or removed. There is no
 items are tracked inline in the P0/P1/P2 sections above; there is no
 additional summary to call out here.
 
