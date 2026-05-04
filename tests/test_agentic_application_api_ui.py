@@ -438,8 +438,12 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         # Chart canvas must fit inside the info column with proportional
         # CSS scaling for narrow viewports
         self.assertIn("aspect-ratio: 280 / 300", html)
-        # The chart div is appended to info, not the card directly
-        self.assertIn("info.appendChild(radarDiv)", html)
+        # The chart div is appended to the profile wrapper that lives
+        # inside info. (May 5, 2026: visual_evaluation_status branches the
+        # render — "ready" goes to the radar; "pending" goes to the
+        # compact 4-bar layout. Both render into the same wrapper.)
+        self.assertIn("profileWrap.appendChild(radarDiv)", html)
+        self.assertIn("info.appendChild(profileWrap)", html)
         # style_fit_pct must NOT appear as a Fit-profile axis — it's
         # already double-counted by the 8 archetype scores in the top
         # semicircle. The backend field is still scored and still used

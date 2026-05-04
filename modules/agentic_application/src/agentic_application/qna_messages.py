@@ -43,8 +43,15 @@ _TEMPLATES: Dict[str, str] = {
     "response_formatting_started": "Writing it up.",
     "response_formatting_completed": "",  # silent — the answer is about to appear
     "response_formatting_error": "I couldn't pull that together this time. Try me again.",
-    "virtual_tryon_started": "Trying these on you.",
-    "virtual_tryon_completed": "",  # silent — the images appear inline
+    # tryon_render fires when Gemini actually renders the candidates (inside the
+    # visual_evaluation block, before the gpt-5-mini eval); attach_tryon_images
+    # fires at the end of the pipeline as a cache lookup that wires the rendered
+    # image URLs onto each shipped OutfitCard. Both produce the same UX moment
+    # ("trying on") so we surface only the first; the second stays silent.
+    "tryon_render_started": "Trying these on you.",
+    "tryon_render_completed": "",  # silent — the eval/images follow inline
+    "attach_tryon_images_started": "",  # silent — renders already happened
+    "attach_tryon_images_completed": "",  # silent — the images appear inline
     "outfit_architect_error": "Something got in the way. Try me again.",
 }
 

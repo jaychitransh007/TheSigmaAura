@@ -329,6 +329,10 @@ class EvaluatedRecommendation(BaseModel):
     overall_note: str = ""
     strengths: List[str] = Field(default_factory=list)
     improvements: List[Dict[str, Any]] = Field(default_factory=list)
+    # See OutfitCard.visual_evaluation_status. The recommendation pipeline
+    # defaults to "pending" when shipping Rater-only dims; outfit_check /
+    # garment_evaluation always set "ready" because they run the evaluator.
+    visual_evaluation_status: str = "ready"
 
 
 # --- Response ---
@@ -384,6 +388,11 @@ class OutfitCard(BaseModel):
     edgy_pct: int = 0
     items: List[Dict[str, Any]] = Field(default_factory=list)
     tryon_image: Optional[str] = None  # data URL of virtual try-on image
+    # "ready" means the visual evaluator's 17 dims + 4 notes are populated;
+    # "pending" means the card was shipped with Rater-only dims and the user
+    # can request a deeper read on demand. Default is "ready" so historical
+    # turns persisted before this field existed render with the full radar.
+    visual_evaluation_status: str = "ready"
 
 
 class CopilotResolvedContext(BaseModel):

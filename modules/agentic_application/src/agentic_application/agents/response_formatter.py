@@ -287,6 +287,7 @@ class ResponseFormatter:
                     sporty_pct=rec.sporty_pct,
                     edgy_pct=rec.edgy_pct,
                     items=[_build_item_card(item) for item in items],
+                    visual_evaluation_status=rec.visual_evaluation_status,
                 )
             )
 

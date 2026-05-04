@@ -145,6 +145,18 @@ class ConversationRepository:
             },
         )
 
+    def update_turn_resolved_context(
+        self,
+        *,
+        turn_id: str,
+        resolved_context: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        return self.client.update_one(
+            "conversation_turns",
+            filters={"id": f"eq.{turn_id}"},
+            patch={"resolved_context_json": resolved_context},
+        )
+
     def get_latest_turn(self, conversation_id: str) -> Optional[Dict[str, Any]]:
         rows = self.client.select_many(
             "conversation_turns",

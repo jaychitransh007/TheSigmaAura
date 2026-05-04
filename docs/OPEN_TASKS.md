@@ -91,44 +91,16 @@ The architect alone pays nearly half the bill (10.5K tokens at gpt-5.5 pricing).
 
 ---
 
-## Misleading `virtual_tryon` stage emit at end of pipeline
+## Telemetry follow-up — visual_eval on-demand uptake
 
-**Status:** queued · **Cost:** small (telemetry-only, doc + rename) · **Risk:** none
+**Status:** queued · **Cost:** dev time only · **Risk:** none
 
-The `turn_traces.steps[]` shows `visual_evaluation` finishing BEFORE `virtual_tryon`, which reads as "we evaluated outfits before rendering try-ons." Reality: the actual Gemini renders happen INSIDE the `visual_evaluation` stage (via `_render_candidates_for_visual_eval`). The `virtual_tryon` emit at line 5229 of `orchestrator.py` is a post-formatting `_attach_tryon_images()` cache-lookup step — not a render. That's why its latency is 462ms (cache hits) while the actual renders sum to ~80s inside `visual_evaluation`.
+May 5, 2026 shipped the on-demand visual_evaluator: default recommendation cards carry Rater-only dims with `visual_evaluation_status="pending"`, and a "Get a deeper read" CTA on each card calls `POST /v1/turns/{turn_id}/outfits/{rank}/visual-eval` to populate the full 17-dim radar lazily. Outfit_check + garment_evaluation handlers still run the evaluator inline (the user's photo upload IS the intent signal there).
 
-Two cleanup options:
-- **Rename** the late stage from `virtual_tryon` to `attach_tryon_images` so dashboards stop misreading "try-on takes 462ms".
-- **Restructure** so try-on render gets its own stage emit BEFORE `visual_evaluation` and the steps[] timeline reads chronologically: `... → tryon_render → visual_evaluation → response_formatting`.
+What we need to learn from production:
 
-Renaming is the quick fix; restructuring is the right fix.
+- **Click-through rate.** New event `visual_evaluator_on_demand` shows up in `model_call_logs` whenever the CTA fires. Wire a panel that reports clicks/turn over a rolling 7-day window. Hypothesis: if <5% of shipped cards get clicked, the post-render check is rarely catching anything → schedule a follow-up to consider dropping `visual_evaluator` entirely (option c). If >30%, the deeper read is genuinely valued → invest in richer Rater output so the default card carries more signal too.
+- **Time-to-click.** Distribution would tell us whether users decide quickly (signal: card content is missing something) or slowly (signal: idle scrutiny). Use as a sanity check on the CTA copy.
+- **Re-click on cached cards.** If users return to the same turn and re-click, the cache should hit and the eval shouldn't re-run. Verify via the idempotent path in `run_on_demand_visual_eval`.
 
----
-
-## Visual evaluator scope reduction — overlap with the LLM Rater
-
-**Status:** queued · **Cost:** small · **Risk:** medium (UI dependency)
-
-Since PR #30, the Composer + Rater LLM ranker scores outfits on `occasion_fit`, `body_harmony`, `color_harmony`, `archetype_match` (text-only, pre-render). The visual evaluator independently scores 5+4 dimensions from the rendered try-on image (post-render, vision-grounded). Some of these overlap.
-
-Three trim options to consider, in increasing aggressiveness:
-- **(a) Drop the 4 context-gated dimensions** from the visual evaluator (occasion_fit, weather_time, specific_needs, pairing_coherence) since they overlap with Rater. Keep the 5 always-evaluated (body, color, style, risk, comfort) — those need vision grounding.
-- **(b) Run visual_evaluator on top-1 only,** not all 3 candidates. Saves 2/3 of the cost + latency.
-- **(c) Drop visual_evaluator entirely.** Wire the Rater's 4 dim scores to the radar chart on the PDP card. Most aggressive — saves 64s of pipeline time AND $0.0025/turn AND simplifies the code path. Cost: lose the post-render image check (Gemini render artifacts won't get caught) AND the radar chart loses 5 dims it currently shows (need to redesign).
-
-**Trigger:** if pipeline latency follow-up confirms visual_eval is the slowest cuttable stage, OR if Rater quality is good enough that the post-render check is rarely catching anything.
-
----
-
-## Cost rollup gap — `outfit_check` and `garment_evaluation` handlers
-
-**Status:** queued · **Cost:** small · **Risk:** none
-
-PR #38 wired `total_cost_usd` rollup for the recommendation pipeline (planner, architect, composer, rater, visual_evaluator, virtual_tryon, catalog_embedding). Two other handler paths still log to `model_call_logs` but their cost doesn't roll up to `turn_traces.evaluation.total_cost_usd`:
-
-- `_handle_outfit_check` — visual evaluator on the user's photo (`orchestrator.py:5862`)
-- `_handle_garment_evaluation` — try-on + visual evaluator on a garment upload (`orchestrator.py:6304`)
-
-Wire each `repo.log_model_call(...)` callsite there with `trace.add_model_cost_from_row(...)` — same pattern PR #38 used in the recommendation flow. Each handler signature also needs a `trace: Optional[TurnTraceBuilder] = None` parameter threaded from `process_turn`.
-
-**Trigger:** when ops needs per-turn cost on outfit_check / garment_evaluation paths (likely when those flows hit ≥10% of weekly volume).
+**Trigger:** review the dashboard ~4 weeks after rollout (around June 2, 2026).
