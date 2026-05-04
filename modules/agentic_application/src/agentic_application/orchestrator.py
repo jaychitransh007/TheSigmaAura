@@ -6905,6 +6905,7 @@ class AgenticOrchestrator:
             rec = dict(recs[rec_idx])
             rec.update({
                 k: outfit[k] for k in (
+                    "reasoning",
                     "body_note", "color_note", "style_note", "occasion_note",
                     "body_harmony_pct", "color_suitability_pct", "style_fit_pct",
                     "risk_tolerance_pct", "comfort_boundary_pct",
