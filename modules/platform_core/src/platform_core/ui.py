@@ -998,6 +998,20 @@ def get_web_ui_html(
       aspect-ratio: 280 / 300;
     }
     .radar-toggle { display: none; }
+    .outfit-profile-wrap { display: flex; flex-direction: column; gap: 8px; }
+    .compact-rationale {
+      margin: 8px 0 4px; font-size: 12px; line-height: 1.45; color: var(--ink);
+    }
+    .deeper-read-btn {
+      align-self: flex-start;
+      margin-top: 6px; padding: 6px 12px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+      background: transparent; color: var(--accent);
+      border: 1px solid var(--accent); border-radius: 999px;
+      cursor: pointer; transition: background 160ms ease, color 160ms ease;
+    }
+    .deeper-read-btn:hover:not(:disabled) { background: var(--accent); color: var(--surface); }
+    .deeper-read-btn:disabled { opacity: 0.6; cursor: progress; }
     .outfit-criteria { display: flex; flex-direction: column; gap: 6px; }
     .criteria-row { display: flex; align-items: center; gap: 8px; }
     .criteria-label { font-size: 11px; font-weight: 600; color: var(--muted); width: 100px; flex-shrink: 0; }
@@ -2930,26 +2944,84 @@ def get_web_ui_html(
         }});
     }});
 
-    // 4. Split polar bar chart — Nightingale-style merge of the
-    // archetype radar and the evaluation criteria radar.
-    //
-    // Top semicircle (9 → 12 → 3 o'clock): style archetype profile,
-    // always 8 axes, purple. Bottom semicircle (3 → 6 → 9 o'clock): fit /
-    // evaluation profile, dynamic 5-9 axes after the context-gated filter,
-    // burgundy. A dashed horizontal line through the centre separates
-    // them. Both profiles share the same 0-100 grid rings.
-    //
-    // Phase 12B follow-ups (April 9 2026) preserved here:
-    //   - drop dimensions whose value is null or undefined
-    //   - drop dimensions where the value is exactly 0 IF the key is
-    //     one of the 4 context-gated dimensions (pairing_coherence_pct,
-    //     occasion_pct, weather_time_pct, specific_needs_pct). The 5
-    //     always-evaluated dimensions are NOT subject to the zero-drop —
-    //     a genuine 0 there is a meaningful signal worth showing.
-    //
-    // The top-semicircle archetype values describe the OUTFIT's aesthetic
-    // profile. The bottom-semicircle evaluation criteria are the raw
-    // evaluator scores — no confidence scaling applied.
+    // 4. Profile section. Branches on visual_evaluation_status:
+    //   "ready" (default) → full 17-dim split-polar radar (existing
+    //     Nightingale render: 8 archetype axes top + 5–9 fit axes bottom).
+    //   "pending"          → compact 4-bar layout from Rater dims +
+    //     "Get a deeper read" CTA. Click → POST /visual-eval → mutate
+    //     outfit + re-render as "ready".
+    var profileWrap = document.createElement("div");
+    profileWrap.className = "outfit-profile-wrap";
+    info.appendChild(profileWrap);
+
+    function renderCompactProfile() {{
+      profileWrap.innerHTML = "";
+      var rationale = String(outfit.reasoning || "").trim();
+      if (rationale) {{
+        var ration = document.createElement("p");
+        ration.className = "compact-rationale";
+        ration.textContent = rationale;
+        profileWrap.appendChild(ration);
+      }}
+      var bars = [
+        {{ key: "occasion_pct",          label: "Occasion" }},
+        {{ key: "body_harmony_pct",      label: "Body" }},
+        {{ key: "color_suitability_pct", label: "Color" }},
+        {{ key: "style_fit_pct",         label: "Archetype" }},
+      ];
+      var barsWrap = document.createElement("div");
+      barsWrap.className = "outfit-criteria";
+      var accentRgbCss = (getComputedStyle(document.documentElement).getPropertyValue("--accent-rgb") || "92, 26, 27").trim();
+      bars.forEach(function(b) {{
+        var v = parseInt(outfit[b.key], 10);
+        if (!isFinite(v)) v = 0;
+        v = Math.max(0, Math.min(100, v));
+        var row = document.createElement("div");
+        row.className = "criteria-row";
+        var lbl = document.createElement("span");
+        lbl.className = "criteria-label"; lbl.textContent = b.label;
+        var trk = document.createElement("div"); trk.className = "criteria-track";
+        var fll = document.createElement("div");
+        fll.className = "criteria-fill";
+        fll.style.width = v + "%";
+        fll.style.background = "rgb(" + accentRgbCss + ")";
+        trk.appendChild(fll);
+        var pct = document.createElement("span");
+        pct.className = "criteria-pct"; pct.textContent = v + "%";
+        row.appendChild(lbl); row.appendChild(trk); row.appendChild(pct);
+        barsWrap.appendChild(row);
+      }});
+      profileWrap.appendChild(barsWrap);
+      var deeperBtn = document.createElement("button");
+      deeperBtn.type = "button";
+      deeperBtn.className = "deeper-read-btn";
+      deeperBtn.textContent = "Get a deeper read";
+      var ranK = parseInt(outfit.rank, 10) || 0;
+      var turnIdLocal = outfit._turn_id || "";
+      deeperBtn.addEventListener("click", function() {{
+        if (!turnIdLocal || !ranK) return;
+        deeperBtn.disabled = true;
+        deeperBtn.textContent = "Reading…";
+        fetch("/v1/turns/" + encodeURIComponent(turnIdLocal) + "/outfits/" + ranK + "/visual-eval", {{ method: "POST" }})
+          .then(function(r) {{
+            if (!r.ok) throw new Error("Failed");
+            return r.json();
+          }})
+          .then(function(data) {{
+            Object.assign(outfit, data);
+            outfit.visual_evaluation_status = "ready";
+            renderProfile();
+          }})
+          .catch(function() {{
+            deeperBtn.disabled = false;
+            deeperBtn.textContent = "Get a deeper read";
+          }});
+      }});
+      profileWrap.appendChild(deeperBtn);
+    }}
+
+    function renderFullProfile() {{
+      profileWrap.innerHTML = "";
     var CONTEXT_GATED_KEYS = {{
       "pairing_coherence_pct": true,
       "occasion_pct": true,
@@ -3005,8 +3077,8 @@ def get_web_ui_html(
       var isOpen = radarDiv.classList.toggle("open");
       radarToggle.textContent = isOpen ? "Hide profile" : "See profile";
     }});
-    info.appendChild(radarToggle);
-    info.appendChild(radarDiv);
+    profileWrap.appendChild(radarToggle);
+    profileWrap.appendChild(radarDiv);
     var pCtx = polarCanvas.getContext("2d");
     pCtx.scale(dpr, dpr);
 
@@ -3152,6 +3224,16 @@ def get_web_ui_html(
     // separate caption underneath would be redundant. Removing it
     // also frees a few pixels of vertical room inside the
     // .outfit-info column.
+    }}
+
+    function renderProfile() {{
+      if (String(outfit.visual_evaluation_status || "ready") === "pending") {{
+        renderCompactProfile();
+      }} else {{
+        renderFullProfile();
+      }}
+    }}
+    renderProfile();
 
     // ── Feedback wiring: Like + Hide in header ──
     var outfitRank = outfit.rank || 0;
@@ -3612,6 +3694,13 @@ def get_web_ui_html(
       if (oldPreview) oldPreview.remove();
 
       var outfits = result.outfits || [];
+      // Attach turn/conversation refs so on-demand actions (e.g. the
+      // "Get a deeper read" CTA on each PDP card) can call back into the
+      // turn without depending on history hydration.
+      outfits.forEach(function(o) {{
+        o._turn_id = result.turn_id || "";
+        o._conv_id = result.conversation_id || convId || "";
+      }});
       var __md = result.metadata || {{}};
       var __groups = (__md && __md.follow_up_groups) || [];
 

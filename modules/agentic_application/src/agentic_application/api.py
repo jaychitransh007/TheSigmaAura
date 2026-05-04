@@ -778,6 +778,13 @@ def create_app() -> FastAPI:
                 detail=graceful_policy_message(reason_code or "tryon_request_failed", default=str(exc)),
             ) from exc
 
+    @app.post("/v1/turns/{turn_id}/outfits/{rank}/visual-eval")
+    def run_on_demand_visual_eval(turn_id: str, rank: int) -> dict:
+        try:
+            return orchestrator.run_on_demand_visual_eval(turn_id=turn_id, rank=rank)
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/v1/conversations/{conversation_id}/feedback")
     def submit_feedback(conversation_id: str, payload: FeedbackRequest) -> dict:
         try:

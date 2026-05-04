@@ -30,7 +30,7 @@ class TestStaticTemplates:
             ("outfit_composer", "started"),
             ("visual_evaluation", "completed"),
             ("response_formatting", "started"),
-            ("virtual_tryon", "started"),
+            ("tryon_render", "started"),
             ("outfit_architect", "error"),
         ],
     )
@@ -60,7 +60,9 @@ class TestIntentionallySilentStages:
         ("outfit_composer", "completed"),
         ("outfit_rater", "completed"),
         ("response_formatting", "completed"),
-        ("virtual_tryon", "completed"),
+        ("tryon_render", "completed"),
+        ("attach_tryon_images", "started"),
+        ("attach_tryon_images", "completed"),
     ]
 
     @pytest.mark.parametrize("stage,detail", SILENT_STAGES)

@@ -5456,11 +5456,13 @@ class Phase12EStageEmissionTests(unittest.TestCase):
     - validate_request, onboarding_gate, user_context, copilot_planner
       always run first.
     - occasion_recommendation / pairing_request: outfit_architect →
-      catalog_search → outfit_composer → outfit_rater →
-      visual_evaluation → response_formatting → virtual_tryon (when a
-      person photo is on file). May 3, 2026 (PR #30): the legacy
-      `outfit_assembly` and `reranker` stages were retired with the
-      assembler + reranker themselves.
+      catalog_search → outfit_composer → outfit_rater → tryon_render →
+      visual_evaluation → response_formatting → attach_tryon_images
+      (when a person photo is on file). May 5, 2026: the late
+      `virtual_tryon` stage was split — the actual Gemini renders now
+      emit as `tryon_render` before `visual_evaluation`, and the
+      post-format cache lookup that wires image URLs onto each
+      OutfitCard emits as `attach_tryon_images`.
     - garment_evaluation: no architect / composer / search; just runs
       the handler-internal try-on + visual evaluator.
     - outfit_check: no architect / composer / search; visual evaluator
@@ -5561,7 +5563,8 @@ class Phase12EStageEmissionTests(unittest.TestCase):
         self.assertNotIn("outfit_composer", stage_names)
         self.assertNotIn("outfit_rater", stage_names)
         self.assertNotIn("visual_evaluation", stage_names)
-        self.assertNotIn("virtual_tryon", stage_names)
+        self.assertNotIn("tryon_render", stage_names)
+        self.assertNotIn("attach_tryon_images", stage_names)
 
     def test_explanation_request_emits_lean_stage_skeleton(self):
         """explanation_request should emit the same lean entry skeleton
@@ -6025,6 +6028,232 @@ class ConfidenceThresholdGateTests(unittest.TestCase):
         self.assertEqual(2, formatter_called_with.get("count"))
         # And both should reach the user.
         self.assertEqual(2, len(result["outfits"]))
+
+
+class OnDemandVisualEvalTests(unittest.TestCase):
+    """May 5, 2026 — visual_evaluator moved to on-demand. The default
+    recommendation pipeline ships outfits with Rater-only dims and
+    visual_evaluation_status="pending"; clicking "Get a deeper read"
+    on a card hits POST /v1/turns/{turn_id}/outfits/{rank}/visual-eval
+    which runs the evaluator and patches the persisted outfit."""
+
+    def _build_orchestrator(self, repo, gw):
+        from agentic_application.orchestrator import AgenticOrchestrator
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
+             patch("agentic_application.orchestrator.OutfitArchitect"), \
+             patch("agentic_application.orchestrator.VisualEvaluatorAgent"), \
+             patch("agentic_application.orchestrator.StyleAdvisorAgent"), \
+             patch("agentic_application.orchestrator.CopilotPlanner"):
+            return AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+
+    def test_idempotent_when_status_already_ready(self) -> None:
+        repo = Mock()
+        repo.get_turn.return_value = {
+            "id": "t1",
+            "conversation_id": "c1",
+            "resolved_context_json": {
+                "outfits": [{
+                    "rank": 1, "title": "Outfit 1", "items": [],
+                    "visual_evaluation_status": "ready",
+                    "body_harmony_pct": 88,
+                }],
+            },
+        }
+        gw = Mock()
+        orchestrator = self._build_orchestrator(repo, gw)
+        out = orchestrator.run_on_demand_visual_eval(turn_id="t1", rank=1)
+        # No evaluator call, no DB write, no extra log_model_call.
+        orchestrator.visual_evaluator.evaluate_candidate.assert_not_called()
+        repo.update_turn_resolved_context.assert_not_called()
+        self.assertEqual(88, out["body_harmony_pct"])
+
+    def test_pending_outfit_runs_evaluator_and_persists(self) -> None:
+        from agentic_application.schemas import EvaluatedRecommendation
+        repo = Mock()
+        repo.get_turn.return_value = {
+            "id": "t1",
+            "conversation_id": "c1",
+            "resolved_context_json": {
+                "outfits": [{
+                    "rank": 1, "title": "Outfit 1",
+                    "items": [{"product_id": "p-1", "title": "Top"}],
+                    "visual_evaluation_status": "pending",
+                    "body_harmony_pct": 70, "color_suitability_pct": 65,
+                    "match_score": 0.82,
+                }],
+                "live_context": {"user_need": "office wear", "occasion_signal": "office"},
+                "intent_classification": {"primary_intent": Intent.OCCASION_RECOMMENDATION},
+                "profile_confidence": {"score_pct": 80},
+            },
+        }
+        repo.get_conversation.return_value = {"id": "c1", "user_id": "db-user"}
+        repo.get_user_by_id.return_value = {"id": "db-user", "external_user_id": "user-1"}
+        repo.find_tryon_image_by_garments.return_value = {"file_path": "/tmp/tryon.png"}
+        repo.log_model_call.return_value = {"id": "log-1"}
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True, "style_preference_complete": True,
+            "images_uploaded": ["full_body"], "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
+        }
+        gw.get_wardrobe_items.return_value = []
+        gw.get_person_image_path.return_value = "/tmp/person.jpg"
+
+        orchestrator = self._build_orchestrator(repo, gw)
+        orchestrator.visual_evaluator.evaluate_candidate.return_value = EvaluatedRecommendation(
+            candidate_id="c1", rank=1, match_score=0.82,
+            reasoning="An expanded read.",
+            body_note="Balanced.", color_note="Cool.", style_note="Refined.", occasion_note="Office.",
+            body_harmony_pct=88, color_suitability_pct=84, style_fit_pct=82,
+            risk_tolerance_pct=70, comfort_boundary_pct=78,
+            occasion_pct=90, classic_pct=70, dramatic_pct=10, romantic_pct=15,
+            natural_pct=20, minimalist_pct=55, creative_pct=10, sporty_pct=10, edgy_pct=10,
+        )
+        out = orchestrator.run_on_demand_visual_eval(turn_id="t1", rank=1)
+        # Evaluator was called with the cached tryon path, not the bare person photo.
+        eval_kwargs = orchestrator.visual_evaluator.evaluate_candidate.call_args.kwargs
+        self.assertEqual("/tmp/tryon.png", eval_kwargs["image_path"])
+        # Outfit got the full evaluator output and was promoted to "ready".
+        self.assertEqual("ready", out["visual_evaluation_status"])
+        self.assertEqual(88, out["body_harmony_pct"])
+        self.assertEqual("Balanced.", out["body_note"])
+        self.assertEqual(70, out["classic_pct"])
+        # Persisted to the turn so re-opens see the same data.
+        repo.update_turn_resolved_context.assert_called_once()
+        # Cost rolled up via log_model_call.
+        log_kwargs = repo.log_model_call.call_args.kwargs
+        self.assertEqual("visual_evaluator_on_demand", log_kwargs["call_type"])
+
+    def test_unknown_rank_raises(self) -> None:
+        repo = Mock()
+        repo.get_turn.return_value = {
+            "id": "t1", "conversation_id": "c1",
+            "resolved_context_json": {"outfits": [{"rank": 1, "title": "Outfit 1"}]},
+        }
+        gw = Mock()
+        orchestrator = self._build_orchestrator(repo, gw)
+        with self.assertRaises(ValueError):
+            orchestrator.run_on_demand_visual_eval(turn_id="t1", rank=99)
+
+
+class RaterOnlyPipelineTests(unittest.TestCase):
+    """May 5, 2026 — recommendation pipeline ships Rater-only dims by default.
+    visual_evaluator no longer runs inline; outfits arrive with
+    visual_evaluation_status="pending" and the 4 Rater dims mapped onto
+    occasion_pct / body_harmony_pct / color_suitability_pct / style_fit_pct.
+    """
+
+    def test_rater_dims_flow_through_to_outfit_card(self) -> None:
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+            RecommendationPlan, DirectionSpec, QuerySpec, ResolvedContextBlock,
+            OutfitCard, RecommendationResponse,
+        )
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {"id": "c1", "user_id": "db-user", "session_context_json": {}}
+        repo.create_turn.return_value = {"id": "t1"}
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True, "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"], "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
+        }
+        gw.get_wardrobe_items.return_value = []
+        # No person photo → tryon_render skipped, but Rater promotion still runs.
+        gw.get_person_image_path.return_value = ""
+
+        plan = RecommendationPlan(
+            directions=[DirectionSpec(
+                direction_id="d1", label="t", direction_type="paired", rationale="r",
+                queries=[QuerySpec(query_id="A1", role="top", query_document="t"),
+                         QuerySpec(query_id="A2", role="bottom", query_document="b")],
+            )],
+            resolved_context=ResolvedContextBlock(),
+        )
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent=Intent.OCCASION_RECOMMENDATION, intent_confidence=0.9,
+            action=Action.RUN_RECOMMENDATION_PIPELINE, context_sufficient=True,
+            assistant_message="ok.", follow_up_suggestions=[],
+            resolved_context=CopilotResolvedContext(occasion_signal="office"),
+            action_parameters=CopilotActionParameters(),
+        )
+
+        candidate = OutfitCandidate(
+            candidate_id="hi-0", direction_id="d1", candidate_type="paired",
+            items=[{"product_id": "p1", "title": "T"}],
+            fashion_score=88,
+            occasion_fit=92, body_harmony=84, color_harmony=80, archetype_match=78,
+            rater_rationale="A confident pairing.",
+        )
+
+        captured: dict = {}
+        def fake_format(evaluated, *a, **kw):
+            captured["evaluated"] = list(evaluated)
+            outfits = [
+                OutfitCard(
+                    rank=e.rank, title=e.title, reasoning=e.reasoning,
+                    body_harmony_pct=e.body_harmony_pct,
+                    color_suitability_pct=e.color_suitability_pct,
+                    style_fit_pct=e.style_fit_pct,
+                    occasion_pct=e.occasion_pct,
+                    visual_evaluation_status=e.visual_evaluation_status,
+                    items=[{"product_id": "p1", "title": "T", "image_url": ""}],
+                )
+                for e in evaluated
+            ]
+            return RecommendationResponse(
+                message="ok", outfits=outfits, follow_up_suggestions=[], metadata={},
+            )
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway") as gw_cls, \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock), \
+             patch("agentic_application.orchestrator.CatalogSearchAgent") as search_cls, \
+             patch("agentic_application.orchestrator.OutfitComposer") as composer_cls, \
+             patch("agentic_application.orchestrator.OutfitRater") as rater_cls, \
+             patch("agentic_application.orchestrator.ResponseFormatter") as formatter_cls:
+            architect_cls.return_value.plan.return_value = plan
+            _wire_llm_ranker_via_patches(composer_cls, rater_cls, [candidate])
+            search_cls.return_value.search.return_value = [
+                RetrievedSet(direction_id="A", query_id="A1", role="complete",
+                             products=[RetrievedProduct(product_id="p1", title="T",
+                                                        image_url="", price="", product_url="",
+                                                        garment_category="top", garment_subtype="",
+                                                        primary_color="navy", source="catalog")]),
+            ]
+            gw_cls.return_value.get_catalog_inventory.return_value = [{"id": "p1", "title": "T"}]
+            gw_cls.return_value.search.return_value = []
+            formatter_cls.return_value.format.side_effect = fake_format
+            from agentic_application.orchestrator import AgenticOrchestrator
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            result = orchestrator.process_turn(
+                conversation_id="c1", external_user_id="user-1",
+                message="Office outfit",
+            )
+
+        self.assertEqual(1, len(result["outfits"]))
+        # Rater dims map onto the OutfitCard slots.
+        self.assertEqual(84, result["outfits"][0]["body_harmony_pct"])
+        self.assertEqual(80, result["outfits"][0]["color_suitability_pct"])
+        self.assertEqual(78, result["outfits"][0]["style_fit_pct"])
+        self.assertEqual(92, result["outfits"][0]["occasion_pct"])
+        # Status pending → UI shows compact view + CTA.
+        self.assertEqual("pending", result["outfits"][0]["visual_evaluation_status"])
+        # Rater rationale is the card reasoning.
+        self.assertEqual("A confident pairing.", result["outfits"][0]["reasoning"])
 
 
 class ArchitectPromptAssemblyTests(unittest.TestCase):

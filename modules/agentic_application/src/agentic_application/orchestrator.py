@@ -1584,6 +1584,7 @@ class AgenticOrchestrator:
                 profile_confidence=profile_confidence,
                 attached_item=attached_item,
                 raw_image_data=image_data,
+                trace=trace,
             )
         elif plan_result.action == Action.RUN_GARMENT_EVALUATION:
             handler_result = self._handle_garment_evaluation(
@@ -1598,6 +1599,7 @@ class AgenticOrchestrator:
                 user_context=user_context,
                 profile_confidence=profile_confidence,
                 attached_item=attached_item,
+                trace=trace,
             )
         elif plan_result.action == Action.SAVE_WARDROBE_ITEM:
             handler_result = self._handle_planner_wardrobe_save(
@@ -3607,6 +3609,7 @@ class AgenticOrchestrator:
                     "creative_pct": row.creative_pct,
                     "sporty_pct": row.sporty_pct,
                     "edgy_pct": row.edgy_pct,
+                    "visual_evaluation_status": row.visual_evaluation_status,
                 }
                 for row in evaluated
             ],
@@ -4968,11 +4971,22 @@ class AgenticOrchestrator:
                 "rendered_with_image_count": 0,
                 "rendered_without_image_count": 0,
             }
+            # May 5, 2026: visual_evaluation moved to an on-demand action.
+            # The default flow ships Rater-only dims; the user can request
+            # the full visual evaluator read via POST /v1/turns/{turn_id}/
+            # outfits/{rank}/visual-eval. We still render top-N via Gemini
+            # so every shipped card has a try-on image and the user can
+            # scrutinise any one of them with a click.
             if person_image_path and ranked_pool:
                 visual_path_attempted = True
+                rendered: List[tuple[OutfitCandidate, str]] = []
                 try:
-                    emit("visual_evaluation", "started", ctx={"target_count": self.recommendation_final_top_n})
-                    trace_start("visual_evaluation", model="gpt-5-mini", input_summary=f"pool={len(ranked_pool)}, target={self.recommendation_final_top_n}")
+                    emit("tryon_render", "started", ctx={"target_count": self.recommendation_final_top_n})
+                    trace_start(
+                        "tryon_render",
+                        model="gemini-3.1-flash-image-preview",
+                        input_summary=f"pool={len(ranked_pool)}, target={self.recommendation_final_top_n}",
+                    )
                     rendered, tryon_stats = self._render_candidates_for_visual_eval(
                         candidates=ranked_pool,
                         person_image_path=str(person_image_path),
@@ -4982,90 +4996,64 @@ class AgenticOrchestrator:
                         target_count=self.recommendation_final_top_n,
                         trace=trace,
                     )
-                    if rendered:
-                        evaluated = self._evaluate_candidates_visually(
-                            rendered=rendered,
-                            user_context=user_context,
-                            live_context=combined_context.live,
-                            intent=intent.primary_intent,
-                            profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
-                        )
-                        evaluator_path = "visual"
-                    emit("visual_evaluation", "completed", ctx={"evaluated_count": len(evaluated)})
-                    trace_end("visual_evaluation", output_summary=f"{len(evaluated)} evaluated, path=visual")
-                except Exception as _ve_exc:
+                    emit("tryon_render", "completed", ctx={
+                        "rendered_count": sum(1 for _, p in rendered if p),
+                        "attempted_count": tryon_stats.get("tryon_attempted_count", 0),
+                    })
+                    trace_end(
+                        "tryon_render",
+                        output_summary=f"{sum(1 for _, p in rendered if p)}/{len(rendered)} rendered",
+                    )
+                except Exception as _tryon_exc:
                     _log.warning(
-                        "Visual evaluator path failed; will fall back to fashion_score promotion",
+                        "Try-on render failed; cards will ship without a render",
                         exc_info=True,
                     )
-                    emit("visual_evaluation", "error")
-                    trace_end("visual_evaluation", status="error", error=str(_ve_exc)[:200])
-                    evaluated = []
+                    emit("tryon_render", "error")
+                    trace_end("tryon_render", status="error", error=str(_tryon_exc)[:200])
+                    rendered = []
 
-            if not evaluated:
-                # Visual evaluator wasn't attempted (no person photo) or
-                # failed. Rather than ship zero outfits, promote the
-                # top-by-fashion_score candidates with neutral
-                # vision-grounded scores. Real products + real images,
-                # just no body/color/style breakdown for this turn.
-                _log.warning(
-                    "Visual evaluator produced zero results for turn %s; "
-                    "promoting top candidates by fashion_score (inline fallback)",
-                    turn_id,
-                )
-                evaluator_path = "fashion_score_fallback"
-                top_n = self.recommendation_final_top_n
-                fallback_candidates = sorted(
-                    ranked_pool,
-                    key=lambda c: c.fashion_score,
-                    reverse=True,
-                )[:top_n]
-                fallback_pct = 65  # neutral — better than 0, not as good as visual
-                for rank, candidate in enumerate(fallback_candidates, 1):
-                    evaluated.append(
-                        EvaluatedRecommendation(
-                            candidate_id=candidate.candidate_id,
-                            rank=rank,
-                            match_score=candidate.fashion_score / 100.0,
-                            title=f"Outfit {rank}",
-                            reasoning=candidate.rater_rationale or "Rated by stylist (visual evaluator unavailable this turn).",
-                            body_harmony_pct=fallback_pct,
-                            color_suitability_pct=fallback_pct,
-                            style_fit_pct=fallback_pct,
-                            risk_tolerance_pct=fallback_pct,
-                            comfort_boundary_pct=fallback_pct,
-                            item_ids=sorted(
-                                str(item.get("product_id", ""))
-                                for item in (candidate.items or [])
-                                if item.get("product_id")
-                            ),
-                        )
+            evaluator_path = "rater_only"
+            top_n = self.recommendation_final_top_n
+            promoted_candidates = sorted(
+                ranked_pool,
+                key=lambda c: c.fashion_score,
+                reverse=True,
+            )[:top_n]
+            for rank, candidate in enumerate(promoted_candidates, 1):
+                evaluated.append(
+                    EvaluatedRecommendation(
+                        candidate_id=candidate.candidate_id,
+                        rank=rank,
+                        match_score=candidate.fashion_score / 100.0,
+                        title=f"Outfit {rank}",
+                        reasoning=candidate.rater_rationale or "Rated by stylist.",
+                        # Map Rater's 4 dims onto the radar slots the UI
+                        # already knows. archetype_match → style_fit_pct
+                        # is the closest semantic fit (style match against
+                        # the user's archetype). occasion_pct is Optional
+                        # so we set it explicitly.
+                        body_harmony_pct=int(candidate.body_harmony or 0),
+                        color_suitability_pct=int(candidate.color_harmony or 0),
+                        style_fit_pct=int(candidate.archetype_match or 0),
+                        occasion_pct=int(candidate.occasion_fit or 0),
+                        # Vision-grounded dims left at defaults — they
+                        # populate when the user clicks "Get a deeper read".
+                        visual_evaluation_status="pending",
+                        item_ids=sorted(
+                            str(item.get("product_id", ""))
+                            for item in (candidate.items or [])
+                            if item.get("product_id")
+                        ),
                     )
+                )
 
             evaluator_ms = int((time.monotonic() - t0) * 1000)
-            # Item 4 (May 1, 2026): pull token usage from the visual
-            # evaluator. last_usage reflects the most recent candidate
-            # eval, which is the appropriate denominator since the
-            # parallel pool calls its agent per-candidate.
-            _eval_usage = getattr(self.visual_evaluator, "last_usage", {}) or {}
-            trace.add_model_cost_from_row(self.repo.log_model_call(
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                service="agentic_application",
-                call_type="outfit_evaluator",
-                model="gpt-5-mini",
-                request_json={
-                    "candidate_count": len(candidates),
-                    "evaluator_path": evaluator_path,
-                    "visual_path_attempted": visual_path_attempted,
-                },
-                response_json={"evaluation_count": len(evaluated)},
-                reasoning_notes=[],
-                latency_ms=evaluator_ms,
-                prompt_tokens=_eval_usage.get("prompt_tokens"),
-                completion_tokens=_eval_usage.get("completion_tokens"),
-                total_tokens=_eval_usage.get("total_tokens"),
-            ))
+            _log.info(
+                "rater_only promotion: %d candidates promoted in %dms",
+                len(evaluated),
+                evaluator_ms,
+            )
 
             # Confidence gate (May 3 2026): The Rater + threshold have
             # already filtered the pre-render pool. This second pass is
@@ -5231,11 +5219,12 @@ class AgenticOrchestrator:
                 "try rephrasing or adjusting your request."
             )
 
-        emit("virtual_tryon", "started")
-        trace_start("virtual_tryon", model="gemini-3.1-flash", input_summary=f"{len(response.outfits)} outfits")
+        # Post-format cache lookup; actual Gemini renders ran earlier under tryon_render.
+        emit("attach_tryon_images", "started")
+        trace_start("attach_tryon_images", input_summary=f"{len(response.outfits)} outfits")
         self._attach_tryon_images(response.outfits, external_user_id, conversation_id=conversation_id, turn_id=turn_id)
-        emit("virtual_tryon", "completed")
-        trace_end("virtual_tryon", output_summary=f"{len(response.outfits)} outfits attached")
+        emit("attach_tryon_images", "completed")
+        trace_end("attach_tryon_images", output_summary=f"{len(response.outfits)} outfits attached")
 
         self._persist_catalog_interactions(
             external_user_id=external_user_id,
@@ -5802,7 +5791,10 @@ class AgenticOrchestrator:
         profile_confidence: ProfileConfidence,
         attached_item: Dict[str, Any] | None = None,
         raw_image_data: str = "",
+        trace: Optional[TurnTraceBuilder] = None,
     ) -> Dict[str, Any]:
+        if trace is None:
+            trace = _NO_OP_TRACE
         occasion_signal = str(plan_result.resolved_context.occasion_signal or "").strip() or None
         image_path = str((attached_item or {}).get("image_path") or "").strip()
 
@@ -5906,7 +5898,7 @@ class AgenticOrchestrator:
 
         # Item 4 (May 1, 2026): pull token usage from visual evaluator.
         _check_usage = getattr(self.visual_evaluator, "last_usage", {}) or {}
-        self.repo.log_model_call(
+        trace.add_model_cost_from_row(self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
@@ -5923,7 +5915,7 @@ class AgenticOrchestrator:
             prompt_tokens=_check_usage.get("prompt_tokens"),
             completion_tokens=_check_usage.get("completion_tokens"),
             total_tokens=_check_usage.get("total_tokens"),
-        )
+        ))
 
         wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
 
@@ -6204,7 +6196,10 @@ class AgenticOrchestrator:
         user_context: Any,
         profile_confidence: ProfileConfidence,
         attached_item: Dict[str, Any] | None = None,
+        trace: Optional[TurnTraceBuilder] = None,
     ) -> Dict[str, Any]:
+        if trace is None:
+            trace = _NO_OP_TRACE
         """Phase 12B garment_evaluation pipeline:
 
             try-on → VisualEvaluatorAgent → formatter (with optional verdict)
@@ -6273,11 +6268,38 @@ class AgenticOrchestrator:
         tryon_failure_reason = ""
         if person_image_path:
             try:
+                _tryon_t0 = time.monotonic()
                 tryon_result = self.tryon_service.generate_tryon(
                     person_image_path=person_image_path,
                     product_image_url=garment_image_path,
                 )
-                if tryon_result.get("success"):
+                _tryon_ms = int((time.monotonic() - _tryon_t0) * 1000)
+                _tryon_succeeded = bool(tryon_result.get("success"))
+                try:
+                    _tryon_row = self.repo.log_model_call(
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        service="agentic_application",
+                        call_type="virtual_tryon",
+                        model="gemini-3.1-flash-image-preview",
+                        request_json={
+                            "handler": Intent.GARMENT_EVALUATION,
+                            "garment_image": garment_image_path,
+                        },
+                        response_json={
+                            "success": _tryon_succeeded,
+                            "mime_type": tryon_result.get("mime_type"),
+                        },
+                        reasoning_notes=[],
+                        latency_ms=_tryon_ms,
+                        status="ok" if _tryon_succeeded else "error",
+                        error_message=str(tryon_result.get("error") or "") if not _tryon_succeeded else "",
+                        image_count=1 if _tryon_succeeded else 0,
+                    )
+                    trace.add_model_cost_from_row(_tryon_row)
+                except Exception:  # noqa: BLE001 — telemetry never breaks pipeline
+                    _log.warning("Failed to persist garment_evaluation tryon model_call_log", exc_info=True)
+                if _tryon_succeeded:
                     quality = self.tryon_quality_gate.evaluate(
                         person_image_path=person_image_path,
                         tryon_result=tryon_result,
@@ -6348,7 +6370,7 @@ class AgenticOrchestrator:
 
         # Item 4 (May 1, 2026): pull token usage from visual evaluator.
         _ge_usage = getattr(self.visual_evaluator, "last_usage", {}) or {}
-        self.repo.log_model_call(
+        trace.add_model_cost_from_row(self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
@@ -6365,7 +6387,7 @@ class AgenticOrchestrator:
             prompt_tokens=_ge_usage.get("prompt_tokens"),
             completion_tokens=_ge_usage.get("completion_tokens"),
             total_tokens=_ge_usage.get("total_tokens"),
-        )
+        ))
 
         # Stage 3: Deterministic wardrobe overlap + versatility (no LLM)
         wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
@@ -6704,6 +6726,208 @@ class AgenticOrchestrator:
             "complement_categories": complement_categories,
             "rating": rating,
         }
+
+    def run_on_demand_visual_eval(
+        self,
+        *,
+        turn_id: str,
+        rank: int,
+    ) -> Dict[str, Any]:
+        """Run the visual evaluator on a single previously-shipped outfit.
+
+        Default recommendation turns ship cards with Rater dims only and
+        ``visual_evaluation_status="pending"``. When the user clicks
+        "Get a deeper read" on a card, the API calls into here to:
+
+          1. reconstruct the outfit from the turn's resolved_context_json
+          2. find the cached try-on render path (cold renders never happen
+             here — the recommendation pipeline already rendered the top-N)
+          3. invoke ``visual_evaluator.evaluate_candidate(...)``
+          4. patch the outfit + recommendations rows in resolved_context_json
+             with the 17 dims + 4 notes, flip status → "ready"
+          5. log the model call so per-turn cost rolls up
+
+        Idempotent: clicking again on a "ready" card returns the cached
+        outfit without re-running the evaluator.
+        """
+        turn = self.repo.get_turn(turn_id)
+        if not turn:
+            raise ValueError(f"Turn {turn_id} not found.")
+        resolved = dict(turn.get("resolved_context_json") or {})
+        outfits = list(resolved.get("outfits") or [])
+        if not outfits:
+            raise ValueError(f"Turn {turn_id} has no outfits.")
+        idx = next(
+            (i for i, o in enumerate(outfits) if int(o.get("rank") or 0) == int(rank)),
+            -1,
+        )
+        if idx < 0:
+            raise ValueError(f"Outfit rank {rank} not found on turn {turn_id}.")
+        outfit = dict(outfits[idx])
+
+        if str(outfit.get("visual_evaluation_status") or "ready") == "ready":
+            return outfit
+
+        conversation_id = str(turn.get("conversation_id") or "")
+        conversation = self.repo.get_conversation(conversation_id)
+        if not conversation:
+            raise ValueError(f"Conversation {conversation_id} not found.")
+        user_row = self.repo.get_user_by_id(str(conversation.get("user_id") or ""))
+        if not user_row:
+            raise ValueError("User not found for this turn.")
+        external_user_id = str(user_row.get("external_user_id") or "")
+        if not external_user_id:
+            raise ValueError("External user id missing.")
+
+        # Find the cached tryon render — same lookup the renderer uses.
+        # If the render isn't cached we still attempt the eval against
+        # the bare attached image so the user gets some signal back.
+        garment_ids = sorted(
+            str(item.get("product_id", "")).strip()
+            for item in (outfit.get("items") or [])
+            if str(item.get("product_id", "")).strip()
+        )
+        image_path = ""
+        if garment_ids:
+            try:
+                cached = self.repo.find_tryon_image_by_garments(external_user_id, garment_ids)
+                if cached and cached.get("file_path"):
+                    image_path = str(cached["file_path"])
+            except Exception:  # noqa: BLE001 — fall through to attribute-only eval
+                _log.warning("on-demand eval: tryon cache lookup failed", exc_info=True)
+        if not image_path:
+            person_image = self.onboarding_gateway.get_person_image_path(external_user_id)
+            image_path = str(person_image or "")
+
+        user_context = build_user_context(
+            external_user_id,
+            onboarding_gateway=self.onboarding_gateway,
+        )
+
+        live_dump = dict(resolved.get("live_context") or {})
+        live_context = LiveContext(**{
+            "user_need": str(live_dump.get("user_need") or ""),
+            "occasion_signal": live_dump.get("occasion_signal"),
+            "formality_hint": live_dump.get("formality_hint"),
+            "time_hint": live_dump.get("time_hint"),
+            "specific_needs": list(live_dump.get("specific_needs") or []),
+            "is_followup": bool(live_dump.get("is_followup")),
+            "followup_intent": live_dump.get("followup_intent"),
+            "anchor_garment": live_dump.get("anchor_garment"),
+            "weather_context": str(live_dump.get("weather_context") or ""),
+            "time_of_day": str(live_dump.get("time_of_day") or ""),
+            "target_product_type": str(live_dump.get("target_product_type") or ""),
+        })
+
+        intent_class = dict(resolved.get("intent_classification") or {})
+        intent = str(intent_class.get("primary_intent") or Intent.OCCASION_RECOMMENDATION)
+        profile_pct = int((resolved.get("profile_confidence") or {}).get("score_pct", 0))
+
+        candidate = OutfitCandidate(
+            candidate_id=str(outfit.get("title") or f"outfit-{rank}"),
+            direction_id="on_demand",
+            candidate_type="paired",
+            items=list(outfit.get("items") or []),
+            fashion_score=int((float(outfit.get("match_score") or 0.0)) * 100),
+        )
+
+        _t0 = time.monotonic()
+        evaluation = self.visual_evaluator.evaluate_candidate(
+            candidate=candidate,
+            image_path=image_path,
+            user_context=user_context,
+            live_context=live_context,
+            intent=intent,
+            mode="recommendation",
+            profile_confidence_pct=profile_pct,
+        )
+        _ms = int((time.monotonic() - _t0) * 1000)
+
+        try:
+            _eval_usage = getattr(self.visual_evaluator, "last_usage", {}) or {}
+            self.repo.log_model_call(
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                service="agentic_application",
+                call_type="visual_evaluator_on_demand",
+                model="gpt-5-mini",
+                request_json={"rank": rank, "intent": intent},
+                response_json={"status": "ready"},
+                reasoning_notes=[],
+                latency_ms=_ms,
+                prompt_tokens=_eval_usage.get("prompt_tokens"),
+                completion_tokens=_eval_usage.get("completion_tokens"),
+                total_tokens=_eval_usage.get("total_tokens"),
+            )
+        except Exception:  # noqa: BLE001 — telemetry never breaks the response
+            _log.warning("on-demand eval: log_model_call failed", exc_info=True)
+
+        # Merge evaluator output back onto the persisted outfit dict.
+        # 4 notes + 17 dims + status. Items, tryon_image, rank, title
+        # stay as-is so the card renders identically apart from the
+        # newly populated radar slices.
+        outfit.update({
+            "reasoning": evaluation.reasoning or outfit.get("reasoning") or "",
+            "body_note": evaluation.body_note,
+            "color_note": evaluation.color_note,
+            "style_note": evaluation.style_note,
+            "occasion_note": evaluation.occasion_note,
+            "body_harmony_pct": evaluation.body_harmony_pct,
+            "color_suitability_pct": evaluation.color_suitability_pct,
+            "style_fit_pct": evaluation.style_fit_pct,
+            "risk_tolerance_pct": evaluation.risk_tolerance_pct,
+            "comfort_boundary_pct": evaluation.comfort_boundary_pct,
+            "occasion_pct": evaluation.occasion_pct,
+            "specific_needs_pct": evaluation.specific_needs_pct,
+            "weather_time_pct": evaluation.weather_time_pct,
+            "pairing_coherence_pct": evaluation.pairing_coherence_pct,
+            "classic_pct": evaluation.classic_pct,
+            "dramatic_pct": evaluation.dramatic_pct,
+            "romantic_pct": evaluation.romantic_pct,
+            "natural_pct": evaluation.natural_pct,
+            "minimalist_pct": evaluation.minimalist_pct,
+            "creative_pct": evaluation.creative_pct,
+            "sporty_pct": evaluation.sporty_pct,
+            "edgy_pct": evaluation.edgy_pct,
+            "visual_evaluation_status": "ready",
+        })
+        outfits[idx] = outfit
+
+        # Mirror onto the parallel `recommendations` array so analytics
+        # queries that read recommendations stay consistent with what
+        # the user is seeing on the card.
+        recs = list(resolved.get("recommendations") or [])
+        rec_idx = next(
+            (i for i, r in enumerate(recs) if int(r.get("rank") or 0) == int(rank)),
+            -1,
+        )
+        if rec_idx >= 0:
+            rec = dict(recs[rec_idx])
+            rec.update({
+                k: outfit[k] for k in (
+                    "body_note", "color_note", "style_note", "occasion_note",
+                    "body_harmony_pct", "color_suitability_pct", "style_fit_pct",
+                    "risk_tolerance_pct", "comfort_boundary_pct",
+                    "occasion_pct", "specific_needs_pct", "weather_time_pct",
+                    "pairing_coherence_pct",
+                    "classic_pct", "dramatic_pct", "romantic_pct", "natural_pct",
+                    "minimalist_pct", "creative_pct", "sporty_pct", "edgy_pct",
+                    "visual_evaluation_status",
+                ) if k in outfit
+            })
+            recs[rec_idx] = rec
+            resolved["recommendations"] = recs
+
+        resolved["outfits"] = outfits
+        try:
+            self.repo.update_turn_resolved_context(
+                turn_id=turn_id,
+                resolved_context=resolved,
+            )
+        except Exception:  # noqa: BLE001
+            _log.warning("on-demand eval: failed to persist updated outfit", exc_info=True)
+
+        return outfit
 
     @staticmethod
     def _compute_purchase_verdict(
