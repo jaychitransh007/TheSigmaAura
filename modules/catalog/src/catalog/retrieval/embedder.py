@@ -1,5 +1,5 @@
 import logging
-from functools import cached_property
+from functools import lru_cache
 from typing import Iterable, List
 
 from openai import OpenAI
@@ -13,14 +13,27 @@ logger = logging.getLogger(__name__)
 
 EMBED_BATCH_SIZE = 50
 
+# 10s per request, 2 retries (default) → fail-fast tail of ~30s
+# instead of the SDK default 60s × 3 = 3min on stuck connections.
+# May-5 2026: previously the retrieval gateway built a fresh
+# CatalogEmbedder per orchestrator → fresh OpenAI() → cold TLS/DNS
+# on the first embed of every turn, which we measured at 4.5–6.6s
+# for a single short query. Sharing the client across all gateway
+# instances re-uses the underlying httpx connection pool.
+_EMBEDDING_TIMEOUT_SECONDS = 10.0
+
+
+@lru_cache(maxsize=1)
+def _shared_openai_client() -> OpenAI:
+    return OpenAI(api_key=get_api_key(), timeout=_EMBEDDING_TIMEOUT_SECONDS)
+
 
 class CatalogEmbedder:
     def __init__(self, config: CatalogEmbeddingConfig) -> None:
-        # May 1, 2026 (CI fix): lazy OpenAI client. The retrieval gateway
-        # constructs CatalogEmbedder eagerly from the orchestrator's
-        # __init__ even in tests where the embedder is never used; deferring
-        # the API-key load until first embed_documents call keeps the
-        # constructor env-free.
+        # Lazy OpenAI client (May 1, 2026): retrieval gateway builds the
+        # embedder eagerly from the orchestrator's __init__ even in tests
+        # where it's never used; deferring the API-key load to first
+        # embed call keeps the constructor env-free.
         self._config = config
         # Token usage from the most recent embed_texts call. Surfaced
         # for the orchestrator's per-turn cost rollup so the embedding
@@ -28,9 +41,9 @@ class CatalogEmbedder:
         # alongside the LLM and try-on costs.
         self.last_usage: dict = {"prompt_tokens": 0, "total_tokens": 0}
 
-    @cached_property
+    @property
     def _client(self) -> OpenAI:
-        return OpenAI(api_key=get_api_key())
+        return _shared_openai_client()
 
     def embed_documents(self, documents: Iterable[CatalogDocument]) -> List[CatalogEmbeddingRecord]:
         docs = list(documents)
