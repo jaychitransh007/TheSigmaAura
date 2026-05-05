@@ -234,7 +234,12 @@ def _build_user_payload(ctx: CombinedContext) -> str:
 
 
 class OutfitArchitect:
-    _ALLOWED_EFFORTS = frozenset({"low", "medium", "high"})
+    # gpt-5.4 reasoning_effort vocabulary per OpenAI docs.
+    # No "minimal" (gpt-5-mini-only); no "none" (gpt-5.1+).
+    # xhigh added PR #53 review — config validation accepts it so the
+    # constructor must too, otherwise env var passes config but fails
+    # at construction time.
+    _ALLOWED_EFFORTS = frozenset({"low", "medium", "high", "xhigh"})
 
     def __init__(
         self,

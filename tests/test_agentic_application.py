@@ -6302,7 +6302,9 @@ class ArchitectConstructorValidationTests(unittest.TestCase):
     """
 
     def test_accepts_valid_efforts(self) -> None:
-        for effort in ("low", "medium", "high"):
+        # PR #53 review: xhigh added to the allowed set so env-var
+        # configs can use the full gpt-5.4/5.5 vocabulary.
+        for effort in ("low", "medium", "high", "xhigh"):
             OutfitArchitect(reasoning_effort=effort)  # no raise
 
     def test_rejects_invalid_effort(self) -> None:
@@ -6310,11 +6312,47 @@ class ArchitectConstructorValidationTests(unittest.TestCase):
             OutfitArchitect(reasoning_effort="very_high")
         self.assertIn("reasoning_effort", str(ctx.exception))
 
+    def test_rejects_minimal_effort(self) -> None:
+        # "minimal" is gpt-5-mini-only per OpenAI docs; gpt-5.4 doesn't
+        # accept it. Validator catches the API mismatch at construction.
+        with self.assertRaises(ValueError) as ctx:
+            OutfitArchitect(reasoning_effort="minimal")
+        self.assertIn("reasoning_effort", str(ctx.exception))
+
     def test_default_is_low(self) -> None:
         # May 5, 2026 latency-fix pass stepped the default down from
         # "medium" → "low" after the turn audit showed architect at
         # 88.9s with 6.5K output tokens at "medium".
         a = OutfitArchitect()
+        self.assertEqual("low", a._reasoning_effort)
+        self.assertEqual("gpt-5.4", a._model)
+
+
+class StyleAdvisorConstructorValidationTests(unittest.TestCase):
+    """PR #53 review follow-up — same validation pattern as
+    ArchitectConstructorValidationTests; gpt-5.4/5.5 vocabulary
+    (no minimal, no none)."""
+
+    def test_accepts_valid_efforts(self) -> None:
+        from agentic_application.agents.style_advisor_agent import StyleAdvisorAgent
+        for effort in ("low", "medium", "high", "xhigh"):
+            StyleAdvisorAgent(reasoning_effort=effort)  # no raise
+
+    def test_rejects_invalid_effort(self) -> None:
+        from agentic_application.agents.style_advisor_agent import StyleAdvisorAgent
+        with self.assertRaises(ValueError) as ctx:
+            StyleAdvisorAgent(reasoning_effort="very_high")
+        self.assertIn("reasoning_effort", str(ctx.exception))
+
+    def test_rejects_minimal_effort(self) -> None:
+        from agentic_application.agents.style_advisor_agent import StyleAdvisorAgent
+        with self.assertRaises(ValueError) as ctx:
+            StyleAdvisorAgent(reasoning_effort="minimal")
+        self.assertIn("reasoning_effort", str(ctx.exception))
+
+    def test_default_is_low(self) -> None:
+        from agentic_application.agents.style_advisor_agent import StyleAdvisorAgent
+        a = StyleAdvisorAgent()
         self.assertEqual("low", a._reasoning_effort)
         self.assertEqual("gpt-5.4", a._model)
 
