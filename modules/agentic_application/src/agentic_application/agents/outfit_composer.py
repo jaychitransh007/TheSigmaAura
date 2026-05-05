@@ -215,9 +215,16 @@ def _user_context_block(ctx: CombinedContext) -> Dict[str, Any]:
         # The IDs are already filtered out of the retrieval pool by
         # `catalog_search_agent`, so the Composer never sees them; and
         # opaque IDs without item attributes don't help the LLM reason
-        # about archetypal dislikes ("loud florals", "boxy fits"). R4
-        # (planned) hydrates these into archetypal signals and surfaces
-        # them via a separate `archetypal_preferences` block.
+        # about archetypal dislikes ("loud florals", "boxy fits").
+        # ── Archetypal preferences (R4, PR #67) ───────────────────────
+        # Aggregated like/dislike axes from recent feedback_events,
+        # joined to catalog_enriched. Each axis lists at most 3 values
+        # with count >= 2. Empty dict on cold-start users. The Rater's
+        # veto rule ("previously-disliked pattern/color") now has real
+        # evidence to draw on; the Composer should also avoid heavily
+        # disliked attributes when constructing outfits in the first
+        # place.
+        "archetypal_preferences": dict(getattr(ctx, "archetypal_preferences", {}) or {}),
     }
 
 
