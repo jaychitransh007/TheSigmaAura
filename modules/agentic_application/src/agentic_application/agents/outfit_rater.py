@@ -2,18 +2,22 @@
 
 Second LLM stage in the new ranker pipeline. Takes the Composer's
 output (up to 10 constructed outfits) plus the user request + context
-and emits a four-dimension rubric score per outfit, a derived
-fashion_score, a rank ordering, and an `unsuitable` veto flag.
+and emits a four-dimension rubric score per outfit and an
+``unsuitable`` veto flag. The orchestrator (or this module's
+``compute_fashion_score`` helper) blends those four sub-scores into a
+final integer ``fashion_score`` and re-ranks accordingly.
 
-Replaces the deterministic Reranker. The fashion_score is a weighted
-blend of `occasion_fit`, `body_harmony`, `color_harmony`,
-`archetype_match` — all 0–100 integers. The blend weights have a
-default and intent-driven overrides; both live in the prompt so the
-model can shift them turn by turn.
+Replaces the deterministic Reranker. The blend weights default to
+``{occasion 0.35, body 0.20, color 0.25, archetype 0.20}`` and shift
+based on the planner's resolved intent (ceremonial, slimming, bold,
+comfortable). R3 (May 5 2026) moved this rule out of the LLM prompt
+and into Python so the math is unit-testable and the override that
+fired is logged.
 
 Audit:
-- model_call_logs gets the full raw request + response.
-- tool_traces gets a distilled `rater_decision` row with
+- model_call_logs gets the full raw request + response, plus the
+  applied weight key (``fashion_score_weight_profile``).
+- tool_traces gets a distilled ``rater_decision`` row with
   per-outfit scores + rationales preserved.
 """
 
@@ -72,8 +76,6 @@ _RATER_JSON_SCHEMA: Dict[str, Any] = {
                     "additionalProperties": False,
                     "required": [
                         "composer_id",
-                        "rank",
-                        "fashion_score",
                         "occasion_fit",
                         "body_harmony",
                         "color_harmony",
@@ -83,8 +85,6 @@ _RATER_JSON_SCHEMA: Dict[str, Any] = {
                     ],
                     "properties": {
                         "composer_id": {"type": "string"},
-                        "rank": {"type": "integer"},
-                        "fashion_score": {"type": "integer"},
                         "occasion_fit": {"type": "integer"},
                         "body_harmony": {"type": "integer"},
                         "color_harmony": {"type": "integer"},
@@ -101,6 +101,145 @@ _RATER_JSON_SCHEMA: Dict[str, Any] = {
         },
     },
 }
+
+
+# ── Weight profiles for fashion_score blending ────────────────────────
+# R3 (May 5 2026): the weight rule moved from the prompt into Python.
+# The Rater emits four sub-scores; the orchestrator picks a profile
+# based on planner-resolved context and computes:
+#
+#     fashion_score = round( Σ subscore × weight )
+#
+# Profiles are total-1.0 distributions over the four dimensions. Adding
+# a new profile = one entry here + one rule in ``select_weight_profile``.
+_DEFAULT_WEIGHT_PROFILE = "default"
+
+WEIGHT_PROFILES: Dict[str, Dict[str, float]] = {
+    "default": {
+        "occasion_fit":    0.35,
+        "body_harmony":    0.20,
+        "color_harmony":   0.25,
+        "archetype_match": 0.20,
+    },
+    # Wedding / festival / ceremonial — occasion fit is the deal-maker;
+    # archetype_match yields ground.
+    "ceremonial": {
+        "occasion_fit":    0.45,
+        "body_harmony":    0.20,
+        "color_harmony":   0.20,
+        "archetype_match": 0.15,
+    },
+    # "Make me look slimmer / taller" — body harmony rises; occasion
+    # holds; archetype yields a touch.
+    "slimming": {
+        "occasion_fit":    0.25,
+        "body_harmony":    0.35,
+        "color_harmony":   0.25,
+        "archetype_match": 0.15,
+    },
+    # "Bold / statement / colorful" — color and archetype lead; occasion
+    # remains relevant but yields the top spot.
+    "bold": {
+        "occasion_fit":    0.20,
+        "body_harmony":    0.20,
+        "color_harmony":   0.35,
+        "archetype_match": 0.25,
+    },
+    # "Comfortable / relaxed" — body comfort and archetype drive; we
+    # care less about strict occasion fit when the user wants relaxed.
+    "comfortable": {
+        "occasion_fit":    0.25,
+        "body_harmony":    0.30,
+        "color_harmony":   0.20,
+        "archetype_match": 0.25,
+    },
+}
+
+
+_CEREMONIAL_OCCASIONS = frozenset({
+    "wedding_traditional",
+    "wedding_western",
+    "wedding",
+    "festival",
+    "sangeet",
+    "mehndi",
+    "engagement",
+    "ceremony",
+    "ceremonial",
+})
+
+# Keyword fragments matched against the lowercased user message
+# (NOT formality_hint — that's a planner classification like
+# "smart_casual" which would false-positive on "casual"-style
+# keywords). Each phrase is intentionally specific so we don't
+# over-match.
+_BOLD_KEYWORDS = ("bold", "statement", "colorful", "colourful", "stand out", "make a pop")
+_SLIMMING_KEYWORDS = ("slimmer", "slimming", "taller", "look thin", "look slim")
+_COMFORTABLE_KEYWORDS = ("comfortable", "comfort", "relaxed")
+
+
+def select_weight_profile(
+    *,
+    user_message: str = "",
+    occasion_signal: str = "",
+    formality_hint: str = "",
+    specific_needs: Sequence[str] = (),
+) -> str:
+    """Return the weight-profile key to apply for this turn.
+
+    Priority:
+        1. ``ceremonial`` — when the planner classified the occasion as
+           wedding / festival / ceremony, occasion fit dominates.
+        2. ``slimming`` — explicit user ask to look slimmer/taller.
+        3. ``bold`` — explicit user ask for a statement / colorful look.
+        4. ``comfortable`` — explicit ask for relaxed/comfortable wear.
+        5. ``default`` — no override.
+
+    Order matters: ``ceremonial`` beats ``comfortable`` (a "comfortable
+    wedding outfit" still cares most about occasion). Slimming and bold
+    are exclusive in practice; first match wins.
+    """
+    occ = (occasion_signal or "").strip().lower()
+    if occ in _CEREMONIAL_OCCASIONS or "ceremon" in occ or "wedding" in occ or "festival" in occ:
+        return "ceremonial"
+    # formality_hint is intentionally NOT in the haystack — it's a
+    # planner classification ("smart_casual", "ceremonial") rather
+    # than user-expressed intent. Matching against it produces false
+    # positives ("smart_casual" → "casual" keyword → wrong profile).
+    needs_blob = " ".join(s.lower() for s in (specific_needs or []))
+    msg = (user_message or "").lower()
+    haystack = f"{msg} {needs_blob}"
+    if any(k in haystack for k in _SLIMMING_KEYWORDS):
+        return "slimming"
+    if any(k in haystack for k in _BOLD_KEYWORDS):
+        return "bold"
+    if any(k in haystack for k in _COMFORTABLE_KEYWORDS):
+        return "comfortable"
+    return _DEFAULT_WEIGHT_PROFILE
+
+
+def compute_fashion_score(
+    *,
+    occasion_fit: int,
+    body_harmony: int,
+    color_harmony: int,
+    archetype_match: int,
+    profile: str = _DEFAULT_WEIGHT_PROFILE,
+) -> int:
+    """Blend the four sub-scores into an integer 0–100 fashion_score.
+
+    Unknown ``profile`` falls back to ``default`` rather than raising —
+    the rule is meant to be lossy-graceful so a misconfigured profile
+    can't take down the recommendation pipeline.
+    """
+    weights = WEIGHT_PROFILES.get(profile) or WEIGHT_PROFILES[_DEFAULT_WEIGHT_PROFILE]
+    raw = (
+        occasion_fit * weights["occasion_fit"]
+        + body_harmony * weights["body_harmony"]
+        + color_harmony * weights["color_harmony"]
+        + archetype_match * weights["archetype_match"]
+    )
+    return _clamp_to_100(int(round(raw)))
 
 
 def _build_outfit_payload(
@@ -172,9 +311,27 @@ class OutfitRater:
         ``retrieved_sets`` is the same pool the Composer saw — we use it
         only to look up each item's full attributes for the Rater's
         prompt.
+
+        R3 (May 5 2026): the LLM only emits the four sub-scores +
+        rationale + unsuitable. ``fashion_score`` and ``rank`` are
+        computed in Python via ``compute_fashion_score`` and the
+        weight profile picked by ``select_weight_profile`` from the
+        planner-resolved context. The LLM's old ``fashion_score`` /
+        ``rank`` fields are no longer in the schema.
         """
         if not composed_outfits:
             return RaterResult(ranked_outfits=[], overall_assessment="weak")
+
+        # Pick the weight profile for this turn before the LLM call so
+        # the choice is logged even if the LLM call errors. Reads from
+        # combined_context.live (the planner's resolved entities).
+        live = combined_context.live
+        weight_profile = select_weight_profile(
+            user_message=getattr(live, "user_need", "") or "",
+            occasion_signal=str(getattr(live, "occasion_signal", "") or ""),
+            formality_hint=str(getattr(live, "formality_hint", "") or ""),
+            specific_needs=list(getattr(live, "specific_needs", []) or []),
+        )
 
         items_by_id: Dict[str, RetrievedProduct] = {}
         for rs in retrieved_sets:
@@ -214,6 +371,7 @@ class OutfitRater:
             return RaterResult(
                 ranked_outfits=[], overall_assessment="weak",
                 raw_response=raw_text, usage=dict(usage),
+                fashion_score_weight_profile=weight_profile,
             )
 
         valid_ids = {o.composer_id for o in composed_outfits}
@@ -223,23 +381,31 @@ class OutfitRater:
             if cid not in valid_ids:
                 _log.warning("OutfitRater: dropping unknown composer_id %s", cid)
                 continue
+            occ = _clamp_to_100(int(raw_o.get("occasion_fit", 0) or 0))
+            bod = _clamp_to_100(int(raw_o.get("body_harmony", 0) or 0))
+            col = _clamp_to_100(int(raw_o.get("color_harmony", 0) or 0))
+            arch = _clamp_to_100(int(raw_o.get("archetype_match", 0) or 0))
             ranked.append(
                 RatedOutfit(
                     composer_id=cid,
-                    rank=int(raw_o.get("rank", 0) or 0),
-                    fashion_score=_clamp_to_100(int(raw_o.get("fashion_score", 0) or 0)),
-                    occasion_fit=_clamp_to_100(int(raw_o.get("occasion_fit", 0) or 0)),
-                    body_harmony=_clamp_to_100(int(raw_o.get("body_harmony", 0) or 0)),
-                    color_harmony=_clamp_to_100(int(raw_o.get("color_harmony", 0) or 0)),
-                    archetype_match=_clamp_to_100(int(raw_o.get("archetype_match", 0) or 0)),
+                    occasion_fit=occ,
+                    body_harmony=bod,
+                    color_harmony=col,
+                    archetype_match=arch,
+                    fashion_score=compute_fashion_score(
+                        occasion_fit=occ,
+                        body_harmony=bod,
+                        color_harmony=col,
+                        archetype_match=arch,
+                        profile=weight_profile,
+                    ),
                     rationale=str(raw_o.get("rationale", "")),
                     unsuitable=bool(raw_o.get("unsuitable", False)),
                 )
             )
 
-        # Renumber ranks defensively in fashion_score-desc order. The
-        # Rater is supposed to do this in the prompt but if it sends a
-        # bad ordering we don't want it to leak downstream.
+        # Rank by computed fashion_score desc (ties: lower composer_id
+        # first — same convention the prompt used to enforce).
         ranked.sort(key=lambda r: (-r.fashion_score, r.composer_id))
         for i, r in enumerate(ranked, start=1):
             r.rank = i
@@ -249,6 +415,7 @@ class OutfitRater:
             overall_assessment=str(raw.get("overall_assessment") or "moderate"),
             raw_response=raw_text,
             usage=dict(usage),
+            fashion_score_weight_profile=weight_profile,
         )
 
 

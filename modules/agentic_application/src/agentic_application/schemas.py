@@ -277,6 +277,11 @@ class RaterResult(BaseModel):
     raw_response: str = ""  # Full LLM JSON, persisted for audit.
     # See ComposerResult.usage — same rationale.
     usage: Dict[str, int] = Field(default_factory=dict)
+    # R3 (May 5 2026): which fashion_score weight profile was applied
+    # this turn. One of WEIGHT_PROFILES keys ("default", "ceremonial",
+    # "slimming", "bold", "comfortable"). Surfaced for telemetry so we
+    # can SQL-grep "how often did the comfortable override fire?"
+    fashion_score_weight_profile: str = "default"
 
 
 # --- Evaluation output ---

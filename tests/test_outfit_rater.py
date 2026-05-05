@@ -1,13 +1,18 @@
-"""Unit tests for OutfitRater (May 3 2026).
+"""Unit tests for OutfitRater.
 
-The Rater scores Composer-built outfits on a 4-dim rubric, computes a
-fashion_score, and emits a ranked list with optional unsuitable veto.
+The Rater scores Composer-built outfits on a 4-dim rubric. R3 (May 5
+2026) moved fashion_score blending out of the LLM and into Python;
+the LLM emits sub-scores only, the agent computes the final score
+with intent-aware weights via ``compute_fashion_score`` and the
+profile picked by ``select_weight_profile``.
+
 LLM is mocked; tests focus on:
 - contract: required fields, ID round-tripping
-- defensive ordering: result is sorted by fashion_score desc even if
-  the LLM emits a bad rank order
-- score clamping: out-of-range scores get pulled to 0..100
+- defensive ordering: result is sorted by computed fashion_score desc
+- sub-score clamping: out-of-range scores get pulled to 0..100
 - empty input short-circuits before the LLM call
+- weight-profile selection: picks correct profile per intent
+- deterministic blend: fashion_score = round(Σ subscore × weight)
 """
 
 from __future__ import annotations
@@ -31,7 +36,12 @@ for p in (
     if sp not in sys.path:
         sys.path.insert(0, sp)
 
-from agentic_application.agents.outfit_rater import OutfitRater
+from agentic_application.agents.outfit_rater import (
+    OutfitRater,
+    WEIGHT_PROFILES,
+    compute_fashion_score,
+    select_weight_profile,
+)
 from agentic_application.schemas import (
     CombinedContext,
     ComposedOutfit,
@@ -157,12 +167,13 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
         self.assertEqual(["C2", "C3", "C1"], [r.composer_id for r in result.ranked_outfits])
         self.assertEqual([1, 2, 3], [r.rank for r in result.ranked_outfits])
 
-    def test_rater_clamps_out_of_range_scores(self) -> None:
-        """LLM occasionally emits scores outside 0..100 (e.g., 0..10
-        scale by mistake). Agent clamps before downstream uses them."""
+    def test_rater_clamps_out_of_range_subscores(self) -> None:
+        """LLM occasionally emits sub-scores outside 0..100 (e.g., 0..10
+        scale by mistake). Agent clamps before computing fashion_score
+        so the blend math stays in range."""
         payload = {
             "ranked_outfits": [
-                {"composer_id": "C1", "rank": 1, "fashion_score": 150,
+                {"composer_id": "C1",
                  "occasion_fit": 200, "body_harmony": -5, "color_harmony": 50, "archetype_match": 9,
                  "rationale": "weird scales", "unsuitable": False},
             ],
@@ -173,11 +184,14 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
             result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
 
         ro = result.ranked_outfits[0]
-        self.assertEqual(100, ro.fashion_score)
+        # Sub-scores clamped to [0, 100]
         self.assertEqual(100, ro.occasion_fit)
         self.assertEqual(0, ro.body_harmony)
         self.assertEqual(50, ro.color_harmony)
         self.assertEqual(9, ro.archetype_match)
+        # Computed fashion_score = round(100*0.35 + 0*0.20 + 50*0.25 + 9*0.20)
+        # = round(35.0 + 0 + 12.5 + 1.8) = round(49.3) = 49
+        self.assertEqual(49, ro.fashion_score)
 
     def test_rater_drops_unknown_composer_ids(self) -> None:
         """The LLM should never invent composer_ids outside the input
@@ -248,6 +262,126 @@ class OutfitRaterEdgeCaseTests(unittest.TestCase):
 
         self.assertEqual(0, len(result.ranked_outfits))
         self.assertEqual("weak", result.overall_assessment)
+
+    def test_rater_emits_weight_profile_on_result(self) -> None:
+        """R3: every RaterResult records the weight profile used so we
+        can SQL-grep override frequencies later."""
+        payload = {
+            "ranked_outfits": [
+                {"composer_id": "C1",
+                 "occasion_fit": 80, "body_harmony": 80, "color_harmony": 80, "archetype_match": 80,
+                 "rationale": "ok", "unsuitable": False},
+            ],
+            "overall_assessment": "moderate",
+        }
+        with patch("agentic_application.agents.outfit_rater.get_api_key", return_value="x"), _patch_rater() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(payload)
+            # Default _ctx() has occasion=daily_office → no override → "default"
+            result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
+        self.assertEqual("default", result.fashion_score_weight_profile)
+
+    def test_rater_picks_ceremonial_profile_on_wedding(self) -> None:
+        ctx = CombinedContext(
+            user=UserContext(user_id="u1", gender="male"),
+            live=LiveContext(user_need="for a friend's wedding", occasion_signal="wedding_traditional"),
+            hard_filters={},
+        )
+        payload = {
+            "ranked_outfits": [
+                {"composer_id": "C1",
+                 "occasion_fit": 90, "body_harmony": 70, "color_harmony": 70, "archetype_match": 70,
+                 "rationale": "ok", "unsuitable": False},
+            ],
+            "overall_assessment": "strong",
+        }
+        with patch("agentic_application.agents.outfit_rater.get_api_key", return_value="x"), _patch_rater() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(payload)
+            result = OutfitRater().rate(ctx, _composed(), _retrieved())
+        self.assertEqual("ceremonial", result.fashion_score_weight_profile)
+        # ceremonial weights: occasion 0.45, body 0.20, color 0.20, archetype 0.15
+        # 90*0.45 + 70*0.20 + 70*0.20 + 70*0.15 = 40.5+14+14+10.5 = 79
+        self.assertEqual(79, result.ranked_outfits[0].fashion_score)
+
+
+class WeightProfileSelectionTests(unittest.TestCase):
+    """select_weight_profile maps planner-resolved context → profile key."""
+
+    def test_default_when_no_signal(self) -> None:
+        self.assertEqual("default", select_weight_profile())
+
+    def test_ceremonial_for_wedding_occasion(self) -> None:
+        self.assertEqual("ceremonial", select_weight_profile(occasion_signal="wedding_traditional"))
+        self.assertEqual("ceremonial", select_weight_profile(occasion_signal="wedding"))
+        self.assertEqual("ceremonial", select_weight_profile(occasion_signal="festival"))
+        self.assertEqual("ceremonial", select_weight_profile(occasion_signal="sangeet"))
+
+    def test_slimming_for_user_message(self) -> None:
+        self.assertEqual("slimming", select_weight_profile(user_message="Make me look slimmer"))
+        self.assertEqual("slimming", select_weight_profile(user_message="something to look taller"))
+
+    def test_bold_for_user_message(self) -> None:
+        self.assertEqual("bold", select_weight_profile(user_message="something bold and colorful"))
+        self.assertEqual("bold", select_weight_profile(user_message="want to make a statement"))
+
+    def test_comfortable_for_user_message(self) -> None:
+        self.assertEqual("comfortable", select_weight_profile(user_message="something comfortable for the day"))
+        self.assertEqual("comfortable", select_weight_profile(user_message="relaxed weekend look"))
+
+    def test_ceremonial_beats_comfortable(self) -> None:
+        """A 'comfortable wedding outfit' is still ceremonial — occasion fit
+        dominates over comfort."""
+        self.assertEqual(
+            "ceremonial",
+            select_weight_profile(
+                user_message="comfortable but festive",
+                occasion_signal="wedding_traditional",
+            ),
+        )
+
+
+class FashionScoreBlendTests(unittest.TestCase):
+    """compute_fashion_score is the deterministic weighted blend."""
+
+    def test_default_profile_blend(self) -> None:
+        # 95*0.35 + 85*0.20 + 88*0.25 + 75*0.20 = 33.25+17+22+15 = 87.25 → 87
+        self.assertEqual(
+            87,
+            compute_fashion_score(
+                occasion_fit=95, body_harmony=85,
+                color_harmony=88, archetype_match=75,
+            ),
+        )
+
+    def test_ceremonial_profile_amplifies_occasion(self) -> None:
+        # Same sub-scores, ceremonial weights:
+        # 95*0.45 + 85*0.20 + 88*0.20 + 75*0.15 = 42.75+17+17.6+11.25 = 88.6 → 89
+        self.assertEqual(
+            89,
+            compute_fashion_score(
+                occasion_fit=95, body_harmony=85,
+                color_harmony=88, archetype_match=75,
+                profile="ceremonial",
+            ),
+        )
+
+    def test_unknown_profile_falls_back_to_default(self) -> None:
+        self.assertEqual(
+            compute_fashion_score(
+                occasion_fit=80, body_harmony=80,
+                color_harmony=80, archetype_match=80,
+                profile="not-a-real-profile",
+            ),
+            compute_fashion_score(
+                occasion_fit=80, body_harmony=80,
+                color_harmony=80, archetype_match=80,
+            ),
+        )
+
+    def test_all_profile_weights_sum_to_one(self) -> None:
+        for name, weights in WEIGHT_PROFILES.items():
+            total = sum(weights.values())
+            self.assertAlmostEqual(1.0, total, places=6, msg=f"{name} weights sum to {total}")
+
 
     def test_rater_honours_unsuitable_flag(self) -> None:
         """An unsuitable=True outfit still appears in the result so the
