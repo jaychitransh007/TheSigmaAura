@@ -3962,7 +3962,10 @@ class AgenticOrchestrator:
             elif body_shape:
                 parts.append(f"Your {body_shape} frame is the strongest signal for what reads well — silhouette and proportion drive the directions that suit you.")
             else:
-                parts.append("Your profile shape and palette are the strongest signals for what direction reads well on you.")
+                # Both seasonal + body_shape empty (incomplete profile)
+                # — keep the wording neutral so we don't promise data
+                # we don't actually have on this user yet.
+                parts.append("Your body proportions and coloring are the strongest signals for what direction reads well on you.")
             parts.append("If you have a specific direction in mind — minimalist, edgy, romantic, old-money classic — tell me in chat and I will tune the recommendations to that.")
         else:
             parts.append("Your profile points toward polished structure, controlled contrast, and intentional lines rather than random trend-driven choices.")

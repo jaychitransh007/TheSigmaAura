@@ -1160,13 +1160,13 @@ def get_onboarding_html() -> str:
     // helpers with a single bindRiskCards() that wires the
     // .risk-card buttons to update state.risk.value + the hidden input.
     function bindRiskCards() {
-      var cards = document.querySelectorAll('#riskOptions .risk-card');
-      cards.forEach(function(card) {
-        card.addEventListener('click', function() {
-          var value = card.getAttribute('data-value') || 'balanced';
+      const cards = document.querySelectorAll('#riskOptions .risk-card');
+      cards.forEach((card) => {
+        card.addEventListener('click', () => {
+          const value = card.getAttribute('data-value') || 'balanced';
           state.risk.value = value;
           document.getElementById('riskInput').value = value;
-          cards.forEach(function(c) { c.classList.toggle('selected', c === card); });
+          cards.forEach((c) => { c.classList.toggle('selected', c === card); });
         });
       });
     }
