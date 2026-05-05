@@ -1,8 +1,11 @@
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from .request_context import get_request_id
 from .supabase_rest import SupabaseRestClient
+
+_log = logging.getLogger(__name__)
 
 
 def _now_iso() -> str:
@@ -419,16 +422,40 @@ class ConversationRepository:
                 result.add((tid, int(rank)))
         return result
 
+    # -- catalog attribute mapping (single source of truth) ------------------
+
+    # Canonical mapping: snake_case prompt key → PascalCase DB column on
+    # `catalog_enriched`. Single source of truth for any repo method that
+    # reads enrichment attrs. PR #92 was caused by two separate mappings
+    # drifting (one had snake_case DB cols, one had PascalCase) — keep
+    # everything routed through this dict to prevent that recurrence.
+    # When adding new attrs, add them here only.
+    _CATALOG_ATTR_MAP: Dict[str, str] = {
+        "title":               "title",
+        "primary_color":       "PrimaryColor",
+        "garment_subtype":     "GarmentSubtype",
+        "color_temperature":   "ColorTemperature",
+        "pattern_type":        "PatternType",
+        "fit_type":            "FitType",
+        "silhouette_type":     "SilhouetteType",
+        "embellishment_level": "EmbellishmentLevel",
+        "formality_level":     "FormalityLevel",
+        "occasion_fit":        "OccasionFit",
+    }
+
     # -- archetypal preference aggregation -----------------------------------
 
-    # Catalog enrichment columns to aggregate over. Order matters only
-    # for output stability — each axis is independent.
-    _ARCHETYPAL_AXES = (
-        ("ColorTemperature", "color_temperature"),
-        ("PatternType", "pattern_type"),
-        ("FitType", "fit_type"),
-        ("SilhouetteType", "silhouette_type"),
-        ("EmbellishmentLevel", "embellishment_level"),
+    # Subset of _CATALOG_ATTR_MAP used by the archetypal-axis aggregator.
+    # These five categorical attrs are the ones the rater used to veto on
+    # before PR #89; the other catalog map entries (title, primary_color,
+    # garment_subtype, formality_level, occasion_fit) don't aggregate
+    # cleanly into discrete axes — they're free-form / continuous.
+    _ARCHETYPAL_AXIS_KEYS: tuple = (
+        "color_temperature",
+        "pattern_type",
+        "fit_type",
+        "silhouette_type",
+        "embellishment_level",
     )
     # Min count for a value to count as a real signal vs noise. Below
     # this floor we suppress the axis entirely so the prompt doesn't
@@ -485,6 +512,10 @@ class ConversationRepository:
                 limit=feedback_limit,
             )
         except Exception:
+            _log.warning(
+                "aggregate_archetypal_feedback: feedback_events query failed for user_id=%s — returning empty",
+                user_id, exc_info=True,
+            )
             return {}
         if not events:
             return {}
@@ -517,7 +548,11 @@ class ConversationRepository:
         # each id (defends against future ids with commas / parens) and
         # chunk to 50 ids per query (worst-case ~2KB per request).
         _CHUNK = 50
-        column_list = "product_id," + ",".join(col for col, _ in self._ARCHETYPAL_AXES)
+        column_list = "product_id," + ",".join(
+            self._CATALOG_ATTR_MAP[key] for key in self._ARCHETYPAL_AXIS_KEYS
+        )
+        # Keyed by snake_case prompt key (not DB column) so the inner
+        # aggregator and `_CATALOG_ATTR_MAP` agree on the namespace.
         attrs_by_id: Dict[str, Dict[str, str]] = {}
         try:
             for i in range(0, len(all_ids), _CHUNK):
@@ -531,22 +566,29 @@ class ConversationRepository:
                 for row in enriched_rows or []:
                     pid = str(row.get("product_id") or "").strip()
                     if pid:
-                        attrs_by_id[pid] = {col: str(row.get(col) or "").strip().lower() for col, _ in self._ARCHETYPAL_AXES}
+                        attrs_by_id[pid] = {
+                            key: str(row.get(self._CATALOG_ATTR_MAP[key]) or "").strip().lower()
+                            for key in self._ARCHETYPAL_AXIS_KEYS
+                        }
         except Exception:
+            _log.warning(
+                "aggregate_archetypal_feedback: catalog_enriched hydration failed for user_id=%s — returning empty",
+                user_id, exc_info=True,
+            )
             return {}
 
         def _aggregate(ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
-            counters: Dict[str, Counter] = {key: Counter() for _, key in self._ARCHETYPAL_AXES}
+            counters: Dict[str, Counter] = {key: Counter() for key in self._ARCHETYPAL_AXIS_KEYS}
             for pid in ids:
                 attrs = attrs_by_id.get(pid)
                 if not attrs:
                     continue
-                for col, key in self._ARCHETYPAL_AXES:
-                    val = attrs.get(col, "")
+                for key in self._ARCHETYPAL_AXIS_KEYS:
+                    val = attrs.get(key, "")
                     if val:
                         counters[key][val] += 1
             out: Dict[str, List[Dict[str, Any]]] = {}
-            for _, key in self._ARCHETYPAL_AXES:
+            for key in self._ARCHETYPAL_AXIS_KEYS:
                 top = [
                     {"value": v, "count": c}
                     for v, c in counters[key].most_common(self._ARCHETYPAL_TOP_N)
@@ -570,28 +612,9 @@ class ConversationRepository:
     # bounded and recency dominates.
     _RECENT_USER_ACTIONS_MAX = 30
 
-    # Catalog attribute columns surfaced per item. The DB stores enrichment
-    # attributes in PascalCase (ColorTemperature, PatternType, ...) — same
-    # convention as `_ARCHETYPAL_AXES` above — while the architect prompt
-    # expects snake_case keys. Map prompt_key → DB column so we hydrate
-    # against the real schema and translate on the way out.
-    # PR #90 (May 5 2026) shipped with snake_case DB column names and was
-    # silently returning empty timelines for every user — PostgREST
-    # 400-errors on the unknown columns and the surrounding except clause
-    # swallowed it. Tests didn't catch it because the mocks also used
-    # snake_case.
-    _RECENT_ACTIONS_ITEM_MAP = {
-        "title":               "title",
-        "primary_color":       "PrimaryColor",
-        "garment_subtype":     "GarmentSubtype",
-        "color_temperature":   "ColorTemperature",
-        "pattern_type":        "PatternType",
-        "fit_type":            "FitType",
-        "silhouette_type":     "SilhouetteType",
-        "embellishment_level": "EmbellishmentLevel",
-        "formality_level":     "FormalityLevel",
-        "occasion_fit":        "OccasionFit",
-    }
+    # The catalog attribute mapping for this method is `_CATALOG_ATTR_MAP`
+    # at the top of the class (PR #93, consolidating with the archetypal
+    # aggregator). Don't redefine it here.
 
     def list_recent_user_actions(
         self,
@@ -634,6 +657,10 @@ class ConversationRepository:
                 limit=self._RECENT_USER_ACTIONS_MAX,
             )
         except Exception:
+            _log.warning(
+                "list_recent_user_actions: feedback_events query failed for user_id=%s — returning empty",
+                user_id, exc_info=True,
+            )
             return []
         if not events:
             return []
@@ -646,7 +673,7 @@ class ConversationRepository:
         items_by_id: Dict[str, Dict[str, str]] = {}
         if garment_ids:
             _CHUNK = 50
-            cols = "product_id," + ",".join(self._RECENT_ACTIONS_ITEM_MAP.values())
+            cols = "product_id," + ",".join(self._CATALOG_ATTR_MAP.values())
             try:
                 for i in range(0, len(garment_ids), _CHUNK):
                     chunk = garment_ids[i : i + _CHUNK]
@@ -661,9 +688,13 @@ class ConversationRepository:
                         if pid:
                             items_by_id[pid] = {
                                 prompt_key: str(row.get(db_col) or "").strip()
-                                for prompt_key, db_col in self._RECENT_ACTIONS_ITEM_MAP.items()
+                                for prompt_key, db_col in self._CATALOG_ATTR_MAP.items()
                             }
             except Exception:
+                _log.warning(
+                    "list_recent_user_actions: catalog_enriched hydration failed for user_id=%s — items will be empty",
+                    user_id, exc_info=True,
+                )
                 items_by_id = {}
 
         queries_by_turn: Dict[str, str] = {}
@@ -683,6 +714,10 @@ class ConversationRepository:
                         if tid:
                             queries_by_turn[tid] = str(row.get("user_message") or "").strip()
             except Exception:
+                _log.warning(
+                    "list_recent_user_actions: conversation_turns query failed for user_id=%s — events will ship without user_query",
+                    user_id, exc_info=True,
+                )
                 queries_by_turn = {}
 
         timeline: List[Dict[str, Any]] = []
