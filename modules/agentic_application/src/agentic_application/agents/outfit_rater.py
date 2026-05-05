@@ -437,20 +437,23 @@ class OutfitRater:
             bod = _clamp_to_100(int(raw_o.get("body_harmony", 0) or 0))
             col = _clamp_to_100(int(raw_o.get("color_harmony", 0) or 0))
             arch = _clamp_to_100(int(raw_o.get("archetype_match", 0) or 0))
-            # R5: inter_item_coherence is preserved as None when the
-            # LLM doesn't emit it (older prompt versions, malformed
-            # responses, legacy mocks). PR #73 (review of #72): don't
-            # default to 100 — that masks unset data as a phantom
-            # "good coherence" score and leaks through to the radar.
+            # inter_item_coherence is preserved as None when the LLM
+            # doesn't emit it (older prompt versions, malformed
+            # responses, legacy mocks) rather than defaulting to 100.
+            # A 100 default would mask unset data as a phantom "good
+            # coherence" score and leak through to the radar.
             # compute_fashion_score handles None by dropping the dim
             # and renormalising the remaining four weights, same as
             # for complete outfits.
-            # PR #74 (review of #73): treat empty strings as None too
-            # — int("") raises ValueError, which would crash the
-            # whole rate() call for one malformed candidate.
+            #
+            # Treat empty / whitespace-only strings as missing too —
+            # int("") and int("  ") raise ValueError, which would
+            # crash the whole rate() call for one malformed candidate.
             _inter_raw = raw_o.get("inter_item_coherence")
             inter: Optional[int] = (
-                _clamp_to_100(int(_inter_raw)) if _inter_raw not in (None, "") else None
+                _clamp_to_100(int(_inter_raw))
+                if _inter_raw is not None and str(_inter_raw).strip()
+                else None
             )
             ranked.append(
                 RatedOutfit(
