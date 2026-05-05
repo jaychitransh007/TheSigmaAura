@@ -195,14 +195,16 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
         # 80*0.15 = 30 + 0 + 11 + 1.35 + 12 = 54.35 → 54
         self.assertEqual(54, ro.fashion_score)
 
-    def test_rater_treats_empty_or_whitespace_inter_item_as_missing(self) -> None:
-        """A malformed inter_item_coherence value (empty string or
-        whitespace-only) should be treated identically to a missing
-        field — preserved as None on the candidate and dropped from
-        the fashion_score blend. Without this guard, int("") /
-        int("  ") would raise ValueError and crash the entire rate()
-        call for one bad candidate."""
-        for malformed in ("", "   ", "\t", "\n "):
+    def test_rater_treats_malformed_inter_item_as_missing(self) -> None:
+        """A malformed inter_item_coherence value (empty string,
+        whitespace-only, "N/A", "None", or any non-numeric junk)
+        should be treated identically to a missing field — preserved
+        as None on the candidate and dropped from the fashion_score
+        blend. Without this guard, int(...) would raise ValueError
+        and crash the entire rate() call for one bad candidate."""
+        # Mix of the inputs the LLM might emit when it ignores schema:
+        # blanks, sentinel strings, JSON null aliases, and plain garbage.
+        for malformed in ("", "   ", "\t", "\n ", "N/A", "None", "null", "abc"):
             with self.subTest(value=repr(malformed)):
                 payload = {
                     "ranked_outfits": [
@@ -222,6 +224,52 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
                 # 4-dim renormalised: 90*(0.30/0.85) + 80*(0.18/0.85) + 80*(0.22/0.85)
                 # + 80*(0.15/0.85) = 31.76+16.94+20.71+14.12 = 83.53 → 84
                 self.assertEqual(84, ro.fashion_score)
+
+    def test_rater_treats_malformed_required_subscores_as_zero(self) -> None:
+        """The four always-on sub-scores (occasion_fit / body_harmony /
+        color_harmony / archetype_match) default to 0 on missing or
+        malformed input rather than raising. Required for the blend so
+        we treat unparseable as a low score, not a dropped dim."""
+        for malformed in ("", "   ", "N/A", "None", "abc", None):
+            with self.subTest(value=repr(malformed)):
+                payload = {
+                    "ranked_outfits": [
+                        {"composer_id": "C1",
+                         "occasion_fit": malformed, "body_harmony": 80,
+                         "color_harmony": 80, "archetype_match": 80,
+                         "inter_item_coherence": 80,
+                         "rationale": "ok", "unsuitable": False},
+                    ],
+                    "overall_assessment": "moderate",
+                }
+                with patch("agentic_application.agents.outfit_rater.get_api_key", return_value="x"), _patch_rater() as oc:
+                    oc.return_value.responses.create.return_value = _mock_response(payload)
+                    result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
+
+                ro = result.ranked_outfits[0]
+                self.assertEqual(0, ro.occasion_fit)
+                # 5-dim default: 0*0.30 + 80*0.18 + 80*0.22 + 80*0.15 + 80*0.15 = 56
+                self.assertEqual(56, ro.fashion_score)
+
+    def test_rater_truncates_float_strings_in_subscores(self) -> None:
+        """LLM occasionally emits "80.5" or "0.85" for an int slot.
+        Truncate via float() rather than crashing or rejecting."""
+        payload = {
+            "ranked_outfits": [
+                {"composer_id": "C1",
+                 "occasion_fit": "92.7", "body_harmony": "85", "color_harmony": "88",
+                 "archetype_match": "75", "inter_item_coherence": "80.9",
+                 "rationale": "ok", "unsuitable": False},
+            ],
+            "overall_assessment": "strong",
+        }
+        with patch("agentic_application.agents.outfit_rater.get_api_key", return_value="x"), _patch_rater() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(payload)
+            result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
+
+        ro = result.ranked_outfits[0]
+        self.assertEqual(92, ro.occasion_fit)  # 92.7 truncated
+        self.assertEqual(80, ro.inter_item_coherence)  # 80.9 truncated
 
     def test_rater_drops_unknown_composer_ids(self) -> None:
         """The LLM should never invent composer_ids outside the input

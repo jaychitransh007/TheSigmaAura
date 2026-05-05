@@ -433,28 +433,26 @@ class OutfitRater:
             if cid not in valid_ids:
                 _log.warning("OutfitRater: dropping unknown composer_id %s", cid)
                 continue
-            occ = _clamp_to_100(int(raw_o.get("occasion_fit", 0) or 0))
-            bod = _clamp_to_100(int(raw_o.get("body_harmony", 0) or 0))
-            col = _clamp_to_100(int(raw_o.get("color_harmony", 0) or 0))
-            arch = _clamp_to_100(int(raw_o.get("archetype_match", 0) or 0))
-            # inter_item_coherence is preserved as None when the LLM
-            # doesn't emit it (older prompt versions, malformed
-            # responses, legacy mocks) rather than defaulting to 100.
-            # A 100 default would mask unset data as a phantom "good
-            # coherence" score and leak through to the radar.
-            # compute_fashion_score handles None by dropping the dim
-            # and renormalising the remaining four weights, same as
-            # for complete outfits.
+            # All five sub-scores parsed via the shared robust helpers
+            # below: handle missing, None, "", whitespace, "N/A",
+            # floats like "80.5", and any other non-numeric junk
+            # without crashing the whole rate() call for one bad
+            # candidate. Strict JSON schema usually prevents these,
+            # but defending against malformed responses is cheaper
+            # than the alternative.
             #
-            # Treat empty / whitespace-only strings as missing too —
-            # int("") and int("  ") raise ValueError, which would
-            # crash the whole rate() call for one malformed candidate.
-            _inter_raw = raw_o.get("inter_item_coherence")
-            inter: Optional[int] = (
-                _clamp_to_100(int(_inter_raw))
-                if _inter_raw is not None and str(_inter_raw).strip()
-                else None
-            )
+            # The four always-on dims default to 0 on malformed input
+            # (treated as a low score). inter_item_coherence defaults
+            # to None — compute_fashion_score then drops the dim and
+            # renormalises the remaining four weights, same as for
+            # single-item complete outfits. A 100 default for
+            # inter_item would mask unset data as a phantom "good
+            # coherence" score and leak through to the radar.
+            occ = _parse_subscore(raw_o.get("occasion_fit"))
+            bod = _parse_subscore(raw_o.get("body_harmony"))
+            col = _parse_subscore(raw_o.get("color_harmony"))
+            arch = _parse_subscore(raw_o.get("archetype_match"))
+            inter: Optional[int] = _parse_optional_subscore(raw_o.get("inter_item_coherence"))
             ranked.append(
                 RatedOutfit(
                     composer_id=cid,
@@ -513,3 +511,58 @@ def _clamp_to_100(value: int) -> int:
     the model occasionally emits 0–10 or 0–1 scores during early-stage
     drift. Clamp first, calibrate later."""
     return max(0, min(100, int(value)))
+
+
+def _safe_int_or_none(value: Any) -> Optional[int]:
+    """Best-effort int conversion that returns None for any
+    missing or malformed input.
+
+    Accepts: ``int``, ``str`` numerals, ``str`` floats like ``"80.5"``
+    (truncated to 80), strings with surrounding whitespace.
+    Rejects: ``None``, empty / whitespace-only strings, ``"N/A"``,
+    ``"None"``, and any other string that can't be parsed as a
+    number.
+
+    Used to guard against malformed LLM responses that would
+    otherwise raise ValueError mid-loop and crash the whole rate()
+    call for one bad candidate.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):  # bool is an int subclass; reject explicitly
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(float(text))
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_subscore(raw: Any) -> int:
+    """Parse one of the four always-emitted Rater sub-scores
+    (occasion_fit / body_harmony / color_harmony / archetype_match)
+    to a 0–100 int. Missing or malformed input → 0. Unlike
+    ``_parse_optional_subscore``, this never returns None — these
+    dimensions are required for the fashion_score blend, so we treat
+    a missing value as "scored zero" rather than dropping the dim.
+    """
+    parsed = _safe_int_or_none(raw)
+    return _clamp_to_100(0 if parsed is None else parsed)
+
+
+def _parse_optional_subscore(raw: Any) -> Optional[int]:
+    """Parse a Rater sub-score that may legitimately be absent
+    (currently only ``inter_item_coherence``). Missing or malformed
+    input → None, which signals ``compute_fashion_score`` to drop
+    the dim and renormalise the remaining weights — same path used
+    for single-item complete outfits."""
+    parsed = _safe_int_or_none(raw)
+    return _clamp_to_100(parsed) if parsed is not None else None
