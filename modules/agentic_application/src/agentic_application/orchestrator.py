@@ -2167,6 +2167,18 @@ class AgenticOrchestrator:
         wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
         if not occasion or not wardrobe_items:
             return None
+        # Minimum-coverage gate: when the user explicitly asks for wardrobe-first,
+        # require ≥2 tops AND ≥2 bottoms AND ≥2 one-pieces. If any role is below
+        # the threshold, fall through so `_build_wardrobe_only_occasion_fallback`
+        # can surface a clear "your wardrobe doesn't cover this yet" message
+        # with the actual counts and offer catalog/hybrid alternatives.
+        sufficient, _coverage_counts = self._wardrobe_meets_minimum_coverage(wardrobe_items)
+        if not sufficient:
+            _log.info(
+                "wardrobe-first: skipping (insufficient coverage) counts=%s",
+                _coverage_counts,
+            )
+            return None
         wardrobe_gap_analysis = self._build_wardrobe_gap_analysis(
             wardrobe_items=wardrobe_items,
             occasion=occasion,
@@ -2521,21 +2533,45 @@ class AgenticOrchestrator:
             occasion=occasion,
             required_roles=["top", "bottom", "shoe"],
         )
+        coverage_sufficient, coverage_counts = self._wardrobe_meets_minimum_coverage(wardrobe_items)
         gap_items = [str(item).strip() for item in list(wardrobe_gap_analysis.get("gap_items") or []) if str(item).strip()]
         occasion_label = occasion.replace('_', ' ') if occasion else 'this occasion'
         if wardrobe_items:
-            missing_clause = (
-                f" To make this work end-to-end you're still missing {', '.join(gap_items[:2])}."
-                if gap_items
-                else ""
-            )
-            assistant_message = (
-                f"Your saved wardrobe doesn't fully cover {occasion_label} yet."
-                + missing_clause
-                + " You can either: (1) let me show catalog picks to fill the gap, "
-                "(2) see hybrid looks that combine your wardrobe with a couple of catalog pieces, "
-                "or (3) save more wardrobe items and try again."
-            )
+            if not coverage_sufficient:
+                # Surface the actual counts the user has so they can see what's
+                # missing rather than a vague "doesn't cover this" message.
+                role_labels = {"top": "tops", "bottom": "bottoms", "one_piece": "complete dresses/jumpsuits"}
+                count_phrases = [
+                    f"{coverage_counts[role]} {role_labels[role]}"
+                    for role in self._WARDROBE_REQUIRED_ROLES
+                ]
+                shortage_phrases = [
+                    f"{role_labels[role]} (have {coverage_counts[role]}, need {self._WARDROBE_MIN_PER_ROLE})"
+                    for role in self._WARDROBE_REQUIRED_ROLES
+                    if coverage_counts[role] < self._WARDROBE_MIN_PER_ROLE
+                ]
+                assistant_message = (
+                    f"Your saved wardrobe is too thin to build {occasion_label} outfits on its own — "
+                    f"you have {', '.join(count_phrases)} saved, "
+                    f"but I need at least {self._WARDROBE_MIN_PER_ROLE} of each "
+                    f"({', '.join(shortage_phrases)}) to compose a few options. "
+                    "You can either: (1) let me show catalog picks instead, "
+                    "(2) see hybrid looks that combine your wardrobe with catalog pieces, "
+                    "or (3) save a few more wardrobe staples and try again."
+                )
+            else:
+                missing_clause = (
+                    f" To make this work end-to-end you're still missing {', '.join(gap_items[:2])}."
+                    if gap_items
+                    else ""
+                )
+                assistant_message = (
+                    f"Your saved wardrobe doesn't fully cover {occasion_label} yet."
+                    + missing_clause
+                    + " You can either: (1) let me show catalog picks to fill the gap, "
+                    "(2) see hybrid looks that combine your wardrobe with a couple of catalog pieces, "
+                    "or (3) save more wardrobe items and try again."
+                )
         else:
             assistant_message = (
                 f"I don't have enough saved wardrobe pieces yet to build a {occasion_label} outfit from your wardrobe."
@@ -2549,6 +2585,11 @@ class AgenticOrchestrator:
             preferred_source="wardrobe",
             fulfilled_source="wardrobe_unavailable",
         )
+        wardrobe_coverage = {
+            "min_required_per_role": self._WARDROBE_MIN_PER_ROLE,
+            "counts_by_role": coverage_counts,
+            "sufficient": coverage_sufficient,
+        }
         metadata = self._build_response_metadata(
             channel=channel,
             intent=intent,
@@ -2558,6 +2599,7 @@ class AgenticOrchestrator:
                 "source_selection": source_selection,
                 "catalog_upsell": catalog_upsell,
                 "wardrobe_gap_analysis": wardrobe_gap_analysis,
+                "wardrobe_coverage": wardrobe_coverage,
             },
         )
         self.repo.finalize_turn(
@@ -2579,6 +2621,7 @@ class AgenticOrchestrator:
                     "source_selection": source_selection,
                     "catalog_upsell": catalog_upsell,
                     "wardrobe_gap_analysis": wardrobe_gap_analysis,
+                    "wardrobe_coverage": wardrobe_coverage,
                 },
                 "channel": channel,
             },
@@ -3450,6 +3493,29 @@ class AgenticOrchestrator:
             "silhouette_type": str(item.get("silhouette_type") or catalog_attrs.get("SilhouetteType") or ""),
             "source": "wardrobe",
         }
+
+    _WARDROBE_MIN_PER_ROLE = 2
+    _WARDROBE_REQUIRED_ROLES = ("top", "bottom", "one_piece")
+
+    def _wardrobe_role_counts(
+        self, wardrobe_items: List[Dict[str, Any]]
+    ) -> Dict[str, int]:
+        counts: Dict[str, int] = {role: 0 for role in self._WARDROBE_REQUIRED_ROLES}
+        for item in wardrobe_items or []:
+            role = self._wardrobe_role_of(item)
+            if role in counts:
+                counts[role] += 1
+        return counts
+
+    def _wardrobe_meets_minimum_coverage(
+        self, wardrobe_items: List[Dict[str, Any]]
+    ) -> tuple[bool, Dict[str, int]]:
+        counts = self._wardrobe_role_counts(wardrobe_items)
+        sufficient = all(
+            counts[role] >= self._WARDROBE_MIN_PER_ROLE
+            for role in self._WARDROBE_REQUIRED_ROLES
+        )
+        return sufficient, counts
 
     def _wardrobe_role_of(self, item: Dict[str, Any]) -> str:
         category = self._normalize_text_token(item.get("garment_category") or item.get("garment_subtype"))
@@ -4552,8 +4618,11 @@ class AgenticOrchestrator:
             live_context=initial_live_context,
         )
 
-        # Wardrobe-first check (occasion only — pairing always runs full pipeline)
-        if not force_catalog_followup and source_preference != "catalog":
+        # Wardrobe-first check (occasion only — pairing always runs full pipeline).
+        # Default is catalog (shop-the-look). Wardrobe-first runs only when the
+        # user explicitly asks for it; auto/empty/catalog all skip this branch
+        # and fall through to the catalog pipeline.
+        if not force_catalog_followup and source_preference == "wardrobe":
             if not richer_refinement_path:
                 wardrobe_first_response = self._build_wardrobe_first_occasion_response(
                     external_user_id=external_user_id,

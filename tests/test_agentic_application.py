@@ -1665,7 +1665,13 @@ class AgenticApplicationTests(unittest.TestCase):
         }
         onboarding_gateway.get_wardrobe_items.return_value = [
             {"id": "w1", "title": "Navy Blazer", "garment_category": "top", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w1b", "title": "White Shirt", "garment_category": "top", "occasion_fit": "office", "formality_level": "business_casual"},
             {"id": "w2", "title": "Cream Trousers", "garment_category": "bottom", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w2b", "title": "Charcoal Pants", "garment_category": "bottom", "occasion_fit": "office", "formality_level": "business_casual"},
+            # Dresses tagged for evening so they satisfy the ≥2 one_piece coverage
+            # gate but don't outrank the top+bottom outfit for the "office" query.
+            {"id": "w3", "title": "Navy Sheath Dress", "garment_category": "dress", "occasion_fit": "casual", "formality_level": "casual"},
+            {"id": "w3b", "title": "Black Wrap Dress", "garment_category": "dress", "occasion_fit": "casual", "formality_level": "casual"},
         ]
         repo.client = Mock()
         repo.get_or_create_user.return_value = {"id": "db-user"}
@@ -1676,14 +1682,13 @@ class AgenticApplicationTests(unittest.TestCase):
         }
         repo.create_turn.return_value = {"id": "t1"}
 
-        # Note: source_preference="auto" — the wardrobe-first short-circuit
-        # is triggered by the orchestrator detecting full wardrobe coverage,
-        # NOT by the planner explicitly preferring wardrobe. The test
-        # verifies the short-circuit fires even when the planner returns
-        # neutral routing (which is the dominant case in production).
+        # Wardrobe-first short-circuit fires only when the planner explicitly
+        # routes to wardrobe (May 5, 2026: default flipped to catalog). The
+        # wardrobe also has to clear the ≥2-per-role minimum coverage gate.
         planner_mock = _make_planner_mock(
             occasion_signal="office",
             formality_hint="business_casual",
+            source_preference="wardrobe",
         )
         with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
             "agentic_application.orchestrator.OutfitArchitect"
@@ -1711,10 +1716,10 @@ class AgenticApplicationTests(unittest.TestCase):
         resolved_context = repo.finalize_turn.call_args.kwargs["resolved_context"]
         self.assertEqual("occasion_recommendation_wardrobe_first", resolved_context["handler"])
         self.assertEqual("wardrobe_first", resolved_context["response_metadata"]["answer_source"])
-        self.assertEqual(["w1", "w2"], resolved_context["handler_payload"]["selected_item_ids"])
+        self.assertEqual(["w1", "w2b"], resolved_context["handler_payload"]["selected_item_ids"])
         self.assertEqual("wardrobe", resolved_context["handler_payload"]["answer_components"]["primary_source"])
         self.assertTrue(resolved_context["handler_payload"]["catalog_upsell"]["available"])
-        self.assertEqual("auto", result["metadata"]["source_selection"]["preferred_source"])
+        self.assertEqual("wardrobe", result["metadata"]["source_selection"]["preferred_source"])
         self.assertEqual("wardrobe", result["metadata"]["source_selection"]["fulfilled_source"])
 
     def test_explicit_wardrobe_occasion_request_prefers_saved_wardrobe(self) -> None:
@@ -1742,7 +1747,11 @@ class AgenticApplicationTests(unittest.TestCase):
         }
         gw.get_wardrobe_items.return_value = [
             {"id": "w1", "title": "Navy Blazer", "garment_category": "top", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w1b", "title": "White Shirt", "garment_category": "top", "occasion_fit": "office", "formality_level": "business_casual"},
             {"id": "w2", "title": "Cream Trousers", "garment_category": "bottom", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w2b", "title": "Charcoal Pants", "garment_category": "bottom", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w3", "title": "Navy Sheath Dress", "garment_category": "dress", "occasion_fit": "casual", "formality_level": "casual"},
+            {"id": "w3b", "title": "Black Wrap Dress", "garment_category": "dress", "occasion_fit": "casual", "formality_level": "casual"},
         ]
         planner_mock = Mock()
         from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
@@ -2241,6 +2250,177 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("catalog", result["metadata"]["source_selection"]["preferred_source"])
         self.assertEqual("catalog", result["metadata"]["source_selection"]["fulfilled_source"])
 
+    def test_auto_source_preference_routes_to_catalog_not_wardrobe_first(self) -> None:
+        """Default routing (May 5 2026): when the planner returns
+        ``source_preference="auto"`` (i.e. the user did not ask for wardrobe
+        explicitly), the orchestrator must run the full catalog pipeline.
+        Wardrobe-first is now opt-in, not the default — even when the user has
+        a wardrobe that *would* satisfy the minimum-coverage gate."""
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+            RecommendationPlan, DirectionSpec, QuerySpec, ResolvedContextBlock,
+        )
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1", "user_id": "db-user", "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
+        }
+        # Coverage easily passes the ≥2-per-role gate; the test proves auto
+        # still routes to catalog regardless of wardrobe sufficiency.
+        gw.get_wardrobe_items.return_value = [
+            {"id": "w1", "title": "Navy Blazer", "garment_category": "top", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w1b", "title": "White Shirt", "garment_category": "top", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w2", "title": "Cream Trousers", "garment_category": "bottom", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w2b", "title": "Charcoal Pants", "garment_category": "bottom", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w3", "title": "Navy Sheath Dress", "garment_category": "dress", "occasion_fit": "casual", "formality_level": "casual"},
+            {"id": "w3b", "title": "Black Wrap Dress", "garment_category": "dress", "occasion_fit": "casual", "formality_level": "casual"},
+        ]
+        planner_mock = _make_planner_mock(
+            occasion_signal="office",
+            formality_hint="business_casual",
+            source_preference="auto",
+        )
+        fake_plan = RecommendationPlan(
+            retrieval_count=12,
+            directions=[
+                DirectionSpec(
+                    direction_id="A",
+                    direction_type="complete",
+                    label="Catalog direction",
+                    queries=[QuerySpec(query_id="A1", role="complete", hard_filters={}, query_document="office outfit")],
+                )
+            ],
+            resolved_context=ResolvedContextBlock(
+                occasion_signal="office", formality_hint="business_casual",
+            ),
+        )
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            architect_cls.return_value.plan.return_value = fake_plan
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            _mock_llm_ranker(orchestrator, [
+                OutfitCandidate(
+                    candidate_id="cat-1",
+                    direction_id="A",
+                    candidate_type="complete",
+                    items=[{"product_id": "c1", "title": "Wool Trouser"}],
+                    fashion_score=85,
+                )
+            ])
+            orchestrator.response_formatter.format = Mock(
+                return_value=RecommendationResponse(
+                    success=True,
+                    message="Catalog options.",
+                    outfits=[OutfitCard(rank=1, title="Catalog Look", reasoning="Catalog only.",
+                                        items=[{"product_id": "c1", "title": "Wool Trouser", "source": "catalog"}])],
+                    follow_up_suggestions=["Show me more"],
+                    metadata={"answer_components": {"primary_source": "catalog", "catalog_item_count": 1, "wardrobe_item_count": 0}},
+                )
+            )
+            result = orchestrator.process_turn(
+                conversation_id="c1", external_user_id="user-1",
+                message="What should I wear to the office?",
+            )
+
+        # Architect ran → wardrobe-first short-circuit was NOT taken.
+        architect_cls.return_value.plan.assert_called_once()
+        self.assertNotEqual("wardrobe_first", result["metadata"].get("answer_source"))
+        self.assertNotEqual(
+            "occasion_recommendation_wardrobe_first",
+            repo.finalize_turn.call_args.kwargs["resolved_context"].get("handler"),
+        )
+
+    def test_explicit_wardrobe_with_insufficient_coverage_returns_gap_fallback(self) -> None:
+        """When the user explicitly asks for wardrobe-first but the wardrobe
+        has fewer than 2 items in any of {top, bottom, one_piece}, we fall
+        through to the gap fallback with the actual counts surfaced in the
+        message and metadata. This protects users from getting a one-item
+        "outfit" that isn't actually wearable."""
+        from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1", "user_id": "db-user", "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": True,
+            "style_preference_complete": True,
+            "images_uploaded": ["full_body", "headshot"],
+            "onboarding_complete": True,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "completed",
+            "profile": {"gender": "female", "style_preference": {"primaryArchetype": "classic"}},
+            "attributes": {"BodyShape": {"value": "Hourglass"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Soft Summer"}},
+        }
+        # 2 tops + 2 bottoms + 0 dresses → fails strict-AND coverage gate.
+        gw.get_wardrobe_items.return_value = [
+            {"id": "w1", "title": "Navy Blazer", "garment_category": "top", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w1b", "title": "White Shirt", "garment_category": "top", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w2", "title": "Cream Trousers", "garment_category": "bottom", "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w2b", "title": "Charcoal Pants", "garment_category": "bottom", "occasion_fit": "office", "formality_level": "business_casual"},
+        ]
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent=Intent.OCCASION_RECOMMENDATION,
+            intent_confidence=0.95,
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
+            context_sufficient=True,
+            assistant_message="Let me build that.",
+            follow_up_suggestions=[],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="office",
+                formality_hint="business_casual",
+                source_preference="wardrobe",
+            ),
+            action_parameters=CopilotActionParameters(),
+        )
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
+            "agentic_application.orchestrator.OutfitArchitect"
+        ) as architect_cls, patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Build me an office outfit from my wardrobe",
+            )
+
+        architect_cls.return_value.plan.assert_not_called()
+        self.assertEqual("wardrobe_unavailable", result["metadata"]["answer_source"])
+        coverage = result["metadata"].get("wardrobe_coverage") or {}
+        self.assertFalse(coverage.get("sufficient"))
+        self.assertEqual(2, coverage.get("min_required_per_role"))
+        self.assertEqual(
+            {"top": 2, "bottom": 2, "one_piece": 0},
+            coverage.get("counts_by_role"),
+        )
+        # The message must surface the actual shortage so the user knows
+        # what's missing rather than a vague "doesn't cover this" line.
+        msg = result["assistant_message"].lower()
+        self.assertIn("complete dresses/jumpsuits", msg)
+        self.assertIn("have 0", msg)
 
 
 class TestProfileGuidanceRouting(unittest.TestCase):
@@ -2696,8 +2876,16 @@ class CopilotPlannerTests(unittest.TestCase):
         onboarding_gateway.get_wardrobe_items.return_value = [
             {"id": "w1", "title": "Navy Blazer", "garment_category": "top",
              "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w1b", "title": "White Shirt", "garment_category": "top",
+             "occasion_fit": "office", "formality_level": "business_casual"},
             {"id": "w2", "title": "Cream Trousers", "garment_category": "bottom",
              "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w2b", "title": "Charcoal Pants", "garment_category": "bottom",
+             "occasion_fit": "office", "formality_level": "business_casual"},
+            {"id": "w3", "title": "Navy Sheath Dress", "garment_category": "dress",
+             "occasion_fit": "casual", "formality_level": "casual"},
+            {"id": "w3b", "title": "Black Wrap Dress", "garment_category": "dress",
+             "occasion_fit": "casual", "formality_level": "casual"},
         ]
         repo.client = Mock()
         repo.get_or_create_user.return_value = {"id": "db-user"}
