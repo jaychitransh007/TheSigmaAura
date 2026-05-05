@@ -219,7 +219,7 @@ class OutfitCandidate(BaseModel):
     candidate_type: str  # complete | paired | three_piece
     items: List[Dict[str, Any]] = Field(default_factory=list)
     # LLM-ranker scores. fashion_score is the gating field downstream;
-    # the four sub-scores stay attached so the response payload can show
+    # the sub-scores stay attached so the response payload can show
     # the breakdown in the UI later. For wardrobe items, the orchestrator
     # sets fashion_score = 100 and the rest to neutral (0).
     fashion_score: int = 0  # 0–100
@@ -227,6 +227,10 @@ class OutfitCandidate(BaseModel):
     body_harmony: int = 0
     color_harmony: int = 0
     archetype_match: int = 0
+    # R5 (PR #68, May 5 2026): how well the items in a multi-piece
+    # outfit work together. For complete outfits (single item) the
+    # blend formula drops this dim and renormalises the other four.
+    inter_item_coherence: int = 100
     composer_id: str = ""  # Empty for wardrobe-anchored candidates.
     composer_rationale: str = ""
     rater_rationale: str = ""
@@ -270,11 +274,15 @@ class ComposerResult(BaseModel):
 class RatedOutfit(BaseModel):
     composer_id: str  # Matches ComposedOutfit.composer_id
     rank: int = 0
-    fashion_score: int = 0  # 0–100. Weighted blend of the four sub-scores.
+    fashion_score: int = 0  # 0–100. Weighted blend of the sub-scores (computed in code).
     occasion_fit: int = 0
     body_harmony: int = 0
     color_harmony: int = 0
     archetype_match: int = 0
+    # R5 (May 5 2026): inter-item fit/fabric/formality coherence.
+    # Defaults to 100 (neutral) — the LLM emits 100 for complete
+    # (single-item) outfits since there's nothing to clash with.
+    inter_item_coherence: int = 100
     rationale: str = ""
     unsuitable: bool = False  # Hard veto — drop even if fashion_score is high.
 

@@ -66,6 +66,26 @@ Two layers, both weighted equally:
 
 The dimension's name is historical (kept for downstream compatibility); it now scores per-turn direction + user-comfort fit, not a stored archetype identity. Push outfits that match style_goal *and* sit at-or-just-beyond the user's risk_tolerance highest.
 
+### 5. `inter_item_coherence` (0–100)
+
+How well do the items in this outfit *work together* as a coherent look?
+
+This dimension scores the **pairing**, not any single item:
+
+- **Fit-type compatibility**: do the silhouettes balance? A slim top with relaxed wide-leg trousers can work; a slim top with a slim bottom *plus* slim outerwear reads stiff. An oversized top + oversized bottom reads sloppy.
+- **Fabric pairing**: do the fabrics sit at compatible weights and finishes? Chiffon top + denim bottom is jarring; oxford shirt + chinos is harmonious; silk blouse + tailored wool is luxurious; linen + leather is contemporary.
+- **Formality consistency**: do all items read the same formality level? A formal blazer over a graphic tee with workwear chinos and dress shoes is incoherent. Aim for at most one step of formality variance across pieces.
+- **Detail rhythm**: heavy embellishment on one piece pairs best with quieter pieces; an embellished top + embellished bottom + embellished outerwear competes for attention.
+
+Score guidance:
+- 90–100: pieces feel designed for each other. Fit balances, fabrics complement, formality matches, details rhythm.
+- 70–89: solidly coherent with one minor seam (e.g., fabrics are slightly off but fit + formality are right).
+- 50–69: workable but the wearer can tell the items weren't picked together.
+- 30–49: meaningfully clashing on at least one of the four sub-checks.
+- 0–29: reads as a styling error.
+
+**For single-item outfits** (`direction_type = complete`, e.g. a kurta_set, jumpsuit, or dress) there is nothing to clash with — emit **100**. The orchestrator drops this dimension from the blend for those outfits and re-normalises the other four.
+
 ## When to flag `unsuitable: true`
 
 Hard vetoes regardless of score:
@@ -90,6 +110,7 @@ When `archetypal_preferences.liked` is populated, *boost* — not veto — outfi
       "body_harmony": 85,
       "color_harmony": 88,
       "archetype_match": 90,
+      "inter_item_coherence": 86,
       "rationale": "Two short sentences on why these sub-scores landed where they did.",
       "unsuitable": false
     }
@@ -98,9 +119,9 @@ When `archetypal_preferences.liked` is populated, *boost* — not veto — outfi
 }
 ```
 
-- All four sub-scores are integers 0–100.
+- All five sub-scores are integers 0–100. For complete (single-item) outfits, emit `inter_item_coherence: 100`.
 - `rationale` is **two short sentences** maximum: one on the dominant strength, one on the main weakness or "good across the board." Stylist-to-stylist register, not user-facing copy.
-- `overall_assessment` is your read of the **slate** as a whole vs the user's request. Estimate against your own internal sense of how the four dimensions blend — you don't need to be precise:
+- `overall_assessment` is your read of the **slate** as a whole vs the user's request. Estimate against your own internal sense of how the dimensions blend — you don't need to be precise:
   - `strong` — at least one outfit feels truly suitable across all four dimensions.
   - `moderate` — best outfit is usable but has a clear weak dimension.
   - `weak` — every outfit has meaningful issues, or none clearly suits the user.
