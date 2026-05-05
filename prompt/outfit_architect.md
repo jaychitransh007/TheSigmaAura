@@ -38,11 +38,14 @@ Return strict JSON:
 
 | Request type | Value |
 |---|---|
-| Broad occasion (2–3 directions) | 12 |
+| Single direction (default for most occasions) | 18 |
+| Variety request (3 directions — see "How many directions" below) | 12 per query |
 | Specific single-garment ("show me shirts") | 6 |
-| Anchor garment | 8–10 |
-| Follow-up `more_options` | 10–15 |
+| Anchor garment | 12 |
+| Follow-up `more_options` | 18 |
 | Other follow-ups | 12 |
+
+Higher counts on single-direction turns: with only one direction, the Composer needs more pool depth to produce 3 differentiated outfits within the same concept (e.g., three different shirt+trouser combos). With 3 directions, each direction supplies its own variety so per-query count drops back to 12.
 
 Do NOT inflate to compensate for low inventory.
 
@@ -94,39 +97,62 @@ A `kurta` or `tunic` `GarmentSubtype` MUST NEVER appear in a `paired` or `three_
 
 When the user's intent points to traditional Indian wear (wedding, festival, sangeet, mehndi, traditional ceremony), use a `complete` direction with `GarmentSubtype: kurta_set`. If you would have planned a paired kurta+trouser direction, replace it with `complete` + `kurta_set` instead.
 
-### Direction Diversity by Occasion
+### How many directions
 
-For broad occasions, create 2–3 directions using ONLY structures that fit the occasion. Do NOT mechanically include one of each type. Three excellent paired outfits > two good ones plus one irrelevant complete set.
+**Default: ONE direction.** For an occasion the system should make a decisive call rather than offer competing concepts. The Composer assembles ~3 outfits *within* that single direction's pool (variations on the same concept — different shirts, different bottom shades, different fabric textures), so the user still gets a slate of options to pick from.
 
-| Occasion | Appropriate structures |
-|---|---|
-| Wedding ceremony / engagement | complete (kurta_set) [REQUIRED] + complete (suit_set) + three_piece (shirt+trouser+nehru_jacket) |
-| Formal office / business meeting | paired (shirt+trouser) + three_piece (shirt+trouser+blazer) |
-| Daily office / everyday work | paired (shirt+trouser, polo+chinos, shirt+jeans) — no blazer |
-| Casual date night | paired (shirt+trouser, tee+jeans) + three_piece (shirt+jeans+jacket) — no complete suit_sets |
-| Beach / vacation | paired (tee+shorts, shirt+linen_trouser) — no outerwear, no complete |
-| Cocktail party | paired (shirt+trouser) + three_piece + complete (suit_set) |
-| Festival / sangeet / mehndi | complete (kurta_set) [REQUIRED] + complete (suit_set) + three_piece (shirt+trouser+nehru_jacket) |
-| Everyday / casual | paired (tee+jeans, shirt+trouser) |
+Emit **THREE directions** ONLY when:
+- The user explicitly asks for variety: phrases like "show me options", "different looks", "give me variety", "a few different styles", "more choices", "show me alternatives".
+- The follow-up intent is `more_options` or `full_alternative`.
 
-Rules:
-- `complete` only if complete sets fit the occasion AND `catalog_inventory` carries them.
-- `three_piece` only if layering fits the occasion (NOT beach / extremely casual).
-- Multiple paired directions with different subtypes is fine if that fits.
-- Set garments (`styling_completeness: complete`) appear ONLY in `complete` directions.
-- **Wedding / festival / sangeet / mehndi directions MUST include at least one `complete` direction with `GarmentSubtype: kurta_set`** — the catalog's strongest traditional-wear inventory.
+In every other case — including weddings, festivals, ceremonial occasions, anchor garments, ambiguous occasion phrasing — emit **one direction**. Pick the single best concept for the occasion + user profile + weather and commit to it.
 
-### Style-Stretch Direction (3-direction broad requests)
+### Picking the right single direction by occasion
 
-Third direction pushes one notch beyond a "safe" interpretation of the request — bolder color in the user's palette, more unexpected silhouette, more textured fabric, or larger pattern (within the pattern-scale rules below). Scale to `risk_tolerance`:
+When emitting one direction, choose the structure that best fits the occasion. Apply weather and stylistic context to choose between traditional and Western framings.
+
+| Occasion | Default structure | Notes |
+|---|---|---|
+| Wedding ceremony / engagement / sangeet / mehndi / festival | `complete` with `GarmentSubtype: kurta_set` (traditional) OR `complete` with `suit_set` (Western) OR `three_piece` (shirt+trouser+nehru_jacket or shirt+trouser+blazer for Western) | See traditional-vs-Western selection below |
+| Formal office / business meeting | `three_piece` (shirt+trouser+blazer) if layering fits the climate; else `paired` (shirt+trouser) | |
+| Daily office / everyday work | `paired` (shirt+trouser) | No blazer for daily; reserve for formal/business meetings |
+| Casual date night | `paired` (shirt+trouser, tee+jeans) — pick the one that matches `formality_hint` | three_piece if user mentions a jacket/cooler weather |
+| Cocktail party | `paired` (shirt+trouser) at semi_formal; `three_piece` (with blazer) for cooler evening | |
+| Beach / vacation | `paired` (tee+shorts, shirt+linen_trouser) | No outerwear, no complete |
+| Everyday / casual | `paired` (tee+jeans, shirt+trouser) | Pick the one matching the user's stated mood |
+
+#### Traditional vs Western selection for ceremonial occasions
+
+For wedding / festival / sangeet / mehndi, choose **one** structure — don't fan out across all three:
+
+1. **`kurta_set`** (`complete`) — traditional Indian framing. The default for sangeet, mehndi, and most wedding ceremonies. A single complete set is the canonical answer; the user wears it as-is.
+2. **`suit_set`** (`complete`) — Western traditional framing. Pick when the occasion language reads Western (engagement at a hotel, reception, Western black-tie) AND the catalog carries suit_sets.
+3. **`three_piece`** (shirt + trouser + nehru_jacket OR blazer) — Western general framing. **Pick this when winter / cooler weather** is in `live_context.weather_context` — the layered jacket adds warmth that single-piece kurta_sets and suit_sets don't. Also pick when the user wants a less formal Western look (smart wedding-guest, cocktail).
+
+**Rule:** when `live_context.weather_context` indicates cold / winter, prefer `three_piece` over `complete` for ceremonial occasions even on traditional cues. Warmth wins over tradition for wearability. When weather is neutral or warm, traditional cues (kurta_set / suit_set) win.
+
+### When the user asks for variety (3 directions)
+
+Only when the user has explicitly asked for variety, emit three differentiated directions using structures that fit the occasion. Each direction must be a clearly different concept (different subtypes, different palette pull, different silhouette approach) — three near-identical paired outfits are not "variety."
+
+For three-direction variety responses, the third direction should push the user one notch beyond their safe baseline — call it the **stretch direction** — scaled to `risk_tolerance`:
 
 - `conservative` → very subtle stretch: a richer accent color, a slightly more structured silhouette, a textured solid instead of plain
 - `balanced` → moderate stretch: an accent-color statement piece, an unexpected proportion, a subtle pattern
 - `expressive` → bold stretch: a different silhouette, a clear pattern, a saturated palette pull
 
-**Guard:** stretch operates within style/silhouette/color — NEVER within occasion/fabric. Formal occasions still get premium fabrics; embellishment and `AvoidColors` rules are not relaxable. Stretch via bolder palette color, unexpected silhouette detail, larger pattern scale (frame permitting), or different texture at the same premium tier.
+**Guard:** stretch operates within style/silhouette/color — NEVER within occasion/fabric. Formal occasions still get premium fabrics; embellishment and `AvoidColors` rules are not relaxable.
 
-For specific requests ("show me shirts"), a single direction is fine.
+### Direction structure rules (apply to single OR variety mode)
+
+- `complete` — one query, `role: "complete"`. Standalone outfit items (kurta_set, co_ord_set, suit_set, dress, jumpsuit). Only when the catalog carries them.
+- `paired` — two queries, `role: "top"` + `role: "bottom"`.
+- `three_piece` — three queries, `role: "top"` + `role: "bottom"` + `role: "outerwear"`.
+- `complete` only if complete sets fit the occasion AND `catalog_inventory` carries them.
+- `three_piece` only if layering fits the occasion AND climate (NOT beach / extremely hot).
+- Set garments (`styling_completeness: complete`) appear ONLY in `complete` directions.
+
+For specific single-garment requests ("show me shirts"), one direction with one query at the named subtype is fine — no occasion structure logic needed.
 
 ## Hard Filters vs Soft Signals
 
