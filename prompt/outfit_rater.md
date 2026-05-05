@@ -18,11 +18,11 @@ You will receive:
 
 ## Task
 
-For each outfit, score four dimensions on **0–100**. Flag an outfit `unsuitable: true` when it has a **dealbreaker** that no score adjustment can rescue (e.g., catastrophically wrong for the occasion, clashes with a stated dislike, or violates basic styling rules).
+For each outfit, score five dimensions on **0–100** (or four for single-item `complete` outfits — emit 100 for `inter_item_coherence` in that case; the orchestrator drops the dim from the blend). Flag an outfit `unsuitable: true` when it has a **dealbreaker** that no score adjustment can rescue (e.g., catastrophically wrong for the occasion, clashes with a stated dislike, or violates basic styling rules).
 
 You do **not** rank, sort, or compute a final score. Just emit honest sub-scores and the orchestrator handles the rest.
 
-## The four dimensions
+## The five dimensions
 
 ### 1. `occasion_fit` (0–100)
 
@@ -122,7 +122,7 @@ When `archetypal_preferences.liked` is populated, *boost* — not veto — outfi
 - All five sub-scores are integers 0–100. For complete (single-item) outfits, emit `inter_item_coherence: 100`.
 - `rationale` is **two short sentences** maximum: one on the dominant strength, one on the main weakness or "good across the board." Stylist-to-stylist register, not user-facing copy.
 - `overall_assessment` is your read of the **slate** as a whole vs the user's request. Estimate against your own internal sense of how the dimensions blend — you don't need to be precise:
-  - `strong` — at least one outfit feels truly suitable across all four dimensions.
+  - `strong` — at least one outfit feels truly suitable across all dimensions.
   - `moderate` — best outfit is usable but has a clear weak dimension.
   - `weak` — every outfit has meaningful issues, or none clearly suits the user.
 

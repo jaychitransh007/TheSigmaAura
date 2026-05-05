@@ -166,22 +166,18 @@ def _user_context_block(ctx: CombinedContext) -> Dict[str, Any]:
     """
     user = ctx.user
 
-    derived: Dict[str, str] = {}
-    for key in _DERIVED_KEYS:
-        raw = user.derived_interpretations.get(key)
-        if isinstance(raw, dict):
-            derived[key] = str(raw.get("value", "") or "")
-        else:
-            derived[key] = str(raw or "")
+    def _value_str(source: Optional[Dict[str, Any]], key: str) -> str:
+        """Pull ``key`` from a possibly-None source dict, unwrapping
+        ``{"value": ..., "confidence": ...}`` shape if present.
+        Returns "" when the source or key is missing — keeps the
+        prompt structure stable per the docstring contract."""
+        val = (source or {}).get(key)
+        if isinstance(val, dict):
+            return str(val.get("value") or "")
+        return str(val or "")
 
-    raw_body: Dict[str, str] = {}
-    attrs = user.analysis_attributes or {}
-    for key in _BODY_RAW_KEYS:
-        v = attrs.get(key)
-        if isinstance(v, dict):
-            raw_body[key] = str(v.get("value", "") or "")
-        else:
-            raw_body[key] = str(v or "")
+    derived = {k: _value_str(user.derived_interpretations, k) for k in _DERIVED_KEYS}
+    raw_body = {k: _value_str(user.analysis_attributes, k) for k in _BODY_RAW_KEYS}
 
     style_pref = user.style_preference or {}
     return {
