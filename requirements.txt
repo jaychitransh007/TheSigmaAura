@@ -31,6 +31,13 @@ pydantic==2.11.4
 openai==2.14.0
 google-genai==1.56.0
 
+# ── HTTP client ───────────────────────────────────────────────────────
+# httpx is a transitive of openai today, but platform_core/supabase_rest.py
+# uses it directly for the Supabase REST connection pool (PR #59), so pin
+# it explicitly. If openai ever drops or downgrades httpx, the Supabase
+# layer would fail at import without an explicit pin here.
+httpx==0.28.1
+
 # ── Image handling ────────────────────────────────────────────────────
 # Pillow is the base image library. pillow-heif and pillow-avif-plugin
 # add format support for HEIC/HEIF (iPhone default) and AVIF (modern

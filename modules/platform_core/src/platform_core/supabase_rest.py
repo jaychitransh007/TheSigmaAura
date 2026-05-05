@@ -30,9 +30,11 @@ class SupabaseRestClient:
         self.timeout_seconds = timeout_seconds
         # Per-instance pool. Orchestrator constructs one SupabaseRestClient
         # at startup and reuses it across turns, so a single pool serves
-        # the whole process. http2=True multiplexes concurrent reads
-        # (e.g. once we parallelise onboarding_gate ↔ user_context in
-        # PR E) over one connection.
+        # the whole process. HTTP/1.1 keep-alive is sufficient — concurrent
+        # reads (e.g. parallel onboarding_gate ↔ analysis_status fetch in
+        # PR #62) just pull two connections from the keepalive pool, which
+        # is enough for our 2-way fanout. HTTP/2 multiplexing isn't needed
+        # at this scale and would require pulling in the `h2` package.
         self._http = httpx.Client(
             timeout=httpx.Timeout(timeout_seconds, connect=5.0),
             limits=_DEFAULT_POOL_LIMITS,

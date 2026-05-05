@@ -25,6 +25,13 @@ _EMBEDDING_TIMEOUT_SECONDS = 10.0
 
 @lru_cache(maxsize=1)
 def _shared_openai_client() -> OpenAI:
+    """Process-wide OpenAI client for catalog embedding.
+
+    Tests that need an isolated client (different config, different mock,
+    or just a clean slate between cases) can call
+    ``_shared_openai_client.cache_clear()`` in setUp/tearDown — the
+    decorator exposes that method automatically.
+    """
     return OpenAI(api_key=get_api_key(), timeout=_EMBEDDING_TIMEOUT_SECONDS)
 
 

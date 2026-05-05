@@ -1173,12 +1173,25 @@ class AgenticOrchestrator:
         # the pooled httpx client (PR #59). Saves one round-trip's worth
         # of latency on the slowest of the two — typically ~700ms-1s on
         # cold turns, less when the pool is warm.
+        #
+        # ContextVars (turn_id, conversation_id, etc.) don't propagate to
+        # ThreadPoolExecutor workers automatically; without an explicit
+        # snapshot, log lines and metrics from inside the gateway calls
+        # would lose request correlation. Mirror the pattern used by the
+        # tryon_render and visual_eval pools above.
+        _gate_ctx_snapshot = _snapshot_request_context()
         with ThreadPoolExecutor(max_workers=2) as _gate_pool:
             _onboarding_future = _gate_pool.submit(
-                self.onboarding_gateway.get_onboarding_status, external_user_id
+                run_with_context,
+                _gate_ctx_snapshot,
+                self.onboarding_gateway.get_onboarding_status,
+                external_user_id,
             )
             _analysis_future = _gate_pool.submit(
-                self.onboarding_gateway.get_analysis_status, external_user_id
+                run_with_context,
+                _gate_ctx_snapshot,
+                self.onboarding_gateway.get_analysis_status,
+                external_user_id,
             )
             onboarding_status = _onboarding_future.result()
             analysis_status = _analysis_future.result()
@@ -5565,7 +5578,7 @@ class AgenticOrchestrator:
                         # under gemini-3.1-flash-image-preview while cost queries
                         # can opt to exclude cache hits when measuring net spend.
                         try:
-                            self.repo.log_model_call(
+                            _cache_hit_row = self.repo.log_model_call(
                                 conversation_id=conversation_id,
                                 turn_id=turn_id,
                                 service="agentic_application",
@@ -5586,6 +5599,12 @@ class AgenticOrchestrator:
                                 status="ok",
                                 estimated_cost_usd=0.0,
                             )
+                            # Mirror the cold-render path's trace.add_model_cost_from_row
+                            # call (line 5628). Cost is 0 so this is a no-op for the
+                            # rollup math, but it keeps the cache-hit and cold-render
+                            # paths structurally identical so a future cost-tracking
+                            # change doesn't silently skip cache hits.
+                            trace.add_model_cost_from_row(_cache_hit_row)
                         except Exception:  # noqa: BLE001 — telemetry never breaks pipeline
                             _log.warning("Failed to persist tryon cache_hit model_call_log", exc_info=True)
                         _log_candidate_trace(garment_ids)
