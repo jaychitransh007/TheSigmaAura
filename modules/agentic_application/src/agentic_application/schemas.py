@@ -103,6 +103,10 @@ class LiveContext(BaseModel):
     weather_context: str = ""
     time_of_day: str = ""
     target_product_type: str = ""
+    # May 2026: style_goal carries the per-turn directional cue from chat
+    # (e.g. "edgy", "old-money classic", "minimalist"). Replaces the
+    # per-user stored archetype in driving directional vocabulary.
+    style_goal: str = ""
 
 
 # --- Conversation Memory ---

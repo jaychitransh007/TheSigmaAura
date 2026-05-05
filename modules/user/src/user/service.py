@@ -19,7 +19,8 @@ from platform_core.restricted_categories import ensure_allowed_garment_upload
 
 from .repository import OnboardingRepository
 from .schemas import FIXED_OTP, ImageCategory
-from .style_archetype import interpret_style_preference, selection_session
+# style_archetype module removed May 2026 — image-picker onboarding flow
+# replaced with a single risk-tolerance choice. See save_risk_tolerance.
 from .wardrobe_enrichment import infer_wardrobe_catalog_attributes
 
 
@@ -1041,7 +1042,11 @@ class OnboardingService:
         if not profile or not profile.get("profile_complete"):
             return
         uploaded = set(self._repo.get_image_categories(user_id))
-        if REQUIRED_IMAGE_CATEGORIES <= uploaded and profile.get("style_preference_complete"):
+        # May 2026: style_preference_complete column dropped. Onboarding
+        # now completes when the basic profile + required images land;
+        # risk_tolerance has its own snapshot, but recommendation works
+        # at "balanced" default if a user skips it.
+        if REQUIRED_IMAGE_CATEGORIES <= uploaded:
             if profile.get("onboarding_complete"):
                 return
             self._repo.mark_onboarding_complete(user_id)
@@ -1058,30 +1063,27 @@ class OnboardingService:
                 },
             )
 
-    def get_style_archetype_session(self, user_id: str) -> Optional[dict]:
-        if self._repo is None:
-            return None
-        profile = self._repo.get_profile_by_user_id(user_id)
-        if not profile:
-            return None
-        gender = str(profile.get("gender") or "")
-        normalized_gender = "female" if gender == "female" else "male"
-        session = selection_session(normalized_gender)
-        session["user_id"] = user_id
-        return session
+    # May 2026: get_style_archetype_session + save_style_preference
+    # removed alongside the multi-layer image-picker step. Single-step
+    # save_risk_tolerance replaces both.
 
-    def save_style_preference(self, user_id: str, shown_images: list[dict], selections: list[dict]) -> Optional[dict]:
+    def save_risk_tolerance(self, user_id: str, risk_tolerance: str) -> Optional[dict]:
+        """May 2026: replaces the multi-layer image-picker flow.
+        Captures the single retained per-user preference."""
         if self._repo is None:
             return None
         profile = self._repo.get_profile_by_user_id(user_id)
         if not profile:
             return None
         gender = "female" if str(profile.get("gender") or "") == "female" else "male"
-        style_preference = interpret_style_preference(gender, shown_images, selections)
+        style_preference = {
+            "gender": gender,
+            "riskTolerance": risk_tolerance,
+        }
         self._repo.insert_style_preference_snapshot(user_id=user_id, style_preference=style_preference)
         self._repo.mark_style_preference_complete(user_id)
         self._check_and_mark_complete(user_id)
-        return style_preference
+        return {"risk_tolerance": risk_tolerance}
 
     def _record_otp_verification_safe(
         self,
@@ -1124,7 +1126,6 @@ class OnboardingService:
                 "user_id": user_id,
                 "profile_complete": False,
                 "images_uploaded": [],
-                "style_preference_complete": False,
                 "onboarding_complete": False,
                 "wardrobe_item_count": 0,
             }
@@ -1134,7 +1135,6 @@ class OnboardingService:
                 "user_id": user_id,
                 "profile_complete": False,
                 "images_uploaded": [],
-                "style_preference_complete": False,
                 "onboarding_complete": False,
                 "wardrobe_item_count": 0,
             }
@@ -1161,7 +1161,12 @@ class OnboardingService:
             "profile_complete": bool(profile.get("profile_complete")),
             "images_uploaded": categories,
             "image_paths": image_paths,
-            "style_preference_complete": bool(profile.get("style_preference_complete")),
+            # May 2026: surface risk_tolerance from the latest snapshot
+            # so the onboarding UI can determine whether to show the
+            # risk step on resume. Empty when not yet captured.
+            "risk_tolerance": str(
+                ((self._repo.get_latest_style_preference_snapshot(user_id) or {}).get("risk_tolerance") or "")
+            ),
             "onboarding_complete": bool(profile.get("onboarding_complete")),
             "wardrobe_item_count": wardrobe_item_count,
         }

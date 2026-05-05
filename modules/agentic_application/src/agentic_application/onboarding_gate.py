@@ -24,8 +24,10 @@ def evaluate(
         missing_steps.append("Upload a full-body image.")
     if "headshot" not in images:
         missing_steps.append("Upload a headshot image.")
-    if not onboarding_status.get("style_preference_complete"):
-        missing_steps.append("Complete your style preference selection.")
+    # May 2026: style_preference_complete dropped. risk_tolerance is
+    # captured as a single onboarding step; presence is checked via
+    # profile_confidence's risk_tolerance_set factor, not as a hard gate
+    # (recommendation can ship with the "balanced" default).
     if not onboarding_status.get("onboarding_complete"):
         missing_steps.append("Finish mandatory onboarding before chat.")
 

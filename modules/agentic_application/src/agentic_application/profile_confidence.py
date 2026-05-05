@@ -47,11 +47,11 @@ def evaluate_profile_confidence(
     )
     factors.append(
         _factor(
-            factor="style_preference_complete",
-            satisfied=bool(onboarding_status.get("style_preference_complete")),
+            factor="risk_tolerance_set",
+            satisfied=bool(str(style_pref.get("riskTolerance") or "").strip()),
             max_score=20.0,
-            detail="Saved style preferences are available.",
-            improvement_action="Complete your style preference selection.",
+            detail="Risk tolerance is set so we can calibrate boldness.",
+            improvement_action="Tell us how adventurous you'd like to dress so we can calibrate.",
         )
     )
     factors.append(
@@ -73,16 +73,8 @@ def evaluate_profile_confidence(
             improvement_action="Add clearer images or rerun profile analysis to improve color interpretation.",
         )
     )
-    factors.append(
-        _factor(
-            factor="primary_archetype",
-            satisfied=bool(str(style_pref.get("primaryArchetype") or "").strip()),
-            max_score=7.5,
-            detail="Primary style archetype is available.",
-            improvement_action="Complete saved style preferences to define your primary archetype.",
-        )
-    )
-
+    # primary_archetype factor dropped May 2026 — archetype is no
+    # longer a stored user attribute.
     total = sum(item.max_score for item in factors) or 100.0
     earned = sum(item.score for item in factors)
     score_pct = int(round((earned / total) * 100))

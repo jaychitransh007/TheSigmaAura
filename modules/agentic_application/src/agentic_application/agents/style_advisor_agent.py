@@ -136,10 +136,7 @@ def _build_user_profile_payload(user_context: Any) -> Dict[str, Any]:
         "frame_structure": _nested_value(derived, "FrameStructure") or None,
         "height_category": _nested_value(derived, "HeightCategory") or None,
         "body_shape": _nested_value(analysis, "BodyShape") or None,
-        "primary_archetype": str(style_pref.get("primaryArchetype") or "") or None,
-        "secondary_archetype": str(style_pref.get("secondaryArchetype") or "") or None,
         "risk_tolerance": str(style_pref.get("riskTolerance") or "") or None,
-        "comfort_boundaries": list(style_pref.get("comfortBoundaries") or []),
     }
 
 

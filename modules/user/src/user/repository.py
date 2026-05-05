@@ -181,13 +181,13 @@ class OnboardingRepository:
         return result
 
     def mark_style_preference_complete(self, user_id: str) -> Optional[Dict[str, Any]]:
-        result = self.client.update_one(
-            "onboarding_profiles",
-            filters={"user_id": f"eq.{user_id}"},
-            patch={"style_preference_complete": True, "updated_at": _now_iso()},
-        )
+        # May 2026: style_preference_complete column dropped. The risk-tolerance
+        # snapshot existence is now the source of truth for "preference set"
+        # — see profile_confidence's risk_tolerance_set factor. This method
+        # remains as a no-op shim so legacy callers don't break, but it
+        # only refreshes the snapshot timestamp.
         self.insert_onboarding_profile_snapshot(user_id, snapshot_reason="state_change")
-        return result
+        return None
 
     def insert_onboarding_profile_snapshot(self, user_id: str, *, snapshot_reason: str) -> Optional[Dict[str, Any]]:
         profile = self.get_profile_by_user_id(user_id)
@@ -211,7 +211,6 @@ class OnboardingRepository:
             "profession": profile.get("profession"),
             "profile_complete": bool(profile.get("profile_complete")),
             "onboarding_complete": bool(profile.get("onboarding_complete")),
-            "style_preference_complete": bool(profile.get("style_preference_complete")),
             "has_full_body_image": "full_body" in images,
             "has_headshot_image": "headshot" in images,
             "full_body_encrypted_filename": (images.get("full_body") or {}).get("encrypted_filename") or "",
@@ -358,22 +357,26 @@ class OnboardingRepository:
     # -- user_style_preference_snapshots -------------------------------------
 
     def insert_style_preference_snapshot(self, *, user_id: str, style_preference: Dict[str, Any]) -> Dict[str, Any]:
-        blend = style_preference.get("blendRatio") or {}
+        # May 2026: archetype/secondary/blend/formality/pattern/comfort/
+        # archetype_scores/selected_image_ids/selected_images/selection_count
+        # all dropped from the table. Only risk_tolerance and gender remain.
+        # Coerce risk_tolerance to the new 3-value scale at write time so
+        # legacy callers that still pass 5-value strings degrade gracefully.
+        raw_risk = str(style_preference.get("riskTolerance") or "").strip().lower()
+        risk_tolerance = {
+            "conservative": "conservative",
+            "moderate-conservative": "conservative",
+            "moderate": "balanced",
+            "balanced": "balanced",
+            "moderate-adventurous": "expressive",
+            "adventurous": "expressive",
+            "expressive": "expressive",
+            "": "balanced",
+        }.get(raw_risk, raw_risk)
         return self.client.insert_one("user_style_preference_snapshots", {
             "user_id": user_id,
             "gender": style_preference.get("gender") or "male",
-            "primary_archetype": style_preference.get("primaryArchetype") or "",
-            "secondary_archetype": style_preference.get("secondaryArchetype"),
-            "blend_ratio_primary": int(blend.get("primary") or 100),
-            "blend_ratio_secondary": int(blend.get("secondary") or 0),
-            "risk_tolerance": style_preference.get("riskTolerance") or "",
-            "formality_lean": style_preference.get("formalityLean") or "",
-            "pattern_type": style_preference.get("patternType") or "",
-            "comfort_boundaries_json": style_preference.get("comfortBoundaries") or [],
-            "archetype_scores_json": style_preference.get("archetypeScores") or {},
-            "selected_image_ids_json": style_preference.get("selectedImageIds") or [],
-            "selected_images_json": style_preference.get("selectedImages") or {},
-            "selection_count": int(style_preference.get("selectionCount") or 0),
+            "risk_tolerance": risk_tolerance,
             "completed_at": style_preference.get("completedAt") or _now_iso(),
             "created_at": _now_iso(),
         })

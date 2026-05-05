@@ -14,10 +14,13 @@ def _compute_profile_richness(
     derived_interpretations: Dict[str, Any],
     style_preference: Dict[str, Any],
 ) -> str:
+    # May 2026: profile richness used to gate on primaryArchetype, but
+    # archetype was dropped from the data model. Body+palette signals are
+    # now what defines a "rich" profile; risk_tolerance is binary
+    # (set or not). Tiers below intentionally don't gate on
+    # risk_tolerance — a user without it still gets a default of
+    # "balanced" downstream and can produce useful recommendations.
     has_gender = bool(gender.strip())
-    has_primary_archetype = bool(
-        str(style_preference.get("primaryArchetype") or "").strip()
-    )
     has_seasonal = bool(
         str((derived_interpretations.get("SeasonalColorGroup") or {}).get("value") or "").strip()
     )
@@ -26,11 +29,11 @@ def _compute_profile_richness(
         if isinstance(v, dict) and str(v.get("value") or "").strip()
     )
 
-    if has_gender and has_seasonal and has_primary_archetype and body_attr_count >= 3:
+    if has_gender and has_seasonal and body_attr_count >= 3:
         return "full"
-    if has_gender and has_primary_archetype and body_attr_count >= 1:
+    if has_gender and has_seasonal and body_attr_count >= 1:
         return "moderate"
-    if has_gender and has_primary_archetype:
+    if has_gender and has_seasonal:
         return "basic"
     return "minimal"
 
@@ -85,8 +88,6 @@ def validate_minimum_profile(user_context: UserContext) -> None:
     ).get("value") or ""
     if not seasonal.strip():
         raise ValueError("Profile missing required field: SeasonalColorGroup")
-    primary = str(
-        user_context.style_preference.get("primaryArchetype") or ""
-    ).strip()
-    if not primary:
-        raise ValueError("Profile missing required field: primaryArchetype")
+    # primaryArchetype was dropped May 2026 — recommendation no longer
+    # requires a stored archetype. Body shape + palette + per-turn chat
+    # carry the directional signal.

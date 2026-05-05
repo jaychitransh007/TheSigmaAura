@@ -159,3 +159,27 @@ What we need to learn:
 - **Effort only:** `ARCHITECT_REASONING_EFFORT=high` env var (no code change, picks up at next process restart).
 - **Model only:** revert the default in [outfit_architect.py:227](modules/agentic_application/src/agentic_application/agents/outfit_architect.py:227) from `"gpt-5.4"` back to `"gpt-5.5"`. Orchestrator log/trace sites read `self.outfit_architect._model` so they pick up automatically.
 
+---
+
+## Architect quality replay — style-preference removal validation (May 2026)
+
+**Status:** queued · **Cost:** ~1 dev day + ~$1 in OpenAI calls · **Risk:** none (offline replay)
+
+The May 2026 style-preference removal stopped feeding `primaryArchetype` / `secondaryArchetype` / `formalityLean` / `patternType` to the architect, replacing the archetype-based "third direction stretch" logic with a `risk_tolerance`-driven scale and adding new pattern-scale + pattern-contrast rules grounded in `FrameStructure` + `SkinHairContrast`. The plan called for a PR-0 empirical replay against historical production turns to validate that quality holds — this was deferred at merge because staging only had 2 `composer_decision` rows in 30 days (insufficient sample).
+
+**To do once production traffic accumulates:**
+
+Build `ops/scripts/architect_replay_eval.py` that:
+1. Pulls ~100 historical recommendation turns from `tool_traces.composer_decision` joined to the architect input from `model_call_logs.request_json`.
+2. Re-runs `OutfitArchitect.plan(...)` with the OLD payload (carrying the now-deleted `style_preference` block) vs the NEW payload (carrying only `risk_tolerance`).
+3. Diffs the two architect outputs per turn:
+   - `directions[]` count + `direction_type` distribution
+   - `query_document` text similarity (jaccard or embedding cosine)
+   - `hard_filters` set differences
+   - `retrieval_count`
+4. Emits a markdown report sliced by intent (occasion_recommendation / pairing_request) and by whether the user had high vs low style-preference completeness in the OLD model.
+
+**Trigger to act:** when production has 100+ recommendation turns post-rollout (estimate ~1 month given current traffic), OR if the `catalog_low_confidence` rate spikes meaningfully — that would be a signal the new architect output is producing weaker queries.
+
+**Acceptance criteria for "quality holds":** median turn produces ≥0.85 cosine similarity on query_document text, AND identical hard_filter set on ≥80% of turns. If those hold, the removal is validated. If not, look at which dimensions (palette pulls, formality, silhouette) drift most and refine the architect prompt's body+palette rules.
+
