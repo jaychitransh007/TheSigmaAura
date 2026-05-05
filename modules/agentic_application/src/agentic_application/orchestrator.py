@@ -4872,10 +4872,14 @@ class AgenticOrchestrator:
             # fashion_score 0–100. Cosine similarity remains a retrieval
             # primitive only — all reasoning about whether items belong
             # together is now LLM judgment.
+            # Same drift-protection pattern as the architect above: read the
+            # model literal off the agent instance so trace + log rows always
+            # reflect what was actually called.
+            _composer_model = self.outfit_composer._model
             emit("outfit_composer", "started")
             trace_start(
                 "outfit_composer",
-                model="gpt-5.4",
+                model=_composer_model,
                 input_summary=f"{total_products} products across {len(retrieved_sets)} sets",
             )
             t_compose = time.monotonic()
@@ -4898,7 +4902,7 @@ class AgenticOrchestrator:
                         turn_id=turn_id,
                         service="agentic_application",
                         call_type=call_type,
-                        model="gpt-5.4",
+                        model=_composer_model,
                         request_json={
                             "pool_size": total_products,
                             "directions": len({rs.direction_id for rs in retrieved_sets}),
