@@ -271,6 +271,54 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
         self.assertEqual(92, ro.occasion_fit)  # 92.7 truncated
         self.assertEqual(80, ro.inter_item_coherence)  # 80.9 truncated
 
+    def test_rater_rejects_bool_subscores_as_malformed(self) -> None:
+        """An LLM emitting `true` / `false` for a numeric score is
+        malformed. Bool is an int subclass in Python so a naive
+        isinstance check would silently accept True as a score of 1;
+        reject explicitly instead."""
+        payload = {
+            "ranked_outfits": [
+                {"composer_id": "C1",
+                 "occasion_fit": True, "body_harmony": False,
+                 "color_harmony": 80, "archetype_match": 80,
+                 "inter_item_coherence": True,
+                 "rationale": "ok", "unsuitable": False},
+            ],
+            "overall_assessment": "moderate",
+        }
+        with patch("agentic_application.agents.outfit_rater.get_api_key", return_value="x"), _patch_rater() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(payload)
+            result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
+
+        ro = result.ranked_outfits[0]
+        # Required dims default to 0 on bool input.
+        self.assertEqual(0, ro.occasion_fit)
+        self.assertEqual(0, ro.body_harmony)
+        # inter_item_coherence becomes None (axis dropped from radar).
+        self.assertIsNone(ro.inter_item_coherence)
+
+    def test_rater_handles_overflow_in_float_string(self) -> None:
+        """`float("1e1000")` is inf; `int(inf)` raises OverflowError.
+        Catch it so the rate() loop doesn't crash on a single
+        malformed candidate."""
+        payload = {
+            "ranked_outfits": [
+                {"composer_id": "C1",
+                 "occasion_fit": "1e1000", "body_harmony": 80,
+                 "color_harmony": 80, "archetype_match": 80,
+                 "inter_item_coherence": "1e9999",
+                 "rationale": "ok", "unsuitable": False},
+            ],
+            "overall_assessment": "moderate",
+        }
+        with patch("agentic_application.agents.outfit_rater.get_api_key", return_value="x"), _patch_rater() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(payload)
+            result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
+
+        ro = result.ranked_outfits[0]
+        self.assertEqual(0, ro.occasion_fit)  # overflow → required dim default
+        self.assertIsNone(ro.inter_item_coherence)  # overflow → optional dim None
+
     def test_rater_drops_unknown_composer_ids(self) -> None:
         """The LLM should never invent composer_ids outside the input
         slate. If it does, drop them — preserves the contract that
