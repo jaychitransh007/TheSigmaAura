@@ -5116,15 +5116,15 @@ class AgenticOrchestrator:
                         # the UI radar drops the axis instead of pretending
                         # to score it. Matches how compute_fashion_score
                         # drops the dim from the score blend.
-                        # PR #71 review fix: preserve None when
-                        # inter_item_coherence is unset (legacy candidate
-                        # data) — defaulting to 0 would render as a
-                        # phantom "very low" axis on the radar instead of
-                        # hiding it. 0 is reserved for an actual Rater
-                        # judgement of "styling error".
+                        # PR #73 (review of #72): now that the schema
+                        # actually allows None end-to-end (was masking
+                        # everything as 100 before), pass through the
+                        # candidate value directly for paired/three_piece.
+                        # Unset → None, emitted-zero → 0 (real "styling
+                        # error" judgement), positive int → that int.
                         inter_item_coherence_pct=(
                             None if (candidate.candidate_type or "").strip().lower() == "complete"
-                            else (int(candidate.inter_item_coherence) if candidate.inter_item_coherence is not None else None)
+                            else candidate.inter_item_coherence
                         ),
                         fashion_score_pct=int(candidate.fashion_score or 0),
                         item_ids=sorted(
