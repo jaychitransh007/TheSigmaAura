@@ -131,10 +131,15 @@ _DEFAULT_WEIGHT_PROFILE = "default"
 
 WEIGHT_PROFILES: Dict[str, Dict[str, float]] = {
     "default": {
+        # PR #81 (May 5 2026): rebalanced. inter_item_coherence
+        # bumped 0.15 → 0.20 (composer + rater both judge it more
+        # important than the prior 4-dim renormalisation gave it
+        # credit for); body 0.23 → 0.20 and color 0.27 → 0.25 to
+        # accommodate.
         "occasion_fit":         0.35,
-        "body_harmony":         0.23,
-        "color_harmony":        0.27,
-        "inter_item_coherence": 0.15,
+        "body_harmony":         0.20,
+        "color_harmony":        0.25,
+        "inter_item_coherence": 0.20,
     },
     # Wedding / festival / ceremonial — occasion fit dominates; the
     # other three split the remainder.

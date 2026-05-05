@@ -136,9 +136,9 @@ class OutfitRaterContractTests(unittest.TestCase):
         self.assertEqual(3, len(result.ranked_outfits))
         self.assertEqual([1, 2, 3], [r.rank for r in result.ranked_outfits])
         self.assertEqual("C1", result.ranked_outfits[0].composer_id)
-        # Default 4-dim blend (R6): 92*0.35 + 85*0.23 + 88*0.27 + 80*0.15
-        # = 32.2 + 19.55 + 23.76 + 12.0 = 87.51 → 88
-        self.assertEqual(88, result.ranked_outfits[0].fashion_score)
+        # Default 4-dim blend (PR #81): occ 0.35, body 0.20, color 0.25, inter 0.20
+        # 92*0.35 + 85*0.20 + 88*0.25 + 80*0.20 = 32.2 + 17 + 22 + 16 = 87.2 → 87
+        self.assertEqual(87, result.ranked_outfits[0].fashion_score)
         self.assertEqual("moderate", result.overall_assessment)
 
 
@@ -190,9 +190,9 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
         self.assertEqual(100, ro.occasion_fit)
         self.assertEqual(0, ro.body_harmony)
         self.assertEqual(50, ro.color_harmony)
-        # 4-dim default (R6): 100*0.35 + 0*0.23 + 50*0.27 + 80*0.15
-        # = 35 + 0 + 13.5 + 12 = 60.5 → 60 (banker's rounding)
-        self.assertEqual(60, ro.fashion_score)
+        # 4-dim default (PR #81): 100*0.35 + 0*0.20 + 50*0.25 + 80*0.20
+        # = 35 + 0 + 12.5 + 16 = 63.5 → 64
+        self.assertEqual(64, ro.fashion_score)
 
     def test_rater_treats_malformed_inter_item_as_missing(self) -> None:
         """A malformed inter_item_coherence value (empty string,
@@ -247,8 +247,8 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
 
                 ro = result.ranked_outfits[0]
                 self.assertEqual(0, ro.occasion_fit)
-                # 4-dim default (R6): 0*0.35 + 80*0.23 + 80*0.27 + 80*0.15
-                # = 0 + 18.4 + 21.6 + 12 = 52
+                # 4-dim default (PR #81): 0*0.35 + 80*0.20 + 80*0.25 + 80*0.20
+                # = 0 + 16 + 20 + 16 = 52 (same as before — coincidence)
                 self.assertEqual(52, ro.fashion_score)
 
     def test_rater_truncates_float_strings_in_subscores(self) -> None:
