@@ -389,9 +389,17 @@ class OutfitRater:
             for p in rs.products:
                 items_by_id[p.product_id] = p
 
+        # The Rater no longer consumes archetypal_preferences. Past
+        # likes/dislikes are now applied upstream by the Architect
+        # (retrieval bias) and Composer (item selection bias). By the
+        # time an outfit reaches the Rater it has already been shaped
+        # by that history; re-vetoing here was producing systematic
+        # empty responses (every outfit unsuitable=True) — see T12.
+        user_block = _user_context_block(combined_context)
+        user_block.pop("archetypal_preferences", None)
         user_payload = json.dumps(
             {
-                "user": _user_context_block(combined_context),
+                "user": user_block,
                 "outfits": _build_outfit_payload(composed_outfits, items_by_id),
             },
             indent=2,
