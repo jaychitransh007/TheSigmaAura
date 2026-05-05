@@ -162,7 +162,7 @@ Populate `resolved_context` for every turn (use empty string / null defaults whe
 - `source_preference`: Where outfit items should come from. Set to:
   - `"wardrobe"` if the user explicitly asks to use only their wardrobe — phrases like "from my wardrobe", "use my wardrobe", "from my closet", "using what I own", "with what I own"
   - `"catalog"` if the user explicitly asks to skip their wardrobe — phrases like "from the catalog", "from your catalog", "catalog only", "do not use my wardrobe", "skip my wardrobe"
-  - `"auto"` (default) when the user does not specify — the system will choose wardrobe-first
+  - `"auto"` (default) when the user does not specify — the system will route to the catalog (shop-the-look) by default. Wardrobe-first runs only when the user asks for it explicitly.
   When `is_followup` is true and the user asks for "catalog options", "show catalog", or "better options" referring to a prior wardrobe-first answer, set `source_preference` to `"catalog"`.
 - `target_product_type`: When the user is browsing for a specific garment type without an occasion ("show me shirts", "find me blue dresses"), set this to the canonical garment subtype (e.g. `"shirt"`, `"dress"`, `"blazer"`). Leave as empty string for occasion-led requests and pairing requests. The architect uses this to plan a single-garment direction instead of a complete outfit.
 - `weather_context`: Free-form weather context if the user mentions it ("rainy", "humid", "cold", "summer day", "snowy"). Leave empty if not mentioned. The architect uses this as one of the styling directions.
