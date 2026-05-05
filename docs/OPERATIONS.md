@@ -586,7 +586,7 @@ the image as not-a-garment.
 
 ---
 
-## Panel 16 — Low-Confidence Catalog Responses (May 3, 2026)
+## Panel 16 — Low-Confidence Catalog Responses
 
 **Question:** how often does the 0.75 confidence threshold gate force a no-confident-match response instead of shipping outfits?
 
@@ -596,10 +596,11 @@ the image as not-a-garment.
 -- low_confidence_catalog_response_rate_last_7d
 SELECT
     date_trunc('day', created_at) AS day,
-    SUM(CASE WHEN metadata_json->>'answer_source' = 'catalog_low_confidence' THEN 1 ELSE 0 END) AS low_conf_turns,
+    COUNT(*) FILTER (WHERE metadata_json->>'answer_source' = 'catalog_low_confidence') AS low_conf_turns,
     COUNT(*) AS total_turns,
     round(
-        100.0 * SUM(CASE WHEN metadata_json->>'answer_source' = 'catalog_low_confidence' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0),
+        100.0 * COUNT(*) FILTER (WHERE metadata_json->>'answer_source' = 'catalog_low_confidence')::numeric
+        / NULLIF(COUNT(*), 0),
         2
     ) AS low_conf_rate_pct,
     round(avg((metadata_json->>'low_confidence_top_match_score')::numeric), 3) AS avg_top_match_score_when_blocked
@@ -651,7 +652,7 @@ will look artificially good.
 
 ---
 
-## Panel 17 — Architect Input Token Growth (May 5 2026, PR #90 / #92)
+## Panel 17 — Architect Input Token Growth
 
 **Question:** is the architect's prompt size creeping up because of
 the new episodic-memory timeline, and is the timeline cap (30 events)
@@ -697,7 +698,7 @@ ceiling and approaching gpt-5.4 context-window pressure. Lower
 
 ---
 
-## Panel 18 — Rater Unsuitable Rate (May 5 2026, PR #89 baseline)
+## Panel 18 — Rater Unsuitable Rate
 
 **Question:** how often is the rater flagging an outfit as `unsuitable`
 post-#89, and is the rate stable?
@@ -754,7 +755,7 @@ against the post-#89 version and revert the offending change.
 
 ---
 
-## Panel 19 — Composer Latency (May 5 2026, PR #95 baseline)
+## Panel 19 — Composer Latency
 
 **Question:** what's the per-attempt composer wall-clock latency, and
 is the gpt-5.4 promotion (PR #81) still inside the latency budget?
@@ -799,7 +800,7 @@ double tokens to recover. Check `tool_traces.composer_decision`
 
 ---
 
-## Panel 20 — Episodic Memory Population (May 5 2026, PR #90 / #92)
+## Panel 20 — Episodic Memory Population
 
 **Question:** is the architect actually receiving non-empty episodic
 memory for our active users, or are timelines silently empty?

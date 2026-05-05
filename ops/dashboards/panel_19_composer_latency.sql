@@ -1,4 +1,4 @@
--- Panel 19 — Composer Latency (May 5 2026, PR #95 baseline)
+-- Panel 19 — Composer Latency
 -- Source: docs/OPERATIONS.md (auto-extracted; do not hand-edit)
 -- Regenerate with: python3 ops/scripts/extract_dashboard_sql.py
 
