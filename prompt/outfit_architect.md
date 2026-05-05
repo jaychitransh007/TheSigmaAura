@@ -40,14 +40,14 @@ The value is products per query (each direction has 1-3 queries depending on its
 
 | Request type | Direction count | Per-query | Why |
 |---|---:|---:|---|
-| Single direction (default for most occasions) | 1 | 18 | Composer needs pool depth to produce 3 differentiated outfits within ONE concept |
-| Variety request (3 directions) | 3 | 12 | Each direction brings its own variety; smaller per-query is enough |
-| Follow-up `more_options` (3 directions) | 3 | 12 | Same as variety — pool depth comes from direction count |
-| Other single-direction follow-ups (`change_color`, `increase_boldness`, etc.) | 1 | 18 | Same as default single-direction logic |
-| Anchor garment | 1 | 12 | Anchor itself constrains the search — less pool depth needed than non-anchor single-direction |
-| Specific single-garment ("show me shirts") | 1 | 6 | User named the type; narrow retrieval works |
+| Single direction (default for most occasions) | 1 | 30 | Composer needs pool depth to produce 3 differentiated outfits within ONE concept; wider pool gives the Rater more palette-matched candidates to choose from |
+| Variety request (3 directions) | 3 | 20 | Each direction brings its own variety; per-query bumped to keep palette-matched count up |
+| Follow-up `more_options` (3 directions) | 3 | 20 | Same as variety — pool depth comes from direction count |
+| Other single-direction follow-ups (`change_color`, `increase_boldness`, etc.) | 1 | 30 | Same as default single-direction logic |
+| Anchor garment | 1 | 20 | Anchor itself constrains the search — but wider pool helps when palette filtering kicks in downstream |
+| Specific single-garment ("show me shirts") | 1 | 12 | User named the type; narrower retrieval still works but bumped to compensate for embedding-space palette dilution |
 
-Do NOT inflate to compensate for low inventory.
+Do NOT inflate beyond these — they're already calibrated for the Composer's prompt size.
 
 ### `resolved_context` rules
 
@@ -176,9 +176,25 @@ Rule of thumb: occasion / style / mood requests are ALWAYS broad → `garment_su
 
 **You are responsible for translating user/request context into physical garment attributes BEFORE emitting the query.** Reason about the user's profile + occasion in your head; emit only the physical attributes that follow from that reasoning. Do NOT also leave the user-side strings in the document — translation must REPLACE the source text, not duplicate it.
 
-### Required document structure — all six sections are physical garment attributes:
+### Required document structure — seven sections; the first is a *brief* of the primary axes that get repeated in the detailed sections below.
 
 ```
+PRIMARY_BRIEF:
+- A compact restatement of the axes that most strongly shape candidate
+  selection: GarmentCategory, GarmentSubtype, StylingCompleteness,
+  SilhouetteContour, FitType, GarmentLength, SleeveLength,
+  EmbellishmentLevel, FabricDrape, FabricWeight, PatternType,
+  ColorTemperature, PrimaryColor, FormalityLevel, TimeOfDay.
+- These axes appear here AND in their respective detailed sections
+  below — that is intentional. The query_document is matched via
+  cosine similarity, and the embedding model averages the signal
+  across all tokens. Restating the high-signal axes once at the top
+  roughly doubles their weight in the embedded vector relative to
+  secondary axes (PatternScale, FabricTexture, NecklineDepth,
+  WaistDefinition, etc.) which appear only once in the detailed
+  sections. This keeps palette + formality + silhouette dominant
+  during retrieval instead of getting drowned out by noise.
+
 GARMENT_REQUIREMENTS:
 - GarmentCategory, GarmentSubtype, StylingCompleteness (complete | needs_bottomwear | needs_topwear)
 - SilhouetteContour, SilhouetteType, VolumeProfile, FitEase, FitType, GarmentLength
@@ -206,6 +222,8 @@ CONTEXT_AND_TIMING:
 - FormalityLevel, TimeOfDay
 ```
 
+`PRIMARY_BRIEF` format: one line per axis, prefixed with `- AxisName: value(s)`. Same vocabulary as the detailed sections — same allowed values, same comma-separated synonym expansion for `PrimaryColor`. Keep it compact (one line per axis, no prose).
+
 ### What NEVER appears in `query_document` (NO EXCEPTIONS):
 
 - ❌ **`USER_NEED:`** section — this is the user's request stated in their language. Catalog has no counterpart. Do not include.
@@ -231,28 +249,51 @@ PROFILE_AND_STYLE:
 - Autumn, creative, Light and Narrow frame
 ```
 
-✅ RIGHT (translated to garment terms only — note that EVERY emitted line is a clean attribute, no commentary, no source-tracking annotations):
+✅ RIGHT (translated to garment terms only — note that EVERY emitted line is a clean attribute, no commentary, no source-tracking annotations; PRIMARY_BRIEF leads, detailed sections repeat the primary axes alongside the secondary ones):
 ```
+PRIMARY_BRIEF:
+- GarmentCategory: top
+- GarmentSubtype: shirt
+- StylingCompleteness: needs_bottomwear
+- SilhouetteContour: structured
+- FitType: regular fit
+- GarmentLength: regular
+- SleeveLength: full sleeve
+- EmbellishmentLevel: minimal
+- FabricDrape: soft structured
+- FabricWeight: medium
+- PatternType: solid, subtle texture
+- ColorTemperature: warm
+- PrimaryColor: rust, terracotta, brick, warm brick
+- FormalityLevel: smart_casual
+- TimeOfDay: day
+
 GARMENT_REQUIREMENTS:
-- GarmentCategory: top, GarmentSubtype: shirt
+- GarmentCategory: top, GarmentSubtype: shirt, StylingCompleteness: needs_bottomwear
 - SilhouetteContour: structured, FitType: regular fit, ShoulderStructure: lightly structured
-- VolumeProfile: regular
+- VolumeProfile: regular, GarmentLength: regular, SleeveLength: full sleeve
+
+EMBELLISHMENT:
+- EmbellishmentLevel: minimal
+- EmbellishmentType: subtle texture
+- EmbellishmentZone: allover
 
 VISUAL_DIRECTION:
 - VerticalWeightBias: upper_biased
 - LineDirection: vertical
 
 FABRIC_AND_BUILD:
+- FabricDrape: soft structured
 - FabricTexture: textured weave, woven cotton, brushed twill
 - FabricWeight: medium
 
 PATTERN_AND_COLOR:
+- PatternType: solid, subtle texture
 - ColorTemperature: warm
 - ColorValue: medium_to_deep
 - ColorSaturation: muted_to_rich
-- PrimaryColor: rust, terracotta, brick
+- PrimaryColor: rust, terracotta, brick, warm brick
 - SecondaryColor: camel, warm taupe
-- PatternType: solid, subtle texture
 
 CONTEXT_AND_TIMING:
 - FormalityLevel: smart_casual
