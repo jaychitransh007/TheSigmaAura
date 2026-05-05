@@ -74,9 +74,10 @@ class OutfitItem(BaseModel):
 class OutfitCard(BaseModel):
     """API contract for an outfit card. Mirrors agentic_application.schemas.OutfitCard.
 
-    Post-V2 (May 5 2026): visual_evaluator-only fields (notes, archetype
-    pcts, comfort/risk pcts, context-gated pcts) removed. Post-R6:
-    style_fit_pct removed (archetype_match dimension dropped).
+    R7 (May 5 2026): six rater dims now (added formality_pct +
+    statement_pct; renamed inter_item_coherence_pct → pairing_pct).
+    pairing_pct is None for complete (single-item) outfits — frontend
+    drops the axis and renders a 5-axis pentagon instead of a hexagon.
     """
     rank: int
     title: str = ""
@@ -84,7 +85,9 @@ class OutfitCard(BaseModel):
     body_harmony_pct: int = 0
     color_suitability_pct: int = 0
     occasion_pct: Optional[int] = None
-    inter_item_coherence_pct: Optional[int] = None
+    pairing_pct: Optional[int] = None
+    formality_pct: int = 0
+    statement_pct: int = 0
     fashion_score_pct: int = 0
     tryon_image: str = ""
     items: List[OutfitItem] = Field(default_factory=list)

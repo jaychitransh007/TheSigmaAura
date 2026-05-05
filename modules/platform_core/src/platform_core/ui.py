@@ -2932,15 +2932,19 @@ def get_web_ui_html(
 
       // PR V1 (May 5 2026): pentagon radar populated directly from the
       // Rater's 5 sub-scores. For `complete` (single-item) outfits we
-      // drop inter_item_coherence — there's nothing to clash with — and
-      // render a 4-axis quadrilateral. The orchestrator sets the dim
-      // to null for complete outfits; we drop axes whose value is
-      // missing rather than rendering a phantom 0%.
+      // R7 (May 5 2026): six rater dims — added Formality and Statement
+      // (previously double-counted inside Occasion / Pairing); renamed
+      // inter_item_coherence_pct → pairing_pct (now scoped to fit +
+      // fabric only). For complete (single-item) outfits Pairing is
+      // null and the axis drops → 5-axis pentagon. The values are 0/50/
+      // 100 (rescaled from the rater's 1/2/3 sub-scores).
       var allAxes = [
-        {{ key: "occasion_pct",             label: "Occasion" }},
-        {{ key: "body_harmony_pct",         label: "Body" }},
-        {{ key: "color_suitability_pct",    label: "Color" }},
-        {{ key: "inter_item_coherence_pct", label: "Pairing" }},
+        {{ key: "occasion_pct",          label: "Occasion" }},
+        {{ key: "body_harmony_pct",      label: "Body" }},
+        {{ key: "color_suitability_pct", label: "Color" }},
+        {{ key: "pairing_pct",           label: "Pairing" }},
+        {{ key: "formality_pct",         label: "Formality" }},
+        {{ key: "statement_pct",         label: "Statement" }},
       ];
       var axes = allAxes.filter(function(a) {{
         var v = outfit[a.key];
@@ -2965,8 +2969,16 @@ def get_web_ui_html(
       var n = axes.length;
       var svgNs = "http://www.w3.org/2000/svg";
       var svg = document.createElementNS(svgNs, "svg");
-      svg.setAttribute("viewBox", "0 0 " + size + " " + size);
-      svg.setAttribute("width", size);
+      // R7 (May 5 2026): the longest axis labels at 6 dims are
+      // "Formality" / "Statement" (9 chars ≈ 60px wide). The
+      // previous viewBox of 0..size was clipping them at the right
+      // edge ("Body" → "Bo", "Pairing" → "ng" in the screenshot
+      // that triggered this redesign). Pad the viewBox horizontally
+      // by 36px on each side so labels render fully without
+      // shrinking the radar polygon itself.
+      var hPad = 36;
+      svg.setAttribute("viewBox", -hPad + " 0 " + (size + 2 * hPad) + " " + size);
+      svg.setAttribute("width", size + 2 * hPad);
       svg.setAttribute("height", size);
       svg.setAttribute("class", "rater-radar");
       var accentRgb = (getComputedStyle(document.documentElement).getPropertyValue("--accent-rgb") || "92, 26, 27").trim();

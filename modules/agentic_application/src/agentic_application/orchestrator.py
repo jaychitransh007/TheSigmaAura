@@ -84,12 +84,19 @@ _RECOMMENDATION_CONFIDENCE_THRESHOLD = 0.75
 
 # Catalog-pipeline gate. After Composer + Rater, only outfits whose
 # Rater fashion_score clears this floor AND were not flagged
-# ``unsuitable`` by the Rater reach the user. Lowered 75 → 60 in
-# PR #81 — at 75 we were over-rejecting palette-mid candidates that
-# downstream try-on + rater rationale showed were perfectly
-# acceptable. 60 is more permissive but ``unsuitable: true`` still
-# hard-drops the genuinely bad ones.
-_RECOMMENDATION_FASHION_THRESHOLD = 60
+# ``unsuitable`` by the Rater reach the user.
+#
+# History:
+# - 75 (initial). Over-rejected palette-mid candidates that downstream
+#   try-on + rater rationale showed were perfectly acceptable.
+# - 60 (PR #81). More permissive on the 0–100 scale; ``unsuitable: true``
+#   still hard-dropped genuinely bad outfits.
+# - 50 (R7, May 5 2026). Rater moved to a 1/2/3 scale rescaled to 0–100
+#   in compute_fashion_score. All-2s now lands at exactly 50, so the
+#   threshold "every dim is at least neutral" maps cleanly to 50. An
+#   outfit that's 2 across the board barely clears; one with even one
+#   "1" on a heavily-weighted axis falls below.
+_RECOMMENDATION_FASHION_THRESHOLD = 50
 
 # Maximum raw score from `_select_wardrobe_occasion_outfit._score`:
 #   +3 occasion_fit exact match
@@ -3657,10 +3664,14 @@ class AgenticOrchestrator:
                     "direction_id": candidate.direction_id,
                     "candidate_type": candidate.candidate_type,
                     "fashion_score": candidate.fashion_score,
+                    # R7 (May 5 2026): six 1/2/3 sub-scores. Pairing
+                    # is None for complete (single-item) outfits.
                     "occasion_fit": candidate.occasion_fit,
                     "body_harmony": candidate.body_harmony,
                     "color_harmony": candidate.color_harmony,
-                    "inter_item_coherence": candidate.inter_item_coherence,
+                    "pairing": candidate.pairing,
+                    "formality": candidate.formality,
+                    "statement": candidate.statement,
                     "composer_rationale": candidate.composer_rationale,
                     "rater_rationale": candidate.rater_rationale,
                     "unsuitable": candidate.unsuitable,
@@ -3690,7 +3701,11 @@ class AgenticOrchestrator:
                     "body_harmony_pct": row.body_harmony_pct,
                     "color_suitability_pct": row.color_suitability_pct,
                     "occasion_pct": row.occasion_pct,
-                    "inter_item_coherence_pct": row.inter_item_coherence_pct,
+                    # R7 (May 5 2026): renamed from inter_item_coherence_pct;
+                    # plus new formality_pct and statement_pct axes.
+                    "pairing_pct": row.pairing_pct,
+                    "formality_pct": row.formality_pct,
+                    "statement_pct": row.statement_pct,
                     "fashion_score_pct": row.fashion_score_pct,
                 }
                 for row in evaluated
@@ -5108,10 +5123,15 @@ class AgenticOrchestrator:
                                 "composer_id": r.composer_id,
                                 "rank": r.rank,
                                 "fashion_score": r.fashion_score,
+                                # R7 (May 5 2026): six 1/2/3 sub-scores.
+                                # Pairing replaces inter_item_coherence
+                                # (now scoped to fit + fabric only).
                                 "occasion_fit": r.occasion_fit,
                                 "body_harmony": r.body_harmony,
                                 "color_harmony": r.color_harmony,
-                                "inter_item_coherence": r.inter_item_coherence,
+                                "pairing": r.pairing,
+                                "formality": r.formality,
+                                "statement": r.statement,
                                 "rationale": r.rationale,
                                 "unsuitable": r.unsuitable,
                             }
@@ -5154,10 +5174,14 @@ class AgenticOrchestrator:
                         candidate_type=composed.direction_type,
                         items=items,
                         fashion_score=rated.fashion_score,
+                        # R7 (May 5 2026): six 1/2/3 sub-scores. Pairing
+                        # is Optional and stays None for complete outfits.
                         occasion_fit=rated.occasion_fit,
                         body_harmony=rated.body_harmony,
                         color_harmony=rated.color_harmony,
-                        inter_item_coherence=rated.inter_item_coherence,
+                        pairing=rated.pairing,
+                        formality=rated.formality,
+                        statement=rated.statement,
                         composer_id=composed.composer_id,
                         composer_rationale=composed.rationale,
                         rater_rationale=rated.rationale,
@@ -5258,7 +5282,18 @@ class AgenticOrchestrator:
                 key=lambda c: c.fashion_score,
                 reverse=True,
             )[:top_n]
+            # R7 (May 5 2026): the rater emits 1/2/3 sub-scores. The UI
+            # radar reads percentages, so rescale per axis: 1→0, 2→50,
+            # 3→100 via _r7_pct. The center fashion_score is already
+            # 0–100 from compute_fashion_score's blended math.
             for rank, candidate in enumerate(promoted_candidates, 1):
+                is_complete = (candidate.candidate_type or "").strip().lower() == "complete"
+                # _r7_pct returns Optional[int]; the always-on dims
+                # default to 0 if somehow None reaches us here, which
+                # is more honest than the prior unconditional `or 0`
+                # against 0–100 inputs.
+                def _required(v: Any) -> int:
+                    return _r7_pct(v) or 0
                 evaluated.append(
                     EvaluatedRecommendation(
                         candidate_id=candidate.candidate_id,
@@ -5269,27 +5304,21 @@ class AgenticOrchestrator:
                         # to "Outfit N" only if the LLM somehow returns blank.
                         title=candidate.name or f"Outfit {rank}",
                         reasoning=candidate.rater_rationale or "Rated by stylist.",
-                        # Map the Rater's 3 always-on dims onto the radar
-                        # slots the UI knows. occasion_pct is Optional so
-                        # we set it explicitly. R6 (May 5 2026) dropped
-                        # archetype_match → style_fit_pct entirely.
-                        body_harmony_pct=int(candidate.body_harmony or 0),
-                        color_suitability_pct=int(candidate.color_harmony or 0),
-                        occasion_pct=int(candidate.occasion_fit or 0),
-                        # PR V1 (May 5 2026): inter-item coherence. For
-                        # complete (single-item) outfits, set to None so
-                        # the UI radar drops the axis instead of pretending
-                        # to score it. Matches how compute_fashion_score
-                        # drops the dim from the score blend.
-                        # PR #73 (review of #72): now that the schema
-                        # actually allows None end-to-end (was masking
-                        # everything as 100 before), pass through the
-                        # candidate value directly for paired/three_piece.
-                        # Unset → None, emitted-zero → 0 (real "styling
-                        # error" judgement), positive int → that int.
-                        inter_item_coherence_pct=(
-                            None if (candidate.candidate_type or "").strip().lower() == "complete"
-                            else candidate.inter_item_coherence
+                        # Map the Rater's 1/2/3 sub-scores onto the 0/50/100
+                        # axis percentages the radar UI reads.
+                        occasion_pct=_required(candidate.occasion_fit),
+                        body_harmony_pct=_required(candidate.body_harmony),
+                        color_suitability_pct=_required(candidate.color_harmony),
+                        formality_pct=_required(candidate.formality),
+                        statement_pct=_required(candidate.statement),
+                        # Pairing drops out for complete (single-item)
+                        # outfits — None signals the radar to hide the
+                        # axis (5-axis pentagon instead of 6-axis hexagon).
+                        # Otherwise rescale the 1/2/3 sub-score same as
+                        # the always-on dims.
+                        pairing_pct=(
+                            None if is_complete
+                            else _r7_pct(candidate.pairing)
                         ),
                         fashion_score_pct=int(candidate.fashion_score or 0),
                         item_ids=sorted(
@@ -6504,18 +6533,43 @@ class AgenticOrchestrator:
                     # handler can quote the actual stylist-to-stylist
                     # reasoning instead of regenerating it from raw
                     # attributes. PR #71 review feedback: also persist
-                    # the four Rater dimension scores so the advisor
-                    # has the quantitative evidence behind the rank.
+                    # the Rater dimension scores so the advisor has
+                    # the quantitative evidence behind the rank.
+                    # R7 (May 5 2026): scores are now 1/2/3 — rescale
+                    # to 0/50/100 to keep the ``_pct`` keys honest.
+                    # Pairing, formality, statement added; pairing is
+                    # None for complete (single-item) outfits.
                     "archetype_scores": {
-                        "body_harmony_pct": int(getattr(candidate, "body_harmony", 0) or 0),
-                        "color_suitability_pct": int(getattr(candidate, "color_harmony", 0) or 0),
-                        "occasion_pct": int(getattr(candidate, "occasion_fit", 0) or 0),
+                        "occasion_pct": _r7_pct(getattr(candidate, "occasion_fit", None)),
+                        "body_harmony_pct": _r7_pct(getattr(candidate, "body_harmony", None)),
+                        "color_suitability_pct": _r7_pct(getattr(candidate, "color_harmony", None)),
+                        "pairing_pct": _r7_pct(getattr(candidate, "pairing", None)),
+                        "formality_pct": _r7_pct(getattr(candidate, "formality", None)),
+                        "statement_pct": _r7_pct(getattr(candidate, "statement", None)),
                     },
                     "rater_rationale": str(getattr(candidate, "rater_rationale", "") or "").strip(),
                     "composer_rationale": str(getattr(candidate, "composer_rationale", "") or "").strip(),
                 }
             )
         return summaries
+
+
+def _r7_pct(value: Any) -> Optional[int]:
+    """Rescale a Rater 1/2/3 sub-score to a 0/50/100 percent for UI /
+    advisor consumption. R7 (May 5 2026) moved from 0–100 sub-scores
+    to a 1/2/3 scale; consumers read ``_pct`` so this helper keeps the
+    contract consistent.
+
+    None / missing → None (lets the radar drop the axis or the advisor
+    skip the dim, instead of pretending a phantom 0).
+    """
+    if value is None:
+        return None
+    try:
+        v = max(1, min(3, int(value)))
+    except (TypeError, ValueError):
+        return None
+    return (v - 1) * 50
 
 
 def _dedupe_values(values: Any) -> List[str]:

@@ -228,18 +228,27 @@ class OutfitCandidate(BaseModel):
     # LLM-ranker scores. fashion_score is the gating field downstream;
     # the sub-scores stay attached so the response payload can show
     # the breakdown in the UI later. For wardrobe items, the orchestrator
-    # sets fashion_score = 100 and the rest to neutral (0).
-    fashion_score: int = 0  # 0–100
-    occasion_fit: int = 0
-    body_harmony: int = 0
-    color_harmony: int = 0
-    # R5 (PR #68, May 5 2026): how well the items in a multi-piece
-    # outfit work together. For complete outfits (single item) the
-    # blend formula drops this dim and renormalises the other three.
-    # PR #73 (review of #72): made Optional so unset / legacy data
-    # propagates as None all the way to the radar (axis hidden)
-    # rather than getting masked as a phantom 100.
-    inter_item_coherence: Optional[int] = None
+    # sets fashion_score = 100 and the rest to neutral (2).
+    fashion_score: int = 0  # 0–100 (blended from 1/2/3 sub-scores)
+    # R7 (May 5 2026): six sub-scores on a 1/2/3 scale.
+    # 1 = clear miss, 2 = works, 3 = clear win.
+    occasion_fit: int = 2
+    body_harmony: int = 2
+    color_harmony: int = 2
+    # R7: renamed from inter_item_coherence; scoped to fit + fabric only
+    # (formality_consistency moved to `formality`; detail_rhythm moved
+    # to `statement`). For complete (single-item) outfits the LLM emits
+    # 3 and the blender drops the dim. Optional so unset / legacy data
+    # propagates as None all the way to the radar (axis hidden) rather
+    # than getting masked as a phantom 3.
+    pairing: Optional[int] = None
+    # R7 (May 5 2026): formality is now its own axis (was double-counted
+    # inside occasion_fit + inter_item_coherence). Always emitted.
+    formality: int = 2
+    # R7 (May 5 2026): pattern density + embellishment intensity.
+    # Always emitted; the question is whether the level *matches* the
+    # request, not whether the outfit is loud or quiet in absolute terms.
+    statement: int = 2
     composer_id: str = ""  # Empty for wardrobe-anchored candidates.
     composer_rationale: str = ""
     rater_rationale: str = ""
@@ -297,15 +306,17 @@ class ComposerResult(BaseModel):
 class RatedOutfit(BaseModel):
     composer_id: str  # Matches ComposedOutfit.composer_id
     rank: int = 0
-    fashion_score: int = 0  # 0–100. Weighted blend of the sub-scores (computed in code).
-    occasion_fit: int = 0
-    body_harmony: int = 0
-    color_harmony: int = 0
-    # R5 (May 5 2026): inter-item fit/fabric/formality coherence.
-    # PR #73: Optional so the orchestrator can pass None straight
-    # through for complete outfits (radar drops the axis) without
-    # the schema masking it as a phantom 100.
-    inter_item_coherence: Optional[int] = None
+    fashion_score: int = 0  # 0–100. Weighted blend of the 1/2/3 sub-scores (computed in code).
+    # R7 (May 5 2026): six sub-scores on a 1/2/3 scale.
+    occasion_fit: int = 2
+    body_harmony: int = 2
+    color_harmony: int = 2
+    # R7: renamed from inter_item_coherence; scoped to fit + fabric.
+    # Optional so the orchestrator can pass None for complete outfits
+    # (radar drops the axis) without masking as a phantom 3.
+    pairing: Optional[int] = None
+    formality: int = 2
+    statement: int = 2
     rationale: str = ""
     unsuitable: bool = False  # Hard veto — drop even if fashion_score is high.
 
@@ -331,8 +342,11 @@ class EvaluatedRecommendation(BaseModel):
 
     Post-V2 (May 5 2026): the visual_evaluator + outfit_check +
     garment_evaluation flows are gone. Only Rater-derived dims remain.
-    The legacy 17-axis split-polar visual evaluator output (archetype
-    pcts, strengths/improvements, verdicts, notes, status) is removed.
+
+    R7 (May 5 2026): the rater shifted from 4 dims on a 0–100 scale to
+    6 dims on a 1/2/3 scale. The ``_pct`` fields here are rescaled for
+    UI consumption: 1 → 0%, 2 → 50%, 3 → 100%. The radar reads percents,
+    so the underlying scale change doesn't break the chart contract.
     """
     candidate_id: str
     rank: int = 0
@@ -340,16 +354,19 @@ class EvaluatedRecommendation(BaseModel):
     title: str = ""
     reasoning: str = ""
     item_ids: List[str] = Field(default_factory=list)
-    # Rater dimensions surfaced on the outfit-card radar. occasion_pct
+    # Rater dimensions surfaced on the outfit-card radar. Each ``_pct``
+    # is the rescaled 1/2/3 sub-score (1→0, 2→50, 3→100). occasion_pct
     # remains Optional for legacy paths but the Rater always populates it.
     body_harmony_pct: int = 0
     color_suitability_pct: int = 0
     occasion_pct: Optional[int] = None
-    # R5/V1 (May 5 2026): inter-item coherence — how well the items in
-    # a multi-piece outfit work together. None for `complete` (single-
-    # item) outfits where the dim doesn't apply; the radar drops the
-    # axis when null.
-    inter_item_coherence_pct: Optional[int] = None
+    # R7: renamed from inter_item_coherence_pct. None for `complete`
+    # (single-item) outfits where the dim doesn't apply; the radar
+    # drops the axis when null.
+    pairing_pct: Optional[int] = None
+    # R7 (May 5 2026): formality and statement are their own axes now.
+    formality_pct: int = 0
+    statement_pct: int = 0
     # Overall blended score (Rater-derived). Centre label of the radar.
     fashion_score_pct: int = 0
 
@@ -377,11 +394,11 @@ class OutfitItem(BaseModel):
 class OutfitCard(BaseModel):
     """User-facing outfit card.
 
-    Post-V2 (May 5 2026): the visual_evaluator + outfit_check +
-    garment_evaluation flows are gone. Only Rater-derived dims remain.
-    The legacy 17-axis split-polar visual evaluator output (archetype
-    pcts, notes, status) is removed; the radar now renders 4 or 5 axes
-    directly from the Rater.
+    R7 (May 5 2026): radar moved from 4 axes to 6 (added Formality
+    and Statement; renamed inter_item_coherence → Pairing scoped to
+    fit + fabric). Each ``_pct`` is the rescaled 1/2/3 rater sub-score
+    (1→0, 2→50, 3→100). For single-item complete outfits Pairing
+    drops → 5 axes.
     """
     rank: int
     title: str
@@ -390,10 +407,10 @@ class OutfitCard(BaseModel):
     body_harmony_pct: int = 0
     color_suitability_pct: int = 0
     occasion_pct: Optional[int] = None
-    # R5/V1 (May 5 2026): inter-item coherence (paired/three_piece only;
-    # null for single-item complete outfits). The radar drops the axis
-    # when null so single-item cards render a 4-axis quadrilateral.
-    inter_item_coherence_pct: Optional[int] = None
+    # R7: paired/three_piece only; null for single-item complete outfits.
+    pairing_pct: Optional[int] = None
+    formality_pct: int = 0
+    statement_pct: int = 0
     # Overall blended score (Rater-derived). Centre label of the radar.
     fashion_score_pct: int = 0
     items: List[Dict[str, Any]] = Field(default_factory=list)

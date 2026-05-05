@@ -4756,14 +4756,15 @@ class ConfidenceThresholdGateTests(unittest.TestCase):
             action_parameters=CopilotActionParameters(),
         )
 
-        # Build candidates whose fashion_score is well under the 75 gate.
+        # Build candidates whose fashion_score is well under the gate
+        # (50, post-R7). Scores 30/35/40 — all blocked.
         weak_candidates = [
             OutfitCandidate(
                 candidate_id=f"c{i}",
                 direction_id="d1",
                 candidate_type="paired",
                 items=[{"product_id": f"p{i}", "title": f"Item {i}"}],
-                fashion_score=40 + (i * 5),  # 40, 45, 50
+                fashion_score=30 + (i * 5),  # 30, 35, 40
             )
             for i in range(3)
         ]
@@ -4867,7 +4868,8 @@ class ConfidenceThresholdGateTests(unittest.TestCase):
             action_parameters=CopilotActionParameters(),
         )
 
-        # Mix: 2 confident (>= 0.75), 3 below threshold.
+        # Mix: 2 confident (>= threshold), 3 below threshold (post-R7
+        # threshold is 50; 40 stays below).
         candidates = [
             OutfitCandidate(
                 candidate_id=f"hi{i}", direction_id="d1", candidate_type="paired",
@@ -4878,7 +4880,7 @@ class ConfidenceThresholdGateTests(unittest.TestCase):
             OutfitCandidate(
                 candidate_id=f"lo{i}", direction_id="d1", candidate_type="paired",
                 items=[{"product_id": f"lo-p{i}", "title": f"Lo {i}"}],
-                fashion_score=50,
+                fashion_score=40,
             ) for i in range(3)
         ]
 

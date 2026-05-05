@@ -249,13 +249,17 @@ class ResponseFormatter:
                     rank=len(outfits) + 1,
                     title=rec.title,
                     reasoning=rec.reasoning,
-                    # Rater radar dims. inter_item_coherence_pct is None
-                    # for complete (single-item) outfits — frontend drops
-                    # the axis when null and renders a 4-axis quadrilateral.
+                    # R7 (May 5 2026): six rater radar dims. pairing_pct
+                    # is None for complete (single-item) outfits — the
+                    # frontend drops the axis and renders a 5-axis
+                    # pentagon. Each `_pct` field is the rescaled 1/2/3
+                    # rater sub-score (1→0, 2→50, 3→100).
                     body_harmony_pct=rec.body_harmony_pct,
                     color_suitability_pct=rec.color_suitability_pct,
                     occasion_pct=rec.occasion_pct,
-                    inter_item_coherence_pct=rec.inter_item_coherence_pct,
+                    pairing_pct=rec.pairing_pct,
+                    formality_pct=rec.formality_pct,
+                    statement_pct=rec.statement_pct,
                     fashion_score_pct=rec.fashion_score_pct,
                     items=[_build_item_card(item) for item in items],
                 )
