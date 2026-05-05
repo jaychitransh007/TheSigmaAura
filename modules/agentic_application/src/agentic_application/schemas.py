@@ -321,6 +321,15 @@ class EvaluatedRecommendation(BaseModel):
     style_fit_pct: int = 0
     risk_tolerance_pct: int = 0
     comfort_boundary_pct: int = 0
+    # R5/V1 (May 5 2026): inter-item coherence — how well the items in
+    # a multi-piece outfit work together. None for `complete` (single-
+    # item) outfits where the dim doesn't apply; the radar drops the
+    # axis when null.
+    inter_item_coherence_pct: Optional[int] = None
+    # Overall blended score from the Rater pipeline (or fashion_score
+    # divided by 100 for legacy paths). Populated as 0–100. Used as the
+    # centre label on the Rater radar.
+    fashion_score_pct: int = 0
     # Phase 12B follow-ups (April 9 2026): 4 context-gated dimensions
     # are Optional. The visual evaluator returns None when the gating
     # condition is not met:
@@ -394,6 +403,12 @@ class OutfitCard(BaseModel):
     style_fit_pct: int = 0
     risk_tolerance_pct: int = 0
     comfort_boundary_pct: int = 0
+    # R5/V1 (May 5 2026): inter-item coherence (paired/three_piece only;
+    # null for single-item complete outfits). The radar drops the axis
+    # when null so single-item cards render a 4-axis quadrilateral.
+    inter_item_coherence_pct: Optional[int] = None
+    # Overall blended score (Rater-derived). Centre label of the radar.
+    fashion_score_pct: int = 0
     # 4 context-gated dimensions — None means "not evaluated this turn".
     # pairing_coherence_pct is null for garment_evaluation / style_discovery
     # / explanation_request (no outfit being paired); the other 3 are null

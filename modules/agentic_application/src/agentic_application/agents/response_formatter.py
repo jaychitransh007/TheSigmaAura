@@ -259,6 +259,11 @@ class ResponseFormatter:
                     style_fit_pct=rec.style_fit_pct,
                     risk_tolerance_pct=rec.risk_tolerance_pct,
                     comfort_boundary_pct=rec.comfort_boundary_pct,
+                    # PR V1 (May 5 2026): Rater radar dim + overall score.
+                    # inter_item_coherence_pct is None for complete (single-
+                    # item) outfits — the frontend drops the axis when null.
+                    inter_item_coherence_pct=rec.inter_item_coherence_pct,
+                    fashion_score_pct=rec.fashion_score_pct,
                     # 4 context-gated dimensions — pass None straight through;
                     # the OutfitCard schema accepts Optional[int] and the
                     # frontend drops null radar slices. pairing_coherence_pct
