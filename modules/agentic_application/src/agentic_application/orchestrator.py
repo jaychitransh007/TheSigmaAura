@@ -5174,6 +5174,16 @@ class AgenticOrchestrator:
                         color_suitability_pct=int(candidate.color_harmony or 0),
                         style_fit_pct=int(candidate.archetype_match or 0),
                         occasion_pct=int(candidate.occasion_fit or 0),
+                        # PR V1 (May 5 2026): inter-item coherence. For
+                        # complete (single-item) outfits, set to None so
+                        # the UI radar drops the axis instead of pretending
+                        # to score it. Matches how compute_fashion_score
+                        # drops the dim from the score blend.
+                        inter_item_coherence_pct=(
+                            None if (candidate.candidate_type or "").strip().lower() == "complete"
+                            else int(candidate.inter_item_coherence or 0)
+                        ),
+                        fashion_score_pct=int(candidate.fashion_score or 0),
                         # Vision-grounded dims left at defaults — they
                         # populate when the user clicks "Get a deeper read".
                         visual_evaluation_status="pending",

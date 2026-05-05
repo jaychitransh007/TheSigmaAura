@@ -999,6 +999,21 @@ def get_web_ui_html(
     }
     .radar-toggle { display: none; }
     .outfit-profile-wrap { display: flex; flex-direction: column; gap: 8px; }
+    /* PR V1 — Rater 5-axis radar, populated directly from the rated dims. */
+    .rater-radar-wrap { display: flex; justify-content: center; padding: 4px 0; }
+    .rater-radar { display: block; width: 100%; max-width: 220px; height: auto; }
+    .rater-radar-label {
+      font-size: 11px;
+      font-weight: 600;
+      fill: var(--ink);
+      letter-spacing: 0.02em;
+    }
+    .rater-radar-center {
+      font-size: 22px;
+      font-weight: 700;
+      fill: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
     .compact-rationale {
       margin: 8px 0 4px; font-size: 12px; line-height: 1.45; color: var(--ink);
     }
@@ -2963,35 +2978,142 @@ def get_web_ui_html(
         ration.textContent = rationale;
         profileWrap.appendChild(ration);
       }}
-      var bars = [
-        {{ key: "occasion_pct",          label: "Occasion" }},
-        {{ key: "body_harmony_pct",      label: "Body" }},
-        {{ key: "color_suitability_pct", label: "Color" }},
-        {{ key: "style_fit_pct",         label: "Archetype" }},
+
+      // PR V1 (May 5 2026): pentagon radar populated directly from the
+      // Rater's 5 sub-scores. For `complete` (single-item) outfits we
+      // drop inter_item_coherence — there's nothing to clash with — and
+      // render a 4-axis quadrilateral. The orchestrator sets the dim
+      // to null for complete outfits; we drop axes whose value is
+      // missing rather than rendering a phantom 0%.
+      var allAxes = [
+        {{ key: "occasion_pct",             label: "Occasion" }},
+        {{ key: "body_harmony_pct",         label: "Body" }},
+        {{ key: "color_suitability_pct",    label: "Color" }},
+        {{ key: "style_fit_pct",            label: "Style" }},
+        {{ key: "inter_item_coherence_pct", label: "Pairing" }},
       ];
-      var barsWrap = document.createElement("div");
-      barsWrap.className = "outfit-criteria";
-      var accentRgbCss = (getComputedStyle(document.documentElement).getPropertyValue("--accent-rgb") || "92, 26, 27").trim();
-      bars.forEach(function(b) {{
-        var v = parseInt(outfit[b.key], 10);
-        if (!isFinite(v)) v = 0;
-        v = Math.max(0, Math.min(100, v));
-        var row = document.createElement("div");
-        row.className = "criteria-row";
-        var lbl = document.createElement("span");
-        lbl.className = "criteria-label"; lbl.textContent = b.label;
-        var trk = document.createElement("div"); trk.className = "criteria-track";
-        var fll = document.createElement("div");
-        fll.className = "criteria-fill";
-        fll.style.width = v + "%";
-        fll.style.background = "rgb(" + accentRgbCss + ")";
-        trk.appendChild(fll);
-        var pct = document.createElement("span");
-        pct.className = "criteria-pct"; pct.textContent = v + "%";
-        row.appendChild(lbl); row.appendChild(trk); row.appendChild(pct);
-        barsWrap.appendChild(row);
+      var axes = allAxes.filter(function(a) {{
+        var v = outfit[a.key];
+        return v !== null && v !== undefined && isFinite(parseInt(v, 10));
+      }}).map(function(a) {{
+        var v = parseInt(outfit[a.key], 10);
+        return {{ key: a.key, label: a.label, value: Math.max(0, Math.min(100, v)) }};
       }});
-      profileWrap.appendChild(barsWrap);
+      if (axes.length < 3) {{
+        // Degenerate case (no Rater data at all). Skip the radar; fall
+        // back to a "no profile data" hint so the card doesn't break.
+        var hint = document.createElement("p");
+        hint.className = "compact-rationale";
+        hint.textContent = "Profile not available for this outfit.";
+        profileWrap.appendChild(hint);
+        return;
+      }}
+
+      var size = 220;
+      var cx = size / 2, cy = size / 2;
+      var maxR = size / 2 - 28;  // leave room for axis labels around the edge
+      var n = axes.length;
+      var svgNs = "http://www.w3.org/2000/svg";
+      var svg = document.createElementNS(svgNs, "svg");
+      svg.setAttribute("viewBox", "0 0 " + size + " " + size);
+      svg.setAttribute("width", size);
+      svg.setAttribute("height", size);
+      svg.setAttribute("class", "rater-radar");
+      var accentRgb = (getComputedStyle(document.documentElement).getPropertyValue("--accent-rgb") || "92, 26, 27").trim();
+
+      // Axis angles — start at 12 o'clock and walk clockwise.
+      function axisXY(idx, radius) {{
+        var theta = -Math.PI / 2 + (2 * Math.PI * idx) / n;
+        return [cx + radius * Math.cos(theta), cy + radius * Math.sin(theta)];
+      }}
+
+      // Concentric grid rings (25 / 50 / 75 / 100).
+      [0.25, 0.5, 0.75, 1.0].forEach(function(frac) {{
+        var pts = [];
+        for (var i = 0; i < n; i++) {{
+          var p = axisXY(i, maxR * frac);
+          pts.push(p[0].toFixed(1) + "," + p[1].toFixed(1));
+        }}
+        var grid = document.createElementNS(svgNs, "polygon");
+        grid.setAttribute("points", pts.join(" "));
+        grid.setAttribute("fill", "none");
+        grid.setAttribute("stroke", "rgba(0,0,0,0.10)");
+        grid.setAttribute("stroke-width", frac === 1.0 ? "1" : "0.6");
+        svg.appendChild(grid);
+      }});
+
+      // Spokes from centre to each axis tip.
+      for (var s = 0; s < n; s++) {{
+        var tip = axisXY(s, maxR);
+        var spoke = document.createElementNS(svgNs, "line");
+        spoke.setAttribute("x1", cx); spoke.setAttribute("y1", cy);
+        spoke.setAttribute("x2", tip[0].toFixed(1)); spoke.setAttribute("y2", tip[1].toFixed(1));
+        spoke.setAttribute("stroke", "rgba(0,0,0,0.10)");
+        spoke.setAttribute("stroke-width", "0.6");
+        svg.appendChild(spoke);
+      }}
+
+      // Score polygon — fill + stroke in accent.
+      var scorePts = [];
+      var dotMeta = [];
+      axes.forEach(function(a, i) {{
+        var p = axisXY(i, maxR * (a.value / 100));
+        scorePts.push(p[0].toFixed(1) + "," + p[1].toFixed(1));
+        dotMeta.push({{ x: p[0], y: p[1], label: a.label, value: a.value }});
+      }});
+      var poly = document.createElementNS(svgNs, "polygon");
+      poly.setAttribute("points", scorePts.join(" "));
+      poly.setAttribute("fill", "rgba(" + accentRgb + ", 0.22)");
+      poly.setAttribute("stroke", "rgb(" + accentRgb + ")");
+      poly.setAttribute("stroke-width", "1.6");
+      svg.appendChild(poly);
+
+      // Axis labels.
+      axes.forEach(function(a, i) {{
+        var labelXY = axisXY(i, maxR + 14);
+        var txt = document.createElementNS(svgNs, "text");
+        txt.setAttribute("x", labelXY[0].toFixed(1));
+        txt.setAttribute("y", (labelXY[1] + 4).toFixed(1));
+        txt.setAttribute("text-anchor", "middle");
+        txt.setAttribute("class", "rater-radar-label");
+        txt.textContent = a.label;
+        svg.appendChild(txt);
+      }});
+
+      // Score dots with native title tooltips.
+      dotMeta.forEach(function(d) {{
+        var dot = document.createElementNS(svgNs, "circle");
+        dot.setAttribute("cx", d.x.toFixed(1));
+        dot.setAttribute("cy", d.y.toFixed(1));
+        dot.setAttribute("r", "3");
+        dot.setAttribute("fill", "rgb(" + accentRgb + ")");
+        var t = document.createElementNS(svgNs, "title");
+        t.textContent = d.label + ": " + d.value + "/100";
+        dot.appendChild(t);
+        svg.appendChild(dot);
+      }});
+
+      // Centre score badge — fashion_score (or fall back to match_score
+      // × 100 for legacy paths that don't populate fashion_score_pct).
+      var centerScore = parseInt(outfit.fashion_score_pct, 10);
+      if (!isFinite(centerScore) || centerScore <= 0) {{
+        var ms = parseFloat(outfit.match_score);
+        centerScore = isFinite(ms) ? Math.round(ms * 100) : 0;
+      }}
+      centerScore = Math.max(0, Math.min(100, centerScore));
+      var centerNum = document.createElementNS(svgNs, "text");
+      centerNum.setAttribute("x", cx);
+      centerNum.setAttribute("y", cy + 6);
+      centerNum.setAttribute("text-anchor", "middle");
+      centerNum.setAttribute("class", "rater-radar-center");
+      centerNum.textContent = String(centerScore);
+      svg.appendChild(centerNum);
+
+      var radarWrap = document.createElement("div");
+      radarWrap.className = "rater-radar-wrap";
+      radarWrap.appendChild(svg);
+      profileWrap.appendChild(radarWrap);
+
       var deeperBtn = document.createElement("button");
       deeperBtn.type = "button";
       deeperBtn.className = "deeper-read-btn";
