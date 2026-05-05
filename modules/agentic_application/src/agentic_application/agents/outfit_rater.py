@@ -190,12 +190,16 @@ class OutfitRater:
             default=str,
         )
 
+        # reasoning_effort="minimal" — Rater scores 4 fixed dims per
+        # outfit on a constrained schema; no chain-of-thought needed.
+        # ~2.4K reasoning tokens observed per call without this.
         response = self._client.responses.create(
             model=self._model,
             input=[
                 {"role": "system", "content": [{"type": "input_text", "text": self._system_prompt}]},
                 {"role": "user", "content": [{"type": "input_text", "text": user_payload}]},
             ],
+            reasoning={"effort": "minimal"},
             text={"format": _RATER_JSON_SCHEMA},
         )
         usage = extract_token_usage(response) or {}

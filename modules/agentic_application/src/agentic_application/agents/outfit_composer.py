@@ -378,12 +378,17 @@ class OutfitComposer:
         sum usage across the retry pass without leaking state through
         instance attributes.
         """
+        # reasoning_effort="minimal" — Composer is structured-assembly
+        # (pick item_ids from the pool), the JSON schema IS the chain
+        # of thought. ~2.7K reasoning tokens per call observed without
+        # this; minimal trims that to near-zero.
         response = self._client.responses.create(
             model=self._model,
             input=[
                 {"role": "system", "content": [{"type": "input_text", "text": self._system_prompt}]},
                 {"role": "user", "content": [{"type": "input_text", "text": user_payload}]},
             ],
+            reasoning={"effort": "minimal"},
             text={"format": _COMPOSER_JSON_SCHEMA},
         )
         usage = extract_token_usage(response) or {}

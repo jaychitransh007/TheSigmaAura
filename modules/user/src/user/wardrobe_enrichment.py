@@ -142,6 +142,9 @@ def infer_wardrobe_catalog_attributes(
         f"Notes: {notes}\n"
     ).strip()
 
+    # reasoning_effort="minimal" — wardrobe enrichment is structured
+    # vision extraction (read garment attributes from the image into a
+    # fixed schema). No chain-of-thought needed.
     response = client.responses.create(
         model=model,
         input=[
@@ -157,6 +160,7 @@ def infer_wardrobe_catalog_attributes(
                 ],
             },
         ],
+        reasoning={"effort": "minimal"},
         text={"format": response_format()},
     )
     parsed = _extract_response_json(response)

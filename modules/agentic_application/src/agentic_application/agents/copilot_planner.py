@@ -248,6 +248,12 @@ class CopilotPlanner:
     def plan(self, planner_input: Dict[str, Any]) -> CopilotPlanResult:
         from platform_core.cost_estimator import extract_token_usage
         self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        # reasoning_effort="minimal" — closest to "no reasoning" the
+        # gpt-5-mini API supports (per OpenAI docs, "none" works only
+        # on gpt-5.1+; gpt-5-mini supports minimal/low/medium/high).
+        # Planner is fuzzy-NL → strict-enum classification, doesn't
+        # benefit from chain-of-thought. Cuts ~600 reasoning tokens
+        # per call, drops latency from ~12s → ~3-4s expected.
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -265,6 +271,7 @@ class CopilotPlanner:
                     ],
                 },
             ],
+            reasoning={"effort": "minimal"},
             text={"format": _PLAN_JSON_SCHEMA},
         )
         self.last_usage = extract_token_usage(response)

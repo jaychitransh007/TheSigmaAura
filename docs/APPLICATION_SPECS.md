@@ -770,7 +770,7 @@ Active models used by application agents:
 | Copilot Planner | `gpt-5.5` | OpenAI | JSON schema (strict) |
 | Outfit Architect | `gpt-5.5` | OpenAI | JSON schema (strict). System prompt assembled at request time: 4.8K-token base + optional anchor module + optional follow-up module. |
 | Visual Evaluator | `gpt-5-mini` | OpenAI | JSON schema (strict), vision input |
-| Style Advisor | `gpt-5.5` | OpenAI | JSON schema (strict) |
+| Style Advisor | `gpt-5.4` (May 5, 2026 — was `gpt-5.5`; reasoning_effort=low) | OpenAI | JSON schema (strict) |
 | User Profiler (visual) | `gpt-5.5` | OpenAI | JSON schema (strict), reasoning effort: high |
 | User Profiler (textual) | `gpt-5.5` | OpenAI | JSON schema (strict) |
 | User Analysis (onboarding) | `gpt-5.5` | OpenAI | JSON schema (strict), reasoning effort: high |
@@ -2187,7 +2187,7 @@ Implemented:
 - `response_type` field: `"recommendation"` | `"clarification"`
 - saved user context loading
 - conversation memory carry-forward
-- LLM-only architect planner — no deterministic fallback (model: `gpt-5.4` since May 5, 2026; `reasoning_effort=medium` via the Responses API; was `gpt-5.5` May 1–4, `gpt-5.4` before)
+- LLM-only architect planner — no deterministic fallback (model: `gpt-5.4` since May 5, 2026; `reasoning_effort=low` via the Responses API as of the May 5 latency-fix pass; was `gpt-5.5` May 1–4, `gpt-5.4` before)
 - strict JSON schema with enum-constrained hard filter vocabulary
 - hard filters: `gender_expression` (always), `garment_subtype` (conditional — only when user names a specific garment type); `garment_category` and `styling_completeness` are **soft signals** in the query document text only (April 9 2026 tiering)
 - soft signals via embedding only: `occasion_fit`, `formality_level`, `time_of_day`

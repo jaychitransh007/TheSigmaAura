@@ -6310,9 +6310,12 @@ class ArchitectConstructorValidationTests(unittest.TestCase):
             OutfitArchitect(reasoning_effort="very_high")
         self.assertIn("reasoning_effort", str(ctx.exception))
 
-    def test_default_is_medium(self) -> None:
+    def test_default_is_low(self) -> None:
+        # May 5, 2026 latency-fix pass stepped the default down from
+        # "medium" → "low" after the turn audit showed architect at
+        # 88.9s with 6.5K output tokens at "medium".
         a = OutfitArchitect()
-        self.assertEqual("medium", a._reasoning_effort)
+        self.assertEqual("low", a._reasoning_effort)
         self.assertEqual("gpt-5.4", a._model)
 
 
