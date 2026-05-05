@@ -36,16 +36,16 @@ Return strict JSON:
 
 ### `retrieval_count`
 
-| Request type | Value |
-|---|---|
-| Single direction (default for most occasions) | 18 |
-| Variety request (3 directions — see "How many directions" below) | 12 per query |
-| Specific single-garment ("show me shirts") | 6 |
-| Anchor garment | 12 |
-| Follow-up `more_options` | 18 |
-| Other follow-ups | 12 |
+The value is products per query (each direction has 1-3 queries depending on its type — see structure rules below).
 
-Higher counts on single-direction turns: with only one direction, the Composer needs more pool depth to produce 3 differentiated outfits within the same concept (e.g., three different shirt+trouser combos). With 3 directions, each direction supplies its own variety so per-query count drops back to 12.
+| Request type | Direction count | Per-query | Why |
+|---|---:|---:|---|
+| Single direction (default for most occasions) | 1 | 18 | Composer needs pool depth to produce 3 differentiated outfits within ONE concept |
+| Variety request (3 directions) | 3 | 12 | Each direction brings its own variety; smaller per-query is enough |
+| Follow-up `more_options` (3 directions) | 3 | 12 | Same as variety — pool depth comes from direction count |
+| Other single-direction follow-ups (`change_color`, `increase_boldness`, etc.) | 1 | 18 | Same as default single-direction logic |
+| Anchor garment | 1 | 12 | Anchor itself constrains the search — less pool depth needed than non-anchor single-direction |
+| Specific single-garment ("show me shirts") | 1 | 6 | User named the type; narrow retrieval works |
 
 Do NOT inflate to compensate for low inventory.
 
@@ -143,11 +143,10 @@ For three-direction variety responses, the third direction should push the user 
 
 **Guard:** stretch operates within style/silhouette/color — NEVER within occasion/fabric. Formal occasions still get premium fabrics; embellishment and `AvoidColors` rules are not relaxable.
 
-### Direction structure rules (apply to single OR variety mode)
+### Direction structure constraints
 
-- `complete` — one query, `role: "complete"`. Standalone outfit items (kurta_set, co_ord_set, suit_set, dress, jumpsuit). Only when the catalog carries them.
-- `paired` — two queries, `role: "top"` + `role: "bottom"`.
-- `three_piece` — three queries, `role: "top"` + `role: "bottom"` + `role: "outerwear"`.
+Structure types (`complete` / `paired` / `three_piece`) and their query roles are defined in "Direction Rules" above; this section adds the eligibility constraints that apply in BOTH single-direction and variety modes:
+
 - `complete` only if complete sets fit the occasion AND `catalog_inventory` carries them.
 - `three_piece` only if layering fits the occasion AND climate (NOT beach / extremely hot).
 - Set garments (`styling_completeness: complete`) appear ONLY in `complete` directions.

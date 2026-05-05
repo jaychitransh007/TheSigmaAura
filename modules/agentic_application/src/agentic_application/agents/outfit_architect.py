@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from openai import OpenAI
 
+from platform_core.reasoning_effort import GPT5_MID_EFFORTS
 from user_profiler.config import get_api_key
 
 from ..schemas import CombinedContext, DirectionSpec, QuerySpec, RecommendationPlan, ResolvedContextBlock
@@ -234,12 +235,12 @@ def _build_user_payload(ctx: CombinedContext) -> str:
 
 
 class OutfitArchitect:
-    # gpt-5.4 reasoning_effort vocabulary per OpenAI docs.
-    # No "minimal" (gpt-5-mini-only); no "none" (gpt-5.1+).
-    # xhigh added PR #53 review — config validation accepts it so the
-    # constructor must too, otherwise env var passes config but fails
-    # at construction time.
-    _ALLOWED_EFFORTS = frozenset({"low", "medium", "high", "xhigh"})
+    # Architect runs on gpt-5.4 (the gpt-5-mid family). Allowed effort
+    # vocabulary lives in platform_core.reasoning_effort so it stays in
+    # sync with StyleAdvisor (also gpt-5-mid) and any future gpt-5-mid
+    # adopter. Per-model-family rather than a single shared constant
+    # because gpt-5-mini has a different vocabulary (minimal-low-medium-high).
+    _ALLOWED_EFFORTS = GPT5_MID_EFFORTS
 
     def __init__(
         self,

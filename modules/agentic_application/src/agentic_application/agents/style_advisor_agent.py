@@ -33,6 +33,7 @@ from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
+from platform_core.reasoning_effort import GPT5_MID_EFFORTS
 from user_profiler.config import get_api_key
 
 _log = logging.getLogger(__name__)
@@ -159,9 +160,10 @@ def _planner_entities_payload(plan_resolved_context: Any, plan_action_parameters
 class StyleAdvisorAgent:
     """LLM advisor for open-ended style_discovery and explanation_request."""
 
-    # gpt-5.4 / gpt-5.5 reasoning_effort vocabulary per OpenAI docs.
-    # No "minimal" (that's gpt-5-mini-only); no "none" (that's gpt-5.1+).
-    _ALLOWED_EFFORTS = frozenset({"low", "medium", "high", "xhigh"})
+    # Style Advisor runs on gpt-5.4 (the gpt-5-mid family). Allowed effort
+    # vocabulary lives in platform_core.reasoning_effort so it stays in sync
+    # with OutfitArchitect (also gpt-5-mid).
+    _ALLOWED_EFFORTS = GPT5_MID_EFFORTS
 
     def __init__(
         self,

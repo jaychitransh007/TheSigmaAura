@@ -91,13 +91,15 @@ def load_config() -> AuraRuntimeConfig:
         or "data/catalog/enriched_catalog_upload.csv"
     )
 
+    # Architect runs on gpt-5.4 (gpt-5-mid family). Validation set
+    # imported from platform_core.reasoning_effort so this env-loader
+    # stays in sync with the architect's own constructor validation.
+    from platform_core.reasoning_effort import GPT5_MID_EFFORTS
     architect_effort = os.getenv("ARCHITECT_REASONING_EFFORT", "").strip().lower() or "low"
-    if architect_effort not in {"low", "medium", "high", "xhigh"}:
+    if architect_effort not in GPT5_MID_EFFORTS:
         # Unknown values fall back to "low" rather than failing app
         # start. OpenAI may add or rename values; we'd rather degrade
-        # than crash. xhigh is included per gpt-5.4/5.5 docs (PR #53
-        # review feedback — leaving it out silently coerced legitimate
-        # xhigh configs to low).
+        # than crash.
         architect_effort = "low"
 
     return AuraRuntimeConfig(
