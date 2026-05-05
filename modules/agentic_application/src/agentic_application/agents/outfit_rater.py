@@ -529,10 +529,17 @@ def _safe_int_or_none(value: Any) -> Optional[int]:
     """
     if value is None:
         return None
-    if isinstance(value, bool):  # bool is an int subclass; reject explicitly
-        return int(value)
+    # Reject booleans explicitly — bool is an int subclass in Python, so
+    # without this branch True would silently become a score of 1 and
+    # False a score of 0. Either is wrong for an LLM that emitted a
+    # boolean by mistake; treat as malformed.
+    if isinstance(value, bool):
+        return None
     if isinstance(value, (int, float)):
-        return int(value)
+        try:
+            return int(value)
+        except (OverflowError, ValueError):
+            return None  # int(float('inf')) raises OverflowError
     text = str(value).strip()
     if not text:
         return None
@@ -541,8 +548,10 @@ def _safe_int_or_none(value: Any) -> Optional[int]:
     except (TypeError, ValueError):
         pass
     try:
+        # Catch OverflowError on top of TypeError/ValueError —
+        # float("1e1000") is inf, and int(inf) overflows.
         return int(float(text))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
