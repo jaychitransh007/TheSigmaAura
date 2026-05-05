@@ -150,7 +150,6 @@ def _mock_llm_ranker(orchestrator, candidates: list[OutfitCandidate]) -> None:
                 occasion_fit=c.occasion_fit or 85,
                 body_harmony=c.body_harmony or 85,
                 color_harmony=c.color_harmony or 85,
-                archetype_match=c.archetype_match or 85,
                 rationale=c.rater_rationale or "test rationale",
                 unsuitable=c.unsuitable,
             )
@@ -217,7 +216,6 @@ def _wire_llm_ranker_via_patches(composer_cls, rater_cls, candidates: list[Outfi
                 occasion_fit=c.occasion_fit or 85,
                 body_harmony=c.body_harmony or 85,
                 color_harmony=c.color_harmony or 85,
-                archetype_match=c.archetype_match or 85,
                 rationale=c.rater_rationale or "test rationale",
                 unsuitable=c.unsuitable,
             )
@@ -4756,7 +4754,7 @@ class RaterOnlyPipelineTests(unittest.TestCase):
     """May 5, 2026 — recommendation pipeline ships Rater-only dims by default.
     visual_evaluator no longer runs inline; outfits arrive with
     visual_evaluation_status="pending" and the 4 Rater dims mapped onto
-    occasion_pct / body_harmony_pct / color_suitability_pct / style_fit_pct.
+    occasion_pct / body_harmony_pct / color_suitability_pct.
     """
 
     def test_accepts_valid_efforts(self) -> None:
@@ -4896,14 +4894,19 @@ class ArchitectPromptAssemblyTests(unittest.TestCase):
                 base,
                 f"Architect prompt must explicitly forbid {section} in query_document",
             )
-        # Allowed sections in the query template — all intrinsic to the garment.
+        # Allowed sections in the query template — all intrinsic to the
+        # garment. PR #79 (May 5 2026) tightened PRIMARY_BRIEF: the brief
+        # is now the leading section, detailed sections carry only the
+        # secondary axes, and CONTEXT_AND_TIMING was removed (its two
+        # fields — FormalityLevel + TimeOfDay — are primary so they
+        # live in PRIMARY_BRIEF).
         allowed_in_query = [
+            "PRIMARY_BRIEF",
             "GARMENT_REQUIREMENTS",
             "EMBELLISHMENT",
             "VISUAL_DIRECTION",
             "FABRIC_AND_BUILD",
             "PATTERN_AND_COLOR",
-            "CONTEXT_AND_TIMING",
         ]
         for section in allowed_in_query:
             self.assertIn(

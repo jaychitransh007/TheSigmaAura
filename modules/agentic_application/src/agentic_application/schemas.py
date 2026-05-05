@@ -226,10 +226,9 @@ class OutfitCandidate(BaseModel):
     occasion_fit: int = 0
     body_harmony: int = 0
     color_harmony: int = 0
-    archetype_match: int = 0
     # R5 (PR #68, May 5 2026): how well the items in a multi-piece
     # outfit work together. For complete outfits (single item) the
-    # blend formula drops this dim and renormalises the other four.
+    # blend formula drops this dim and renormalises the other three.
     # PR #73 (review of #72): made Optional so unset / legacy data
     # propagates as None all the way to the radar (axis hidden)
     # rather than getting masked as a phantom 100.
@@ -281,7 +280,6 @@ class RatedOutfit(BaseModel):
     occasion_fit: int = 0
     body_harmony: int = 0
     color_harmony: int = 0
-    archetype_match: int = 0
     # R5 (May 5 2026): inter-item fit/fabric/formality coherence.
     # PR #73: Optional so the orchestrator can pass None straight
     # through for complete outfits (radar drops the axis) without
@@ -325,7 +323,6 @@ class EvaluatedRecommendation(BaseModel):
     # remains Optional for legacy paths but the Rater always populates it.
     body_harmony_pct: int = 0
     color_suitability_pct: int = 0
-    style_fit_pct: int = 0
     occasion_pct: Optional[int] = None
     # R5/V1 (May 5 2026): inter-item coherence — how well the items in
     # a multi-piece outfit work together. None for `complete` (single-
@@ -371,7 +368,6 @@ class OutfitCard(BaseModel):
     # Rater dimensions surfaced on the outfit-card radar.
     body_harmony_pct: int = 0
     color_suitability_pct: int = 0
-    style_fit_pct: int = 0
     occasion_pct: Optional[int] = None
     # R5/V1 (May 5 2026): inter-item coherence (paired/three_piece only;
     # null for single-item complete outfits). The radar drops the axis

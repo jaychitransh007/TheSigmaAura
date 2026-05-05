@@ -176,33 +176,34 @@ Rule of thumb: occasion / style / mood requests are ALWAYS broad → `garment_su
 
 **You are responsible for translating user/request context into physical garment attributes BEFORE emitting the query.** Reason about the user's profile + occasion in your head; emit only the physical attributes that follow from that reasoning. Do NOT also leave the user-side strings in the document — translation must REPLACE the source text, not duplicate it.
 
-### Required document structure — seven sections; the first is a *brief* of the primary axes that get repeated in the detailed sections below.
+### Required document structure — `PRIMARY_BRIEF` first, then detailed sections that carry only the secondary axes.
+
+The high-signal axes appear once, at the top, in `PRIMARY_BRIEF`. The detailed sections below carry only the secondary axes — no duplication. Position-at-top + a clear section heading is enough to anchor the embedding on what matters; we don't need to repeat tokens to amplify them.
 
 ```
 PRIMARY_BRIEF:
-- A compact restatement of the axes that most strongly shape candidate
-  selection: GarmentCategory, GarmentSubtype, StylingCompleteness,
-  SilhouetteContour, FitType, GarmentLength, SleeveLength,
-  EmbellishmentLevel, FabricDrape, FabricWeight, PatternType,
-  ColorTemperature, PrimaryColor, FormalityLevel, TimeOfDay.
-- These axes appear here AND in their respective detailed sections
-  below — that is intentional. The query_document is matched via
-  cosine similarity, and the embedding model averages the signal
-  across all tokens. Restating the high-signal axes once at the top
-  roughly doubles their weight in the embedded vector relative to
-  secondary axes (PatternScale, FabricTexture, NecklineDepth,
-  WaistDefinition, etc.) which appear only once in the detailed
-  sections. This keeps palette + formality + silhouette dominant
-  during retrieval instead of getting drowned out by noise.
+- GarmentCategory: ...
+- GarmentSubtype: ...
+- StylingCompleteness: complete | needs_bottomwear | needs_topwear
+- SilhouetteContour: ...
+- FitType: ...
+- GarmentLength: ...
+- SleeveLength: ... (omit on bottom queries)
+- EmbellishmentLevel: none | minimal | subtle | moderate | heavy | statement
+- FabricDrape: ...
+- FabricWeight: ...
+- PatternType: ...
+- ColorTemperature: ...
+- PrimaryColor: ...
+- FormalityLevel: casual | smart_casual | semi_formal | formal | ceremonial
+- TimeOfDay: day | evening | flexible
 
 GARMENT_REQUIREMENTS:
-- GarmentCategory, GarmentSubtype, StylingCompleteness (complete | needs_bottomwear | needs_topwear)
-- SilhouetteContour, SilhouetteType, VolumeProfile, FitEase, FitType, GarmentLength
+- SilhouetteType, VolumeProfile, FitEase
 - ShoulderStructure, WaistDefinition, HipDefinition
-- NecklineType, NecklineDepth, SleeveLength, SkinExposureLevel
+- NecklineType, NecklineDepth, SkinExposureLevel
 
 EMBELLISHMENT:
-- EmbellishmentLevel: none | minimal | subtle | moderate | heavy | statement
 - EmbellishmentType: embroidery | print | beading | sequins | mirror_work | applique | lace | distressing | mixed | studs
 - EmbellishmentZone: allover | neckline | hem | waist | shoulder | back | sleeve
 
@@ -211,18 +212,17 @@ VISUAL_DIRECTION:
 - VisualWeightPlacement, StructuralFocus, BodyFocusZone, LineDirection
 
 FABRIC_AND_BUILD:
-- FabricDrape, FabricWeight, FabricTexture, StretchLevel, EdgeSharpness, ConstructionDetail
+- FabricTexture, StretchLevel, EdgeSharpness, ConstructionDetail
 
 PATTERN_AND_COLOR:
-- PatternType, PatternScale, PatternOrientation
-- ContrastLevel, ColorTemperature, ColorSaturation, ColorValue, ColorCount
-- PrimaryColor, SecondaryColor
-
-CONTEXT_AND_TIMING:
-- FormalityLevel, TimeOfDay
+- PatternScale, PatternOrientation
+- ContrastLevel, ColorSaturation, ColorValue, ColorCount
+- SecondaryColor
 ```
 
-`PRIMARY_BRIEF` format: one line per axis, prefixed with `- AxisName: value(s)`. Same vocabulary as the detailed sections — same allowed values, same comma-separated synonym expansion for `PrimaryColor`. Keep it compact (one line per axis, no prose).
+(`CONTEXT_AND_TIMING` doesn't get its own section — `FormalityLevel` and `TimeOfDay` are primary and live in `PRIMARY_BRIEF`.)
+
+`PRIMARY_BRIEF` format: one line per axis, prefixed with `- AxisName: value(s)`. Same vocabulary as the catalog — comma-separated synonym expansion for `PrimaryColor` (e.g. `rust, terracotta, brick, warm brick`). Keep it compact (one line per axis, no prose).
 
 ### What NEVER appears in `query_document` (NO EXCEPTIONS):
 
@@ -249,7 +249,7 @@ PROFILE_AND_STYLE:
 - Autumn, creative, Light and Narrow frame
 ```
 
-✅ RIGHT (translated to garment terms only — note that EVERY emitted line is a clean attribute, no commentary, no source-tracking annotations; PRIMARY_BRIEF leads, detailed sections repeat the primary axes alongside the secondary ones):
+✅ RIGHT (translated to garment terms only — note that EVERY emitted line is a clean attribute, no commentary, no source-tracking annotations; PRIMARY_BRIEF leads with the high-signal axes once, detailed sections carry only the secondary axes):
 ```
 PRIMARY_BRIEF:
 - GarmentCategory: top
@@ -269,12 +269,10 @@ PRIMARY_BRIEF:
 - TimeOfDay: day
 
 GARMENT_REQUIREMENTS:
-- GarmentCategory: top, GarmentSubtype: shirt, StylingCompleteness: needs_bottomwear
-- SilhouetteContour: structured, FitType: regular fit, ShoulderStructure: lightly structured
-- VolumeProfile: regular, GarmentLength: regular, SleeveLength: full sleeve
+- VolumeProfile: regular
+- ShoulderStructure: lightly structured
 
 EMBELLISHMENT:
-- EmbellishmentLevel: minimal
 - EmbellishmentType: subtle texture
 - EmbellishmentZone: allover
 
@@ -283,21 +281,12 @@ VISUAL_DIRECTION:
 - LineDirection: vertical
 
 FABRIC_AND_BUILD:
-- FabricDrape: soft structured
 - FabricTexture: textured weave, woven cotton, brushed twill
-- FabricWeight: medium
 
 PATTERN_AND_COLOR:
-- PatternType: solid, subtle texture
-- ColorTemperature: warm
 - ColorValue: medium_to_deep
 - ColorSaturation: muted_to_rich
-- PrimaryColor: rust, terracotta, brick, warm brick
 - SecondaryColor: camel, warm taupe
-
-CONTEXT_AND_TIMING:
-- FormalityLevel: smart_casual
-- TimeOfDay: day
 ```
 
 (Where each value above came from — Light and Narrow frame → upper_biased, Autumn → warm + medium_to_deep, etc. — is your reasoning. Keep that reasoning **in your head**, not in the emitted document. NEVER write parenthetical notes, source attributions, or arrows like `(from Autumn)` in the query_document. Every character you emit ends up in the embedding; only attribute values belong there.)

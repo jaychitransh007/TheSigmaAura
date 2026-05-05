@@ -147,30 +147,17 @@ def _catalog_row_to_item_dict(row: Dict[str, Any]) -> Dict[str, Any]:
 
 def _empty_outfit_skeleton() -> Dict[str, Any]:
     """Zero-valued OutfitCard fields for metrics that were never persisted.
-    The frontend polar chart gracefully drops null/zero values, so an
-    empty skeleton renders an empty chart rather than crashing."""
+    The frontend radar gracefully drops null/zero values, so an empty
+    skeleton renders an empty chart rather than crashing.
+
+    Post-V2 / R6 (May 5 2026): only the post-cleanup Rater dims remain.
+    """
     return {
-        "body_note": "",
-        "color_note": "",
-        "style_note": "",
-        "occasion_note": "",
         "body_harmony_pct": 0,
         "color_suitability_pct": 0,
-        "style_fit_pct": 0,
-        "risk_tolerance_pct": 0,
-        "comfort_boundary_pct": 0,
         "occasion_pct": None,
-        "specific_needs_pct": None,
-        "weather_time_pct": None,
-        "pairing_coherence_pct": None,
-        "classic_pct": 0,
-        "dramatic_pct": 0,
-        "romantic_pct": 0,
-        "natural_pct": 0,
-        "minimalist_pct": 0,
-        "creative_pct": 0,
-        "sporty_pct": 0,
-        "edgy_pct": 0,
+        "inter_item_coherence_pct": None,
+        "fashion_score_pct": 0,
     }
 
 
