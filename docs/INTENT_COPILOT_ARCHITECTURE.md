@@ -123,9 +123,9 @@ flowchart TD
         M2[Feedback History]
         M3[Catalog Interaction History]
         M4[Wardrobe Memory]
-        M6[Recommendation History]
-        M7[Confidence History]
-        M8[Policy Event Log]
+        M5[Recommendation History]
+        M6[Confidence History]
+        M7[Policy Event Log]
     end
 
     subgraph Runtime["Intent Runtime"]
@@ -206,8 +206,8 @@ flowchart TD
     M2 --> R4
     M3 --> R4
     M4 --> R4
+    M5 --> R4
     M6 --> R4
-    M7 --> R4
     D1 --> R4
     D2 --> R4
     D3 --> R4
@@ -274,9 +274,9 @@ flowchart TD
     R6 --> M2
     R6 --> M3
     R6 --> M4
+    R6 --> M5
     R6 --> M6
-    R6 --> M7
-    R3 --> M8
+    R3 --> M7
 
     R1 --> T9
     R2 --> T9
@@ -498,7 +498,7 @@ Examples:
 - occasion usage
 - favorite pairings
 
-### M6. Recommendation History
+### M5. Recommendation History
 
 Purpose:
 - store what the system has recommended before
@@ -509,7 +509,7 @@ Examples:
 - prior shopping verdicts
 - previous rationale
 
-### M7. Confidence History
+### M6. Confidence History
 
 Purpose:
 - track how profile confidence and recommendation confidence evolve over time
@@ -519,7 +519,7 @@ Examples:
 - confidence after wardrobe upload
 - confidence on each recommendation
 
-### M8. Policy Event Log
+### M7. Policy Event Log
 
 Purpose:
 - audit all moderation and guardrail decisions
@@ -844,17 +844,17 @@ All intent identifiers below are defined as `StrEnum` constants in `agentic_appl
 
 | Intent | Primary agent | Typical tools | Typical memory read | Typical memory write |
 |---|---|---|---|---|
-| `shopping_decision` | Shopping Decision Agent | T3, T4, T5, T8 | M2, M3, M6 | M1, M3, M6, M7 |
-| `capsule_or_trip_planning` | Capsule / Trip Planning Agent | T3, T4, T5, T8 | M1, M2, M4, M6 | M1, M6, M7 |
-| `outfit_check` | Outfit Check Agent | T5, T8 | M2, M6 | M1, M6, M7 |
-| `garment_on_me_request` | Garment-on-Me Agent | T5, T6, T8 | M2, M6 | M1, M6, M7, M8 |
-| `pairing_request` | Pairing Agent | T3, T4, T5, T8 | M2, M4, M6 | M1, M6, M7 |
-| `wardrobe_ingestion` | Wardrobe Ingestion Agent | T2, T7 | M4 | M4, M8 |
-| `occasion_recommendation` | Occasion Recommendation Agent | T3, T4, T5, T8 | M1, M2, M4, M6 | M1, M6, M7 |
-| `style_discovery` | Style Discovery Agent | T8 | M2, M7 | M1, M7 |
-| `explanation_request` | Explanation Agent | T8 | M1, M6, M7 | M1 |
-| `feedback_submission` | Feedback Agent | T8 | M6 | M2, M6, M7 |
-| `virtual_tryon_request` | Virtual Try-on Agent | T6, T7, T8 | M6, M8 | M1, M6, M7, M8 |
+| `shopping_decision` | Shopping Decision Agent | T3, T4, T5, T8 | M2, M3, M5 | M1, M3, M5, M6 |
+| `capsule_or_trip_planning` | Capsule / Trip Planning Agent | T3, T4, T5, T8 | M1, M2, M4, M5 | M1, M5, M6 |
+| `outfit_check` | Outfit Check Agent | T5, T8 | M2, M5 | M1, M5, M6 |
+| `garment_on_me_request` | Garment-on-Me Agent | T5, T6, T8 | M2, M5 | M1, M5, M6, M7 |
+| `pairing_request` | Pairing Agent | T3, T4, T5, T8 | M2, M4, M5 | M1, M5, M6 |
+| `wardrobe_ingestion` | Wardrobe Ingestion Agent | T2, T7 | M4 | M4, M7 |
+| `occasion_recommendation` | Occasion Recommendation Agent | T3, T4, T5, T8 | M1, M2, M4, M5 | M1, M5, M6 |
+| `style_discovery` | Style Discovery Agent | T8 | M2, M6 | M1, M6 |
+| `explanation_request` | Explanation Agent | T8 | M1, M5, M6 | M1 |
+| `feedback_submission` | Feedback Agent | T8 | M5 | M2, M5, M6 |
+| `virtual_tryon_request` | Virtual Try-on Agent | T6, T7, T8 | M5, M7 | M1, M5, M6, M7 |
 
 ## End-to-End Request Flow
 
