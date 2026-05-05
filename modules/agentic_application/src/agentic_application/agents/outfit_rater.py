@@ -2,17 +2,25 @@
 
 Second LLM stage in the new ranker pipeline. Takes the Composer's
 output (up to 10 constructed outfits) plus the user request + context
-and emits a four-dimension rubric score per outfit and an
-``unsuitable`` veto flag. The orchestrator (or this module's
-``compute_fashion_score`` helper) blends those four sub-scores into a
-final integer ``fashion_score`` and re-ranks accordingly.
+and emits four sub-scores per outfit (occasion_fit, body_harmony,
+color_harmony, inter_item_coherence) plus an ``unsuitable`` veto
+flag. The orchestrator (via this module's ``compute_fashion_score``
+helper) blends the sub-scores into a final integer ``fashion_score``
+and re-ranks accordingly.
 
-Replaces the deterministic Reranker. The blend weights default to
-``{occasion 0.35, body 0.20, color 0.25, archetype 0.20}`` and shift
-based on the planner's resolved intent (ceremonial, slimming, bold,
-comfortable). R3 (May 5 2026) moved this rule out of the LLM prompt
-and into Python so the math is unit-testable and the override that
-fired is logged.
+Replaces the deterministic Reranker. R6 (May 5 2026) dropped the
+``archetype_match`` dimension — it was scoring against a removed
+explicit input (style archetype, removed in PR #47) plus weak
+derived signals (per-turn style_goal, R4 archetypal_preferences) and
+gating real candidates below the 75 threshold with low-30s scores.
+risk_tolerance now flows through the architect's plan and the
+Composer's pool selection; the Rater no longer scores it as a
+continuous dimension.
+
+The blend weights shift based on the planner's resolved intent
+(ceremonial, slimming, bold, comfortable). R3 (May 5 2026) moved
+this rule out of the LLM prompt and into Python so the math is
+unit-testable and the override that fired is logged.
 
 Audit:
 - model_call_logs gets the full raw request + response, plus the
@@ -79,7 +87,6 @@ _RATER_JSON_SCHEMA: Dict[str, Any] = {
                         "occasion_fit",
                         "body_harmony",
                         "color_harmony",
-                        "archetype_match",
                         # R5 (May 5 2026): how well the items in a
                         # multi-piece outfit work together (fit, fabric,
                         # formality consistency between pieces). For
@@ -96,7 +103,6 @@ _RATER_JSON_SCHEMA: Dict[str, Any] = {
                         "occasion_fit": {"type": "integer"},
                         "body_harmony": {"type": "integer"},
                         "color_harmony": {"type": "integer"},
-                        "archetype_match": {"type": "integer"},
                         "inter_item_coherence": {"type": "integer"},
                         "rationale": {"type": "string"},
                         "unsuitable": {"type": "boolean"},
@@ -125,47 +131,42 @@ _DEFAULT_WEIGHT_PROFILE = "default"
 
 WEIGHT_PROFILES: Dict[str, Dict[str, float]] = {
     "default": {
-        "occasion_fit":         0.30,
-        "body_harmony":         0.18,
-        "color_harmony":        0.22,
-        "archetype_match":      0.15,
+        "occasion_fit":         0.35,
+        "body_harmony":         0.23,
+        "color_harmony":        0.27,
         "inter_item_coherence": 0.15,
     },
     # Wedding / festival / ceremonial — occasion fit dominates; the
-    # other four split the remainder.
+    # other three split the remainder.
     "ceremonial": {
-        "occasion_fit":         0.40,
-        "body_harmony":         0.16,
-        "color_harmony":        0.18,
-        "archetype_match":      0.13,
+        "occasion_fit":         0.46,
+        "body_harmony":         0.19,
+        "color_harmony":        0.22,
         "inter_item_coherence": 0.13,
     },
     # "Make me look slimmer / taller" — body harmony leads; inter-item
     # coherence still matters because clashing fits ruin slimming.
     "slimming": {
-        "occasion_fit":         0.20,
-        "body_harmony":         0.32,
-        "color_harmony":        0.20,
-        "archetype_match":      0.13,
+        "occasion_fit":         0.24,
+        "body_harmony":         0.37,
+        "color_harmony":        0.24,
         "inter_item_coherence": 0.15,
     },
     # "Bold / statement / colorful" — color leads; inter-item gets a
     # smaller share because bold looks tolerate more contrast within.
     "bold": {
-        "occasion_fit":         0.18,
-        "body_harmony":         0.18,
-        "color_harmony":        0.32,
-        "archetype_match":      0.20,
+        "occasion_fit":         0.23,
+        "body_harmony":         0.23,
+        "color_harmony":        0.42,
         "inter_item_coherence": 0.12,
     },
-    # "Comfortable / relaxed" — body comfort + archetype drive; inter-
-    # item gets a meaningful share because relaxed pieces still need
-    # to read as one outfit, not two clashing items.
+    # "Comfortable / relaxed" — body comfort drives; inter-item gets
+    # a meaningful share because relaxed pieces still need to read
+    # as one outfit, not two clashing items.
     "comfortable": {
-        "occasion_fit":         0.20,
-        "body_harmony":         0.28,
-        "color_harmony":        0.18,
-        "archetype_match":      0.20,
+        "occasion_fit":         0.25,
+        "body_harmony":         0.38,
+        "color_harmony":        0.23,
         "inter_item_coherence": 0.14,
     },
 }
@@ -246,7 +247,6 @@ def compute_fashion_score(
     occasion_fit: int,
     body_harmony: int,
     color_harmony: int,
-    archetype_match: int,
     inter_item_coherence: Optional[int] = None,
     direction_type: str = "paired",
     profile: str = _DEFAULT_WEIGHT_PROFILE,
@@ -256,7 +256,7 @@ def compute_fashion_score(
     ``inter_item_coherence`` is dropped from the formula in two cases:
     (1) ``direction_type="complete"`` (single-item outfit — nothing to
     clash with), or (2) the value is ``None`` (the LLM didn't emit it
-    or this is legacy data). In both cases the remaining four weights
+    or this is legacy data). In both cases the remaining three weights
     are renormalised to sum to 1.0.
 
     Unknown ``profile`` falls back to ``default`` rather than raising —
@@ -269,7 +269,7 @@ def compute_fashion_score(
         or inter_item_coherence is None
     )
     if drop_inter_item:
-        # Drop inter_item_coherence and renormalise the remaining four
+        # Drop inter_item_coherence and renormalise the remaining three
         # weights so they sum to 1.0.
         kept = {k: v for k, v in weights.items() if k != _COMPLETE_OUTFIT_DROP_KEY}
         denom = sum(kept.values())
@@ -278,14 +278,12 @@ def compute_fashion_score(
             occasion_fit * weights["occasion_fit"]
             + body_harmony * weights["body_harmony"]
             + color_harmony * weights["color_harmony"]
-            + archetype_match * weights["archetype_match"]
         )
     else:
         raw = (
             occasion_fit * weights["occasion_fit"]
             + body_harmony * weights["body_harmony"]
             + color_harmony * weights["color_harmony"]
-            + archetype_match * weights["archetype_match"]
             + inter_item_coherence * weights["inter_item_coherence"]
         )
     return _clamp_to_100(int(round(raw)))
@@ -451,7 +449,6 @@ class OutfitRater:
             occ = _parse_subscore(raw_o.get("occasion_fit"))
             bod = _parse_subscore(raw_o.get("body_harmony"))
             col = _parse_subscore(raw_o.get("color_harmony"))
-            arch = _parse_subscore(raw_o.get("archetype_match"))
             inter: Optional[int] = _parse_optional_subscore(raw_o.get("inter_item_coherence"))
             ranked.append(
                 RatedOutfit(
@@ -459,13 +456,11 @@ class OutfitRater:
                     occasion_fit=occ,
                     body_harmony=bod,
                     color_harmony=col,
-                    archetype_match=arch,
                     inter_item_coherence=inter,
                     fashion_score=compute_fashion_score(
                         occasion_fit=occ,
                         body_harmony=bod,
                         color_harmony=col,
-                        archetype_match=arch,
                         inter_item_coherence=inter,
                         direction_type=direction_by_cid.get(cid, "paired"),
                         profile=weight_profile,
@@ -556,9 +551,9 @@ def _safe_int_or_none(value: Any) -> Optional[int]:
 
 
 def _parse_subscore(raw: Any) -> int:
-    """Parse one of the four always-emitted Rater sub-scores
-    (occasion_fit / body_harmony / color_harmony / archetype_match)
-    to a 0–100 int. Missing or malformed input → 0. Unlike
+    """Parse one of the three always-emitted Rater sub-scores
+    (occasion_fit / body_harmony / color_harmony) to a 0–100 int.
+    Missing or malformed input → 0. Unlike
     ``_parse_optional_subscore``, this never returns None — these
     dimensions are required for the fashion_score blend, so we treat
     a missing value as "scored zero" rather than dropping the dim.

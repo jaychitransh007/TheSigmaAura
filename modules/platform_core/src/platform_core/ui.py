@@ -2432,38 +2432,6 @@ def get_web_ui_html(
     return "A balanced look assembled to work as a complete styling direction.";
   }}
 
-  function buildEvaluationCriteria(outfit, responseMetadata) {{
-    // style_fit_pct is intentionally absent from this list. The top
-    // semicircle of the split polar bar chart already shows the 8
-    // archetype scores, which are the OUTFIT'S aesthetic profile —
-    // putting "Style" on the bottom semicircle as a single axis would
-    // double-count that dimension. The backend still scores
-    // style_fit_pct (it informs the holistic match_score and is used
-    // in the purchase verdict), it just doesn't appear as a Fit
-    // profile axis here.
-    var _evalIntent = String(responseMetadata && responseMetadata.primary_intent || "").toLowerCase();
-    var _evalSource = String(responseMetadata && responseMetadata.answer_source || "").toLowerCase();
-    var isOutfitCheck = _evalIntent === "outfit_check" || _evalIntent === "garment_evaluation"
-      || _evalSource.indexOf("outfit_check") !== -1 || _evalSource.indexOf("garment_evaluation") !== -1;
-    if (isOutfitCheck) {{
-      return [
-        {{ key: "body_harmony_pct", label: "Body" }},
-        {{ key: "color_suitability_pct", label: "Color" }},
-        {{ key: "pairing_coherence_pct", label: "Pairing" }},
-        {{ key: "occasion_pct", label: "Occasion" }},
-      ];
-    }}
-    return [
-      {{ key: "body_harmony_pct", label: "Body" }},
-      {{ key: "color_suitability_pct", label: "Color" }},
-      {{ key: "risk_tolerance_pct", label: "Risk" }},
-      {{ key: "comfort_boundary_pct", label: "Comfort" }},
-      {{ key: "occasion_pct", label: "Occasion" }},
-      {{ key: "specific_needs_pct", label: "Needs" }},
-      {{ key: "pairing_coherence_pct", label: "Pairing" }},
-    ];
-  }}
-
   function wardrobeImageUrl(item) {{
     if (item.image_url) return item.image_url;
     var p = item.image_path || "";
@@ -2972,7 +2940,6 @@ def get_web_ui_html(
         {{ key: "occasion_pct",             label: "Occasion" }},
         {{ key: "body_harmony_pct",         label: "Body" }},
         {{ key: "color_suitability_pct",    label: "Color" }},
-        {{ key: "style_fit_pct",            label: "Style" }},
         {{ key: "inter_item_coherence_pct", label: "Pairing" }},
       ];
       var axes = allAxes.filter(function(a) {{

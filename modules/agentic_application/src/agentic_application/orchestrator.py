@@ -3574,7 +3574,6 @@ class AgenticOrchestrator:
                     "occasion_fit": candidate.occasion_fit,
                     "body_harmony": candidate.body_harmony,
                     "color_harmony": candidate.color_harmony,
-                    "archetype_match": candidate.archetype_match,
                     "inter_item_coherence": candidate.inter_item_coherence,
                     "composer_rationale": candidate.composer_rationale,
                     "rater_rationale": candidate.rater_rationale,
@@ -3604,7 +3603,6 @@ class AgenticOrchestrator:
                     "reasoning": row.reasoning,
                     "body_harmony_pct": row.body_harmony_pct,
                     "color_suitability_pct": row.color_suitability_pct,
-                    "style_fit_pct": row.style_fit_pct,
                     "occasion_pct": row.occasion_pct,
                     "inter_item_coherence_pct": row.inter_item_coherence_pct,
                     "fashion_score_pct": row.fashion_score_pct,
@@ -4946,7 +4944,6 @@ class AgenticOrchestrator:
                                 "occasion_fit": r.occasion_fit,
                                 "body_harmony": r.body_harmony,
                                 "color_harmony": r.color_harmony,
-                                "archetype_match": r.archetype_match,
                                 "inter_item_coherence": r.inter_item_coherence,
                                 "rationale": r.rationale,
                                 "unsuitable": r.unsuitable,
@@ -4993,7 +4990,6 @@ class AgenticOrchestrator:
                         occasion_fit=rated.occasion_fit,
                         body_harmony=rated.body_harmony,
                         color_harmony=rated.color_harmony,
-                        archetype_match=rated.archetype_match,
                         inter_item_coherence=rated.inter_item_coherence,
                         composer_id=composed.composer_id,
                         composer_rationale=composed.rationale,
@@ -5102,14 +5098,12 @@ class AgenticOrchestrator:
                         match_score=candidate.fashion_score / 100.0,
                         title=f"Outfit {rank}",
                         reasoning=candidate.rater_rationale or "Rated by stylist.",
-                        # Map Rater's 4 dims onto the radar slots the UI
-                        # already knows. archetype_match → style_fit_pct
-                        # is the closest semantic fit (style match against
-                        # the user's archetype). occasion_pct is Optional
-                        # so we set it explicitly.
+                        # Map the Rater's 3 always-on dims onto the radar
+                        # slots the UI knows. occasion_pct is Optional so
+                        # we set it explicitly. R6 (May 5 2026) dropped
+                        # archetype_match → style_fit_pct entirely.
                         body_harmony_pct=int(candidate.body_harmony or 0),
                         color_suitability_pct=int(candidate.color_harmony or 0),
-                        style_fit_pct=int(candidate.archetype_match or 0),
                         occasion_pct=int(candidate.occasion_fit or 0),
                         # PR V1 (May 5 2026): inter-item coherence. For
                         # complete (single-item) outfits, set to None so
@@ -6344,7 +6338,6 @@ class AgenticOrchestrator:
                     "archetype_scores": {
                         "body_harmony_pct": int(getattr(candidate, "body_harmony", 0) or 0),
                         "color_suitability_pct": int(getattr(candidate, "color_harmony", 0) or 0),
-                        "style_fit_pct": int(getattr(candidate, "archetype_match", 0) or 0),
                         "occasion_pct": int(getattr(candidate, "occasion_fit", 0) or 0),
                     },
                     "rater_rationale": str(getattr(candidate, "rater_rationale", "") or "").strip(),

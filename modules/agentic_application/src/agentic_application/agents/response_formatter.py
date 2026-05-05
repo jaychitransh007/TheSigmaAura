@@ -254,7 +254,6 @@ class ResponseFormatter:
                     # the axis when null and renders a 4-axis quadrilateral.
                     body_harmony_pct=rec.body_harmony_pct,
                     color_suitability_pct=rec.color_suitability_pct,
-                    style_fit_pct=rec.style_fit_pct,
                     occasion_pct=rec.occasion_pct,
                     inter_item_coherence_pct=rec.inter_item_coherence_pct,
                     fashion_score_pct=rec.fashion_score_pct,

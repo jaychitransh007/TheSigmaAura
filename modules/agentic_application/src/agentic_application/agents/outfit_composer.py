@@ -206,7 +206,11 @@ def _user_context_block(ctx: CombinedContext) -> Dict[str, Any]:
         "palette_season": derived.get("SeasonalColorGroup", ""),
         "contrast": derived.get("ContrastLevel", ""),
         "undertone": derived.get("Undertone", ""),
-        # ── Style (used by Rater.archetype_match) ─────────────────────
+        # ── Style (informs Composer item selection) ───────────────────
+        # The Rater no longer scores risk_tolerance as a continuous dim
+        # (R6, May 5 2026 — archetype_match dropped). It still gates the
+        # `unsuitable: true` veto for severe mismatches. Composer should
+        # weight item picks against this signal.
         "risk_tolerance": style_pref.get("riskTolerance", "") or "balanced",
         # ── Per-turn signals (used by Rater.occasion_fit) ─────────────
         "user_message": ctx.live.user_need,
