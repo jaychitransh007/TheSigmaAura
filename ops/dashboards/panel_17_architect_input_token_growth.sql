@@ -1,4 +1,4 @@
--- Panel 17 — Architect Input Token Growth (May 5 2026, PR #90 / #92)
+-- Panel 17 — Architect Input Token Growth
 -- Source: docs/OPERATIONS.md (auto-extracted; do not hand-edit)
 -- Regenerate with: python3 ops/scripts/extract_dashboard_sql.py
 

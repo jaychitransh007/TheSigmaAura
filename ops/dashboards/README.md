@@ -20,11 +20,11 @@ this directory makes the SQL paste-ready for Supabase Studio / Metabase / Grafan
 - [`panel_12_wardrobe_enrichment_failure_rate_phase_12d.sql`](panel_12_wardrobe_enrichment_failure_rate_phase_12d.sql)
 - [`panel_13_wardrobe_anchor_try_on_coverage_phase_12d_follow_up.sql`](panel_13_wardrobe_anchor_try_on_coverage_phase_12d_follow_up.sql)
 - [`panel_14_non_garment_image_rate_phase_12d_follow_up.sql`](panel_14_non_garment_image_rate_phase_12d_follow_up.sql)
-- [`panel_16_low_confidence_catalog_responses_may_3_2026.sql`](panel_16_low_confidence_catalog_responses_may_3_2026.sql)
-- [`panel_17_architect_input_token_growth_may_5_2026_pr_90_92.sql`](panel_17_architect_input_token_growth_may_5_2026_pr_90_92.sql)
-- [`panel_18_rater_unsuitable_rate_may_5_2026_pr_89_baseline.sql`](panel_18_rater_unsuitable_rate_may_5_2026_pr_89_baseline.sql)
-- [`panel_19_composer_latency_may_5_2026_pr_95_baseline.sql`](panel_19_composer_latency_may_5_2026_pr_95_baseline.sql)
-- [`panel_20_episodic_memory_population_may_5_2026_pr_90_92.sql`](panel_20_episodic_memory_population_may_5_2026_pr_90_92.sql)
+- [`panel_16_low_confidence_catalog_responses.sql`](panel_16_low_confidence_catalog_responses.sql)
+- [`panel_17_architect_input_token_growth.sql`](panel_17_architect_input_token_growth.sql)
+- [`panel_18_rater_unsuitable_rate.sql`](panel_18_rater_unsuitable_rate.sql)
+- [`panel_19_composer_latency.sql`](panel_19_composer_latency.sql)
+- [`panel_20_episodic_memory_population.sql`](panel_20_episodic_memory_population.sql)
 <!-- preserve-below -->
 <!-- Content below this marker is curator-maintained and survives regeneration
      by ops/scripts/extract_dashboard_sql.py. See PR #96 for the marker logic. -->

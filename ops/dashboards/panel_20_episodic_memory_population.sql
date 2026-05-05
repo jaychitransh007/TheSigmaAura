@@ -1,4 +1,4 @@
--- Panel 20 — Episodic Memory Population (May 5 2026, PR #90 / #92)
+-- Panel 20 — Episodic Memory Population
 -- Source: docs/OPERATIONS.md (auto-extracted; do not hand-edit)
 -- Regenerate with: python3 ops/scripts/extract_dashboard_sql.py
 

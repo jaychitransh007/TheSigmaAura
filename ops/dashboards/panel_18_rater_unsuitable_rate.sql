@@ -1,4 +1,4 @@
--- Panel 18 — Rater Unsuitable Rate (May 5 2026, PR #89 baseline)
+-- Panel 18 — Rater Unsuitable Rate
 -- Source: docs/OPERATIONS.md (auto-extracted; do not hand-edit)
 -- Regenerate with: python3 ops/scripts/extract_dashboard_sql.py
 
