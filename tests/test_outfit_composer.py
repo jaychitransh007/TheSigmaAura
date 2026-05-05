@@ -118,9 +118,11 @@ class OutfitComposerStructuralTests(unittest.TestCase):
         payload = {
             "outfits": [
                 {"composer_id": "C1", "direction_id": "A", "direction_type": "complete",
-                 "item_ids": ["a1_set1"], "rationale": "Complete kurta_set works for everyday."},
+                 "item_ids": ["a1_set1"], "name": "Cream Festive Kurta",
+                 "rationale": "Complete kurta_set works for everyday."},
                 {"composer_id": "C2", "direction_id": "B", "direction_type": "paired",
-                 "item_ids": ["b_t1", "b_b1"], "rationale": "Shirt + trouser, smart_casual."},
+                 "item_ids": ["b_t1", "b_b1"], "name": "Smart-Casual Linen",
+                 "rationale": "Shirt + trouser, smart_casual."},
             ],
             "overall_assessment": "moderate",
             "pool_unsuitable": False,
@@ -134,6 +136,32 @@ class OutfitComposerStructuralTests(unittest.TestCase):
         self.assertEqual("moderate", result.overall_assessment)
         self.assertFalse(result.pool_unsuitable)
         self.assertEqual(["C1", "C2"], [o.composer_id for o in result.outfits])
+        # name is parsed off each outfit and surfaces as the user-facing card
+        # title downstream — verify it round-trips through ComposedOutfit.
+        self.assertEqual(
+            ["Cream Festive Kurta", "Smart-Casual Linen"],
+            [o.name for o in result.outfits],
+        )
+
+    def test_composer_tolerates_missing_name_field(self) -> None:
+        """Defensive: if the LLM somehow returns an outfit without a name,
+        the parser still constructs the ComposedOutfit (name defaults to
+        "") so the orchestrator can fall back to "Outfit N"."""
+        payload = {
+            "outfits": [
+                {"composer_id": "C1", "direction_id": "A", "direction_type": "complete",
+                 "item_ids": ["a1_set1"], "rationale": "Missing name field."},
+            ],
+            "overall_assessment": "moderate",
+            "pool_unsuitable": False,
+        }
+
+        with patch("agentic_application.agents.outfit_composer.get_api_key", return_value="x"), _patch_composer() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(payload)
+            result = OutfitComposer().compose(_ctx(), _pool())
+
+        self.assertEqual(1, len(result.outfits))
+        self.assertEqual("", result.outfits[0].name)
 
     def test_composer_drops_outfit_with_unknown_item_id(self) -> None:
         """Hallucinated item_id → that outfit is silently dropped from

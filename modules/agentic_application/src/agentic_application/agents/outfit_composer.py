@@ -122,6 +122,7 @@ def _build_composer_json_schema(direction_letters: Sequence[str]) -> Dict[str, A
                             "direction_type",
                             "item_ids",
                             "rationale",
+                            "name",
                         ],
                         "properties": {
                             "composer_id": {"type": "string"},
@@ -135,6 +136,7 @@ def _build_composer_json_schema(direction_letters: Sequence[str]) -> Dict[str, A
                                 "items": {"type": "string"},
                             },
                             "rationale": {"type": "string"},
+                            "name": {"type": "string"},
                         },
                     },
                 },
@@ -615,6 +617,7 @@ class OutfitComposer:
                     direction_type=str(raw_outfit.get("direction_type", "")),
                     item_ids=[str(x) for x in (raw_outfit.get("item_ids") or [])],
                     rationale=str(raw_outfit.get("rationale", "")),
+                    name=str(raw_outfit.get("name", "")).strip(),
                 )
             except (ValidationError, TypeError, AttributeError, ValueError) as exc:  # defensive parse
                 _log.warning("OutfitComposer: malformed outfit payload (%s); skipping", exc)
