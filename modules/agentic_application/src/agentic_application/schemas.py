@@ -143,12 +143,19 @@ class CombinedContext(BaseModel):
     disliked_product_ids: List[str] = Field(default_factory=list)
     # R4 (May 5 2026): aggregated like/dislike *attributes* (not IDs).
     # Shape: {"disliked": {axis: [{"value": v, "count": n}, ...]}, "liked": {...}}
-    # Surfaced to Composer + Rater so they can reason archetypally
-    # ("user dislikes warm-tone florals" rather than "user dislikes
-    # product XYZ-123"). Empty when the user has fewer than 2 feedback
-    # events on a given axis — we suppress single-data-point signals
-    # to avoid the Rater firing its veto on noise.
+    # Surfaced to Composer for soft preference (lean away from disliked
+    # attributes when picking items). Rater no longer consumes this — see
+    # PR #89, May 5 2026 — and PR 2 (this PR) replaces this aggregate signal
+    # with the richer episodic timeline below for the architect.
     archetypal_preferences: Dict[str, Any] = Field(default_factory=dict)
+    # Episodic memory: chronological timeline of the user's recent
+    # like/dislike events (last 30 days by default), each row carrying the
+    # user_query that produced the outfit and the full attribute set of the
+    # garment. Surfaced to the Architect so it can find context-dependent
+    # patterns (e.g. "user disliked solid navy at the office, but liked it
+    # for date night") and bias retrieval queries accordingly. Empty list
+    # for cold-start users.
+    recent_user_actions: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 # --- Outfit Architect output ---

@@ -228,6 +228,12 @@ def _build_user_payload(ctx: CombinedContext) -> str:
             ctx.conversation_memory.model_dump() if ctx.conversation_memory else None
         ),
         "catalog_inventory": ctx.catalog_inventory,
+        # Episodic memory: chronological like/dislike timeline (last 30 days
+        # by default), each row carrying the user_query that produced the
+        # outfit and the garment's full attributes. Use this to find context-
+        # dependent patterns and bias retrieval queries — see the
+        # "Recent user actions" section of the system prompt for usage rules.
+        "recent_user_actions": list(ctx.recent_user_actions or []),
     }
     if ctx.live.anchor_garment:
         payload["anchor_garment"] = ctx.live.anchor_garment
