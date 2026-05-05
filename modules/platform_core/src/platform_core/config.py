@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 import os
 
+from platform_core.reasoning_effort import GPT5_MID_EFFORTS
+
 
 @dataclass(frozen=True)
 class AuraRuntimeConfig:
@@ -92,9 +94,9 @@ def load_config() -> AuraRuntimeConfig:
     )
 
     # Architect runs on gpt-5.4 (gpt-5-mid family). Validation set
-    # imported from platform_core.reasoning_effort so this env-loader
-    # stays in sync with the architect's own constructor validation.
-    from platform_core.reasoning_effort import GPT5_MID_EFFORTS
+    # imported from platform_core.reasoning_effort (top of file) so
+    # this env-loader stays in sync with the architect's own
+    # constructor validation.
     architect_effort = os.getenv("ARCHITECT_REASONING_EFFORT", "").strip().lower() or "low"
     if architect_effort not in GPT5_MID_EFFORTS:
         # Unknown values fall back to "low" rather than failing app
