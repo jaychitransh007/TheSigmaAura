@@ -4807,30 +4807,63 @@ class AgenticOrchestrator:
                 input_summary=f"{total_products} products across {len(retrieved_sets)} sets",
             )
             t_compose = time.monotonic()
-            composer_result = self.outfit_composer.compose(combined_context, retrieved_sets)
+            # PR #80 (May 5 2026): per-attempt logging. The composer's
+            # retry-on-hallucination path used to roll up into one
+            # model_call_logs row that summed prompt_tokens across
+            # both attempts (T6 turn appeared to have a 24K-token
+            # prompt because it was actually 12K + 12K). Each attempt
+            # now persists its own row, distinguished by call_type
+            # suffix and an `attempt_no` field in request_json.
+            _attempt_logs: List[Dict[str, Any]] = []
+
+            def _record_attempt(payload: Dict[str, Any]) -> None:
+                _attempt_logs.append(payload)
+                attempt_no = int(payload.get("attempt_no") or 1)
+                call_type = "outfit_composer" if attempt_no == 1 else f"outfit_composer_retry{attempt_no - 1}"
+                try:
+                    trace.add_model_cost_from_row(self.repo.log_model_call(
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        service="agentic_application",
+                        call_type=call_type,
+                        model="gpt-5-mini",
+                        request_json={
+                            "pool_size": total_products,
+                            "directions": len({rs.direction_id for rs in retrieved_sets}),
+                            "attempt_no": attempt_no,
+                        },
+                        response_json={
+                            "raw": str(payload.get("raw_text") or "")[:8000],
+                            "outfit_count_emitted": payload.get("outfit_count_emitted"),
+                            "outfit_count_kept": payload.get("outfit_count_kept"),
+                            "drop_reasons": (payload.get("drop_reasons") or [])[:10],
+                        },
+                        reasoning_notes=[],
+                        prompt_tokens=int(payload.get("prompt_tokens") or 0),
+                        completion_tokens=int(payload.get("completion_tokens") or 0),
+                        total_tokens=int(payload.get("total_tokens") or 0),
+                    ))
+                except Exception:  # noqa: BLE001 — telemetry must never break pipeline
+                    _log.exception("composer per-attempt log failed; ignoring")
+
+            composer_result = self.outfit_composer.compose(
+                combined_context, retrieved_sets, on_attempt=_record_attempt,
+            )
             compose_ms = int((time.monotonic() - t_compose) * 1000)
             emit(
                 "outfit_composer", "completed",
-                ctx={"outfit_count": len(composer_result.outfits)},
+                ctx={
+                    "outfit_count": len(composer_result.outfits),
+                    "attempt_count": composer_result.attempt_count,
+                },
             )
-            trace_end("outfit_composer", output_summary=f"{len(composer_result.outfits)} outfits")
-            # Persist Composer audit trail. Read usage from the result
-            # so concurrent turns don't race over a shared instance attr.
-            _comp_usage = composer_result.usage or {}
-            trace.add_model_cost_from_row(self.repo.log_model_call(
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                service="agentic_application",
-                call_type="outfit_composer",
-                model="gpt-5-mini",
-                request_json={"pool_size": total_products, "directions": len({rs.direction_id for rs in retrieved_sets})},
-                response_json={"raw": composer_result.raw_response[:8000]},
-                reasoning_notes=[o.rationale for o in composer_result.outfits],
-                latency_ms=compose_ms,
-                prompt_tokens=_comp_usage.get("prompt_tokens"),
-                completion_tokens=_comp_usage.get("completion_tokens"),
-                total_tokens=_comp_usage.get("total_tokens"),
-            ))
+            trace_end(
+                "outfit_composer",
+                output_summary=(
+                    f"{len(composer_result.outfits)} outfits "
+                    f"(attempts={composer_result.attempt_count})"
+                ),
+            )
             try:
                 self.repo.log_tool_trace(
                     conversation_id=conversation_id,
@@ -4841,6 +4874,7 @@ class AgenticOrchestrator:
                         "outfit_count": len(composer_result.outfits),
                         "overall_assessment": composer_result.overall_assessment,
                         "pool_unsuitable": composer_result.pool_unsuitable,
+                        "attempt_count": composer_result.attempt_count,
                         "outfits": [
                             {
                                 "composer_id": o.composer_id,

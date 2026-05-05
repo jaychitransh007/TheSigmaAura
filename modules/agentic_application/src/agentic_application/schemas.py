@@ -271,6 +271,12 @@ class ComposerResult(BaseModel):
     # Carried on the result so concurrent turns don't race over a shared
     # ``last_usage`` instance attribute. Orchestrator reads from here.
     usage: Dict[str, int] = Field(default_factory=dict)
+    # PR #80 (May 5 2026): how many LLM round-trips it took. 1 in the
+    # happy path; 2 when the first attempt was a full hallucination
+    # and the agent retried with a stricter suffix. Surfaced so the
+    # ``rater_decision`` / ``composer_decision`` tool_traces can
+    # distinguish single-shot from retry-rescued from retry-failed.
+    attempt_count: int = 1
 
 
 class RatedOutfit(BaseModel):
