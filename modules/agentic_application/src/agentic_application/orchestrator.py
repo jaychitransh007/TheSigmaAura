@@ -1168,8 +1168,20 @@ class AgenticOrchestrator:
         # --- 0.5 Onboarding Gate ---
         emit("onboarding_gate", "started")
         trace_start("onboarding_gate", input_summary=f"user={external_user_id}")
-        onboarding_status = self.onboarding_gateway.get_onboarding_status(external_user_id)
-        analysis_status = self.onboarding_gateway.get_analysis_status(external_user_id)
+        # PR #62 (G1c): get_onboarding_status and get_analysis_status are
+        # independent reads on the same user. Run them in parallel against
+        # the pooled httpx client (PR #59). Saves one round-trip's worth
+        # of latency on the slowest of the two — typically ~700ms-1s on
+        # cold turns, less when the pool is warm.
+        with ThreadPoolExecutor(max_workers=2) as _gate_pool:
+            _onboarding_future = _gate_pool.submit(
+                self.onboarding_gateway.get_onboarding_status, external_user_id
+            )
+            _analysis_future = _gate_pool.submit(
+                self.onboarding_gateway.get_analysis_status, external_user_id
+            )
+            onboarding_status = _onboarding_future.result()
+            analysis_status = _analysis_future.result()
         onboarding_gate = evaluate_onboarding_gate(onboarding_status, analysis_status)
         if not onboarding_gate.allowed:
             emit("onboarding_gate", "blocked")
