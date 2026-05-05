@@ -10,14 +10,12 @@ class AuraRuntimeConfig:
     retrieval_match_count: int = 12
     request_timeout_seconds: int = 30
     # Reasoning effort the OutfitArchitect passes via the Responses API
-    # `reasoning.effort` parameter. May 5, 2026 set this explicitly to
-    # "medium" alongside the gpt-5.5 → gpt-5.4 model swap — going both
-    # cheaper-model AND lower-effort at once would compound quality
-    # risk on the agent that drives retrieval quality across the whole
-    # pipeline. Override per-environment via ARCHITECT_REASONING_EFFORT
-    # (low | medium | high). See docs/OPEN_TASKS.md for the
-    # measure-and-decide entry that backs both defaults.
-    architect_reasoning_effort: str = "medium"
+    # `reasoning.effort` parameter. Stepped from "medium" → "low" on
+    # the May-5 latency-fix pass after the turn audit showed architect
+    # at 88.9s with 6.5K output tokens — most of those tokens were
+    # reasoning the structured-output task doesn't need. Override
+    # per-environment via ARCHITECT_REASONING_EFFORT (low | medium | high).
+    architect_reasoning_effort: str = "low"
 
 
 def _resolve_env_file(explicit_path: str | None = None) -> str:
@@ -92,12 +90,12 @@ def load_config() -> AuraRuntimeConfig:
         or "data/catalog/enriched_catalog_upload.csv"
     )
 
-    architect_effort = os.getenv("ARCHITECT_REASONING_EFFORT", "").strip().lower() or "medium"
+    architect_effort = os.getenv("ARCHITECT_REASONING_EFFORT", "").strip().lower() or "low"
     if architect_effort not in {"low", "medium", "high"}:
-        # Unknown values fall back to "medium" rather than failing app
+        # Unknown values fall back to "low" rather than failing app
         # start. OpenAI may add or rename values; we'd rather degrade
         # than crash.
-        architect_effort = "medium"
+        architect_effort = "low"
 
     return AuraRuntimeConfig(
         supabase_rest_url=_ensure_rest_url(supabase_url),

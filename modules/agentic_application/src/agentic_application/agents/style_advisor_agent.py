@@ -159,15 +159,24 @@ def _planner_entities_payload(plan_resolved_context: Any, plan_action_parameters
 class StyleAdvisorAgent:
     """LLM advisor for open-ended style_discovery and explanation_request."""
 
-    def __init__(self, model: str = "gpt-5.5") -> None:
-        # May 1, 2026: upgraded from gpt-5.4 to gpt-5.5 alongside the
-        # planner / architect / user-analysis migration. Style Advisor
-        # produces free-form prose for style_discovery and explanation_request
-        # turns where voice quality is directly user-visible — the bigger
-        # model preserves the stylist tone the product positioning depends on.
+    def __init__(
+        self,
+        model: str = "gpt-5.4",
+        reasoning_effort: str = "low",
+    ) -> None:
+        # May 5, 2026: re-tiered from gpt-5.5 → gpt-5.4 + reasoning_effort="low".
+        # Style Advisor only fires on style_discovery + explanation_request
+        # turns (a small slice of traffic) so the cost saving is modest,
+        # but the latency win is meaningful for those turns. Voice
+        # quality risk: gpt-5.4 may not preserve the stylist tone as
+        # cleanly as gpt-5.5 did. If users report flatter prose on
+        # advisor responses, revert the model to "gpt-5.5" (effort "low"
+        # is the floor on gpt-5.5 — minimal isn't supported there).
+        # History: gpt-5.4 → gpt-5.5 (May 1, 2026) → gpt-5.4 + low (May 5).
         #
         # Lazy OpenAI client (see CopilotPlanner for the pattern).
         self._model = model
+        self._reasoning_effort = reasoning_effort
         self._system_prompt = _load_prompt()
         # Item 4 (May 1, 2026): orchestrator picks this up post-call.
         self.last_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -227,6 +236,7 @@ class StyleAdvisorAgent:
                     ],
                 },
             ],
+            reasoning={"effort": self._reasoning_effort},
             text={"format": _ADVICE_JSON_SCHEMA},
         )
         self.last_usage = extract_token_usage(response)

@@ -121,7 +121,7 @@ class ImageModerationService:
                         ],
                     },
                 ],
-                reasoning={"effort": "low"},
+                reasoning={"effort": "minimal"},
                 text={"format": _IMAGE_MODERATION_SCHEMA},
             )
             parsed = self._extract_response_json(response)

@@ -239,16 +239,18 @@ class OutfitArchitect:
     def __init__(
         self,
         model: str = "gpt-5.4",
-        reasoning_effort: str = "medium",
+        reasoning_effort: str = "low",
     ) -> None:
-        # May 5, 2026: re-tiered to gpt-5.4 + reasoning_effort="medium".
+        # May 5, 2026: re-tiered to gpt-5.4 + reasoning_effort="low".
         # OpenAI's lineup positions gpt-5.4 as the lower-cost reasoning
         # tier (input $2.50/M vs $5.00/M for gpt-5.5; output $10/M vs
         # $30/M); reasoning_effort tunes within-model chain-of-thought.
-        # Going one tier down on model AND one notch down on effort
-        # is the explicit cost play — see docs/OPEN_TASKS.md for the
-        # measure-and-decide entry that backs both defaults.
-        # History: gpt-5.4 → gpt-5.5 (May 1, 2026) → gpt-5.4 + medium effort.
+        # The May-5 turn audit showed architect at 88.9s with 6.5K
+        # output tokens at "medium" — most of those tokens were
+        # reasoning the architect's structured task doesn't need.
+        # Stepping to "low" is the second notch down the cost ladder.
+        # History: gpt-5.4 → gpt-5.5 (May 1, 2026) → gpt-5.4 medium
+        # (May 5) → gpt-5.4 low (May 5 latency-fix pass).
         #
         # Lazy OpenAI client (see CopilotPlanner for the pattern).
         #

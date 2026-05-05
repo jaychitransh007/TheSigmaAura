@@ -336,6 +336,10 @@ class VisualEvaluatorAgent:
                 )
 
         from platform_core.cost_estimator import extract_token_usage
+        # reasoning_effort="minimal" — VisualEvaluator scores 17 dims +
+        # 4 short notes per candidate against a strict schema. Vision
+        # grounding does the work; the model doesn't need extended
+        # chain-of-thought to fill the structured slots.
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -348,6 +352,7 @@ class VisualEvaluatorAgent:
                     "content": user_content,
                 },
             ],
+            reasoning={"effort": "minimal"},
             text={"format": _EVAL_JSON_SCHEMA},
         )
         self.last_usage = extract_token_usage(response)

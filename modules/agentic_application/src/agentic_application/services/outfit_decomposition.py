@@ -124,6 +124,9 @@ def decompose_outfit_image(
     if user_hints:
         user_text += f"\nContext from user: {user_hints}"
 
+    # reasoning_effort="minimal" — outfit decomposition is structured
+    # vision extraction (list garments visible in the photo). Vision
+    # does the work; reasoning tokens add latency without quality.
     response = client.responses.create(
         model=model,
         input=[
@@ -136,6 +139,7 @@ def decompose_outfit_image(
                 ],
             },
         ],
+        reasoning={"effort": "minimal"},
         text={"format": _GARMENT_SCHEMA},
     )
     parsed = _extract_response_json(response)
