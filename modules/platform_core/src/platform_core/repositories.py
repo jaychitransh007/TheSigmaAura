@@ -570,21 +570,28 @@ class ConversationRepository:
     # bounded and recency dominates.
     _RECENT_USER_ACTIONS_MAX = 30
 
-    # Catalog attribute columns surfaced per item. These are the same axes
-    # the rater used to veto on, so the architect has the same evidence —
-    # but as raw evidence, not aggregated counts.
-    _RECENT_ACTIONS_ITEM_COLS = (
-        "title",
-        "primary_color",
-        "garment_subtype",
-        "color_temperature",
-        "pattern_type",
-        "fit_type",
-        "silhouette_type",
-        "embellishment_level",
-        "formality_level",
-        "occasion_fit",
-    )
+    # Catalog attribute columns surfaced per item. The DB stores enrichment
+    # attributes in PascalCase (ColorTemperature, PatternType, ...) — same
+    # convention as `_ARCHETYPAL_AXES` above — while the architect prompt
+    # expects snake_case keys. Map prompt_key → DB column so we hydrate
+    # against the real schema and translate on the way out.
+    # PR #90 (May 5 2026) shipped with snake_case DB column names and was
+    # silently returning empty timelines for every user — PostgREST
+    # 400-errors on the unknown columns and the surrounding except clause
+    # swallowed it. Tests didn't catch it because the mocks also used
+    # snake_case.
+    _RECENT_ACTIONS_ITEM_MAP = {
+        "title":               "title",
+        "primary_color":       "PrimaryColor",
+        "garment_subtype":     "GarmentSubtype",
+        "color_temperature":   "ColorTemperature",
+        "pattern_type":        "PatternType",
+        "fit_type":            "FitType",
+        "silhouette_type":     "SilhouetteType",
+        "embellishment_level": "EmbellishmentLevel",
+        "formality_level":     "FormalityLevel",
+        "occasion_fit":        "OccasionFit",
+    }
 
     def list_recent_user_actions(
         self,
@@ -639,7 +646,7 @@ class ConversationRepository:
         items_by_id: Dict[str, Dict[str, str]] = {}
         if garment_ids:
             _CHUNK = 50
-            cols = "product_id," + ",".join(self._RECENT_ACTIONS_ITEM_COLS)
+            cols = "product_id," + ",".join(self._RECENT_ACTIONS_ITEM_MAP.values())
             try:
                 for i in range(0, len(garment_ids), _CHUNK):
                     chunk = garment_ids[i : i + _CHUNK]
@@ -653,8 +660,8 @@ class ConversationRepository:
                         pid = str(row.get("product_id") or "").strip()
                         if pid:
                             items_by_id[pid] = {
-                                col: str(row.get(col) or "").strip()
-                                for col in self._RECENT_ACTIONS_ITEM_COLS
+                                prompt_key: str(row.get(db_col) or "").strip()
+                                for prompt_key, db_col in self._RECENT_ACTIONS_ITEM_MAP.items()
                             }
             except Exception:
                 items_by_id = {}
