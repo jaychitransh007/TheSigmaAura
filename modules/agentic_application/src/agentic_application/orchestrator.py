@@ -4949,7 +4949,13 @@ class AgenticOrchestrator:
                     "overall_assessment": rater_result.overall_assessment,
                 },
             )
-            trace_end("outfit_rater", output_summary=f"{len(rater_result.ranked_outfits)} rated")
+            trace_end(
+                "outfit_rater",
+                output_summary=(
+                    f"{len(rater_result.ranked_outfits)} rated "
+                    f"(profile={rater_result.fashion_score_weight_profile})"
+                ),
+            )
             _rate_usage = rater_result.usage or {}
             trace.add_model_cost_from_row(self.repo.log_model_call(
                 conversation_id=conversation_id,
@@ -4957,7 +4963,13 @@ class AgenticOrchestrator:
                 service="agentic_application",
                 call_type="outfit_rater",
                 model="gpt-5-mini",
-                request_json={"composed_count": len(composer_result.outfits)},
+                request_json={
+                    "composed_count": len(composer_result.outfits),
+                    # R3 (PR #66): which weight profile picked the
+                    # final fashion_score blend. SQL-grep with
+                    # request_json->>'fashion_score_weight_profile'.
+                    "fashion_score_weight_profile": rater_result.fashion_score_weight_profile,
+                },
                 response_json={"raw": rater_result.raw_response[:8000]},
                 reasoning_notes=[r.rationale for r in rater_result.ranked_outfits],
                 latency_ms=rate_ms,
