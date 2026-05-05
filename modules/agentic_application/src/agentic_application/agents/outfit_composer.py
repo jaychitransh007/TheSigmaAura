@@ -152,15 +152,13 @@ def _user_context_block(ctx: CombinedContext) -> Dict[str, Any]:
         "palette_season": interps.get("SeasonalColorGroup", ""),
         "contrast": interps.get("ContrastLevel", ""),
         "undertone": interps.get("Undertone", ""),
-        "primary_archetype": style_pref.get("primaryArchetype", ""),
-        "secondary_archetype": style_pref.get("secondaryArchetype", ""),
-        "risk_tolerance": style_pref.get("riskTolerance", ""),
-        "comfort_priority": style_pref.get("comfortPriority", ""),
+        "risk_tolerance": style_pref.get("riskTolerance", "") or "balanced",
         "user_message": ctx.live.user_need,
         "occasion_signal": ctx.live.occasion_signal,
         "formality_hint": ctx.live.formality_hint,
         "time_of_day": ctx.live.time_of_day,
         "weather_context": ctx.live.weather_context,
+        "style_goal": getattr(ctx.live, "style_goal", "") or "",
         # `disliked_product_ids` is NOT surfaced to the Composer.
         # The IDs are already filtered out of the retrieval pool by
         # `catalog_search_agent`, so the Composer never sees them; and

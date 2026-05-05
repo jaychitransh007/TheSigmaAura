@@ -156,7 +156,9 @@ def build_planner_input(
     has_attached_image: bool = False,
 ) -> Dict[str, Any]:
     derived = dict(user_context.derived_interpretations or {})
+    # Only risk_tolerance is read; archetype was dropped May 2026.
     style_pref = dict(user_context.style_preference or {})
+    risk_tolerance = str(style_pref.get("riskTolerance") or "").strip() or "balanced"
 
     wardrobe_items = list(user_context.wardrobe_items or [])
     top_items = [
@@ -198,8 +200,7 @@ def build_planner_input(
             "contrast_level": _nested_value(derived, "ContrastLevel") or None,
             "frame_structure": _nested_value(derived, "FrameStructure") or None,
             "height_category": _nested_value(derived, "HeightCategory") or None,
-            "primary_archetype": str(style_pref.get("primaryArchetype") or "") or None,
-            "secondary_archetype": str(style_pref.get("secondaryArchetype") or "") or None,
+            "risk_tolerance": risk_tolerance,
             "profile_richness": user_context.profile_richness,
         },
         "wardrobe_summary": {

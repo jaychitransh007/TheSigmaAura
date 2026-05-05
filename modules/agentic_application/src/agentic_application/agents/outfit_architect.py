@@ -201,13 +201,23 @@ def _build_user_payload(ctx: CombinedContext) -> str:
         "weather_context": ctx.live.weather_context or None,
         "time_of_day": ctx.live.time_of_day or None,
         "target_product_type": ctx.live.target_product_type or None,
+        # style_goal is the per-turn directional cue extracted from chat;
+        # replaces the stored archetype dropped May 2026.
+        "style_goal": (getattr(ctx.live, "style_goal", "") or None),
     }
+
+    # risk_tolerance is the only retained per-user style preference;
+    # everything else (archetype, formality_lean, pattern_type) was either
+    # body-derivable or per-turn context — see PR that dropped style_preference.
+    risk_tolerance = ""
+    if isinstance(user.style_preference, dict):
+        risk_tolerance = str(user.style_preference.get("riskTolerance") or "").strip()
 
     payload = {
         "profile": profile_block,
         "analysis_attributes": attrs,
         "derived_interpretations": interps,
-        "style_preference": user.style_preference,
+        "risk_tolerance": risk_tolerance or "balanced",
         "user_message": ctx.live.user_need,
         "live_context": live_context_block,
         "conversation_history": ctx.conversation_history or [],

@@ -741,6 +741,7 @@ class AgenticOrchestrator:
                 weather_context=str(getattr(resolved_context, "weather_context", "") or ""),
                 time_of_day=str(getattr(resolved_context, "time_of_day", "") or ""),
                 target_product_type=str(getattr(resolved_context, "target_product_type", "") or ""),
+                style_goal=str(getattr(resolved_context, "style_goal", "") or ""),
             )
 
         last_live_context = dict(previous_context.get("last_live_context") or {})
@@ -768,6 +769,7 @@ class AgenticOrchestrator:
             weather_context=str(getattr(resolved_context, "weather_context", "") or last_live_context.get("weather_context") or ""),
             time_of_day=str(getattr(resolved_context, "time_of_day", "") or last_live_context.get("time_of_day") or ""),
             target_product_type=str(getattr(resolved_context, "target_product_type", "") or last_live_context.get("target_product_type") or ""),
+            style_goal=str(getattr(resolved_context, "style_goal", "") or last_live_context.get("style_goal") or ""),
         )
 
     def create_conversation(
@@ -3949,21 +3951,23 @@ class AgenticOrchestrator:
                 parts.append("Your height can carry long lines well, so columns, long blazers, and tailored wide-leg shapes can work if the waist or torso still feels intentional.")
             parts.append("I would be careful with oversized boxy silhouettes that hide structure everywhere at once.")
         elif topic == "archetype":
-            if primary and secondary:
-                parts.append(f"Your strongest archetype blend reads as {primary} with a secondary {secondary} influence.")
-            elif primary:
-                parts.append(f"Your clearest archetype is {primary}.")
-            if primary_lower == "classic":
-                parts.append("That means polished structure, symmetry, and restraint should stay at the core of your outfits.")
-            if secondary_lower == "romantic":
-                parts.append("The romantic layer is best used as softness in texture, drape, curve, or detail rather than turning the whole look ornate.")
-            parts.append("When you are choosing between options, keep the base classic and add the secondary archetype as the accent.")
+            # May 2026: archetype dropped as a stored field. The user
+            # might still ask "which archetype fits me?" — ground the
+            # answer in the deterministic body+palette+frame signals
+            # that ACTUALLY drive what suits them, plus a note that
+            # sharper direction comes from chat ("tell me 'something
+            # edgy' or 'old-money classic' and I'll bias accordingly").
+            if seasonal:
+                parts.append(f"Your {seasonal} palette and {body_shape or 'frame'} are your strongest signals — the most flattering directions sit where those line up.")
+            elif body_shape:
+                parts.append(f"Your {body_shape} frame is the strongest signal for what reads well — silhouette and proportion drive the directions that suit you.")
+            else:
+                parts.append("Your profile shape and palette are the strongest signals for what direction reads well on you.")
+            parts.append("If you have a specific direction in mind — minimalist, edgy, romantic, old-money classic — tell me in chat and I will tune the recommendations to that.")
         else:
             parts.append("Your profile points toward polished structure, controlled contrast, and intentional lines rather than random trend-driven choices.")
             if seasonal:
                 parts.append(f"Color-wise, keep working with your {seasonal} direction.")
-            if primary:
-                parts.append(f"Style-wise, stay anchored in your {primary}{f' + {secondary}' if secondary else ''} blend.")
 
         if profile_confidence.analysis_confidence_pct >= 85:
             parts.append("I’m fairly confident in this because your profile evidence is strong.")
@@ -3998,8 +4002,9 @@ class AgenticOrchestrator:
         frame = self._profile_value(derived, "FrameStructure")
         height = self._profile_value(derived, "HeightCategory")
         body_shape = self._profile_value(attributes, "BodyShape")
-        primary = str(style_preference.get("primaryArchetype") or "").strip()
-        secondary = str(style_preference.get("secondaryArchetype") or "").strip()
+        # archetype dropped May 2026; advisor grounds in body+palette+chat
+        primary = ""
+        secondary = ""
         advice_topic = self._detect_style_advice_topic(
             message=message,
             style_goal=plan_result.resolved_context.style_goal,
@@ -4083,8 +4088,6 @@ class AgenticOrchestrator:
                     "frame_structure": frame,
                     "height_category": height,
                     "body_shape": body_shape,
-                    "primary_archetype": primary,
-                    "secondary_archetype": secondary,
                     "advisor_used": advisor_used,
                     "advisor_payload": advisor_payload,
                 },

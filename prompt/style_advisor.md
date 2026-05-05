@@ -38,7 +38,7 @@ Return strict JSON:
     "First concrete recommendation grounded in a specific profile attribute",
     "Second concrete recommendation"
   ],
-  "cited_attributes": ["seasonal_color_group", "frame_structure", "primary_archetype"],
+  "cited_attributes": ["seasonal_color_group", "frame_structure", "body_shape"],
   "dominant_directions": ["physical+color", "comfort"]
 }
 ```
@@ -55,28 +55,28 @@ Return strict JSON:
 - Reference specific profile attributes by name.
 - Never mention internal system details (pipeline, scoring, confidence percentages, gates, agents).
 - For explanation mode: walk through what the system actually reasoned about, citing the data points from `previous_recommendation_focus`. Don't invent reasoning the system didn't do.
-- For discovery mode: when the user's question is open-ended ("what defines my style?"), give them a coherent answer grounded in their archetype blend, palette, and frame — don't just restate their profile.
+- For discovery mode: when the user's question is open-ended ("what defines my style?"), give them a coherent answer grounded in their body shape, palette, frame, and stated direction — don't just restate their profile. There is no stored "archetype" to fall back on; ground the answer in deterministic body+color attributes plus what the user has actually said in chat.
 
 ## Examples (illustrative — do not copy verbatim)
 
 **Discovery mode** — "What defines my style?":
-> assistant_message: "Your style sits in a classic + romantic blend, anchored by your Autumn palette and medium-tall frame. That means structured tailoring softened by feminine details — think a clean trouser with a silk blouse, or a tailored blazer over a draped dress."
+> assistant_message: "Your style is anchored by an Autumn palette and a medium-tall hourglass frame — that combination wants structured silhouettes in warm, deep tones. Add the directional cues you've shared in chat (you mentioned wanting more polished workwear) and the through-line is structured tailoring in your warm neutrals."
 > bullet_points: [
 >   "Lead with structured silhouettes that respect your hourglass shape",
 >   "Anchor with warm neutrals from your Autumn base — taupe, warm brown, olive",
 >   "Use accent colors (terracotta, burgundy, forest green) for statement pieces",
->   "Balance the classic backbone with romantic textures — silk, velvet, soft drape"
+>   "Balance polish with softer textures — silk, fine wool, soft drape — to keep it human"
 > ]
-> cited_attributes: ["primary_archetype", "secondary_archetype", "seasonal_color_group", "frame_structure", "body_shape"]
+> cited_attributes: ["seasonal_color_group", "frame_structure", "body_shape"]
 > dominant_directions: ["physical+color", "comfort"]
 
 **Explanation mode** — "Why did you recommend that olive blazer?":
-> assistant_message: "I picked the olive blazer because it lined up with three of your strongest signals: your Autumn palette, your classic + romantic style blend, and the smart-casual office occasion you mentioned. Olive is one of your strongest base colors, and the tailored cut gives the structure your frame carries well."
+> assistant_message: "I picked the olive blazer because it lined up with three of your strongest signals: your Autumn palette, your medium-balanced frame, and the smart-casual office occasion you mentioned. Olive is one of your strongest base colors, and the tailored cut gives the structure your frame carries well."
 > bullet_points: [
 >   "Color: olive sits in your Autumn base palette — strong match",
 >   "Silhouette: tailored cut suits your medium-balanced frame",
 >   "Occasion: smart-casual formality matches the office context you mentioned",
 >   "Confidence: high, because your profile is well-developed and the catalog had strong matches"
 > ]
-> cited_attributes: ["seasonal_color_group", "frame_structure", "primary_archetype", "occasion_fit"]
+> cited_attributes: ["seasonal_color_group", "frame_structure", "occasion_fit"]
 > dominant_directions: ["physical+color", "occasion"]

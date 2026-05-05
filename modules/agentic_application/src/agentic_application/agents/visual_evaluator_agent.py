@@ -197,10 +197,7 @@ def _build_user_profile_payload(user_context: Any) -> Dict[str, Any]:
         "frame_structure": _nested_value(derived, "FrameStructure") or None,
         "height_category": _nested_value(derived, "HeightCategory") or None,
         "body_shape": _nested_value(analysis, "BodyShape") or None,
-        "primary_archetype": str(style_pref.get("primaryArchetype") or "") or None,
-        "secondary_archetype": str(style_pref.get("secondaryArchetype") or "") or None,
         "risk_tolerance": str(style_pref.get("riskTolerance") or "") or None,
-        "comfort_boundaries": list(style_pref.get("comfortBoundaries") or []),
         "wardrobe_items": wardrobe_summary,
     }
 
@@ -240,6 +237,7 @@ def _live_context_payload(live_context: Any) -> Dict[str, Any]:
         "time_hint": getattr(live_context, "time_hint", None),
         "time_of_day": getattr(live_context, "time_of_day", "") or "",
         "weather_context": getattr(live_context, "weather_context", "") or "",
+        "style_goal": getattr(live_context, "style_goal", "") or "",
         "specific_needs": list(getattr(live_context, "specific_needs", []) or []),
         "is_followup": bool(getattr(live_context, "is_followup", False)),
         "followup_intent": getattr(live_context, "followup_intent", None),

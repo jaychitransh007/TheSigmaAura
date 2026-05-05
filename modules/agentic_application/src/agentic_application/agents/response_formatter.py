@@ -163,10 +163,7 @@ def _build_zero_result_fallback(ctx: CombinedContext) -> tuple[str, List[str]]:
     elif isinstance(fs, str):
         frame = fs.strip()
 
-    primary = str(style_pref.get("primaryArchetype") or "").strip()
-    secondary = str(style_pref.get("secondaryArchetype") or "").strip()
-
-    has_profile = any([seasonal, contrast, frame, primary])
+    has_profile = any([seasonal, contrast, frame])
 
     if not has_profile:
         return (
@@ -198,13 +195,7 @@ def _build_zero_result_fallback(ctx: CombinedContext) -> tuple[str, List[str]]:
         elif "narrow" in frame_lower:
             parts.append("For your frame, streamlined and fitted pieces will create the cleanest lines.")
 
-    if primary:
-        style_desc = primary
-        if secondary:
-            style_desc += f" + {secondary}"
-        parts.append(f"Stay within your {style_desc} style direction when shopping.")
-
-    parts.append("Try adjusting the occasion or style direction and I'll search again with sharper criteria.")
+    parts.append("Try adjusting the occasion or telling me a style direction (e.g. 'something more polished' or 'something edgy') and I'll search again with sharper criteria.")
 
     suggestions = [
         "Try a different occasion",
@@ -360,9 +351,9 @@ class ResponseFormatter:
         if occasion:
             parts.append(f"for your {occasion.replace('_', ' ')}")
 
-        primary = _extract_plan_archetype(plan) if plan else ""
-        if not primary:
-            primary = str(ctx.user.style_preference.get("primaryArchetype") or "").strip()
+        # Architect direction (per-turn) is the qualifier when present;
+        # we no longer carry a stored "primary archetype" on the user.
+        plan_direction = _extract_plan_archetype(plan) if plan else ""
         seasonal = ""
         sg = ctx.user.derived_interpretations.get("SeasonalColorGroup")
         if isinstance(sg, dict):
@@ -371,8 +362,8 @@ class ResponseFormatter:
             seasonal = sg.strip()
 
         qualifiers: List[str] = []
-        if primary:
-            qualifiers.append(f"{primary} style")
+        if plan_direction:
+            qualifiers.append(f"{plan_direction} direction")
         if seasonal:
             qualifiers.append(f"{seasonal} palette")
         if qualifiers:

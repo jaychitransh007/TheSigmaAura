@@ -620,12 +620,11 @@ class UserAnalysisService:
             "height_cm": profile.get("height_cm"),
             "waist_cm": profile.get("waist_cm"),
             "profession": profile.get("profession", ""),
+            # May 2026: archetype, secondary, formality_lean, pattern_type
+            # all dropped. Only risk_tolerance remains as a stored
+            # preference; everything else is body-derivable or per-turn.
             "style_preference": {
-                "primaryArchetype": (style_preference or {}).get("primary_archetype", ""),
-                "secondaryArchetype": (style_preference or {}).get("secondary_archetype"),
                 "riskTolerance": (style_preference or {}).get("risk_tolerance", ""),
-                "formalityLean": (style_preference or {}).get("formality_lean", ""),
-                "patternType": (style_preference or {}).get("pattern_type", ""),
             },
         }
 

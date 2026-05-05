@@ -1487,7 +1487,9 @@ class AgenticApplicationTests(unittest.TestCase):
             },
         )
         self.assertLess(confidence.score_pct, 100)
-        self.assertIn("style_preference_complete", confidence.missing_factors)
+        # May 2026: style_preference_complete renamed to risk_tolerance_set
+        # alongside the archetype drop.
+        self.assertIn("risk_tolerance_set", confidence.missing_factors)
         self.assertIn("full_body_image", confidence.missing_factors)
         self.assertTrue(confidence.improvement_actions)
 
@@ -2355,7 +2357,13 @@ class CopilotPlannerTests(unittest.TestCase):
         self.assertEqual(Intent.STYLE_DISCOVERY, result["metadata"]["primary_intent"])
         self.assertEqual("style_discovery_handler", result["metadata"]["answer_source"])
         self.assertIn("Autumn", result["assistant_message"])
-        self.assertIn("confident", result["assistant_message"].lower())
+        # May 2026: archetype dropped — the deterministic color-topic
+        # helper no longer name-checks archetype words; ground the
+        # assertion on color-topic vocabulary that is still emitted.
+        self.assertTrue(
+            any(word in result["assistant_message"].lower() for word in ("warm", "earthy", "olive", "rust")),
+            f"Expected color-topic vocabulary in: {result['assistant_message']!r}",
+        )
         self.assertEqual("recommendation", result["response_type"])
         self.assertEqual([], result["outfits"])
         self.assertIn("What colors should I avoid?", result["follow_up_suggestions"])
@@ -2416,8 +2424,10 @@ class CopilotPlannerTests(unittest.TestCase):
 
         self.assertEqual("pattern", result["metadata"][Intent.STYLE_DISCOVERY]["advice_topic"])
         self.assertIn("medium-scale patterns", result["assistant_message"])
-        self.assertIn("classic", result["assistant_message"].lower())
-        self.assertIn("romantic", result["assistant_message"].lower())
+        # May 2026: archetype dropped — pattern advice now grounds in
+        # body + contrast (the actual fashion-design rules for pattern
+        # scale + contrast), not in archetype name-checks.
+        self.assertIn("balanced", result["assistant_message"].lower())
 
     def test_style_discovery_returns_profile_grounded_silhouette_advice(self):
         from agentic_application.schemas import CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters
@@ -2470,9 +2480,16 @@ class CopilotPlannerTests(unittest.TestCase):
         )
 
         self.assertEqual("archetype", result["metadata"][Intent.STYLE_DISCOVERY]["advice_topic"])
-        self.assertIn("classic", result["assistant_message"].lower())
-        self.assertIn("romantic", result["assistant_message"].lower())
-        self.assertIn("accent", result["assistant_message"].lower())
+        # May 2026: archetype dropped — the topic still routes here when
+        # the user asks "which archetype fits me?" but the deterministic
+        # response now grounds in body + palette + frame (the real
+        # determinants of what suits the user) rather than naming any
+        # stored archetype the system no longer carries.
+        msg = result["assistant_message"].lower()
+        self.assertTrue(
+            any(word in msg for word in ("autumn", "hourglass", "frame", "palette", "balanced")),
+            f"Expected body/palette grounding in archetype-topic response: {msg!r}",
+        )
 
     def test_style_discovery_general_question_delegates_to_style_advisor(self):
         """Phase 12C: open-ended style_discovery questions that don't match
@@ -4154,7 +4171,9 @@ class CopilotPlannerTests(unittest.TestCase):
         self.assertEqual("What colors suit me?", result["user_message"])
         self.assertEqual("female", result["user_profile"]["gender"])
         self.assertEqual("Autumn", result["user_profile"]["seasonal_color_group"])
-        self.assertEqual("classic", result["user_profile"]["primary_archetype"])
+        # primary_archetype dropped May 2026; planner now reads risk_tolerance only.
+        self.assertNotIn("primary_archetype", result["user_profile"])
+        self.assertIn("risk_tolerance", result["user_profile"])
         self.assertEqual(1, result["wardrobe_summary"]["count"])
         self.assertEqual(85, result["profile_confidence_pct"])
         self.assertTrue(result["has_person_image"])
