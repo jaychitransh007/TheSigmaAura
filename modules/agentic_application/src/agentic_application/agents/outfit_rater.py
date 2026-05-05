@@ -445,9 +445,12 @@ class OutfitRater:
             # compute_fashion_score handles None by dropping the dim
             # and renormalising the remaining four weights, same as
             # for complete outfits.
+            # PR #74 (review of #73): treat empty strings as None too
+            # — int("") raises ValueError, which would crash the
+            # whole rate() call for one malformed candidate.
             _inter_raw = raw_o.get("inter_item_coherence")
             inter: Optional[int] = (
-                _clamp_to_100(int(_inter_raw)) if _inter_raw is not None else None
+                _clamp_to_100(int(_inter_raw)) if _inter_raw not in (None, "") else None
             )
             ranked.append(
                 RatedOutfit(
