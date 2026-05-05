@@ -170,11 +170,19 @@ def _user_context_block(ctx: CombinedContext) -> Dict[str, Any]:
         """Pull ``key`` from a possibly-None source dict, unwrapping
         ``{"value": ..., "confidence": ...}`` shape if present.
         Returns "" when the source or key is missing — keeps the
-        prompt structure stable per the docstring contract."""
+        prompt structure stable per the docstring contract.
+
+        Today every key surfaced through this helper is a categorical
+        string (BodyShape, FrameStructure, etc.) so 0 isn't a valid
+        value, but check ``is not None`` rather than truthiness so a
+        future numeric anatomy field (e.g. waist_to_hip_ratio = 0)
+        stringifies as "0" instead of disappearing.
+        """
         val = (source or {}).get(key)
         if isinstance(val, dict):
-            return str(val.get("value") or "")
-        return str(val or "")
+            inner = val.get("value")
+            return str(inner) if inner is not None else ""
+        return str(val) if val is not None else ""
 
     derived = {k: _value_str(user.derived_interpretations, k) for k in _DERIVED_KEYS}
     raw_body = {k: _value_str(user.analysis_attributes, k) for k in _BODY_RAW_KEYS}

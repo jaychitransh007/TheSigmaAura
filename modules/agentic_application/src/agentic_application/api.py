@@ -1247,10 +1247,16 @@ def create_app() -> FastAPI:
                 )
 
                 # PR V2 (May 5 2026): outfit_check + garment_evaluation
-                # intents removed; the planner no longer emits them. Any
-                # historical turn rows tagged with those intents are kept
-                # in the DB but skipped here (they get the same preview-
-                # required treatment as recommendations).
+                # intents removed from the product. Skip historical rows
+                # tagged with those intents — their persisted shape
+                # included visual_evaluator-only fields (verdicts,
+                # archetype tier pcts, deeper notes) that the post-V2
+                # frontend can't render cleanly. Skipping is safer than
+                # rendering them as half-baked recommendation cards.
+                # PR #71 review fix: previous comment said this was
+                # already happening but the code didn't actually skip.
+                if raw_intent in ("outfit_check", "garment_evaluation"):
+                    continue
                 intent = raw_intent
 
                 if allowed_types and intent not in allowed_types:
