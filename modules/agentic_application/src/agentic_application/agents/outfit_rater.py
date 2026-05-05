@@ -1,26 +1,26 @@
-"""Outfit Rater — May 3 2026.
+"""Outfit Rater — May 5 2026 (R7: 6 dims, 1/2/3 scale).
 
 Second LLM stage in the new ranker pipeline. Takes the Composer's
 output (up to 10 constructed outfits) plus the user request + context
-and emits four sub-scores per outfit (occasion_fit, body_harmony,
-color_harmony, inter_item_coherence) plus an ``unsuitable`` veto
-flag. The orchestrator (via this module's ``compute_fashion_score``
-helper) blends the sub-scores into a final integer ``fashion_score``
-and re-ranks accordingly.
+and emits **six** sub-scores per outfit on a **1/2/3 scale** plus an
+``unsuitable`` veto flag:
 
-Replaces the deterministic Reranker. R6 (May 5 2026) dropped the
-``archetype_match`` dimension — it was scoring against a removed
-explicit input (style archetype, removed in PR #47) plus weak
-derived signals (per-turn style_goal, R4 archetypal_preferences) and
-gating real candidates below the 75 threshold with low-30s scores.
-risk_tolerance now flows through the architect's plan and the
-Composer's pool selection; the Rater no longer scores it as a
-continuous dimension.
+    occasion_fit, body_harmony, color_harmony, pairing,
+    formality, statement
 
-The blend weights shift based on the planner's resolved intent
-(ceremonial, slimming, bold, comfortable). R3 (May 5 2026) moved
-this rule out of the LLM prompt and into Python so the math is
-unit-testable and the override that fired is logged.
+The orchestrator (via this module's ``compute_fashion_score`` helper)
+blends the sub-scores into a final integer 0–100 ``fashion_score`` and
+re-ranks accordingly. The 1/2/3 scale was deliberately chosen — LLMs
+cluster ~70–90 on a 0–100 scale with no real discrimination; a discrete
+3-point scale forces honest choices ("clear win" vs "works" vs "miss").
+
+History:
+- R6 (PR #79, May 5 2026): dropped ``archetype_match``.
+- R7 (this change, May 5 2026): added ``formality`` and ``statement`` as
+  their own axes (previously double-counted inside ``occasion_fit`` and
+  ``inter_item_coherence``); switched scale 0–100 → 1/2/3; renamed
+  ``inter_item_coherence`` → ``pairing`` (now scoped to fit + fabric
+  only — formality + detail rhythm moved to the new axes).
 
 Audit:
 - model_call_logs gets the full raw request + response, plus the
@@ -68,6 +68,13 @@ def _load_prompt() -> str:
     return (_find_prompt_dir() / "outfit_rater.md").read_text(encoding="utf-8").strip()
 
 
+# ── 1/2/3 scale schema ──────────────────────────────────────────────
+# Each sub-score is constrained to the integer set {1, 2, 3} via the
+# `enum` clause. The OpenAI structured-output gate rejects 0, 4, 50,
+# etc. before the parser sees them — defensive parsing below is a belt
+# in case the schema constraint ever softens.
+_SUBSCORE_SCHEMA: Dict[str, Any] = {"type": "integer", "enum": [1, 2, 3]}
+
 _RATER_JSON_SCHEMA: Dict[str, Any] = {
     "type": "json_schema",
     "name": "outfit_rater_result",
@@ -87,23 +94,30 @@ _RATER_JSON_SCHEMA: Dict[str, Any] = {
                         "occasion_fit",
                         "body_harmony",
                         "color_harmony",
-                        # R5 (May 5 2026): how well the items in a
-                        # multi-piece outfit work together (fit, fabric,
-                        # formality consistency between pieces). For
-                        # single-item outfits (direction_type=complete),
-                        # the LLM should emit 100 — no inter-item
-                        # interaction to score — and the orchestrator
-                        # drops the dim from the blend at that point.
-                        "inter_item_coherence",
+                        # R7 (May 5 2026): renamed from inter_item_coherence;
+                        # now scoped to fit-type compatibility + fabric
+                        # pairing only. Formality consistency moved to
+                        # `formality`; detail rhythm moved to `statement`.
+                        # For complete (single-item) outfits the LLM emits 3;
+                        # the orchestrator drops the dim from the blend.
+                        "pairing",
+                        # R7: formality is its own axis now (previously
+                        # double-counted inside occasion_fit and
+                        # inter_item_coherence).
+                        "formality",
+                        # R7: pattern density + embellishment intensity.
+                        "statement",
                         "rationale",
                         "unsuitable",
                     ],
                     "properties": {
                         "composer_id": {"type": "string"},
-                        "occasion_fit": {"type": "integer"},
-                        "body_harmony": {"type": "integer"},
-                        "color_harmony": {"type": "integer"},
-                        "inter_item_coherence": {"type": "integer"},
+                        "occasion_fit": _SUBSCORE_SCHEMA,
+                        "body_harmony": _SUBSCORE_SCHEMA,
+                        "color_harmony": _SUBSCORE_SCHEMA,
+                        "pairing": _SUBSCORE_SCHEMA,
+                        "formality": _SUBSCORE_SCHEMA,
+                        "statement": _SUBSCORE_SCHEMA,
                         "rationale": {"type": "string"},
                         "unsuitable": {"type": "boolean"},
                     },
@@ -119,70 +133,87 @@ _RATER_JSON_SCHEMA: Dict[str, Any] = {
 
 
 # ── Weight profiles for fashion_score blending ────────────────────────
-# R3 (May 5 2026): the weight rule moved from the prompt into Python.
-# The Rater emits four sub-scores; the orchestrator picks a profile
-# based on planner-resolved context and computes:
+# Each profile is a total-1.0 distribution over the six 1/2/3 sub-scores.
+# The orchestrator picks a profile based on planner-resolved context and
+# computes:
 #
-#     fashion_score = round( Σ subscore × weight )
+#     raw   = Σ subscore × weight     # ranges 1.0..3.0
+#     score = ((raw − 1) / 2) × 100   # rescales to 0..100
 #
-# Profiles are total-1.0 distributions over the four dimensions. Adding
-# a new profile = one entry here + one rule in ``select_weight_profile``.
+# This way LLM rates simply, math handles the blend, and the user-facing
+# `fashion_score_pct` stays on the familiar 0–100 scale.
+#
+# Adding a new profile = one entry here + one rule in `select_weight_profile`.
 _DEFAULT_WEIGHT_PROFILE = "default"
 
 WEIGHT_PROFILES: Dict[str, Dict[str, float]] = {
     "default": {
-        # PR #81 (May 5 2026): rebalanced. inter_item_coherence
-        # bumped 0.15 → 0.20 (composer + rater both judge it more
-        # important than the prior 4-dim renormalisation gave it
-        # credit for); body 0.23 → 0.20 and color 0.27 → 0.25 to
-        # accommodate.
-        "occasion_fit":         0.35,
-        "body_harmony":         0.20,
-        "color_harmony":        0.25,
-        "inter_item_coherence": 0.20,
+        # User-supplied weights (R7, May 5 2026): occasion-led, with
+        # color a close second; formality + statement get explicit
+        # weight rather than being baked into other axes.
+        "occasion_fit":  0.25,
+        "color_harmony": 0.20,
+        "body_harmony":  0.15,
+        "pairing":       0.15,
+        "formality":     0.13,
+        "statement":     0.12,
     },
-    # Wedding / festival / ceremonial — occasion fit dominates; the
-    # other three split the remainder.
+    # Wedding / festival / ceremonial — occasion + formality dominate
+    # (the user is dressing for the rules of the event).
     "ceremonial": {
-        "occasion_fit":         0.46,
-        "body_harmony":         0.19,
-        "color_harmony":        0.22,
-        "inter_item_coherence": 0.13,
+        "occasion_fit":  0.32,
+        "formality":     0.22,
+        "color_harmony": 0.16,
+        "body_harmony":  0.12,
+        "pairing":       0.10,
+        "statement":     0.08,
     },
-    # "Make me look slimmer / taller" — body harmony leads; inter-item
-    # coherence still matters because clashing fits ruin slimming.
+    # "Make me look slimmer / taller" — body harmony leads; pairing
+    # still matters because clashing fits ruin slimming.
     "slimming": {
-        "occasion_fit":         0.24,
-        "body_harmony":         0.37,
-        "color_harmony":        0.24,
-        "inter_item_coherence": 0.15,
+        "body_harmony":  0.34,
+        "occasion_fit":  0.20,
+        "color_harmony": 0.16,
+        "pairing":       0.14,
+        "formality":     0.09,
+        "statement":     0.07,
     },
-    # "Bold / statement / colorful" — color leads; inter-item gets a
-    # smaller share because bold looks tolerate more contrast within.
+    # "Bold / statement / colorful" — color and statement lead.
     "bold": {
-        "occasion_fit":         0.23,
-        "body_harmony":         0.23,
-        "color_harmony":        0.42,
-        "inter_item_coherence": 0.12,
+        "color_harmony": 0.30,
+        "statement":     0.22,
+        "occasion_fit":  0.18,
+        "body_harmony":  0.13,
+        "pairing":       0.10,
+        "formality":     0.07,
     },
-    # "Comfortable / relaxed" — body comfort drives; inter-item gets
-    # a meaningful share because relaxed pieces still need to read
-    # as one outfit, not two clashing items.
+    # "Comfortable / relaxed" — body comfort drives; pairing matters
+    # because relaxed pieces still need to read as one outfit.
     "comfortable": {
-        "occasion_fit":         0.25,
-        "body_harmony":         0.38,
-        "color_harmony":        0.23,
-        "inter_item_coherence": 0.14,
+        "body_harmony":  0.32,
+        "pairing":       0.18,
+        "occasion_fit":  0.18,
+        "color_harmony": 0.14,
+        "formality":     0.10,
+        "statement":     0.08,
     },
 }
 
-# R5 (May 5 2026): inter_item_coherence doesn't apply to a single-item
-# outfit (direction_type="complete" → one product). For those, drop the
-# dim from the blend and renormalize the remaining four weights so they
-# sum to 1.0. This avoids a Python-level renorm at every callsite and
-# keeps the prompt simple (LLM emits 100 for completes; the math
-# ignores it).
-_COMPLETE_OUTFIT_DROP_KEY = "inter_item_coherence"
+# R7: pairing doesn't apply to a single-item outfit (direction_type
+# ="complete" → one product). For those, drop the dim from the blend
+# and renormalize the remaining five weights so they sum to 1.0.
+_COMPLETE_OUTFIT_DROP_KEY = "pairing"
+
+# All sub-score keys, in canonical order. Used by the schema, the
+# blender, and tests; keep this list in sync with the prompt.
+_SUBSCORE_KEYS: tuple = (
+    "occasion_fit",
+    "body_harmony",
+    "color_harmony",
+    "pairing",
+    "formality",
+    "statement",
+)
 
 
 _CEREMONIAL_OCCASIONS = frozenset({
@@ -217,7 +248,7 @@ def select_weight_profile(
 
     Priority:
         1. ``ceremonial`` — when the planner classified the occasion as
-           wedding / festival / ceremony, occasion fit dominates.
+           wedding / festival / ceremony, occasion + formality dominate.
         2. ``slimming`` — explicit user ask to look slimmer/taller.
         3. ``bold`` — explicit user ask for a statement / colorful look.
         4. ``comfortable`` — explicit ask for relaxed/comfortable wear.
@@ -230,11 +261,6 @@ def select_weight_profile(
     occ = (occasion_signal or "").strip().lower()
     if occ in _CEREMONIAL_OCCASIONS or "ceremon" in occ or "wedding" in occ or "festival" in occ:
         return "ceremonial"
-    # formality_hint was intentionally never used here — it's a
-    # planner classification ("smart_casual", "ceremonial") rather
-    # than user-expressed intent. Matching against it produced false
-    # positives ("smart_casual" → "casual" keyword → wrong profile),
-    # so it's not surfaced on this signature.
     needs_blob = " ".join(s.lower() for s in (specific_needs or []))
     msg = (user_message or "").lower()
     haystack = f"{msg} {needs_blob}"
@@ -252,30 +278,37 @@ def compute_fashion_score(
     occasion_fit: int,
     body_harmony: int,
     color_harmony: int,
-    inter_item_coherence: Optional[int] = None,
+    pairing: Optional[int] = None,
+    formality: int,
+    statement: int,
     direction_type: str = "paired",
     profile: str = _DEFAULT_WEIGHT_PROFILE,
 ) -> int:
-    """Blend the sub-scores into an integer 0–100 fashion_score.
+    """Blend the six 1/2/3 sub-scores into a 0–100 ``fashion_score``.
 
-    ``inter_item_coherence`` is dropped from the formula in two cases:
+    Math:
+        raw   = Σ subscore × weight        (1.0 .. 3.0)
+        score = ((raw − 1) / 2) × 100      (0 .. 100, rounded)
+
+    All-1s outfit → 0. All-2s → 50. All-3s → 100. The threshold gate
+    in the orchestrator (currently 50) rides this scale: an outfit that
+    scores 2 across the board barely clears.
+
+    ``pairing`` is dropped from the formula in two cases:
     (1) ``direction_type="complete"`` (single-item outfit — nothing to
-    clash with), or (2) the value is ``None`` (the LLM didn't emit it
-    or this is legacy data). In both cases the remaining three weights
-    are renormalised to sum to 1.0.
+    pair), or (2) the value is ``None`` (LLM didn't emit it). In both
+    cases the remaining five weights are renormalised to sum to 1.0.
 
     Unknown ``profile`` falls back to ``default`` rather than raising —
     the rule is lossy-graceful so a misconfigured profile can't take
     down the recommendation pipeline.
     """
     weights = WEIGHT_PROFILES.get(profile) or WEIGHT_PROFILES[_DEFAULT_WEIGHT_PROFILE]
-    drop_inter_item = (
+    drop_pairing = (
         (direction_type or "").strip().lower() == "complete"
-        or inter_item_coherence is None
+        or pairing is None
     )
-    if drop_inter_item:
-        # Drop inter_item_coherence and renormalise the remaining three
-        # weights so they sum to 1.0.
+    if drop_pairing:
         kept = {k: v for k, v in weights.items() if k != _COMPLETE_OUTFIT_DROP_KEY}
         denom = sum(kept.values())
         weights = {k: v / denom for k, v in kept.items()} if denom > 0 else kept
@@ -283,15 +316,20 @@ def compute_fashion_score(
             occasion_fit * weights["occasion_fit"]
             + body_harmony * weights["body_harmony"]
             + color_harmony * weights["color_harmony"]
+            + formality * weights["formality"]
+            + statement * weights["statement"]
         )
     else:
         raw = (
             occasion_fit * weights["occasion_fit"]
             + body_harmony * weights["body_harmony"]
             + color_harmony * weights["color_harmony"]
-            + inter_item_coherence * weights["inter_item_coherence"]
+            + pairing * weights["pairing"]
+            + formality * weights["formality"]
+            + statement * weights["statement"]
         )
-    return _clamp_to_100(int(round(raw)))
+    score = ((raw - 1.0) / 2.0) * 100.0
+    return _clamp_to_100(int(round(score)))
 
 
 def _build_outfit_payload(
@@ -310,8 +348,6 @@ def _build_outfit_payload(
                 # Composer validation passed but we lost the product —
                 # shouldn't happen. Surface a stub so the Rater can
                 # still reason about what's there.
-                # Pad with empty strings for every attr the Rater
-                # prompt promises so the schema stays consistent.
                 item_details.append({
                     "item_id": iid,
                     "title": "(missing)",
@@ -335,8 +371,8 @@ class OutfitRater:
     """LLM-driven outfit scorer. One gpt-5-mini call per turn.
 
     Inputs: the Composer's outfits + user message + user context.
-    Output: ranked outfits with per-dimension scores, blended
-    fashion_score, and unsuitable veto.
+    Output: ranked outfits with per-dimension scores (1/2/3), blended
+    fashion_score (0–100), and unsuitable veto.
     """
 
     def __init__(self, model: str = "gpt-5-mini") -> None:
@@ -364,19 +400,17 @@ class OutfitRater:
         only to look up each item's full attributes for the Rater's
         prompt.
 
-        R3 (May 5 2026): the LLM only emits the four sub-scores +
-        rationale + unsuitable. ``fashion_score`` and ``rank`` are
-        computed in Python via ``compute_fashion_score`` and the
-        weight profile picked by ``select_weight_profile`` from the
-        planner-resolved context. The LLM's old ``fashion_score`` /
-        ``rank`` fields are no longer in the schema.
+        The LLM only emits the six 1/2/3 sub-scores + rationale +
+        unsuitable. ``fashion_score`` and ``rank`` are computed in
+        Python via ``compute_fashion_score`` and the weight profile
+        picked by ``select_weight_profile`` from planner-resolved
+        context.
         """
         if not composed_outfits:
             return RaterResult(ranked_outfits=[], overall_assessment="weak")
 
         # Pick the weight profile for this turn before the LLM call so
-        # the choice is logged even if the LLM call errors. Reads from
-        # combined_context.live (the planner's resolved entities).
+        # the choice is logged even if the LLM call errors.
         live = combined_context.live
         weight_profile = select_weight_profile(
             user_message=getattr(live, "user_need", "") or "",
@@ -389,12 +423,9 @@ class OutfitRater:
             for p in rs.products:
                 items_by_id[p.product_id] = p
 
-        # The Rater no longer consumes archetypal_preferences. Past
-        # likes/dislikes are now applied upstream by the Architect
-        # (retrieval bias) and Composer (item selection bias). By the
-        # time an outfit reaches the Rater it has already been shaped
-        # by that history; re-vetoing here was producing systematic
-        # empty responses (every outfit unsuitable=True) — see T12.
+        # Past likes/dislikes are applied upstream (Architect retrieval
+        # bias, Composer item selection bias). The rater scores what's
+        # in front of it on its own merits — see PR #89.
         user_block = _user_context_block(combined_context)
         user_block.pop("archetypal_preferences", None)
         user_payload = json.dumps(
@@ -406,9 +437,8 @@ class OutfitRater:
             default=str,
         )
 
-        # reasoning_effort="minimal" — Rater scores 4 fixed dims per
-        # outfit on a constrained schema; no chain-of-thought needed.
-        # ~2.4K reasoning tokens observed per call without this.
+        # reasoning_effort="minimal" — Rater scores 6 fixed dims per
+        # outfit on a 1/2/3 enum schema; no chain-of-thought needed.
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -419,8 +449,6 @@ class OutfitRater:
             text={"format": _RATER_JSON_SCHEMA},
         )
         usage = extract_token_usage(response) or {}
-        # Mirror to last_usage for backwards-compat; consumers needing
-        # thread-safe usage should read RaterResult.usage instead.
         self.last_usage = dict(usage)
         raw_text = getattr(response, "output_text", "") or "{}"
         try:
@@ -433,8 +461,6 @@ class OutfitRater:
                 fashion_score_weight_profile=weight_profile,
             )
 
-        # Map composer_id → direction_type so compute_fashion_score
-        # can handle single-item ('complete') outfits correctly.
         direction_by_cid = {o.composer_id: o.direction_type for o in composed_outfits}
 
         valid_ids = {o.composer_id for o in composed_outfits}
@@ -444,37 +470,33 @@ class OutfitRater:
             if cid not in valid_ids:
                 _log.warning("OutfitRater: dropping unknown composer_id %s", cid)
                 continue
-            # All five sub-scores parsed via the shared robust helpers
-            # below: handle missing, None, "", whitespace, "N/A",
-            # floats like "80.5", and any other non-numeric junk
-            # without crashing the whole rate() call for one bad
-            # candidate. Strict JSON schema usually prevents these,
-            # but defending against malformed responses is cheaper
-            # than the alternative.
-            #
-            # The four always-on dims default to 0 on malformed input
-            # (treated as a low score). inter_item_coherence defaults
-            # to None — compute_fashion_score then drops the dim and
-            # renormalises the remaining four weights, same as for
-            # single-item complete outfits. A 100 default for
-            # inter_item would mask unset data as a phantom "good
-            # coherence" score and leak through to the radar.
+            # Five always-on dims default to 2 ("works") on malformed
+            # input — a missing field is more likely a parsing bug than
+            # a "score zero" signal, and 2 is the neutral midpoint.
+            # `pairing` defaults to None so compute_fashion_score drops
+            # the dim and renormalises (same path as complete outfits).
             occ = _parse_subscore(raw_o.get("occasion_fit"))
             bod = _parse_subscore(raw_o.get("body_harmony"))
             col = _parse_subscore(raw_o.get("color_harmony"))
-            inter: Optional[int] = _parse_optional_subscore(raw_o.get("inter_item_coherence"))
+            pair: Optional[int] = _parse_optional_subscore(raw_o.get("pairing"))
+            form = _parse_subscore(raw_o.get("formality"))
+            stmt = _parse_subscore(raw_o.get("statement"))
             ranked.append(
                 RatedOutfit(
                     composer_id=cid,
                     occasion_fit=occ,
                     body_harmony=bod,
                     color_harmony=col,
-                    inter_item_coherence=inter,
+                    pairing=pair,
+                    formality=form,
+                    statement=stmt,
                     fashion_score=compute_fashion_score(
                         occasion_fit=occ,
                         body_harmony=bod,
                         color_harmony=col,
-                        inter_item_coherence=inter,
+                        pairing=pair,
+                        formality=form,
+                        statement=stmt,
                         direction_type=direction_by_cid.get(cid, "paired"),
                         profile=weight_profile,
                     ),
@@ -483,8 +505,6 @@ class OutfitRater:
                 )
             )
 
-        # Rank by computed fashion_score desc (ties: lower composer_id
-        # first by NUMERIC value, not lex order — "C2" should beat "C10").
         ranked.sort(key=lambda r: (-r.fashion_score, _composer_id_sort_key(r.composer_id)))
         for i, r in enumerate(ranked, start=1):
             r.rank = i
@@ -502,9 +522,8 @@ def _composer_id_sort_key(cid: str) -> tuple:
     """Natural-numeric tiebreak key for composer_ids of the form ``C<n>``.
 
     Lex sort puts ``C10`` before ``C2``; once a slate has 10 outfits
-    (Composer caps at 10) the rank tiebreak silently inverts. Pull the
-    digit suffix out and sort numerically; fall back to the raw string
-    for unexpected formats.
+    the rank tiebreak silently inverts. Pull the digit suffix out and
+    sort numerically; fall back to the raw string for unexpected formats.
     """
     cid = (cid or "").strip()
     digits = "".join(ch for ch in cid if ch.isdigit())
@@ -515,39 +534,38 @@ def _composer_id_sort_key(cid: str) -> tuple:
 
 
 def _clamp_to_100(value: int) -> int:
-    """Clamp an int to 0..100. Defensive — the prompt asks for 0–100 but
-    the model occasionally emits 0–10 or 0–1 scores during early-stage
+    """Clamp an int to 0..100. Defensive — the blend math should already
+    land in range, but a misconfigured weight profile (sum != 1.0) could
     drift. Clamp first, calibrate later."""
     return max(0, min(100, int(value)))
+
+
+def _clamp_subscore(value: int) -> int:
+    """Clamp an int to {1, 2, 3}. The strict-output schema enforces this
+    upstream, but defensive parsers below may produce an out-of-range
+    int from malformed legacy data."""
+    return max(1, min(3, int(value)))
 
 
 def _safe_int_or_none(value: Any) -> Optional[int]:
     """Best-effort int conversion that returns None for any
     missing or malformed input.
 
-    Accepts: ``int``, ``str`` numerals, ``str`` floats like ``"80.5"``
-    (truncated to 80), strings with surrounding whitespace.
+    Accepts: ``int``, ``str`` numerals, ``str`` floats like ``"2.5"``
+    (truncated to 2), strings with surrounding whitespace.
     Rejects: ``None``, empty / whitespace-only strings, ``"N/A"``,
-    ``"None"``, and any other string that can't be parsed as a
-    number.
-
-    Used to guard against malformed LLM responses that would
-    otherwise raise ValueError mid-loop and crash the whole rate()
-    call for one bad candidate.
+    ``"None"``, booleans (which are int subclasses), inf, and any
+    other string that can't be parsed as a number.
     """
     if value is None:
         return None
-    # Reject booleans explicitly — bool is an int subclass in Python, so
-    # without this branch True would silently become a score of 1 and
-    # False a score of 0. Either is wrong for an LLM that emitted a
-    # boolean by mistake; treat as malformed.
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
         try:
             return int(value)
         except (OverflowError, ValueError):
-            return None  # int(float('inf')) raises OverflowError
+            return None
     text = str(value).strip()
     if not text:
         return None
@@ -556,30 +574,27 @@ def _safe_int_or_none(value: Any) -> Optional[int]:
     except (TypeError, ValueError):
         pass
     try:
-        # Catch OverflowError on top of TypeError/ValueError —
-        # float("1e1000") is inf, and int(inf) overflows.
         return int(float(text))
     except (TypeError, ValueError, OverflowError):
         return None
 
 
 def _parse_subscore(raw: Any) -> int:
-    """Parse one of the three always-emitted Rater sub-scores
-    (occasion_fit / body_harmony / color_harmony) to a 0–100 int.
-    Missing or malformed input → 0. Unlike
-    ``_parse_optional_subscore``, this never returns None — these
-    dimensions are required for the fashion_score blend, so we treat
-    a missing value as "scored zero" rather than dropping the dim.
+    """Parse one of the five always-emitted Rater sub-scores
+    (occasion_fit / body_harmony / color_harmony / formality / statement)
+    to a 1/2/3 int. Missing or malformed input → 2 (neutral midpoint).
+
+    The schema enforces {1, 2, 3} via enum, so this should never see
+    out-of-range values in practice. Clamp anyway as a defensive belt.
     """
     parsed = _safe_int_or_none(raw)
-    return _clamp_to_100(0 if parsed is None else parsed)
+    return _clamp_subscore(2 if parsed is None else parsed)
 
 
 def _parse_optional_subscore(raw: Any) -> Optional[int]:
-    """Parse a Rater sub-score that may legitimately be absent
-    (currently only ``inter_item_coherence``). Missing or malformed
-    input → None, which signals ``compute_fashion_score`` to drop
-    the dim and renormalise the remaining weights — same path used
+    """Parse the optional ``pairing`` sub-score. Missing or malformed
+    input → None, which signals ``compute_fashion_score`` to drop the
+    dim and renormalise the remaining five weights — same path used
     for single-item complete outfits."""
     parsed = _safe_int_or_none(raw)
-    return _clamp_to_100(parsed) if parsed is not None else None
+    return _clamp_subscore(parsed) if parsed is not None else None

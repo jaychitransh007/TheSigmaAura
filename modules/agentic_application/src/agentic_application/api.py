@@ -150,13 +150,16 @@ def _empty_outfit_skeleton() -> Dict[str, Any]:
     The frontend radar gracefully drops null/zero values, so an empty
     skeleton renders an empty chart rather than crashing.
 
-    Post-V2 / R6 (May 5 2026): only the post-cleanup Rater dims remain.
+    R7 (May 5 2026): six dims now (added formality + statement; renamed
+    inter_item_coherence_pct → pairing_pct).
     """
     return {
         "body_harmony_pct": 0,
         "color_suitability_pct": 0,
         "occasion_pct": None,
-        "inter_item_coherence_pct": None,
+        "pairing_pct": None,
+        "formality_pct": 0,
+        "statement_pct": 0,
         "fashion_score_pct": 0,
     }
 

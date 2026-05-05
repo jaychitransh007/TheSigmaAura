@@ -1,18 +1,21 @@
 """Unit tests for OutfitRater.
 
-The Rater scores Composer-built outfits on a 4-dim rubric. R3 (May 5
-2026) moved fashion_score blending out of the LLM and into Python;
-the LLM emits sub-scores only, the agent computes the final score
-with intent-aware weights via ``compute_fashion_score`` and the
-profile picked by ``select_weight_profile``.
+R7 (May 5 2026): the rater scores Composer-built outfits on a six-dim
+rubric using a 1/2/3 scale (1=clear miss, 2=works, 3=clear win). LLMs
+cluster ~70-90 on a 0-100 scale with no real discrimination, so the
+discrete 3-point scale forces honest choices. The orchestrator blends
+the sub-scores into a 0-100 fashion_score via compute_fashion_score:
+
+    raw   = Σ subscore × weight        (1.0 .. 3.0)
+    score = ((raw − 1) / 2) × 100      (0 .. 100)
 
 LLM is mocked; tests focus on:
-- contract: required fields, ID round-tripping
+- contract: required fields, ID round-tripping, six dims surfaced
 - defensive ordering: result is sorted by computed fashion_score desc
-- sub-score clamping: out-of-range scores get pulled to 0..100
+- sub-score clamping: out-of-range scores get pulled to {1, 2, 3}
 - empty input short-circuits before the LLM call
 - weight-profile selection: picks correct profile per intent
-- deterministic blend: fashion_score = round(Σ subscore × weight)
+- deterministic blend: rescaled fashion_score lands on the expected band
 """
 
 from __future__ import annotations
@@ -102,6 +105,23 @@ def _retrieved() -> list[RetrievedSet]:
     ]
 
 
+def _row(cid: str, occ=2, body=2, col=2, pair=2, form=2, stmt=2,
+         rationale="ok", unsuitable=False) -> dict:
+    """Helper to build a single rater output row in the new R7 shape.
+    Defaults to all-2s (neutral)."""
+    return {
+        "composer_id": cid,
+        "occasion_fit": occ,
+        "body_harmony": body,
+        "color_harmony": col,
+        "pairing": pair,
+        "formality": form,
+        "statement": stmt,
+        "rationale": rationale,
+        "unsuitable": unsuitable,
+    }
+
+
 def _mock_response(payload: dict) -> Mock:
     m = Mock()
     m.output_text = json.dumps(payload)
@@ -117,15 +137,12 @@ class OutfitRaterContractTests(unittest.TestCase):
     def test_rater_returns_scores_for_each_composed_outfit(self) -> None:
         payload = {
             "ranked_outfits": [
-                {"composer_id": "C1", "rank": 1, "fashion_score": 88,
-                 "occasion_fit": 92, "body_harmony": 85, "color_harmony": 88, "inter_item_coherence": 80,
-                 "rationale": "Strong on occasion fit, balanced silhouette.", "unsuitable": False},
-                {"composer_id": "C2", "rank": 2, "fashion_score": 70,
-                 "occasion_fit": 65, "body_harmony": 80, "color_harmony": 70, "inter_item_coherence": 80,
-                 "rationale": "Reads more casual than the brief.", "unsuitable": False},
-                {"composer_id": "C3", "rank": 3, "fashion_score": 55,
-                 "occasion_fit": 50, "body_harmony": 60, "color_harmony": 55, "inter_item_coherence": 80,
-                 "rationale": "Suit is too formal for daily office.", "unsuitable": False},
+                _row("C1", occ=3, body=3, col=3, pair=3, form=3, stmt=3,
+                     rationale="Strong all around."),
+                _row("C2", occ=2, body=3, col=2, pair=3, form=2, stmt=2,
+                     rationale="Solid, slightly casual read."),
+                _row("C3", occ=1, body=2, col=2, pair=3, form=1, stmt=2,
+                     rationale="Suit is too formal for daily office."),
             ],
             "overall_assessment": "moderate",
         }
@@ -134,31 +151,32 @@ class OutfitRaterContractTests(unittest.TestCase):
             result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
 
         self.assertEqual(3, len(result.ranked_outfits))
+        # Sorted by computed fashion_score desc — C1 (all 3s = 100) wins.
         self.assertEqual([1, 2, 3], [r.rank for r in result.ranked_outfits])
         self.assertEqual("C1", result.ranked_outfits[0].composer_id)
-        # Default 4-dim blend (PR #81): occ 0.35, body 0.20, color 0.25, inter 0.20
-        # 92*0.35 + 85*0.20 + 88*0.25 + 80*0.20 = 32.2 + 17 + 22 + 16 = 87.2 → 87
-        self.assertEqual(87, result.ranked_outfits[0].fashion_score)
+        self.assertEqual(100, result.ranked_outfits[0].fashion_score)
+        # Six sub-scores all surfaced on the result row.
+        ro = result.ranked_outfits[0]
+        self.assertEqual(3, ro.occasion_fit)
+        self.assertEqual(3, ro.body_harmony)
+        self.assertEqual(3, ro.color_harmony)
+        self.assertEqual(3, ro.pairing)
+        self.assertEqual(3, ro.formality)
+        self.assertEqual(3, ro.statement)
         self.assertEqual("moderate", result.overall_assessment)
 
 
 class OutfitRaterDefensiveTests(unittest.TestCase):
 
     def test_rater_resorts_by_fashion_score_when_llm_emits_bad_ranks(self) -> None:
-        """The prompt asks the model to sort by fashion_score; the agent
-        re-sorts defensively in case the model's own ordering is wrong.
-        Here C2 has the highest score but the LLM placed it third."""
+        """The agent re-sorts by computed fashion_score in case the
+        model's own ordering is wrong. C2 here has the highest scores
+        but the LLM emits it third."""
         payload = {
             "ranked_outfits": [
-                {"composer_id": "C1", "rank": 1, "fashion_score": 60,
-                 "occasion_fit": 60, "body_harmony": 60, "color_harmony": 60, "inter_item_coherence": 80,
-                 "rationale": "ok", "unsuitable": False},
-                {"composer_id": "C3", "rank": 2, "fashion_score": 70,
-                 "occasion_fit": 70, "body_harmony": 70, "color_harmony": 70, "inter_item_coherence": 80,
-                 "rationale": "good", "unsuitable": False},
-                {"composer_id": "C2", "rank": 3, "fashion_score": 95,
-                 "occasion_fit": 95, "body_harmony": 95, "color_harmony": 95, "inter_item_coherence": 80,
-                 "rationale": "best", "unsuitable": False},
+                _row("C1", occ=2, body=2, col=2, pair=2, form=2, stmt=2),  # all 2s → 50
+                _row("C3", occ=2, body=2, col=2, pair=2, form=2, stmt=2),  # tie at 50
+                _row("C2", occ=3, body=3, col=3, pair=3, form=3, stmt=3),  # all 3s → 100
             ],
             "overall_assessment": "strong",
         }
@@ -166,18 +184,18 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
             oc.return_value.responses.create.return_value = _mock_response(payload)
             result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
 
-        self.assertEqual(["C2", "C3", "C1"], [r.composer_id for r in result.ranked_outfits])
+        # C2 lands first (highest score); C1 / C3 tie on score and the
+        # natural-numeric tiebreak puts C1 before C3.
+        self.assertEqual(["C2", "C1", "C3"], [r.composer_id for r in result.ranked_outfits])
         self.assertEqual([1, 2, 3], [r.rank for r in result.ranked_outfits])
 
     def test_rater_clamps_out_of_range_subscores(self) -> None:
-        """LLM occasionally emits sub-scores outside 0..100 (e.g., 0..10
-        scale by mistake). Agent clamps before computing fashion_score
-        so the blend math stays in range."""
+        """The strict-output schema enforces enum [1,2,3], but if a
+        legacy / mocked response leaks an out-of-range int the parser
+        clamps to {1, 2, 3}."""
         payload = {
             "ranked_outfits": [
-                {"composer_id": "C1",
-                 "occasion_fit": 200, "body_harmony": -5, "color_harmony": 50, "inter_item_coherence": 80,
-                 "rationale": "weird scales", "unsuitable": False},
+                _row("C1", occ=99, body=-5, col=2, pair=2, form=2, stmt=2),
             ],
             "overall_assessment": "moderate",
         }
@@ -186,31 +204,19 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
             result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
 
         ro = result.ranked_outfits[0]
-        # Sub-scores clamped to [0, 100]
-        self.assertEqual(100, ro.occasion_fit)
-        self.assertEqual(0, ro.body_harmony)
-        self.assertEqual(50, ro.color_harmony)
-        # 4-dim default (PR #81): 100*0.35 + 0*0.20 + 50*0.25 + 80*0.20
-        # = 35 + 0 + 12.5 + 16 = 63.5 → 64
-        self.assertEqual(64, ro.fashion_score)
+        self.assertEqual(3, ro.occasion_fit)   # 99 clamped to 3
+        self.assertEqual(1, ro.body_harmony)   # -5 clamped to 1
+        self.assertEqual(2, ro.color_harmony)  # in range, untouched
 
-    def test_rater_treats_malformed_inter_item_as_missing(self) -> None:
-        """A malformed inter_item_coherence value (empty string,
-        whitespace-only, "N/A", "None", or any non-numeric junk)
-        should be treated identically to a missing field — preserved
-        as None on the candidate and dropped from the fashion_score
-        blend. Without this guard, int(...) would raise ValueError
-        and crash the entire rate() call for one bad candidate."""
-        # Mix of the inputs the LLM might emit when it ignores schema:
-        # blanks, sentinel strings, JSON null aliases, and plain garbage.
+    def test_rater_treats_malformed_pairing_as_missing(self) -> None:
+        """A malformed `pairing` value (empty string, "N/A", etc.) is
+        treated identically to a missing field — preserved as None on
+        the candidate and dropped from the fashion_score blend."""
         for malformed in ("", "   ", "\t", "\n ", "N/A", "None", "null", "abc"):
             with self.subTest(value=repr(malformed)):
                 payload = {
                     "ranked_outfits": [
-                        {"composer_id": "C1",
-                         "occasion_fit": 90, "body_harmony": 80, "color_harmony": 80,
-                         "inter_item_coherence": malformed,
-                         "rationale": "ok", "unsuitable": False},
+                        {**_row("C1"), "pairing": malformed},
                     ],
                     "overall_assessment": "moderate",
                 }
@@ -219,25 +225,21 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
                     result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
 
                 ro = result.ranked_outfits[0]
-                self.assertIsNone(ro.inter_item_coherence)
-                # 4-dim renormalised: 90*(0.30/0.85) + 80*(0.18/0.85) + 80*(0.22/0.85)
-                # + 80*(0.15/0.85) = 31.76+16.94+20.71+14.12 = 83.53 → 84
-                self.assertEqual(84, ro.fashion_score)
+                self.assertIsNone(ro.pairing)
+                # All other dims are 2 → blended score lands at 50
+                # (uniform sub-scores yield identical % across profiles).
+                self.assertEqual(50, ro.fashion_score)
 
-    def test_rater_treats_malformed_required_subscores_as_zero(self) -> None:
-        """The four always-on sub-scores (occasion_fit / body_harmony /
-        color_harmony) default to 0 on missing or
-        malformed input rather than raising. Required for the blend so
-        we treat unparseable as a low score, not a dropped dim."""
+    def test_rater_treats_malformed_required_subscores_as_neutral(self) -> None:
+        """The five always-on sub-scores default to 2 (neutral midpoint)
+        on missing or malformed input. Required for the blend, so we
+        treat unparseable as 'works' rather than dropping the dim or
+        defaulting to 1 (which would be a false-negative miss)."""
         for malformed in ("", "   ", "N/A", "None", "abc", None):
             with self.subTest(value=repr(malformed)):
                 payload = {
                     "ranked_outfits": [
-                        {"composer_id": "C1",
-                         "occasion_fit": malformed, "body_harmony": 80,
-                         "color_harmony": 80,
-                         "inter_item_coherence": 80,
-                         "rationale": "ok", "unsuitable": False},
+                        {**_row("C1"), "occasion_fit": malformed},
                     ],
                     "overall_assessment": "moderate",
                 }
@@ -246,19 +248,16 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
                     result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
 
                 ro = result.ranked_outfits[0]
-                self.assertEqual(0, ro.occasion_fit)
-                # 4-dim default (PR #81): 0*0.35 + 80*0.20 + 80*0.25 + 80*0.20
-                # = 0 + 16 + 20 + 16 = 52 (same as before — coincidence)
-                self.assertEqual(52, ro.fashion_score)
+                self.assertEqual(2, ro.occasion_fit)
+                # All 2s → 50.
+                self.assertEqual(50, ro.fashion_score)
 
     def test_rater_truncates_float_strings_in_subscores(self) -> None:
-        """LLM occasionally emits "80.5" or "0.85" for an int slot.
+        """LLM occasionally emits "2.7" or "2.0" for an int slot.
         Truncate via float() rather than crashing or rejecting."""
         payload = {
             "ranked_outfits": [
-                {"composer_id": "C1",
-                 "occasion_fit": "92.7", "body_harmony": "85", "color_harmony": "88", "inter_item_coherence": "80.9",
-                 "rationale": "ok", "unsuitable": False},
+                {**_row("C1"), "occasion_fit": "2.7", "pairing": "1.9"},
             ],
             "overall_assessment": "strong",
         }
@@ -267,21 +266,17 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
             result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
 
         ro = result.ranked_outfits[0]
-        self.assertEqual(92, ro.occasion_fit)  # 92.7 truncated
-        self.assertEqual(80, ro.inter_item_coherence)  # 80.9 truncated
+        self.assertEqual(2, ro.occasion_fit)  # 2.7 truncated to 2
+        self.assertEqual(1, ro.pairing)       # 1.9 truncated to 1
 
     def test_rater_rejects_bool_subscores_as_malformed(self) -> None:
         """An LLM emitting `true` / `false` for a numeric score is
         malformed. Bool is an int subclass in Python so a naive
-        isinstance check would silently accept True as a score of 1;
+        isinstance check would silently accept True as 1 / False as 0;
         reject explicitly instead."""
         payload = {
             "ranked_outfits": [
-                {"composer_id": "C1",
-                 "occasion_fit": True, "body_harmony": False,
-                 "color_harmony": 80,
-                 "inter_item_coherence": True,
-                 "rationale": "ok", "unsuitable": False},
+                {**_row("C1"), "occasion_fit": True, "body_harmony": False, "pairing": True},
             ],
             "overall_assessment": "moderate",
         }
@@ -290,23 +285,19 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
             result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
 
         ro = result.ranked_outfits[0]
-        # Required dims default to 0 on bool input.
-        self.assertEqual(0, ro.occasion_fit)
-        self.assertEqual(0, ro.body_harmony)
-        # inter_item_coherence becomes None (axis dropped from radar).
-        self.assertIsNone(ro.inter_item_coherence)
+        # Required dims default to 2 on bool input (parser rejects → neutral).
+        self.assertEqual(2, ro.occasion_fit)
+        self.assertEqual(2, ro.body_harmony)
+        # Pairing becomes None (axis dropped from radar).
+        self.assertIsNone(ro.pairing)
 
     def test_rater_handles_overflow_in_float_string(self) -> None:
         """`float("1e1000")` is inf; `int(inf)` raises OverflowError.
-        Catch it so the rate() loop doesn't crash on a single
-        malformed candidate."""
+        Catch it so the rate() loop doesn't crash on a malformed
+        candidate."""
         payload = {
             "ranked_outfits": [
-                {"composer_id": "C1",
-                 "occasion_fit": "1e1000", "body_harmony": 80,
-                 "color_harmony": 80,
-                 "inter_item_coherence": "1e9999",
-                 "rationale": "ok", "unsuitable": False},
+                {**_row("C1"), "occasion_fit": "1e1000", "pairing": "1e9999"},
             ],
             "overall_assessment": "moderate",
         }
@@ -315,8 +306,8 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
             result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
 
         ro = result.ranked_outfits[0]
-        self.assertEqual(0, ro.occasion_fit)  # overflow → required dim default
-        self.assertIsNone(ro.inter_item_coherence)  # overflow → optional dim None
+        self.assertEqual(2, ro.occasion_fit)  # overflow → neutral default
+        self.assertIsNone(ro.pairing)         # overflow → optional dim None
 
     def test_rater_drops_unknown_composer_ids(self) -> None:
         """The LLM should never invent composer_ids outside the input
@@ -324,14 +315,10 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
         ranked_outfits is a subset of the input."""
         payload = {
             "ranked_outfits": [
-                {"composer_id": "C1", "rank": 1, "fashion_score": 80,
-                 "occasion_fit": 80, "body_harmony": 80, "color_harmony": 80, "inter_item_coherence": 80,
-                 "rationale": "valid", "unsuitable": False},
-                {"composer_id": "BOGUS", "rank": 2, "fashion_score": 90,
-                 "occasion_fit": 90, "body_harmony": 90, "color_harmony": 90, "inter_item_coherence": 80,
-                 "rationale": "hallucinated id", "unsuitable": False},
+                _row("C1"),
+                _row("BOGUS"),
             ],
-            "overall_assessment": "strong",
+            "overall_assessment": "moderate",
         }
         with patch("agentic_application.agents.outfit_rater.get_api_key", return_value="x"), _patch_rater() as oc:
             oc.return_value.responses.create.return_value = _mock_response(payload)
@@ -342,17 +329,10 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
 
 
 class OutfitRaterUsageTests(unittest.TestCase):
-    """Token usage carries on the result object so concurrent turns
-    using the same OutfitRater instance don't race over a shared
-    ``last_usage`` attribute."""
 
     def test_rater_returns_usage_on_result(self) -> None:
         payload = {
-            "ranked_outfits": [
-                {"composer_id": "C1", "rank": 1, "fashion_score": 80,
-                 "occasion_fit": 80, "body_harmony": 80, "color_harmony": 80, "inter_item_coherence": 80,
-                 "rationale": "ok", "unsuitable": False},
-            ],
+            "ranked_outfits": [_row("C1")],
             "overall_assessment": "moderate",
         }
         mock_resp = Mock()
@@ -364,8 +344,6 @@ class OutfitRaterUsageTests(unittest.TestCase):
 
         self.assertIn("prompt_tokens", result.usage)
         self.assertIn("total_tokens", result.usage)
-        # Sanity-check that *something* was extracted (concrete values
-        # depend on extract_token_usage's response-shape sniffing).
         self.assertGreaterEqual(result.usage.get("total_tokens", 0), 0)
 
 
@@ -389,19 +367,14 @@ class OutfitRaterEdgeCaseTests(unittest.TestCase):
         self.assertEqual("weak", result.overall_assessment)
 
     def test_rater_emits_weight_profile_on_result(self) -> None:
-        """R3: every RaterResult records the weight profile used so we
-        can SQL-grep override frequencies later."""
+        """Every RaterResult records the weight profile used so we can
+        SQL-grep override frequencies later."""
         payload = {
-            "ranked_outfits": [
-                {"composer_id": "C1",
-                 "occasion_fit": 80, "body_harmony": 80, "color_harmony": 80, "inter_item_coherence": 80,
-                 "rationale": "ok", "unsuitable": False},
-            ],
+            "ranked_outfits": [_row("C1")],
             "overall_assessment": "moderate",
         }
         with patch("agentic_application.agents.outfit_rater.get_api_key", return_value="x"), _patch_rater() as oc:
             oc.return_value.responses.create.return_value = _mock_response(payload)
-            # Default _ctx() has occasion=daily_office → no override → "default"
             result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
         self.assertEqual("default", result.fashion_score_weight_profile)
 
@@ -413,9 +386,7 @@ class OutfitRaterEdgeCaseTests(unittest.TestCase):
         )
         payload = {
             "ranked_outfits": [
-                {"composer_id": "C1",
-                 "occasion_fit": 90, "body_harmony": 70, "color_harmony": 70, "inter_item_coherence": 80,
-                 "rationale": "ok", "unsuitable": False},
+                _row("C1", occ=3, body=2, col=2, pair=2, form=3, stmt=2),
             ],
             "overall_assessment": "strong",
         }
@@ -423,10 +394,12 @@ class OutfitRaterEdgeCaseTests(unittest.TestCase):
             oc.return_value.responses.create.return_value = _mock_response(payload)
             result = OutfitRater().rate(ctx, _composed(), _retrieved())
         self.assertEqual("ceremonial", result.fashion_score_weight_profile)
-        # ceremonial 4-dim (R6): occasion 0.46, body 0.19, color 0.22, inter 0.13
-        # 90*0.46 + 70*0.19 + 70*0.22 + 80*0.13 ≈ 80.5 (with float
-        # precision drift it lands at 80.500000…1, so round() goes up)
-        self.assertEqual(81, result.ranked_outfits[0].fashion_score)
+        # Ceremonial weights (R7): occasion 0.32, formality 0.22, color
+        # 0.16, body 0.12, pairing 0.10, statement 0.08
+        # raw = 3*.32 + 2*.12 + 2*.16 + 2*.10 + 3*.22 + 2*.08
+        #     = 0.96 + 0.24 + 0.32 + 0.20 + 0.66 + 0.16 = 2.54
+        # score = (2.54 - 1) / 2 * 100 = 77
+        self.assertEqual(77, result.ranked_outfits[0].fashion_score)
 
 
 class WeightProfileSelectionTests(unittest.TestCase):
@@ -466,92 +439,124 @@ class WeightProfileSelectionTests(unittest.TestCase):
 
 
 class FashionScoreBlendTests(unittest.TestCase):
-    """compute_fashion_score is the deterministic weighted blend."""
+    """compute_fashion_score is the deterministic weighted blend.
 
-    def test_default_profile_blend(self) -> None:
-        # 4-dim default (R6): occ 0.35, body 0.23, color 0.27, inter 0.15
-        # 95*0.35 + 85*0.23 + 88*0.27 + 100*0.15
-        # = 33.25 + 19.55 + 23.76 + 15.0 = 91.56 → 92
+    The math: raw = Σ subscore × weight (1.0..3.0); score = ((raw-1)/2)×100.
+    All-1s → 0, all-2s → 50, all-3s → 100. Uniform sub-scores yield
+    identical percentages across all profiles since weights sum to 1.0.
+    """
+
+    def test_all_threes_yield_100(self) -> None:
         self.assertEqual(
-            92,
+            100,
             compute_fashion_score(
-                occasion_fit=95, body_harmony=85,
-                color_harmony=88,
-                inter_item_coherence=100,
+                occasion_fit=3, body_harmony=3, color_harmony=3,
+                pairing=3, formality=3, statement=3,
             ),
         )
 
-    def test_ceremonial_profile_amplifies_occasion(self) -> None:
-        # Ceremonial 4-dim (R6): occ 0.46, body 0.19, color 0.22, inter 0.13
-        # 95*0.46 + 85*0.19 + 88*0.22 + 100*0.13
-        # = 43.7 + 16.15 + 19.36 + 13.0 = 92.21 → 92
+    def test_all_twos_yield_50(self) -> None:
         self.assertEqual(
-            92,
+            50,
             compute_fashion_score(
-                occasion_fit=95, body_harmony=85,
-                color_harmony=88,
-                inter_item_coherence=100,
+                occasion_fit=2, body_harmony=2, color_harmony=2,
+                pairing=2, formality=2, statement=2,
+            ),
+        )
+
+    def test_all_ones_yield_0(self) -> None:
+        self.assertEqual(
+            0,
+            compute_fashion_score(
+                occasion_fit=1, body_harmony=1, color_harmony=1,
+                pairing=1, formality=1, statement=1,
+            ),
+        )
+
+    def test_default_profile_blend_mixed(self) -> None:
+        # Default (R7): occ 0.25, body 0.15, color 0.20, pair 0.15,
+        # form 0.13, stmt 0.12.
+        # raw = 3*.25 + 2*.15 + 3*.20 + 2*.15 + 2*.13 + 3*.12
+        #     = 0.75 + 0.30 + 0.60 + 0.30 + 0.26 + 0.36 = 2.57
+        # score = (2.57 - 1) / 2 * 100 = 78.5 → 78 (banker's round)
+        self.assertEqual(
+            78,
+            compute_fashion_score(
+                occasion_fit=3, body_harmony=2, color_harmony=3,
+                pairing=2, formality=2, statement=3,
+            ),
+        )
+
+    def test_ceremonial_profile_amplifies_occasion_and_formality(self) -> None:
+        # Ceremonial: occ 0.32, form 0.22 dominate.
+        # Same sub-scores as above, different profile → different score.
+        # raw = 3*.32 + 2*.12 + 3*.16 + 2*.10 + 2*.22 + 3*.08
+        #     = 0.96 + 0.24 + 0.48 + 0.20 + 0.44 + 0.24 = 2.56
+        # score = (2.56 - 1) / 2 * 100 = 78
+        self.assertEqual(
+            78,
+            compute_fashion_score(
+                occasion_fit=3, body_harmony=2, color_harmony=3,
+                pairing=2, formality=2, statement=3,
                 profile="ceremonial",
             ),
         )
 
-    def test_none_inter_item_drops_dim_like_complete(self) -> None:
-        """When inter_item_coherence is None (LLM omitted, legacy data),
-        the formula behaves identically to direction_type=complete —
-        dim dropped, remaining 3 weights renormalised."""
+    def test_none_pairing_drops_dim_like_complete(self) -> None:
+        """When pairing is None (LLM omitted), the formula behaves
+        identically to direction_type=complete — dim dropped, remaining
+        five weights renormalised."""
         a = compute_fashion_score(
-            occasion_fit=95, body_harmony=85,
-            color_harmony=88,
-            inter_item_coherence=None, direction_type="paired",
+            occasion_fit=3, body_harmony=2, color_harmony=3,
+            pairing=None, formality=2, statement=3,
+            direction_type="paired",
         )
         b = compute_fashion_score(
-            occasion_fit=95, body_harmony=85,
-            color_harmony=88,
-            inter_item_coherence=100, direction_type="complete",
+            occasion_fit=3, body_harmony=2, color_harmony=3,
+            pairing=3, formality=2, statement=3,  # ignored for complete
+            direction_type="complete",
         )
         self.assertEqual(a, b)
 
-    def test_complete_outfit_drops_inter_item_and_renormalizes(self) -> None:
-        """Single-item outfits drop the inter_item_coherence dim and
-        the remaining 3 weights renormalise to sum to 1.0."""
-        # Default 3 weights renormalised: 0.35/0.85=0.4118,
-        # 0.23/0.85=0.2706, 0.27/0.85=0.3176
-        # 95*0.4118 + 85*0.2706 + 88*0.3176
-        # = 39.12 + 23.0 + 27.95 = 90.07 → 90
+    def test_complete_outfit_drops_pairing(self) -> None:
+        """Single-item outfits drop pairing and renormalise the
+        remaining five weights to sum to 1.0."""
+        # All non-pairing dims at 2 → raw = 2.0 across the 5 kept dims
+        # (regardless of how the renorm distributes weight) → score = 50.
         self.assertEqual(
-            90,
+            50,
             compute_fashion_score(
-                occasion_fit=95, body_harmony=85,
-                color_harmony=88,
-                inter_item_coherence=100,  # ignored for complete
+                occasion_fit=2, body_harmony=2, color_harmony=2,
+                pairing=3,  # ignored for complete outfits
+                formality=2, statement=2,
                 direction_type="complete",
             ),
         )
 
-    def test_complete_outfit_score_unaffected_by_inter_item_value(self) -> None:
-        """For complete outfits, varying inter_item_coherence must NOT
-        change the score (since the dim is dropped from the formula)."""
+    def test_complete_outfit_score_unaffected_by_pairing_value(self) -> None:
+        """For complete outfits, varying pairing must NOT change the
+        score (since the dim is dropped)."""
         a = compute_fashion_score(
-            occasion_fit=80, body_harmony=80, color_harmony=80, inter_item_coherence=10,
-            direction_type="complete",
+            occasion_fit=2, body_harmony=2, color_harmony=2,
+            pairing=1, formality=2, statement=2, direction_type="complete",
         )
         b = compute_fashion_score(
-            occasion_fit=80, body_harmony=80, color_harmony=80, inter_item_coherence=99,
-            direction_type="complete",
+            occasion_fit=2, body_harmony=2, color_harmony=2,
+            pairing=3, formality=2, statement=2, direction_type="complete",
         )
         self.assertEqual(a, b)
-        self.assertEqual(80, a)  # all 80s blend to 80 regardless of weights
+        self.assertEqual(50, a)  # all 2s on the kept dims → 50.
 
     def test_unknown_profile_falls_back_to_default(self) -> None:
         self.assertEqual(
             compute_fashion_score(
-                occasion_fit=80, body_harmony=80,
-                color_harmony=80,
+                occasion_fit=2, body_harmony=2, color_harmony=2,
+                pairing=2, formality=2, statement=2,
                 profile="not-a-real-profile",
             ),
             compute_fashion_score(
-                occasion_fit=80, body_harmony=80,
-                color_harmony=80,
+                occasion_fit=2, body_harmony=2, color_harmony=2,
+                pairing=2, formality=2, statement=2,
             ),
         )
 
@@ -560,26 +565,33 @@ class FashionScoreBlendTests(unittest.TestCase):
             total = sum(weights.values())
             self.assertAlmostEqual(1.0, total, places=6, msg=f"{name} weights sum to {total}")
 
+    def test_all_profiles_have_six_dims(self) -> None:
+        """R7: every profile must define weights for the six rater dims
+        — missing one would make compute_fashion_score raise KeyError."""
+        expected = {"occasion_fit", "body_harmony", "color_harmony", "pairing", "formality", "statement"}
+        for name, weights in WEIGHT_PROFILES.items():
+            self.assertEqual(expected, set(weights.keys()), msg=f"profile {name}")
+
     def test_composer_id_tiebreak_is_numeric(self) -> None:
-        """PR #71 review fix: ties on fashion_score sort C2 before C10
-        (numeric), not lex order which would put C10 before C2."""
+        """Ties on fashion_score sort C2 before C10 (numeric), not lex
+        order which would put C10 before C2."""
         from agentic_application.agents.outfit_rater import _composer_id_sort_key
         ids = ["C10", "C2", "C1", "C3"]
-        # Sorted by the helper should give a natural numeric order.
         sorted_ids = sorted(ids, key=_composer_id_sort_key)
         self.assertEqual(["C1", "C2", "C3", "C10"], sorted_ids)
-        # Non-numeric ids fall back to lex; mixed shapes don't crash.
         self.assertEqual(["C1", "Cx"], sorted(["Cx", "C1"], key=_composer_id_sort_key))
 
+
+class OutfitRaterUnsuitableTests(unittest.TestCase):
 
     def test_rater_honours_unsuitable_flag(self) -> None:
         """An unsuitable=True outfit still appears in the result so the
         orchestrator can log + drop it; the flag is not a silent skip."""
         payload = {
             "ranked_outfits": [
-                {"composer_id": "C1", "rank": 1, "fashion_score": 30,
-                 "occasion_fit": 25, "body_harmony": 50, "color_harmony": 30, "inter_item_coherence": 80,
-                 "rationale": "Dealbreaker — wrong occasion entirely.", "unsuitable": True},
+                _row("C1", occ=1, body=2, col=1, pair=2, form=1, stmt=2,
+                     rationale="Dealbreaker — wrong occasion entirely.",
+                     unsuitable=True),
             ],
             "overall_assessment": "weak",
         }
