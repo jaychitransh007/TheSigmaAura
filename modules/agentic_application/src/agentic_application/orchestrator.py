@@ -5532,11 +5532,46 @@ class AgenticOrchestrator:
                 _log_candidate_trace(garment_ids)
                 return _result("", attempted=False)
             if garment_ids:
+                _cache_t0 = time.monotonic()
                 cached = self.repo.find_tryon_image_by_garments(external_user_id, garment_ids)
                 if cached and cached.get("file_path"):
                     cached_path = Path(cached["file_path"])
                     if cached_path.exists():
+                        _cache_ms = int((time.monotonic() - _cache_t0) * 1000)
                         _candidate_status = "cache_hit"
+                        # May 5, 2026: log cache hits to model_call_logs so the
+                        # `tryon_render` row count in the trace matches the
+                        # `virtual_tryon*` row count in model_call_logs.
+                        # Without this, "3/3 rendered" can map to only 2 rows
+                        # (the cold renders) and leaves the third unaccounted
+                        # for in cost/latency rollups.
+                        # Distinct call_type so per-model rollups still group
+                        # under gemini-3.1-flash-image-preview while cost queries
+                        # can opt to exclude cache hits when measuring net spend.
+                        try:
+                            self.repo.log_model_call(
+                                conversation_id=conversation_id,
+                                turn_id=turn_id,
+                                service="agentic_application",
+                                call_type="virtual_tryon_cache_hit",
+                                model="gemini-3.1-flash-image-preview",
+                                request_json={
+                                    "candidate_id": str(getattr(candidate, "candidate_id", "")),
+                                    "garment_ids": list(garment_ids),
+                                    "garment_count": len(garment_urls),
+                                },
+                                response_json={
+                                    "success": True,
+                                    "cache_hit": True,
+                                    "file_path": str(cached_path),
+                                },
+                                reasoning_notes=[],
+                                latency_ms=_cache_ms,
+                                status="ok",
+                                estimated_cost_usd=0.0,
+                            )
+                        except Exception:  # noqa: BLE001 — telemetry never breaks pipeline
+                            _log.warning("Failed to persist tryon cache_hit model_call_log", exc_info=True)
                         _log_candidate_trace(garment_ids)
                         return _result(str(cached_path), attempted=False)
             try:

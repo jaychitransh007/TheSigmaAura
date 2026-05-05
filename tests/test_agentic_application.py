@@ -6666,6 +6666,18 @@ class TryonParallelRenderTests(unittest.TestCase):
         # (rank 0), not at the end.
         self.assertEqual("c0", rendered[0][0].candidate_id)
 
+        # Cache hits must produce a model_call_logs row with cost=0 so the
+        # turn_traces "X/Y rendered" count reconciles with the
+        # virtual_tryon* row count in model_call_logs (PR #60). 2 cold +
+        # 1 cache_hit == 3 rows total.
+        log_calls = orch.repo.log_model_call.call_args_list
+        call_types = [c.kwargs.get("call_type") for c in log_calls]
+        self.assertEqual(call_types.count("virtual_tryon"), 2)
+        self.assertEqual(call_types.count("virtual_tryon_cache_hit"), 1)
+        cache_hit_call = next(c for c in log_calls if c.kwargs.get("call_type") == "virtual_tryon_cache_hit")
+        self.assertEqual(cache_hit_call.kwargs.get("model"), "gemini-3.1-flash-image-preview")
+        self.assertEqual(cache_hit_call.kwargs.get("estimated_cost_usd"), 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
