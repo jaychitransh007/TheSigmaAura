@@ -230,7 +230,10 @@ class OutfitCandidate(BaseModel):
     # R5 (PR #68, May 5 2026): how well the items in a multi-piece
     # outfit work together. For complete outfits (single item) the
     # blend formula drops this dim and renormalises the other four.
-    inter_item_coherence: int = 100
+    # PR #73 (review of #72): made Optional so unset / legacy data
+    # propagates as None all the way to the radar (axis hidden)
+    # rather than getting masked as a phantom 100.
+    inter_item_coherence: Optional[int] = None
     composer_id: str = ""  # Empty for wardrobe-anchored candidates.
     composer_rationale: str = ""
     rater_rationale: str = ""
@@ -280,9 +283,10 @@ class RatedOutfit(BaseModel):
     color_harmony: int = 0
     archetype_match: int = 0
     # R5 (May 5 2026): inter-item fit/fabric/formality coherence.
-    # Defaults to 100 (neutral) — the LLM emits 100 for complete
-    # (single-item) outfits since there's nothing to clash with.
-    inter_item_coherence: int = 100
+    # PR #73: Optional so the orchestrator can pass None straight
+    # through for complete outfits (radar drops the axis) without
+    # the schema masking it as a phantom 100.
+    inter_item_coherence: Optional[int] = None
     rationale: str = ""
     unsuitable: bool = False  # Hard veto — drop even if fashion_score is high.
 

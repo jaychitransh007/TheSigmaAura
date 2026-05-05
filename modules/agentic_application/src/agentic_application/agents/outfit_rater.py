@@ -27,7 +27,7 @@ import json
 import logging
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from openai import OpenAI
 
@@ -247,24 +247,28 @@ def compute_fashion_score(
     body_harmony: int,
     color_harmony: int,
     archetype_match: int,
-    inter_item_coherence: int = 100,
+    inter_item_coherence: Optional[int] = None,
     direction_type: str = "paired",
     profile: str = _DEFAULT_WEIGHT_PROFILE,
 ) -> int:
-    """Blend the five sub-scores into an integer 0–100 fashion_score.
+    """Blend the sub-scores into an integer 0–100 fashion_score.
 
-    For ``direction_type="complete"`` outfits (single-item, e.g. a
-    kurta_set or jumpsuit) ``inter_item_coherence`` doesn't apply —
-    we drop it from the formula and renormalize the remaining four
-    weights so they still sum to 1.0. The LLM is told to emit 100
-    in that case so this branch is a no-op for it.
+    ``inter_item_coherence`` is dropped from the formula in two cases:
+    (1) ``direction_type="complete"`` (single-item outfit — nothing to
+    clash with), or (2) the value is ``None`` (the LLM didn't emit it
+    or this is legacy data). In both cases the remaining four weights
+    are renormalised to sum to 1.0.
 
     Unknown ``profile`` falls back to ``default`` rather than raising —
     the rule is lossy-graceful so a misconfigured profile can't take
     down the recommendation pipeline.
     """
     weights = WEIGHT_PROFILES.get(profile) or WEIGHT_PROFILES[_DEFAULT_WEIGHT_PROFILE]
-    if (direction_type or "").strip().lower() == "complete":
+    drop_inter_item = (
+        (direction_type or "").strip().lower() == "complete"
+        or inter_item_coherence is None
+    )
+    if drop_inter_item:
         # Drop inter_item_coherence and renormalise the remaining four
         # weights so they sum to 1.0.
         kept = {k: v for k, v in weights.items() if k != _COMPLETE_OUTFIT_DROP_KEY}
@@ -433,13 +437,18 @@ class OutfitRater:
             bod = _clamp_to_100(int(raw_o.get("body_harmony", 0) or 0))
             col = _clamp_to_100(int(raw_o.get("color_harmony", 0) or 0))
             arch = _clamp_to_100(int(raw_o.get("archetype_match", 0) or 0))
-            # R5: inter_item_coherence — defaults to 100 when omitted
-            # by older prompt versions or for complete outfits the LLM
-            # has explicitly marked. Don't use `or 100` — that would
-            # rewrite a legitimate score of 0 (a styling-error outfit)
-            # back to 100. Only None/missing should fall back.
+            # R5: inter_item_coherence is preserved as None when the
+            # LLM doesn't emit it (older prompt versions, malformed
+            # responses, legacy mocks). PR #73 (review of #72): don't
+            # default to 100 — that masks unset data as a phantom
+            # "good coherence" score and leaks through to the radar.
+            # compute_fashion_score handles None by dropping the dim
+            # and renormalising the remaining four weights, same as
+            # for complete outfits.
             _inter_raw = raw_o.get("inter_item_coherence")
-            inter = _clamp_to_100(int(_inter_raw if _inter_raw is not None else 100))
+            inter: Optional[int] = (
+                _clamp_to_100(int(_inter_raw)) if _inter_raw is not None else None
+            )
             ranked.append(
                 RatedOutfit(
                     composer_id=cid,

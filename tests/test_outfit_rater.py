@@ -345,15 +345,16 @@ class FashionScoreBlendTests(unittest.TestCase):
     """compute_fashion_score is the deterministic weighted blend."""
 
     def test_default_profile_blend(self) -> None:
-        # 5-dim default (R5): 95*0.30 + 85*0.18 + 88*0.22 + 75*0.15 +
-        # 100*0.15 = 28.5+15.3+19.36+11.25+15.0 = 89.41 → 89
-        # (inter_item_coherence defaults to 100; direction_type defaults
-        # to "paired" so the dim is included.)
+        # PR #73: inter_item_coherence default is None (post-review fix);
+        # callers must pass it explicitly. 5-dim default:
+        # 95*0.30 + 85*0.18 + 88*0.22 + 75*0.15 + 100*0.15
+        # = 28.5+15.3+19.36+11.25+15.0 = 89.41 → 89
         self.assertEqual(
             89,
             compute_fashion_score(
                 occasion_fit=95, body_harmony=85,
                 color_harmony=88, archetype_match=75,
+                inter_item_coherence=100,
             ),
         )
 
@@ -366,9 +367,26 @@ class FashionScoreBlendTests(unittest.TestCase):
             compute_fashion_score(
                 occasion_fit=95, body_harmony=85,
                 color_harmony=88, archetype_match=75,
+                inter_item_coherence=100,
                 profile="ceremonial",
             ),
         )
+
+    def test_none_inter_item_drops_dim_like_complete(self) -> None:
+        """PR #73: when inter_item_coherence is None (LLM omitted, legacy
+        data) the formula behaves identically to direction_type=complete
+        — dim dropped, remaining 4 weights renormalised."""
+        a = compute_fashion_score(
+            occasion_fit=95, body_harmony=85,
+            color_harmony=88, archetype_match=75,
+            inter_item_coherence=None, direction_type="paired",
+        )
+        b = compute_fashion_score(
+            occasion_fit=95, body_harmony=85,
+            color_harmony=88, archetype_match=75,
+            inter_item_coherence=100, direction_type="complete",
+        )
+        self.assertEqual(a, b)
 
     def test_complete_outfit_drops_inter_item_and_renormalizes(self) -> None:
         """Single-item outfits drop the inter_item_coherence dim and the
