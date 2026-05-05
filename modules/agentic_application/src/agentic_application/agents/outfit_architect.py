@@ -224,6 +224,8 @@ def _build_user_payload(ctx: CombinedContext) -> str:
 
 
 class OutfitArchitect:
+    _ALLOWED_EFFORTS = frozenset({"low", "medium", "high"})
+
     def __init__(
         self,
         model: str = "gpt-5.4",
@@ -239,6 +241,20 @@ class OutfitArchitect:
         # History: gpt-5.4 → gpt-5.5 (May 1, 2026) → gpt-5.4 + medium effort.
         #
         # Lazy OpenAI client (see CopilotPlanner for the pattern).
+        #
+        # Validate reasoning_effort here (PR #45 review) so direct
+        # instantiations — tests, future services — get a loud failure
+        # at construction rather than an opaque OpenAI 400 at request
+        # time. The env-loader in platform_core.config already does a
+        # silent coerce-to-medium on bad ARCHITECT_REASONING_EFFORT
+        # values; that's the right behavior for env vars (degrade,
+        # don't crash app start). The constructor takes an explicit
+        # Python value, so loud failure is the right behavior here.
+        if reasoning_effort not in self._ALLOWED_EFFORTS:
+            raise ValueError(
+                f"OutfitArchitect reasoning_effort must be one of "
+                f"{sorted(self._ALLOWED_EFFORTS)}; got {reasoning_effort!r}"
+            )
         self._model = model
         self._reasoning_effort = reasoning_effort
         self._system_prompt_base = _load_prompt()
