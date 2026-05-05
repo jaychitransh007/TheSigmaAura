@@ -2,8 +2,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+import httpx
+
 from .request_context import get_request_id
-from .supabase_rest import SupabaseRestClient
+from .supabase_rest import SupabaseError, SupabaseRestClient
 
 _log = logging.getLogger(__name__)
 
@@ -511,7 +513,13 @@ class ConversationRepository:
                 order="created_at.desc",
                 limit=feedback_limit,
             )
-        except Exception:
+        except (SupabaseError, httpx.RequestError):
+            # Narrow to actual DB / network failures so a logic bug
+            # (KeyError, TypeError, etc.) above this `try` fails fast
+            # instead of silently degrading to an empty timeline. PR #92
+            # was a 400 from Supabase, which comes through SupabaseError;
+            # network blips come through httpx.RequestError. Both should
+            # gracefully degrade for this call.
             _log.warning(
                 "aggregate_archetypal_feedback: feedback_events query failed for user_id=%s — returning empty",
                 user_id, exc_info=True,
@@ -570,7 +578,10 @@ class ConversationRepository:
                             key: str(row.get(self._CATALOG_ATTR_MAP[key]) or "").strip().lower()
                             for key in self._ARCHETYPAL_AXIS_KEYS
                         }
-        except Exception:
+        except (SupabaseError, httpx.RequestError):
+            # Narrow to DB/network failures — a KeyError from a
+            # _CATALOG_ATTR_MAP miss above should fail fast, not be
+            # masked as an I/O error and silently return empty.
             _log.warning(
                 "aggregate_archetypal_feedback: catalog_enriched hydration failed for user_id=%s — returning empty",
                 user_id, exc_info=True,
@@ -656,7 +667,7 @@ class ConversationRepository:
                 order="created_at.desc",
                 limit=self._RECENT_USER_ACTIONS_MAX,
             )
-        except Exception:
+        except (SupabaseError, httpx.RequestError):
             _log.warning(
                 "list_recent_user_actions: feedback_events query failed for user_id=%s — returning empty",
                 user_id, exc_info=True,
@@ -690,7 +701,10 @@ class ConversationRepository:
                                 prompt_key: str(row.get(db_col) or "").strip()
                                 for prompt_key, db_col in self._CATALOG_ATTR_MAP.items()
                             }
-            except Exception:
+            except (SupabaseError, httpx.RequestError):
+                # Narrow: a TypeError or KeyError inside the comprehension
+                # is a logic bug we want to surface, not silently degrade
+                # to empty items.
                 _log.warning(
                     "list_recent_user_actions: catalog_enriched hydration failed for user_id=%s — items will be empty",
                     user_id, exc_info=True,
@@ -713,7 +727,7 @@ class ConversationRepository:
                         tid = str(row.get("id") or "").strip()
                         if tid:
                             queries_by_turn[tid] = str(row.get("user_message") or "").strip()
-            except Exception:
+            except (SupabaseError, httpx.RequestError):
                 _log.warning(
                     "list_recent_user_actions: conversation_turns query failed for user_id=%s — events will ship without user_query",
                     user_id, exc_info=True,
