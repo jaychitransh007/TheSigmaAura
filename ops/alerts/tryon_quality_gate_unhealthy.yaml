@@ -2,6 +2,13 @@ alert: aura_tryon_quality_gate_failure_rate_high
 description: |
   Try-on quality gate failure rate above 25% for 1h — Gemini renders
   are degrading. Healthy steady state is <15%; alert fires above 25%.
+
+  Note (May 5 2026, PR #89): the rater no longer vetoes outfits on
+  archetypal_preferences.disliked, so a wider variety of candidates
+  reaches the QG than before. The 25% threshold is unchanged — QG
+  measures *render quality*, not catalog/style fit — but a sustained
+  shift in the input mix may justify revisiting once a stable post-#89
+  baseline is established (~1 week of traffic).
 expr: |
   sum(rate(aura_tryon_quality_gate_total{passed="false"}[1h]))
   /
