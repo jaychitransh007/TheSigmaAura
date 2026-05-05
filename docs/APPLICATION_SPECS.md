@@ -350,7 +350,6 @@ flowchart TD
     N[Conversation Memory] --> M
     O[Feedback History] --> M
     P[Catalog Interaction History] --> M
-    Q[Sentiment History] --> M
     R[Catalog Retrieval + Ranking] --> M
 
     M --> S{Intent Handler}
@@ -385,7 +384,6 @@ flowchart TD
     W --> N
     W --> O
     W --> P
-    W --> Q
 
     X[Telemetry + Outcome Tracking] --- A
     X --- I
