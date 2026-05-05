@@ -2,7 +2,7 @@
 -- Source: docs/OPERATIONS.md (auto-extracted; do not hand-edit)
 -- Regenerate with: python3 ops/scripts/extract_dashboard_sql.py
 
--- episodic_memory_population_rate_last_7d
+-- episodic_memory_population_rate_last_30d
 WITH recent_users AS (
     SELECT DISTINCT user_id
     FROM dependency_validation_events
