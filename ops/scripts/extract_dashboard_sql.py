@@ -90,6 +90,18 @@ def main() -> int:
         written.append(path.name)
 
     index_path = DEST_DIR / "README.md"
+    # Preserve any manual content appearing after the marker so future
+    # regens don't blow away curator-maintained sections (e.g. log-based
+    # panels, refresh cadence). The marker is itself preserved in the
+    # output so it survives the round-trip.
+    PRESERVE_MARKER = "<!-- preserve-below -->"
+    preserved_tail = ""
+    if index_path.exists():
+        existing = index_path.read_text(encoding="utf-8")
+        idx = existing.find(PRESERVE_MARKER)
+        if idx != -1:
+            preserved_tail = existing[idx:].rstrip() + "\n"
+
     index_lines = [
         "# Aura Operations Dashboards — SQL Files",
         "",
@@ -103,7 +115,11 @@ def main() -> int:
     for name in written:
         index_lines.append(f"- [`{name}`]({name})")
     index_lines.append("")
-    index_path.write_text("\n".join(index_lines), encoding="utf-8")
+    auto = "\n".join(index_lines)
+    if preserved_tail:
+        index_path.write_text(auto + preserved_tail, encoding="utf-8")
+    else:
+        index_path.write_text(auto, encoding="utf-8")
 
     print(f"Wrote {len(written)} panel files to {DEST_DIR}")
     for name in written:

@@ -651,6 +651,221 @@ will look artificially good.
 
 ---
 
+## Panel 17 — Architect Input Token Growth (May 5 2026, PR #90 / #92)
+
+**Question:** is the architect's prompt size creeping up because of
+the new episodic-memory timeline, and is the timeline cap (30 events)
+still right?
+
+**Context:** PR #90 added `recent_user_actions` (a 30-day timeline of
+the user's like/dislike events with full garment attributes) to the
+architect's input payload. Each row is ~80–150 tokens; with the
+30-event cap a power user adds ~3K tokens to a prompt that was ~9K
+before. PR #92 fixed a silent 400-error that was making the timeline
+empty for every user; once that landed for real, prompt sizes should
+visibly grow for users with feedback history. This panel watches the
+distribution so we know when to revisit `_RECENT_USER_ACTIONS_MAX`.
+
+```sql
+-- architect_prompt_tokens_p50_p95_last_7d
+SELECT
+    date_trunc('day', created_at) AS day,
+    COUNT(*) AS calls,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY prompt_tokens) AS p50,
+    percentile_cont(0.95) WITHIN GROUP (ORDER BY prompt_tokens) AS p95,
+    MAX(prompt_tokens) AS p_max
+FROM model_call_logs
+WHERE call_type = 'outfit_architect'
+  AND created_at >= now() - interval '7 days'
+  AND prompt_tokens IS NOT NULL
+GROUP BY 1
+ORDER BY 1 DESC;
+```
+
+**Healthy:** p50 sits in the 8K–11K range; p95 ≤14K. Cold-start users
+(empty timeline) anchor the p50; active users with feedback history
+push the p95.
+
+**Degraded:** p95 climbs above 14K — usually means a power user has a
+30-event timeline that's denser than expected (long item titles,
+stuffed `user_query` fields). Either tighten the timeline cap or trim
+which fields are surfaced in `_CATALOG_ATTR_MAP`.
+
+**Unhealthy:** p_max exceeds 18K — that's near the architect prompt
+ceiling and approaching gpt-5.4 context-window pressure. Lower
+`_RECENT_USER_ACTIONS_MAX` from 30 → 20.
+
+---
+
+## Panel 18 — Rater Unsuitable Rate (May 5 2026, PR #89 baseline)
+
+**Question:** how often is the rater flagging an outfit as `unsuitable`
+post-#89, and is the rate stable?
+
+**Context:** PR #89 removed the rater's `archetypal_preferences.disliked`
+hard veto. Pre-#89 the unsuitable rate was high — T12 had 8/8 outfits
+vetoed because each touched a disliked attribute. Post-#89 the rate
+should be low (the rater only flags severe mismatches: wrong-occasion,
+strong color clash, severe risk-tolerance violation). This panel
+tracks the new baseline so we can spot drift if the prompt regresses.
+
+```sql
+-- rater_unsuitable_rate_last_7d
+WITH rater_calls AS (
+    SELECT
+        date_trunc('day', t.created_at) AS day,
+        jsonb_array_elements(t.output_json->'ranked_outfits') AS outfit
+    FROM tool_traces t
+    WHERE t.tool_name = 'rater_decision'
+      AND t.created_at >= now() - interval '7 days'
+)
+SELECT
+    day,
+    COUNT(*) AS rated_outfits,
+    SUM(CASE WHEN (outfit->>'unsuitable')::boolean THEN 1 ELSE 0 END) AS unsuitable_outfits,
+    round(
+        100.0 * SUM(CASE WHEN (outfit->>'unsuitable')::boolean THEN 1 ELSE 0 END)::numeric
+        / nullif(COUNT(*), 0),
+        2
+    ) AS unsuitable_pct
+FROM rater_calls
+GROUP BY 1
+ORDER BY 1 DESC;
+```
+
+**Healthy (post-#89 baseline):** `unsuitable_pct` 0–5%. A small floor
+is expected — wrong-occasion outfits and severe risk-tolerance
+violations should still veto.
+
+**Degraded:** 5–15%. Either the prompt is drifting back toward the old
+veto rule or the architect is seeding genuinely off-occasion outfits
+into the composer. Pull a sample of `unsuitable=true` rows and read
+the `rationale` field to triage.
+
+**Unhealthy:** >15% sustained. A prompt regression — the rater has
+re-acquired an aggregate-veto behavior. Diff `prompt/outfit_rater.md`
+against the post-#89 version and revert the offending change.
+
+> Note: the upstream signal here is `tool_traces.rater_decision.output_json`
+> (one row per turn that ran the rater). If you see zero rows for a
+> day where Panel 4 shows non-zero turn volume, the rater isn't being
+> reached — investigate the composer/pool-unsuitable / threshold-gate
+> branch upstream.
+
+---
+
+## Panel 19 — Composer Latency (May 5 2026, PR #95 baseline)
+
+**Question:** what's the per-attempt composer wall-clock latency, and
+is the gpt-5.4 promotion (PR #81) still inside the latency budget?
+
+**Context:** PR #81 moved the composer from gpt-5-mini to gpt-5.4 (~25×
+cost, also slower). Until PR #95 the composer's `model_call_logs`
+rows had `latency_ms = 0` — the column was never populated, so any
+prior p50/p95 panel was blind. PR #95 wired the actual wall-clock
+through `_record_attempt`. This panel is the first real composer
+latency view post-fix.
+
+```sql
+-- composer_latency_p50_p95_last_7d
+SELECT
+    date_trunc('day', created_at) AS day,
+    call_type, -- 'outfit_composer' (first attempt) vs 'outfit_composer_retry1'
+    COUNT(*) AS calls,
+    percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms) AS p50_ms,
+    percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_ms,
+    MAX(latency_ms) AS p_max_ms
+FROM model_call_logs
+WHERE call_type LIKE 'outfit_composer%'
+  AND created_at >= now() - interval '7 days'
+  AND latency_ms IS NOT NULL
+  AND latency_ms > 0  -- exclude pre-PR-#95 zero-rows when reading historical data
+GROUP BY 1, 2
+ORDER BY 1 DESC, 2;
+```
+
+**Healthy:** First-attempt p50 8–12s, p95 ≤18s on gpt-5.4. Retry rows
+should be a small fraction of total calls (PR #80 retry path) and have
+similar latency since they're the same model.
+
+**Degraded:** p95 climbs above 20s — the composer is fighting prompt
+size (see Panel 17) or gpt-5.4 itself is degrading. Cross-check Panel
+17's prompt-token p95 to disambiguate.
+
+**Unhealthy:** p95 >25s sustained, or retry call_type rate climbs
+above 5% — the composer is hallucinating product_ids and burning
+double tokens to recover. Check `tool_traces.composer_decision`
+`drop_reasons` for a recent sample.
+
+---
+
+## Panel 20 — Episodic Memory Population (May 5 2026, PR #90 / #92)
+
+**Question:** is the architect actually receiving non-empty episodic
+memory for our active users, or are timelines silently empty?
+
+**Context:** PR #90 added `list_recent_user_actions(...)`; PR #92
+fixed a silent PostgREST 400-error caused by a snake/Pascal column
+mismatch that was returning an empty timeline for every user. We want
+visibility on the population rate so a future regression of the same
+shape can't hide for hours again.
+
+The signal is approximate — we count distinct users with ≥1
+`feedback_events` row in the last 30 days, against distinct users
+with ≥1 turn in the same window. Users with no feedback history
+genuinely have no episodic signal yet (cold start is correct), so the
+ratio plateaus below 100% at steady state — what we're guarding
+against is a sudden *drop*.
+
+```sql
+-- episodic_memory_population_rate_last_7d
+WITH recent_users AS (
+    SELECT DISTINCT user_id
+    FROM dependency_validation_events
+    WHERE event_type = 'turn_completed'
+      AND created_at >= now() - interval '30 days'
+),
+users_with_feedback AS (
+    SELECT DISTINCT user_id
+    FROM feedback_events
+    WHERE event_type IN ('like', 'dislike')
+      AND created_at >= now() - interval '30 days'
+)
+SELECT
+    (SELECT COUNT(*) FROM recent_users)                                AS recent_active_users,
+    (SELECT COUNT(*) FROM users_with_feedback)                         AS users_with_episodic_signal,
+    round(
+        100.0 * (SELECT COUNT(*) FROM users_with_feedback)::numeric
+        / nullif((SELECT COUNT(*) FROM recent_users), 0),
+        2
+    ) AS population_pct;
+```
+
+**Healthy:** `population_pct` is whatever steady-state shakes out to
+once a few weeks of post-#92 traffic accumulate (we don't have a hard
+target — most products see 30–60% of active users with feedback
+history). The point is *no sudden change*.
+
+**Degraded:** `population_pct` drops by ≥20 percentage points
+week-over-week without a corresponding feature change. Likely
+suspects: (a) the heart/X buttons in `ui.py` regressed and stopped
+emitting `feedback_events`, (b) RLS or schema drift on
+`feedback_events`, (c) `_persist_chat_feedback` in the orchestrator
+errored silently.
+
+**Unhealthy:** drops to ≤5% — same recurrence of the PR #92 failure
+mode (silent 400, swallowed exception). With PR #93's `_log.warning`
+on the silent `except` blocks, the cause should now appear in logs
+— grep `list_recent_user_actions` and `aggregate_archetypal_feedback`
+for warnings.
+
+> Future panel: a per-turn signal (was the architect's
+> `recent_user_actions` payload non-empty?). That requires the
+> orchestrator to surface the count into `metadata_json.episodic_memory_event_count`,
+> a small follow-up. Until then, this user-level rate is the proxy.
+
+---
+
 ## How to refresh
 
 1. Open Supabase Studio (or your preferred SQL client) connected to staging.
