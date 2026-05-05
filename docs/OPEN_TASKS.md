@@ -87,7 +87,9 @@ The architect alone pays nearly half the bill (10.5K tokens at gpt-5.5 pricing).
 - **Architect prompt size.** PR #29 trimmed it to 4.8K tokens but it can shrink further — anchor + follow-up modules are conditionally appended; review if the base prompt has dead sections.
 - **Try-on render count.** 3 × Gemini renders at $0.039 each. If the LLM Rater's `fashion_score` is highly predictive of which outfits would render well, render only the top 1 first and over-render only on visual-eval failure.
 
-**Trigger to act:** $0.30+/turn average sustained, or the LLM-cost-budget alert fires.
+**Re-baseline note (May 5, 2026):** the table above predates two model changes that should reduce these numbers — planner moved to `gpt-5-mini` (~$0.041 → ~$0.001) and architect re-tiered to `gpt-5.4` with `reasoning_effort=medium` (input price 50% lower, output price 67% lower vs gpt-5.5 — expected $0.127 → ~$0.04–0.06 depending on reasoning-token mix). Re-pull a single representative turn after a week of production traffic to refresh the breakdown before deciding which angles to pursue further.
+
+**Trigger to act:** $0.30+/turn average sustained (after re-baseline), or the LLM-cost-budget alert fires.
 
 ---
 
@@ -111,7 +113,7 @@ What we need to learn from production:
 
 **Status:** queued · **Cost:** dev time only · **Risk:** medium (routing accuracy regression would be user-visible)
 
-May 5, 2026 swapped CopilotPlanner from `gpt-5.5` → `gpt-5-mini` ([copilot_planner.py:220](modules/agentic_application/src/agentic_application/agents/copilot_planner.py:220)) on the argument that strict-JSON-schema enums make the planner's task structurally similar to other gpt-5-mini callers (Composer, Rater, visual_evaluator), and the architecture-grade reasoning (body × palette × occasion → catalog queries) lives downstream in OutfitArchitect, which stays on gpt-5.5. Pricing ratio is ~33× (gpt-5.5 input $5/M, gpt-5-mini input $0.15/M) so the planner line item should drop from ~$0.041/turn → ~$0.001/turn — meaningful given planner runs on every turn including non-recommendation ones.
+May 5, 2026 swapped CopilotPlanner from `gpt-5.5` → `gpt-5-mini` ([copilot_planner.py:220](modules/agentic_application/src/agentic_application/agents/copilot_planner.py:220)) on the argument that strict-JSON-schema enums make the planner's task structurally similar to other gpt-5-mini callers (Composer, Rater, visual_evaluator). The architecture-grade reasoning (body × palette × occasion → catalog queries) still lives downstream in OutfitArchitect, which has its own re-tiering work (see "Architect re-tier" below). Pricing ratio is ~33× (gpt-5.5 input $5/M, gpt-5-mini input $0.15/M) so the planner line item should drop from ~$0.041/turn → ~$0.001/turn — meaningful given planner runs on every turn including non-recommendation ones.
 
 **The change shipped without an offline eval first.** Validating it as production data accumulates:
 
@@ -130,4 +132,30 @@ May 5, 2026 swapped CopilotPlanner from `gpt-5.5` → `gpt-5-mini` ([copilot_pla
 **Trigger to act on item 1:** within 1 week of merge, while the gpt-5.5 baseline is still fresh in production traces. Items 2–3 are ongoing — no specific trigger, just wire the panels and watch.
 
 **Rollback path:** swap the default in [copilot_planner.py:220](modules/agentic_application/src/agentic_application/agents/copilot_planner.py:220) back to `"gpt-5.5"`; the orchestrator's log/trace sites read from `self._copilot_planner._model` so they pick up the change automatically. One-line revert.
+
+---
+
+## Architect re-tier — gpt-5.4 + reasoning_effort=medium (May 5, 2026)
+
+**Status:** queued · **Cost:** dev time only · **Risk:** medium (architect drives retrieval quality across the entire pipeline — a regression here surfaces as worse outfits, not as an error)
+
+May 5, 2026 retiered OutfitArchitect from `gpt-5.5` → `gpt-5.4` and explicitly set `reasoning_effort="medium"` ([outfit_architect.py:227](modules/agentic_application/src/agentic_application/agents/outfit_architect.py:227)). The model swap is the doc-aligned cost lever (OpenAI's lineup positions gpt-5.4 as the lower-cost reasoning tier — input $2.50/M vs $5.00/M, output $10/M vs $30/M); the explicit effort knob lets us tune within-model chain-of-thought without changing models again. Reasoning effort is wired through `AuraRuntimeConfig.architect_reasoning_effort` so it's flippable per-environment via `ARCHITECT_REASONING_EFFORT` (low | medium | high) without code change. Both values are written into `model_call_logs.request_json` for every architect call so the parameter is auditable post-fact.
+
+What we need to learn:
+
+1. **Cost re-baseline.** Architect was 43% of per-turn cost ($0.127) at gpt-5.5. Expected drop to ~$0.04–0.06 at gpt-5.4 with medium effort, but the actual depends on the reasoning-token mix that "medium" emits. Pull a representative turn after a week and compare against the May-3 baseline. Update the breakdown table in this file.
+
+2. **Latency re-baseline.** Architect was 4–8s typical, 37.5s on the May-3 outlier. Reasoning-effort steps tend to move latency proportionally with reasoning-token count. Confirm the new median/p95 in `turn_traces.steps[]` filtered by `step="outfit_architect"`.
+
+3. **Retrieval-quality regression check.** This is the one to actually worry about. The architect's output drives directions / hard_filters / query_documents — bad output means worse retrievals means worse outfits. Two signals:
+   - **`catalog_low_confidence` rate** — already tracked in OPEN_TASKS Phase 2 trigger condition. A spike post-May-5 = architect is producing weaker queries.
+   - **Spot-check 50 production turns** for direction sensibility (right archetype mix, right palette pulls, right formality level) by hand. Not automatable today, but high-signal.
+
+4. **A/B knob — try `low` once `medium` looks stable.** If the cost panel says "good, no quality regression," step the env var to `low` for a week and re-run the same checks. If `medium` itself regresses, step to `high` instead (cheaper than reverting all the way to gpt-5.5).
+
+**Trigger to act on items 1–2:** within 1 week of merge while the gpt-5.5 baseline is still fresh. **Item 3** is ongoing — wire the catalog_low_confidence panel and watch.
+
+**Rollback path:** two layers, in order of aggressiveness:
+- **Effort only:** `ARCHITECT_REASONING_EFFORT=high` env var (no code change, picks up at next process restart).
+- **Model only:** revert the default in [outfit_architect.py:227](modules/agentic_application/src/agentic_application/agents/outfit_architect.py:227) from `"gpt-5.4"` back to `"gpt-5.5"`. Orchestrator log/trace sites read `self.outfit_architect._model` so they pick up automatically.
 

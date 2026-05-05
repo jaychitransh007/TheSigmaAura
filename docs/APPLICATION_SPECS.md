@@ -2190,7 +2190,7 @@ Implemented:
 - `response_type` field: `"recommendation"` | `"clarification"`
 - saved user context loading
 - conversation memory carry-forward
-- LLM-only architect planner — no deterministic fallback (model: `gpt-5.5`)
+- LLM-only architect planner — no deterministic fallback (model: `gpt-5.4` since May 5, 2026; `reasoning_effort=medium` via the Responses API; was `gpt-5.5` May 1–4, `gpt-5.4` before)
 - strict JSON schema with enum-constrained hard filter vocabulary
 - hard filters: `gender_expression` (always), `garment_subtype` (conditional — only when user names a specific garment type); `garment_category` and `styling_completeness` are **soft signals** in the query document text only (April 9 2026 tiering)
 - soft signals via embedding only: `occasion_fit`, `formality_level`, `time_of_day`
