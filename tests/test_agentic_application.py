@@ -6276,6 +6276,27 @@ class RaterOnlyPipelineTests(unittest.TestCase):
         self.assertEqual("A confident pairing.", result["outfits"][0]["reasoning"])
 
 
+class ArchitectConstructorValidationTests(unittest.TestCase):
+    """PR #45 review follow-up — the constructor validates
+    reasoning_effort so direct instantiation (tests, future services)
+    fails loud at construction rather than at OpenAI-request time.
+    """
+
+    def test_accepts_valid_efforts(self) -> None:
+        for effort in ("low", "medium", "high"):
+            OutfitArchitect(reasoning_effort=effort)  # no raise
+
+    def test_rejects_invalid_effort(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            OutfitArchitect(reasoning_effort="very_high")
+        self.assertIn("reasoning_effort", str(ctx.exception))
+
+    def test_default_is_medium(self) -> None:
+        a = OutfitArchitect()
+        self.assertEqual("medium", a._reasoning_effort)
+        self.assertEqual("gpt-5.4", a._model)
+
+
 class ArchitectPromptAssemblyTests(unittest.TestCase):
     """May 3, 2026 — Lever 2 of the perf plan: anchor + follow-up rules
     are loaded only when the request actually needs them, trimming

@@ -250,7 +250,13 @@ class AgenticOrchestrator:
         # Architect reasoning effort flows from AuraRuntimeConfig so it
         # can be flipped per-environment (ARCHITECT_REASONING_EFFORT) for
         # the ongoing measure-and-decide work without a code change.
-        _architect_effort = getattr(config, "architect_reasoning_effort", "medium")
+        # Type-check at the boundary: tests pass `config=Mock()` and
+        # Mock auto-creates attribute access (so getattr-with-default
+        # would still return a Mock). Coerce anything non-string to
+        # the constructor default so the constructor's own validation
+        # only ever sees real strings.
+        _architect_effort_raw = getattr(config, "architect_reasoning_effort", "medium")
+        _architect_effort = _architect_effort_raw if isinstance(_architect_effort_raw, str) else "medium"
         self.outfit_architect = OutfitArchitect(reasoning_effort=_architect_effort)
         # OutfitCheckAgent removed (Phase 12B cleanup, April 9 2026) — the
         # VisualEvaluatorAgent replaced all of its call sites. The legacy
@@ -1292,7 +1298,10 @@ class AgenticOrchestrator:
         # follow the agent's _model attribute rather than a hardcoded
         # literal we'd otherwise have to keep in sync (May 5, 2026
         # gpt-5.5 → gpt-5-mini swap exposed how easy that drift is).
-        _planner_model = getattr(self._copilot_planner, "_model", "gpt-5-mini")
+        # Direct attribute access (not getattr-with-default) so a future
+        # rename of _model fails loud here instead of silently falling
+        # back to a stale literal — see PR #44 review feedback.
+        _planner_model = self._copilot_planner._model
         emit("copilot_planner", "started")
         trace_start("copilot_planner", model=_planner_model, input_summary=f"message={message[:80]}, has_image={bool(image_data)}")
         t0 = time.monotonic()
@@ -4583,9 +4592,11 @@ class AgenticOrchestrator:
         # Read model + reasoning effort from the agent so the trace +
         # log rows always reflect what was actually called (May 5, 2026
         # gpt-5.5 → gpt-5.4 + medium-effort swap exposed how easy
-        # hardcoded-literal drift is here).
-        _architect_model = getattr(self.outfit_architect, "_model", "gpt-5.4")
-        _architect_effort_used = getattr(self.outfit_architect, "_reasoning_effort", "medium")
+        # hardcoded-literal drift is here). Direct attribute access
+        # rather than getattr-with-default so a future rename fails loud
+        # here instead of silently falling back to a stale literal.
+        _architect_model = self.outfit_architect._model
+        _architect_effort_used = self.outfit_architect._reasoning_effort
         emit("outfit_architect", "started")
         trace_start("outfit_architect", model=_architect_model, input_summary=f"message={message[:80]}")
         t0 = time.monotonic()
@@ -4602,7 +4613,17 @@ class AgenticOrchestrator:
                 call_type="outfit_architect",
                 model=_architect_model,
                 request_json={
-                    "combined_context_summary": {"gender": user_context.gender, "message": message},
+                    # Same shape as the success-path log below — the
+                    # error case used to drop occasion + is_followup,
+                    # which made model_call_logs harder to slice on
+                    # failures by occasion mix. initial_live_context is
+                    # in scope and is what the architect actually saw.
+                    "combined_context_summary": {
+                        "gender": user_context.gender,
+                        "occasion": initial_live_context.occasion_signal,
+                        "message": message,
+                        "is_followup": initial_live_context.is_followup,
+                    },
                     "reasoning_effort": _architect_effort_used,
                 },
                 response_json={},
