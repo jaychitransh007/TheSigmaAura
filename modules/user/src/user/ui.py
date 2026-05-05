@@ -510,6 +510,32 @@ def get_onboarding_html() -> str:
       color: var(--muted);
       line-height: 1.5;
     }
+    /* May 2026: replaced the multi-layer style-image picker with a
+       single risk-tolerance choice. Style-* selectors below kept as
+       no-ops; cleanup in a follow-up. */
+    .risk-shell { display: grid; gap: 16px; }
+    .risk-options { display: grid; gap: 12px; }
+    .risk-card {
+      text-align: left;
+      padding: 16px 18px;
+      background: var(--surface-sunk);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: border-color 160ms ease, background 160ms ease;
+    }
+    .risk-card:hover { border-color: var(--line-strong); }
+    .risk-card.selected {
+      border-color: var(--accent);
+      background: rgba(92, 26, 27, 0.05);
+    }
+    .risk-card-label {
+      font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 4px;
+    }
+    .risk-card-desc {
+      font-size: 13px; color: var(--ink-3); line-height: 1.45;
+    }
     .style-shell {
       display: grid;
       gap: 18px;
@@ -838,27 +864,30 @@ def get_onboarding_html() -> str:
           </div>
         </div>
 
-        <div class="step" id="step-style">
-          <h2 class="step-title">Select the outfits that feel like you.</h2>
-          <p class="step-desc">Choose between 3 and 5 images. More options will appear progressively as soon as your first and second choices sharpen the direction.</p>
-          <div class="style-shell">
-            <div class="style-counter" id="styleCounter">0 of 3-5 selected</div>
-            <div class="style-layer">
-              <div class="style-grid" id="styleLayer1"></div>
+        <div class="step" id="step-risk">
+          <h2 class="step-title">How adventurous do you want to dress?</h2>
+          <p class="step-desc">One quick calibration so we know how bold to go with statement pieces. You can change this anytime in your profile.</p>
+          <div class="risk-shell">
+            <div class="risk-options" id="riskOptions">
+              <button type="button" class="risk-card" data-value="conservative">
+                <div class="risk-card-label">Stay in my lane</div>
+                <div class="risk-card-desc">Safe, polished, classic combinations. Skip the statement pieces.</div>
+              </button>
+              <button type="button" class="risk-card selected" data-value="balanced">
+                <div class="risk-card-label">A little of both</div>
+                <div class="risk-card-desc">Mostly clean and grounded, with the occasional bolder accent.</div>
+              </button>
+              <button type="button" class="risk-card" data-value="expressive">
+                <div class="risk-card-label">Make it a statement</div>
+                <div class="risk-card-desc">Lean into bolder colour, silhouette, and pattern when it works.</div>
+              </button>
             </div>
-            <div class="style-layer hidden" id="styleLayer2Block">
-              <div class="style-separator">More in this direction</div>
-              <div class="style-grid" id="styleLayer2"></div>
-            </div>
-            <div class="style-layer hidden" id="styleLayer3Block">
-              <div class="style-separator">Push the signal further</div>
-              <div class="style-grid" id="styleLayer3"></div>
-            </div>
+            <input id="riskInput" type="hidden" value="balanced" />
           </div>
-          <div class="error" id="styleErr"></div>
+          <div class="error" id="riskErr"></div>
           <div class="actions">
             <button class="btn secondary" data-back="7">Back</button>
-            <button class="btn primary" id="saveStyleBtn" disabled>Continue to Profile Processing</button>
+            <button class="btn primary" id="saveRiskBtn">Continue to Profile Processing</button>
           </div>
         </div>
 
@@ -901,7 +930,7 @@ def get_onboarding_html() -> str:
       "dob",
       "body",
       "profession",
-      "style",
+      "risk",
       "done"
     ];
 
@@ -947,18 +976,11 @@ def get_onboarding_html() -> str:
         fullbody: createCropState("fullbody"),
         headshot: createCropState("headshot")
       },
-      style: {
-        gender: "male",
-        pool: [],
-        layer1: [],
-        layer2: [],
-        layer3: [],
-        layer2Triggered: false,
-        layer3Triggered: false,
-        selectedEvents: [],
-        shownImages: [],
-        loaded: false
-      }
+      // May 2026: replaced multi-layer style image picker with a single
+      // risk-tolerance choice. Default "balanced" is the most common
+      // pick and matches what the architect/rater fall back to when
+      // risk_tolerance is unset.
+      risk: { value: "balanced" }
     };
 
     function createCropState(key) {
@@ -990,12 +1012,6 @@ def get_onboarding_html() -> str:
 
     const progressBar = document.getElementById("progressBar");
     const stepMeta = document.getElementById("stepMeta");
-    const styleCounter = document.getElementById("styleCounter");
-    const styleLayer1 = document.getElementById("styleLayer1");
-    const styleLayer2 = document.getElementById("styleLayer2");
-    const styleLayer3 = document.getElementById("styleLayer3");
-    const styleLayer2Block = document.getElementById("styleLayer2Block");
-    const styleLayer3Block = document.getElementById("styleLayer3Block");
 
     function initProgress() {
       progressBar.innerHTML = "";
@@ -1023,9 +1039,8 @@ def get_onboarding_html() -> str:
         ? "Ready for the platform"
         : "Step " + (index + 1) + " of " + visibleStepCount;
 
-      if (STEP_ORDER[index] === "style") {
-        ensureStyleSession();
-      }
+      // May 2026: removed ensureStyleSession() — risk-tolerance step
+      // has no async setup, the cards are baked into the HTML.
     }
 
     function showError(id, message) {
@@ -1141,215 +1156,21 @@ def get_onboarding_html() -> str:
       return /^\+?\d{10,15}$/.test(value);
     }
 
-    function stylePoolFind(matchFn, excludeIds) {
-      return state.style.pool.find((image) => !excludeIds.has(image.id) && matchFn(image)) || null;
-    }
-
-    function findBlendImage(arch1, arch2, excludeIds) {
-      return stylePoolFind((image) => image.imageType === "blend" && (
-        (image.primaryArchetype === arch1 && image.secondaryArchetype === arch2) ||
-        (image.primaryArchetype === arch2 && image.secondaryArchetype === arch1)
-      ), excludeIds);
-    }
-
-    function styleFallback(baseArchetype, excludeIds, preferred) {
-      for (const query of preferred) {
-        const match = stylePoolFind((image) => {
-          if (query.imageType && image.imageType !== query.imageType) return false;
-          if (query.primaryArchetype && image.primaryArchetype !== query.primaryArchetype) return false;
-          if (query.secondaryArchetype !== undefined && image.secondaryArchetype !== query.secondaryArchetype) return false;
-          if (query.intensity && image.intensity !== query.intensity) return false;
-          if (query.context && image.context !== query.context) return false;
-          return true;
-        }, excludeIds);
-        if (match) return match;
-      }
-      return stylePoolFind(() => true, excludeIds);
-    }
-
-    function renderStyleGrid(container, images, layerNumber) {
-      container.innerHTML = "";
-      images.forEach((image) => {
-        const card = document.createElement("button");
-        card.type = "button";
-        card.className = "style-card";
-        card.dataset.imageId = image.id;
-        card.innerHTML = '<img alt="" loading="lazy" src="' + image.imageUrl + '" /><span class="style-badge"></span>';
-        card.addEventListener("click", () => toggleStyleSelection(image, layerNumber));
-        container.appendChild(card);
-      });
-      syncStyleSelectionUI();
-    }
-
-    function syncStyleSelectionUI() {
-      const selectedIds = new Map(state.style.selectedEvents.map((event, index) => [event.image.id, index + 1]));
-      document.querySelectorAll(".style-card").forEach((card) => {
-        const order = selectedIds.get(card.dataset.imageId);
-        card.classList.toggle("selected", Boolean(order));
-        const badge = card.querySelector(".style-badge");
-        badge.textContent = order ? String(order) : "";
-      });
-      styleCounter.textContent = state.style.selectedEvents.length + " of 3-5 selected";
-      document.getElementById("saveStyleBtn").disabled = !(state.style.selectedEvents.length >= 3 && state.style.selectedEvents.length <= 5);
-    }
-
-    function currentShownImages() {
-      return [...state.style.layer1, ...state.style.layer2, ...state.style.layer3];
-    }
-
-    function createSelectionEvent(image, layerNumber) {
-      return {
-        image,
-        layer: layerNumber,
-        position: image.position || null,
-        selectionOrder: state.style.selectedEvents.length + 1
-      };
-    }
-
-    function toggleStyleSelection(image, layerNumber) {
-      hideError("styleErr");
-      const existingIndex = state.style.selectedEvents.findIndex((event) => event.image.id === image.id);
-      if (existingIndex >= 0) {
-        state.style.selectedEvents.splice(existingIndex, 1);
-        state.style.selectedEvents.forEach((event, index) => {
-          event.selectionOrder = index + 1;
+    // May 2026: replaced 200+ lines of multi-layer style image-pool
+    // helpers with a single bindRiskCards() that wires the
+    // .risk-card buttons to update state.risk.value + the hidden input.
+    function bindRiskCards() {
+      var cards = document.querySelectorAll('#riskOptions .risk-card');
+      cards.forEach(function(card) {
+        card.addEventListener('click', function() {
+          var value = card.getAttribute('data-value') || 'balanced';
+          state.risk.value = value;
+          document.getElementById('riskInput').value = value;
+          cards.forEach(function(c) { c.classList.toggle('selected', c === card); });
         });
-        syncStyleSelectionUI();
-        return;
-      }
-      if (state.style.selectedEvents.length >= 5) {
-        showError("styleErr", "You can select up to 5 images.");
-        return;
-      }
-      state.style.selectedEvents.push(createSelectionEvent(image, layerNumber));
-      if (layerNumber === 1 && !state.style.layer2Triggered) {
-        generateLayer2(image);
-      }
-      if (layerNumber === 2 && !state.style.layer3Triggered) {
-        generateLayer3(image);
-      }
-      syncStyleSelectionUI();
-    }
-
-    function generateLayer2(triggerImage) {
-      const adjacency = state.style.adjacency[triggerImage.primaryArchetype];
-      const usedIds = new Set(currentShownImages().map((image) => image.id));
-      const candidates = [
-        stylePoolFind((image) => image.primaryArchetype === triggerImage.primaryArchetype && image.imageType === "pure" && !image.secondaryArchetype && image.intensity === "bold", usedIds),
-        findBlendImage(triggerImage.primaryArchetype, adjacency.near, usedIds),
-        findBlendImage(triggerImage.primaryArchetype, adjacency.far, usedIds),
-        stylePoolFind((image) => image.primaryArchetype === triggerImage.primaryArchetype && image.imageType === "pure" && !image.secondaryArchetype && image.intensity === "restrained", usedIds)
-      ];
-      const next = [];
-      candidates.forEach((candidate, idx) => {
-        const image = candidate || styleFallback(triggerImage.primaryArchetype, usedIds, [
-          { primaryArchetype: triggerImage.primaryArchetype, secondaryArchetype: null, imageType: "pure", intensity: "moderate" },
-          { primaryArchetype: triggerImage.primaryArchetype, secondaryArchetype: null, imageType: "context", context: "casual" },
-          { primaryArchetype: triggerImage.primaryArchetype, secondaryArchetype: adjacency.third, imageType: "blend" },
-          { primaryArchetype: adjacency.near, secondaryArchetype: null, imageType: "pure", intensity: "moderate" }
-        ]);
-        usedIds.add(image.id);
-        next.push({ ...image, position: idx + 1 });
       });
-      state.style.layer2 = next;
-      state.style.layer2Triggered = true;
-      styleLayer2Block.classList.remove("hidden");
-      renderStyleGrid(styleLayer2, next, 2);
     }
 
-    function generateLayer3(triggerImage) {
-      const baseTrigger = state.style.selectedEvents.find((event) => event.layer === 1);
-      if (!baseTrigger) return;
-      const baseArchetype = baseTrigger.image.primaryArchetype;
-      const adjacency = state.style.adjacency[baseArchetype];
-      const usedIds = new Set(currentShownImages().map((image) => image.id));
-      let queries = [];
-      if (triggerImage.position === 1) {
-        queries = [
-          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "casual" },
-          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "elevated" },
-          { primaryArchetype: baseArchetype, secondaryArchetype: adjacency.third, imageType: "blend" },
-          { primaryArchetype: adjacency.near, secondaryArchetype: null, imageType: "pure", intensity: "moderate" }
-        ];
-      } else if (triggerImage.position === 2) {
-        const blendArchetype = triggerImage.secondaryArchetype || triggerImage.primaryArchetype;
-        const blendAdjacency = state.style.adjacency[blendArchetype];
-        queries = [
-          { primaryArchetype: blendArchetype, secondaryArchetype: null, imageType: "pure", intensity: "moderate" },
-          { primaryArchetype: blendArchetype, secondaryArchetype: null, imageType: "pure", intensity: "bold" },
-          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "casual" },
-          { primaryArchetype: blendArchetype, secondaryArchetype: blendAdjacency.near, imageType: "blend" }
-        ];
-      } else if (triggerImage.position === 3) {
-        const farArchetype = triggerImage.secondaryArchetype || triggerImage.primaryArchetype;
-        queries = [
-          { primaryArchetype: farArchetype, secondaryArchetype: null, imageType: "pure", intensity: "moderate" },
-          { primaryArchetype: farArchetype, secondaryArchetype: null, imageType: "pure", intensity: "restrained" },
-          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "elevated" },
-          { primaryArchetype: farArchetype, secondaryArchetype: state.style.adjacency[farArchetype].near, imageType: "blend" }
-        ];
-      } else {
-        queries = [
-          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "casual" },
-          { primaryArchetype: adjacency.near, secondaryArchetype: null, imageType: "pure", intensity: "restrained" },
-          { primaryArchetype: adjacency.far, secondaryArchetype: null, imageType: "pure", intensity: "restrained" },
-          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "elevated" }
-        ];
-      }
-      const next = [];
-      queries.forEach((query, idx) => {
-        const image = (
-          query.imageType === "blend" && query.secondaryArchetype
-            ? findBlendImage(query.primaryArchetype, query.secondaryArchetype, usedIds)
-            : stylePoolFind((candidate) => {
-                if (candidate.primaryArchetype !== query.primaryArchetype) return false;
-                if ((query.secondaryArchetype || null) !== (candidate.secondaryArchetype || null)) return false;
-                if (candidate.imageType !== query.imageType) return false;
-                if (query.intensity && candidate.intensity !== query.intensity) return false;
-                if (query.context && candidate.context !== query.context) return false;
-                return true;
-              }, usedIds)
-        ) || styleFallback(baseArchetype, usedIds, [
-          query,
-          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "casual" },
-          { primaryArchetype: baseArchetype, secondaryArchetype: null, imageType: "context", context: "elevated" },
-          { primaryArchetype: adjacency.third, secondaryArchetype: null, imageType: "pure", intensity: "moderate" }
-        ]);
-        usedIds.add(image.id);
-        next.push({ ...image, position: idx + 1 });
-      });
-      state.style.layer3 = next;
-      state.style.layer3Triggered = true;
-      styleLayer3Block.classList.remove("hidden");
-      renderStyleGrid(styleLayer3, next, 3);
-    }
-
-    async function ensureStyleSession() {
-      if (!state.userId || state.style.loaded) return;
-      hideError("styleErr");
-      const response = await fetch("/v1/onboarding/style/session/" + encodeURIComponent(state.userId));
-      const data = await response.json();
-      if (!response.ok) {
-        showError("styleErr", extractError(data, "Unable to load style archetype images"));
-        return;
-      }
-      state.style.gender = data.gender;
-      state.style.pool = data.pool || [];
-      state.style.layer1 = data.layer1 || [];
-      state.style.adjacency = data.adjacency || {};
-      state.style.layer2 = [];
-      state.style.layer3 = [];
-      state.style.selectedEvents = [];
-      state.style.layer2Triggered = false;
-      state.style.layer3Triggered = false;
-      state.style.loaded = true;
-      styleLayer2Block.classList.add("hidden");
-      styleLayer3Block.classList.add("hidden");
-      renderStyleGrid(styleLayer1, state.style.layer1, 1);
-      styleLayer2.innerHTML = "";
-      styleLayer3.innerHTML = "";
-      syncStyleSelectionUI();
-    }
 
     function prefillFromStatus(status) {
       // Pre-fill form fields from existing profile data
@@ -1378,15 +1199,13 @@ def get_onboarding_html() -> str:
           btn.classList.toggle("selected", btn.dataset.value === status.profession);
         });
       }
-      // Set gender in style state for session filtering
-      if (status.gender) state.style.gender = (status.gender === "female") ? "female" : "male";
     }
 
     function determineResumeDestination(status) {
       const uploaded = Array.isArray(status.images_uploaded) ? status.images_uploaded : [];
       const hasAllImages = REQUIRED_IMAGE_CATEGORIES.every((c) => uploaded.includes(c));
 
-      // New step order: mobile(0), otp(1), name(2), gender(3), images(4), dob(5), body(6), profession(7), style(8), done(9)
+      // Step order: mobile(0), otp(1), name(2), gender(3), images(4), dob(5), body(6), profession(7), risk(8), done(9)
       if (status.onboarding_complete) return { type: "processing" };
       if (!status.name) return { type: "step", index: 2 };
       if (!status.gender) return { type: "step", index: 3 };
@@ -1394,7 +1213,10 @@ def get_onboarding_html() -> str:
       if (!status.date_of_birth) return { type: "step", index: 5 };
       if (!status.height_cm || !status.waist_cm) return { type: "step", index: 6 };
       if (!status.profession) return { type: "step", index: 7 };
-      if (!status.style_preference_complete) return { type: "step", index: 8 };
+      // May 2026: style_preference_complete dropped. Risk-tolerance is
+      // now the final step; users with a saved risk_tolerance skip
+      // straight to processing. New users always land on the risk step.
+      if (!status.risk_tolerance) return { type: "step", index: 8 };
       return { type: "processing" };
     }
 
@@ -1711,7 +1533,6 @@ def get_onboarding_html() -> str:
           showError("genderErr", "Select a gender option.");
           return;
         }
-        state.style.gender = (gender === "female") ? "female" : "male";
         // Incremental save
         try { await patchJson("/v1/onboarding/profile/partial", { user_id: state.userId, gender }); } catch(_) {}
         setStep(4); // → images
@@ -1811,26 +1632,26 @@ def get_onboarding_html() -> str:
           button.textContent = "Upload Photos and Continue";
         }
       });
-      document.getElementById("saveStyleBtn").addEventListener("click", async () => {
-        hideError("styleErr");
-        const button = document.getElementById("saveStyleBtn");
-        if (state.style.selectedEvents.length < 3 || state.style.selectedEvents.length > 5) {
-          showError("styleErr", "Select between 3 and 5 images.");
+      document.getElementById("saveRiskBtn").addEventListener("click", async () => {
+        hideError("riskErr");
+        const button = document.getElementById("saveRiskBtn");
+        const value = String(state.risk.value || "balanced");
+        if (!["conservative", "balanced", "expressive"].includes(value)) {
+          showError("riskErr", "Pick one option to continue.");
           return;
         }
         button.disabled = true;
         button.textContent = "Saving...";
         try {
-          await postJson("/v1/onboarding/style/complete", {
+          await postJson("/v1/onboarding/risk-tolerance", {
             user_id: state.userId,
-            shown_images: currentShownImages(),
-            selections: state.style.selectedEvents
-          }, "Unable to save style preference");
+            risk_tolerance: value
+          }, "Unable to save preference");
           window.location.href = "/?user=" + encodeURIComponent(state.userId) + "&view=profile";
         } catch (error) {
-          showError("styleErr", String(error.message || error));
+          showError("riskErr", String(error.message || error));
         } finally {
-          button.disabled = !(state.style.selectedEvents.length >= 3 && state.style.selectedEvents.length <= 5);
+          button.disabled = false;
           button.textContent = "Continue to Profile Processing";
         }
       });
@@ -1846,6 +1667,7 @@ def get_onboarding_html() -> str:
     bindBackButtons();
     Object.values(state.cropper).forEach(bindCropper);
     bindFormActions();
+    bindRiskCards();
     setStep(0);
   </script>
 </body>
@@ -3080,11 +2902,7 @@ def get_processing_html(user_id: str = "") -> str:
         ["Height (cm)", profile.height_cm || ""],
         ["Waist (cm)", profile.waist_cm || ""],
         ["Profession", profile.profession || ""],
-        ["Primary Archetype", ((profile.style_preference || {}).primaryArchetype) || ""],
-        ["Secondary Archetype", ((profile.style_preference || {}).secondaryArchetype) || ""],
-        ["Risk Tolerance", ((profile.style_preference || {}).riskTolerance) || ""],
-        ["Formality Lean", ((profile.style_preference || {}).formalityLean) || ""],
-        ["Pattern Type", ((profile.style_preference || {}).patternType) || ""]
+        ["Risk Tolerance", ((profile.style_preference || {}).riskTolerance) || ""]
       ];
       ordered.forEach(([label, value]) => {
         const item = document.createElement("div");

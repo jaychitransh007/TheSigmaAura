@@ -108,6 +108,7 @@ class OnboardingStatusResponse(BaseModel):
     profile_complete: bool = False
     images_uploaded: List[str] = Field(default_factory=list)
     image_paths: Dict[str, str] = Field(default_factory=dict)
+    risk_tolerance: str = ""
     onboarding_complete: bool = False
     wardrobe_item_count: int = 0
 
@@ -174,45 +175,21 @@ class WardrobeSummaryResponse(BaseModel):
     gap_items: List[str] = Field(default_factory=list)
 
 
-class StyleArchetypeImage(BaseModel):
-    id: str
-    gender: Literal["male", "female"]
-    primaryArchetype: str
-    secondaryArchetype: Optional[str] = None
-    imageType: Literal["pure", "blend", "context"]
-    intensity: Literal["restrained", "moderate", "bold"]
-    context: Literal["neutral", "casual", "elevated"]
-    imageUrl: str
-    position: Optional[int] = None
+# May 2026: removed StyleArchetypeImage, StyleArchetypeSessionResponse,
+# StyleSelectionEventRequest, StylePreferenceCompleteRequest,
+# StylePreferenceResponse — all backed the multi-layer image-picker
+# onboarding step that's been replaced with a single risk-tolerance choice.
 
 
-class StyleArchetypeSessionResponse(BaseModel):
-    user_id: str
-    gender: Literal["male", "female"]
-    layer1: List[StyleArchetypeImage] = Field(default_factory=list)
-    pool: List[StyleArchetypeImage] = Field(default_factory=list)
-    adjacency: Dict[str, Dict[str, str]] = Field(default_factory=dict)
-    minSelections: int = 3
-    maxSelections: int = 5
-
-
-class StyleSelectionEventRequest(BaseModel):
-    image: Dict[str, Any]
-    layer: Literal[1, 2, 3]
-    position: Optional[int] = None
-    selectionOrder: int = Field(ge=1, le=5)
-
-
-class StylePreferenceCompleteRequest(BaseModel):
+class RiskToleranceRequest(BaseModel):
     user_id: str = Field(min_length=1)
-    shown_images: List[Dict[str, Any]] = Field(default_factory=list, min_length=8)
-    selections: List[StyleSelectionEventRequest] = Field(min_length=3, max_length=5)
+    risk_tolerance: Literal["conservative", "balanced", "expressive"]
 
 
-class StylePreferenceResponse(BaseModel):
+class RiskToleranceResponse(BaseModel):
     user_id: str
     saved: bool
-    style_preference: dict = Field(default_factory=dict)
+    risk_tolerance: str = ""
 
 
 class AnalysisStartRequest(BaseModel):

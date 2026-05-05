@@ -20,7 +20,8 @@ for p in (
         sys.path.insert(0, sp)
 
 from user.service import OnboardingService, _encrypt_filename
-from user.style_archetype import ARCHETYPE_ORDER
+# May 2026: user.style_archetype module deleted alongside the
+# multi-layer image-picker onboarding step.
 from user.analysis import UserAnalysisService
 from user.api import create_onboarding_router
 from user.ui import get_onboarding_html, get_processing_html, get_wardrobe_manager_html
@@ -282,10 +283,12 @@ class OnboardingTests(unittest.TestCase):
         self.assertIn("determineResumeDestination", html)
         # Resume destination redirects via "/?user=" + userId, not /onboard/processing
         self.assertIn('"/?user="', html)
-        self.assertIn("Select the outfits that feel like you.", html)
-        self.assertIn("/v1/onboarding/style/session/", html)
-        self.assertIn("/v1/onboarding/style/complete", html)
-        self.assertIn("saveStyleBtn", html)
+        # May 2026: replaced multi-layer style image-picker with a
+        # single risk-tolerance step. Old assertions for the picker
+        # are gone; the new step lives at /v1/onboarding/risk-tolerance.
+        self.assertIn("How adventurous do you want to dress?", html)
+        self.assertIn("/v1/onboarding/risk-tolerance", html)
+        self.assertIn("saveRiskBtn", html)
 
     def test_processing_html_contains_profile_summary_section(self) -> None:
         html = get_processing_html("user_123")
@@ -307,49 +310,9 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual("snap_1", run["id"])
         repo.create_analysis_snapshot.assert_not_called()
 
-    def test_get_style_archetype_session_returns_eight_base_images(self) -> None:
-        repo = Mock()
-        repo.get_profile_by_user_id.return_value = {
-            "user_id": "user_style",
-            "gender": "female",
-        }
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            service = OnboardingService(repo=repo, image_dir=tmp_dir)
-            session = service.get_style_archetype_session("user_style")
-
-        assert session is not None
-        self.assertEqual("user_style", session["user_id"])
-        self.assertEqual("female", session["gender"])
-        self.assertEqual(3, session["minSelections"])
-        self.assertEqual(5, session["maxSelections"])
-        self.assertEqual(8, len(session["layer1"]))
-        self.assertEqual(ARCHETYPE_ORDER, [image["primaryArchetype"] for image in session["layer1"]])
-        self.assertTrue(all(str(image["imageUrl"]).startswith("/v1/onboarding/style-assets/choices/") for image in session["layer1"]))
-
-    def test_style_archetype_asset_route_serves_local_choice_image(self) -> None:
-        service = Mock()
-        analysis_service = Mock()
-        app = FastAPI()
-        app.include_router(create_onboarding_router(service, analysis_service))
-        client = TestClient(app)
-
-        resp = client.get("/v1/onboarding/style-assets/choices/P001.png")
-
-        self.assertEqual(200, resp.status_code)
-        self.assertEqual("image/png", resp.headers["content-type"])
-        self.assertGreater(len(resp.content), 0)
-
-    def test_style_archetype_asset_route_rejects_unknown_file(self) -> None:
-        service = Mock()
-        analysis_service = Mock()
-        app = FastAPI()
-        app.include_router(create_onboarding_router(service, analysis_service))
-        client = TestClient(app)
-
-        resp = client.get("/v1/onboarding/style-assets/choices/not-real.png")
-
-        self.assertEqual(404, resp.status_code)
+    # May 2026: removed test_get_style_archetype_session_returns_eight_base_images +
+    # both /style-assets/choices/ tests — backed the multi-layer image-picker
+    # endpoints that no longer exist.
 
     def test_get_status_exposes_onboarding_completion(self) -> None:
         # May 2026: style_preference_complete column dropped; status no
@@ -378,37 +341,29 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(["full_body", "headshot"], status["images_uploaded"])
         self.assertEqual(3, status["wardrobe_item_count"])
 
-    def test_save_style_preference_persists_selected_images_map_and_count(self) -> None:
+    def test_save_risk_tolerance_persists_single_value_to_snapshot(self) -> None:
+        # May 2026: replaces test_save_style_preference_persists_selected_images_map_and_count.
+        # The multi-layer image-picker is gone; the single-step
+        # risk-tolerance flow writes only user_id + gender + risk_tolerance
+        # to user_style_preference_snapshots.
         repo = Mock()
         repo.get_profile_by_user_id.return_value = {
             "user_id": "user_style",
             "gender": "female",
             "profile_complete": True,
-            "style_preference_complete": False,
         }
         repo.get_image_categories.return_value = ["full_body", "headshot"]
-        shown_images = [
-            {"id": "P001", "primaryArchetype": "classic", "secondaryArchetype": None, "intensity": "moderate", "context": "neutral"},
-            {"id": "P002", "primaryArchetype": "dramatic", "secondaryArchetype": None, "intensity": "moderate", "context": "neutral"},
-            {"id": "P003", "primaryArchetype": "romantic", "secondaryArchetype": None, "intensity": "moderate", "context": "neutral"},
-        ]
-        selections = [
-            {"image": shown_images[0], "layer": 1, "position": None, "selectionOrder": 1},
-            {"image": shown_images[1], "layer": 1, "position": None, "selectionOrder": 2},
-            {"image": shown_images[2], "layer": 1, "position": None, "selectionOrder": 3},
-        ]
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = OnboardingService(repo=repo, image_dir=tmp_dir)
-            result = service.save_style_preference("user_style", shown_images, selections)
+            result = service.save_risk_tolerance("user_style", "expressive")
 
         assert result is not None
-        self.assertEqual({"1": "P001.png", "2": "P002.png", "3": "P003.png"}, result["selectedImages"])
-        self.assertEqual(3, result["selectionCount"])
+        self.assertEqual("expressive", result["risk_tolerance"])
         repo.insert_style_preference_snapshot.assert_called_once()
         saved_payload = repo.insert_style_preference_snapshot.call_args.kwargs["style_preference"]
-        self.assertEqual({"1": "P001.png", "2": "P002.png", "3": "P003.png"}, saved_payload["selectedImages"])
-        self.assertEqual(3, saved_payload["selectionCount"])
+        self.assertEqual("expressive", saved_payload["riskTolerance"])
+        self.assertEqual("female", saved_payload["gender"])
 
     def test_save_wardrobe_item_persists_image_and_metadata(self) -> None:
         repo = Mock()

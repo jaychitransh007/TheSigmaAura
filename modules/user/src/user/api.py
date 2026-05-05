@@ -19,9 +19,8 @@ from .schemas import (
     ProfileResponse,
     SendOtpRequest,
     SendOtpResponse,
-    StyleArchetypeSessionResponse,
-    StylePreferenceCompleteRequest,
-    StylePreferenceResponse,
+    RiskToleranceRequest,
+    RiskToleranceResponse,
     VerifyOtpRequest,
     VerifyOtpResponse,
     WardrobeItemListResponse,
@@ -31,7 +30,6 @@ from .schemas import (
 )
 from .service import OnboardingService
 from .analysis import UserAnalysisService
-from .style_archetype import resolve_style_asset_file
 
 
 def _repo_root() -> Path:
@@ -68,12 +66,10 @@ def _resolve_local_image_file(path_value: str) -> Path | None:
 def create_onboarding_router(service: OnboardingService, analysis_service: UserAnalysisService) -> APIRouter:
     router = APIRouter(prefix="/v1/onboarding", tags=["onboarding"])
 
-    @router.get("/style-assets/choices/{filename}", include_in_schema=False)
-    def get_style_archetype_asset(filename: str) -> FileResponse:
-        asset_path = resolve_style_asset_file(filename)
-        if asset_path is None:
-            raise HTTPException(status_code=404, detail="Style archetype image not found.")
-        return FileResponse(path=Path(asset_path), media_type="image/png")
+    # May 2026: /style-assets/choices/{filename}, /style/session/{user_id},
+    # and /style/complete endpoints removed alongside the image-picker
+    # onboarding step. New flow uses /risk-tolerance with a single
+    # 3-option choice — see save_risk_tolerance below.
 
     @router.get("/images/local", include_in_schema=False)
     def get_local_image(path: str = Query(..., min_length=1)) -> FileResponse:
@@ -208,16 +204,6 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         return OnboardingStatusResponse(**status)
 
-    @router.get("/style/session/{user_id}", response_model=StyleArchetypeSessionResponse)
-    def get_style_session(user_id: str) -> StyleArchetypeSessionResponse:
-        try:
-            session = service.get_style_archetype_session(user_id)
-        except (SupabaseError, RuntimeError, ValueError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-        if not session:
-            raise HTTPException(status_code=404, detail="User not found.")
-        return StyleArchetypeSessionResponse(**session)
-
     @router.get("/wardrobe/{user_id}", response_model=WardrobeItemListResponse)
     def get_wardrobe_items(user_id: str) -> WardrobeItemListResponse:
         try:
@@ -314,19 +300,20 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
             raise HTTPException(status_code=404, detail="Wardrobe item not found.")
         return {"ok": True, "wardrobe_item_id": wardrobe_item_id}
 
-    @router.post("/style/complete", response_model=StylePreferenceResponse)
-    def save_style_preference(payload: StylePreferenceCompleteRequest) -> StylePreferenceResponse:
+    @router.post("/risk-tolerance", response_model=RiskToleranceResponse)
+    def save_risk_tolerance(payload: RiskToleranceRequest) -> RiskToleranceResponse:
+        """May 2026: single-step risk-tolerance capture, replaces the
+        multi-layer image-picker /style/complete flow."""
         try:
-            out = service.save_style_preference(
+            out = service.save_risk_tolerance(
                 user_id=payload.user_id,
-                shown_images=payload.shown_images,
-                selections=[item.model_dump() for item in payload.selections],
+                risk_tolerance=payload.risk_tolerance,
             )
         except (SupabaseError, RuntimeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not out:
             raise HTTPException(status_code=404, detail="User not found.")
-        return StylePreferenceResponse(user_id=payload.user_id, saved=True, style_preference=out)
+        return RiskToleranceResponse(user_id=payload.user_id, saved=True, risk_tolerance=out["risk_tolerance"])
 
     @router.post("/analysis/start", response_model=AnalysisStartResponse)
     def start_analysis(payload: AnalysisStartRequest) -> AnalysisStartResponse:
