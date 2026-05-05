@@ -206,17 +206,36 @@ class PlatformCoreTests(unittest.TestCase):
         self.assertTrue(ff_kwargs["filters"]["created_at"].startswith("gte."))
 
     def test_list_recent_user_actions_returns_empty_on_cold_start_or_db_error(self) -> None:
-        """Cold-start users (no events yet) and any DB error must yield
-        ``[]`` so the architect's episodic-memory branch becomes a no-op
-        instead of raising."""
+        """Cold-start users (no events yet) and DB / network errors must
+        yield ``[]`` so the architect's episodic-memory branch becomes a
+        no-op instead of raising. Programming errors (non-DB exceptions)
+        are intentionally NOT swallowed here — see the next test."""
+        from platform_core.supabase_rest import SupabaseError
+        import httpx
         client = unittest.mock.Mock()
         repo = ConversationRepository(client)
 
         client.select_many.return_value = []
         self.assertEqual([], repo.list_recent_user_actions("cold-start-user"))
 
-        client.select_many.side_effect = RuntimeError("supabase down")
+        # SupabaseError covers PostgREST 4xx/5xx (the PR #92 failure mode).
+        client.select_many.side_effect = SupabaseError("Supabase request failed (400)")
         self.assertEqual([], repo.list_recent_user_actions("user-1"))
+
+        # httpx.RequestError covers connect / timeout / read errors.
+        client.select_many.side_effect = httpx.ConnectError("connection refused")
+        self.assertEqual([], repo.list_recent_user_actions("user-1"))
+
+    def test_list_recent_user_actions_propagates_logic_errors(self) -> None:
+        """PR #93 review (narrow except): a non-DB exception (KeyError,
+        TypeError, etc.) signals a programming bug and must propagate
+        rather than being silently masked as ``[]``. Pre-narrowing, a
+        broad ``except Exception:`` was hiding logic errors."""
+        client = unittest.mock.Mock()
+        repo = ConversationRepository(client)
+        client.select_many.side_effect = TypeError("unexpected kw")
+        with self.assertRaises(TypeError):
+            repo.list_recent_user_actions("user-1")
 
     def test_list_recent_user_actions_skips_events_without_hydratable_item(self) -> None:
         """If a garment_id is no longer in ``catalog_enriched`` (catalog
@@ -613,11 +632,26 @@ class ArchetypalFeedbackAggregationTests(unittest.TestCase):
         self.assertEqual({}, repo.aggregate_archetypal_feedback("u1"))
 
     def test_returns_empty_on_db_error(self) -> None:
+        """DB / network errors degrade to {}. Logic errors propagate —
+        that's the contract narrowing from PR #93 review (except clauses
+        moved from broad Exception to (SupabaseError, httpx.RequestError))."""
+        from platform_core.supabase_rest import SupabaseError
+        import httpx
         client = unittest.mock.Mock()
-        client.select_many.side_effect = RuntimeError("supabase down")
         repo = ConversationRepository(client)
-        # Should swallow the exception and return {}.
+
+        client.select_many.side_effect = SupabaseError("Supabase request failed (500)")
         self.assertEqual({}, repo.aggregate_archetypal_feedback("u1"))
+
+        client.select_many.side_effect = httpx.ReadTimeout("read timeout")
+        self.assertEqual({}, repo.aggregate_archetypal_feedback("u1"))
+
+        # Logic errors (TypeError, KeyError, etc.) must propagate so a
+        # programming bug fails fast instead of looking like an empty
+        # feedback corpus.
+        client.select_many.side_effect = TypeError("unexpected kw")
+        with self.assertRaises(TypeError):
+            repo.aggregate_archetypal_feedback("u1")
 
 
 class CostEstimatorTests(unittest.TestCase):
