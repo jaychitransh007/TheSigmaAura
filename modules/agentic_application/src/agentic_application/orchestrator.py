@@ -1267,12 +1267,16 @@ class AgenticOrchestrator:
         # --- Copilot Planner path ---
         profile_confidence = onboarding_gate.profile_confidence
 
-        # Build user context
+        # Build user context — reuse the analysis_status fetched in the
+        # onboarding-gate step above. Without this, build_user_context
+        # re-fetches it (and the underlying profile + style + interpretation
+        # snapshots), adding ~3 redundant Supabase round trips per turn.
         emit("user_context", "started")
         trace_start("user_context", input_summary=f"user={external_user_id}")
         user_context = build_user_context(
             external_user_id,
             onboarding_gateway=self.onboarding_gateway,
+            analysis_status=analysis_status,
         )
         validate_minimum_profile(user_context)
         emit("user_context", "completed", ctx={"richness": user_context.profile_richness})
