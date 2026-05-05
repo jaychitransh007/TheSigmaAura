@@ -598,7 +598,6 @@ Assembles:
 - chat history
 - catalog history
 - recommendation history
-- sentiment traces
 - confidence state
 - relevant catalog signals
 

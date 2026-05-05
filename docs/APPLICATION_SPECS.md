@@ -210,7 +210,6 @@ These are not onboarding inputs for a first-time user, but they are mandatory fo
 - `feedback_history`
 - `catalog_interaction_history`
 - `wardrobe_usage_history`
-- `sentiment_history`
 - `recommendation_history`
 - `confidence_history`
 - `policy_events`
