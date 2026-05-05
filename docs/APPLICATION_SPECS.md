@@ -30,7 +30,7 @@ For detailed step-by-step execution flows, see `docs/WORKFLOW_REFERENCE.md`.
 
 Implemented now:
 - **intent registry** (`intent_registry.py`): StrEnum-based single source of truth for the post-Phase 12A taxonomy — 7 advisory intents + silent `wardrobe_ingestion` (8 total `Intent` members), 7 actions (`Action`), and 7 follow-up intents (`FollowUpIntent`) — with metadata registries and JSON schema helpers; consumed by planner, orchestrator, agents, API, and tests. Phase 12A folded `shopping_decision` / `garment_on_me_request` / `virtual_tryon_request` into `garment_evaluation`, `product_browse` into `occasion_recommendation` (via `target_product_type`), and deferred `capsule_or_trip_planning`.
-- copilot planner (gpt-5.5) — intent classification across the 7 advisory intents + feedback, 7-action dispatch (JSON schema enums generated from registry)
+- copilot planner (gpt-5-mini) — intent classification across the 7 advisory intents + feedback, 7-action dispatch (JSON schema enums generated from registry)
 - active runtime entrypoint in `agentic_application/api.py` with `AgenticOrchestrator`
 - saved user-context loading from onboarding/profile-analysis/style-preference persistence
 - server-side conversation-memory carry-forward across follow-up turns
@@ -2184,7 +2184,7 @@ Status:
 
 Implemented:
 - orchestrated recommendation pipeline with LLM copilot planner front-end
-- copilot planner (`gpt-5.5` since May 1, 2026; was `gpt-5.4` before) classifies intent and decides action — replaces legacy keyword router + context gate
+- copilot planner (`gpt-5-mini` since May 5, 2026; was `gpt-5.5` May 1–4, `gpt-5.4` before) classifies intent and decides action — replaces legacy keyword router + context gate
 - **intent registry** (`intent_registry.py`): single source of truth for all 12 intents, 9 actions, and 7 follow-up intents via Python `StrEnum` — consumed by planner, orchestrator, agents, API, and tests
 - planner actions: `run_recommendation_pipeline`, `run_outfit_check`, `run_shopping_decision`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`, `run_product_browse`
 - `response_type` field: `"recommendation"` | `"clarification"`
@@ -2216,7 +2216,7 @@ Main remaining gaps:
 Current execution order:
 1. load user context
 2. build conversation memory from prior turn state
-3. copilot planner (gpt-5.5) — classifies intent, decides action (`run_recommendation_pipeline`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`), resolves context
+3. copilot planner (gpt-5-mini) — classifies intent, decides action (`run_recommendation_pipeline`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`), resolves context
 4. action dispatch — if `respond_directly` or `ask_clarification`, return planner response directly (skip stages 5-10)
 5. generate recommendation plan via outfit architect LLM (gpt-5.5) — no fallback, failure = error to user
 6. retrieve catalog products per query direction (text-embedding-3-small, single search pass)
@@ -2380,7 +2380,7 @@ Main weak spots:
 
 ### Application Layer
 - intent registry (`intent_registry.py`) — StrEnum single source of truth for **8 Intent members** (7 advisory + 1 silent `wardrobe_ingestion`), **7 Actions**, **7 FollowUpIntents**. Phase 12A consolidated the prior 12-intent / 9-action taxonomy: `shopping_decision` / `garment_on_me_request` / `virtual_tryon_request` folded into `garment_evaluation`; `product_browse` folded into `occasion_recommendation` (via `target_product_type`); `capsule_or_trip_planning` deferred.
-- copilot planner (gpt-5.5) — intent classification across the 7 advisory intents (`wardrobe_ingestion` is silent / not exposed in the planner prompt), 7-action dispatch
+- copilot planner (gpt-5-mini) — intent classification across the 7 advisory intents (`wardrobe_ingestion` is silent / not exposed in the planner prompt), 7-action dispatch
 - recommendation pipeline: architect → catalog search → assembly → evaluation → formatting → try-on
 - wardrobe-first occasion response (wardrobe retrieval + selection for occasion intents)
 - wardrobe item save from chat with moderation
@@ -2475,7 +2475,7 @@ modules/
 │   ├── qna_messages.py           # Template-based stage narration (QnA transparency)
 │   ├── product_links.py          # Canonical URL resolution
 │   ├── agents/
-│   │   ├── copilot_planner.py   # LLM intent classification + action routing (gpt-5.5)
+│   │   ├── copilot_planner.py   # LLM intent classification + action routing (gpt-5-mini)
 │   │   ├── outfit_architect.py   # LLM planning (gpt-5.5)
 │   │   ├── catalog_search_agent.py # Embedding search + hydration
 │   │   ├── outfit_composer.py    # LLM outfit constructor (replaced outfit_assembler.py in PR #30)

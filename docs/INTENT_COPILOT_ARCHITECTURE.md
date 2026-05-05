@@ -36,11 +36,12 @@ Last updated: May 3, 2026
 >    `not_applicable`), color synonym expansion, semantic fabric clusters,
 >    follow-up intent tiebreaker, and consolidated occasion calibration.
 >    See `docs/WORKFLOW_REFERENCE.md` § Phase History (Phase 13/13B) for the full change list.
-> 6. **Models migrated to gpt-5.5 / gpt-5-mini** (May 1, 2026). Copilot Planner,
->    Outfit Architect, Style Advisor, and User Analysis run on `gpt-5.5`. Visual
->    Evaluator, Image Moderation, Outfit Decomposition, and the LLM ranker
->    (Composer + Rater) run on `gpt-5-mini`. Try-on still on
->    `gemini-3.1-flash-image-preview`.
+> 6. **Model assignment** (last updated May 5, 2026). `gpt-5.5`: Outfit
+>    Architect, Style Advisor, User Analysis. `gpt-5-mini`: Copilot Planner
+>    (downgraded from gpt-5.5 May 5 — see docs/OPEN_TASKS.md for the offline
+>    routing-accuracy eval that backs this), Visual Evaluator, Image
+>    Moderation, Outfit Decomposition, the LLM ranker (Composer + Rater).
+>    Try-on still on `gemini-3.1-flash-image-preview`.
 > 7. **Confidence threshold gates every outfit** (May 1, 2026; rebased to
 >    `fashion_score` on May 3, 2026). Catalog-pipeline outfits with
 >    `fashion_score < 75` (LLM Rater 0–100 scale) are dropped before
