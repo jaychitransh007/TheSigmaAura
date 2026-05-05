@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
@@ -577,6 +578,13 @@ class OutfitComposer:
         # (gpt-5-mid family vocabulary: low | medium | high | xhigh).
         # Default "low" is sufficient at this prompt size; the
         # structured-output schema enforces most of the contract.
+        # PR #95 (May 5 2026): time the API call so the per-attempt
+        # `on_attempt` callback can persist latency_ms onto each
+        # model_call_logs row. Before this, model_call_logs.latency_ms
+        # for the composer was always 0 — turn_traces had the real ~14s
+        # but any panel computing composer p50/p95 from model_call_logs
+        # was blind. Discovered during the T9–T12 review.
+        _t_attempt = time.monotonic()
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -586,6 +594,7 @@ class OutfitComposer:
             reasoning={"effort": self._reasoning_effort},
             text={"format": schema},
         )
+        attempt_latency_ms = int((time.monotonic() - _t_attempt) * 1000)
         usage = extract_token_usage(response) or {}
         for k, v in usage.items():
             accumulated_usage[k] = accumulated_usage.get(k, 0) + (v or 0)
@@ -608,6 +617,7 @@ class OutfitComposer:
                     "prompt_tokens": int(usage.get("prompt_tokens") or 0),
                     "completion_tokens": int(usage.get("completion_tokens") or 0),
                     "total_tokens": int(usage.get("total_tokens") or 0),
+                    "latency_ms": attempt_latency_ms,
                     "raw_text": raw_text[:8000],
                     "outfit_count_emitted": 0,
                     "outfit_count_kept": 0,
@@ -658,6 +668,7 @@ class OutfitComposer:
                 "prompt_tokens": int(usage.get("prompt_tokens") or 0),
                 "completion_tokens": int(usage.get("completion_tokens") or 0),
                 "total_tokens": int(usage.get("total_tokens") or 0),
+                "latency_ms": attempt_latency_ms,
                 "raw_text": raw_text[:8000],
                 "outfit_count_emitted": len(raw.get("outfits") or []),
                 "outfit_count_kept": len(kept),

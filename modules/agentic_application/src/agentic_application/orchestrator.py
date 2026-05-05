@@ -4962,6 +4962,19 @@ class AgenticOrchestrator:
                         prompt_tokens=int(payload.get("prompt_tokens") or 0),
                         completion_tokens=int(payload.get("completion_tokens") or 0),
                         total_tokens=int(payload.get("total_tokens") or 0),
+                        # PR #95: composer now reports per-attempt wall-clock
+                        # latency through the on_attempt payload. Without
+                        # this, model_call_logs.latency_ms was 0 for every
+                        # composer row — turn_traces had the real ~14s but
+                        # any p50/p95 panel computed off model_call_logs was
+                        # blind. None-coercion mirrors the other token fields
+                        # so an older composer that doesn't supply latency
+                        # still logs cleanly.
+                        latency_ms=(
+                            int(payload["latency_ms"])
+                            if payload.get("latency_ms") is not None
+                            else None
+                        ),
                     ))
                 except Exception:  # noqa: BLE001 — telemetry must never break pipeline
                     _log.exception("composer per-attempt log failed; ignoring")

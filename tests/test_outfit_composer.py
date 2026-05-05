@@ -398,6 +398,15 @@ class OutfitComposerRetryTests(unittest.TestCase):
         self.assertEqual(2, captured[1]["attempt_no"])
         self.assertEqual(1, captured[1]["outfit_count_kept"])  # retry fixed it
         self.assertEqual(2, result.attempt_count)
+        # PR #95: each on_attempt payload must carry latency_ms (int, ≥0)
+        # so the orchestrator can persist model_call_logs.latency_ms per
+        # attempt. Pre-#95 this field was missing entirely and the
+        # downstream log row landed with latency_ms=0 — any p50/p95 panel
+        # computed off model_call_logs for the composer was blind.
+        for payload in captured:
+            self.assertIn("latency_ms", payload)
+            self.assertIsInstance(payload["latency_ms"], int)
+            self.assertGreaterEqual(payload["latency_ms"], 0)
 
     def test_composer_no_retry_when_pool_unsuitable(self) -> None:
         """When the Composer self-reports pool_unsuitable, we trust it
