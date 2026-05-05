@@ -4606,16 +4606,32 @@ class AgenticOrchestrator:
         # R4 (PR #67, May 5 2026): aggregate the user's recent
         # like/dislike feedback into archetypal axes (color_temperature,
         # pattern_type, fit_type, silhouette_type, embellishment_level)
-        # so the Rater's "previously-disliked color/pattern" veto rule
-        # is actually evidence-backed. The disliked_product_ids list
-        # already filters retrieval; this block adds the archetypal
-        # signal on top.
+        # so the Composer can soft-bias item selection. The Rater no
+        # longer consumes this (PR #89, May 5 2026) — its veto rule was
+        # producing systematic empty responses.
         try:
             _raw_prefs = self.repo.aggregate_archetypal_feedback(internal_user_id)
             archetypal_preferences = dict(_raw_prefs) if isinstance(_raw_prefs, dict) else {}
         except Exception:
             _log.warning("Failed to aggregate archetypal feedback — proceeding without it", exc_info=True)
             archetypal_preferences = {}
+
+        # PR 2 (May 5 2026): episodic memory for the architect. Raw
+        # last-30-days timeline of like/dislike events with the user_query
+        # that produced each outfit. The architect reads this to find
+        # context-dependent patterns and bias retrieval queries — the
+        # aggregate-veto failure mode (T12) replaced with LLM pattern
+        # recognition over richer evidence.
+        # Same defensive pattern as `aggregate_archetypal_feedback` above:
+        # tolerate exceptions AND non-list returns (test mocks default to
+        # Mock objects, not lists) so the pipeline still ships on cold
+        # paths and during legacy test wiring.
+        try:
+            _raw_actions = self.repo.list_recent_user_actions(internal_user_id)
+            recent_user_actions = list(_raw_actions) if isinstance(_raw_actions, list) else []
+        except Exception:
+            _log.warning("Failed to load recent user actions — proceeding without episodic memory", exc_info=True)
+            recent_user_actions = []
 
         combined_context = CombinedContext(
             user=user_context,
@@ -4627,6 +4643,7 @@ class AgenticOrchestrator:
             catalog_inventory=self._catalog_inventory or None,
             disliked_product_ids=disliked_product_ids,
             archetypal_preferences=archetypal_preferences,
+            recent_user_actions=recent_user_actions,
         )
 
         richer_refinement_path = self._message_requires_richer_refinement_path(

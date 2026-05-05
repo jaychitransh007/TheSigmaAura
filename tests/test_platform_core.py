@@ -127,6 +127,109 @@ class PlatformCoreTests(unittest.TestCase):
         self.assertEqual("chat_card", payload["source_surface"])
         self.assertEqual({"position": 1}, payload["metadata_json"])
 
+    def test_list_recent_user_actions_returns_chronological_timeline_with_query_and_attrs(self) -> None:
+        """The architect's episodic-memory input: feedback events joined to
+        the user_query (from conversation_turns) and to the garment's
+        catalog attributes. Each row should land with the shape the
+        architect prompt describes: event_type, created_at, turn_id,
+        user_query, item dict."""
+        client = unittest.mock.Mock()
+
+        def _select_many(table, **kwargs):
+            if table == "feedback_events":
+                return [
+                    {"garment_id": "g1", "event_type": "dislike", "created_at": "2026-05-04T10:00:00Z", "turn_id": "t1"},
+                    {"garment_id": "g2", "event_type": "like",    "created_at": "2026-05-03T08:00:00Z", "turn_id": "t2"},
+                ]
+            if table == "catalog_enriched":
+                return [
+                    {"product_id": "g1", "title": "Solid Navy Blazer", "primary_color": "navy",
+                     "color_temperature": "cool", "pattern_type": "solid", "fit_type": "tailored",
+                     "silhouette_type": "structured", "embellishment_level": "none",
+                     "formality_level": "business_casual", "garment_subtype": "blazer",
+                     "occasion_fit": "office"},
+                    {"product_id": "g2", "title": "Warm Tonal Sweater", "primary_color": "camel",
+                     "color_temperature": "warm", "pattern_type": "solid", "fit_type": "relaxed",
+                     "silhouette_type": "soft", "embellishment_level": "none",
+                     "formality_level": "smart_casual", "garment_subtype": "sweater",
+                     "occasion_fit": "weekend"},
+                ]
+            if table == "conversation_turns":
+                return [
+                    {"id": "t1", "user_message": "what should I wear to the office"},
+                    {"id": "t2", "user_message": "find me a casual weekend outfit"},
+                ]
+            return []
+        client.select_many.side_effect = _select_many
+        repo = ConversationRepository(client)
+
+        rows = repo.list_recent_user_actions("user-1")
+
+        self.assertEqual(2, len(rows))
+        d, l = rows[0], rows[1]
+        # Order preserved from feedback_events (newest first per repo's order=desc).
+        self.assertEqual("dislike", d["event_type"])
+        self.assertEqual("t1", d["turn_id"])
+        self.assertEqual("what should I wear to the office", d["user_query"])
+        self.assertEqual("Solid Navy Blazer", d["item"]["title"])
+        self.assertEqual("cool", d["item"]["color_temperature"])
+        self.assertEqual("solid", d["item"]["pattern_type"])
+        self.assertEqual("like", l["event_type"])
+        self.assertEqual("find me a casual weekend outfit", l["user_query"])
+        self.assertEqual("warm", l["item"]["color_temperature"])
+        # The feedback_events query carries the lookback cutoff and limits.
+        feedback_calls = [c for c in client.select_many.call_args_list if c.args[0] == "feedback_events"]
+        self.assertEqual(1, len(feedback_calls))
+        ff_kwargs = feedback_calls[0].kwargs
+        self.assertEqual("eq.user-1", ff_kwargs["filters"]["user_id"])
+        self.assertEqual("in.(like,dislike)", ff_kwargs["filters"]["event_type"])
+        self.assertTrue(ff_kwargs["filters"]["created_at"].startswith("gte."))
+
+    def test_list_recent_user_actions_returns_empty_on_cold_start_or_db_error(self) -> None:
+        """Cold-start users (no events yet) and any DB error must yield
+        ``[]`` so the architect's episodic-memory branch becomes a no-op
+        instead of raising."""
+        client = unittest.mock.Mock()
+        repo = ConversationRepository(client)
+
+        client.select_many.return_value = []
+        self.assertEqual([], repo.list_recent_user_actions("cold-start-user"))
+
+        client.select_many.side_effect = RuntimeError("supabase down")
+        self.assertEqual([], repo.list_recent_user_actions("user-1"))
+
+    def test_list_recent_user_actions_skips_events_without_hydratable_item(self) -> None:
+        """If a garment_id is no longer in ``catalog_enriched`` (catalog
+        has been re-ingested or the row is row_status='removed'), the
+        event is skipped — opaque IDs without attributes don't help the
+        architect find patterns."""
+        client = unittest.mock.Mock()
+
+        def _select_many(table, **kwargs):
+            if table == "feedback_events":
+                return [
+                    {"garment_id": "g1", "event_type": "dislike", "created_at": "2026-05-04T10:00:00Z", "turn_id": "t1"},
+                    {"garment_id": "g_missing", "event_type": "dislike", "created_at": "2026-05-04T11:00:00Z", "turn_id": "t1"},
+                ]
+            if table == "catalog_enriched":
+                # Only g1 hydrates; g_missing is gone.
+                return [
+                    {"product_id": "g1", "title": "Solid Navy", "primary_color": "navy",
+                     "color_temperature": "cool", "pattern_type": "solid", "fit_type": "tailored",
+                     "silhouette_type": "structured", "embellishment_level": "none",
+                     "formality_level": "business_casual", "garment_subtype": "blazer",
+                     "occasion_fit": "office"},
+                ]
+            if table == "conversation_turns":
+                return [{"id": "t1", "user_message": "office"}]
+            return []
+        client.select_many.side_effect = _select_many
+        repo = ConversationRepository(client)
+
+        rows = repo.list_recent_user_actions("user-1")
+        self.assertEqual(1, len(rows))
+        self.assertEqual("Solid Navy", rows[0]["item"]["title"])
+
     def test_list_catalog_interactions_filters_by_user_and_type(self) -> None:
         client = unittest.mock.Mock()
         client.select_many.return_value = [{"id": "i1"}]

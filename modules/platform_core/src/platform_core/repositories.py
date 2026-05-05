@@ -558,6 +558,145 @@ class ConversationRepository:
 
         return {"disliked": _aggregate(disliked_ids), "liked": _aggregate(liked_ids)}
 
+    # -- episodic memory: recent user actions --------------------------------
+
+    # Default lookback for the architect's episodic-memory input. The user
+    # signed off on 30 days as the baseline; callers can override.
+    RECENT_USER_ACTIONS_LOOKBACK_DAYS_DEFAULT = 30
+
+    # Cap on the number of events surfaced to the architect prompt. The
+    # raw timeline can grow large for power users; trim to the most recent
+    # N events (across all event_types interleaved) so prompt size stays
+    # bounded and recency dominates.
+    _RECENT_USER_ACTIONS_MAX = 30
+
+    # Catalog attribute columns surfaced per item. These are the same axes
+    # the rater used to veto on, so the architect has the same evidence —
+    # but as raw evidence, not aggregated counts.
+    _RECENT_ACTIONS_ITEM_COLS = (
+        "title",
+        "primary_color",
+        "garment_subtype",
+        "color_temperature",
+        "pattern_type",
+        "fit_type",
+        "silhouette_type",
+        "embellishment_level",
+        "formality_level",
+        "occasion_fit",
+    )
+
+    def list_recent_user_actions(
+        self,
+        user_id: str,
+        *,
+        lookback_days: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return a chronological timeline of the user's recent like/dislike
+        events for the architect's episodic-memory input.
+
+        Each row is shaped:
+
+            {
+              "event_type": "like" | "dislike",
+              "created_at": ISO-8601 string,
+              "turn_id": str,
+              "user_query": str,        # the message that produced the outfit
+              "item": {                 # garment attributes from catalog_enriched
+                "title": str, "primary_color": str, ...
+              },
+            }
+
+        Empty list on cold-start users, missing wiring, or DB error — the
+        architect tolerates an empty timeline (interprets as "no signal").
+        """
+        from datetime import datetime, timedelta, timezone
+
+        days = int(lookback_days if lookback_days is not None else self.RECENT_USER_ACTIONS_LOOKBACK_DAYS_DEFAULT)
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        try:
+            events = self.client.select_many(
+                "feedback_events",
+                filters={
+                    "user_id": f"eq.{user_id}",
+                    "event_type": "in.(like,dislike)",
+                    "created_at": f"gte.{cutoff}",
+                },
+                columns="garment_id,event_type,created_at,turn_id",
+                order="created_at.desc",
+                limit=self._RECENT_USER_ACTIONS_MAX,
+            )
+        except Exception:
+            return []
+        if not events:
+            return []
+
+        # Hydrate garment attributes (one batched query) and turn user_messages
+        # (one batched query) — same pattern as aggregate_archetypal_feedback.
+        garment_ids = sorted({str(ev.get("garment_id") or "").strip() for ev in events if ev.get("garment_id")})
+        turn_ids = sorted({str(ev.get("turn_id") or "").strip() for ev in events if ev.get("turn_id")})
+
+        items_by_id: Dict[str, Dict[str, str]] = {}
+        if garment_ids:
+            _CHUNK = 50
+            cols = "product_id," + ",".join(self._RECENT_ACTIONS_ITEM_COLS)
+            try:
+                for i in range(0, len(garment_ids), _CHUNK):
+                    chunk = garment_ids[i : i + _CHUNK]
+                    in_filter = ",".join(f'"{pid}"' for pid in chunk)
+                    rows = self.client.select_many(
+                        "catalog_enriched",
+                        filters={"product_id": f"in.({in_filter})"},
+                        columns=cols,
+                    )
+                    for row in rows or []:
+                        pid = str(row.get("product_id") or "").strip()
+                        if pid:
+                            items_by_id[pid] = {
+                                col: str(row.get(col) or "").strip()
+                                for col in self._RECENT_ACTIONS_ITEM_COLS
+                            }
+            except Exception:
+                items_by_id = {}
+
+        queries_by_turn: Dict[str, str] = {}
+        if turn_ids:
+            _CHUNK = 50
+            try:
+                for i in range(0, len(turn_ids), _CHUNK):
+                    chunk = turn_ids[i : i + _CHUNK]
+                    in_filter = ",".join(f'"{tid}"' for tid in chunk)
+                    rows = self.client.select_many(
+                        "conversation_turns",
+                        filters={"id": f"in.({in_filter})"},
+                        columns="id,user_message",
+                    )
+                    for row in rows or []:
+                        tid = str(row.get("id") or "").strip()
+                        if tid:
+                            queries_by_turn[tid] = str(row.get("user_message") or "").strip()
+            except Exception:
+                queries_by_turn = {}
+
+        timeline: List[Dict[str, Any]] = []
+        for ev in events:
+            gid = str(ev.get("garment_id") or "").strip()
+            tid = str(ev.get("turn_id") or "").strip()
+            item = items_by_id.get(gid) or {}
+            if not item:
+                # Skip rows we can't hydrate — opaque IDs don't help the LLM
+                # find patterns. This will rarely fire if the catalog is
+                # in sync with feedback_events.
+                continue
+            timeline.append({
+                "event_type": str(ev.get("event_type") or "").strip(),
+                "created_at": str(ev.get("created_at") or "").strip(),
+                "turn_id": tid,
+                "user_query": queries_by_turn.get(tid, ""),
+                "item": item,
+            })
+        return timeline
+
 
     # -- saved_looks ---------------------------------------------------------
 
