@@ -38,7 +38,7 @@ import json
 import logging
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from openai import OpenAI
 from pydantic import ValidationError
@@ -72,50 +72,71 @@ def _load_prompt() -> str:
 
 # Strict JSON schema for the structured-output contract. The Composer
 # response is validated against this server-side by the Responses API.
-_COMPOSER_JSON_SCHEMA: Dict[str, Any] = {
-    "type": "json_schema",
-    "name": "outfit_composer_result",
-    "strict": True,
-    "schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["outfits", "overall_assessment", "pool_unsuitable"],
-        "properties": {
-            "outfits": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": [
-                        "composer_id",
-                        "direction_id",
-                        "direction_type",
-                        "item_ids",
-                        "rationale",
-                    ],
-                    "properties": {
-                        "composer_id": {"type": "string"},
-                        "direction_id": {"type": "string"},
-                        "direction_type": {
-                            "type": "string",
-                            "enum": ["complete", "paired", "three_piece"],
+def _build_composer_json_schema(direction_letters: Sequence[str]) -> Dict[str, Any]:
+    """Build the per-turn structured-output schema with a closed enum on
+    ``direction_id``.
+
+    Why a per-turn schema (instead of a static one): structurally
+    enforcing that ``direction_id`` is one of the architect's emitted
+    letters (typically ``A``, ``B``, ``C``) prevents the failure mode
+    where the LLM drops a product_id into the field. ``strict: True``
+    + ``enum`` makes the API reject non-conforming output rather than
+    relying on prompt discipline.
+
+    Falls back to plain ``{"type": "string"}`` when ``direction_letters``
+    is empty (defensive — shouldn't happen in practice because the
+    Composer always sees at least one direction).
+    """
+    direction_id_schema: Dict[str, Any] = {"type": "string"}
+    if direction_letters:
+        direction_id_schema = {
+            "type": "string",
+            "enum": list(direction_letters),
+        }
+    return {
+        "type": "json_schema",
+        "name": "outfit_composer_result",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["outfits", "overall_assessment", "pool_unsuitable"],
+            "properties": {
+                "outfits": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "composer_id",
+                            "direction_id",
+                            "direction_type",
+                            "item_ids",
+                            "rationale",
+                        ],
+                        "properties": {
+                            "composer_id": {"type": "string"},
+                            "direction_id": direction_id_schema,
+                            "direction_type": {
+                                "type": "string",
+                                "enum": ["complete", "paired", "three_piece"],
+                            },
+                            "item_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                            "rationale": {"type": "string"},
                         },
-                        "item_ids": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
-                        "rationale": {"type": "string"},
                     },
                 },
+                "overall_assessment": {
+                    "type": "string",
+                    "enum": ["strong", "moderate", "weak", "unsuitable"],
+                },
+                "pool_unsuitable": {"type": "boolean"},
             },
-            "overall_assessment": {
-                "type": "string",
-                "enum": ["strong", "moderate", "weak", "unsuitable"],
-            },
-            "pool_unsuitable": {"type": "boolean"},
         },
-    },
-}
+    }
 
 # A direction's expected item count, by direction type. Used to validate
 # that the Composer assembled a structurally-valid outfit (one item for
@@ -349,6 +370,15 @@ def _validate_outfit(
             f"direction_type={outfit.direction_type} expects {expected_count} item(s), "
             f"got {len(outfit.item_ids)}"
         )
+    # Distinguish between "direction_id is wrong" and "item_ids are wrong"
+    # so the retry classifier in compose() can pick the right corrective
+    # suffix. With the dynamic-enum schema this branch should fire rarely;
+    # left in as belt-and-suspenders for legacy / non-strict-schema flows.
+    if outfit.direction_id not in pool_ids_by_direction:
+        return (
+            f"unknown direction_id {outfit.direction_id!r} — must be one of "
+            f"{sorted(pool_ids_by_direction.keys())}"
+        )
     direction_pool = pool_ids_by_direction.get(outfit.direction_id, set())
     bad_ids = [iid for iid in outfit.item_ids if iid not in direction_pool]
     if bad_ids:
@@ -384,6 +414,7 @@ class OutfitComposer:
         retrieved_sets: Sequence[RetrievedSet],
         *,
         retry_on_hallucination: bool = True,
+        on_attempt: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> ComposerResult:
         """Build outfits from the retrieved pool. One LLM call (plus an
         optional retry on full-pool hallucination).
@@ -392,11 +423,23 @@ class OutfitComposer:
         runs) is returned on ``ComposerResult.usage``. The legacy
         ``self.last_usage`` is also updated for backwards-compat with
         agents that haven't migrated to the result-carried pattern.
+
+        ``on_attempt`` is an optional callback invoked once per LLM
+        invocation with a per-attempt log dict. Lets the orchestrator
+        emit one ``model_call_logs`` row per attempt instead of one
+        row that sums the retry, which masks which attempt did what
+        (PR #80, May 5 2026 RCA — T6 turn appeared to have a 24K-token
+        prompt because it was actually two 12K calls summed).
         """
         self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         if not retrieved_sets:
-            return ComposerResult(outfits=[], overall_assessment="unsuitable", pool_unsuitable=True)
+            return ComposerResult(
+                outfits=[],
+                overall_assessment="unsuitable",
+                pool_unsuitable=True,
+                attempt_count=0,
+            )
 
         # Build the pool-id index once for validation. Each direction
         # gets a flat set of every item_id seen across all roles in
@@ -407,24 +450,59 @@ class OutfitComposer:
                 p.product_id for p in rs.products
             )
 
+        # Build the per-turn JSON schema with a closed enum on direction_id.
+        # The architect's emitted letters are the only valid values; this
+        # makes the structured-output API reject bad direction_id at the
+        # contract layer, not after-the-fact in the validator.
+        direction_letters = sorted(pool_ids_by_direction.keys())
+        schema = _build_composer_json_schema(direction_letters)
+
         user_payload = _build_user_payload(combined_context, retrieved_sets)
         accumulated: Dict[str, int] = {}
-        result = self._invoke(user_payload, pool_ids_by_direction, accumulated)
+
+        attempt_no = 1
+        result, drop_reasons = self._invoke(
+            user_payload, pool_ids_by_direction, schema, accumulated,
+            attempt_no=attempt_no, on_attempt=on_attempt,
+        )
 
         if not result.outfits and retry_on_hallucination and not result.pool_unsuitable:
-            # Full hallucination — every outfit had bad item_ids and
-            # got dropped. Retry once with an explicit reminder appended
-            # to the user payload listing the valid IDs per direction.
-            _log.warning("OutfitComposer: full hallucination on first pass; retrying with strict ID list")
-            stricter = (
-                user_payload
-                + "\n\nIMPORTANT: item_ids you emit MUST be drawn EXACTLY from the pool below. "
-                + "Valid IDs per direction:\n"
-                + json.dumps({d: sorted(ids) for d, ids in pool_ids_by_direction.items()}, indent=2)
+            # Full hallucination on the first pass — every outfit was
+            # rejected by the validator. The retry suffix is tailored
+            # to the failure mode: bad item_ids → enumerate the pool;
+            # bad direction_ids → call out the field contract; both →
+            # both. Crude classification; we don't need anything fancy.
+            _log.warning(
+                "OutfitComposer: full hallucination on first pass; retrying. drop_reasons=%s",
+                drop_reasons[:5],
             )
-            result = self._invoke(stricter, pool_ids_by_direction, accumulated)
+            suffix_parts: List[str] = ["\n\nIMPORTANT — fix these issues from your previous response:"]
+            had_item_id_issue = any("item_ids not in" in r for r in drop_reasons)
+            had_direction_id_issue = any("unknown direction_id" in r or "no direction" in r for r in drop_reasons)
+            if had_item_id_issue:
+                suffix_parts.append(
+                    "- item_ids MUST be drawn EXACTLY from the pool below. Valid IDs per direction:\n"
+                    + json.dumps({d: sorted(ids) for d, ids in pool_ids_by_direction.items()}, indent=2)
+                )
+            if had_direction_id_issue:
+                suffix_parts.append(
+                    f"- direction_id MUST be one of: {direction_letters}. "
+                    "It is the architect's direction LETTER, not a product_id. "
+                    "Never copy a SKU, brand prefix, or item title into this field."
+                )
+            if not (had_item_id_issue or had_direction_id_issue):
+                # Safety net: if the validator returned reasons we don't
+                # specifically handle, surface them verbatim.
+                suffix_parts.append("- Specific issues:\n" + "\n".join(f"  • {r}" for r in drop_reasons[:10]))
+            stricter = user_payload + "".join(suffix_parts)
+            attempt_no += 1
+            result, _drop_reasons2 = self._invoke(
+                stricter, pool_ids_by_direction, schema, accumulated,
+                attempt_no=attempt_no, on_attempt=on_attempt,
+            )
 
         result.usage = dict(accumulated)
+        result.attempt_count = attempt_no
         # Mirror to the legacy instance attribute. Concurrent turns
         # using the same OutfitComposer will race on this; consumers
         # that need thread-safe usage should read result.usage instead.
@@ -435,40 +513,70 @@ class OutfitComposer:
         self,
         user_payload: str,
         pool_ids_by_direction: Dict[str, set],
+        schema: Dict[str, Any],
         accumulated_usage: Dict[str, int],
-    ) -> ComposerResult:
+        *,
+        attempt_no: int = 1,
+        on_attempt: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> tuple["ComposerResult", List[str]]:
         """Single LLM round-trip + post-processing. Internal.
 
+        Returns ``(result, drop_reasons)`` — the second element is a
+        list of validator-rejection messages for outfits the LLM
+        emitted but the validator dropped, used by ``compose`` to
+        tailor the retry suffix.
+
         ``accumulated_usage`` is a mutable dict the caller owns; this
-        method adds the call's token counts into it. Lets `compose`
+        method adds the call's token counts into it. Lets ``compose``
         sum usage across the retry pass without leaking state through
         instance attributes.
         """
-        # reasoning_effort="minimal" — Composer is structured-assembly
-        # (pick item_ids from the pool), the JSON schema IS the chain
-        # of thought. ~2.7K reasoning tokens per call observed without
-        # this; minimal trims that to near-zero.
+        # reasoning_effort="low" — bumped from "minimal" (PR #80,
+        # May 5 2026 RCA) after the T6 turn showed gpt-5-mini at
+        # minimal-effort confusing field assignment (product_ids
+        # going into direction_id) on prompts >12K tokens. "low" adds
+        # a few hundred reasoning tokens (~$0.0005/turn) and restores
+        # structured-output discipline.
         response = self._client.responses.create(
             model=self._model,
             input=[
                 {"role": "system", "content": [{"type": "input_text", "text": self._system_prompt}]},
                 {"role": "user", "content": [{"type": "input_text", "text": user_payload}]},
             ],
-            reasoning={"effort": "minimal"},
-            text={"format": _COMPOSER_JSON_SCHEMA},
+            reasoning={"effort": "low"},
+            text={"format": schema},
         )
         usage = extract_token_usage(response) or {}
         for k, v in usage.items():
             accumulated_usage[k] = accumulated_usage.get(k, 0) + (v or 0)
 
         raw_text = getattr(response, "output_text", "") or "{}"
+        parse_failed = False
         try:
             raw = json.loads(raw_text)
         except json.JSONDecodeError as exc:
+            parse_failed = True
             _log.warning("OutfitComposer: JSON parse failed (%s); returning empty result", exc)
-            return ComposerResult(outfits=[], overall_assessment="unsuitable", raw_response=raw_text)
+            raw = {}
+
+        if parse_failed:
+            result = ComposerResult(outfits=[], overall_assessment="unsuitable", raw_response=raw_text)
+            drop_reasons: List[str] = ["json_parse_failed"]
+            if on_attempt:
+                on_attempt({
+                    "attempt_no": attempt_no,
+                    "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+                    "completion_tokens": int(usage.get("completion_tokens") or 0),
+                    "total_tokens": int(usage.get("total_tokens") or 0),
+                    "raw_text": raw_text[:8000],
+                    "outfit_count_emitted": 0,
+                    "outfit_count_kept": 0,
+                    "drop_reasons": drop_reasons,
+                })
+            return result, drop_reasons
 
         kept: List[ComposedOutfit] = []
+        drop_reasons = []
         for raw_outfit in raw.get("outfits", []):
             try:
                 outfit = ComposedOutfit(
@@ -480,6 +588,7 @@ class OutfitComposer:
                 )
             except (ValidationError, TypeError, AttributeError, ValueError) as exc:  # defensive parse
                 _log.warning("OutfitComposer: malformed outfit payload (%s); skipping", exc)
+                drop_reasons.append(f"malformed_payload: {exc}")
                 continue
             err = _validate_outfit(outfit, pool_ids_by_direction)
             if err:
@@ -487,12 +596,27 @@ class OutfitComposer:
                     "OutfitComposer: dropping outfit %s (direction=%s) — %s",
                     outfit.composer_id, outfit.direction_id, err,
                 )
+                drop_reasons.append(err)
                 continue
             kept.append(outfit)
 
-        return ComposerResult(
+        result = ComposerResult(
             outfits=kept,
             overall_assessment=str(raw.get("overall_assessment") or "moderate"),
             pool_unsuitable=bool(raw.get("pool_unsuitable", False)),
             raw_response=raw_text,
         )
+
+        if on_attempt:
+            on_attempt({
+                "attempt_no": attempt_no,
+                "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+                "completion_tokens": int(usage.get("completion_tokens") or 0),
+                "total_tokens": int(usage.get("total_tokens") or 0),
+                "raw_text": raw_text[:8000],
+                "outfit_count_emitted": len(raw.get("outfits") or []),
+                "outfit_count_kept": len(kept),
+                "drop_reasons": drop_reasons,
+            })
+
+        return result, drop_reasons

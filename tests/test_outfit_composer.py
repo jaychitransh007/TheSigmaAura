@@ -253,6 +253,82 @@ class OutfitComposerRetryTests(unittest.TestCase):
         self.assertIn("prompt_tokens", result.usage)
         self.assertIn("total_tokens", result.usage)
 
+    def test_composer_retry_suffix_targets_direction_id_when_that_was_the_failure(self) -> None:
+        """PR #80: when the first attempt failed because direction_id was
+        a product_id (not the architect's letter), the retry suffix
+        explicitly calls out the direction_id contract — not the legacy
+        item_ids reminder. Validated via the user_payload string passed
+        to the LLM on the retry call."""
+        first_pass_bad_direction = {
+            "outfits": [
+                # direction_id is a product_id instead of "A"/"B".
+                # Validator drops with "unknown direction_id" reason.
+                {"composer_id": "C1", "direction_id": "POWERLOOK_xyz", "direction_type": "paired",
+                 "item_ids": ["b_t1", "b_b1"], "rationale": "Made up direction."},
+            ],
+            "overall_assessment": "moderate",
+            "pool_unsuitable": False,
+        }
+        second_pass_valid = {
+            "outfits": [
+                {"composer_id": "C1", "direction_id": "B", "direction_type": "paired",
+                 "item_ids": ["b_t1", "b_b1"], "rationale": "Fixed direction_id."},
+            ],
+            "overall_assessment": "moderate",
+            "pool_unsuitable": False,
+        }
+        with patch("agentic_application.agents.outfit_composer.get_api_key", return_value="x"), _patch_composer() as oc:
+            oc.return_value.responses.create.side_effect = [
+                _mock_response(first_pass_bad_direction),
+                _mock_response(second_pass_valid),
+            ]
+            result = OutfitComposer().compose(_ctx(), _pool())
+
+        # 2 calls — retry fired
+        self.assertEqual(2, oc.return_value.responses.create.call_count)
+        # 1 outfit on the rescue
+        self.assertEqual(1, len(result.outfits))
+        self.assertEqual(2, result.attempt_count)
+        # Inspect the second call's user_payload — should mention
+        # direction_id, NOT just the item_ids reminder.
+        retry_user_payload = oc.return_value.responses.create.call_args_list[1].kwargs["input"][1]["content"][0]["text"]
+        self.assertIn("direction_id MUST be one of", retry_user_payload)
+
+    def test_composer_per_attempt_callback_fires_once_per_invoke(self) -> None:
+        """PR #80: ``on_attempt`` callback is invoked once per LLM call so
+        the orchestrator can persist a model_call_logs row per attempt
+        instead of one summed row that hides retry token cost."""
+        first_pass_bad = {
+            "outfits": [
+                {"composer_id": "C1", "direction_id": "BOGUS", "direction_type": "paired",
+                 "item_ids": ["BOGUS_1", "BOGUS_2"], "rationale": "Bad."},
+            ],
+            "overall_assessment": "moderate",
+            "pool_unsuitable": False,
+        }
+        second_pass_valid = {
+            "outfits": [
+                {"composer_id": "C1", "direction_id": "B", "direction_type": "paired",
+                 "item_ids": ["b_t1", "b_b1"], "rationale": "Good."},
+            ],
+            "overall_assessment": "moderate",
+            "pool_unsuitable": False,
+        }
+        captured: list[dict] = []
+        with patch("agentic_application.agents.outfit_composer.get_api_key", return_value="x"), _patch_composer() as oc:
+            oc.return_value.responses.create.side_effect = [
+                _mock_response(first_pass_bad),
+                _mock_response(second_pass_valid),
+            ]
+            result = OutfitComposer().compose(_ctx(), _pool(), on_attempt=captured.append)
+
+        self.assertEqual(2, len(captured))
+        self.assertEqual(1, captured[0]["attempt_no"])
+        self.assertEqual(0, captured[0]["outfit_count_kept"])  # first attempt rescued nothing
+        self.assertEqual(2, captured[1]["attempt_no"])
+        self.assertEqual(1, captured[1]["outfit_count_kept"])  # retry fixed it
+        self.assertEqual(2, result.attempt_count)
+
     def test_composer_no_retry_when_pool_unsuitable(self) -> None:
         """When the Composer self-reports pool_unsuitable, we trust it
         and don't burn another LLM call. Empty result, no retry."""

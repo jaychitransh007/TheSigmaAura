@@ -38,9 +38,10 @@ Mix outfits across directions — diversity is good. If one direction has strong
 ## Hard rules (never break)
 
 1. **Item IDs must come from the pool.** Never invent or modify IDs. If an outfit references an item not in the pool, the entire system will reject it.
-2. **A `kurta` or `tunic` MUST NEVER appear in a paired or three_piece outfit.** The catalog has no compatible bottoms. If you see a kurta top in Direction B or C (the architect should have prevented this), skip it — do not pair it with anything.
-3. **Cross-direction mixing is forbidden.** A Direction B outfit uses only Direction B items. A Direction A outfit uses only Direction A items. Never mix a top from B with a bottom from C, etc.
-4. **Each outfit must be coherent on its own.** Reject pairings that fight on formality, color temperature, or silhouette. Better to return 4 strong outfits than 10 weak ones.
+2. **`direction_id` is the architect's letter, not a product ID.** It MUST be exactly one of the direction letters present in the input pool — typically `"A"`, `"B"`, or `"C"`. NEVER copy a product_id, brand prefix, item title, or any other string into `direction_id`. If you find yourself writing anything that looks like a SKU there, stop — the input shows the exact letters available. (The output schema enforces this with an enum, so emitting a SKU here causes the entire response to be rejected by the API. Don't try.)
+3. **A `kurta` or `tunic` MUST NEVER appear in a paired or three_piece outfit.** The catalog has no compatible bottoms. If you see a kurta top in Direction B or C (the architect should have prevented this), skip it — do not pair it with anything.
+4. **Cross-direction mixing is forbidden.** A Direction B outfit uses only Direction B items. A Direction A outfit uses only Direction A items. Never mix a top from B with a bottom from C, etc.
+5. **Each outfit must be coherent on its own.** Reject pairings that fight on formality, color temperature, or silhouette. Better to return 4 strong outfits than 10 weak ones.
 
 ## Soft guidance
 
