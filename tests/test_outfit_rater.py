@@ -423,6 +423,17 @@ class FashionScoreBlendTests(unittest.TestCase):
             total = sum(weights.values())
             self.assertAlmostEqual(1.0, total, places=6, msg=f"{name} weights sum to {total}")
 
+    def test_composer_id_tiebreak_is_numeric(self) -> None:
+        """PR #71 review fix: ties on fashion_score sort C2 before C10
+        (numeric), not lex order which would put C10 before C2."""
+        from agentic_application.agents.outfit_rater import _composer_id_sort_key
+        ids = ["C10", "C2", "C1", "C3"]
+        # Sorted by the helper should give a natural numeric order.
+        sorted_ids = sorted(ids, key=_composer_id_sort_key)
+        self.assertEqual(["C1", "C2", "C3", "C10"], sorted_ids)
+        # Non-numeric ids fall back to lex; mixed shapes don't crash.
+        self.assertEqual(["C1", "Cx"], sorted(["Cx", "C1"], key=_composer_id_sort_key))
+
 
     def test_rater_honours_unsuitable_flag(self) -> None:
         """An unsuitable=True outfit still appears in the result so the

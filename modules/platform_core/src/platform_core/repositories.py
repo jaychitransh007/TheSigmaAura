@@ -511,20 +511,29 @@ class ConversationRepository:
         if not all_ids:
             return {}
 
+        # Chunk + quote: PostgREST `in.()` filters break on bare commas
+        # in product_ids and on URL-line lengths >8KB. With feedback_limit=200
+        # and UUID-style ids, an unchunked filter can hit ~7.4KB. Quote
+        # each id (defends against future ids with commas / parens) and
+        # chunk to 50 ids per query (worst-case ~2KB per request).
+        _CHUNK = 50
+        column_list = "product_id," + ",".join(col for col, _ in self._ARCHETYPAL_AXES)
+        attrs_by_id: Dict[str, Dict[str, str]] = {}
         try:
-            in_filter = ",".join(all_ids)
-            enriched_rows = self.client.select_many(
-                "catalog_enriched",
-                filters={"product_id": f"in.({in_filter})"},
-                columns="product_id," + ",".join(col for col, _ in self._ARCHETYPAL_AXES),
-            )
+            for i in range(0, len(all_ids), _CHUNK):
+                chunk = all_ids[i : i + _CHUNK]
+                in_filter = ",".join(f'"{pid}"' for pid in chunk)
+                enriched_rows = self.client.select_many(
+                    "catalog_enriched",
+                    filters={"product_id": f"in.({in_filter})"},
+                    columns=column_list,
+                )
+                for row in enriched_rows or []:
+                    pid = str(row.get("product_id") or "").strip()
+                    if pid:
+                        attrs_by_id[pid] = {col: str(row.get(col) or "").strip().lower() for col, _ in self._ARCHETYPAL_AXES}
         except Exception:
             return {}
-        attrs_by_id: Dict[str, Dict[str, str]] = {}
-        for row in enriched_rows or []:
-            pid = str(row.get("product_id") or "").strip()
-            if pid:
-                attrs_by_id[pid] = {col: str(row.get(col) or "").strip().lower() for col, _ in self._ARCHETYPAL_AXES}
 
         def _aggregate(ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
             counters: Dict[str, Counter] = {key: Counter() for _, key in self._ARCHETYPAL_AXES}

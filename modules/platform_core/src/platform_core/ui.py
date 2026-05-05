@@ -3051,13 +3051,19 @@ def get_web_ui_html(
       poly.setAttribute("stroke-width", "1.6");
       svg.appendChild(poly);
 
-      // Axis labels.
+      // Axis labels — anchor based on horizontal position to avoid
+      // clipping at the SVG edges. Top/bottom labels stay centered;
+      // labels on the right anchor "start" (text grows rightward but
+      // sits inside the viewBox); labels on the left anchor "end".
       axes.forEach(function(a, i) {{
+        var theta = -Math.PI / 2 + (2 * Math.PI * i) / n;
         var labelXY = axisXY(i, maxR + 14);
         var txt = document.createElementNS(svgNs, "text");
         txt.setAttribute("x", labelXY[0].toFixed(1));
         txt.setAttribute("y", (labelXY[1] + 4).toFixed(1));
-        txt.setAttribute("text-anchor", "middle");
+        var ca = Math.cos(theta);
+        var anchor = Math.abs(ca) < 0.2 ? "middle" : (ca > 0 ? "start" : "end");
+        txt.setAttribute("text-anchor", anchor);
         txt.setAttribute("class", "rater-radar-label");
         txt.textContent = a.label;
         svg.appendChild(txt);
@@ -3078,8 +3084,12 @@ def get_web_ui_html(
 
       // Centre score badge — fashion_score (or fall back to match_score
       // × 100 for legacy paths that don't populate fashion_score_pct).
+      // The fallback only triggers when the field is missing/non-numeric;
+      // a legitimate score of 0 (Rater gave the slate a styling-error
+      // verdict) renders as 0 rather than silently displaying a stale
+      // legacy match_score.
       var centerScore = parseInt(outfit.fashion_score_pct, 10);
-      if (!isFinite(centerScore) || centerScore <= 0) {{
+      if (!isFinite(centerScore)) {{
         var ms = parseFloat(outfit.match_score);
         centerScore = isFinite(ms) ? Math.round(ms * 100) : 0;
       }}

@@ -205,7 +205,6 @@ def select_weight_profile(
     *,
     user_message: str = "",
     occasion_signal: str = "",
-    formality_hint: str = "",
     specific_needs: Sequence[str] = (),
 ) -> str:
     """Return the weight-profile key to apply for this turn.
@@ -225,10 +224,11 @@ def select_weight_profile(
     occ = (occasion_signal or "").strip().lower()
     if occ in _CEREMONIAL_OCCASIONS or "ceremon" in occ or "wedding" in occ or "festival" in occ:
         return "ceremonial"
-    # formality_hint is intentionally NOT in the haystack — it's a
+    # formality_hint was intentionally never used here — it's a
     # planner classification ("smart_casual", "ceremonial") rather
-    # than user-expressed intent. Matching against it produces false
-    # positives ("smart_casual" → "casual" keyword → wrong profile).
+    # than user-expressed intent. Matching against it produced false
+    # positives ("smart_casual" → "casual" keyword → wrong profile),
+    # so it's not surfaced on this signature.
     needs_blob = " ".join(s.lower() for s in (specific_needs or []))
     msg = (user_message or "").lower()
     haystack = f"{msg} {needs_blob}"
@@ -374,7 +374,6 @@ class OutfitRater:
         weight_profile = select_weight_profile(
             user_message=getattr(live, "user_need", "") or "",
             occasion_signal=str(getattr(live, "occasion_signal", "") or ""),
-            formality_hint=str(getattr(live, "formality_hint", "") or ""),
             specific_needs=list(getattr(live, "specific_needs", []) or []),
         )
 
@@ -436,8 +435,11 @@ class OutfitRater:
             arch = _clamp_to_100(int(raw_o.get("archetype_match", 0) or 0))
             # R5: inter_item_coherence — defaults to 100 when omitted
             # by older prompt versions or for complete outfits the LLM
-            # has explicitly marked.
-            inter = _clamp_to_100(int(raw_o.get("inter_item_coherence", 100) or 100))
+            # has explicitly marked. Don't use `or 100` — that would
+            # rewrite a legitimate score of 0 (a styling-error outfit)
+            # back to 100. Only None/missing should fall back.
+            _inter_raw = raw_o.get("inter_item_coherence")
+            inter = _clamp_to_100(int(_inter_raw if _inter_raw is not None else 100))
             ranked.append(
                 RatedOutfit(
                     composer_id=cid,
@@ -461,8 +463,8 @@ class OutfitRater:
             )
 
         # Rank by computed fashion_score desc (ties: lower composer_id
-        # first — same convention the prompt used to enforce).
-        ranked.sort(key=lambda r: (-r.fashion_score, r.composer_id))
+        # first by NUMERIC value, not lex order — "C2" should beat "C10").
+        ranked.sort(key=lambda r: (-r.fashion_score, _composer_id_sort_key(r.composer_id)))
         for i, r in enumerate(ranked, start=1):
             r.rank = i
 
@@ -473,6 +475,22 @@ class OutfitRater:
             usage=dict(usage),
             fashion_score_weight_profile=weight_profile,
         )
+
+
+def _composer_id_sort_key(cid: str) -> tuple:
+    """Natural-numeric tiebreak key for composer_ids of the form ``C<n>``.
+
+    Lex sort puts ``C10`` before ``C2``; once a slate has 10 outfits
+    (Composer caps at 10) the rank tiebreak silently inverts. Pull the
+    digit suffix out and sort numerically; fall back to the raw string
+    for unexpected formats.
+    """
+    cid = (cid or "").strip()
+    digits = "".join(ch for ch in cid if ch.isdigit())
+    try:
+        return (0, int(digits)) if digits else (1, cid)
+    except ValueError:
+        return (1, cid)
 
 
 def _clamp_to_100(value: int) -> int:

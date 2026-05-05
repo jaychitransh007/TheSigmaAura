@@ -12,6 +12,7 @@ latency overhead is effectively zero during the turn itself.
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -52,6 +53,15 @@ class TurnTraceBuilder:
         # observability gap surfaced when the user asked "what's this
         # turn costing me end to end".
         self._total_cost_usd: float = 0.0
+        # PR #71 (May 5 2026): tryon_render and visual_eval batches call
+        # add_model_cost_from_row from a ThreadPoolExecutor. Without this
+        # lock, two non-zero cost increments can interleave and lose an
+        # update (Python's `+=` on a float is not atomic — bytecode is
+        # LOAD/LOAD/ADD/STORE). Cost is currently 0 for cache hits so
+        # the bug is latent, but the cold-render path has been writing
+        # non-zero costs from worker threads since R3. Lock is held
+        # only across the integer add — negligible contention.
+        self._cost_lock = threading.Lock()
 
     # ── Step accumulation ────────────────────────────────────────────
 
@@ -122,13 +132,17 @@ class TurnTraceBuilder:
     def add_cost(self, amount: Optional[float]) -> None:
         """Accumulate a single LLM / image / embedding call's cost into
         the per-turn total. Tolerates None / 0 / strings — anything
-        non-numeric is treated as zero."""
+        non-numeric is treated as zero. Thread-safe: held under
+        ``self._cost_lock`` because callers run inside the orchestrator's
+        ThreadPoolExecutor (try-on render, parallel visual evals)."""
         if amount is None:
             return
         try:
-            self._total_cost_usd += float(amount)
+            value = float(amount)
         except (TypeError, ValueError):
             return
+        with self._cost_lock:
+            self._total_cost_usd += value
 
     def add_model_cost_from_row(self, row: Optional[Dict[str, Any]]) -> None:
         """Convenience: extract ``estimated_cost_usd`` from a

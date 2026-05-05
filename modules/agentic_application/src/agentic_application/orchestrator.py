@@ -4132,6 +4132,12 @@ class AgenticOrchestrator:
         # the advisor then leans on the legacy attribute fields.
         rater_rationale = str(target.get("rater_rationale") or "").strip()
         composer_rationale = str(target.get("composer_rationale") or "").strip()
+        # PR #71 review feedback: pass the four-dim archetype_scores
+        # through so the advisor can ground explanations in the actual
+        # numbers ("body harmony scored 88, color was the weak axis at
+        # 64"). Defaults to {} on pre-R2 sessions; the advisor handles
+        # an empty dict gracefully.
+        archetype_scores = target.get("archetype_scores") or {}
         confidence_payload = dict(response_metadata.get("recommendation_confidence") or {})
         confidence_explanation = [str(v).strip() for v in list(confidence_payload.get("explanation") or []) if str(v).strip()]
         confidence_band = str(confidence_payload.get("confidence_band") or "").strip()
@@ -4190,7 +4196,10 @@ class AgenticOrchestrator:
                         "recommendation_confidence_explanation": confidence_explanation,
                         # R2 (PR #65): real stylist rationales — when
                         # populated, the advisor should quote / paraphrase
-                        # rather than fabricate.
+                        # rather than fabricate. archetype_scores added
+                        # in PR #71 review feedback so the advisor can
+                        # cite specific dimension numbers.
+                        "archetype_scores": archetype_scores,
                         "rater_rationale": rater_rationale,
                         "composer_rationale": composer_rationale,
                     },
@@ -6319,10 +6328,19 @@ class AgenticOrchestrator:
                     "silhouette_types": _dedupe_values(
                         str(item.get("silhouette_type") or "").strip() for item in items
                     ),
-                    # R2 (PR #65, May 5 2026): persist the Rater + Composer
-                    # rationales so the explanation_request handler can
-                    # quote the actual stylist-to-stylist reasoning instead
-                    # of regenerating it from raw attributes.
+                    # R2 (PR #65, May 5 2026): persist the Rater +
+                    # Composer rationales so the explanation_request
+                    # handler can quote the actual stylist-to-stylist
+                    # reasoning instead of regenerating it from raw
+                    # attributes. PR #71 review feedback: also persist
+                    # the four Rater dimension scores so the advisor
+                    # has the quantitative evidence behind the rank.
+                    "archetype_scores": {
+                        "body_harmony_pct": int(getattr(candidate, "body_harmony", 0) or 0),
+                        "color_suitability_pct": int(getattr(candidate, "color_harmony", 0) or 0),
+                        "style_fit_pct": int(getattr(candidate, "archetype_match", 0) or 0),
+                        "occasion_pct": int(getattr(candidate, "occasion_fit", 0) or 0),
+                    },
                     "rater_rationale": str(getattr(candidate, "rater_rationale", "") or "").strip(),
                     "composer_rationale": str(getattr(candidate, "composer_rationale", "") or "").strip(),
                 }

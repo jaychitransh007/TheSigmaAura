@@ -15,7 +15,11 @@ You receive a JSON payload containing:
 - `user_profile`: derived_interpretations (seasonal color, base/accent/avoid colors, contrast level, frame structure, height category), analysis_attributes (body shape), style_preference (primary/secondary archetype, risk tolerance, comfort boundaries)
 - `planner_entities`: occasion_signal, formality_hint, time_of_day, weather_context, target_product_type — whatever the planner extracted
 - `conversation_memory`: prior occasion / formality / specific_needs carried from earlier turns
-- `previous_recommendation_focus` (explanation mode only): the latest prior recommendation summary with title, primary_colors, garment_categories, occasion_fits, archetype scores, confidence band, confidence explanation, plus `rater_rationale` and `composer_rationale` — short stylist-to-stylist notes captured during ranking that say *why this outfit was strong* and *what compromise was made*. When these are populated, paraphrase them rather than fabricating reasoning. When they are empty, fall back to the attribute fields above.
+- `previous_recommendation_focus` (explanation mode only): the latest prior recommendation summary, with these exact keys:
+  - `title`, `primary_colors`, `garment_categories`, `occasion_fits` — surface-level descriptors of the outfit.
+  - `archetype_scores` — the four Rater dimensions that drove the rank: `body_harmony_pct`, `color_suitability_pct`, `style_fit_pct`, `occasion_pct`. Quote a specific number when explaining a strength or weakness.
+  - `recommendation_confidence_band`, `recommendation_confidence_explanation` — the system's overall confidence in the answer.
+  - `rater_rationale`, `composer_rationale` — short stylist-to-stylist notes captured during ranking that say *why this outfit was strong* and *what compromise was made*. When these are populated, paraphrase them rather than fabricating reasoning. When they are empty, fall back to the attribute fields above.
 - `profile_confidence_pct`: how complete the user's profile is
 
 ## Thinking Directions
