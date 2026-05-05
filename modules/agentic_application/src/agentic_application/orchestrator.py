@@ -247,7 +247,11 @@ class AgenticOrchestrator:
         self._catalog_inventory: Optional[list] = None
         self._catalog_rows: Optional[list] = None
 
-        self.outfit_architect = OutfitArchitect()
+        # Architect reasoning effort flows from AuraRuntimeConfig so it
+        # can be flipped per-environment (ARCHITECT_REASONING_EFFORT) for
+        # the ongoing measure-and-decide work without a code change.
+        _architect_effort = getattr(config, "architect_reasoning_effort", "medium")
+        self.outfit_architect = OutfitArchitect(reasoning_effort=_architect_effort)
         # OutfitCheckAgent removed (Phase 12B cleanup, April 9 2026) — the
         # VisualEvaluatorAgent replaced all of its call sites. The legacy
         # text-only OutfitEvaluator below is still the fallback for the
@@ -4576,8 +4580,14 @@ class AgenticOrchestrator:
                     return wardrobe_only_fallback
 
         # Run Outfit Architect
+        # Read model + reasoning effort from the agent so the trace +
+        # log rows always reflect what was actually called (May 5, 2026
+        # gpt-5.5 → gpt-5.4 + medium-effort swap exposed how easy
+        # hardcoded-literal drift is here).
+        _architect_model = getattr(self.outfit_architect, "_model", "gpt-5.4")
+        _architect_effort_used = getattr(self.outfit_architect, "_reasoning_effort", "medium")
         emit("outfit_architect", "started")
-        trace_start("outfit_architect", model="gpt-5.5", input_summary=f"message={message[:80]}")
+        trace_start("outfit_architect", model=_architect_model, input_summary=f"message={message[:80]}")
         t0 = time.monotonic()
         try:
             plan = self.outfit_architect.plan(combined_context)
@@ -4590,8 +4600,11 @@ class AgenticOrchestrator:
                 turn_id=turn_id,
                 service="agentic_application",
                 call_type="outfit_architect",
-                model=getattr(self.outfit_architect, "_model", "gpt-5.5"),
-                request_json={"combined_context_summary": {"gender": user_context.gender, "message": message}},
+                model=_architect_model,
+                request_json={
+                    "combined_context_summary": {"gender": user_context.gender, "message": message},
+                    "reasoning_effort": _architect_effort_used,
+                },
                 response_json={},
                 reasoning_notes=[],
                 latency_ms=architect_ms,
@@ -4640,14 +4653,15 @@ class AgenticOrchestrator:
             turn_id=turn_id,
             service="agentic_application",
             call_type="outfit_architect",
-            model=getattr(self.outfit_architect, "_model", "gpt-5.5"),
+            model=_architect_model,
             request_json={
                 "combined_context_summary": {
                     "gender": user_context.gender,
                     "occasion": effective_live_context.occasion_signal,
                     "message": message,
                     "is_followup": effective_live_context.is_followup,
-                }
+                },
+                "reasoning_effort": _architect_effort_used,
             },
             response_json=plan.model_dump(),
             reasoning_notes=[],

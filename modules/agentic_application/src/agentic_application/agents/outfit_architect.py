@@ -224,14 +224,23 @@ def _build_user_payload(ctx: CombinedContext) -> str:
 
 
 class OutfitArchitect:
-    def __init__(self, model: str = "gpt-5.5") -> None:
-        # May 1, 2026: upgraded from gpt-5.4 to gpt-5.5. Architect quality
-        # drives retrieval quality across the entire pipeline (directions,
-        # hard filters, query documents) so we pay the bigger model on
-        # a single call to lift the output of every downstream stage.
+    def __init__(
+        self,
+        model: str = "gpt-5.4",
+        reasoning_effort: str = "medium",
+    ) -> None:
+        # May 5, 2026: re-tiered to gpt-5.4 + reasoning_effort="medium".
+        # OpenAI's lineup positions gpt-5.4 as the lower-cost reasoning
+        # tier (input $2.50/M vs $5.00/M for gpt-5.5; output $10/M vs
+        # $30/M); reasoning_effort tunes within-model chain-of-thought.
+        # Going one tier down on model AND one notch down on effort
+        # is the explicit cost play — see docs/OPEN_TASKS.md for the
+        # measure-and-decide entry that backs both defaults.
+        # History: gpt-5.4 → gpt-5.5 (May 1, 2026) → gpt-5.4 + medium effort.
         #
         # Lazy OpenAI client (see CopilotPlanner for the pattern).
         self._model = model
+        self._reasoning_effort = reasoning_effort
         self._system_prompt_base = _load_prompt()
         self._anchor_module = _load_module("anchor")
         self._followup_module = _load_module("followup")
@@ -273,6 +282,7 @@ class OutfitArchitect:
                     "content": [{"type": "input_text", "text": _build_user_payload(combined_context)}],
                 },
             ],
+            reasoning={"effort": self._reasoning_effort},
             text={"format": _PLAN_JSON_SCHEMA},
         )
         self.last_usage = extract_token_usage(response)

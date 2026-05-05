@@ -30,7 +30,7 @@ from typing import Dict, Optional
 _TEXT_PRICING: Dict[str, Dict[str, float]] = {
     # OpenAI
     "gpt-5.5":                       {"input_per_1m": 5.00,  "output_per_1m": 30.00},
-    "gpt-5.4":                       {"input_per_1m": 2.50,  "output_per_1m": 10.00},  # legacy — kept for historical model_call_logs
+    "gpt-5.4":                       {"input_per_1m": 2.50,  "output_per_1m": 10.00},  # OutfitArchitect (May 5, 2026 — was gpt-5.5)
     "gpt-5-mini":                    {"input_per_1m": 0.15,  "output_per_1m": 0.60},
     "text-embedding-3-small":        {"input_per_1m": 0.02,  "output_per_1m": 0.0},
     # Anthropic — listed for completeness, not currently used by Aura
