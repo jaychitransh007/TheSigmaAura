@@ -32,11 +32,20 @@ Does the outfit read right for this user's stated occasion + formality + time of
 
 ### 2. `body_harmony` (0–100)
 
-Does it flatter this body shape, height, frame? Use the user's `BodyShape`, height_cm, and frame interpretations.
+Does the outfit flatter this user's full anatomy snapshot? Reason on the body block as a whole — the more fields you weave into the rationale, the higher-quality the score. Empty fields just mean the user hasn't completed that part of analysis; skip them silently rather than penalising.
 
-- High: silhouette and proportion work with the user's frame.
+The body block contains:
+
+- `body_shape`, `frame_structure`, `waist_size_band` — the high-level archetype + skeletal frame.
+- `visual_weight`, `vertical_proportion`, `torso_to_leg_ratio` — overall presence + how length distributes between torso and legs.
+- `bust_volume`, `arm_volume`, `midsection_state` — local volume cues that drive top/dress fit decisions.
+- `height_cm`, `waist_cm` — measurements for proportion math.
+
+Score guidance:
+
+- High: silhouette and proportion actively flatter (e.g., longer-line top on a long-torso/short-leg ratio; structured shoulders on a narrow frame; defined waist on a defined waist_size_band).
 - Mid: neutral — neither flattering nor unflattering.
-- Low: fights the body shape (e.g., oversized top + oversized bottom on a petite frame; horizontal stripes + apple body without offset).
+- Low: fights the anatomy (e.g., oversized top + oversized bottom on a petite frame; cropped top on a long-torso ratio; bodycon on a high midsection_state without offset).
 
 ### 3. `color_harmony` (0–100)
 

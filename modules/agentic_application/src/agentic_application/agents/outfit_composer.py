@@ -127,6 +127,25 @@ _EXPECTED_ITEM_COUNT: Dict[str, int] = {
 }
 
 
+_BODY_RAW_KEYS = (
+    "BodyShape",
+    "VisualWeight",
+    "VerticalProportion",
+    "ArmVolume",
+    "MidsectionState",
+    "BustVolume",
+    "TorsoToLegRatio",
+)
+_DERIVED_KEYS = (
+    "BodyShape",
+    "SeasonalColorGroup",
+    "ContrastLevel",
+    "Undertone",
+    "FrameStructure",
+    "WaistSizeBand",
+)
+
+
 def _user_context_block(ctx: CombinedContext) -> Dict[str, Any]:
     """Compact user-context dict for the Composer prompt input.
 
@@ -134,25 +153,58 @@ def _user_context_block(ctx: CombinedContext) -> Dict[str, Any]:
     skips the rich enrichment data that would balloon the prompt and
     add noise. The Rater also calls this helper, so any change here
     flows to both agents — that's intentional.
+
+    R1 (PR #64, May 5 2026): expanded the body block from
+    {body_shape, height_cm} to the full anatomy snapshot the user has
+    on file. The Rater's `body_harmony` dimension was effectively
+    guessing from BodyShape alone; surfacing visual_weight / vertical_
+    proportion / arm_volume / midsection / bust / torso-to-leg / frame
+    structure / waist size band / waist_cm gives it the evidence it
+    needs to actually reason about silhouette flattery. Empty values
+    (user hasn't completed analysis or skipped a draping question)
+    are kept as empty strings so the prompt structure stays stable.
     """
     user = ctx.user
-    interps: Dict[str, Any] = {}
-    for key in ("BodyShape", "SeasonalColorGroup", "ContrastLevel", "Undertone"):
+
+    derived: Dict[str, str] = {}
+    for key in _DERIVED_KEYS:
         raw = user.derived_interpretations.get(key)
         if isinstance(raw, dict):
-            interps[key] = raw.get("value", "") or ""
+            derived[key] = str(raw.get("value", "") or "")
         else:
-            interps[key] = str(raw or "")
+            derived[key] = str(raw or "")
+
+    raw_body: Dict[str, str] = {}
+    attrs = user.analysis_attributes or {}
+    for key in _BODY_RAW_KEYS:
+        v = attrs.get(key)
+        if isinstance(v, dict):
+            raw_body[key] = str(v.get("value", "") or "")
+        else:
+            raw_body[key] = str(v or "")
 
     style_pref = user.style_preference or {}
     return {
         "gender": user.gender,
+        # ── Body anatomy (used by Rater.body_harmony) ─────────────────
         "height_cm": user.height_cm,
-        "body_shape": interps.get("BodyShape", ""),
-        "palette_season": interps.get("SeasonalColorGroup", ""),
-        "contrast": interps.get("ContrastLevel", ""),
-        "undertone": interps.get("Undertone", ""),
+        "waist_cm": user.waist_cm,
+        "body_shape": derived.get("BodyShape", "") or raw_body.get("BodyShape", ""),
+        "frame_structure": derived.get("FrameStructure", ""),
+        "waist_size_band": derived.get("WaistSizeBand", ""),
+        "visual_weight": raw_body.get("VisualWeight", ""),
+        "vertical_proportion": raw_body.get("VerticalProportion", ""),
+        "arm_volume": raw_body.get("ArmVolume", ""),
+        "midsection_state": raw_body.get("MidsectionState", ""),
+        "bust_volume": raw_body.get("BustVolume", ""),
+        "torso_to_leg_ratio": raw_body.get("TorsoToLegRatio", ""),
+        # ── Color (used by Rater.color_harmony) ───────────────────────
+        "palette_season": derived.get("SeasonalColorGroup", ""),
+        "contrast": derived.get("ContrastLevel", ""),
+        "undertone": derived.get("Undertone", ""),
+        # ── Style (used by Rater.archetype_match) ─────────────────────
         "risk_tolerance": style_pref.get("riskTolerance", "") or "balanced",
+        # ── Per-turn signals (used by Rater.occasion_fit) ─────────────
         "user_message": ctx.live.user_need,
         "occasion_signal": ctx.live.occasion_signal,
         "formality_hint": ctx.live.formality_hint,
@@ -163,10 +215,9 @@ def _user_context_block(ctx: CombinedContext) -> Dict[str, Any]:
         # The IDs are already filtered out of the retrieval pool by
         # `catalog_search_agent`, so the Composer never sees them; and
         # opaque IDs without item attributes don't help the LLM reason
-        # about archetypal dislikes ("loud florals", "boxy fits"). If
-        # we want archetypal-dislike awareness later, the right shape
-        # is to hydrate the disliked items' attributes (color, pattern,
-        # silhouette) and pass those — see PR #37 review thread.
+        # about archetypal dislikes ("loud florals", "boxy fits"). R4
+        # (planned) hydrates these into archetypal signals and surfaces
+        # them via a separate `archetypal_preferences` block.
     }
 
 
