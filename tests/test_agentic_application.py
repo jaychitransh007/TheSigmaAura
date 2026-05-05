@@ -1516,6 +1516,28 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual(2, len(user_context.wardrobe_items))
         self.assertEqual("Navy Blazer", user_context.wardrobe_items[0]["title"])
 
+    def test_build_user_context_skips_gateway_call_when_status_supplied(self) -> None:
+        """PR #61 (G1b): when the orchestrator passes a pre-fetched
+        analysis_status, build_user_context must not re-fetch it."""
+        gateway = Mock()
+        # If get_analysis_status is called, the test will fail because the
+        # Mock returns a MagicMock, not a dict.
+        prefetched = {
+            "status": "completed",
+            "profile": {"gender": "male"},
+            "attributes": {"BodyShape": {"value": "Rectangle"}},
+            "derived_interpretations": {"SeasonalColorGroup": {"value": "Autumn"}},
+        }
+        gateway.get_wardrobe_items.return_value = []
+
+        from agentic_application.context.user_context_builder import build_user_context
+
+        user_context = build_user_context(
+            "user-1", onboarding_gateway=gateway, analysis_status=prefetched
+        )
+        self.assertEqual("male", user_context.gender)
+        self.assertEqual(0, gateway.get_analysis_status.call_count)
+
     def test_onboarding_gate_blocks_until_analysis_is_complete(self) -> None:
         gate = evaluate_onboarding_gate(
             {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 # derive_color_palette import removed — palette comes from deterministic interpreter via collated_output
 
@@ -42,9 +42,17 @@ def build_user_context(
     user_id: str,
     *,
     onboarding_gateway: ApplicationUserGateway,
+    analysis_status: Optional[Dict[str, Any]] = None,
 ) -> UserContext:
-    """Load all saved user state into a single UserContext object."""
-    status = onboarding_gateway.get_analysis_status(user_id)
+    """Load all saved user state into a single UserContext object.
+
+    ``analysis_status`` lets the caller pass a pre-fetched analysis-status
+    dict to avoid a redundant Supabase round trip. The orchestrator's
+    onboarding gate already loads it once at the top of every turn — passing
+    it through saves ~3 DB reads (profile + style snapshot + interpretation
+    snapshot) at the user_context step. May 5, 2026.
+    """
+    status = analysis_status if analysis_status is not None else onboarding_gateway.get_analysis_status(user_id)
     if status.get("status") != "completed":
         raise ValueError(
             "User analysis is not complete. Finish onboarding and profile analysis first."
