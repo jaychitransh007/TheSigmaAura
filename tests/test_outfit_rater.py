@@ -195,6 +195,31 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
         # 80*0.15 = 30 + 0 + 11 + 1.35 + 12 = 54.35 → 54
         self.assertEqual(54, ro.fashion_score)
 
+    def test_rater_treats_empty_string_inter_item_as_missing(self) -> None:
+        """PR #74: an empty-string inter_item_coherence (malformed LLM
+        response) should be treated identically to a missing field —
+        preserved as None on the candidate and dropped from the
+        fashion_score blend. Without this guard, int("") would raise
+        and crash the entire rate() call for one bad candidate."""
+        payload = {
+            "ranked_outfits": [
+                {"composer_id": "C1",
+                 "occasion_fit": 90, "body_harmony": 80, "color_harmony": 80, "archetype_match": 80,
+                 "inter_item_coherence": "",
+                 "rationale": "ok", "unsuitable": False},
+            ],
+            "overall_assessment": "moderate",
+        }
+        with patch("agentic_application.agents.outfit_rater.get_api_key", return_value="x"), _patch_rater() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(payload)
+            result = OutfitRater().rate(_ctx(), _composed(), _retrieved())
+
+        ro = result.ranked_outfits[0]
+        self.assertIsNone(ro.inter_item_coherence)
+        # 4-dim renormalised: 90*(0.30/0.85) + 80*(0.18/0.85) + 80*(0.22/0.85)
+        # + 80*(0.15/0.85) = 31.76+16.94+20.71+14.12 = 83.53 → 84
+        self.assertEqual(84, ro.fashion_score)
+
     def test_rater_drops_unknown_composer_ids(self) -> None:
         """The LLM should never invent composer_ids outside the input
         slate. If it does, drop them — preserves the contract that
