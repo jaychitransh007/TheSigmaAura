@@ -1,16 +1,24 @@
 """Outfit Composer — May 3 2026.
 
 Replaces the deterministic OutfitAssembler's combinatorial pairing pass
-with a single LLM call (gpt-5-mini). Given the retrieved item pool
-grouped by direction (A/B/C) plus the user's request and context,
-returns up to 10 coherent outfits.
+with a single LLM call. Given the retrieved item pool grouped by
+direction (A/B/C) plus the user's request and context, returns up to
+10 coherent outfits.
+
+Model: ``gpt-5.4`` at ``reasoning_effort="low"`` (gpt-5-mid family,
+same tier as the Architect). Promoted from gpt-5-mini in PR #81 after
+T7 showed the Composer doing genuinely heavy reasoning — assembling
+60-item pools across multiple compatibility axes (palette, formality,
+fit, fabric, occasion) into coherent outfits is structured *judgment*,
+not just structured assembly. gpt-5-mini was producing low-quality
+pairings on the larger pools.
 
 Companion to OutfitRater: the Composer constructs, the Rater scores.
 Both replace the old assembler+reranker pipeline; cosine similarity is
 demoted to a retrieval primitive only.
 
 The Composer:
-- Calls gpt-5-mini with structured output (JSON schema).
+- Calls gpt-5.4 with structured output (JSON schema, dynamic enum on direction_id).
 - Validates that every emitted item_id exists in the input pool —
   hallucinated IDs are a real failure mode for this kind of task. On
   partial hallucination we drop the bad outfits; on full hallucination
@@ -44,6 +52,7 @@ from openai import OpenAI
 from pydantic import ValidationError
 
 from platform_core.cost_estimator import extract_token_usage
+from platform_core.reasoning_effort import GPT5_MID_EFFORTS
 from user_profiler.config import get_api_key
 
 from ..schemas import (
@@ -387,16 +396,39 @@ def _validate_outfit(
 
 
 class OutfitComposer:
-    """LLM-driven outfit constructor. One gpt-5-mini call per turn.
+    """LLM-driven outfit constructor. One gpt-5.4 call per turn (plus
+    an optional retry on full-pool hallucination).
 
     Replaces the OutfitAssembler's combinatorial pairing + heuristic
     scoring with structured judgment. Returns up to 10 outfits with
     per-outfit rationale; ordering and scoring are the OutfitRater's
     job downstream.
+
+    Promoted from gpt-5-mini → gpt-5.4 in PR #81. The Composer is
+    doing genuine multi-axis judgment (palette × formality × fit ×
+    fabric × occasion) over 60-item pools — gpt-5-mid is the right
+    tier. ``reasoning_effort="low"`` keeps cost manageable (the
+    structured-output schema does most of the chain-of-thought).
+
+    Allowed-effort vocabulary lives in
+    ``platform_core.reasoning_effort`` so it stays in sync with the
+    Architect (also gpt-5-mid).
     """
 
-    def __init__(self, model: str = "gpt-5-mini") -> None:
+    _ALLOWED_EFFORTS = GPT5_MID_EFFORTS
+
+    def __init__(
+        self,
+        model: str = "gpt-5.4",
+        reasoning_effort: str = "low",
+    ) -> None:
+        if reasoning_effort not in self._ALLOWED_EFFORTS:
+            raise ValueError(
+                f"OutfitComposer reasoning_effort must be one of "
+                f"{sorted(self._ALLOWED_EFFORTS)}; got {reasoning_effort!r}"
+            )
         self._model = model
+        self._reasoning_effort = reasoning_effort
         self._system_prompt = _load_prompt()
         self.last_usage: Dict[str, int] = {
             "prompt_tokens": 0,
@@ -531,19 +563,17 @@ class OutfitComposer:
         sum usage across the retry pass without leaking state through
         instance attributes.
         """
-        # reasoning_effort="low" — bumped from "minimal" (PR #80,
-        # May 5 2026 RCA) after the T6 turn showed gpt-5-mini at
-        # minimal-effort confusing field assignment (product_ids
-        # going into direction_id) on prompts >12K tokens. "low" adds
-        # a few hundred reasoning tokens (~$0.0005/turn) and restores
-        # structured-output discipline.
+        # reasoning_effort sourced from self._reasoning_effort
+        # (gpt-5-mid family vocabulary: low | medium | high | xhigh).
+        # Default "low" is sufficient at this prompt size; the
+        # structured-output schema enforces most of the contract.
         response = self._client.responses.create(
             model=self._model,
             input=[
                 {"role": "system", "content": [{"type": "input_text", "text": self._system_prompt}]},
                 {"role": "user", "content": [{"type": "input_text", "text": user_payload}]},
             ],
-            reasoning={"effort": "low"},
+            reasoning={"effort": self._reasoning_effort},
             text={"format": schema},
         )
         usage = extract_token_usage(response) or {}

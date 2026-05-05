@@ -82,11 +82,14 @@ _URL_RE = re.compile(r"https?://\S+")
 # integer fashion_score (0–100).
 _RECOMMENDATION_CONFIDENCE_THRESHOLD = 0.75
 
-# Catalog-pipeline gate (May 3 2026). After Composer + Rater + visual
-# evaluator, only outfits whose Rater fashion_score clears this floor
-# AND were not flagged ``unsuitable`` by the Rater reach the user.
-# 75/100 mirrors the wardrobe path's 0.75 floor on a 0–1 scale.
-_RECOMMENDATION_FASHION_THRESHOLD = 75
+# Catalog-pipeline gate. After Composer + Rater, only outfits whose
+# Rater fashion_score clears this floor AND were not flagged
+# ``unsuitable`` by the Rater reach the user. Lowered 75 → 60 in
+# PR #81 — at 75 we were over-rejecting palette-mid candidates that
+# downstream try-on + rater rationale showed were perfectly
+# acceptable. 60 is more permissive but ``unsuitable: true`` still
+# hard-drops the genuinely bad ones.
+_RECOMMENDATION_FASHION_THRESHOLD = 60
 
 # Maximum raw score from `_select_wardrobe_occasion_outfit._score`:
 #   +3 occasion_fit exact match
@@ -4803,7 +4806,7 @@ class AgenticOrchestrator:
             emit("outfit_composer", "started")
             trace_start(
                 "outfit_composer",
-                model="gpt-5-mini",
+                model="gpt-5.4",
                 input_summary=f"{total_products} products across {len(retrieved_sets)} sets",
             )
             t_compose = time.monotonic()
@@ -4826,7 +4829,7 @@ class AgenticOrchestrator:
                         turn_id=turn_id,
                         service="agentic_application",
                         call_type=call_type,
-                        model="gpt-5-mini",
+                        model="gpt-5.4",
                         request_json={
                             "pool_size": total_products,
                             "directions": len({rs.direction_id for rs in retrieved_sets}),
