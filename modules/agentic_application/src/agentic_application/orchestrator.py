@@ -4197,6 +4197,12 @@ class AgenticOrchestrator:
         colors = [str(v).strip() for v in list(target.get("primary_colors") or []) if str(v).strip()]
         categories = [str(v).strip() for v in list(target.get("garment_categories") or []) if str(v).strip()]
         occasion_fits = [str(v).strip().replace("_", " ") for v in list(target.get("occasion_fits") or []) if str(v).strip()]
+        # R2 (PR #65): the rater_rationale and composer_rationale are now
+        # persisted on each rec summary by _build_recommendation_summaries.
+        # If they're missing (older session pre-R2), fall back to empty —
+        # the advisor then leans on the legacy attribute fields.
+        rater_rationale = str(target.get("rater_rationale") or "").strip()
+        composer_rationale = str(target.get("composer_rationale") or "").strip()
         confidence_payload = dict(response_metadata.get("recommendation_confidence") or {})
         confidence_explanation = [str(v).strip() for v in list(confidence_payload.get("explanation") or []) if str(v).strip()]
         confidence_band = str(confidence_payload.get("confidence_band") or "").strip()
@@ -4253,6 +4259,11 @@ class AgenticOrchestrator:
                         "occasion_fits": occasion_fits,
                         "recommendation_confidence_band": confidence_band,
                         "recommendation_confidence_explanation": confidence_explanation,
+                        # R2 (PR #65): real stylist rationales — when
+                        # populated, the advisor should quote / paraphrase
+                        # rather than fabricate.
+                        "rater_rationale": rater_rationale,
+                        "composer_rationale": composer_rationale,
                     },
                     profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
                 )
@@ -7511,6 +7522,12 @@ class AgenticOrchestrator:
                     "silhouette_types": _dedupe_values(
                         str(item.get("silhouette_type") or "").strip() for item in items
                     ),
+                    # R2 (PR #65, May 5 2026): persist the Rater + Composer
+                    # rationales so the explanation_request handler can
+                    # quote the actual stylist-to-stylist reasoning instead
+                    # of regenerating it from raw attributes.
+                    "rater_rationale": str(getattr(candidate, "rater_rationale", "") or "").strip(),
+                    "composer_rationale": str(getattr(candidate, "composer_rationale", "") or "").strip(),
                 }
             )
         return summaries
