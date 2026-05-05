@@ -1017,22 +1017,6 @@ def get_web_ui_html(
     .compact-rationale {
       margin: 8px 0 4px; font-size: 12px; line-height: 1.45; color: var(--ink);
     }
-    .deeper-read-btn {
-      align-self: flex-start;
-      margin-top: 6px; padding: 6px 12px;
-      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
-      background: transparent; color: var(--accent);
-      border: 1px solid var(--accent); border-radius: 999px;
-      cursor: pointer; transition: background 160ms ease, color 160ms ease;
-    }
-    .deeper-read-btn:hover:not(:disabled) { background: var(--accent); color: var(--surface); }
-    .deeper-read-btn:disabled { opacity: 0.6; cursor: progress; }
-    .outfit-criteria { display: flex; flex-direction: column; gap: 6px; }
-    .criteria-row { display: flex; align-items: center; gap: 8px; }
-    .criteria-label { font-size: 11px; font-weight: 600; color: var(--muted); width: 100px; flex-shrink: 0; }
-    .criteria-track { flex: 1; height: 6px; border-radius: 3px; background: var(--surface-deep); overflow: hidden; }
-    .criteria-fill { height: 100%; border-radius: 3px; transition: width 300ms ease; }
-    .criteria-pct { font-size: 11px; font-weight: 700; width: 34px; text-align: right; color: var(--ink); }
     .outfit-rationale { margin-top: 4px; }
     .outfit-rationale summary {
       font-size: 12px; font-weight: 700; color: var(--accent); cursor: pointer;
@@ -2959,12 +2943,11 @@ def get_web_ui_html(
         }});
     }});
 
-    // 4. Profile section. Branches on visual_evaluation_status:
-    //   "ready" (default) → full 17-dim split-polar radar (existing
-    //     Nightingale render: 8 archetype axes top + 5–9 fit axes bottom).
-    //   "pending"          → compact 4-bar layout from Rater dims +
-    //     "Get a deeper read" CTA. Click → POST /visual-eval → mutate
-    //     outfit + re-render as "ready".
+    // 4. Profile section. PR V2 (May 5 2026): single-state Rater radar.
+    // The legacy dual-state (visual_evaluator on-demand → 17-axis polar)
+    // was removed alongside the visual_evaluator agent. The Rater's 5
+    // sub-scores feed the radar directly; complete (single-item) outfits
+    // get a 4-axis quadrilateral; fashion_score is the centre badge.
     var profileWrap = document.createElement("div");
     profileWrap.className = "outfit-profile-wrap";
     info.appendChild(profileWrap);
@@ -3113,249 +3096,11 @@ def get_web_ui_html(
       radarWrap.className = "rater-radar-wrap";
       radarWrap.appendChild(svg);
       profileWrap.appendChild(radarWrap);
-
-      var deeperBtn = document.createElement("button");
-      deeperBtn.type = "button";
-      deeperBtn.className = "deeper-read-btn";
-      deeperBtn.textContent = "Get a deeper read";
-      var ranK = parseInt(outfit.rank, 10) || 0;
-      var turnIdLocal = outfit._turn_id || "";
-      deeperBtn.addEventListener("click", function() {{
-        if (!turnIdLocal || !ranK) return;
-        deeperBtn.disabled = true;
-        deeperBtn.textContent = "Reading…";
-        fetch("/v1/turns/" + encodeURIComponent(turnIdLocal) + "/outfits/" + ranK + "/visual-eval", {{ method: "POST" }})
-          .then(function(r) {{
-            if (!r.ok) throw new Error("Failed");
-            return r.json();
-          }})
-          .then(function(data) {{
-            Object.assign(outfit, data);
-            outfit.visual_evaluation_status = "ready";
-            renderProfile();
-          }})
-          .catch(function() {{
-            deeperBtn.disabled = false;
-            deeperBtn.textContent = "Get a deeper read";
-          }});
-      }});
-      profileWrap.appendChild(deeperBtn);
     }}
-
-    function renderFullProfile() {{
-      profileWrap.innerHTML = "";
-    var CONTEXT_GATED_KEYS = {{
-      "pairing_coherence_pct": true,
-      "occasion_pct": true,
-      "weather_time_pct": true,
-      "specific_needs_pct": true,
-    }};
-
-    // ── Top semicircle data: archetypes (always 8) ──
-    var archetypes = [
-      {{ key: "classic_pct", label: "Classic" }}, {{ key: "dramatic_pct", label: "Dramatic" }},
-      {{ key: "romantic_pct", label: "Romantic" }}, {{ key: "natural_pct", label: "Natural" }},
-      {{ key: "minimalist_pct", label: "Minimalist" }}, {{ key: "creative_pct", label: "Creative" }},
-      {{ key: "sporty_pct", label: "Sporty" }}, {{ key: "edgy_pct", label: "Edgy" }},
-    ];
-    var archetypeValues = archetypes.map(function(a) {{ return outfit[a.key] || 0; }});
-
-    // ── Bottom semicircle data: filtered evaluation criteria (5-9) ──
-    var criteria = buildEvaluationCriteria(outfit, responseMetadata).filter(function(c) {{
-      var v = outfit[c.key];
-      if (v === null || v === undefined) return false;
-      if (CONTEXT_GATED_KEYS[c.key] && v === 0) return false;
-      return true;
-    }});
-    var criteriaValues = criteria.map(function(c) {{
-      return outfit[c.key] || 0;
-    }});
-    var hasCriteriaData = criteria.length > 0 && criteriaValues.some(function(v) {{ return v > 0; }});
-
-    // ── Canvas setup ──
-    // Width 290 × Height 320: the chart lives at the bottom of the
-    // .outfit-info column (40% right column of the PDP card). 290px
-    // is slightly wider than the column's ~280px usable width so the
-    // canvas CSS-scales down by ~5% via aspect-ratio: 290/320 +
-    // max-width: 100% — proportional scaling that keeps the rings
-    // perfectly circular. The wider native canvas + the taller height
-    // give the labels enough horizontal space to sit on a SINGLE ring
-    // without colliding, while the polygon stays prominent.
-    var radarDiv = document.createElement("div");
-    radarDiv.className = "outfit-radar";
-    var polarCanvas = document.createElement("canvas");
-    polarCanvas.setAttribute("role", "img");
-    polarCanvas.setAttribute("aria-label", "Style + fit profile chart");
-    var W = 280, H = 300, dpr = window.devicePixelRatio || 1;
-    polarCanvas.width = W * dpr; polarCanvas.height = H * dpr;
-    polarCanvas.style.width = W + "px"; polarCanvas.style.height = H + "px";
-    radarDiv.appendChild(polarCanvas);
-    // Toggle button — "See profile" / "Hide profile"
-    var radarToggle = document.createElement("button");
-    radarToggle.className = "radar-toggle";
-    radarToggle.type = "button";
-    radarToggle.textContent = "See profile";
-    radarToggle.addEventListener("click", function() {{
-      var isOpen = radarDiv.classList.toggle("open");
-      radarToggle.textContent = isOpen ? "Hide profile" : "See profile";
-    }});
-    profileWrap.appendChild(radarToggle);
-    profileWrap.appendChild(radarDiv);
-    var pCtx = polarCanvas.getContext("2d");
-    pCtx.scale(dpr, dpr);
-
-    // ── Layout constants ──
-    // pMaxR=85 polygon radius. pLabelR=115 single-ring label radius —
-    // labels for ALL axes sit at this exact distance from the centre,
-    // forming a clean circular orbit. The previous staggered double-
-    // ring pattern was visually noisy; the single ring reads as a
-    // proper radar chart. With 8 archetype labels in 180°, the two
-    // centermost labels (Natural at i=3, Minimalist at i=4) have
-    // ~45px horizontal separation at this radius, just enough to fit
-    // their bounding boxes side by side at the 9px font size.
-    var pCx = W / 2, pCy = H / 2;
-    var pMaxR = 62;      // outer ring radius (compact)
-    var pLabelR = 86;    // single-ring axis label radius
-    var pMaxValue = 100;
-
-    // Read Confident Luxe tokens for archetype (champagne) + criteria (oxblood)
-    // and the grid ink channel. Using live CSS vars so light/dark mode flip
-    // automatically without re-rendering. Declared BEFORE first use to avoid
-    // var-hoisting undefined reads (the grid ring code below uses --ink-rgb
-    // and the drawProfile calls below use --signal-rgb / --accent-rgb).
-    var rootStyle = getComputedStyle(document.documentElement);
-    var gridInkRgb = (rootStyle.getPropertyValue("--ink-rgb") || "22, 17, 14").trim();
-    var signalRgb = (rootStyle.getPropertyValue("--signal-rgb") || "198, 161, 91").trim();
-    var accentRgb = (rootStyle.getPropertyValue("--accent-rgb") || "92, 26, 27").trim();
-    var signalStroke = "rgb(" + signalRgb + ")";
-    var signalFill = "rgba(" + signalRgb + ", 0.28)";
-    var accentStroke = "rgb(" + accentRgb + ")";
-    var accentFill = "rgba(" + accentRgb + ", 0.22)";
-
-    // ── Grid rings (4 concentric circles at 25/50/75/100) ──
-    pCtx.strokeStyle = "rgba(" + gridInkRgb + ", 0.14)";
-    pCtx.lineWidth = 0.5;
-    for (var pRing = 1; pRing <= 4; pRing++) {{
-      pCtx.beginPath();
-      pCtx.arc(pCx, pCy, (pRing / 4) * pMaxR, 0, 2 * Math.PI);
-      pCtx.stroke();
-    }}
-
-    // ── Dashed horizontal divider through the centre ──
-    pCtx.save();
-    pCtx.beginPath();
-    pCtx.moveTo(pCx - pMaxR - 10, pCy);
-    pCtx.lineTo(pCx + pMaxR + 10, pCy);
-    pCtx.strokeStyle = "rgba(" + gridInkRgb + ", 0.22)";
-    pCtx.lineWidth = 0.75;
-    pCtx.setLineDash([4, 4]);
-    pCtx.stroke();
-    pCtx.restore();
-
-    // ── drawProfile: one filled arc sector per axis ──
-    // axes = [{{key, label}}, ...], values = [int, ...] aligned to axes
-    //
-    // All labels sit on a SINGLE circular ring at pLabelR. The previous
-    // staggered double-ring pattern was visually noisy — the eye read
-    // it as random rather than orderly. The single-ring layout looks
-    // like a proper radar chart and reads as a clean circular orbit.
-    function drawProfile(axes, values, color, fillColor, startAngle, span) {{
-      var n = axes.length;
-      if (n === 0) return;
-      var sector = span / n;
-      var gap = Math.min(0.09, sector * 0.15);
-      for (var i = 0; i < n; i++) {{
-        var midAngle = startAngle + (i + 0.5) * sector;
-        var arcRadius = Math.max((values[i] / pMaxValue) * pMaxR, 4);
-
-        // Arc sector (filled wedge from centre)
-        pCtx.beginPath();
-        pCtx.moveTo(pCx, pCy);
-        pCtx.arc(pCx, pCy, arcRadius, midAngle - sector / 2 + gap / 2, midAngle + sector / 2 - gap / 2);
-        pCtx.closePath();
-        pCtx.fillStyle = fillColor;
-        pCtx.fill();
-        pCtx.strokeStyle = color;
-        pCtx.lineWidth = 1.5;
-        pCtx.stroke();
-
-        // Tip dot at the arc midpoint
-        pCtx.beginPath();
-        pCtx.arc(pCx + Math.cos(midAngle) * arcRadius, pCy + Math.sin(midAngle) * arcRadius, 2.5, 0, 2 * Math.PI);
-        pCtx.fillStyle = color;
-        pCtx.fill();
-
-        // Axis label — all labels on a single circle at pLabelR for
-        // a clean, orderly orbit around the chart.
-        //
-        // Centermost-label nudge: when two labels straddle the vertical
-        // centre of a semicircle (e.g. Natural at i=3 and Minimalist at
-        // i=4 in the 8-axis top semicircle), their natural trig
-        // positions sit only ~45px apart at pLabelR=115 — enough that
-        // their bounding boxes barely have a 1px gap and they read as a
-        // single concatenated phrase. The nudge pushes them ~9px
-        // further apart in the direction of their cos sign, giving
-        // ~18px of additional horizontal breathing room without
-        // resizing the canvas or affecting any other label. The check
-        // `0 < |ca| < 0.28` only fires for the two centermost labels in
-        // a semicircle; labels exactly at 12/6 o'clock (`ca === 0`,
-        // which happens with odd-axis-count semicircles) get no nudge.
-        var ca = Math.cos(midAngle);
-        var sa = Math.sin(midAngle);
-        var labelXNudge = 0;
-        if (Math.abs(ca) > 0 && Math.abs(ca) < 0.28) {{
-          labelXNudge = ca > 0 ? 9 : -9;
-        }}
-        var lx = pCx + ca * pLabelR + labelXNudge;
-        var ly = pCy + sa * pLabelR;
-        pCtx.textAlign = Math.abs(ca) < 0.28 ? "center" : (ca > 0 ? "left" : "right");
-        pCtx.textBaseline = Math.abs(sa) < 0.28 ? "middle" : (sa > 0 ? "top" : "bottom");
-        pCtx.font = "600 9px system-ui, sans-serif";
-        pCtx.fillStyle = color;
-        pCtx.fillText(axes[i].label, lx, ly);
-      }}
-    }}
-
-    // (Champagne / oxblood stroke + fill values were resolved above, before
-    // the grid rings, so drawProfile below can use them directly.)
-
-    // ── Top semicircle: style archetypes (always 8 axes) — champagne ──
-    drawProfile(
-      archetypes,
-      archetypeValues,
-      signalStroke,                    // stroke + label colour (--signal)
-      signalFill,                      // fill
-      Math.PI,                         // start at 9 o'clock
-      Math.PI                          // span the top semicircle
-    );
-
-    // ── Bottom semicircle: filtered evaluation criteria — oxblood ──
-    if (hasCriteriaData) {{
-      drawProfile(
-        criteria,
-        criteriaValues,
-        accentStroke,                  // stroke + label colour (--accent)
-        accentFill,                    // fill
-        0,                             // start at 3 o'clock
-        Math.PI                        // span the bottom semicircle
-      );
-    }}
-
-    // No legend — the axis labels are already color-coded (purple
-    // archetypes on top, burgundy fit dimensions on bottom) so a
-    // separate caption underneath would be redundant. Removing it
-    // also frees a few pixels of vertical room inside the
-    // .outfit-info column.
-    }}
-
-    function renderProfile() {{
-      if (String(outfit.visual_evaluation_status || "ready") === "pending") {{
-        renderCompactProfile();
-      }} else {{
-        renderFullProfile();
-      }}
-    }}
-    renderProfile();
+    // PR V2 (May 5 2026): visual_evaluator removed. The Rater radar
+    // above is the only profile view. The legacy dual-state dispatcher
+    // (renderFullProfile / "Get a deeper read") is deleted.
+    renderCompactProfile();
 
     // ── Feedback wiring: Like + Hide in header ──
     var outfitRank = outfit.rank || 0;

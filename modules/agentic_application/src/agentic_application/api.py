@@ -752,7 +752,7 @@ def create_app() -> FastAPI:
                     )
                 log_policy_event(
                     policy_event_type="virtual_tryon_guardrail",
-                    input_class=Intent.GARMENT_EVALUATION,
+                    input_class=Intent.PAIRING_REQUEST,
                     reason_code="quality_gate_passed",
                     decision="allowed",
                     user_id=payload.user_id,
@@ -763,7 +763,7 @@ def create_app() -> FastAPI:
         except (ValueError, FileNotFoundError, RuntimeError) as exc:
             log_policy_event(
                 policy_event_type="virtual_tryon_guardrail",
-                input_class=Intent.GARMENT_EVALUATION,
+                input_class=Intent.PAIRING_REQUEST,
                 reason_code=reason_code or (
                     "missing_person_image"
                     if "No full-body onboarding image found" in str(exc)
@@ -777,13 +777,6 @@ def create_app() -> FastAPI:
                 status_code=400,
                 detail=graceful_policy_message(reason_code or "tryon_request_failed", default=str(exc)),
             ) from exc
-
-    @app.post("/v1/turns/{turn_id}/outfits/{rank}/visual-eval")
-    def run_on_demand_visual_eval(turn_id: str, rank: int) -> dict:
-        try:
-            return orchestrator.run_on_demand_visual_eval(turn_id=turn_id, rank=rank)
-        except (ValueError, SupabaseError, RuntimeError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/v1/conversations/{conversation_id}/feedback")
     def submit_feedback(conversation_id: str, payload: FeedbackRequest) -> dict:
@@ -1253,20 +1246,12 @@ def create_app() -> FastAPI:
                     or ""
                 )
 
-                # Override intent based on answer_source when they diverge.
-                # A follow-up "show me catalog alternatives" after an outfit
-                # check gets classified as outfit_check by the planner (same
-                # conversation), but answer_source reveals it went through the
-                # recommendation pipeline. Route it to Outfits, not Checks.
-                _recommendation_sources = ("catalog_only", "wardrobe_first", "hybrid", "catalog_first")
-                _check_handlers = ("outfit_check_handler", "garment_evaluation_handler")
-                if raw_intent in ("outfit_check", "garment_evaluation") and source.lower() not in _check_handlers:
-                    if source.lower() in _recommendation_sources:
-                        intent = "occasion_recommendation"
-                    else:
-                        intent = raw_intent
-                else:
-                    intent = raw_intent
+                # PR V2 (May 5 2026): outfit_check + garment_evaluation
+                # intents removed; the planner no longer emits them. Any
+                # historical turn rows tagged with those intents are kept
+                # in the DB but skipped here (they get the same preview-
+                # required treatment as recommendations).
+                intent = raw_intent
 
                 if allowed_types and intent not in allowed_types:
                     continue
@@ -1276,26 +1261,15 @@ def create_app() -> FastAPI:
                 if not all_outfits:
                     continue
 
-                # For outfit checks, require tryon_image (the user's uploaded
-                # photo). A wardrobe-matched item image is not a valid preview
-                # — it shows a random wardrobe piece, not the actual outfit.
-                # For recommendations, any image (tryon or product) is fine.
-                is_check = intent in ("outfit_check", "garment_evaluation")
-                if is_check:
-                    has_outfit_photo = any(
-                        str(o.get("tryon_image") or "").strip()
-                        for o in all_outfits
-                    )
-                    if not has_outfit_photo:
-                        continue
-                else:
-                    has_preview = any(
-                        str(o.get("tryon_image") or "").strip()
-                        or any(str(it.get("image_url") or "").strip() for it in (o.get("items") or []))
-                        for o in all_outfits
-                    )
-                    if not has_preview:
-                        continue
+                # Require some kind of preview image (tryon_image or product
+                # image). Cards without any preview can't be rendered.
+                has_preview = any(
+                    str(o.get("tryon_image") or "").strip()
+                    or any(str(it.get("image_url") or "").strip() for it in (o.get("items") or []))
+                    for o in all_outfits
+                )
+                if not has_preview:
+                    continue
 
                 group_key = f"{intent}:{occasion}" if occasion else f"{intent}:{conv_id}"
 
