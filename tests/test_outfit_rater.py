@@ -118,13 +118,13 @@ class OutfitRaterContractTests(unittest.TestCase):
         payload = {
             "ranked_outfits": [
                 {"composer_id": "C1", "rank": 1, "fashion_score": 88,
-                 "occasion_fit": 92, "body_harmony": 85, "color_harmony": 88, "archetype_match": 86,
+                 "occasion_fit": 92, "body_harmony": 85, "color_harmony": 88, "archetype_match": 86, "inter_item_coherence": 80,
                  "rationale": "Strong on occasion fit, balanced silhouette.", "unsuitable": False},
                 {"composer_id": "C2", "rank": 2, "fashion_score": 70,
-                 "occasion_fit": 65, "body_harmony": 80, "color_harmony": 70, "archetype_match": 70,
+                 "occasion_fit": 65, "body_harmony": 80, "color_harmony": 70, "archetype_match": 70, "inter_item_coherence": 80,
                  "rationale": "Reads more casual than the brief.", "unsuitable": False},
                 {"composer_id": "C3", "rank": 3, "fashion_score": 55,
-                 "occasion_fit": 50, "body_harmony": 60, "color_harmony": 55, "archetype_match": 55,
+                 "occasion_fit": 50, "body_harmony": 60, "color_harmony": 55, "archetype_match": 55, "inter_item_coherence": 80,
                  "rationale": "Suit is too formal for daily office.", "unsuitable": False},
             ],
             "overall_assessment": "moderate",
@@ -136,7 +136,9 @@ class OutfitRaterContractTests(unittest.TestCase):
         self.assertEqual(3, len(result.ranked_outfits))
         self.assertEqual([1, 2, 3], [r.rank for r in result.ranked_outfits])
         self.assertEqual("C1", result.ranked_outfits[0].composer_id)
-        self.assertEqual(88, result.ranked_outfits[0].fashion_score)
+        # Default 5-dim blend (R5): 92*0.30 + 85*0.18 + 88*0.22 + 86*0.15 +
+        # 80*0.15 = 27.6+15.3+19.36+12.9+12.0 = 87.16 → 87
+        self.assertEqual(87, result.ranked_outfits[0].fashion_score)
         self.assertEqual("moderate", result.overall_assessment)
 
 
@@ -149,13 +151,13 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
         payload = {
             "ranked_outfits": [
                 {"composer_id": "C1", "rank": 1, "fashion_score": 60,
-                 "occasion_fit": 60, "body_harmony": 60, "color_harmony": 60, "archetype_match": 60,
+                 "occasion_fit": 60, "body_harmony": 60, "color_harmony": 60, "archetype_match": 60, "inter_item_coherence": 80,
                  "rationale": "ok", "unsuitable": False},
                 {"composer_id": "C3", "rank": 2, "fashion_score": 70,
-                 "occasion_fit": 70, "body_harmony": 70, "color_harmony": 70, "archetype_match": 70,
+                 "occasion_fit": 70, "body_harmony": 70, "color_harmony": 70, "archetype_match": 70, "inter_item_coherence": 80,
                  "rationale": "good", "unsuitable": False},
                 {"composer_id": "C2", "rank": 3, "fashion_score": 95,
-                 "occasion_fit": 95, "body_harmony": 95, "color_harmony": 95, "archetype_match": 95,
+                 "occasion_fit": 95, "body_harmony": 95, "color_harmony": 95, "archetype_match": 95, "inter_item_coherence": 80,
                  "rationale": "best", "unsuitable": False},
             ],
             "overall_assessment": "strong",
@@ -174,7 +176,7 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
         payload = {
             "ranked_outfits": [
                 {"composer_id": "C1",
-                 "occasion_fit": 200, "body_harmony": -5, "color_harmony": 50, "archetype_match": 9,
+                 "occasion_fit": 200, "body_harmony": -5, "color_harmony": 50, "archetype_match": 9, "inter_item_coherence": 80,
                  "rationale": "weird scales", "unsuitable": False},
             ],
             "overall_assessment": "moderate",
@@ -189,9 +191,9 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
         self.assertEqual(0, ro.body_harmony)
         self.assertEqual(50, ro.color_harmony)
         self.assertEqual(9, ro.archetype_match)
-        # Computed fashion_score = round(100*0.35 + 0*0.20 + 50*0.25 + 9*0.20)
-        # = round(35.0 + 0 + 12.5 + 1.8) = round(49.3) = 49
-        self.assertEqual(49, ro.fashion_score)
+        # 5-dim default (R5): 100*0.30 + 0*0.18 + 50*0.22 + 9*0.15 +
+        # 80*0.15 = 30 + 0 + 11 + 1.35 + 12 = 54.35 → 54
+        self.assertEqual(54, ro.fashion_score)
 
     def test_rater_drops_unknown_composer_ids(self) -> None:
         """The LLM should never invent composer_ids outside the input
@@ -200,10 +202,10 @@ class OutfitRaterDefensiveTests(unittest.TestCase):
         payload = {
             "ranked_outfits": [
                 {"composer_id": "C1", "rank": 1, "fashion_score": 80,
-                 "occasion_fit": 80, "body_harmony": 80, "color_harmony": 80, "archetype_match": 80,
+                 "occasion_fit": 80, "body_harmony": 80, "color_harmony": 80, "archetype_match": 80, "inter_item_coherence": 80,
                  "rationale": "valid", "unsuitable": False},
                 {"composer_id": "BOGUS", "rank": 2, "fashion_score": 90,
-                 "occasion_fit": 90, "body_harmony": 90, "color_harmony": 90, "archetype_match": 90,
+                 "occasion_fit": 90, "body_harmony": 90, "color_harmony": 90, "archetype_match": 90, "inter_item_coherence": 80,
                  "rationale": "hallucinated id", "unsuitable": False},
             ],
             "overall_assessment": "strong",
@@ -225,7 +227,7 @@ class OutfitRaterUsageTests(unittest.TestCase):
         payload = {
             "ranked_outfits": [
                 {"composer_id": "C1", "rank": 1, "fashion_score": 80,
-                 "occasion_fit": 80, "body_harmony": 80, "color_harmony": 80, "archetype_match": 80,
+                 "occasion_fit": 80, "body_harmony": 80, "color_harmony": 80, "archetype_match": 80, "inter_item_coherence": 80,
                  "rationale": "ok", "unsuitable": False},
             ],
             "overall_assessment": "moderate",
@@ -269,7 +271,7 @@ class OutfitRaterEdgeCaseTests(unittest.TestCase):
         payload = {
             "ranked_outfits": [
                 {"composer_id": "C1",
-                 "occasion_fit": 80, "body_harmony": 80, "color_harmony": 80, "archetype_match": 80,
+                 "occasion_fit": 80, "body_harmony": 80, "color_harmony": 80, "archetype_match": 80, "inter_item_coherence": 80,
                  "rationale": "ok", "unsuitable": False},
             ],
             "overall_assessment": "moderate",
@@ -289,7 +291,7 @@ class OutfitRaterEdgeCaseTests(unittest.TestCase):
         payload = {
             "ranked_outfits": [
                 {"composer_id": "C1",
-                 "occasion_fit": 90, "body_harmony": 70, "color_harmony": 70, "archetype_match": 70,
+                 "occasion_fit": 90, "body_harmony": 70, "color_harmony": 70, "archetype_match": 70, "inter_item_coherence": 80,
                  "rationale": "ok", "unsuitable": False},
             ],
             "overall_assessment": "strong",
@@ -343,9 +345,12 @@ class FashionScoreBlendTests(unittest.TestCase):
     """compute_fashion_score is the deterministic weighted blend."""
 
     def test_default_profile_blend(self) -> None:
-        # 95*0.35 + 85*0.20 + 88*0.25 + 75*0.20 = 33.25+17+22+15 = 87.25 → 87
+        # 5-dim default (R5): 95*0.30 + 85*0.18 + 88*0.22 + 75*0.15 +
+        # 100*0.15 = 28.5+15.3+19.36+11.25+15.0 = 89.41 → 89
+        # (inter_item_coherence defaults to 100; direction_type defaults
+        # to "paired" so the dim is included.)
         self.assertEqual(
-            87,
+            89,
             compute_fashion_score(
                 occasion_fit=95, body_harmony=85,
                 color_harmony=88, archetype_match=75,
@@ -353,16 +358,52 @@ class FashionScoreBlendTests(unittest.TestCase):
         )
 
     def test_ceremonial_profile_amplifies_occasion(self) -> None:
-        # Same sub-scores, ceremonial weights:
-        # 95*0.45 + 85*0.20 + 88*0.20 + 75*0.15 = 42.75+17+17.6+11.25 = 88.6 → 89
+        # Same sub-scores, ceremonial 5-dim weights:
+        # 95*0.40 + 85*0.16 + 88*0.18 + 75*0.13 + 100*0.13
+        # = 38+13.6+15.84+9.75+13.0 = 90.19 → 90
         self.assertEqual(
-            89,
+            90,
             compute_fashion_score(
                 occasion_fit=95, body_harmony=85,
                 color_harmony=88, archetype_match=75,
                 profile="ceremonial",
             ),
         )
+
+    def test_complete_outfit_drops_inter_item_and_renormalizes(self) -> None:
+        """Single-item outfits drop the inter_item_coherence dim and the
+        remaining 4 weights renormalise to sum to 1.0. The score should
+        match what R3's 4-dim default produced for the same sub-scores
+        (within rounding)."""
+        # Default 4 weights renormalised: 0.30/0.85=0.3529, 0.18/0.85=0.2118,
+        # 0.22/0.85=0.2588, 0.15/0.85=0.1765 — close to the original R3
+        # default of 0.35/0.20/0.25/0.20.
+        # 95*0.3529 + 85*0.2118 + 88*0.2588 + 75*0.1765 = 88.18 → 88
+        self.assertEqual(
+            88,
+            compute_fashion_score(
+                occasion_fit=95, body_harmony=85,
+                color_harmony=88, archetype_match=75,
+                inter_item_coherence=100,  # ignored for complete
+                direction_type="complete",
+            ),
+        )
+
+    def test_complete_outfit_score_unaffected_by_inter_item_value(self) -> None:
+        """For complete outfits, varying inter_item_coherence must NOT
+        change the score (since the dim is dropped from the formula)."""
+        a = compute_fashion_score(
+            occasion_fit=80, body_harmony=80, color_harmony=80,
+            archetype_match=80, inter_item_coherence=10,
+            direction_type="complete",
+        )
+        b = compute_fashion_score(
+            occasion_fit=80, body_harmony=80, color_harmony=80,
+            archetype_match=80, inter_item_coherence=99,
+            direction_type="complete",
+        )
+        self.assertEqual(a, b)
+        self.assertEqual(80, a)  # all 80s blend to 80 regardless of weights
 
     def test_unknown_profile_falls_back_to_default(self) -> None:
         self.assertEqual(
@@ -389,7 +430,7 @@ class FashionScoreBlendTests(unittest.TestCase):
         payload = {
             "ranked_outfits": [
                 {"composer_id": "C1", "rank": 1, "fashion_score": 30,
-                 "occasion_fit": 25, "body_harmony": 50, "color_harmony": 30, "archetype_match": 25,
+                 "occasion_fit": 25, "body_harmony": 50, "color_harmony": 30, "archetype_match": 25, "inter_item_coherence": 80,
                  "rationale": "Dealbreaker — wrong occasion entirely.", "unsuitable": True},
             ],
             "overall_assessment": "weak",

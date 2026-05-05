@@ -3632,6 +3632,7 @@ class AgenticOrchestrator:
                     "body_harmony": candidate.body_harmony,
                     "color_harmony": candidate.color_harmony,
                     "archetype_match": candidate.archetype_match,
+                    "inter_item_coherence": candidate.inter_item_coherence,
                     "composer_rationale": candidate.composer_rationale,
                     "rater_rationale": candidate.rater_rationale,
                     "unsuitable": candidate.unsuitable,
@@ -5009,6 +5010,7 @@ class AgenticOrchestrator:
                                 "body_harmony": r.body_harmony,
                                 "color_harmony": r.color_harmony,
                                 "archetype_match": r.archetype_match,
+                                "inter_item_coherence": r.inter_item_coherence,
                                 "rationale": r.rationale,
                                 "unsuitable": r.unsuitable,
                             }
@@ -5055,6 +5057,7 @@ class AgenticOrchestrator:
                         body_harmony=rated.body_harmony,
                         color_harmony=rated.color_harmony,
                         archetype_match=rated.archetype_match,
+                        inter_item_coherence=rated.inter_item_coherence,
                         composer_id=composed.composer_id,
                         composer_rationale=composed.rationale,
                         rater_rationale=rated.rationale,
