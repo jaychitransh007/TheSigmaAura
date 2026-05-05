@@ -304,69 +304,32 @@ class RaterResult(BaseModel):
 
 
 class EvaluatedRecommendation(BaseModel):
+    """Per-candidate evaluation row consumed by the response formatter.
+
+    Post-V2 (May 5 2026): the visual_evaluator + outfit_check +
+    garment_evaluation flows are gone. Only Rater-derived dims remain.
+    The legacy 17-axis split-polar visual evaluator output (archetype
+    pcts, strengths/improvements, verdicts, notes, status) is removed.
+    """
     candidate_id: str
     rank: int = 0
     match_score: float = 0.0
     title: str = ""
     reasoning: str = ""
-    body_note: str = ""
-    color_note: str = ""
-    style_note: str = ""
-    occasion_note: str = ""
-    # 5 always-evaluated dimensions — these are graded for every
-    # candidate because their inputs are present once onboarding is
-    # complete (body shape, palette, style preference, etc.).
+    item_ids: List[str] = Field(default_factory=list)
+    # Rater dimensions surfaced on the outfit-card radar. occasion_pct
+    # remains Optional for legacy paths but the Rater always populates it.
     body_harmony_pct: int = 0
     color_suitability_pct: int = 0
     style_fit_pct: int = 0
-    risk_tolerance_pct: int = 0
-    comfort_boundary_pct: int = 0
+    occasion_pct: Optional[int] = None
     # R5/V1 (May 5 2026): inter-item coherence — how well the items in
     # a multi-piece outfit work together. None for `complete` (single-
     # item) outfits where the dim doesn't apply; the radar drops the
     # axis when null.
     inter_item_coherence_pct: Optional[int] = None
-    # Overall blended score from the Rater pipeline (or fashion_score
-    # divided by 100 for legacy paths). Populated as 0–100. Used as the
-    # centre label on the Rater radar.
+    # Overall blended score (Rater-derived). Centre label of the radar.
     fashion_score_pct: int = 0
-    # Phase 12B follow-ups (April 9 2026): 4 context-gated dimensions
-    # are Optional. The visual evaluator returns None when the gating
-    # condition is not met:
-    #   - occasion_pct: live_context.occasion_signal is None
-    #   - weather_time_pct: weather_context AND time_of_day are empty
-    #   - specific_needs_pct: specific_needs list is empty
-    #   - pairing_coherence_pct: intent is garment_evaluation /
-    #     style_discovery / explanation_request (no outfit being paired)
-    # Coercing None to 0 would re-introduce the bug where the holistic
-    # match_score and the PDP card radar chart show phantom defaults
-    # instead of "not evaluated this turn". The legacy text-only
-    # OutfitEvaluator still emits 0; that path is retired in Phase 12E.
-    occasion_pct: Optional[int] = None
-    specific_needs_pct: Optional[int] = None
-    weather_time_pct: Optional[int] = None
-    pairing_coherence_pct: Optional[int] = None
-    classic_pct: int = 0
-    dramatic_pct: int = 0
-    romantic_pct: int = 0
-    natural_pct: int = 0
-    minimalist_pct: int = 0
-    creative_pct: int = 0
-    sporty_pct: int = 0
-    edgy_pct: int = 0
-    item_ids: List[str] = Field(default_factory=list)
-    # Phase 12B: optional fields populated by VisualEvaluatorAgent for the
-    # outfit_check / garment_evaluation single-candidate path. The list
-    # form remains the canonical shape for occasion_recommendation /
-    # pairing_request which use multiple candidates.
-    overall_verdict: str = ""  # great_choice | good_with_tweaks | consider_changes | needs_rethink
-    overall_note: str = ""
-    strengths: List[str] = Field(default_factory=list)
-    improvements: List[Dict[str, Any]] = Field(default_factory=list)
-    # See OutfitCard.visual_evaluation_status. The recommendation pipeline
-    # defaults to "pending" when shipping Rater-only dims; outfit_check /
-    # garment_evaluation always set "ready" because they run the evaluator.
-    visual_evaluation_status: str = "ready"
 
 
 # --- Response ---
@@ -390,49 +353,30 @@ class OutfitItem(BaseModel):
 
 
 class OutfitCard(BaseModel):
+    """User-facing outfit card.
+
+    Post-V2 (May 5 2026): the visual_evaluator + outfit_check +
+    garment_evaluation flows are gone. Only Rater-derived dims remain.
+    The legacy 17-axis split-polar visual evaluator output (archetype
+    pcts, notes, status) is removed; the radar now renders 4 or 5 axes
+    directly from the Rater.
+    """
     rank: int
     title: str
     reasoning: str = ""
-    body_note: str = ""
-    color_note: str = ""
-    style_note: str = ""
-    occasion_note: str = ""
-    # 5 always-evaluated dimensions
+    # Rater dimensions surfaced on the outfit-card radar.
     body_harmony_pct: int = 0
     color_suitability_pct: int = 0
     style_fit_pct: int = 0
-    risk_tolerance_pct: int = 0
-    comfort_boundary_pct: int = 0
+    occasion_pct: Optional[int] = None
     # R5/V1 (May 5 2026): inter-item coherence (paired/three_piece only;
     # null for single-item complete outfits). The radar drops the axis
     # when null so single-item cards render a 4-axis quadrilateral.
     inter_item_coherence_pct: Optional[int] = None
     # Overall blended score (Rater-derived). Centre label of the radar.
     fashion_score_pct: int = 0
-    # 4 context-gated dimensions — None means "not evaluated this turn".
-    # pairing_coherence_pct is null for garment_evaluation / style_discovery
-    # / explanation_request (no outfit being paired); the other 3 are null
-    # when their live_context inputs are absent. The frontend drops null
-    # dimensions from the radar chart.
-    occasion_pct: Optional[int] = None
-    specific_needs_pct: Optional[int] = None
-    weather_time_pct: Optional[int] = None
-    pairing_coherence_pct: Optional[int] = None
-    classic_pct: int = 0
-    dramatic_pct: int = 0
-    romantic_pct: int = 0
-    natural_pct: int = 0
-    minimalist_pct: int = 0
-    creative_pct: int = 0
-    sporty_pct: int = 0
-    edgy_pct: int = 0
     items: List[Dict[str, Any]] = Field(default_factory=list)
     tryon_image: Optional[str] = None  # data URL of virtual try-on image
-    # "ready" means the visual evaluator's 17 dims + 4 notes are populated;
-    # "pending" means the card was shipped with Rater-only dims and the user
-    # can request a deeper read on demand. Default is "ready" so historical
-    # turns persisted before this field existed render with the full radar.
-    visual_evaluation_status: str = "ready"
 
 
 class CopilotResolvedContext(BaseModel):

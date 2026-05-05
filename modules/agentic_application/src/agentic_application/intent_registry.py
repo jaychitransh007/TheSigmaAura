@@ -8,7 +8,7 @@ and services.
 Usage:
     from agentic_application.intent_registry import Intent, Action, FollowUpIntent
 
-    if plan_result.intent == Intent.OUTFIT_CHECK:
+    if plan_result.intent == Intent.PAIRING_REQUEST:
         ...
     if plan_result.action == Action.RUN_RECOMMENDATION_PIPELINE:
         ...
@@ -23,16 +23,22 @@ from enum import StrEnum
 from typing import List
 
 
-# ── Primary Intents (7 advisory + feedback + silent wardrobe_ingestion) ────
+# ── Primary Intents (5 + feedback + silent wardrobe_ingestion) ────
 #
 # Phase 12A consolidated the taxonomy from 12 → 7 advisory + feedback +
-# silent wardrobe_ingestion. Removed intents and what replaced them:
+# silent wardrobe_ingestion. PR V2 (May 5 2026) further dropped
+# OUTFIT_CHECK and GARMENT_EVALUATION since the visual_evaluator was
+# their sole scoring engine and the simplified product surface routes
+# all anchor-garment questions through PAIRING_REQUEST. Removed intents
+# and what replaced them historically:
 #   - product_browse           → folded into OCCASION_RECOMMENDATION via
 #                                CopilotResolvedContext.target_product_type
-#   - shopping_decision        → absorbed into GARMENT_EVALUATION
-#   - garment_on_me_request    → absorbed into GARMENT_EVALUATION
-#   - virtual_tryon_request    → absorbed into GARMENT_EVALUATION
-#   - capsule_or_trip_planning → deferred (will return in a later phase)
+#   - shopping_decision        → was absorbed into GARMENT_EVALUATION
+#   - garment_on_me_request    → was absorbed into GARMENT_EVALUATION
+#   - virtual_tryon_request    → was absorbed into GARMENT_EVALUATION
+#   - capsule_or_trip_planning → deferred
+#   - garment_evaluation       → absorbed into PAIRING_REQUEST (V2)
+#   - outfit_check             → absorbed into PAIRING_REQUEST (V2)
 #
 # WARDROBE_INGESTION is intentionally retained as a silent-save variant for
 # programmatic / bulk upload paths. The planner prompt does NOT classify
@@ -41,23 +47,19 @@ from typing import List
 class Intent(StrEnum):
     OCCASION_RECOMMENDATION = "occasion_recommendation"
     PAIRING_REQUEST = "pairing_request"
-    GARMENT_EVALUATION = "garment_evaluation"
-    OUTFIT_CHECK = "outfit_check"
     STYLE_DISCOVERY = "style_discovery"
     EXPLANATION_REQUEST = "explanation_request"
     FEEDBACK_SUBMISSION = "feedback_submission"
     WARDROBE_INGESTION = "wardrobe_ingestion"  # silent-save variant only
 
 
-# ── Actions (7) ──────────────────────────────────────────────────────
+# ── Actions (5) ──────────────────────────────────────────────────────
 #
-# Phase 12A removed RUN_SHOPPING_DECISION, RUN_VIRTUAL_TRYON, and
-# RUN_PRODUCT_BROWSE. RUN_GARMENT_EVALUATION owns the merged intent.
+# PR V2 (May 5 2026) removed RUN_OUTFIT_CHECK and RUN_GARMENT_EVALUATION
+# alongside the visual_evaluator agent that powered them.
 
 class Action(StrEnum):
     RUN_RECOMMENDATION_PIPELINE = "run_recommendation_pipeline"
-    RUN_OUTFIT_CHECK = "run_outfit_check"
-    RUN_GARMENT_EVALUATION = "run_garment_evaluation"
     RESPOND_DIRECTLY = "respond_directly"
     ASK_CLARIFICATION = "ask_clarification"
     SAVE_WARDROBE_ITEM = "save_wardrobe_item"
@@ -112,25 +114,6 @@ INTENT_REGISTRY: dict[Intent, IntentMeta] = {
         default_action=Action.RUN_RECOMMENDATION_PIPELINE,
         handler="pairing_request",
     ),
-    Intent.GARMENT_EVALUATION: IntentMeta(
-        name=Intent.GARMENT_EVALUATION,
-        label="Evaluate This Piece",
-        description=(
-            "User uploads a garment photo and asks whether it suits them, "
-            "whether to buy it, or to try it on. Phase 12B will run a "
-            "tryon → visual evaluator → format pipeline; the Phase 12A shim "
-            "delegates to the existing OutfitCheckAgent path."
-        ),
-        default_action=Action.RUN_GARMENT_EVALUATION,
-        handler="garment_evaluation",
-    ),
-    Intent.OUTFIT_CHECK: IntentMeta(
-        name=Intent.OUTFIT_CHECK,
-        label="Check My Outfit",
-        description="User wants feedback on an outfit they're wearing or considering",
-        default_action=Action.RUN_OUTFIT_CHECK,
-        handler="outfit_check",
-    ),
     Intent.STYLE_DISCOVERY: IntentMeta(
         name=Intent.STYLE_DISCOVERY,
         label="Style Advice",
@@ -169,20 +152,6 @@ ACTION_REGISTRY: dict[Action, ActionMeta] = {
         name=Action.RUN_RECOMMENDATION_PIPELINE,
         label="Show Outfits",
         description="Full recommendation pipeline: architect → search → assemble → evaluate → format",
-    ),
-    Action.RUN_OUTFIT_CHECK: ActionMeta(
-        name=Action.RUN_OUTFIT_CHECK,
-        label="Check Outfit",
-        description="Evaluate outfit with structured scoring, critique, and improvement suggestions",
-    ),
-    Action.RUN_GARMENT_EVALUATION: ActionMeta(
-        name=Action.RUN_GARMENT_EVALUATION,
-        label="Evaluate Garment",
-        description=(
-            "Single-garment evaluation pipeline. Phase 12A: shim that "
-            "reuses the OutfitCheckAgent path. Phase 12B: tryon → visual "
-            "evaluator → response formatter with optional buy/skip verdict."
-        ),
     ),
     Action.RESPOND_DIRECTLY: ActionMeta(
         name=Action.RESPOND_DIRECTLY,
