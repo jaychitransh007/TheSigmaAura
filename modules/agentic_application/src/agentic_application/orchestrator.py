@@ -2160,6 +2160,7 @@ class AgenticOrchestrator:
         profile_confidence: ProfileConfidence,
 
         anchored_item_id: str = "",
+        precomputed_coverage: Optional[Tuple[bool, Dict[str, int]]] = None,
     ) -> Dict[str, Any] | None:
         if intent.primary_intent != Intent.OCCASION_RECOMMENDATION:
             return None
@@ -2172,7 +2173,15 @@ class AgenticOrchestrator:
         # the threshold, fall through so `_build_wardrobe_only_occasion_fallback`
         # can surface a clear "your wardrobe doesn't cover this yet" message
         # with the actual counts and offer catalog/hybrid alternatives.
-        sufficient, _coverage_counts = self._wardrobe_meets_minimum_coverage(wardrobe_items)
+        # The orchestrator computes coverage once and passes it via
+        # `precomputed_coverage` so this function and the fallback share one
+        # computation; falling back to a fresh call keeps the function safe to
+        # call standalone from tests or future entry points.
+        sufficient, _coverage_counts = (
+            precomputed_coverage
+            if precomputed_coverage is not None
+            else self._wardrobe_meets_minimum_coverage(wardrobe_items)
+        )
         if not sufficient:
             _log.info(
                 "wardrobe-first: skipping (insufficient coverage) counts=%s",
@@ -2521,6 +2530,7 @@ class AgenticOrchestrator:
         conversation_memory: Dict[str, Any],
         profile_confidence: ProfileConfidence,
 
+        precomputed_coverage: Optional[Tuple[bool, Dict[str, int]]] = None,
     ) -> Dict[str, Any] | None:
         if intent.primary_intent != Intent.OCCASION_RECOMMENDATION:
             return None
@@ -2533,7 +2543,14 @@ class AgenticOrchestrator:
             occasion=occasion,
             required_roles=["top", "bottom", "shoe"],
         )
-        coverage_sufficient, coverage_counts = self._wardrobe_meets_minimum_coverage(wardrobe_items)
+        # Coverage may have been computed by `_build_wardrobe_first_occasion_response`
+        # right before this fallback fires — accept it via `precomputed_coverage`
+        # to skip the redundant role-count walk over the same wardrobe.
+        coverage_sufficient, coverage_counts = (
+            precomputed_coverage
+            if precomputed_coverage is not None
+            else self._wardrobe_meets_minimum_coverage(wardrobe_items)
+        )
         gap_items = [str(item).strip() for item in list(wardrobe_gap_analysis.get("gap_items") or []) if str(item).strip()]
         occasion_label = occasion.replace('_', ' ') if occasion else 'this occasion'
         if wardrobe_items:
@@ -4624,6 +4641,13 @@ class AgenticOrchestrator:
         # and fall through to the catalog pipeline.
         if not force_catalog_followup and source_preference == "wardrobe":
             if not richer_refinement_path:
+                # Compute wardrobe coverage once and thread it through both
+                # the wardrobe-first builder (for the gate) and the fallback
+                # (for the message + metadata). Without this, the role-count
+                # walk runs twice on the insufficient-coverage path.
+                _wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
+                precomputed_coverage = self._wardrobe_meets_minimum_coverage(_wardrobe_items)
+
                 wardrobe_first_response = self._build_wardrobe_first_occasion_response(
                     external_user_id=external_user_id,
                     message=message,
@@ -4636,8 +4660,9 @@ class AgenticOrchestrator:
                     live_context=initial_live_context,
                     conversation_memory=conversation_memory.model_dump(),
                     profile_confidence=profile_confidence,
-    
+
                     anchored_item_id=anchored_item_id,
+                    precomputed_coverage=precomputed_coverage,
                 )
                 if wardrobe_first_response is not None:
                     return wardrobe_first_response
@@ -4653,7 +4678,8 @@ class AgenticOrchestrator:
                     live_context=initial_live_context,
                     conversation_memory=conversation_memory.model_dump(),
                     profile_confidence=profile_confidence,
-    
+
+                    precomputed_coverage=precomputed_coverage,
                 )
                 if wardrobe_only_fallback is not None:
                     return wardrobe_only_fallback
