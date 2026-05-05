@@ -9,7 +9,7 @@ SELECT
     COUNT(*) AS total_turns,
     round(
         100.0 * COUNT(*) FILTER (WHERE metadata_json->>'answer_source' = 'catalog_low_confidence')::numeric
-        / NULLIF(COUNT(*), 0),
+        / nullif(COUNT(*), 0),
         2
     ) AS low_conf_rate_pct,
     round(avg((metadata_json->>'low_confidence_top_match_score')::numeric), 3) AS avg_top_match_score_when_blocked
