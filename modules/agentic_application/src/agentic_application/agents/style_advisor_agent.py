@@ -159,6 +159,10 @@ def _planner_entities_payload(plan_resolved_context: Any, plan_action_parameters
 class StyleAdvisorAgent:
     """LLM advisor for open-ended style_discovery and explanation_request."""
 
+    # gpt-5.4 / gpt-5.5 reasoning_effort vocabulary per OpenAI docs.
+    # No "minimal" (that's gpt-5-mini-only); no "none" (that's gpt-5.1+).
+    _ALLOWED_EFFORTS = frozenset({"low", "medium", "high", "xhigh"})
+
     def __init__(
         self,
         model: str = "gpt-5.4",
@@ -174,7 +178,16 @@ class StyleAdvisorAgent:
         # is the floor on gpt-5.5 — minimal isn't supported there).
         # History: gpt-5.4 → gpt-5.5 (May 1, 2026) → gpt-5.4 + low (May 5).
         #
+        # Validation matches OutfitArchitect — fail loud at construction
+        # for direct instantiations rather than at OpenAI request time
+        # (PR #53 review feedback).
+        #
         # Lazy OpenAI client (see CopilotPlanner for the pattern).
+        if reasoning_effort not in self._ALLOWED_EFFORTS:
+            raise ValueError(
+                f"StyleAdvisorAgent reasoning_effort must be one of "
+                f"{sorted(self._ALLOWED_EFFORTS)}; got {reasoning_effort!r}"
+            )
         self._model = model
         self._reasoning_effort = reasoning_effort
         self._system_prompt = _load_prompt()

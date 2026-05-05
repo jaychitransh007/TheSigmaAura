@@ -14,7 +14,8 @@ class AuraRuntimeConfig:
     # the May-5 latency-fix pass after the turn audit showed architect
     # at 88.9s with 6.5K output tokens — most of those tokens were
     # reasoning the structured-output task doesn't need. Override
-    # per-environment via ARCHITECT_REASONING_EFFORT (low | medium | high).
+    # per-environment via ARCHITECT_REASONING_EFFORT
+    # (low | medium | high | xhigh — full gpt-5.4/5.5 vocabulary).
     architect_reasoning_effort: str = "low"
 
 
@@ -91,10 +92,12 @@ def load_config() -> AuraRuntimeConfig:
     )
 
     architect_effort = os.getenv("ARCHITECT_REASONING_EFFORT", "").strip().lower() or "low"
-    if architect_effort not in {"low", "medium", "high"}:
+    if architect_effort not in {"low", "medium", "high", "xhigh"}:
         # Unknown values fall back to "low" rather than failing app
         # start. OpenAI may add or rename values; we'd rather degrade
-        # than crash.
+        # than crash. xhigh is included per gpt-5.4/5.5 docs (PR #53
+        # review feedback — leaving it out silently coerced legitimate
+        # xhigh configs to low).
         architect_effort = "low"
 
     return AuraRuntimeConfig(
