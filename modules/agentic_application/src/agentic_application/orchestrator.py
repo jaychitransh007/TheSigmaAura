@@ -4645,8 +4645,9 @@ class AgenticOrchestrator:
                 # the wardrobe-first builder (for the gate) and the fallback
                 # (for the message + metadata). Without this, the role-count
                 # walk runs twice on the insufficient-coverage path.
-                _wardrobe_items = list(getattr(user_context, "wardrobe_items", []) or [])
-                precomputed_coverage = self._wardrobe_meets_minimum_coverage(_wardrobe_items)
+                precomputed_coverage = self._wardrobe_meets_minimum_coverage(
+                    list(getattr(user_context, "wardrobe_items", []) or [])
+                )
 
                 wardrobe_first_response = self._build_wardrobe_first_occasion_response(
                     external_user_id=external_user_id,
