@@ -6079,7 +6079,17 @@ class OnDemandVisualEvalTests(unittest.TestCase):
                     "items": [{"product_id": "p-1", "title": "Top"}],
                     "visual_evaluation_status": "pending",
                     "body_harmony_pct": 70, "color_suitability_pct": 65,
+                    "reasoning": "Initial Rater note.",
                     "match_score": 0.82,
+                }],
+                # Parallel `recommendations` array — analytics queries use
+                # this; the on-demand path must mirror the evaluator's
+                # output here AND on `outfits` to keep them consistent.
+                "recommendations": [{
+                    "rank": 1, "candidate_id": "c1",
+                    "reasoning": "Initial Rater note.",
+                    "body_harmony_pct": 70, "color_suitability_pct": 65,
+                    "visual_evaluation_status": "pending",
                 }],
                 "live_context": {"user_need": "office wear", "occasion_signal": "office"},
                 "intent_classification": {"primary_intent": Intent.OCCASION_RECOMMENDATION},
@@ -6125,6 +6135,16 @@ class OnDemandVisualEvalTests(unittest.TestCase):
         self.assertEqual(70, out["classic_pct"])
         # Persisted to the turn so re-opens see the same data.
         repo.update_turn_resolved_context.assert_called_once()
+        # Both `outfits` and `recommendations` got the full evaluator
+        # output mirrored — including the updated `reasoning`. Without
+        # this, analytics that read recommendations would still see the
+        # stale Rater note while the user sees the deeper read.
+        persisted = repo.update_turn_resolved_context.call_args.kwargs["resolved_context"]
+        self.assertEqual("Balanced.", persisted["outfits"][0]["body_note"])
+        self.assertEqual(88, persisted["recommendations"][0]["body_harmony_pct"])
+        self.assertEqual("Balanced.", persisted["recommendations"][0]["body_note"])
+        self.assertEqual("ready", persisted["recommendations"][0]["visual_evaluation_status"])
+        self.assertEqual("An expanded read.", persisted["recommendations"][0]["reasoning"])
         # Cost rolled up via log_model_call.
         log_kwargs = repo.log_model_call.call_args.kwargs
         self.assertEqual("visual_evaluator_on_demand", log_kwargs["call_type"])

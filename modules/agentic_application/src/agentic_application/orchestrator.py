@@ -91,6 +91,26 @@ _RECOMMENDATION_FASHION_THRESHOLD = 75
 _WARDROBE_SCORE_MAX = 4.0
 
 
+# Single source of truth for the keys the visual_evaluator populates
+# AND that need to stay in sync between `resolved_context.outfits[]` and
+# the parallel `resolved_context.recommendations[]` array. The May-5
+# on-demand-eval rollout had a duplication bug here: `reasoning` was in
+# the outfit-write list but missing from the recommendations-mirror
+# list, leaving analytics queries reading the stale Rater rationale.
+# Keep both call sites in run_on_demand_visual_eval driven from this.
+_VISUAL_EVAL_PERSISTED_KEYS: tuple[str, ...] = (
+    "reasoning",
+    "body_note", "color_note", "style_note", "occasion_note",
+    "body_harmony_pct", "color_suitability_pct", "style_fit_pct",
+    "risk_tolerance_pct", "comfort_boundary_pct",
+    "occasion_pct", "specific_needs_pct", "weather_time_pct",
+    "pairing_coherence_pct",
+    "classic_pct", "dramatic_pct", "romantic_pct", "natural_pct",
+    "minimalist_pct", "creative_pct", "sporty_pct", "edgy_pct",
+    "visual_evaluation_status",
+)
+
+
 # Module-level no-op trace stub. Used by handlers that accept an
 # optional `trace: Optional[TurnTraceBuilder]` so tests / one-off call
 # sites can pass nothing and still call `add_cost(...)` etc. without
@@ -6863,34 +6883,19 @@ class AgenticOrchestrator:
             _log.warning("on-demand eval: log_model_call failed", exc_info=True)
 
         # Merge evaluator output back onto the persisted outfit dict.
-        # 4 notes + 17 dims + status. Items, tryon_image, rank, title
-        # stay as-is so the card renders identically apart from the
-        # newly populated radar slices.
-        outfit.update({
-            "reasoning": evaluation.reasoning or outfit.get("reasoning") or "",
-            "body_note": evaluation.body_note,
-            "color_note": evaluation.color_note,
-            "style_note": evaluation.style_note,
-            "occasion_note": evaluation.occasion_note,
-            "body_harmony_pct": evaluation.body_harmony_pct,
-            "color_suitability_pct": evaluation.color_suitability_pct,
-            "style_fit_pct": evaluation.style_fit_pct,
-            "risk_tolerance_pct": evaluation.risk_tolerance_pct,
-            "comfort_boundary_pct": evaluation.comfort_boundary_pct,
-            "occasion_pct": evaluation.occasion_pct,
-            "specific_needs_pct": evaluation.specific_needs_pct,
-            "weather_time_pct": evaluation.weather_time_pct,
-            "pairing_coherence_pct": evaluation.pairing_coherence_pct,
-            "classic_pct": evaluation.classic_pct,
-            "dramatic_pct": evaluation.dramatic_pct,
-            "romantic_pct": evaluation.romantic_pct,
-            "natural_pct": evaluation.natural_pct,
-            "minimalist_pct": evaluation.minimalist_pct,
-            "creative_pct": evaluation.creative_pct,
-            "sporty_pct": evaluation.sporty_pct,
-            "edgy_pct": evaluation.edgy_pct,
-            "visual_evaluation_status": "ready",
-        })
+        # Driven by the module-level _VISUAL_EVAL_PERSISTED_KEYS so the
+        # mirror onto recommendations[] (below) reads from the same
+        # source-of-truth list.
+        patch: Dict[str, Any] = {k: getattr(evaluation, k) for k in _VISUAL_EVAL_PERSISTED_KEYS}
+        # Two keys need orchestrator-level overrides rather than raw
+        # evaluator values:
+        #   - reasoning falls back to the existing rater rationale when
+        #     the evaluator returns empty (don't blow away signal).
+        #   - visual_evaluation_status is owned by the orchestrator's
+        #     lifecycle, not the evaluator.
+        patch["reasoning"] = evaluation.reasoning or outfit.get("reasoning") or ""
+        patch["visual_evaluation_status"] = "ready"
+        outfit.update(patch)
         outfits[idx] = outfit
 
         # Mirror onto the parallel `recommendations` array so analytics
@@ -6903,18 +6908,7 @@ class AgenticOrchestrator:
         )
         if rec_idx >= 0:
             rec = dict(recs[rec_idx])
-            rec.update({
-                k: outfit[k] for k in (
-                    "body_note", "color_note", "style_note", "occasion_note",
-                    "body_harmony_pct", "color_suitability_pct", "style_fit_pct",
-                    "risk_tolerance_pct", "comfort_boundary_pct",
-                    "occasion_pct", "specific_needs_pct", "weather_time_pct",
-                    "pairing_coherence_pct",
-                    "classic_pct", "dramatic_pct", "romantic_pct", "natural_pct",
-                    "minimalist_pct", "creative_pct", "sporty_pct", "edgy_pct",
-                    "visual_evaluation_status",
-                ) if k in outfit
-            })
+            rec.update({k: outfit[k] for k in _VISUAL_EVAL_PERSISTED_KEYS if k in outfit})
             recs[rec_idx] = rec
             resolved["recommendations"] = recs
 
