@@ -4581,6 +4581,20 @@ class AgenticOrchestrator:
                 len(disliked_product_ids), len(disliked_from_db), len(disliked_from_session),
             )
 
+        # R4 (PR #67, May 5 2026): aggregate the user's recent
+        # like/dislike feedback into archetypal axes (color_temperature,
+        # pattern_type, fit_type, silhouette_type, embellishment_level)
+        # so the Rater's "previously-disliked color/pattern" veto rule
+        # is actually evidence-backed. The disliked_product_ids list
+        # already filters retrieval; this block adds the archetypal
+        # signal on top.
+        try:
+            _raw_prefs = self.repo.aggregate_archetypal_feedback(internal_user_id)
+            archetypal_preferences = dict(_raw_prefs) if isinstance(_raw_prefs, dict) else {}
+        except Exception:
+            _log.warning("Failed to aggregate archetypal feedback — proceeding without it", exc_info=True)
+            archetypal_preferences = {}
+
         combined_context = CombinedContext(
             user=user_context,
             live=initial_live_context,
@@ -4590,6 +4604,7 @@ class AgenticOrchestrator:
             conversation_history=conversation_history,
             catalog_inventory=self._catalog_inventory or None,
             disliked_product_ids=disliked_product_ids,
+            archetypal_preferences=archetypal_preferences,
         )
 
         richer_refinement_path = self._message_requires_richer_refinement_path(

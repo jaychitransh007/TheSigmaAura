@@ -419,6 +419,137 @@ class ConversationRepository:
                 result.add((tid, int(rank)))
         return result
 
+    # -- archetypal preference aggregation -----------------------------------
+
+    # Catalog enrichment columns to aggregate over. Order matters only
+    # for output stability — each axis is independent.
+    _ARCHETYPAL_AXES = (
+        ("ColorTemperature", "color_temperature"),
+        ("PatternType", "pattern_type"),
+        ("FitType", "fit_type"),
+        ("SilhouetteType", "silhouette_type"),
+        ("EmbellishmentLevel", "embellishment_level"),
+    )
+    # Min count for a value to count as a real signal vs noise. Below
+    # this floor we suppress the axis entirely so the prompt doesn't
+    # learn from a sample-size-of-1.
+    _ARCHETYPAL_MIN_COUNT = 2
+    _ARCHETYPAL_TOP_N = 3
+
+    def aggregate_archetypal_feedback(
+        self,
+        user_id: str,
+        *,
+        lookback_days: int = 90,
+        feedback_limit: int = 200,
+    ) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+        """Return a snapshot of which item attributes the user has
+        liked / disliked, aggregated across recent feedback events.
+
+        Output shape (R4, May 5 2026):
+
+            {
+              "disliked": {
+                "color_temperature": [{"value": "warm", "count": 4}, ...],
+                "pattern_type":      [{"value": "floral", "count": 3}, ...],
+                ...
+              },
+              "liked": { same shape },
+            }
+
+        Each axis lists at most ``_ARCHETYPAL_TOP_N`` values with
+        ``count >= _ARCHETYPAL_MIN_COUNT``. Below the floor we drop
+        the axis entirely (so the Rater doesn't fire its veto on a
+        single-data-point signal). Empty dict on no feedback / DB error.
+
+        Implementation note: PostgREST doesn't compose joins from
+        Python ergonomically, so this is two queries — one against
+        feedback_events, one batch hydrate against catalog_enriched —
+        then aggregate in process. Two queries is fine because the
+        feedback table is small per user.
+        """
+        from collections import Counter
+        from datetime import datetime, timedelta, timezone
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).isoformat()
+        try:
+            events = self.client.select_many(
+                "feedback_events",
+                filters={
+                    "user_id": f"eq.{user_id}",
+                    "event_type": "in.(like,dislike)",
+                    "created_at": f"gte.{cutoff}",
+                },
+                columns="garment_id,event_type",
+                order="created_at.desc",
+                limit=feedback_limit,
+            )
+        except Exception:
+            return {}
+        if not events:
+            return {}
+
+        # Bucket garment_ids by event_type. Keep one row per
+        # (garment, event) so a hammered like/unlike doesn't dominate.
+        liked_ids: List[str] = []
+        disliked_ids: List[str] = []
+        seen_pairs: set[tuple[str, str]] = set()
+        for ev in events:
+            gid = str(ev.get("garment_id") or "").strip()
+            if not gid:
+                continue
+            etype = str(ev.get("event_type") or "").strip()
+            key = (gid, etype)
+            if key in seen_pairs:
+                continue
+            seen_pairs.add(key)
+            if etype == "like":
+                liked_ids.append(gid)
+            elif etype == "dislike":
+                disliked_ids.append(gid)
+        all_ids = sorted(set(liked_ids) | set(disliked_ids))
+        if not all_ids:
+            return {}
+
+        try:
+            in_filter = ",".join(all_ids)
+            enriched_rows = self.client.select_many(
+                "catalog_enriched",
+                filters={"product_id": f"in.({in_filter})"},
+                columns="product_id," + ",".join(col for col, _ in self._ARCHETYPAL_AXES),
+            )
+        except Exception:
+            return {}
+        attrs_by_id: Dict[str, Dict[str, str]] = {}
+        for row in enriched_rows or []:
+            pid = str(row.get("product_id") or "").strip()
+            if pid:
+                attrs_by_id[pid] = {col: str(row.get(col) or "").strip().lower() for col, _ in self._ARCHETYPAL_AXES}
+
+        def _aggregate(ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+            counters: Dict[str, Counter] = {key: Counter() for _, key in self._ARCHETYPAL_AXES}
+            for pid in ids:
+                attrs = attrs_by_id.get(pid)
+                if not attrs:
+                    continue
+                for col, key in self._ARCHETYPAL_AXES:
+                    val = attrs.get(col, "")
+                    if val:
+                        counters[key][val] += 1
+            out: Dict[str, List[Dict[str, Any]]] = {}
+            for _, key in self._ARCHETYPAL_AXES:
+                top = [
+                    {"value": v, "count": c}
+                    for v, c in counters[key].most_common(self._ARCHETYPAL_TOP_N)
+                    if c >= self._ARCHETYPAL_MIN_COUNT
+                ]
+                if top:
+                    out[key] = top
+            return out
+
+        return {"disliked": _aggregate(disliked_ids), "liked": _aggregate(liked_ids)}
+
+
     # -- saved_looks ---------------------------------------------------------
 
     def create_saved_look(

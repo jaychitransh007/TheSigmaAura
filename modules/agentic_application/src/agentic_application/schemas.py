@@ -141,6 +141,14 @@ class CombinedContext(BaseModel):
     # at turn start and used by catalog_search_agent to exclude these items
     # from retrieval results so disliked products do not reappear across turns.
     disliked_product_ids: List[str] = Field(default_factory=list)
+    # R4 (May 5 2026): aggregated like/dislike *attributes* (not IDs).
+    # Shape: {"disliked": {axis: [{"value": v, "count": n}, ...]}, "liked": {...}}
+    # Surfaced to Composer + Rater so they can reason archetypally
+    # ("user dislikes warm-tone florals" rather than "user dislikes
+    # product XYZ-123"). Empty when the user has fewer than 2 feedback
+    # events on a given axis — we suppress single-data-point signals
+    # to avoid the Rater firing its veto on noise.
+    archetypal_preferences: Dict[str, Any] = Field(default_factory=dict)
 
 
 # --- Outfit Architect output ---

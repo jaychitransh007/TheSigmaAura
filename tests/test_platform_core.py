@@ -420,6 +420,82 @@ class RepositoryRequestIdStampingTests(unittest.TestCase):
         self.assertEqual("", payload["request_id"])
 
 
+class ArchetypalFeedbackAggregationTests(unittest.TestCase):
+    """R4 (PR #67): aggregate_archetypal_feedback joins recent
+    feedback_events to catalog_enriched and rolls up like/dislike
+    signals into archetypal axes (color_temperature, pattern_type,
+    fit_type, silhouette_type, embellishment_level)."""
+
+    def _repo_with_events_and_catalog(self, events, catalog):
+        client = unittest.mock.Mock()
+        # First call → feedback_events; second → catalog_enriched.
+        # We discriminate by table name.
+        def select_many(table, filters=None, **kwargs):
+            if table == "feedback_events":
+                return events
+            if table == "catalog_enriched":
+                return catalog
+            return []
+        client.select_many.side_effect = select_many
+        return ConversationRepository(client)
+
+    def test_returns_top_3_dislikes_above_min_count(self) -> None:
+        events = [
+            {"garment_id": "p1", "event_type": "dislike"},
+            {"garment_id": "p2", "event_type": "dislike"},
+            {"garment_id": "p3", "event_type": "dislike"},
+            {"garment_id": "p4", "event_type": "dislike"},
+        ]
+        catalog = [
+            {"product_id": "p1", "ColorTemperature": "warm",  "PatternType": "floral"},
+            {"product_id": "p2", "ColorTemperature": "warm",  "PatternType": "floral"},
+            {"product_id": "p3", "ColorTemperature": "cool",  "PatternType": "floral"},
+            {"product_id": "p4", "ColorTemperature": "warm",  "PatternType": "solid"},  # solid count = 1 → suppressed
+        ]
+        repo = self._repo_with_events_and_catalog(events, catalog)
+        out = repo.aggregate_archetypal_feedback("u1")
+        # 3 disliked products with 'warm' color → above floor of 2
+        self.assertIn("color_temperature", out["disliked"])
+        warm_entry = next(e for e in out["disliked"]["color_temperature"] if e["value"] == "warm")
+        self.assertEqual(3, warm_entry["count"])
+        # Floral pattern → 3 events → above floor
+        self.assertIn("pattern_type", out["disliked"])
+        floral_entry = next(e for e in out["disliked"]["pattern_type"] if e["value"] == "floral")
+        self.assertEqual(3, floral_entry["count"])
+        # 'solid' had count=1 → suppressed
+        solid_entries = [e for e in out["disliked"]["pattern_type"] if e["value"] == "solid"]
+        self.assertEqual([], solid_entries)
+
+    def test_dedupes_repeated_like_dislike_on_same_garment(self) -> None:
+        # Same garment liked twice should count once.
+        events = [
+            {"garment_id": "p1", "event_type": "like"},
+            {"garment_id": "p1", "event_type": "like"},
+            {"garment_id": "p2", "event_type": "like"},
+        ]
+        catalog = [
+            {"product_id": "p1", "ColorTemperature": "warm"},
+            {"product_id": "p2", "ColorTemperature": "warm"},
+        ]
+        repo = self._repo_with_events_and_catalog(events, catalog)
+        out = repo.aggregate_archetypal_feedback("u1")
+        # 2 unique garments both warm → count 2 → above floor
+        self.assertIn("color_temperature", out["liked"])
+        warm = next(e for e in out["liked"]["color_temperature"] if e["value"] == "warm")
+        self.assertEqual(2, warm["count"])
+
+    def test_returns_empty_on_no_feedback(self) -> None:
+        repo = self._repo_with_events_and_catalog([], [])
+        self.assertEqual({}, repo.aggregate_archetypal_feedback("u1"))
+
+    def test_returns_empty_on_db_error(self) -> None:
+        client = unittest.mock.Mock()
+        client.select_many.side_effect = RuntimeError("supabase down")
+        repo = ConversationRepository(client)
+        # Should swallow the exception and return {}.
+        self.assertEqual({}, repo.aggregate_archetypal_feedback("u1"))
+
+
 class CostEstimatorTests(unittest.TestCase):
     """Item 4 (May 1, 2026): cost estimation per LLM/image-gen call."""
 
