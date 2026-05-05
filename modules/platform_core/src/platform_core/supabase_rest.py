@@ -1,12 +1,26 @@
 import json
 from typing import Any, Dict, List, Optional
-from urllib.error import HTTPError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+
+import httpx
 
 
 class SupabaseError(RuntimeError):
     pass
+
+
+# May 5, 2026 — switched from urllib.request.urlopen to a per-instance
+# httpx.Client. The previous implementation opened a fresh TCP/TLS
+# connection on every Supabase round trip. Pre-LLM DB pre-amble
+# (onboarding_gate + user_context) was running ~2.8s/turn for what
+# should be sub-200ms-per-call work. httpx.Client maintains a
+# keep-alive connection pool, so subsequent calls in a turn re-use
+# the established TLS session.
+_DEFAULT_POOL_LIMITS = httpx.Limits(
+    max_connections=20,
+    max_keepalive_connections=10,
+    keepalive_expiry=30.0,
+)
 
 
 class SupabaseRestClient:
@@ -14,6 +28,28 @@ class SupabaseRestClient:
         self.rest_url = rest_url.rstrip("/")
         self.service_role_key = service_role_key
         self.timeout_seconds = timeout_seconds
+        # Per-instance pool. Orchestrator constructs one SupabaseRestClient
+        # at startup and reuses it across turns, so a single pool serves
+        # the whole process. http2=True multiplexes concurrent reads
+        # (e.g. once we parallelise onboarding_gate ↔ user_context in
+        # PR E) over one connection.
+        self._http = httpx.Client(
+            timeout=httpx.Timeout(timeout_seconds, connect=5.0),
+            limits=_DEFAULT_POOL_LIMITS,
+            headers={
+                "apikey": service_role_key,
+                "Authorization": f"Bearer {service_role_key}",
+                "Accept": "application/json",
+            },
+        )
+
+    def close(self) -> None:
+        """Release the HTTP connection pool. Tests should call this in
+        teardown; production process exit handles it implicitly."""
+        try:
+            self._http.close()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _request(
         self,
@@ -30,15 +66,12 @@ class SupabaseRestClient:
             url = f"{url}?{encoded}"
 
         headers = {
-            "apikey": self.service_role_key,
-            "Authorization": f"Bearer {self.service_role_key}",
             "Content-Type": "application/json",
-            "Accept": "application/json",
             "Prefer": prefer,
         }
-        data = None
+        content = None
         if body is not None:
-            data = json.dumps(body, ensure_ascii=True).encode("utf-8")
+            content = json.dumps(body, ensure_ascii=True).encode("utf-8")
 
         # Item 5 (May 1, 2026): track external-call latency for the
         # /metrics endpoint so slow Supabase queries surface in
@@ -46,17 +79,19 @@ class SupabaseRestClient:
         import time as _time
         started = _time.monotonic()
         status = "ok"
-        req = Request(url=url, method=method, headers=headers, data=data)
         try:
-            with urlopen(req, timeout=self.timeout_seconds) as resp:
-                raw = resp.read().decode("utf-8")
-                if not raw:
-                    return None
-                return json.loads(raw)
-        except HTTPError as exc:
-            raw = exc.read().decode("utf-8", errors="replace")
-            status = f"http_{exc.code}"
-            raise SupabaseError(f"Supabase request failed ({exc.code}) {method} {url}: {raw}") from exc
+            resp = self._http.request(method, url, headers=headers, content=content)
+            if resp.status_code >= 400:
+                status = f"http_{resp.status_code}"
+                raise SupabaseError(
+                    f"Supabase request failed ({resp.status_code}) {method} {url}: {resp.text}"
+                )
+            raw = resp.text
+            if not raw:
+                return None
+            return json.loads(raw)
+        except SupabaseError:
+            raise
         except Exception:
             status = "error"
             raise
