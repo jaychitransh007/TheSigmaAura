@@ -217,10 +217,17 @@ def build_planner_input(
 
 
 class CopilotPlanner:
-    def __init__(self, model: str = "gpt-5.5") -> None:
-        # May 1, 2026: upgraded from gpt-5.4 to gpt-5.5. The planner
-        # is the single highest-leverage call per turn — wrong intent
-        # = wrong handler — so it gets the more capable model.
+    def __init__(self, model: str = "gpt-5-mini") -> None:
+        # May 5, 2026: downgraded from gpt-5.5 to gpt-5-mini. Earlier
+        # rationale (the planner is high-leverage so it gets the bigger
+        # model) overweighted the routing-failure risk. With strict
+        # JSON-schema enums the planner's task is structurally similar
+        # to other gpt-5-mini callers in this codebase (Composer,
+        # Rater, visual_evaluator) — fuzzy NL → constrained structured
+        # output. The architecture-grade reasoning (body shape × palette
+        # × occasion → catalog queries) lives in OutfitArchitect, which
+        # stays on gpt-5.5. See docs/OPEN_TASKS.md for the offline
+        # routing-accuracy eval that backs this change.
         #
         # Lazy OpenAI client: do NOT touch get_api_key() here so the
         # constructor stays env-free for tests that mock the agent.

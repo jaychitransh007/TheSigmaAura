@@ -1264,8 +1264,13 @@ class AgenticOrchestrator:
         )
 
         # Run Copilot Planner
+        # Model name read from the agent so the trace + log rows
+        # follow the agent's _model attribute rather than a hardcoded
+        # literal we'd otherwise have to keep in sync (May 5, 2026
+        # gpt-5.5 → gpt-5-mini swap exposed how easy that drift is).
+        _planner_model = getattr(self._copilot_planner, "_model", "gpt-5-mini")
         emit("copilot_planner", "started")
-        trace_start("copilot_planner", model="gpt-5.5", input_summary=f"message={message[:80]}, has_image={bool(image_data)}")
+        trace_start("copilot_planner", model=_planner_model, input_summary=f"message={message[:80]}, has_image={bool(image_data)}")
         t0 = time.monotonic()
         try:
             plan_result = self._copilot_planner.plan(planner_input)
@@ -1277,7 +1282,7 @@ class AgenticOrchestrator:
                 turn_id=turn_id,
                 service="agentic_application",
                 call_type="copilot_planner",
-                model="gpt-5.5",
+                model=_planner_model,
                 request_json={"message": effective_message},
                 response_json={},
                 reasoning_notes=[],
@@ -1318,7 +1323,7 @@ class AgenticOrchestrator:
             turn_id=turn_id,
             service="agentic_application",
             call_type="copilot_planner",
-            model="gpt-5.5",
+            model=_planner_model,
             request_json={"message": effective_message, "intent": plan_result.intent},
             response_json={
                 "intent": plan_result.intent,

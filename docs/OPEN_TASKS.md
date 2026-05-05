@@ -104,3 +104,30 @@ What we need to learn from production:
 - **Re-click on cached cards.** If users return to the same turn and re-click, the cache should hit and the eval shouldn't re-run. Verify via the idempotent path in `run_on_demand_visual_eval`.
 
 **Trigger:** review the dashboard ~4 weeks after rollout (around June 2, 2026).
+
+---
+
+## Eval + observability — planner moved to gpt-5-mini (May 5, 2026)
+
+**Status:** queued · **Cost:** dev time only · **Risk:** medium (routing accuracy regression would be user-visible)
+
+May 5, 2026 swapped CopilotPlanner from `gpt-5.5` → `gpt-5-mini` ([copilot_planner.py:220](modules/agentic_application/src/agentic_application/agents/copilot_planner.py:220)) on the argument that strict-JSON-schema enums make the planner's task structurally similar to other gpt-5-mini callers (Composer, Rater, visual_evaluator), and the architecture-grade reasoning (body × palette × occasion → catalog queries) lives downstream in OutfitArchitect, which stays on gpt-5.5. Pricing ratio is ~33× (gpt-5.5 input $5/M, gpt-5-mini input $0.15/M) so the planner line item should drop from ~$0.041/turn → ~$0.001/turn — meaningful given planner runs on every turn including non-recommendation ones.
+
+**The change shipped without an offline eval first.** Validating it as production data accumulates:
+
+1. **Offline routing-accuracy eval.** Pull ~200 historical planner inputs from `tool_traces` (across all 8 intents). Run each through both `gpt-5.5` and `gpt-5-mini` with the existing prompt. Compare:
+   - Intent label match rate (gate ≥95%)
+   - Action label match rate (gate ≥98% — action drives dispatch, miss = wrong handler ships)
+   - `purchase_intent` / `target_piece` / `is_followup` accuracy
+   - Subjective spot-check on `assistant_message` tone (50 samples by hand — this is the only stylist-voice text the user sees on advisor intents before the StyleAdvisor takes over)
+
+   Scaffold this as a new mode of `ops/scripts/run_agentic_eval.py` (model-comparison mode). If gpt-5-mini misses on routing fields, revert and instead trim the planner prompt.
+
+2. **Production observability — planner-failure rate.** Wire a Grafana panel for the rolling 7-day rate of `clarification` actions and `error` paths attributed to the planner. A spike post-May-5 = mini misclassifying.
+
+3. **Production observability — `purchase_intent` accuracy proxy.** When the planner sets `purchase_intent=true` on a `garment_evaluation` and the user dismisses the buy/skip verdict block without engaging, that's a soft signal of misclassification. Track engagement vs dismissal rate before vs after the swap.
+
+**Trigger to act on item 1:** within 1 week of merge, while the gpt-5.5 baseline is still fresh in production traces. Items 2–3 are ongoing — no specific trigger, just wire the panels and watch.
+
+**Rollback path:** swap the default in [copilot_planner.py:220](modules/agentic_application/src/agentic_application/agents/copilot_planner.py:220) back to `"gpt-5.5"`; the orchestrator's log/trace sites read from `self._copilot_planner._model` so they pick up the change automatically. One-line revert.
+
