@@ -1041,7 +1041,11 @@ class OnboardingService:
         if not profile or not profile.get("profile_complete"):
             return
         uploaded = set(self._repo.get_image_categories(user_id))
-        if REQUIRED_IMAGE_CATEGORIES <= uploaded and profile.get("style_preference_complete"):
+        # May 2026: style_preference_complete column dropped. Onboarding
+        # now completes when the basic profile + required images land;
+        # risk_tolerance has its own snapshot, but recommendation works
+        # at "balanced" default if a user skips it.
+        if REQUIRED_IMAGE_CATEGORIES <= uploaded:
             if profile.get("onboarding_complete"):
                 return
             self._repo.mark_onboarding_complete(user_id)
@@ -1124,7 +1128,6 @@ class OnboardingService:
                 "user_id": user_id,
                 "profile_complete": False,
                 "images_uploaded": [],
-                "style_preference_complete": False,
                 "onboarding_complete": False,
                 "wardrobe_item_count": 0,
             }
@@ -1134,7 +1137,6 @@ class OnboardingService:
                 "user_id": user_id,
                 "profile_complete": False,
                 "images_uploaded": [],
-                "style_preference_complete": False,
                 "onboarding_complete": False,
                 "wardrobe_item_count": 0,
             }
@@ -1161,7 +1163,6 @@ class OnboardingService:
             "profile_complete": bool(profile.get("profile_complete")),
             "images_uploaded": categories,
             "image_paths": image_paths,
-            "style_preference_complete": bool(profile.get("style_preference_complete")),
             "onboarding_complete": bool(profile.get("onboarding_complete")),
             "wardrobe_item_count": wardrobe_item_count,
         }

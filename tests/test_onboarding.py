@@ -351,17 +351,17 @@ class OnboardingTests(unittest.TestCase):
 
         self.assertEqual(404, resp.status_code)
 
-    def test_get_status_exposes_style_preference_completion(self) -> None:
+    def test_get_status_exposes_onboarding_completion(self) -> None:
+        # May 2026: style_preference_complete column dropped; status no
+        # longer exposes that field. Profile/onboarding flags + uploaded
+        # images are the remaining surface.
         repo = Mock()
         repo.get_profile_by_user_id.return_value = {
             "user_id": "user_status",
             "mobile": "+919999999999",
             "profile_complete": True,
-            "style_preference_complete": True,
             "onboarding_complete": False,
         }
-        # Service reads image rows via get_images (each row has category +
-        # file_path), not the legacy get_image_categories list.
         repo.get_images.return_value = [
             {"category": "full_body", "file_path": "/tmp/full_body.jpg"},
             {"category": "headshot", "file_path": "/tmp/headshot.jpg"},
@@ -373,7 +373,7 @@ class OnboardingTests(unittest.TestCase):
             status = service.get_status("user_status")
 
         self.assertTrue(status["profile_complete"])
-        self.assertTrue(status["style_preference_complete"])
+        self.assertNotIn("style_preference_complete", status)
         self.assertFalse(status["onboarding_complete"])
         self.assertEqual(["full_body", "headshot"], status["images_uploaded"])
         self.assertEqual(3, status["wardrobe_item_count"])

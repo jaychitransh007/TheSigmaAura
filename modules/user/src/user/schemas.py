@@ -108,7 +108,6 @@ class OnboardingStatusResponse(BaseModel):
     profile_complete: bool = False
     images_uploaded: List[str] = Field(default_factory=list)
     image_paths: Dict[str, str] = Field(default_factory=dict)
-    style_preference_complete: bool = False
     onboarding_complete: bool = False
     wardrobe_item_count: int = 0
 
