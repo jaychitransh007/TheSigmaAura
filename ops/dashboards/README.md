@@ -20,6 +20,7 @@ this directory makes the SQL paste-ready for Supabase Studio / Metabase / Grafan
 - [`panel_12_wardrobe_enrichment_failure_rate_phase_12d.sql`](panel_12_wardrobe_enrichment_failure_rate_phase_12d.sql)
 - [`panel_13_wardrobe_anchor_try_on_coverage_phase_12d_follow_up.sql`](panel_13_wardrobe_anchor_try_on_coverage_phase_12d_follow_up.sql)
 - [`panel_14_non_garment_image_rate_phase_12d_follow_up.sql`](panel_14_non_garment_image_rate_phase_12d_follow_up.sql)
+- [`panel_16_low_confidence_catalog_responses_may_3_2026.sql`](panel_16_low_confidence_catalog_responses_may_3_2026.sql)
 
 ## Log-based panels (no SQL)
 
@@ -33,3 +34,9 @@ this directory makes the SQL paste-ready for Supabase Studio / Metabase / Grafan
 - Panels 4 (Pipeline Health) and 7 (Negative Signals): **5 minutes**
 - Panel 10 (Try-on Quality Gate): **15 minutes** during week 1, hourly after
 - Everything else: **hourly**
+
+> Note: `extract_dashboard_sql.py` currently only writes the auto-generated
+> `## Files` list and discards everything else on regen. The two sections
+> above are restored manually for now; a follow-up should teach the script
+> to preserve a `<!-- preserve-below -->` marker so manual content
+> survives regeneration.

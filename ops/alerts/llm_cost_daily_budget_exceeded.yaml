@@ -1,9 +1,16 @@
 alert: aura_llm_cost_daily_budget_exceeded
 description: |
-  LLM call cost has exceeded the daily $50 soft budget. Set the
+  LLM call cost has exceeded the daily $500 soft budget. Set the
   threshold below to match your finance ceiling.
+
+  May 5, 2026: bumped from $50 → $500 (10×) as a temporary stop-paging
+  measure after PR #81 promoted the OutfitComposer from gpt-5-mini to
+  gpt-5.4 (~25× per-call composer cost). Per-turn cost moved from ~4¢
+  to ~19¢ when outfits ship; the old $50 threshold was tripped within
+  hours of PR #81 on a non-incident basis. Revisit and recompute once
+  there is a stable week of post-PR-#81 traffic to baseline against.
 expr: |
-  sum(increase(aura_llm_call_cost_usd_total[24h])) > 50
+  sum(increase(aura_llm_call_cost_usd_total[24h])) > 500
 for: 0m
 severity: P2
 runbook: docs/OPERATIONS.md
@@ -12,5 +19,5 @@ labels:
   service: agentic_application
   category: cost
 annotations:
-  summary: Daily LLM cost above $50
+  summary: Daily LLM cost above $500
   description: "$ {{ $value }} spent in the last 24h on LLM + image-gen calls"

@@ -88,6 +88,27 @@ GROUP BY 1
 ORDER BY turns DESC;
 ```
 
+**Reading the answer_source mix (post May 5 2026, PR #82).** The default
+routing flipped: `source_preference="auto"` (when the user does not say
+"from my wardrobe") now routes to the catalog pipeline. Pre-#82 the
+`wardrobe_first*` family was the default and dominated this chart.
+Post-#82 the dominant rows should be:
+
+- `catalog_only` — both explicit "from the catalog" and the new auto
+  default. Should be the largest bucket by far (>60% of turns) for a
+  catalog-led product.
+- `catalog_low_confidence` — pipeline ran but the rater's threshold gate
+  rejected everything; user got a clarification message. Watch for
+  spikes (see Panel 16).
+- `wardrobe_first` / `wardrobe_first_hybrid` — users who explicitly
+  asked for wardrobe-first AND cleared the ≥2-per-role coverage gate
+  (PR #82). Now an opt-in slice, not the default.
+- `wardrobe_unavailable` — explicit wardrobe ask + insufficient coverage
+  → the gap fallback message. New row introduced by PR #82.
+
+If `wardrobe_first*` is still >40% post-#82, the planner is mis-extracting
+`source_preference` (regression in `prompt/copilot_planner.md`).
+
 ---
 
 ## Panel 4 — Pipeline Health (Errors & Empty Responses)
@@ -175,10 +196,44 @@ you the third-session retention number that the dependency report tracks.
 
 ## Panel 6 — Wardrobe & Catalog Engagement
 
-**Question:** is the wardrobe-first / hybrid path actually used?
+**Question:** what mix are the two source preferences producing, and is
+the catalog (now-default) path landing engagement?
+
+Per PR #82 (May 5 2026) the default `source_preference="auto"` routes to
+catalog. Wardrobe-first is an opt-in path users reach by saying "from my
+wardrobe", and it has its own minimum-coverage gate (≥2 tops AND ≥2
+bottoms AND ≥2 one-pieces). The first query below shows the source-share
+across the entire mix; the second shows wardrobe-only paths so you can
+size the opt-in slice; the third shows catalog click-through volume so
+the dominant path's engagement is visible.
 
 ```sql
--- wardrobe_first_share_last_7d
+-- source_preference_share_last_7d (May 5 2026: includes the new
+-- auto→catalog default and the wardrobe_unavailable gap fallback)
+SELECT
+    coalesce(metadata_json->>'answer_source', 'unknown') AS answer_source,
+    COUNT(*)                                              AS turns,
+    round(100.0 * COUNT(*)::numeric
+          / nullif(SUM(COUNT(*)) OVER (), 0), 2)          AS pct_of_total
+FROM dependency_validation_events
+WHERE event_type = 'turn_completed'
+  AND created_at >= now() - interval '7 days'
+  AND metadata_json->>'answer_source' IN (
+      'catalog_only',
+      'catalog_low_confidence',
+      'wardrobe_first',
+      'wardrobe_first_hybrid',
+      'wardrobe_first_pairing',
+      'wardrobe_first_pairing_hybrid',
+      'wardrobe_unavailable'
+  )
+GROUP BY 1
+ORDER BY turns DESC;
+```
+
+```sql
+-- wardrobe_first_share_last_7d (now an opt-in slice — expect <30% of
+-- turns post-#82; if higher, planner is over-routing to wardrobe)
 SELECT
     metadata_json->>'answer_source' AS answer_source,
     COUNT(*)                        AS turns
@@ -556,11 +611,43 @@ GROUP BY 1
 ORDER BY 1 DESC;
 ```
 
-**Healthy:** `low_conf_rate_pct` stays <5%. The avg blocked top score should sit close to but below 0.75 (i.e., the gate is catching genuinely borderline turns, not way-off ones).
+**Threshold history.** The fashion_score gate started at 75; PR #81
+(May 5 2026) lowered it to 60 after the gpt-5.4 composer / rebalanced
+weights produced cleaner per-dim scores that were under-clearing 75.
+Adjust the docstring if the gate moves again.
 
-**Degraded:** `low_conf_rate_pct` 5–20%. Most likely a catalog gap or an architect drift producing weak query documents. Pull a sample of low-confidence turns from `turn_traces` (filter on `evaluation->>'answer_source' = 'catalog_low_confidence'`) and inspect each one's architect query documents + retrieved candidates manually — check whether the architect is targeting `garment_subtype` values the catalog doesn't carry well, or whether the user's seasonal palette / formality target has thin inventory. (A future Panel 17 would join `tool_traces.composer_decision` / `rater_decision` to `catalog_enriched.GarmentSubtype` to surface this automatically.)
+**Healthy:** `low_conf_rate_pct` stays <5%. The avg blocked top score
+should sit close to but below the active threshold (i.e., the gate is
+catching genuinely borderline turns, not way-off ones).
 
-**Unhealthy:** `low_conf_rate_pct` > 20% sustained. Either the threshold is too high for current catalog depth, or the architect / assembler is regressing. Pull a sample of low-confidence turns from `turn_traces` and inspect the query documents + retrieved products manually.
+**Degraded:** `low_conf_rate_pct` 5–20%. Most likely a catalog gap or
+an architect drift producing weak query documents. Pull a sample of
+low-confidence turns from `turn_traces` (filter on
+`evaluation->>'answer_source' = 'catalog_low_confidence'`) and inspect
+each one's architect query documents + retrieved candidates manually —
+check whether the architect is targeting `garment_subtype` values the
+catalog doesn't carry well, or whether the user's seasonal palette /
+formality target has thin inventory. (A future Panel 17 would join
+`tool_traces.composer_decision` / `rater_decision` to
+`catalog_enriched.GarmentSubtype` to surface this automatically.)
+
+**Unhealthy:** `low_conf_rate_pct` > 20% sustained. Either the
+threshold is too high for current catalog depth, or the architect /
+assembler is regressing. Pull a sample of low-confidence turns from
+`turn_traces` and inspect the query documents + retrieved products
+manually.
+
+**May 5 2026 carve-out (PR #89, rater veto removed).** Before #89, the
+rater treated `archetypal_preferences.disliked` as a hard veto: any
+single touch of a disliked attribute (color_temperature: neutral,
+pattern: solid) drove `fashion_score=0` and pushed the outfit into this
+gate. T12 had 8/8 outfits vetoed and the user got the
+`catalog_low_confidence` message. PR #89 removed that veto, so this
+panel's rate should *drop* meaningfully (the floor moves from "any
+disliked attr" → "the rater's per-dim score is genuinely below
+threshold"). When establishing a new healthy baseline, pull at least 7
+days of post-PR-#89 data — anything compared against pre-#89 numbers
+will look artificially good.
 
 ---
 
