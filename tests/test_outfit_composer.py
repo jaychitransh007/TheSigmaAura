@@ -163,6 +163,48 @@ class OutfitComposerStructuralTests(unittest.TestCase):
         self.assertEqual(1, len(result.outfits))
         self.assertEqual("", result.outfits[0].name)
 
+    def test_composer_tolerates_null_name_value(self) -> None:
+        """The strict schema requires `name`, but defensively handle the
+        case where the LLM returns an explicit JSON null. Without this
+        guard, str(None).strip() yields "None" — which would ship as the
+        card title."""
+        payload = {
+            "outfits": [
+                {"composer_id": "C1", "direction_id": "A", "direction_type": "complete",
+                 "item_ids": ["a1_set1"], "name": None, "rationale": "Null name."},
+            ],
+            "overall_assessment": "moderate",
+            "pool_unsuitable": False,
+        }
+
+        with patch("agentic_application.agents.outfit_composer.get_api_key", return_value="x"), _patch_composer() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(payload)
+            result = OutfitComposer().compose(_ctx(), _pool())
+
+        self.assertEqual(1, len(result.outfits))
+        self.assertEqual("", result.outfits[0].name)
+
+    def test_composer_truncates_excessively_long_name(self) -> None:
+        """Schema caps `name` at maxLength=100, but defensively truncate
+        in the parser too — a runaway model response shouldn't blow the
+        UI title slot."""
+        long_name = "A" * 250
+        payload = {
+            "outfits": [
+                {"composer_id": "C1", "direction_id": "A", "direction_type": "complete",
+                 "item_ids": ["a1_set1"], "name": long_name,
+                 "rationale": "Schema cap should hold but parser truncates too."},
+            ],
+            "overall_assessment": "moderate",
+            "pool_unsuitable": False,
+        }
+
+        with patch("agentic_application.agents.outfit_composer.get_api_key", return_value="x"), _patch_composer() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(payload)
+            result = OutfitComposer().compose(_ctx(), _pool())
+
+        self.assertEqual(100, len(result.outfits[0].name))
+
     def test_composer_drops_outfit_with_unknown_item_id(self) -> None:
         """Hallucinated item_id → that outfit is silently dropped from
         the result. Other valid outfits still ship."""

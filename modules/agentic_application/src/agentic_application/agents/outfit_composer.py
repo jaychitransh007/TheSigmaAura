@@ -136,7 +136,15 @@ def _build_composer_json_schema(direction_letters: Sequence[str]) -> Dict[str, A
                                 "items": {"type": "string"},
                             },
                             "rationale": {"type": "string"},
-                            "name": {"type": "string"},
+                            # Length-bound at the schema level so the model
+                            # can't blow past the UI title slot. The prompt
+                            # asks for 2-5 words; 100 chars is a defensive
+                            # ceiling on top of that.
+                            "name": {
+                                "type": "string",
+                                "description": "Short stylist-flavored title for the outfit (2-5 words, e.g. 'Sharp Navy Boardroom').",
+                                "maxLength": 100,
+                            },
                         },
                     },
                 },
@@ -617,7 +625,11 @@ class OutfitComposer:
                     direction_type=str(raw_outfit.get("direction_type", "")),
                     item_ids=[str(x) for x in (raw_outfit.get("item_ids") or [])],
                     rationale=str(raw_outfit.get("rationale", "")),
-                    name=str(raw_outfit.get("name", "")).strip(),
+                    # `or ""` (not the .get default) so an explicit JSON
+                    # null also folds to ""; otherwise str(None) → "None"
+                    # would ship as the card title. [:100] mirrors the
+                    # schema cap above as a defensive belt.
+                    name=str(raw_outfit.get("name") or "").strip()[:100],
                 )
             except (ValidationError, TypeError, AttributeError, ValueError) as exc:  # defensive parse
                 _log.warning("OutfitComposer: malformed outfit payload (%s); skipping", exc)
