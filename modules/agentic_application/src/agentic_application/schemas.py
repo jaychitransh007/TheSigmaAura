@@ -237,6 +237,10 @@ class OutfitCandidate(BaseModel):
     composer_rationale: str = ""
     rater_rationale: str = ""
     unsuitable: bool = False  # Hard veto from the Rater.
+    # Stylist-flavored outfit title carried over from ComposedOutfit.name.
+    # Empty for wardrobe-anchored candidates (those don't go through the
+    # composer); the orchestrator handles the empty case at the promotion site.
+    name: str = ""
 
 
 # --- LLM ranker output (Composer + Rater, May 3 2026) ---
@@ -260,6 +264,10 @@ class ComposedOutfit(BaseModel):
     direction_type: str  # complete | paired | three_piece
     item_ids: List[str]  # Pool item IDs the Composer picked. Must all exist in the pool.
     rationale: str  # The Composer's brief reasoning for this construction.
+    # Short stylist-flavored title for the outfit (e.g., "Sharp Navy Boardroom",
+    # "Soft Cream Daywear"). Surfaced as the user-facing card title; the
+    # orchestrator falls back to "Outfit N" only when this is empty.
+    name: str = ""
 
 
 class ComposerResult(BaseModel):

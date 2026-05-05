@@ -5132,6 +5132,7 @@ class AgenticOrchestrator:
                         composer_rationale=composed.rationale,
                         rater_rationale=rated.rationale,
                         unsuitable=rated.unsuitable,
+                        name=composed.name,
                     )
                 )
 
@@ -5233,7 +5234,10 @@ class AgenticOrchestrator:
                         candidate_id=candidate.candidate_id,
                         rank=rank,
                         match_score=candidate.fashion_score / 100.0,
-                        title=f"Outfit {rank}",
+                        # Composer emits a stylist-flavored per-outfit name
+                        # (see prompt/outfit_composer.md "Naming"); fall back
+                        # to "Outfit N" only if the LLM somehow returns blank.
+                        title=candidate.name or f"Outfit {rank}",
                         reasoning=candidate.rater_rationale or "Rated by stylist.",
                         # Map the Rater's 3 always-on dims onto the radar
                         # slots the UI knows. occasion_pct is Optional so

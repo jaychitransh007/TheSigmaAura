@@ -140,6 +140,7 @@ def _mock_llm_ranker(orchestrator, candidates: list[OutfitCandidate]) -> None:
                 direction_type=c.candidate_type or "complete",
                 item_ids=item_ids,
                 rationale=c.composer_rationale or "test rationale",
+                name=c.name,
             )
         )
         rated.append(
@@ -206,6 +207,7 @@ def _wire_llm_ranker_via_patches(composer_cls, rater_cls, candidates: list[Outfi
                 direction_type=c.candidate_type or "complete",
                 item_ids=item_ids,
                 rationale=c.composer_rationale or "test rationale",
+                name=c.name,
             )
         )
         rated.append(

@@ -62,6 +62,7 @@ Mix outfits across directions — diversity is good. If one direction has strong
       "direction_id": "A",
       "direction_type": "complete",
       "item_ids": ["a_pool_item_id"],
+      "name": "Sharp Navy Boardroom",
       "rationale": "One sentence on why this works for the user's request."
     },
     {
@@ -69,6 +70,7 @@ Mix outfits across directions — diversity is good. If one direction has strong
       "direction_id": "B",
       "direction_type": "paired",
       "item_ids": ["a_top_id_from_B", "a_bottom_id_from_B"],
+      "name": "Soft Cream Daywear",
       "rationale": "..."
     }
   ],
@@ -81,6 +83,28 @@ Mix outfits across directions — diversity is good. If one direction has strong
 - `overall_assessment` is your judgment of the **overall pool quality** vs the user's request, not any one outfit.
 - Set `pool_unsuitable: true` only when the entire pool cannot produce any outfit that meets the user's basic occasion + formality requirements. In that case return `outfits: []`.
 - The `rationale` should be one short sentence — what specifically makes this combination work for this user. Mention the dimension that drove the call (occasion, color, silhouette).
+- The `name` is the user-facing card title — a short stylist-flavored phrase (2-5 words) that captures the look's character. See the **Naming** section below.
+
+## Naming
+
+Each outfit needs a `name` that the user actually sees on the card. It must be distinct across the response (no two outfits with the same name) and convey the outfit's specific character — palette, mood, occasion, or signature piece. Avoid generic placeholders like "Outfit 1", "Office Look", "Classic Style".
+
+- 2-5 words, title case.
+- Concrete and evocative: lean on the dominant color, fabric, silhouette, or occasion mood.
+- Stylist voice — confident, specific, not flowery.
+
+**Good:**
+- "Sharp Navy Boardroom" (color + occasion)
+- "Soft Cream Daywear" (palette + time-of-day)
+- "Burgundy Wedding Edit" (color + occasion)
+- "Linen Smart-Casual" (fabric + formality)
+- "Tonal Beige Layering" (palette + technique)
+
+**Avoid:**
+- "Outfit 1", "Look 2" (generic)
+- "Classic Office Look" (vague — every office outfit could be called this)
+- "Beautiful Elegant Ensemble" (flowery, no specifics)
+- "Best Choice For Your Day" (talking to user, not naming the look)
 
 ## Tone of rationale
 
