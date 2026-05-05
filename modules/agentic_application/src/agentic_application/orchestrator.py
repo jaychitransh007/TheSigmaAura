@@ -4646,7 +4646,7 @@ class AgenticOrchestrator:
                 # (for the message + metadata). Without this, the role-count
                 # walk runs twice on the insufficient-coverage path.
                 precomputed_coverage = self._wardrobe_meets_minimum_coverage(
-                    list(getattr(user_context, "wardrobe_items", []) or [])
+                    getattr(user_context, "wardrobe_items", [])
                 )
 
                 wardrobe_first_response = self._build_wardrobe_first_occasion_response(
