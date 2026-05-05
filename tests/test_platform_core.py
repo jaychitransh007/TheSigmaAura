@@ -142,17 +142,21 @@ class PlatformCoreTests(unittest.TestCase):
                     {"garment_id": "g2", "event_type": "like",    "created_at": "2026-05-03T08:00:00Z", "turn_id": "t2"},
                 ]
             if table == "catalog_enriched":
+                # Mirror the real DB schema: enrichment attributes are
+                # PascalCase, only `title` and `product_id` are lowercase.
+                # The repo method must translate these to snake_case keys
+                # for the architect prompt.
                 return [
-                    {"product_id": "g1", "title": "Solid Navy Blazer", "primary_color": "navy",
-                     "color_temperature": "cool", "pattern_type": "solid", "fit_type": "tailored",
-                     "silhouette_type": "structured", "embellishment_level": "none",
-                     "formality_level": "business_casual", "garment_subtype": "blazer",
-                     "occasion_fit": "office"},
-                    {"product_id": "g2", "title": "Warm Tonal Sweater", "primary_color": "camel",
-                     "color_temperature": "warm", "pattern_type": "solid", "fit_type": "relaxed",
-                     "silhouette_type": "soft", "embellishment_level": "none",
-                     "formality_level": "smart_casual", "garment_subtype": "sweater",
-                     "occasion_fit": "weekend"},
+                    {"product_id": "g1", "title": "Solid Navy Blazer", "PrimaryColor": "navy",
+                     "ColorTemperature": "cool", "PatternType": "solid", "FitType": "tailored",
+                     "SilhouetteType": "structured", "EmbellishmentLevel": "none",
+                     "FormalityLevel": "business_casual", "GarmentSubtype": "blazer",
+                     "OccasionFit": "office"},
+                    {"product_id": "g2", "title": "Warm Tonal Sweater", "PrimaryColor": "camel",
+                     "ColorTemperature": "warm", "PatternType": "solid", "FitType": "relaxed",
+                     "SilhouetteType": "soft", "EmbellishmentLevel": "none",
+                     "FormalityLevel": "smart_casual", "GarmentSubtype": "sweater",
+                     "OccasionFit": "weekend"},
                 ]
             if table == "conversation_turns":
                 return [
@@ -172,11 +176,27 @@ class PlatformCoreTests(unittest.TestCase):
         self.assertEqual("t1", d["turn_id"])
         self.assertEqual("what should I wear to the office", d["user_query"])
         self.assertEqual("Solid Navy Blazer", d["item"]["title"])
+        # Output keys are snake_case for the prompt, even though DB cols
+        # are PascalCase. This is the contract the architect expects.
         self.assertEqual("cool", d["item"]["color_temperature"])
         self.assertEqual("solid", d["item"]["pattern_type"])
+        self.assertEqual("navy", d["item"]["primary_color"])
+        self.assertEqual("blazer", d["item"]["garment_subtype"])
+        self.assertEqual("office", d["item"]["occasion_fit"])
         self.assertEqual("like", l["event_type"])
         self.assertEqual("find me a casual weekend outfit", l["user_query"])
         self.assertEqual("warm", l["item"]["color_temperature"])
+        # The catalog_enriched query selects the PascalCase DB columns,
+        # not the snake_case prompt keys. Verify so we don't regress to
+        # the silent-failure mode (PostgREST 400 → except → empty).
+        catalog_calls = [c for c in client.select_many.call_args_list if c.args[0] == "catalog_enriched"]
+        self.assertEqual(1, len(catalog_calls))
+        ce_cols = catalog_calls[0].kwargs["columns"]
+        self.assertIn("PrimaryColor", ce_cols)
+        self.assertIn("ColorTemperature", ce_cols)
+        self.assertIn("PatternType", ce_cols)
+        self.assertNotIn("primary_color", ce_cols)
+        self.assertNotIn("color_temperature", ce_cols)
         # The feedback_events query carries the lookback cutoff and limits.
         feedback_calls = [c for c in client.select_many.call_args_list if c.args[0] == "feedback_events"]
         self.assertEqual(1, len(feedback_calls))
@@ -212,13 +232,14 @@ class PlatformCoreTests(unittest.TestCase):
                     {"garment_id": "g_missing", "event_type": "dislike", "created_at": "2026-05-04T11:00:00Z", "turn_id": "t1"},
                 ]
             if table == "catalog_enriched":
-                # Only g1 hydrates; g_missing is gone.
+                # PascalCase mirrors the real DB schema (see the chronological
+                # test above). Only g1 hydrates; g_missing is gone.
                 return [
-                    {"product_id": "g1", "title": "Solid Navy", "primary_color": "navy",
-                     "color_temperature": "cool", "pattern_type": "solid", "fit_type": "tailored",
-                     "silhouette_type": "structured", "embellishment_level": "none",
-                     "formality_level": "business_casual", "garment_subtype": "blazer",
-                     "occasion_fit": "office"},
+                    {"product_id": "g1", "title": "Solid Navy", "PrimaryColor": "navy",
+                     "ColorTemperature": "cool", "PatternType": "solid", "FitType": "tailored",
+                     "SilhouetteType": "structured", "EmbellishmentLevel": "none",
+                     "FormalityLevel": "business_casual", "GarmentSubtype": "blazer",
+                     "OccasionFit": "office"},
                 ]
             if table == "conversation_turns":
                 return [{"id": "t1", "user_message": "office"}]
