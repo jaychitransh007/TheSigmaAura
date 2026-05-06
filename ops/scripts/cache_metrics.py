@@ -60,60 +60,114 @@ def _fmt_pct(numerator: int, denominator: int) -> str:
     return f"{numerator / denominator * 100:.1f}%"
 
 
+_PAGE_SIZE = 1000
+_MAX_PAGES = 100  # 100K rows ceiling — alert if we hit it
+
+
+def _paginate(
+    client: SupabaseRestClient,
+    *,
+    table: str,
+    columns: str,
+    filters: Dict[str, Any],
+    order: str = "created_at.asc",
+):
+    """Iterate over a select_many result in pages of `_PAGE_SIZE`.
+
+    Yields each row. Stops when a page returns fewer rows than the
+    page size (last page) or when MAX_PAGES is hit (defensive cap;
+    prints a warning so the caller knows the count may be truncated).
+    Driven by created_at ordering + a moving "since" filter — works
+    against PostgREST without needing offset support.
+    """
+    pages = 0
+    while pages < _MAX_PAGES:
+        rows = client.select_many(
+            table,
+            columns=columns,
+            filters=dict(filters),
+            order=order,
+            limit=_PAGE_SIZE,
+        )
+        if not rows:
+            return
+        for r in rows:
+            yield r
+        if len(rows) < _PAGE_SIZE:
+            return
+        # Advance the moving since-filter to the last row's
+        # created_at so the next page picks up after it. Strict-gt
+        # to avoid re-emitting the boundary row.
+        last_ts = rows[-1].get("created_at")
+        if not last_ts:
+            return
+        filters = {**filters, "created_at": f"gt.{last_ts}"}
+        pages += 1
+    print(
+        f"WARN: pagination cap hit on {table} "
+        f"({_MAX_PAGES * _PAGE_SIZE} rows scanned); metrics may be truncated."
+    )
+
+
 def _hit_count_from_logs(client: SupabaseRestClient, since_iso: str) -> Tuple[int, int]:
     """Query model_call_logs for architect calls; classify hit vs miss.
 
-    A hit is a row whose request_json.plan_source == 'cache'. The
-    cache wrapper stamps this when serving a cached plan. Miss rows
-    don't carry that stamp.
+    A hit is a row whose response_json.plan_source == 'cache'. The
+    cache wrapper stamps this on cached plans before logging. Miss
+    rows don't carry the stamp.
 
-    Returns (total_architect_calls, cache_hits).
+    Returns (total_architect_calls, cache_hits). Paginates so we
+    don't truncate at 10K rows on busy days (review of PR #135).
     """
-    rows = client.select_many(
-        "model_call_logs",
-        columns="request_json,latency_ms",
+    total = 0
+    hits = 0
+    for r in _paginate(
+        client,
+        table="model_call_logs",
+        # response_json carries the architect's emitted plan including
+        # plan_source. request_json may also carry it on some log shapes
+        # (different rollout windows); check both for resilience.
+        columns="request_json,response_json,latency_ms,created_at",
         filters={
             "call_type": "eq.outfit_architect",
             "created_at": f"gte.{since_iso}",
         },
-        limit=10000,
-    )
-    total = 0
-    hits = 0
-    for r in rows or []:
+    ):
         total += 1
-        rj = r.get("request_json") or {}
-        if isinstance(rj, str):
-            try:
-                rj = json.loads(rj)
-            except (ValueError, TypeError):
-                rj = {}
-        # The architect logging path doesn't currently propagate
-        # `plan_source` into request_json — we read it from the trace
-        # output instead. Best-effort: any heuristic that says "this
-        # was a cache hit" counts. Fall back to checking response_json
-        # too (different log shapes across the Phase 2 rollout window).
-        if isinstance(rj, dict) and rj.get("plan_source") == "cache":
-            hits += 1
+        for col in ("response_json", "request_json"):
+            blob = r.get(col) or {}
+            if isinstance(blob, str):
+                try:
+                    blob = json.loads(blob)
+                except (ValueError, TypeError):
+                    blob = {}
+            if isinstance(blob, dict) and blob.get("plan_source") == "cache":
+                hits += 1
+                break
     return total, hits
 
 
 def _hit_count_from_traces(client: SupabaseRestClient, since_iso: str) -> Tuple[int, int]:
     """Query turn_traces.steps for the architect step's plan_source.
 
-    The orchestrator's record_stage_trace context manager stamps the
-    full plan output (including plan_source) onto the architect step.
+    PostgREST JSONB containment filter (``cs.[{"step":"outfit_architect"}]``)
+    server-side eliminates traces without an architect step, so we
+    don't burn pagination budget on irrelevant rows (review of PR #135).
     Returns (total, hits) inferred from the steps blob.
     """
-    rows = client.select_many(
-        "turn_traces",
-        columns="steps",
-        filters={"created_at": f"gte.{since_iso}"},
-        limit=10000,
-    )
     total = 0
     hits = 0
-    for r in rows or []:
+    for r in _paginate(
+        client,
+        table="turn_traces",
+        columns="steps,created_at",
+        filters={
+            "created_at": f"gte.{since_iso}",
+            # PostgREST JSONB containment: only return traces whose
+            # `steps` array contains a step element with step="outfit_architect".
+            "steps": 'cs.[{"step":"outfit_architect"}]',
+        },
+    ):
         steps = r.get("steps")
         if isinstance(steps, str):
             try:
@@ -127,8 +181,6 @@ def _hit_count_from_traces(client: SupabaseRestClient, since_iso: str) -> Tuple[
                 continue
             if s.get("step") == "outfit_architect":
                 total += 1
-                # plan_source lives in the step's context blob if
-                # record_stage_trace captured the full output.
                 ctx = s.get("ctx") or s.get("context") or {}
                 src = ""
                 if isinstance(ctx, dict):
@@ -184,16 +236,22 @@ def main() -> int:
         print(f"WARN: turn_traces lookup failed ({exc})")
         total_tr, hits_tr = 0, 0
 
-    # turn_traces is the more reliable source (stamped via
-    # record_stage_trace). model_call_logs is a fallback for the
-    # rollout window when the cache wrapper started writing
-    # plan_source through.
-    total = max(total_logs, total_tr)
-    hits = max(hits_logs, hits_tr)
+    # Pick the source with the larger total (= more complete) and use
+    # ITS hits — never mix totals from one source with hits from
+    # another (review of PR #135). The two sources can disagree
+    # transiently during a rollout: model_call_logs writes synchronously
+    # at log time, turn_traces.steps populates after record_stage_trace
+    # finalises. Whichever has higher coverage wins; the other just gets
+    # printed for diagnostic context.
+    if total_tr >= total_logs:
+        total, hits, source = total_tr, hits_tr, "turn_traces.steps"
+    else:
+        total, hits, source = total_logs, hits_logs, "model_call_logs"
 
-    print(f"Total architect calls    : {total}")
-    print(f"Cache hits (best-effort) : {hits}")
+    print(f"Total architect calls    : {total}  (source: {source})")
+    print(f"Cache hits               : {hits}")
     print(f"Hit rate                 : {_fmt_pct(hits, total)}")
+    print(f"  diagnostic: traces n={total_tr} hits={hits_tr}; logs n={total_logs} hits={hits_logs}")
     print()
 
     # ── Per-cluster breakdown ─────────────────────────────────

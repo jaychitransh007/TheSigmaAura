@@ -88,17 +88,20 @@ class ArchitectCacheRepository:
         """Insert or refresh a cache entry. Never raises.
 
         On primary-key conflict (concurrent miss → both write same
-        key), we upsert so the second write becomes a refresh of
-        last_used_at + hit_count++ rather than an error.
+        key), the upsert overwrites only the columns we include in
+        the row dict. ``hit_count`` is intentionally NOT in the
+        payload so that on conflict the existing row's hit_count
+        survives — only direction_json + denormalised key fields
+        get refreshed (review of PR #134).
         """
         row = {
             **denormalised,
             "tenant_id": tenant_id or "default",
             "cache_key": cache_key,
             "direction_json": plan.model_dump(mode="json"),
-            # New entries have hit_count=0; the next get() that
-            # actually serves this entry should bump it via touch().
-            "hit_count": 0,
+            # NOTE: hit_count is intentionally absent. Schema default
+            # (0) populates new rows; conflicting rows keep their
+            # accumulated count.
         }
         try:
             self._client.upsert_many(_TABLE, [row], on_conflict="tenant_id,cache_key")
@@ -110,29 +113,26 @@ class ArchitectCacheRepository:
             )
 
     def touch(self, *, tenant_id: str, cache_key: str) -> None:
-        """Bump hit_count + refresh last_used_at on a hit. Never raises.
+        """Atomically bump hit_count + refresh last_used_at. Never raises.
 
-        The tile-by-tile racy increment (read-modify-write across
-        concurrent hits) is fine for ops metrics — exact hit-counts
-        aren't load-bearing. If we ever need atomic increments, swap
-        to a server-side ``rpc('architect_cache_touch')``.
+        Calls the ``architect_cache_touch`` RPC (added in
+        20260514020000_cache_touch_rpcs.sql) so the increment is a
+        single server-side UPDATE — no read-modify-write race across
+        concurrent hits, no client-side hit_count drift (review of
+        PR #134).
+
+        If the RPC is missing (migration not yet applied) the
+        exception handler swallows it. Touch is best-effort metrics,
+        not load-bearing — a missing RPC just means hit_count stays
+        at 0 until the migration lands.
         """
         try:
-            # PostgREST doesn't natively support atomic increments via
-            # the table API; do a one-shot update setting last_used_at
-            # and incrementing hit_count optimistically.
-            self._client.update_one(
-                _TABLE,
-                filters={
-                    "tenant_id": f"eq.{tenant_id or 'default'}",
-                    "cache_key": f"eq.{cache_key}",
+            self._client.rpc(
+                "architect_cache_touch",
+                {
+                    "p_tenant_id": tenant_id or "default",
+                    "p_cache_key": cache_key,
                 },
-                # The PostgREST `expression` shape isn't standard, so
-                # we issue the increment as a server-side fragment via
-                # a lightweight RPC if defined, else fall back to a
-                # plain timestamp refresh. For now, just refresh —
-                # hit_count drift is acceptable until we add an RPC.
-                patch={"last_used_at": datetime.now(timezone.utc).isoformat()},
             )
         except Exception:  # noqa: BLE001
             _log.debug("architect_cache.touch failed for key=%s", cache_key[:16], exc_info=True)
