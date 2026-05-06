@@ -1,8 +1,10 @@
 # Composition Engine — Semantic Spec
 
-**Status:** v1 spec, May 14 2026. Locks in algorithmic decisions for Phase 4.7 engine implementation. Sections marked **🎨 STYLIST SIGN-OFF NEEDED** are gated on the Phase 4.2 paid-stylist YAML review.
+**Status:** v1 spec, May 14 2026. **Implementation SHIPPED 2026-05-06** — see PRs #149 (engine 4.7a-f + 4.8 framework + 4.9 router + 4.10 flag), #151 (4.11 canonicalize layer + threshold recalibration to 0.50), #150 / #152 / #153 / #154 (4.12 observability + operability hardening). Sections marked **🎨 STYLIST SIGN-OFF NEEDED** are still gated on the Phase 4.2 paid-stylist YAML review.
 
 This spec defines how the composition engine reduces 8 YAML mapping tables (`knowledge/style_graph/*.yaml`) into a structured `direction` object that matches the architect's existing `DirectionSpec` schema. Goal: replace the architect's gpt-5.2 LLM call (~19s) with deterministic YAML composition (~500ms) on the common path, falling back to the LLM only for genuine YAML gaps or low-confidence outputs.
+
+**Verified end-to-end on 2026-05-06:** a real flag-on staging turn (`b356a1bf`, "Find me casual outfits for weekend outing") produced `used_engine=true, confidence=1.0, engine_ms=0`. Total turn 83s → 63s vs the flag-off baseline; per-turn cost dropped from ~$0.19 to ~$0.15. The architect stage (`19s` LLM call → ~0ms engine) is the dominant saving; composer + rater also got cheaper because the engine emits fewer items to evaluate.
 
 ---
 

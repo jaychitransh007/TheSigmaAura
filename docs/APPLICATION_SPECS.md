@@ -1146,6 +1146,8 @@ async def handle_recommendation_request(request: RecommendationRequest) -> dict:
 ## 7. Outfit Architect
 
 > Updated: April 10, 2026 (Phase 13/13B remediation — prompt hardening, live_context wiring, occasion-driven structures, retrieval quality improvements)
+>
+> **2026-05-07 update — composition router (PR #149) sits in front of this stage when `AURA_COMPOSITION_ENGINE_ENABLED=true`.** The architect's `plan()` method is unchanged; the router (`composition/router.py:route_recommendation_plan`) wraps it. On every cache-miss architect turn the router tries the deterministic composition engine first; on accept (~0ms compute, ~150ms canonicalize embed when needed), the LLM call below never happens and `plan_source="engine"`. On fall-through (`yaml_gap` / `low_confidence` / `needs_disambiguation` / `excessive_widening` / ineligibility), the LLM architect runs as documented below and `plan_source="llm"`. The "Output schema" table is unchanged regardless of source — `plan_source` is the source-of-truth field.
 
 ### Purpose
 
@@ -1157,7 +1159,7 @@ Translate user context into retrieval directions. The architect is the planning 
 class RecommendationPlan:
     retrieval_count: int           # default 12; varies by request type
     directions: list[DirectionSpec]
-    plan_source: str               # always "llm" (no fallback)
+    plan_source: str               # "engine" | "llm" | "cache" (engine added by Phase 4.7, PR #149)
     resolved_context: ResolvedContextBlock
 
 class DirectionSpec:

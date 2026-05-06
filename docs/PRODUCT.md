@@ -441,7 +441,7 @@ Success means users come back before real decisions: should I buy this, what goe
 - onboarding flow (OTP, profile, images, analysis, style prefs) — draping removed
 - catalog enrichment and embedding retrieval pipeline
 - copilot planner with intent classification and action routing (12 intents recognized)
-- recommendation pipeline (architect → search → assemble → evaluate → format → try-on) — used for both occasion and pairing requests (pairing always runs full pipeline including try-on)
+- recommendation pipeline (architect → search → composer → rater → try-on → format) — used for both occasion and pairing requests (pairing always runs full pipeline including try-on). As of 2026-05-07, the architect stage is wrapped by a deterministic composition router (`composition/router.py`, PRs #149-#155) that tries a YAML-driven engine first when `AURA_COMPOSITION_ENGINE_ENABLED=true`; engine accepts → architect LLM never runs (~19s saved per turn). See `docs/composition_semantics.md`.
 - wardrobe ingestion with vision-API enrichment and image moderation
 - wardrobe retrieval and wardrobe-first occasion response
 - virtual try-on via Gemini with quality gate

@@ -71,6 +71,19 @@ Last updated: May 3, 2026
 >    experiment (Stage A planner + parallel Stage B query builders) was tried,
 >    failed empirically (output streaming time dominates parallelism advantage),
 >    and removed from the codebase.
+> 10. **Architect path now has a deterministic engine in front of it** (Phase 4.7+, PRs #149-#155, May 6-7 2026).
+>    A composition router (`composition/router.py`) wraps `OutfitArchitect.plan()`
+>    and tries a YAML-driven engine (`composition/engine.py`) first when
+>    `AURA_COMPOSITION_ENGINE_ENABLED=true`. Engine reduces 8 style-graph
+>    YAMLs into a `DirectionSpec` deterministically (~0ms compute) using
+>    intersect/union/avoid semantics with empty-intersection relaxation.
+>    Input canonicalization (`composition/canonicalize.py`) bridges
+>    free-text planner output to YAML-canonical keys via batched
+>    `text-embedding-3-small`. Engine-served turns skip the LLM architect
+>    entirely; fall-through still runs the LLM as documented. See
+>    `docs/composition_semantics.md` for the algorithm and the full
+>    PR list (#149 engine + 4.8 framework + 4.9 router + 4.10 flag,
+>    #151 canonicalize, #150/152/153/154 observability + operability hardening).
 >
 > For the authoritative "what is running right now" view, always defer to
 > `docs/APPLICATION_SPECS.md` § Live System Reference. When this

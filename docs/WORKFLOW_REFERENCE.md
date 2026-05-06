@@ -106,7 +106,8 @@ Pre-#82, `"auto"` defaulted to wardrobe-first; the resulting confusion (catalog 
 | Component | Source | Purpose |
 |---|---|---|
 | `agents/copilot_planner.py` | Phase 12 | gpt-5-mini classifies intent + action and resolves `live_context` (occasion_signal, formality_hint, time_of_day, weather_context, source_preference, target_product_type, specific_needs, etc.). Strict structured-output schema with enum-locked intent + action vocabularies. |
-| `agents/outfit_architect.py` | Phase 12 | gpt-5.4, `reasoning_effort=medium`. Plans 1–3 directions per turn with role-typed queries (`complete` / `paired` / `three_piece`). Reads `recent_user_actions` (PR #90) for episodic memory bias. Hard filters limited to `gender_expression` + `garment_subtype`. |
+| `agents/outfit_architect.py` | Phase 12 → 4.7 router | **gpt-5.2**, `reasoning_effort=low` (down from gpt-5.4 medium per the Phase 1.4 cost-latency swap). Still plans 1–3 directions when invoked, but a router (`composition/router.py`, Phase 4.9) sits in front of `OutfitArchitect.plan()` and tries the deterministic composition engine first when `AURA_COMPOSITION_ENGINE_ENABLED=true`. Engine accepts → architect LLM never runs (architect stage drops 19s → ~0ms); engine falls through → LLM architect runs unchanged. Reads `recent_user_actions` (PR #90) for episodic memory bias on the LLM path. Hard filters limited to `gender_expression` + `garment_subtype`. |
+| `composition/engine.py` + `composition/router.py` + `composition/canonicalize.py` | Phase 4.7 + 4.9 + 4.11 (PRs #149, #151) | Deterministic YAML reduction over the 8 style-graph YAMLs. Router applies spec §9 fall-through criteria (`confidence < 0.50`, `yaml_gap`, `needs_disambiguation`, `excessive_widening`) plus pre-engine eligibility gates (`anchor_present`, `followup_request`, `has_previous_recommendations`). Canonicalize bridges free-text planner output to YAML-canonical keys via batched `text-embedding-3-small` nearest-neighbour. RouterDecision metadata flows to `distillation_traces.full_output.router_decision` for observability (panels 21-24). |
 | `agents/outfit_composer.py` | LLM ranker (May 3, PR #29) | gpt-5.4, `reasoning_effort=low` (promoted from gpt-5-mini in PR #81 for the heavier reasoning task). Builds up to 10 coherent outfits from the retrieved pool; emits a per-outfit `name` (PR #88, e.g. *"Camel Sand Refined"*) that surfaces as the user-facing card title. Schema-locked `direction_id` enum (PR #80) so the LLM physically can't write a SKU there. Per-attempt `on_attempt` callback gives one `model_call_logs` row per LLM call (PR #80) with real `latency_ms` (PR #95). Smart retry on hallucinated item_ids. |
 | `agents/outfit_rater.py` | LLM ranker (May 3, PR #29) + R7 (May 5, PR #101) | gpt-5-mini, `reasoning_effort=minimal`. Scores each composed outfit on six 1/2/3 sub-scores (`occasion_fit`, `body_harmony`, `color_harmony`, `pairing`, `formality`, `statement`). Schema enforces `enum: [1, 2, 3]` per dim. `unsuitable: bool` is the only hard veto; the archetypal-preferences veto was removed in PR #89. Past likes/dislikes are applied upstream — the Rater scores what's in front of it. |
 | `agents/style_advisor_agent.py` | 12C | LLM advisor for open-ended `style_discovery` and `explanation_request`. Returns structured advice with prose answer + bullets + cited attributes + dominant directions. |
@@ -943,12 +944,15 @@ Follow-up intents are detected by the copilot planner via `resolved_context.foll
 
 ## LLM Model Usage Summary
 
-### Phase 12 (Current)
+### Phase 12 + Latency Push 4.7+ (Current)
+
+> **2026-05-07 update** — model + path table revised after PRs #149-#155. Architect + composer now run on **gpt-5.2 reasoning_effort=low** (Phase 1.4 swap, May 13 2026). Architect on the engine path skips the LLM entirely; see "Composition router path" row below.
 
 | Component | Model | When Called | Intents |
 |-----------|-------|------------|---------|
-| Copilot Planner | gpt-5.5 | Every turn | All 7 advisory + feedback + silent wardrobe_ingestion |
-| Outfit Architect | gpt-5.5 | Recommendation pipeline. System prompt is composed at request time: 4.8K-token base + optional anchor module (when `anchor_garment` set) + optional follow-up module (when `is_followup`). | occasion_recommendation, pairing_request |
+| Copilot Planner | gpt-5-mini | Every turn | All 7 advisory + feedback + silent wardrobe_ingestion |
+| **Composition router path (4.7+)** | none — deterministic YAML reduction (~0ms compute, ~150ms canonicalize embed when needed) | Recommendation pipeline when `AURA_COMPOSITION_ENGINE_ENABLED=true` AND no anchor / no followup / no prior recs / canonicalize succeeds / engine confidence ≥ 0.50. Bypasses the architect LLM entirely on accept. Model_call_logs row is stamped `model='composition_engine'`. | occasion_recommendation, pairing_request |
+| Outfit Architect (LLM fallback) | gpt-5.2 | Same intents, but only when the engine path falls through (yaml_gap / low_confidence / needs_disambiguation / excessive_widening / ineligibility). System prompt composed at request time: 4.8K-token base + optional anchor module + optional follow-up module. | occasion_recommendation, pairing_request |
 | Visual Evaluator | gpt-5-mini (vision) | Per-candidate after try-on; sole evaluator in the system (legacy agents removed) | occasion_recommendation, pairing_request, garment_evaluation, outfit_check |
 | Style Advisor | gpt-5.5 | Open-ended style discovery + explanation against prior recommendations | style_discovery (general topic), explanation_request (when previous_recommendations exists) |
 | Wardrobe Enrichment | gpt-5-mini (vision) | On every chat-uploaded garment image + outfit decomposition | wardrobe_ingestion (silent), pairing_request (when image attached), outfit_check (async decomposition), garment_evaluation (when image attached) |
@@ -2134,6 +2138,8 @@ Files touched:
 | **Timestamps** | `created_at`, `updated_at` | timestamptz |
 
 **Steps array** — one element per pipeline stage (11 for a full pairing_request, 4-6 for simpler intents): `validate_request` → `onboarding_gate` → `wardrobe_enrichment` → `copilot_planner` → `outfit_architect` → `catalog_search` → `outfit_composer` → `outfit_rater` → `tryon_render` → `visual_evaluator` → `response_formatting`. Each element carries `{step, model, input_summary, output_summary, latency_ms, status, error}`.
+
+> **Phase 4.7+ note:** the `outfit_architect` step also encompasses the composition router (PR #149) and engine path. On engine-accepted turns, the `outfit_architect` step's underlying `model_call_logs` row is stamped `model='composition_engine'` (PR #153), `model_call_logs.prompt_tokens=0`, and the corresponding `distillation_traces` row carries a `router_decision` block with `used_engine`, `fallback_reason`, `engine_confidence`, `engine_ms`, `yaml_gaps`, `provenance_summary`. There is no separate `composition_engine` element in the steps array — by design, the engine sits *inside* the architect stage so existing dashboards group correctly under "outfit_architect" (just with a different model id).
 
 **User response correlation** — `user_response` starts as `'{}'` and is updated retroactively when the next signal arrives: next message (from the following `process_turn`), feedback (from the feedback endpoint), wishlist (from the wishlist endpoint), or purchase click (when tracked). Single `UPDATE ... WHERE turn_id = ?`.
 
