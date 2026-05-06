@@ -15,19 +15,30 @@ class AuraRuntimeConfig:
     # `reasoning.effort` parameter. Stepped from "medium" → "low" on
     # the May-5 latency-fix pass after the turn audit showed architect
     # at 88.9s with 6.5K output tokens — most of those tokens were
-    # reasoning the structured-output task doesn't need. Override
-    # per-environment via ARCHITECT_REASONING_EFFORT
-    # (low | medium | high | xhigh — full gpt-5.4/5.5 vocabulary).
+    # reasoning the structured-output task doesn't need. "low" remains
+    # the right setting for gpt-5.2 (Phase 1.4 swap, May 13 2026):
+    # gpt-5-mini at "minimal" produced low-quality outputs (rater
+    # fashion_score collapsed to 50-65 on a wedding query); gpt-5.2 at
+    # "low" recovered quality (top=96) with ~10s latency win vs gpt-5.4.
+    # Override per-environment via ARCHITECT_REASONING_EFFORT
+    # (low | medium | high | xhigh — full gpt-5.x reasoning vocabulary).
     architect_reasoning_effort: str = "low"
 
-    # Phase 1.4 latency push (May 13 2026): architect + composer model
-    # strings exposed as env vars for fast within-OpenAI swap testing.
-    # Defaults match the production lineup (gpt-5.4 with reasoning).
-    # Override for staging tests via ARCHITECT_MODEL / COMPOSER_MODEL.
-    # Cross-vendor swaps (claude-sonnet-4-7, gemini-2.5-pro) require a
-    # vendor adapter and are not supported here — only OpenAI model ids.
-    architect_model: str = "gpt-5.4"
-    composer_model: str = "gpt-5.4"
+    # Phase 1.4 latency push (May 13 2026): every agent's model string
+    # is exposed as an env var so per-environment swaps don't require
+    # a code change. Defaults reflect the production lineup as of the
+    # 1.4 swap — architect + composer moved gpt-5.4 → gpt-5.2 after
+    # staging validation showed equivalent quality with ~10s latency
+    # win. Planner / rater / style_advisor stayed on their existing
+    # models (gpt-5-mini for the two minimal-reasoning callers,
+    # gpt-5.4 for the open-ended advisor — gpt-5.2 untested there).
+    # Cross-vendor swaps (claude-sonnet-4-7, gemini-2.5-pro) require
+    # a vendor adapter and are not supported via these env vars.
+    planner_model: str = "gpt-5-mini"
+    architect_model: str = "gpt-5.2"
+    composer_model: str = "gpt-5.2"
+    rater_model: str = "gpt-5-mini"
+    style_advisor_model: str = "gpt-5.4"
 
 
 def _resolve_env_file(explicit_path: str | None = None) -> str:
@@ -113,20 +124,24 @@ def load_config() -> AuraRuntimeConfig:
         # than crash.
         architect_effort = "low"
 
-    # Phase 1.4: ARCHITECT_MODEL / COMPOSER_MODEL allow swapping the
-    # architect/composer to a faster OpenAI model (e.g. gpt-5-mini)
-    # without code changes. Trim + fallback on empty so an unset env
-    # var keeps the production default; fallback references the
-    # dataclass attribute so a single edit to the class default also
-    # moves the env-loader's default (review of PR #128).
+    # Phase 1.4: every agent's model is overridable via env. Trim +
+    # fallback on empty so an unset var keeps the production default;
+    # fallback references the dataclass attribute so a single edit to
+    # the class default also moves the env-loader's default.
+    planner_model = os.getenv("PLANNER_MODEL", "").strip() or AuraRuntimeConfig.planner_model
     architect_model = os.getenv("ARCHITECT_MODEL", "").strip() or AuraRuntimeConfig.architect_model
     composer_model = os.getenv("COMPOSER_MODEL", "").strip() or AuraRuntimeConfig.composer_model
+    rater_model = os.getenv("RATER_MODEL", "").strip() or AuraRuntimeConfig.rater_model
+    style_advisor_model = os.getenv("STYLE_ADVISOR_MODEL", "").strip() or AuraRuntimeConfig.style_advisor_model
 
     return AuraRuntimeConfig(
         supabase_rest_url=_ensure_rest_url(supabase_url),
         supabase_service_role_key=service_key,
         catalog_csv_path=catalog_csv_path,
         architect_reasoning_effort=architect_effort,
+        planner_model=planner_model,
         architect_model=architect_model,
         composer_model=composer_model,
+        rater_model=rater_model,
+        style_advisor_model=style_advisor_model,
     )

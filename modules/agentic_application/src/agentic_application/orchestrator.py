@@ -261,15 +261,30 @@ class AgenticOrchestrator:
         # constructors that expect a real str. Fallbacks reference the
         # dataclass attributes so a single edit to the class defaults
         # also moves the orchestrator's defaults (review of PR #128).
-        _architect_model_raw = getattr(config, "architect_model", AuraRuntimeConfig.architect_model)
-        _architect_model = _architect_model_raw if isinstance(_architect_model_raw, str) else AuraRuntimeConfig.architect_model
-        _composer_model_raw = getattr(config, "composer_model", AuraRuntimeConfig.composer_model)
-        _composer_model = _composer_model_raw if isinstance(_composer_model_raw, str) else AuraRuntimeConfig.composer_model
+        # Phase 1.4 (May 13 2026): every agent's model flows from
+        # AuraRuntimeConfig so per-env swaps don't require a code
+        # change. Boundary-coerce each value the same way as
+        # architect_reasoning_effort above — tests pass `config=Mock()`
+        # and Mock auto-creates attribute access (returning a Mock)
+        # which would break the agents' constructors that expect a
+        # real str. Fallbacks reference the dataclass attributes so a
+        # single edit to the class defaults moves them everywhere.
+        def _str_from_config(attr: str) -> str:
+            default = getattr(AuraRuntimeConfig, attr)
+            raw = getattr(config, attr, default)
+            return raw if isinstance(raw, str) else default
+
+        _planner_model = _str_from_config("planner_model")
+        _architect_model = _str_from_config("architect_model")
+        _composer_model = _str_from_config("composer_model")
+        _rater_model = _str_from_config("rater_model")
+        _style_advisor_model = _str_from_config("style_advisor_model")
+
         self.outfit_architect = OutfitArchitect(model=_architect_model, reasoning_effort=_architect_effort)
         # Evaluator history (see top of file): OutfitCheckAgent and
         # VisualEvaluatorAgent both removed; the Rater is the sole
         # scoring engine and feeds the radar UI directly.
-        self.style_advisor = StyleAdvisorAgent()  # Phase 12C open-ended discovery + explanation
+        self.style_advisor = StyleAdvisorAgent(model=_style_advisor_model)  # Phase 12C open-ended discovery + explanation
         self.catalog_search_agent = CatalogSearchAgent(
             retrieval_gateway=self._retrieval_gateway,
             client=repo.client,
@@ -278,13 +293,13 @@ class AgenticOrchestrator:
         # + Rater LLM ranker pipeline. See agents/outfit_composer.py and
         # agents/outfit_rater.py.
         self.outfit_composer = OutfitComposer(model=_composer_model)
-        self.outfit_rater = OutfitRater()
+        self.outfit_rater = OutfitRater(model=_rater_model)
         # Pool / final caps live here (no longer on a Reranker instance).
         self.recommendation_final_top_n = 3
         self.recommendation_pool_top_n = 5
         self.response_formatter = ResponseFormatter()
 
-        self._copilot_planner = CopilotPlanner()
+        self._copilot_planner = CopilotPlanner(model=_planner_model)
 
     # ------------------------------------------------------------------
     # Conversation lifecycle
