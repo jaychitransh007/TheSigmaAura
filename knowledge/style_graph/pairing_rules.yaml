@@ -1,0 +1,504 @@
+# Pairing rules — outfit-level constraints across slots (Indian urban context)
+#
+# Seventh and last mapping table. Different shape from the prior six:
+# this is RELATIONAL (garment-attr × garment-attr → compatibility), not
+# user-attribute → garment-attribute. Rules describe how slots in an
+# outfit must relate to each other.
+#
+# Categories covered:
+#   1. formality_alignment   — top / bottom / outerwear formality compat
+#   2. color_story           — color harmony types + palette anchoring
+#   3. pattern_mixing        — solid + pattern, two-pattern rules
+#   4. silhouette_balance    — fitted-relaxed pairing, body-frame conditional
+#   5. scale_balance         — statement-piece-per-outfit rule
+#   6. fabric_compatibility  — heavy/light pairing, texture mixing
+#   7. cultural_coherence    — Indian-traditional × Western fusion rules
+#   8. bridal_specific       — heavy lehenga / sherwani / banarasi pair-only-with rules
+#   9. anchor_constraints    — when user has anchor, how fillers behave
+#
+# Format: each rule has `description`, optional `matrix` (compat table),
+# optional `flatters` / `avoid` (per-attribute constraints validators
+# can check), and `notes` (Indian-urban context).
+#
+# Composition rule: pairing rules are HARD constraints applied AFTER
+# slot-level rules from body_frame / archetype / palette / occasion /
+# weather have produced candidate pools per slot. The composer
+# validates each candidate combination against these rules; violations
+# are dropped before reranking.
+#
+# Canonical garment-attribute values: ./modules/style_engine/configs/config/garment_attributes.json
+
+pairing_rules:
+
+  # ─────────────────────────────────────────────────────────────────────
+  # 1. FORMALITY ALIGNMENT
+  # ─────────────────────────────────────────────────────────────────────
+
+  formality_alignment:
+    rule_type: hard_constraint
+    description: |
+      Slots in an outfit must share or be within ±1 step of each other
+      on the canonical FormalityLevel scale. Mismatch by 2+ steps reads
+      as incoherent (formal blazer over t-shirt + jeans, ceremonial
+      saree blouse with casual shorts).
+
+    formality_scale: [casual, smart_casual, semi_formal, formal, ceremonial]
+
+    compatibility_matrix:
+      # For each formality, valid pairings (within ±1 step)
+      casual:        [casual, smart_casual]
+      smart_casual:  [casual, smart_casual, semi_formal]
+      semi_formal:   [smart_casual, semi_formal, formal]
+      formal:        [semi_formal, formal, ceremonial]
+      ceremonial:    [formal, ceremonial]
+
+    examples_valid:
+      - "casual tee + casual jeans (same level)"
+      - "smart_casual kurti + smart_casual palazzo"
+      - "smart_casual blouse + semi_formal trouser (one step)"
+      - "formal silk saree + ceremonial embroidered blouse"
+    examples_invalid:
+      - "ceremonial bridal lehenga + casual cotton choli (3-step gap)"
+      - "casual tee + formal trouser"
+      - "ceremonial sherwani + casual jeans"
+
+    indian_context: |
+      Bridal lehenga rents the FormalityLevel of every accompanying
+      slot to ceremonial (the lehenga is the anchor in Indian wedding
+      outfits — choli + dupatta + jewellery all match ceremonial level).
+      Bandhgala over a kurta: bandhgala's formality leads (semi_formal
+      bandhgala over smart_casual kurta = effective semi_formal outfit).
+
+  # ─────────────────────────────────────────────────────────────────────
+  # 2. COLOR STORY
+  # ─────────────────────────────────────────────────────────────────────
+
+  color_story:
+    rule_type: hard_constraint
+
+    rules:
+      max_dominant_colors:
+        value: 3
+        description: |
+          No more than 3 distinct dominant hues across the outfit.
+          Patterned slots count their dominant color. Accents (jewellery,
+          shoe trim) don't count toward the limit.
+
+      palette_anchor_required:
+        description: |
+          At least one slot must use a color from the user's SubSeason
+          palette anchors. Outfits without any palette anchor risk
+          reading as off-key against the user's natural coloring.
+
+      contrast_alignment:
+        description: |
+          High-contrast outfits (e.g., black + white) and low-contrast
+          tonal outfits work; mid-contrast pairings are most flexible.
+          Avoid mixing high-contrast with low-contrast across slots.
+        flatters:
+          ContrastLevel: [low, medium, high, very_high]
+        avoid: {}
+
+    color_harmony_types:
+      monochromatic:
+        description: All slots same hue, varying ColorValue
+        flatters:
+          ColorCount: [single, tonal]
+        notes: Cleanest combo. Tonal navy outfit (light blue top + mid
+          navy trouser + dark navy blazer). Indian context: tonal
+          maroon banarasi (light maroon blouse + dark maroon saree),
+          all-cream wedding for Indian summer brunch.
+
+      analogous:
+        description: Adjacent hues on the color wheel (e.g., warm reds
+          + warm oranges + warm yellows). Within ±1 SubSeason hue family.
+        flatters:
+          ColorTemperature: [warm, cool, neutral]                # both same
+          ColorCount: [tonal, two_color]
+        notes: Indian: rust + mustard + olive (Warm Autumn analogous
+          run), navy + slate + dusty pink (Cool Summer / True Summer).
+
+      complementary:
+        description: Opposite hues — pulls visual tension. Limit to 2
+          slots; if outerwear is the third, keep it neutral.
+        flatters:
+          ColorCount: [two_color]
+        avoid:
+          ColorCount: [multi_color]                              # gets noisy
+        notes: Indian: deep teal saree + rust blouse (cool + warm
+          complementary), navy bandhgala + mustard pocket square.
+
+      tonal:
+        description: Same hue, varying ColorValue and ColorSaturation —
+          e.g., light dusty pink + mid-rose + dark mauve.
+        flatters:
+          ColorCount: [tonal, single]
+        notes: Sophisticated Indian-urban look. Soft Autumn / True
+          Summer users particularly suited.
+
+      neutral_plus_anchor:
+        description: Most slots neutral (cream, beige, navy, charcoal),
+          one slot in user's palette anchor color.
+        flatters:
+          ColorCount: [single, two_color]
+        notes: Most flexible — works for office, dinner, dating. Not
+          loud enough for festive / wedding.
+
+  # ─────────────────────────────────────────────────────────────────────
+  # 3. PATTERN MIXING
+  # ─────────────────────────────────────────────────────────────────────
+
+  pattern_mixing:
+    rule_type: hard_constraint
+
+    rules:
+      solid_plus_pattern:
+        description: Solid + 1 patterned slot. Always OK.
+        flatters:
+          PatternType: [solid, stripes_vertical, checks, abstract, floral, geometric, ethnic, motif, animal]
+          PatternScale: [micro, small, medium, large]
+        notes: Most outfits land here. Patterned saree + solid blouse,
+          floral kurti + solid palazzo, printed shirt + solid trouser.
+
+      two_patterns:
+        description: |
+          2 patterned slots is OK ONLY if:
+          - Different PatternScale (micro + medium / small + large)
+          - Same color family or same ContrastLevel
+          - At least one is a "small-scale" pattern (micro / small)
+        flatters:
+          PatternScale: [micro, small, medium, large, mixed]
+        avoid:
+          PatternScale: [oversized, oversized]                    # both oversized = chaos
+        notes: Indian: small-print shirt + medium-check trouser,
+          paisley saree + micro-floral blouse. Bohemian archetype only —
+          for classic / minimalist this combo reads chaotic.
+
+      three_patterns:
+        description: Avoid. Three patterned slots reads chaotic and
+          undermines the body-frame work.
+        avoid:
+          PatternType: [floral, abstract, geometric, ethnic, motif, animal]   # only solid acceptable for 3rd slot
+        notes: Even for bohemian / creative archetype with adventurous
+          risk_tolerance — 3 patterns is too much. Drop one to solid.
+
+      pattern_scale_with_body_frame:
+        description: |
+          PatternScale on top vs bottom relates to body frame:
+          - Pear: smaller scale on bottom, larger on top (counterbalance)
+          - Inverted Triangle: larger scale on bottom, smaller on top
+          - Hourglass: same scale top/bottom (waist is the focus)
+          - Rectangle: medium scale anywhere with belt at waist
+        notes: This rule cross-references body_frame mapping. Composer
+          consults both when ranking candidates.
+
+  # ─────────────────────────────────────────────────────────────────────
+  # 4. SILHOUETTE BALANCE
+  # ─────────────────────────────────────────────────────────────────────
+
+  silhouette_balance:
+    rule_type: soft_constraint
+
+    rules:
+      no_all_fitted:
+        description: Avoid fitted top + fitted bottom + (if present)
+          fitted outerwear. Reads bodycon and undermines body-frame
+          work for most frames.
+        avoid:
+          FitType: [slim, tailored]                                # all slots fitted = no
+        notes: Exception — Hourglass body type can pull off all-fitted
+          because the natural waist is the structural focus. For
+          everyone else, balance.
+
+      no_all_relaxed:
+        description: Avoid relaxed top + relaxed bottom + relaxed
+          outerwear. Silhouette disappears.
+        avoid:
+          FitType: [boxy, loose, relaxed]
+        notes: Exception — Apple / Diamond body type benefits from
+          relaxed across slots if midsection is the concern. Add
+          structured shoulder via outerwear to anchor.
+
+      fitted_relaxed_pair:
+        description: Default winning combination — one slot fitted,
+          one slot relaxed. Visual interest + flatters most frames.
+        flatters:
+          FitType: [tailored, slim, regular, relaxed]              # mix any
+        notes: Bodycon top + palazzo (fitted-relaxed), oversized blazer
+          + slim trouser (relaxed-fitted), kurti tucked into wide pants.
+
+      structured_outerwear_anchor:
+        description: When outerwear is present, it should be the most
+          structured slot. Outerwear fluid drape + fitted top + fitted
+          bottom = inverted hierarchy.
+        flatters:
+          FabricDrape: [crisp, soft_structured, sculpted]          # at outerwear slot
+        avoid:
+          FabricDrape: [fluid]                                      # at outerwear slot
+        notes: Bandhgala / blazer / Nehru jacket / sherwani-jacket
+          are all structured. A fluid kimono cardigan over a fitted
+          base reads softer and is OK for casual.
+
+  # ─────────────────────────────────────────────────────────────────────
+  # 5. SCALE BALANCE (statement piece rule)
+  # ─────────────────────────────────────────────────────────────────────
+
+  scale_balance:
+    rule_type: hard_constraint
+
+    statement_definition: |
+      A slot is "statement" if ANY of the following:
+      - EmbellishmentLevel >= moderate
+      - PatternScale >= large
+      - ColorSaturation == very_high
+      - PatternType in [animal, ethnic, abstract] AND PatternScale >= medium
+
+    rules:
+      one_statement_per_outfit:
+        description: Maximum one statement slot per outfit. Two
+          statement slots compete for visual attention; viewer
+          doesn't know what to focus on.
+        flatters:
+          EmbellishmentLevel: [none, minimal, subtle, moderate, heavy, statement]   # acceptable values per slot
+        avoid: {}
+        notes: |
+          Examples:
+          - Statement embroidered top → simple solid bottom ✓
+          - Sequinned saree → simple blouse + minimal jewellery ✓
+          - Heavy zardozi anarkali → plain churidar + light dupatta ✓
+          - Statement bottom + statement top → conflict ✗
+          - Embroidered blouse + embroidered lehenga + heavy jewellery
+            = three statement zones → reduce one ✗
+
+      bridal_exception:
+        description: |
+          Wedding ceremony outfits are an exception — heavy embellishment
+          across all slots is the cultural expectation. The "statement"
+          rule is suspended for ceremonial-formality bridal contexts.
+        notes: Ceremonial bridal lehenga + heavy zardozi choli +
+          heavily-embellished dupatta is the norm, not a violation.
+
+      jewellery_doesnt_count:
+        description: Jewellery is a separate visual layer; doesn't
+          consume the outfit's one statement slot.
+        notes: Statement saree + statement jhumka earrings is fine.
+          Statement saree + statement neckpiece could compete (avoid).
+
+  # ─────────────────────────────────────────────────────────────────────
+  # 6. FABRIC COMPATIBILITY
+  # ─────────────────────────────────────────────────────────────────────
+
+  fabric_compatibility:
+    rule_type: soft_constraint
+
+    rules:
+      texture_mixing:
+        description: |
+          Some FabricTexture pairs work; others clash:
+          - smooth + textured: ✓
+          - smooth + sheen: ✓
+          - sheen + metallic: ✗ (over-shines)
+          - knit + ribbed: ✓ (athletic register)
+          - knit + sheen: ✗ (informal vs formal mismatch)
+          - embroidered + embroidered: only same color family OK
+        flatters:
+          FabricTexture: [smooth, ribbed, knit, pleated, matte, sheen, textured, metallic, embroidered]
+        avoid: {}
+        notes: |
+          Indian: silk saree (sheen) + cotton blouse (matte) — texture
+          contrast is fine here because it follows a traditional pattern.
+          But silk saree (sheen) + sequinned blouse (metallic) reads
+          over-the-top for non-bridal contexts.
+
+      weight_pairing:
+        description: |
+          FabricWeight should match within ±1 level. Heavy fabric +
+          very_light fabric = mismatched register (heavy lehenga +
+          chiffon dupatta is fine because dupatta is meant lighter;
+          heavy cotton kurta + chiffon palazzo reads weird).
+        flatters:
+          FabricWeight: [very_light, light, medium, heavy]
+        avoid: {}
+        notes: Bandhgala (medium) + sherwani-pyjama (light) ✓.
+          Bandhgala (medium) + linen pant (very_light) — fine but
+          breaks the weight register. Indian-traditional dupatta is
+          ALWAYS lighter than the saree/lehenga it accompanies — that's
+          a feature, not a bug.
+
+      drape_compatibility:
+        description: |
+          FabricDrape should support the outfit's overall structure
+          intent. Fluid + rigid is fine when there's a clear hierarchy
+          (fluid saree + rigid blouse). All-fluid = shapeless;
+          all-rigid = uncomfortable / over-structured.
+        flatters:
+          FabricDrape: [fluid, soft_structured, crisp, rigid, sculpted]
+        avoid: {}
+
+  # ─────────────────────────────────────────────────────────────────────
+  # 7. CULTURAL COHERENCE
+  # ─────────────────────────────────────────────────────────────────────
+
+  cultural_coherence:
+    rule_type: soft_constraint
+
+    fusion_rules:
+      indian_traditional_only:
+        description: Pure traditional outfit — kurta + churidar/pyjama,
+          saree + traditional blouse, lehenga + choli, sherwani +
+          churidar. All slots are Indian-traditional.
+        notes: Default for festive, wedding, in-laws, traditional
+          family events.
+
+      indo_western_fusion:
+        description: |
+          Lower-formality fusion combinations:
+          - kurta + jeans (kurta becomes the focal point; jeans must be
+            slim or straight, never distressed)
+          - kurti + skirt (Indian top + Western bottom)
+          - dhoti pant + Western blouse
+          - sherwani-jacket + structured trouser (Indo-fusion office)
+          Allowed when neither slot is heavy/embellished.
+        notes: Acceptable for casual / smart_casual / semi_formal only.
+          NEVER pair bridal lehenga with jeans — context clash.
+
+      western_only:
+        description: All slots Western — shirt + trouser, dress, gown,
+          suit. Standard Western pairing rules apply.
+
+      heavy_traditional_no_western_fusion:
+        description: |
+          Heavy bridal / ceremonial Indian items (bridal lehenga,
+          heavy banarasi saree, full-embellished sherwani) MUST NOT
+          pair with Western items. The cultural register clashes.
+        avoid: {}                                                   # rule-level, not attribute-level
+        notes: A bandhgala is the exception — works with both Indian-
+          traditional (over kurta-pyjama) and Western (over shirt +
+          trouser).
+
+  # ─────────────────────────────────────────────────────────────────────
+  # 8. BRIDAL / HEAVY-TRADITIONAL SPECIFIC RULES
+  # ─────────────────────────────────────────────────────────────────────
+
+  bridal_specific:
+    rule_type: hard_constraint
+
+    rules:
+      bridal_lehenga_pairing:
+        description: |
+          Bridal lehenga (lehenga_set with heavy embellishment) pairs
+          ONLY with:
+          - bridal-weight choli (matching embellishment level)
+          - dupatta in matching/coordinated color and lighter weight
+          - bridal-context jewellery (heavy gold / kundan / polki)
+        flatters:
+          OccasionFit: [traditional, festive]
+          EmbellishmentLevel: [moderate, heavy, statement]
+          FormalityLevel: [ceremonial]
+        avoid:
+          OccasionFit: [casual, smart_casual, workwear, active, travel]
+          FormalityLevel: [casual, smart_casual]
+        notes: Save bridal lehenga for actual wedding-cycle events.
+          Re-wearing for cocktail / party requires lighter accompaniments
+          (Western blouse, lighter dupatta) to dial down the
+          ceremonial register.
+
+      heavy_banarasi_pairing:
+        description: |
+          Heavy Banarasi / Kanjeevaram silk saree pairs only with:
+          - structured silk blouse (matching color family)
+          - lighter dupatta (or no dupatta — saree pallu IS the visual)
+          - heavy traditional jewellery
+          - traditional footwear (mojari, kolhapuri, embroidered juti)
+        flatters:
+          OccasionFit: [traditional, festive, formal]
+          FormalityLevel: [formal, ceremonial]
+        avoid:
+          OccasionFit: [casual, smart_casual, very_casual]
+          FormalityLevel: [casual, smart_casual]
+        notes: Banarasi saree at office is over-formal except office
+          Diwali. Save for festive / family / wedding contexts.
+
+      sherwani_pairing:
+        description: |
+          Sherwani (heavy ceremonial) pairs only with:
+          - sherwani-pyjama or churidar (matching weight)
+          - sehra / safa (turban) for grooms; minimal head accessory
+            for guests
+          - traditional juti / mojari shoes
+          - heavy gold-embroidered stole if attending bridal-side event
+        flatters:
+          OccasionFit: [traditional, festive]
+          FormalityLevel: [formal, ceremonial]
+        avoid:
+          OccasionFit: [casual, smart_casual, workwear]
+          FormalityLevel: [casual, smart_casual]
+        notes: Sherwani over jeans = cultural clash. Sherwani as
+          outerwear over kurta = acceptable Indo-fusion at semi-formal
+          events (e.g., bandhgala-style worn over trouser at office
+          Diwali).
+
+      bandhgala_versatility:
+        description: |
+          Bandhgala (Nehru-collar jacket) is the most versatile heavy
+          Indian piece — pairs with:
+          - kurta + churidar (Indian-traditional)
+          - structured shirt + trouser (Indo-fusion office)
+          - kurta + slim jeans (Indo-fusion casual)
+          Slim-cut bandhgala in dark navy / charcoal works in many
+          formality registers from semi_formal to ceremonial.
+        flatters:
+          OccasionFit: [smart_casual, semi_formal, formal, traditional, festive]
+          FormalityLevel: [smart_casual, semi_formal, formal, ceremonial]
+
+  # ─────────────────────────────────────────────────────────────────────
+  # 9. ANCHOR CONSTRAINTS (for pairing_request intent)
+  # ─────────────────────────────────────────────────────────────────────
+
+  anchor_constraints:
+    rule_type: hard_constraint
+    description: |
+      When the user provides an anchor (uploaded item or referenced
+      product), filler slots must respect the anchor's:
+      - FormalityLevel (within ±1 step per formality_alignment rule)
+      - dominant color (palette-aligned)
+      - cultural register (Indian-traditional / Western / fusion)
+      - EmbellishmentLevel (heavy anchor → simpler fillers)
+      - OccasionFit (anchor's occasion category constrains fillers)
+
+    rules:
+      anchor_heavy_filler_simple:
+        description: When anchor.EmbellishmentLevel >= moderate, all
+          filler slots stay at none / minimal / subtle.
+        flatters:
+          EmbellishmentLevel: [none, minimal, subtle]               # at filler slots
+        avoid:
+          EmbellishmentLevel: [moderate, heavy, statement]          # at filler slots when anchor is heavy
+        notes: Heavy embroidered anchor blouse → solid plain saree.
+          Heavy zardozi sherwani as anchor → plain churidar.
+
+      anchor_simple_filler_can_carry:
+        description: When anchor.EmbellishmentLevel <= subtle, filler
+          slots can carry up to moderate.
+        flatters:
+          EmbellishmentLevel: [none, minimal, subtle, moderate]     # at filler
+        notes: Solid plain blouse anchor → can pair with embroidered
+          saree (if user wants Indian-traditional outfit).
+
+      anchor_color_pivot:
+        description: At least one filler slot must use an analogous
+          or complementary color to the anchor; anchor's dominant
+          color anchors the outfit's palette story.
+        notes: Navy bandhgala anchor → ivory / cream / charcoal trouser
+          (analogous neutrals); rust kurta anchor → mustard or olive
+          churidar (analogous warm).
+
+      anchor_cultural_register:
+        description: Anchor's cultural register (traditional / Western /
+          fusion) drives the entire outfit's register.
+        notes: |
+          - Anchor = traditional kurta → fillers must be traditional
+            (churidar, pyjama, dhoti pant — NOT jeans for non-fusion contexts)
+          - Anchor = Western blazer → fillers Western (no kurta under)
+          - Anchor = bandhgala → either Indian (kurta + churidar) or
+            Western (shirt + trouser); both work
