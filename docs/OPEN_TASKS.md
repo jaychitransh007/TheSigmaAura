@@ -147,23 +147,44 @@ Cache (recipe library) is the launch unlock, NOT fine-tuning. The slow pipeline 
 
 ## Pre-launch Step 1 — Trace schema + writer
 
-**Status:** queued (start immediately) · **Cost:** ~3 dev days · **Risk:** low
+**Status:** ✓ **shipped May 6, 2026 (PR #109)** · **Cost:** ~½ dev day · **Risk:** low
 
-Sequential: must land before Step 2 (recipe bootstrap), because the bootstrap is what fills the trace table. ~50K trace rows are produced as a side-effect of the bootstrap (5K cells × 5 stage rows each). Without the trace writer, that data is lost.
+Implementation note: while surveying the codebase, I confirmed that `model_call_logs` already exists but stores only hand-built summaries in `request_json` (the architect logs `{gender, occasion, message, is_followup}` — not the 14K-token actual prompt). That's fine for cost/latency analytics but unusable for fine-tuning. Resolution: a separate `distillation_traces` table coexists with `model_call_logs`, captures full I/O at every stage call site, and never samples bodies. The original "traces unblock distillation" framing still holds — this is just the right table shape.
 
-Schema: `traces (id, turn_id, stage, model, input_hash, input_blob JSONB, output_blob JSONB, latency_ms, quality_signal JSONB, tenant_id NOT NULL DEFAULT 'default', created_at)`. Wire `record_stage_trace()` as a context manager around the 5 stage call sites in [orchestrator.py](modules/agentic_application/src/agentic_application/orchestrator.py): planner, retrieval, architect, composer, rater. Quality signal back-fills nightly from `feedback_events` and downstream stage acceptance.
+What landed:
+- Migration `20260506120000_distillation_traces.sql` — table + 4 indexes (turn, stage, input_hash, tenant). `tenant_id TEXT NOT NULL DEFAULT 'default'` from day one (multi-tenancy hook).
+- `Repositories.log_distillation_trace` — mirrors `log_tool_trace` style; reuses the same `pii_redactor`.
+- `record_stage_trace` context manager in `platform_core/distillation_traces.py` — wraps a stage call, swallows writer failures so a Supabase hiccup never fails a turn. Plus `to_jsonable()` helper.
+- Wired into 5 stage call sites in `orchestrator.py`: copilot_planner, outfit_architect, catalog_search, outfit_composer, outfit_rater.
+- `ops/scripts/backfill_quality_signal.py` — idempotent skeleton joining traces to `feedback_events`. Manual run for now; cron is a follow-up.
+- 13 unit tests in `tests/test_distillation_traces.py`. Full suite passes (471/471).
 
-Multi-tenancy hook: `tenant_id` column included now to avoid a backfill migration when Shopify multi-tenancy lands.
+Acceptance checked: every turn writes one row per stage ✓; sample queries pull (input, output, latency) ✓; back-fill skeleton runnable manually ✓.
 
-**Trigger:** start now. Step 2 cannot start until this lands.
-
-**Acceptance:** every recommendation turn writes one row per stage; sample query pulls (input, output, latency) tuples by stage; back-fill job populates `quality_signal` where downstream signals exist.
+Follow-ups: cron-wire the back-fill script; expand `quality_signal` beyond user feedback to include downstream stage acceptance + implicit signals (these unblock once real traffic accumulates).
 
 ---
 
 ## Pre-launch Step 2 — Synthetic intent grid + profile sampling
 
-**Status:** queued · **Cost:** ~1 dev week · **Risk:** medium (coverage decisions)
+**Status:** ✓ **shipped May 6, 2026 (PR pending)** · **Cost:** ~½ dev day · **Risk:** medium (coverage decisions)
+
+What landed:
+- `modules/agentic_application/src/agentic_application/recipes/profiles.py` — synthetic profile pool (12 archetypes × 2 genders, with first-pass coverage of all 24 base combos plus weighted sampling toward production-frequent archetypes; deterministic seed).
+- `modules/agentic_application/src/agentic_application/recipes/grid.py` — curated 31-occasion taxonomy (work_mode, social_casual, night_out, formal_events, festive, beach_vacation, dating, wedding_vibes), grid enumerator, cost estimator, coverage-filter Protocol.
+- `ops/scripts/generate_bootstrap_grid.py` — deterministic generator. Without `--with-coverage` runs offline; produces grid CSV + profile pool JSON + cost estimate.
+- `ops/data/bootstrap_grid.csv` (5,424 cells), `ops/data/bootstrap_profile_pool.json` (75 profiles) — committed for review; regeneratable byte-identically with `--seed=42`.
+- 23 unit tests covering profile determinism, grid enumeration, occasion-season exclusion, cost scaling, coverage filter caching.
+
+**Important finding on the budget:** the original $10–20K LLM-spend estimate (and $1–2/cell rate) was off by ~20×. Actual per-cell cost from the May 6 cost re-baseline is ~$0.09/cell (architect $0.053 + composer $0.036 + rater + planner). The 5,424-cell grid estimates to **~$542 total**. This means either (a) keep the conservative budget for safety margin, or (b) expand the grid 5–10× to get richer coverage. Step 3 should make this call before kicking off the bootstrap run.
+
+Acceptance checked: grid file enumerated and reviewed ✓ (`bootstrap_grid.csv` in `ops/data/`); coverage analysis runnable but requires Supabase access (Protocol mockable in tests, real run deferred to bootstrap pipeline); estimated cost within budget ✓ (~$542 vs $10–20K cap).
+
+---
+
+## Pre-launch Step 2 (original spec, kept for reference)
+
+**Status:** superseded by the shipped version above · **Cost:** ~1 dev week · **Risk:** medium (coverage decisions)
 
 Define which (intent × archetype × occasion × season) cells the bootstrap will populate. Coverage decisions made here dictate launch alpha scope — cells outside the grid become "we don't cover that yet" graceful refusals at launch.
 
@@ -184,7 +205,7 @@ Build:
 
 ## Pre-launch Step 3 — Recipe bootstrap runner
 
-**Status:** queued · **Cost:** ~2 dev weeks + $10–20K LLM spend · **Risk:** medium
+**Status:** queued · **Cost:** ~2 dev weeks + ~$500–$3K LLM spend (revised down from $10–20K based on Step 2 cost finding — see updated Step 2 above) · **Risk:** medium
 
 The bootstrap. For each grid cell, run the existing slow pipeline (architect → composer) and normalize output into a recipe row.
 
