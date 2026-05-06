@@ -254,9 +254,18 @@ class OmittedTerminalTests(unittest.TestCase):
         # Result: omitted.
         self.assertEqual(out.outcome.status, "omitted")
         self.assertEqual(out.reduction.final_flatters, ())
-        # Provenance still tracks what was attempted.
-        self.assertIn("occasion_signal", out.outcome.widened_hards)
-        self.assertIn("body_shape", out.outcome.widened_hards)
+        # Lock the exact widening sequence — only kinds with actual
+        # contributions get attempted; weather_fabric / formality_hint /
+        # seasonal_color_group / frame_structure are skipped because no
+        # contribution carries that source_kind. occasion_signal is
+        # tried first (lower precedence in the reverse-precedence walk),
+        # then body_shape — a future refactor that drops the
+        # "skip-if-no-contribution" optimization would change this
+        # tuple and trip the test, surfacing the regression.
+        self.assertEqual(
+            out.outcome.widened_hards, ("occasion_signal", "body_shape")
+        )
+        self.assertEqual(out.outcome.dropped_softs, ())
 
 
 class ProvenanceTests(unittest.TestCase):

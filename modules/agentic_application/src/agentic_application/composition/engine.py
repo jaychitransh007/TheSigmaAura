@@ -77,6 +77,20 @@ _PEER_PAIRS: tuple[tuple[str, str], ...] = (
 )
 
 
+# Canonical FormalityLevel values from
+# modules/style_engine/configs/config/garment_attributes.json.
+# An out-of-enum formality_hint is treated as a YAML gap rather than
+# silently passed through to query_document text — the embedding model
+# would tokenize unknown values as noise.
+_CANONICAL_FORMALITY_LEVELS: frozenset[str] = frozenset({
+    "casual",
+    "smart_casual",
+    "semi_formal",
+    "formal",
+    "ceremonial",
+})
+
+
 # Source kinds whose value should be looked up in body_frame YAMLs
 # under the dimension of the same name.
 _BODY_DIMS = ("BodyShape", "FrameStructure")
@@ -241,7 +255,14 @@ def _collect_contributions(
     """Walk every input, look it up in the StyleGraph, and gather
     ClassifiedContributions per attribute. Return (contributions, gaps)
     where ``gaps`` is a list of source-kind labels whose value wasn't
-    found in the relevant YAML."""
+    found in the relevant YAML.
+
+    Note: ``inputs.style_goal`` is accepted but does not produce a
+    contribution here. Free-text style_goal would need to be projected
+    into garment-attribute opinions before it could feed the reduction;
+    that mapping waits on Phase 4.6 eval-set guidance. The
+    ``style_goal`` slot in DEFAULT_SOFT_DROP_ORDER is pre-classified for
+    forward-compat — it's a no-op until contributions land here."""
     by_attr: dict[str, list[ClassifiedContribution]] = {}
     gaps: list[str] = []
 
@@ -293,20 +314,27 @@ def _collect_contributions(
         gaps.append(f"occasion_signal:{inputs.occasion_signal}")
 
     if inputs.formality_hint:
-        # formality_hint is a single-value contribution to FormalityLevel.
-        # It conflicts with occasion_signal as a peer (§4.2), so the
-        # peer-detection pass sees both kinds when both are present.
-        by_attr.setdefault("FormalityLevel", []).append(
-            ClassifiedContribution(
-                contribution=AttributeContribution(
-                    source=f"formality_hint:{inputs.formality_hint}",
-                    flatters=(inputs.formality_hint,),
-                    avoid=(),
-                ),
-                source_kind="formality_hint",
-                tier="hard",
+        if inputs.formality_hint in _CANONICAL_FORMALITY_LEVELS:
+            # formality_hint is a single-value contribution to FormalityLevel.
+            # It conflicts with occasion_signal as a peer (§4.2), so the
+            # peer-detection pass sees both kinds when both are present.
+            by_attr.setdefault("FormalityLevel", []).append(
+                ClassifiedContribution(
+                    contribution=AttributeContribution(
+                        source=f"formality_hint:{inputs.formality_hint}",
+                        flatters=(inputs.formality_hint,),
+                        avoid=(),
+                    ),
+                    source_kind="formality_hint",
+                    tier="hard",
+                )
             )
-        )
+        else:
+            # Out-of-enum value — log as a gap so the §8 confidence
+            # penalty fires and the router falls through to the LLM,
+            # rather than emitting an unknown formality token to the
+            # embedding model.
+            gaps.append(f"formality_hint:{inputs.formality_hint}")
 
     weather = graph.weather.get(inputs.weather_context)
     if weather is not None:
@@ -373,7 +401,15 @@ def _detect_peer_conflict(
     contribs: Sequence[ClassifiedContribution],
 ) -> bool:
     """Return True if any §4.2 peer pair has BOTH kinds opinionated for
-    this attribute AND their flatters lists are disjoint."""
+    this attribute AND their flatters lists are disjoint.
+
+    The "disjoint" reading (rather than "non-equal") is intentional:
+    partial overlap means the intersect-step still has at least one
+    candidate value, which the engine can pick deterministically. Only
+    when no value is shared do we punt to the LLM via the
+    needs_disambiguation signal. The spec §4.2 = entries say peers
+    "neither wins"; partial overlap is a case where they happen to
+    agree on a subset and the engine takes that subset."""
     by_kind: dict[str, set[str]] = {}
     for c in contribs:
         if c.contribution.flatters:

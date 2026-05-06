@@ -4885,21 +4885,43 @@ class AgenticOrchestrator:
                         _router_decision.engine_confidence,
                         len(_router_decision.yaml_gaps),
                     )
-                    # Cache miss: write through. Best-effort; if the
-                    # write fails, the user's turn still completes.
-                    self._architect_cache.put(
-                        tenant_id="default",
-                        cache_key=_arch_cache_key,
-                        plan=plan,
-                        denormalised=denormalised_key_fields(
+                    # Cache miss: write through, but ONLY for LLM-derived
+                    # plans. The architect cache key is profile/cluster-
+                    # scoped, not user-scoped — so an engine-derived plan
+                    # written during a partial rollout (rollout_pct < 100)
+                    # would be served back via cache.get to non-rollout
+                    # users in the same cluster, leaking the engine path
+                    # across cohorts and breaking per-cohort metrics.
+                    # Skip the engine-path put until rollout reaches 100;
+                    # at full rollout, every user is in-cohort and the
+                    # leak is harmless. Best-effort write; if it fails
+                    # the user's turn still completes.
+                    if (
+                        not _router_decision.used_engine
+                        or self._composition_rollout_pct >= 100
+                    ):
+                        # Stamp the actual originator on the cache row.
+                        # Engine-derived plans use the engine sentinel
+                        # rather than the LLM model id so cache analytics
+                        # can correctly correlate hit rate with origin.
+                        _origin_model = (
+                            "composition_engine"
+                            if _router_decision.used_engine
+                            else _architect_model
+                        )
+                        self._architect_cache.put(
                             tenant_id="default",
-                            intent=plan_result.intent,
-                            cluster=_arch_cache_cluster,
-                            combined_context=combined_context,
-                            architect_prompt_version=ARCHITECT_PROMPT_VERSION,
-                            architect_model=_architect_model,
-                        ),
-                    )
+                            cache_key=_arch_cache_key,
+                            plan=plan,
+                            denormalised=denormalised_key_fields(
+                                tenant_id="default",
+                                intent=plan_result.intent,
+                                cluster=_arch_cache_cluster,
+                                combined_context=combined_context,
+                                architect_prompt_version=ARCHITECT_PROMPT_VERSION,
+                                architect_model=_origin_model,
+                            ),
+                        )
                 _trace_ctx.full_output = to_jsonable(plan)
         except Exception as exc:
             architect_ms = int((time.monotonic() - t0) * 1000)

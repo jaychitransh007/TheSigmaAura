@@ -118,14 +118,26 @@ def is_engine_eligible(combined_context: CombinedContext) -> tuple[bool, str | N
 
 
 def is_engine_acceptable(result: CompositionResult) -> tuple[bool, str | None]:
-    """Apply spec §9 fall-through criteria to a CompositionResult."""
+    """Apply spec §9 fall-through criteria to a CompositionResult.
+
+    The engine itself sets ``fallback_reason="low_confidence"`` /
+    ``"yaml_gap"`` when applicable. This function surfaces those plus
+    a defensive ``confidence < CONFIDENCE_THRESHOLD`` check (in case the
+    engine ever stops self-reporting), needs_disambiguation (per spec
+    §7), and the per-attribute excessive-widening guard (spec §9 #4)."""
     if result.direction is None:
         return False, "no_direction"
     if result.fallback_reason:
-        # Engine self-reported a reason (yaml_gap / low_confidence).
+        # Engine self-reported (yaml_gap | low_confidence). Trust it.
         return False, result.fallback_reason
     if result.confidence < CONFIDENCE_THRESHOLD:
+        # Belt-and-suspenders against engine drift: today the engine
+        # always self-reports low_confidence above, but a future refactor
+        # that drops that self-report shouldn't silently start passing
+        # sub-threshold results.
         return False, "low_confidence"
+    # needs_disambiguation: spec §7 — emit fall-through even when the
+    # confidence score would otherwise pass.
     if result.needs_disambiguation:
         return False, "needs_disambiguation"
     for entry in result.provenance:

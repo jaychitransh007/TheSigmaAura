@@ -30,6 +30,7 @@ from agentic_application.composition.router import (
     is_user_in_rollout_bucket,
     route_recommendation_plan,
 )
+from agentic_application.orchestrator import AgenticOrchestrator
 from agentic_application.composition.engine import (
     CompositionResult,
     ProvenanceEntry,
@@ -248,6 +249,90 @@ class AcceptanceTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(reason, "excessive_widening")
         self.assertGreaterEqual(MAX_HARD_WIDENINGS_PER_ATTR, 2)
+
+    def test_one_widening_per_attr_across_two_attrs_is_acceptable(self):
+        """Spec §9 #4 is per-attribute: ≥2 widenings on a *single*
+        attribute trips the gate. Two attributes with one widening each
+        should still pass — the engine picked one acceptable value per
+        attribute, semantic drift is bounded."""
+        prov = (
+            ProvenanceEntry(
+                attribute="FabricDrape",
+                final_flatters=("soft_structured",),
+                contributing_sources=("body_shape:Hourglass",),
+                status="hard_widened",
+                dropped_softs=(),
+                widened_hards=("weather_fabric",),
+            ),
+            ProvenanceEntry(
+                attribute="ColorValue",
+                final_flatters=("mid",),
+                contributing_sources=("seasonal:Soft Autumn",),
+                status="hard_widened",
+                dropped_softs=(),
+                widened_hards=("weather_color",),
+            ),
+        )
+        result = CompositionResult(
+            direction=DirectionSpec(
+                direction_id="A",
+                direction_type="paired",
+                label="t",
+                queries=[QuerySpec(query_id="A1", role="top", query_document="x")],
+            ),
+            confidence=0.8,
+            needs_disambiguation=False,
+            provenance=prov,
+            fallback_reason=None,
+            yaml_gaps=(),
+        )
+        ok, reason = is_engine_acceptable(result)
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
+
+class IntFromConfigTests(unittest.TestCase):
+    """Boundary coercion for ``composition_rollout_pct`` reads from a
+    ``Mock`` config (which existing orchestrator tests pass). Mocks
+    return Mock for any attribute access; ``int(Mock())`` would crash
+    without this defensive coerce."""
+
+    def test_mock_attribute_falls_back_to_default(self):
+        from unittest.mock import Mock as _Mock
+
+        cfg = _Mock()
+        # Mock auto-creates composition_rollout_pct as a Mock object —
+        # int() on it raises TypeError; the helper must catch and use
+        # the fallback.
+        out = AgenticOrchestrator._int_from_config(cfg, "composition_rollout_pct", 0)
+        self.assertEqual(out, 0)
+
+    def test_real_int_passes_through(self):
+        cfg = type("C", (), {"composition_rollout_pct": 25})()
+        out = AgenticOrchestrator._int_from_config(cfg, "composition_rollout_pct", 0)
+        self.assertEqual(out, 25)
+
+    def test_string_int_coerces(self):
+        cfg = type("C", (), {"composition_rollout_pct": "42"})()
+        out = AgenticOrchestrator._int_from_config(cfg, "composition_rollout_pct", 0)
+        self.assertEqual(out, 42)
+
+    def test_bool_rejected_to_fallback(self):
+        # Python treats bool as int; allowing True → 1 would silently
+        # enable a 1% rollout. Reject explicitly.
+        cfg = type("C", (), {"composition_rollout_pct": True})()
+        out = AgenticOrchestrator._int_from_config(cfg, "composition_rollout_pct", 0)
+        self.assertEqual(out, 0)
+
+    def test_garbage_string_falls_back(self):
+        cfg = type("C", (), {"composition_rollout_pct": "not a number"})()
+        out = AgenticOrchestrator._int_from_config(cfg, "composition_rollout_pct", 7)
+        self.assertEqual(out, 7)
+
+    def test_missing_attribute_falls_back(self):
+        cfg = type("C", (), {})()
+        out = AgenticOrchestrator._int_from_config(cfg, "composition_rollout_pct", 99)
+        self.assertEqual(out, 99)
 
 
 class RolloutBucketTests(unittest.TestCase):

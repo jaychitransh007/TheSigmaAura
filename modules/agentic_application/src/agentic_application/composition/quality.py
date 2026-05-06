@@ -24,7 +24,8 @@ penalize the comparison.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+import statistics
+from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
 from ..schemas import DirectionSpec, QuerySpec, RecommendationPlan
@@ -61,9 +62,7 @@ def _filter_items(filters: Mapping[str, object] | None) -> set[tuple[str, str]]:
 
 def _jaccard(a: set, b: set) -> float:
     """Standard Jaccard index. Empty/empty → 1.0 (perfectly matching
-    absence). Empty/non-empty → 0.0."""
-    if not a and not b:
-        return 1.0
+    absence). Empty/non-empty → 0.0 (handled via the union check)."""
     union = a | b
     if not union:
         return 1.0
@@ -106,7 +105,7 @@ class PlanComparison:
     aggregate_query_document_jaccard: float
     aggregate_hard_filters_jaccard: float
     directions: tuple[DirectionComparison, ...]
-    unmatched_direction_ids: tuple[str, ...] = field(default_factory=tuple)
+    unmatched_direction_ids: tuple[str, ...]
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -210,15 +209,17 @@ def compare_plans(
 
 @dataclass(frozen=True)
 class EvalSummary:
-    """Aggregate comparison stats across N eval cells."""
+    """Aggregate comparison stats across N eval cells.
+
+    ``cell_count`` is the number of PlanComparison rows reduced. The
+    fallback / engine-used breakdown lives in the ops driver — it has
+    the cell metadata (status, reject_reason) ``aggregate_eval`` does
+    not see. This dataclass only reduces the comparison numbers."""
 
     cell_count: int
-    engine_used_count: int
-    fallback_count: int
     median_query_document_jaccard: float
     median_hard_filters_jaccard: float
     direction_type_match_rate: float
-    fallback_reasons: Mapping[str, int]
 
 
 def aggregate_eval(comparisons: Sequence[PlanComparison]) -> EvalSummary:
@@ -227,30 +228,24 @@ def aggregate_eval(comparisons: Sequence[PlanComparison]) -> EvalSummary:
     Median (not mean) on the Jaccard metrics: a few catastrophic cells
     shouldn't dominate the headline number. Mean on the binary match
     rate (the natural definition: pct of cells where the engine
-    matched). Fallback bookkeeping is filled in by the ops driver
-    that knows which cells used which path; ``aggregate_eval`` only
-    reduces the comparison itself."""
+    matched)."""
     if not comparisons:
         return EvalSummary(
             cell_count=0,
-            engine_used_count=0,
-            fallback_count=0,
             median_query_document_jaccard=0.0,
             median_hard_filters_jaccard=0.0,
             direction_type_match_rate=0.0,
-            fallback_reasons={},
         )
-    qd = sorted(c.aggregate_query_document_jaccard for c in comparisons)
-    hf = sorted(c.aggregate_hard_filters_jaccard for c in comparisons)
     type_match = sum(c.direction_type_match_rate for c in comparisons) / len(
         comparisons
     )
     return EvalSummary(
         cell_count=len(comparisons),
-        engine_used_count=len(comparisons),  # caller overrides if known
-        fallback_count=0,
-        median_query_document_jaccard=qd[len(qd) // 2],
-        median_hard_filters_jaccard=hf[len(hf) // 2],
+        median_query_document_jaccard=statistics.median(
+            c.aggregate_query_document_jaccard for c in comparisons
+        ),
+        median_hard_filters_jaccard=statistics.median(
+            c.aggregate_hard_filters_jaccard for c in comparisons
+        ),
         direction_type_match_rate=type_match,
-        fallback_reasons={},
     )

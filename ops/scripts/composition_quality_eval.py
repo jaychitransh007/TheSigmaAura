@@ -43,35 +43,26 @@ import sys
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TYPE_CHECKING
 
-# Late-import — this script is invoked outside pytest with explicit
-# PYTHONPATH. See usage block in the docstring.
-from agentic_application.agents.outfit_architect import OutfitArchitect
-from agentic_application.composition.engine import compose_direction
-from agentic_application.composition.quality import (
-    PlanComparison,
-    aggregate_eval,
-    compare_plans,
-)
-from agentic_application.composition.router import (
-    extract_engine_inputs,
-    is_engine_acceptable,
-    is_engine_eligible,
-)
-from agentic_application.composition.yaml_loader import load_style_graph
-from agentic_application.schemas import (
-    CombinedContext,
-    LiveContext,
-    RecommendationPlan,
-    UserContext,
-)
+# Heavy imports (OutfitArchitect pulls in OpenAI client + every prompt
+# fragment) are deferred until main() so `python … --help` and
+# argument-validation paths stay snappy and don't require an OpenAI key
+# in the env. Only the type-only references stay at module scope.
+if TYPE_CHECKING:
+    from agentic_application.composition.quality import PlanComparison
 
 
 _log = logging.getLogger("composition_quality_eval")
 
 
-def _parse_combined_context(row: Dict[str, Any]) -> CombinedContext:
+def _parse_combined_context(row: Dict[str, Any]):
+    from agentic_application.schemas import (
+        CombinedContext,
+        LiveContext,
+        UserContext,
+    )
+
     user = UserContext(**row["user_context"])
     live = LiveContext(**row["live_context"])
     return CombinedContext(user=user, live=live)
@@ -79,7 +70,7 @@ def _parse_combined_context(row: Dict[str, Any]) -> CombinedContext:
 
 def _run_one_cell(
     *,
-    architect: OutfitArchitect,
+    architect,
     graph,
     row: Dict[str, Any],
 ) -> Dict[str, Any]:
@@ -91,6 +82,14 @@ def _run_one_cell(
         ctx = _parse_combined_context(row)
     except Exception as exc:
         return {"cell_id": cell_id, "status": "parse_error", "error": str(exc)}
+
+    from agentic_application.composition.engine import compose_direction
+    from agentic_application.composition.router import (
+        extract_engine_inputs,
+        is_engine_acceptable,
+        is_engine_eligible,
+    )
+    from agentic_application.schemas import RecommendationPlan
 
     eligible, ineligibility = is_engine_eligible(ctx)
     if not eligible:
@@ -106,7 +105,7 @@ def _run_one_cell(
     engine_ms = int((time.monotonic() - t_engine_0) * 1000)
 
     accepted, reject_reason = is_engine_acceptable(engine_result)
-    engine_plan: RecommendationPlan | None = None
+    engine_plan = None
     if accepted and engine_result.direction is not None:
         engine_plan = RecommendationPlan(
             retrieval_count=5,
@@ -141,13 +140,17 @@ def _run_one_cell(
         "llm_ms": llm_ms,
     }
     if engine_plan is not None:
+        from agentic_application.composition.quality import compare_plans
+
         comparison = compare_plans(engine_plan, llm_plan)
         out["comparison"] = comparison
     return out
 
 
 def _emit_markdown(rows: List[Dict[str, Any]], report_path: Path) -> None:
-    comparisons: List[PlanComparison] = [
+    from agentic_application.composition.quality import aggregate_eval
+
+    comparisons = [
         r["comparison"] for r in rows if r.get("comparison") is not None
     ]
     summary = aggregate_eval(comparisons)
@@ -231,6 +234,11 @@ def main(argv: List[str] | None = None) -> int:
         return 2
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    # Heavy imports deferred until after argparse so --help / parse
+    # errors don't pull in OpenAI client + every prompt fragment.
+    from agentic_application.agents.outfit_architect import OutfitArchitect
+    from agentic_application.composition.yaml_loader import load_style_graph
 
     architect = OutfitArchitect()
     graph = load_style_graph()
