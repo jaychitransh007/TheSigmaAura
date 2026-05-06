@@ -140,6 +140,58 @@ aura_composition_yaml_load_failure_total = Counter(
 )
 
 
+# Canonicalize: per-axis result of the input-canonicalization pass.
+# Tracks where the engine's vocabulary bridge fires and where it
+# bottoms out at the threshold. The four results map to the four
+# operational situations:
+#   - exact: input already matches a YAML key (no embed call, free)
+#   - matched_above_threshold: embedded + nearest-neighbour ≥ floor
+#   - matched_below_threshold: embedded + nearest-neighbour < floor
+#                              (engine flags YAML gap, falls through)
+#   - api_error: embed call raised — input passes through raw
+# Cardinality: 4 results × 5 axes = 20 series. Bounded and small.
+aura_composition_canonicalize_result_total = Counter(
+    "aura_composition_canonicalize_result_total",
+    "Canonicalize per-axis result, sliced by axis + outcome.",
+    labelnames=("axis", "result"),
+)
+
+# Wall-clock latency of the (single, batched) canonicalize embed call
+# per turn. 0 entries mean every input exact-matched; non-zero entries
+# correspond to the ~150ms text-embedding-3-small call. Reuses the
+# external-bucket preset so dashboards have sub-second precision.
+aura_composition_canonicalize_duration_seconds = Histogram(
+    "aura_composition_canonicalize_duration_seconds",
+    "Canonicalize wall-clock duration per turn (batched embed call).",
+    buckets=_EXTERNAL_BUCKETS,
+)
+
+
+# Tool-trace insert failures: exists because the surrounding
+# try/except in the orchestrator's trace-write call sites would
+# otherwise hide a regression. PR #152 fixed the cache_hit
+# constraint violation; if a future change reintroduces a
+# constraint-violating value (or any other failure), this counter
+# ticks and the alert pages.
+aura_tool_traces_insert_failure_total = Counter(
+    "aura_tool_traces_insert_failure_total",
+    "tool_traces insert failures (caught + warning-logged in orchestrator).",
+    labelnames=("tool_name",),
+)
+
+
+# Per-attribute composition status: counts how often each attribute
+# survives clean vs needs relaxation vs gets omitted across engine
+# turns. Aggregated WITHOUT the attribute label (3 series only) to
+# keep cardinality flat — per-attribute granularity flows through
+# the distillation_traces JSON for SQL drill-down.
+aura_composition_attribute_status_total = Counter(
+    "aura_composition_attribute_status_total",
+    "Per-engine-turn count of attributes by relaxation status.",
+    labelnames=("status",),
+)
+
+
 # ── Convenience helpers ───────────────────────────────────────────────
 
 
@@ -232,5 +284,60 @@ def observe_composition_yaml_load_failure() -> None:
     rest of the process and turns silently fall through to the LLM."""
     try:
         aura_composition_yaml_load_failure_total.inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_composition_canonicalize_result(*, axis: str, result: str) -> None:
+    """Tick the per-axis canonicalize counter. ``result`` should be one
+    of: ``"exact"`` (input matched a YAML key directly, no embed call),
+    ``"matched_above_threshold"`` (embed + nearest-neighbour cleared the
+    floor and replaced the input), ``"matched_below_threshold"`` (embed
+    fired but no neighbour cleared the floor; raw value passes through
+    and the engine flags a YAML gap), ``"api_error"`` (embed call
+    raised). Unknown values still record so a future result label can't
+    silently drop on the floor."""
+    try:
+        aura_composition_canonicalize_result_total.labels(
+            axis=axis or "", result=result or "",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_composition_canonicalize_duration(latency_ms: Optional[float]) -> None:
+    """Record the canonicalize wall-clock duration. None / 0 / negative
+    inputs are tolerated and skipped (no histogram observation)."""
+    if latency_ms is None or latency_ms < 0:
+        return
+    try:
+        aura_composition_canonicalize_duration_seconds.observe(
+            float(latency_ms) / 1000.0
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_tool_traces_insert_failure(tool_name: str) -> None:
+    """Tick the tool_traces insert failure counter. Called from the
+    orchestrator's trace-write warning catch sites so a future
+    regression that reintroduces a constraint violation is paged on."""
+    try:
+        aura_tool_traces_insert_failure_total.labels(
+            tool_name=tool_name or "unknown",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_composition_attribute_status(status: str) -> None:
+    """Tick the per-attribute composition status counter. ``status``
+    is one of: ``"clean"`` | ``"soft_relaxed"`` | ``"hard_widened"``
+    | ``"omitted"``. Aggregates without per-attribute granularity to
+    keep cardinality flat (3-4 series total)."""
+    try:
+        aura_composition_attribute_status_total.labels(
+            status=status or "unknown",
+        ).inc()
     except Exception:  # noqa: BLE001
         pass

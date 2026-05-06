@@ -493,6 +493,106 @@ class MetricsHelperTests(unittest.TestCase):
         self.assertIsNotNone(labels)
 
 
+class ProvenanceSummaryTests(unittest.TestCase):
+    """Phase 4 observability surfacing: the engine emits per-attribute
+    provenance; the router compacts non-clean entries into a three-key
+    summary on RouterDecision. The orchestrator stuffs this into the
+    distillation trace and ticks per-attribute-status counters from
+    it. Tests cover the router-side compaction; the orchestrator side
+    is covered by the existing trace-shape tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.graph = load_style_graph()
+
+    def test_engine_path_populates_provenance_summary(self):
+        # The real-YAML §6.1-style turn produces a mix of clean +
+        # soft_relaxed entries. Confirm the summary surfaces them
+        # under the right keys.
+        from agentic_application.composition.engine import (
+            CompositionInputs,
+            ProvenanceEntry,
+        )
+        from agentic_application.composition.router import (
+            extract_engine_inputs as _extract,
+            route_recommendation_plan as _route,
+        )
+        from unittest.mock import patch as _patch
+
+        # Stub compose_direction so the test doesn't depend on real
+        # YAML conflict patterns producing specific statuses.
+        prov = (
+            ProvenanceEntry(
+                attribute="FabricDrape", final_flatters=("soft_structured",),
+                contributing_sources=("body_shape:Hourglass",),
+                status="clean", dropped_softs=(), widened_hards=(),
+            ),
+            ProvenanceEntry(
+                attribute="EmbellishmentLevel", final_flatters=("subtle",),
+                contributing_sources=("occasion:daily_office",),
+                status="soft_relaxed",
+                dropped_softs=("archetype",), widened_hards=(),
+            ),
+            ProvenanceEntry(
+                attribute="ColorValue", final_flatters=("mid",),
+                contributing_sources=("seasonal:Soft Autumn",),
+                status="hard_widened",
+                dropped_softs=(), widened_hards=("weather_fabric",),
+            ),
+            ProvenanceEntry(
+                attribute="PatternType", final_flatters=(),
+                contributing_sources=(),
+                status="omitted",
+                dropped_softs=("archetype",), widened_hards=("body_shape",),
+            ),
+        )
+        from agentic_application.composition.engine import CompositionResult
+        from agentic_application.schemas import DirectionSpec, QuerySpec
+
+        result = CompositionResult(
+            direction=DirectionSpec(
+                direction_id="A", direction_type="paired",
+                label="t", queries=[QuerySpec(query_id="A1", role="top", query_document="x")],
+            ),
+            confidence=0.95,
+            needs_disambiguation=False,
+            provenance=prov,
+            fallback_reason=None,
+            yaml_gaps=(),
+        )
+
+        with _patch(
+            "agentic_application.composition.router.compose_direction",
+            return_value=result,
+        ):
+            decision = _route(
+                combined_context=_ctx(),
+                architect_plan_callable=Mock(return_value=_llm_plan()),
+                enabled=True,
+                graph=self.graph,
+            )
+        self.assertTrue(decision.used_engine)
+        ps = decision.provenance_summary
+        self.assertEqual(ps["soft_relaxed"], ("EmbellishmentLevel",))
+        self.assertEqual(ps["hard_widened"], ("ColorValue",))
+        self.assertEqual(ps["omitted"], ("PatternType",))
+        # Clean attributes (FabricDrape) are intentionally absent
+        # from the summary — they're the bulk and absence is the
+        # signal.
+        self.assertNotIn("clean", ps)
+
+    def test_disabled_flag_yields_empty_provenance_summary(self):
+        decision = route_recommendation_plan(
+            combined_context=_ctx(),
+            architect_plan_callable=Mock(return_value=_llm_plan()),
+            enabled=False,
+            graph=self.graph,
+        )
+        self.assertFalse(decision.used_engine)
+        # Engine never ran → no provenance to summarize.
+        self.assertEqual(decision.provenance_summary, {})
+
+
 class EngineLatencyTimingTests(unittest.TestCase):
     """The router measures compose_direction's wall-clock time and
     surfaces it in RouterDecision.engine_ms so the orchestrator can

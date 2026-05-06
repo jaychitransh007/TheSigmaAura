@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
@@ -225,6 +226,37 @@ def _nearest(
 # ─────────────────────────────────────────────────────────────────────────
 
 
+def _record_metric_duration_safely(latency_ms: int) -> None:
+    """Best-effort emit of the canonicalize duration histogram. Imports
+    are local so a missing platform_core dependency in tests doesn't
+    crash the canonicalize module at import time."""
+    try:
+        from platform_core.metrics import (
+            observe_composition_canonicalize_duration,
+        )
+        observe_composition_canonicalize_duration(latency_ms)
+    except Exception:  # noqa: BLE001 — metrics never break the pipeline
+        pass
+
+
+def _record_metric_axis_result_safely(axis: str, result: str) -> None:
+    """Best-effort emit of the canonicalize per-axis result counter."""
+    try:
+        from platform_core.metrics import (
+            observe_composition_canonicalize_result,
+        )
+        observe_composition_canonicalize_result(axis=axis, result=result)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _record_metric_axis_result_safely_for_all(pending, result: str) -> None:
+    """When the embed API fails, every pending axis gets the same
+    'api_error' result label."""
+    for axis, _raw, _bank in pending:
+        _record_metric_axis_result_safely(axis, result)
+
+
 def _exact_match_seasonal(value: str, graph: StyleGraph) -> str | None:
     """Spec-special: seasonal_color_group can be either a 12-entry
     SubSeason key or a 4-entry SeasonalColorGroup key. Either matches."""
@@ -275,16 +307,26 @@ def canonicalize_inputs(
     exact_occasion = (
         raw_occasion if raw_occasion in graph.occasion else None
     )
+    if exact_occasion is not None:
+        _record_metric_axis_result_safely("occasion", "exact")
     exact_weather = (
         raw_weather if raw_weather in graph.weather else None
     )
+    if exact_weather is not None:
+        _record_metric_axis_result_safely("weather", "exact")
     archetype_dim = graph.archetype.get("primary_archetype") or {}
     exact_archetype = (
         raw_archetype if raw_archetype and raw_archetype in archetype_dim else None
     )
+    if exact_archetype is not None:
+        _record_metric_axis_result_safely("archetype", "exact")
     risk_dim = graph.archetype.get("risk_tolerance") or {}
     exact_risk = raw_risk if raw_risk in risk_dim else None
+    if exact_risk is not None:
+        _record_metric_axis_result_safely("risk_tolerance", "exact")
     exact_seasonal = _exact_match_seasonal(raw_seasonal, graph)
+    if exact_seasonal is not None:
+        _record_metric_axis_result_safely("seasonal", "exact")
 
     # --- Collect non-matching values for the batched embed call ----------
     pending: list[tuple[str, str, Mapping[str, Sequence[float]]]] = []
@@ -309,6 +351,7 @@ def canonicalize_inputs(
         # distinguish "embed succeeded but no match cleared threshold"
         # from "embed wasn't tried" (e.g. all values exact-matched).
         embed_calls = 1
+        _embed_t0 = time.monotonic()
         try:
             vectors = embed_client(texts)
         except Exception as exc:  # noqa: BLE001 — never break a turn
@@ -317,17 +360,23 @@ def canonicalize_inputs(
                 len(texts), exc,
             )
             vectors = []
+            _record_metric_axis_result_safely_for_all(pending, "api_error")
+        _embed_ms = int((time.monotonic() - _embed_t0) * 1000)
+        _record_metric_duration_safely(_embed_ms)
 
         if len(vectors) == len(texts):
             for (axis, _raw, bank), vec in zip(pending, vectors):
                 if not bank:
                     matches[axis] = (None, None)
+                    _record_metric_axis_result_safely(axis, "matched_below_threshold")
                     continue
                 nearest, score = _nearest(vec, bank)
                 if nearest is not None and score >= threshold:
                     matches[axis] = (nearest, score)
+                    _record_metric_axis_result_safely(axis, "matched_above_threshold")
                 else:
                     matches[axis] = (None, score)
+                    _record_metric_axis_result_safely(axis, "matched_below_threshold")
 
     # --- Apply canonicalized values ---------------------------------------
     def _resolve(axis: str, exact: str | None, raw: str) -> str:
