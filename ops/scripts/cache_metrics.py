@@ -70,23 +70,40 @@ def _paginate(
     table: str,
     columns: str,
     filters: Dict[str, Any],
-    order: str = "created_at.asc",
 ):
-    """Iterate over a select_many result in pages of `_PAGE_SIZE`.
+    """Iterate over a select_many result in pages of ``_PAGE_SIZE``.
 
-    Yields each row. Stops when a page returns fewer rows than the
-    page size (last page) or when MAX_PAGES is hit (defensive cap;
-    prints a warning so the caller knows the count may be truncated).
-    Driven by created_at ordering + a moving "since" filter — works
-    against PostgREST without needing offset support.
+    Keyset pagination on ``id`` (every Aura table has a unique id PK).
+    Cursoring on ``id`` rather than ``created_at`` because:
+
+    1. ``created_at`` isn't unique (bursty writes share a timestamp);
+       ``gt.{ts}`` would skip rows that share the boundary timestamp
+       (review of PR #137).
+    2. ``id`` is a UUID PK — guaranteed unique, no boundary collision.
+
+    Trade-off: pages don't arrive in chronological order. That's fine
+    here — every caller aggregates counts over the whole window, so
+    order within the window doesn't affect the metric.
+
+    The function automatically appends ``id`` to ``columns`` if not
+    already present, so callers can't accidentally produce silent
+    truncation by forgetting to select the cursor field.
     """
+    # Ensure 'id' is in the projected columns — without it the cursor
+    # is None on every page and pagination silently stops after the
+    # first page (review of PR #137).
+    cols = [c.strip() for c in columns.split(",") if c.strip()]
+    if "id" not in cols:
+        cols.insert(0, "id")
+    columns_with_id = ",".join(cols)
+
     pages = 0
     while pages < _MAX_PAGES:
         rows = client.select_many(
             table,
-            columns=columns,
+            columns=columns_with_id,
             filters=dict(filters),
-            order=order,
+            order="id.asc",
             limit=_PAGE_SIZE,
         )
         if not rows:
@@ -95,13 +112,13 @@ def _paginate(
             yield r
         if len(rows) < _PAGE_SIZE:
             return
-        # Advance the moving since-filter to the last row's
-        # created_at so the next page picks up after it. Strict-gt
-        # to avoid re-emitting the boundary row.
-        last_ts = rows[-1].get("created_at")
-        if not last_ts:
+        last_id = rows[-1].get("id")
+        if not last_id:
+            # Defensive: a row with no id is a schema surprise. Stop
+            # rather than loop forever.
+            print(f"WARN: pagination on {table} hit a row with no id; stopping")
             return
-        filters = {**filters, "created_at": f"gt.{last_ts}"}
+        filters = {**filters, "id": f"gt.{last_id}"}
         pages += 1
     print(
         f"WARN: pagination cap hit on {table} "
@@ -121,29 +138,32 @@ def _hit_count_from_logs(client: SupabaseRestClient, since_iso: str) -> Tuple[in
     """
     total = 0
     hits = 0
+    # PostgREST JSONB arrow operators (-> and ->>) project only the
+    # field we need — saves fetching the full ~5-10KB request_json /
+    # response_json blob for every row (review of PR #137). The ->>
+    # variant returns the value as text (unquoted), which is exactly
+    # what we want to compare against "cache".
+    # Aliased so both projected fields land on distinct keys in the
+    # response row (otherwise both 'plan_source' would collide).
     for r in _paginate(
         client,
         table="model_call_logs",
-        # response_json carries the architect's emitted plan including
-        # plan_source. request_json may also carry it on some log shapes
-        # (different rollout windows); check both for resilience.
-        columns="request_json,response_json,latency_ms,created_at",
+        columns=(
+            "req_plan_source:request_json->>plan_source,"
+            "resp_plan_source:response_json->>plan_source,"
+            "latency_ms,created_at"
+        ),
         filters={
             "call_type": "eq.outfit_architect",
             "created_at": f"gte.{since_iso}",
         },
     ):
         total += 1
-        for col in ("response_json", "request_json"):
-            blob = r.get(col) or {}
-            if isinstance(blob, str):
-                try:
-                    blob = json.loads(blob)
-                except (ValueError, TypeError):
-                    blob = {}
-            if isinstance(blob, dict) and blob.get("plan_source") == "cache":
-                hits += 1
-                break
+        # Either alias being "cache" counts as a hit. Both can be
+        # None (miss) or "cache" (hit) on the same row depending on
+        # the rollout-era log shape.
+        if r.get("req_plan_source") == "cache" or r.get("resp_plan_source") == "cache":
+            hits += 1
     return total, hits
 
 
