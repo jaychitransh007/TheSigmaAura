@@ -258,11 +258,13 @@ class AgenticOrchestrator:
         # boundary-coercion as `architect_reasoning_effort` above —
         # tests pass `config=Mock()` and Mock auto-creates attribute
         # access (returning a Mock) which would break the agents'
-        # constructors that expect a real str.
-        _architect_model_raw = getattr(config, "architect_model", "gpt-5.4")
-        _architect_model = _architect_model_raw if isinstance(_architect_model_raw, str) else "gpt-5.4"
-        _composer_model_raw = getattr(config, "composer_model", "gpt-5.4")
-        _composer_model = _composer_model_raw if isinstance(_composer_model_raw, str) else "gpt-5.4"
+        # constructors that expect a real str. Fallbacks reference the
+        # dataclass attributes so a single edit to the class defaults
+        # also moves the orchestrator's defaults (review of PR #128).
+        _architect_model_raw = getattr(config, "architect_model", AuraRuntimeConfig.architect_model)
+        _architect_model = _architect_model_raw if isinstance(_architect_model_raw, str) else AuraRuntimeConfig.architect_model
+        _composer_model_raw = getattr(config, "composer_model", AuraRuntimeConfig.composer_model)
+        _composer_model = _composer_model_raw if isinstance(_composer_model_raw, str) else AuraRuntimeConfig.composer_model
         self.outfit_architect = OutfitArchitect(model=_architect_model, reasoning_effort=_architect_effort)
         # Evaluator history (see top of file): OutfitCheckAgent and
         # VisualEvaluatorAgent both removed; the Rater is the sole
