@@ -1,0 +1,718 @@
+# Body frame → garment attribute mapping (MALE, Indian urban context)
+#
+# Indian menswear vocabulary: kurta-pyjama, kurta-churidar, kurta+slim
+# trouser, sherwani, bandhgala, bandi (waistcoat) over kurta, structured
+# shirt + tailored trouser, suit (Western), Nehru jacket, indo-western,
+# pathani, dhoti-style kurta sets.
+#
+# Most male body-frame work is about FrameStructure × VisualWeight ×
+# BodyShape (Trapezoid/Inverted Triangle/Rectangle dominate the male
+# distribution; Hourglass/Pear are rare). Color/pattern guidance lives
+# in the palette mapping; this file only covers cut/fit/silhouette/fabric
+# weight choices driven by physical frame.
+
+BodyShape:
+  Trapezoid:
+    flatters:
+      SilhouetteContour:   [fitted, straight, tapered]
+      SilhouetteType:      [fitted, straight, tapered]
+      FitType:             [tailored, slim, regular]
+      FitEase:             [regular, slim]
+      WaistDefinition:     [natural, defined]
+      ShoulderStructure:   [natural, sculpted]
+      VolumeProfile:       [flat, moderate]
+      VerticalWeightBias:  [balanced]
+    avoid:
+      SilhouetteType:      [oversized, boxy]
+      FitType:             [boxy, loose]
+      FitEase:             [oversized]
+      ShoulderStructure:   [extended, padded]              # already balanced shoulder
+    notes: >
+      The "athletic V-taper" silhouette — broad shoulders, narrow waist,
+      moderate hips. Anything tailored works. Sherwani fitted at waist,
+      slim bandhgala, fitted kurta with churidar, tailored shirt + slim
+      chinos, cropped Nehru jacket. Avoid baggy oversized kurtas
+      (drowns the frame) and excessive shoulder padding (overdoes the V).
+
+  "Inverted Triangle":
+    flatters:
+      SilhouetteContour:   [fitted, straight]
+      SilhouetteType:      [fitted, straight, relaxed]
+      FitType:             [tailored, regular]
+      ShoulderStructure:   [natural]
+      VolumeProfile:       [moderate]                      # at bottom
+      VerticalWeightBias:  [lower, balanced]
+    avoid:
+      ShoulderStructure:   [extended, padded, sculpted]    # exaggerates shoulder breadth
+      FitType:             [slim]                          # at bottom — emphasises shoulder
+      VolumeProfile:       [exaggerated]                   # at top
+    notes: >
+      Strong shoulder, narrow waist and hip. Avoid heavy structured
+      shoulders on bandhgala/sherwani (already broad). Wear straight-fit
+      kurta with regular pyjama, tailored shirt + straight trouser,
+      Nehru jacket sized for the chest not the shoulder. Avoid skin-
+      tight chinos or churidar that emphasise narrow hips.
+
+  Rectangle:
+    flatters:
+      SilhouetteContour:   [straight, fitted]
+      SilhouetteType:      [straight, fitted]
+      FitType:             [tailored, slim, regular]
+      WaistDefinition:     [natural]
+      ShoulderStructure:   [sculpted, padded]              # mild structure adds shape
+      VolumeProfile:       [flat, moderate]
+      ConstructionDetail:  [pleated]
+    avoid:
+      SilhouetteType:      [oversized, boxy]
+      WaistDefinition:     [undefined]                     # makes silhouette read as a column
+      ShoulderStructure:   [dropped]
+    notes: >
+      Straight up-and-down frame. Goal: introduce shape via tailoring.
+      Bandhgala (slight shoulder structure), tailored sherwani, fitted
+      bandi over kurta, pleated trouser. A pintucked or yoked kurta
+      adds visual interest at the chest.
+
+  Pear:
+    flatters:
+      SilhouetteType:      [straight, relaxed]
+      ShoulderStructure:   [extended, padded, sculpted]
+      VolumeProfile:       [moderate]                      # at top
+      EmbellishmentZone:   [shoulder, neckline]
+      VerticalWeightBias:  [upper]
+    avoid:
+      SilhouetteContour:   [tapered]                       # cups bigger lower body
+      FitType:             [slim]                          # at bottom
+      ShoulderStructure:   [dropped]
+      EmbellishmentZone:   [hem]                          # don't draw eye to lower body
+    notes: >
+      Rare for men but real. Build the shoulder line: structured
+      bandhgala with shoulder pad, sherwani with epaulettes, embroidered
+      yoke on kurta. Avoid skinny chinos and tapered pyjama; use straight-
+      cut pyjama or churidar with relaxed leg.
+
+  Apple:
+    flatters:
+      SilhouetteContour:   [straight, a_line]
+      SilhouetteType:      [straight, relaxed]
+      FitType:             [regular, relaxed]
+      WaistDefinition:     [empire, undefined]
+      NecklineType:        [v_neck, mandarin]              # vertical line
+      FabricDrape:         [soft_structured, crisp]
+      GarmentLength:       [knee, calf]                    # longer kurtas skim midsection
+      LineDirection:       [vertical]
+      ConstructionDetail:  [pleated]
+    avoid:
+      SilhouetteContour:   [fitted, tapered]
+      WaistDefinition:     [defined]
+      FitType:             [slim, tailored]                # at midsection
+      FabricDrape:         [rigid]                         # unforgiving
+    notes: >
+      Straight-cut long kurta over straight pyjama, pathani suit, A-line
+      sherwani, jacket worn open over crisp shirt. Vertical pintucks or
+      panel detailing on bandhgala lengthen the torso. Avoid fitted
+      shirts tucked into a belt.
+
+  Diamond:
+    flatters:
+      SilhouetteContour:   [straight, a_line]
+      SilhouetteType:      [straight, relaxed]
+      ShoulderStructure:   [extended, sculpted, padded]    # broaden shoulder line for balance
+      FabricDrape:         [soft_structured, crisp]
+      LineDirection:       [vertical]
+      WaistDefinition:     [undefined, empire]
+    avoid:
+      SilhouetteContour:   [fitted]                        # at midsection
+      WaistDefinition:     [defined]
+      ShoulderStructure:   [dropped]
+    notes: >
+      Fullness at midsection, narrower shoulders. Strategy: structured
+      shoulders + skim midsection. Bandhgala with mild shoulder padding,
+      A-line sherwani, longer-length straight kurta. Avoid bodycon-fit
+      kurtas at midsection.
+
+  Hourglass:
+    flatters:
+      SilhouetteContour:   [fitted, tapered]
+      FitType:             [tailored, slim]
+      WaistDefinition:     [defined, natural]
+    avoid: {}
+    notes: >
+      Rare for men. Tailored everything — fitted bandhgala, structured
+      sherwani, slim-fit kurta with belt detail, slim chinos.
+
+ShoulderToHipRatio:
+  "Shoulders Much Wider":
+    flatters:
+      ShoulderStructure:   [natural]                       # don't add more
+      VolumeProfile:       [moderate]                      # at bottom
+      FitType:             [regular]                       # at bottom
+    avoid:
+      ShoulderStructure:   [extended, padded, sculpted]
+      FitType:             [slim]                          # at bottom
+    notes: Inverted-triangle correction — natural shoulder, regular-fit
+      bottoms.
+
+  "Shoulders Slightly Wider":
+    flatters:
+      ShoulderStructure:   [natural, sculpted]
+      FitType:             [tailored, regular]
+    avoid:
+      ShoulderStructure:   [extended, padded]
+    notes: Mild correction — most cuts work.
+
+  "Approximately Equal":
+    flatters:
+      ShoulderStructure:   [natural, sculpted, padded]
+      FitType:             [tailored, slim, regular]
+    avoid: {}
+    notes: Balanced rectangle — wear what fits.
+
+  "Hips Slightly Wider":
+    flatters:
+      ShoulderStructure:   [extended, sculpted, padded]
+      VolumeProfile:       [moderate]                      # at top
+      EmbellishmentZone:   [shoulder]
+    avoid:
+      VolumeProfile:       [voluminous]                    # at bottom
+    notes: Pear correction — broaden shoulder.
+
+  "Hips Much Wider":
+    flatters:
+      ShoulderStructure:   [extended, padded, sculpted]
+      EmbellishmentZone:   [shoulder, neckline]
+      VerticalWeightBias:  [upper]
+      VolumeProfile:       [moderate]                      # at top
+    avoid:
+      FitType:             [slim]                          # at bottom
+      VolumeProfile:       [voluminous]                    # at bottom
+    notes: Strong Pear correction — sherwani with epaulette, structured
+      bandhgala, embroidered yoke kurta.
+
+TorsoToLegRatio:
+  "Long Torso / Short Legs":
+    flatters:
+      GarmentLength:       [waist, hip]                    # for shirts/jackets — top hits high
+      LineDirection:       [vertical]
+      PatternOrientation:  [vertical]                      # in trouser
+    avoid:
+      GarmentLength:       [thigh, mid_thigh, knee]        # for shirts — eats leg length
+      PatternOrientation:  [horizontal]                    # in trouser
+    notes: Tucked-in shirt at high waist, cropped Nehru jacket, hip-
+      length kurta with high-waisted dhoti pant. Avoid tunic-length
+      kurtas without contrasting churidar.
+
+  Balanced:
+    flatters: {}
+    avoid: {}
+    notes: All proportions work.
+
+  "Short Torso / Long Legs":
+    flatters:
+      GarmentLength:       [thigh, knee, calf]             # longer kurtas elongate torso
+      WaistDefinition:     [natural, dropped]
+    avoid:
+      WaistDefinition:     [empire]                        # shortens torso further
+      GarmentLength:       [waist, cropped]
+    notes: Calf-length kurta, longer Nehru jacket, sherwani with longer
+      cut. Mid-rise (not high-rise) trousers.
+
+VerticalProportion:
+  Compact:
+    flatters:
+      LineDirection:       [vertical]
+      PatternScale:        [micro, small]
+      ColorCount:          [single, tonal]
+      VolumeProfile:       [flat, moderate]
+      EmbellishmentLevel:  [minimal, subtle]
+      GarmentLength:       [knee]                          # not floor-length
+    avoid:
+      PatternScale:        [large, oversized]
+      VolumeProfile:       [voluminous]
+      LineDirection:       [horizontal]
+      EmbellishmentLevel:  [heavy, statement]
+    notes: Petite frame — monochrome, vertical lines, slim-fit. Slim
+      bandhgala, fitted kurta with churidar in tonal palette. Avoid
+      heavy zardozi sherwanis with multiple borders.
+
+  Moderate:
+    flatters: {}
+    avoid: {}
+    notes: All proportions work.
+
+  Elongated:
+    flatters:
+      PatternScale:        [medium, large]
+      VolumeProfile:       [moderate]
+      EmbellishmentLevel:  [moderate, heavy]
+      GarmentLength:       [calf, floor]                   # for sherwani
+    avoid:
+      PatternScale:        [micro]                         # gets lost
+    notes: Tall frame — full-length sherwani, larger embroidery scale,
+      structured bandhgala with statement detail.
+
+VisualWeight:
+  Light:
+    flatters:
+      FabricWeight:        [very_light, light]
+      FabricDrape:         [fluid, soft_structured]
+      VolumeProfile:       [flat, moderate]
+      EdgeSharpness:       [soft, defined]
+    avoid:
+      FabricWeight:        [heavy]
+      FabricDrape:         [rigid, sculpted]
+      EdgeSharpness:       [sharp]
+    notes: Light cotton kurta, mulmul, lightweight linen trouser. Avoid
+      heavy raw silk sherwani that dwarfs the frame.
+
+  "Medium-Light":
+    flatters:
+      FabricWeight:        [light, medium]
+      FabricDrape:         [soft_structured, fluid]
+    avoid:
+      FabricWeight:        [heavy]
+    notes: Most fabrics work — lean light-medium.
+
+  Medium:
+    flatters: {}
+    avoid: {}
+    notes: Carries any fabric weight.
+
+  "Medium-Heavy":
+    flatters:
+      FabricWeight:        [medium, heavy]
+      FabricDrape:         [soft_structured, crisp, rigid]
+      EdgeSharpness:       [defined, sharp]
+    avoid:
+      FabricWeight:        [very_light]                    # disappears on solid frame
+    notes: Banarasi brocade sherwani, raw silk kurta, structured cotton
+      bandhgala — beautiful.
+
+  Heavy:
+    flatters:
+      FabricWeight:        [medium, heavy]
+      FabricDrape:         [crisp, rigid, sculpted]
+      EdgeSharpness:       [defined, sharp]
+      VolumeProfile:       [moderate]
+    avoid:
+      FabricWeight:        [very_light, light]
+      FabricDrape:         [fluid]
+    notes: Heavy brocade, structured silk. Avoid clingy lightweight
+      cotton kurtas.
+
+ArmVolume:
+  Slim:
+    flatters:
+      SleeveLength:        [short, three_quarter, full]
+      FitEase:             [regular, slim]                 # at sleeve
+    avoid:
+      FitEase:             [oversized]                     # at sleeve — flaps on slim arm
+    notes: All sleeve lengths and fits work.
+
+  Medium:
+    flatters:
+      SleeveLength:        [short, elbow, three_quarter, full]
+      FitEase:             [regular]
+    avoid: {}
+    notes: All cuts work.
+
+  Full:
+    flatters:
+      SleeveLength:        [three_quarter, full]
+      FitEase:             [regular, relaxed]              # at sleeve
+      FabricDrape:         [fluid, soft_structured]        # at sleeve
+    avoid:
+      SleeveLength:        [short, cap]
+      FitEase:             [slim]                          # at sleeve
+    notes: Full-sleeve kurta, structured bandhgala with regular sleeve.
+      Avoid slim-fit short-sleeve t-shirts with traditional outfits.
+
+BustVolume:
+  "Flat / Minimal":
+    flatters: {}
+    avoid: {}
+    notes: Default for male frames. No special-casing required.
+
+  Small:
+    flatters: {}
+    avoid: {}
+    notes: Default for male frames.
+
+  Medium:
+    flatters:
+      ConstructionDetail:  [pleated]                       # at chest, adds structure
+    avoid: {}
+    notes: Pleated kurta yoke, panelled bandhgala — adds chest structure.
+
+  Prominent:
+    flatters:
+      NecklineType:        [v_neck, mandarin]
+      FitType:             [tailored]
+      ConstructionDetail:  [none]                          # at chest
+    avoid:
+      NecklineType:        [crew, high_neck]
+      FitType:             [slim]                          # at chest if too tight
+      ConstructionDetail:  [pleated]                       # at chest — adds volume
+    notes: Tailored bandhgala with V-front opening, structured sherwani
+      with mandarin collar + slight V cut. Avoid tight crew-neck tees
+      under blazers.
+
+  "Very Prominent":
+    flatters:
+      NecklineType:        [v_neck, mandarin]
+      FitType:             [tailored, regular]
+      FabricDrape:         [crisp, soft_structured]
+      ConstructionDetail:  [none]
+    avoid:
+      NecklineType:        [crew, high_neck]
+      FitType:             [slim]
+      FabricDrape:         [fluid]
+      ConstructionDetail:  [pleated, ruched]
+    notes: Sturdy tailoring at chest, V-cut bandhgala, sherwani with
+      diagonal panel. Avoid clinging fabrics, ruched yokes, or heavy
+      chest embroidery.
+
+MidsectionState:
+  Flat:
+    flatters:
+      WaistDefinition:     [defined, natural]
+      FitType:             [tailored, slim]
+    avoid: {}
+    notes: Tailored everything — show the frame.
+
+  "Moderate Fullness":
+    flatters:
+      WaistDefinition:     [natural, undefined]
+      FitType:             [regular]
+      FabricDrape:         [soft_structured, crisp]
+    avoid:
+      WaistDefinition:     [defined]                       # cinches midsection
+      FitType:             [slim, tailored]                # at midsection
+    notes: Straight-cut kurta, regular-fit bandhgala. Avoid skin-tight
+      slim-fit shirts.
+
+  "Significant Fullness":
+    flatters:
+      WaistDefinition:     [empire, undefined]
+      SilhouetteContour:   [a_line, straight]
+      FitType:             [regular, relaxed]
+      GarmentLength:       [knee, calf]                    # longer kurtas skim
+      FabricDrape:         [soft_structured, crisp]
+    avoid:
+      WaistDefinition:     [defined]
+      SilhouetteContour:   [fitted, tapered]
+      FabricDrape:         [rigid]                         # at midsection
+      FitType:             [slim, tailored]
+    notes: Straight-cut long kurta over pyjama, A-line sherwani, pathani
+      suit, jacket worn open. Avoid fitted shirts tucked tight.
+
+ShoulderSlope:
+  Square:
+    flatters:
+      ShoulderStructure:   [natural, dropped]
+      NecklineType:        [v_neck, mandarin]
+    avoid:
+      ShoulderStructure:   [extended, padded, sculpted]    # over-emphasises square
+    notes: Soften the square — natural-cut sherwani shoulder, dropped-
+      shoulder bandi over kurta.
+
+  Average:
+    flatters:
+      ShoulderStructure:   [natural, sculpted, padded]
+      NecklineType:        [crew, v_neck, collared, mandarin]
+    avoid: {}
+    notes: All cuts work.
+
+  Sloped:
+    flatters:
+      ShoulderStructure:   [extended, padded, sculpted]
+      EmbellishmentZone:   [shoulder]
+    avoid:
+      ShoulderStructure:   [dropped]
+    notes: Build the shoulder line — bandhgala with mild padding,
+      sherwani with embellished yoke, structured Nehru jacket.
+
+NeckLength:
+  Short:
+    flatters:
+      NecklineType:        [v_neck, scoop]
+      NecklineDepth:       [moderate, deep]
+    avoid:
+      NecklineType:        [crew, high_neck, mandarin]
+      NecklineDepth:       [closed, shallow]
+    notes: V-neck kurta, scoop-neck tee under bandi. Avoid mandarin-
+      collar bandhgala with high collar — looks compressed.
+
+  Average:
+    flatters:
+      NecklineType:        [crew, v_neck, collared, mandarin]
+    avoid: {}
+    notes: All necklines work.
+
+  Long:
+    flatters:
+      NecklineType:        [crew, mandarin, collared, high_neck]
+      EmbellishmentZone:   [neckline]
+    avoid: {}
+    notes: Long neck carries mandarin-collar bandhgala, high-collar
+      Nehru jacket, choker-style necklace pieces beautifully.
+
+JawlineDefinition:
+  Soft:
+    flatters:
+      NecklineType:        [collared, mandarin]
+      EdgeSharpness:       [defined, sharp]
+    avoid:
+      EdgeSharpness:       [soft]
+    notes: Add structure near face — bandhgala mandarin collar,
+      structured shirt collar.
+
+  Balanced:
+    flatters: {}
+    avoid: {}
+    notes: All cuts work.
+
+  Sharp:
+    flatters:
+      NecklineType:        [v_neck, scoop, crew]
+      EdgeSharpness:       [soft, defined]
+    avoid:
+      NecklineType:        [mandarin]
+      EdgeSharpness:       [sharp]
+    notes: Soften an angular jaw — round/scoop necklines, fluid kurta.
+      Avoid hard mandarin collar + sharp tailoring head-to-toe.
+
+FaceShape:
+  Oval:
+    flatters:
+      NecklineType:        [crew, v_neck, collared, mandarin]
+    avoid: {}
+    notes: All necklines work.
+
+  Round:
+    flatters:
+      NecklineType:        [v_neck]
+      NecklineDepth:       [moderate, deep]
+      LineDirection:       [vertical]
+    avoid:
+      NecklineType:        [crew, mandarin]
+      NecklineDepth:       [closed, shallow]
+    notes: V-neck kurta, deeper opening on bandhgala. Avoid mandarin
+      collars (echo round face).
+
+  Square:
+    flatters:
+      NecklineType:        [v_neck, scoop]
+      EdgeSharpness:       [soft]
+    avoid:
+      NecklineType:        [collared]                      # mirrors square jaw
+      EdgeSharpness:       [sharp]
+    notes: Soften strong jaw — V-neck kurta, scoop-neck tee.
+
+  Rectangle:
+    flatters:
+      NecklineType:        [crew, scoop]
+      NecklineDepth:       [moderate]
+    avoid:
+      NecklineType:        [v_neck]
+      NecklineDepth:       [deep, very_deep]
+    notes: Don't elongate further — rounded necklines balance.
+
+  Oblong:
+    flatters:
+      NecklineType:        [crew, scoop, collared]
+      NecklineDepth:       [shallow, moderate]
+    avoid:
+      NecklineType:        [v_neck]
+      NecklineDepth:       [deep, very_deep]
+    notes: Break the vertical line — collared shirt, crew-neck under
+      bandi.
+
+  Heart:
+    flatters:
+      NecklineType:        [scoop, crew, collared]
+    avoid:
+      NecklineType:        [v_neck]                        # mirrors pointed chin
+    notes: Wider neckline shapes balance narrow chin.
+
+  Diamond:
+    flatters:
+      NecklineType:        [scoop, v_neck]
+      NecklineDepth:       [moderate]
+    avoid:
+      NecklineType:        [collared]                      # widens cheekbones
+    notes: Curved neckline softens prominent cheekbones.
+
+  Triangle:
+    flatters:
+      NecklineType:        [collared, mandarin]
+      ShoulderStructure:   [extended, sculpted]
+      EmbellishmentZone:   [shoulder, neckline]
+    avoid:
+      NecklineType:        [v_neck]
+    notes: Balance broader jaw — wider top, structured shoulder,
+      collared bandhgala.
+
+HairLength:
+  Cropped:
+    flatters:
+      NecklineType:        [crew, mandarin, collared]
+      EmbellishmentZone:   [neckline, shoulder]
+    avoid: {}
+    notes: Neckline detailing reads strongly — make it count.
+
+  Short:
+    flatters:
+      NecklineType:        [crew, v_neck, collared, mandarin]
+    avoid: {}
+    notes: All cuts work.
+
+  Medium:
+    flatters:
+      NecklineType:        [v_neck, scoop, collared]
+    avoid: {}
+    notes: Hair frames standard necklines well.
+
+  Long:
+    flatters:
+      NecklineType:        [v_neck, scoop, collared]
+      NecklineDepth:       [moderate, deep]
+    avoid: {}
+    notes: Long hair (man bun, long open) frames open necklines and
+      wraps over collar — avoid stacking face-framing accessories.
+
+FrameStructure:
+  "Light and Narrow":
+    flatters:
+      FabricWeight:        [very_light, light]
+      FabricDrape:         [fluid, soft_structured]
+      EdgeSharpness:       [soft, defined]
+      VolumeProfile:       [flat, moderate]
+    avoid:
+      FabricWeight:        [heavy]
+      FabricDrape:         [rigid, sculpted]
+      VolumeProfile:       [voluminous]
+    notes: Lightweight cotton kurta, linen, mulmul. Avoid heavy
+      Banarasi brocade sherwanis.
+
+  "Light and Broad":
+    flatters:
+      FabricWeight:        [light, medium]
+      FabricDrape:         [soft_structured, fluid]
+    avoid:
+      FabricWeight:        [heavy]
+    notes: Lightweight with structure — soft silk, light tussar.
+
+  "Medium and Balanced":
+    flatters:
+      FabricWeight:        [light, medium]
+      FabricDrape:         [fluid, soft_structured, crisp]
+    avoid: {}
+    notes: All fabrics work.
+
+  "Solid and Narrow":
+    flatters:
+      FabricWeight:        [medium, heavy]
+      FabricDrape:         [soft_structured, crisp]
+      EdgeSharpness:       [defined]
+    avoid:
+      FabricDrape:         [fluid]                         # clings on solid frame
+    notes: Tussar kurta, structured cotton bandhgala — clean line.
+
+  "Solid and Balanced":
+    flatters:
+      FabricWeight:        [medium, heavy]
+      FabricDrape:         [crisp, rigid, sculpted]
+      EdgeSharpness:       [defined, sharp]
+    avoid:
+      FabricWeight:        [very_light]
+    notes: Banarasi brocade sherwani, structured silk, formal suit
+      fabric — frame carries it.
+
+  "Solid and Broad":
+    flatters:
+      FabricWeight:        [medium, heavy]
+      FabricDrape:         [crisp, rigid, sculpted]
+      EdgeSharpness:       [sharp]
+      VolumeProfile:       [moderate]
+    avoid:
+      FabricWeight:        [very_light, light]
+      FabricDrape:         [fluid]
+    notes: Heavy structured silk, brocade, brocade sherwani with weight.
+      Avoid lightweight clinging kurtas.
+
+HeightCategory:
+  Petite:
+    flatters:
+      GarmentLength:       [hip, mid_thigh, knee]          # for kurta
+      PatternScale:        [micro, small]
+      LineDirection:       [vertical]
+      ColorCount:          [single, tonal]
+      VolumeProfile:       [flat, moderate]
+      EmbellishmentLevel:  [minimal, subtle]
+    avoid:
+      GarmentLength:       [calf, floor]                   # for sherwani — overwhelms
+      PatternScale:        [large, oversized]
+      EmbellishmentLevel:  [heavy, statement]
+    notes: Slim bandhgala, fitted kurta to mid-thigh, slim chinos.
+      Avoid floor-length sherwanis without alteration, oversized
+      pathani-style kurtas.
+
+  Average:
+    flatters: {}
+    avoid: {}
+    notes: All lengths and scales work.
+
+  Tall:
+    flatters:
+      GarmentLength:       [calf, floor]                   # full sherwani works
+      PatternScale:        [medium, large]
+      VolumeProfile:       [moderate]
+      EmbellishmentLevel:  [moderate, heavy, statement]
+    avoid:
+      PatternScale:        [micro]                         # gets lost on tall frame
+    notes: Floor-length sherwani, full bandhgala, statement embroidery.
+
+WaistSizeBand:
+  "Very Small":
+    flatters:
+      WaistDefinition:     [defined, natural]
+      FitType:             [tailored, slim]
+    avoid: {}
+    notes: Tailored bandhgala, fitted sherwani at waist.
+
+  Small:
+    flatters:
+      WaistDefinition:     [defined, natural]
+      FitType:             [slim, tailored, regular]
+    avoid: {}
+    notes: Most fits flatter; tailored especially.
+
+  Medium:
+    flatters:
+      WaistDefinition:     [natural]
+      FitType:             [regular, slim]
+    avoid: {}
+    notes: Standard tailored cuts work.
+
+  Large:
+    flatters:
+      WaistDefinition:     [natural, undefined]
+      FitType:             [regular, relaxed]
+    avoid:
+      WaistDefinition:     [defined]
+      FitType:             [slim, tailored]                # at midsection
+    notes: Straight-cut kurta, regular-fit bandhgala. Avoid skin-tight
+      shirts.
+
+  "Very Large":
+    flatters:
+      WaistDefinition:     [empire, undefined]
+      FitType:             [relaxed, regular]
+      SilhouetteContour:   [a_line, straight]
+      FabricDrape:         [soft_structured, crisp]
+    avoid:
+      WaistDefinition:     [defined]
+      FitType:             [slim, tailored]
+      SilhouetteContour:   [fitted, tapered]
+    notes: A-line long kurta over pyjama, A-line sherwani, pathani suit.
+      Avoid fitted shirts tucked tight.

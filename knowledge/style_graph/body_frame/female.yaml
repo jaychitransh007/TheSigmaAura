@@ -1,0 +1,843 @@
+# Body frame → garment attribute mapping (FEMALE, Indian urban context)
+#
+# For every value of every body-frame user attribute, the garment attribute
+# values to prefer (`flatters`), avoid (`avoid`), and short stylist notes
+# grounded in Indian urban dressing — saree, kurta, anarkali, lehenga,
+# salwar suits, plus Western coords.
+#
+# Garment attribute values come from `modules/style_engine/configs/config/garment_attributes.json`.
+# User attribute values come from `prompt/body_type_analysis.md`,
+# `prompt/other_details_analysis.md`, and `modules/user/src/user/interpreter.py`.
+#
+# Composition rule: when multiple body-frame signals point at the same
+# garment attribute, intersect the `flatters` lists and union the `avoid`
+# lists. Conflicts resolve by precedence (BodyShape > FrameStructure >
+# others) and by the user's risk_tolerance / archetype overlay.
+
+BodyShape:
+  Hourglass:
+    flatters:
+      SilhouetteContour:   [fitted, wrap, peplum, mermaid]
+      SilhouetteType:      [fitted, wrap, mermaid]
+      FitType:             [slim, tailored]
+      FitEase:             [regular, slim]
+      WaistDefinition:     [defined, cinched, belted, natural]
+      VolumeProfile:       [flat, moderate]
+      StructuralFocus:     [waist]
+      BodyFocusZone:       [waist]
+      VerticalWeightBias:  [balanced]
+      ConstructionDetail:  [ruched, gathered]
+    avoid:
+      SilhouetteContour:   [box]
+      SilhouetteType:      [boxy, oversized]
+      FitType:             [boxy, loose]
+      FitEase:             [oversized]
+      WaistDefinition:     [undefined, dropped, empire]
+      VolumeProfile:       [voluminous, exaggerated]
+    notes: >
+      The defined waist is the asset — every silhouette should honour it.
+      Anarkali only with a belt or fitted yoke; mermaid lehenga; lehenga
+      choli with cinched waist; saree with fitted blouse; fit-and-flare
+      kurta. Drop-waist tunics, boxy oversized kurtas, and shapeless
+      kaftans flatten the natural curve.
+
+  Pear:
+    flatters:
+      SilhouetteContour:   [a_line, fitted, wrap, peplum, empire]
+      SilhouetteType:      [fitted, a_line, wrap, peplum, empire]
+      FitType:             [slim, tailored]              # for tops
+      WaistDefinition:     [defined, empire, natural]
+      HipDefinition:       [undefined, flared]            # flow over hips, don't cup
+      ShoulderStructure:   [extended, padded, sculpted]   # broaden shoulder line
+      NecklineType:        [boat, square, sweetheart, asymmetric]   # asymmetric covers one-shouldered cholis (off-shoulder isn't in canonical NecklineType)
+      StructuralFocus:     [shoulder, neckline]
+      BodyFocusZone:       [shoulders, bust, face_neck]
+      VerticalWeightBias:  [upper]
+      VolumeProfile:       [moderate]                     # bottom can carry more
+      EmbellishmentZone:   [shoulder, neckline]
+      PatternScale:        [medium, large]                # for top
+    avoid:
+      SilhouetteContour:   [tapered, mermaid]
+      SilhouetteType:      [tapered]
+      FitType:             [boxy]                         # at top — masks shoulders
+      HipDefinition:       [tapered, shaped]              # cups bigger hips
+      EmbellishmentZone:   [hem]                          # draws eye down (hip-zone embellishment maps to hem in canonical taxonomy)
+      ShoulderStructure:   [dropped]                      # narrows shoulder line
+    notes: >
+      Anarkali is the universal pear-friendly silhouette — A-line flares
+      from bust, masks heavier hips, draws eye to embellished yoke. Also:
+      structured kurti + flared palazzo (volume on volume only if length
+      is right), saree with statement blouse + heavy pallu on shoulder,
+      lehenga with embellished choli + plain skirt. Avoid skinny jeans
+      with cropped tops, mermaid lehengas, and bottom-heavy embroidery.
+
+  Inverted Triangle:
+    flatters:
+      SilhouetteContour:   [a_line, flared, empire, asymmetrical]
+      SilhouetteType:      [a_line, flared, empire, relaxed]
+      VolumeProfile:       [voluminous]                   # at bottom slot only — top stays moderate (see notes)
+      WaistDefinition:     [empire, natural, undefined]
+      HipDefinition:       [flared, shaped]
+      NecklineType:        [v_neck, scoop, sweetheart]    # softens shoulder
+      ShoulderStructure:   [natural]
+      VerticalWeightBias:  [lower]
+      BodyFocusZone:       [hips, legs, full_length]
+      EmbellishmentZone:   [hem, waist]                   # hip-zone maps to hem; waist embellishment also draws weight down
+      PatternScale:        [medium, large]                 # larger scale on bottom slot; top slot stays subtle — handled by per-slot recipe spec
+    avoid:
+      SilhouetteContour:   [box, peplum]                 # peplum at hip widens
+      ShoulderStructure:   [extended, padded, sculpted]   # broadens further
+      NecklineType:        [boat, square, halter]         # widens shoulder
+      EmbellishmentZone:   [shoulder]
+    notes: >
+      Goal: balance broader shoulders by adding visual weight below the
+      waist. Anarkali (gold standard), A-line lehenga (NEVER mermaid),
+      palazzo + simple kurti, salwar with structured kameez, saree with
+      simple blouse + heavy pallu wrapped to fall on lower body. Avoid
+      saree blouses with puffed sleeves, lehengas with shoulder embroidery,
+      sherwani-style structured shoulders.
+
+  Rectangle:
+    flatters:
+      SilhouetteContour:   [peplum, wrap, fitted, a_line, empire]
+      SilhouetteType:      [peplum, wrap, fitted, a_line, empire]
+      WaistDefinition:     [defined, cinched, belted, empire]
+      HipDefinition:       [shaped, flared]
+      ConstructionDetail:  [ruched, gathered, draped]
+      ShoulderStructure:   [natural, sculpted]
+      VolumeProfile:       [moderate]                     # mid-section adds curve
+      StructuralFocus:     [waist]
+      BodyFocusZone:       [waist, hips]
+      EmbellishmentZone:   [waist, neckline]
+    avoid:
+      SilhouetteContour:   [straight, box, tapered]
+      SilhouetteType:      [straight, boxy, oversized]
+      FitType:             [boxy, loose]
+      WaistDefinition:     [undefined, dropped]
+      ShoulderStructure:   [padded]                       # exaggerates straight up-down
+    notes: >
+      Goal: create the illusion of curve at waist and hip. Belted
+      anarkali, peplum kurti, lehenga choli with cinched choli + flared
+      lehenga (extra hip flare), saree with embellished waist border,
+      wrap dresses, ruched waistlines. A simple straight kurta with
+      churidar emphasises the rectangle — needs a belt or peplum.
+
+  Apple:
+    flatters:
+      SilhouetteContour:   [a_line, empire, asymmetrical, flared]
+      SilhouetteType:      [a_line, empire, flared, relaxed]
+      WaistDefinition:     [empire, undefined]
+      NecklineType:        [v_neck, scoop, sweetheart]
+      NecklineDepth:       [moderate, deep]               # vertical line lengthens torso
+      FabricDrape:         [fluid, soft_structured]
+      FabricWeight:        [light, medium]
+      VolumeProfile:       [moderate]                     # at top
+      GarmentLength:       [knee, calf, floor]            # longer tunics over midsection
+      ConstructionDetail:  [draped, gathered]             # below bust, not at waist
+      LineDirection:       [vertical]
+      StructuralFocus:     [neckline, shoulder]
+      VerticalWeightBias:  [upper]                        # draw eye up to face
+    avoid:
+      SilhouetteContour:   [fitted, peplum, wrap]         # cinches midsection
+      WaistDefinition:     [defined, cinched, belted]
+      NecklineType:        [crew, high_neck]              # makes torso look shorter
+      FabricDrape:         [rigid, sculpted]              # unforgiving at midsection
+      VolumeProfile:       [flat]                         # too body-skimming
+      ConstructionDetail:  [ruched]                       # at waist — emphasises fullness
+    notes: >
+      Empire-waist anarkali is the perfect Apple silhouette — it skims
+      the midsection without clinging. Also: A-line kurta worn long over
+      churidar/leggings, kaftan, A-line lehenga with empire-waist choli,
+      saree with empire-style blouse and pallu draped to camouflage
+      midsection. Avoid waist belts, fitted bodices, mermaid silhouettes,
+      and cropped tops.
+
+  Diamond:
+    flatters:
+      SilhouetteContour:   [a_line, empire, asymmetrical]
+      SilhouetteType:      [a_line, empire, relaxed]
+      WaistDefinition:     [empire, undefined]
+      NecklineType:        [v_neck, scoop, sweetheart, boat]
+      NecklineDepth:       [moderate, deep]
+      ShoulderStructure:   [extended, sculpted]           # broaden shoulder line for balance
+      FabricDrape:         [fluid, soft_structured]
+      VolumeProfile:       [moderate]
+      StructuralFocus:     [neckline, shoulder]
+      EmbellishmentZone:   [neckline, shoulder]
+      LineDirection:       [vertical]
+    avoid:
+      SilhouetteContour:   [fitted, peplum, mermaid, tapered]
+      WaistDefinition:     [defined, cinched, belted]
+      ShoulderStructure:   [dropped]
+      VolumeProfile:       [exaggerated]                  # at midsection
+      ConstructionDetail:  [ruched]                       # at waist
+    notes: >
+      Diamond carries fullness primarily at the midsection with narrower
+      shoulders and hips. Strategy: broaden shoulders, draw eye up,
+      empire-waist silhouettes that skim. Anarkali with extended-shoulder
+      yoke, off-shoulder choli, statement neckline saree blouse,
+      structured A-line kurta. Bandhgala with structured shoulder if
+      attending a formal event.
+
+  Trapezoid:
+    flatters:
+      SilhouetteContour:   [a_line, fitted, wrap, flared]
+      SilhouetteType:      [fitted, a_line, wrap, flared]
+      WaistDefinition:     [natural, defined]
+      HipDefinition:       [flared, shaped]
+      VolumeProfile:       [moderate]
+      VerticalWeightBias:  [balanced, lower]
+      BodyFocusZone:       [waist, hips]
+    avoid:
+      SilhouetteContour:   [box, mermaid]
+      VolumeProfile:       [exaggerated]
+      ShoulderStructure:   [extended, padded]             # makes shoulders dominate
+    notes: >
+      Trapezoid (athletic with defined waist) wears most cuts well —
+      celebrate the athletic frame. Saree with structured blouse,
+      fitted lehenga choli, A-line anarkali, jeans + flowy kurti, palazzo
+      + tucked structured shirt. Avoid heavy shoulder padding (already
+      balanced) and rigid mermaid hems.
+
+ShoulderToHipRatio:
+  Shoulders Much Wider:
+    flatters:
+      ShoulderStructure:   [natural]
+      NecklineType:        [v_neck, scoop, sweetheart]
+      VolumeProfile:       [moderate, voluminous]         # at bottom
+      EmbellishmentZone:   [hem]                          # draws eye to lower body
+      LineDirection:       [vertical]
+    avoid:
+      ShoulderStructure:   [extended, padded, sculpted]
+      NecklineType:        [boat, halter, square]         # broaden top
+      EmbellishmentZone:   [shoulder]
+      VolumeProfile:       [exaggerated]                  # at top
+    notes: Same family as Inverted Triangle BodyShape; same play — narrow
+      the shoulder line, widen the bottom.
+
+  Shoulders Slightly Wider:
+    flatters:
+      ShoulderStructure:   [natural]
+      NecklineType:        [v_neck, scoop]
+      VolumeProfile:       [moderate]                     # at bottom
+    avoid:
+      ShoulderStructure:   [extended, padded]
+    notes: Mild correction — V-neck + flared bottom is enough.
+
+  Approximately Equal:
+    flatters:
+      ShoulderStructure:   [natural, sculpted]
+      NecklineType:        [crew, v_neck, scoop, collared, square, boat]
+      VolumeProfile:       [flat, moderate]
+    avoid: {}
+    notes: Balanced — wear what you like; no compensation needed.
+
+  Hips Slightly Wider:
+    flatters:
+      ShoulderStructure:   [extended, sculpted]
+      NecklineType:        [boat, square, sweetheart]
+      EmbellishmentZone:   [shoulder, neckline]
+      HipDefinition:       [undefined, flared]            # flow over hips
+    avoid:
+      HipDefinition:       [tapered, shaped]
+      EmbellishmentZone:   [hem]                          # don't draw eye down to wider hips
+    notes: Same family as Pear — broaden shoulder, ease over hip.
+
+  Hips Much Wider:
+    flatters:
+      ShoulderStructure:   [extended, padded, sculpted]
+      NecklineType:        [boat, square, sweetheart, asymmetric]
+      SilhouetteContour:   [a_line, empire]
+      EmbellishmentZone:   [shoulder, neckline]
+      VerticalWeightBias:  [upper]
+    avoid:
+      HipDefinition:       [tapered, shaped]
+      EmbellishmentZone:   [hem]                          # don't draw eye down to wider hips
+      ShoulderStructure:   [dropped]
+    notes: Strong Pear correction — anarkali with embellished yoke is
+      gold standard.
+
+TorsoToLegRatio:
+  Long Torso / Short Legs:
+    flatters:
+      WaistDefinition:     [defined, cinched, belted, empire]
+      GarmentLength:       [waist, hip, cropped]          # for tops, ends above natural waist
+      LineDirection:       [vertical]                     # in bottoms
+      PatternOrientation:  [vertical]                     # in bottoms
+    avoid:
+      GarmentLength:       [mid_thigh, thigh, knee]       # for tops — eats leg length
+      WaistDefinition:     [dropped, undefined]           # extends torso visually
+      PatternOrientation:  [horizontal]                   # in bottoms — shortens leg
+    notes: Hip-length kurti + high-waisted palazzo, cropped blouse + saree
+      tied high, blouse tucked into high-waisted lehenga skirt. Avoid
+      tunic-length kurtas without churidar/leggings of contrasting tone.
+
+  Balanced:
+    flatters: {}
+    avoid: {}
+    notes: Most lengths and rises work — let archetype + occasion drive.
+
+  Short Torso / Long Legs:
+    flatters:
+      GarmentLength:       [mid_thigh, thigh, knee, calf]
+      WaistDefinition:     [natural, dropped]             # elongates torso
+    avoid:
+      WaistDefinition:     [empire]                       # shortens torso further
+      GarmentLength:       [waist, hip, cropped]
+    notes: Long kurta over straight pants, tunic-length tops, saree with
+      blouse hitting natural waist (not cropped). Mid-rise rather than
+      high-rise bottoms.
+
+VerticalProportion:
+  Compact:
+    flatters:
+      LineDirection:       [vertical]
+      PatternScale:        [micro, small]
+      PatternOrientation:  [vertical]
+      ColorCount:          [single, tonal]                # monochromatic elongates
+      VerticalWeightBias:  [balanced, upper]
+      GarmentLength:       [knee, calf]                   # not floor — overwhelms
+      EmbellishmentLevel:  [minimal, subtle]
+    avoid:
+      PatternScale:        [large, oversized]
+      VolumeProfile:       [voluminous, exaggerated]
+      LineDirection:       [horizontal]
+      ColorCount:          [multi_color]
+      EmbellishmentLevel:  [heavy, statement]
+    notes: Petite proportions — go monochromatic, vertical, smaller scale.
+      Anarkali in a single tonal palette, slim-fit kurta with churidar in
+      same tone, saree with simple blouse. Avoid heavy lehengas with
+      multiple borders.
+
+  Moderate:
+    flatters: {}
+    avoid: {}
+    notes: Balanced visual proportions — wear most things.
+
+  Elongated:
+    flatters:
+      PatternScale:        [medium, large, oversized]
+      VolumeProfile:       [moderate, voluminous]
+      ColorCount:          [two_color, multi_color]
+      GarmentLength:       [floor]
+      EmbellishmentLevel:  [moderate, heavy, statement]
+    avoid:
+      PatternScale:        [micro]                        # gets visually lost on tall elongated frame
+    notes: Tall elongated frames carry voluminous lehengas, heavy
+      embroidery, multi-tonal colour stories. Floor-length anarkali, full
+      mermaid lehenga, large palla saree.
+
+VisualWeight:
+  Light:
+    flatters:
+      FabricWeight:        [very_light, light]
+      FabricDrape:         [fluid, soft_structured]
+      FabricTexture:       [smooth, sheen]
+      EdgeSharpness:       [soft, defined]
+      VolumeProfile:       [flat, moderate]
+      ConstructionDetail:  [draped, gathered]
+    avoid:
+      FabricWeight:        [heavy]
+      FabricDrape:         [rigid, sculpted]
+      VolumeProfile:       [exaggerated]
+      EdgeSharpness:       [sharp]                        # overwhelms lighter frame
+    notes: Chiffon saree, georgette anarkali, lightweight cotton kurta,
+      mulmul. Heavy banarasi silk or rigid raw silk swallow a light frame.
+
+  Medium-Light:
+    flatters:
+      FabricWeight:        [light, medium]
+      FabricDrape:         [fluid, soft_structured]
+    avoid:
+      FabricWeight:        [heavy]
+    notes: Most fabrics work; lean light-medium.
+
+  Medium:
+    flatters: {}
+    avoid: {}
+    notes: Carries any fabric weight.
+
+  Medium-Heavy:
+    flatters:
+      FabricWeight:        [medium, heavy]
+      FabricDrape:         [soft_structured, crisp, rigid]
+      EdgeSharpness:       [defined, sharp]
+    avoid:
+      FabricWeight:        [very_light]                   # disappears on solid frame
+      FabricDrape:         [fluid]                        # clings unforgivingly
+    notes: Banarasi silk, raw silk, tussar, structured cotton — beautiful.
+      Avoid sheer chiffons that cling.
+
+  Heavy:
+    flatters:
+      FabricWeight:        [medium, heavy]
+      FabricDrape:         [crisp, rigid, sculpted]
+      EdgeSharpness:       [defined, sharp]
+      VolumeProfile:       [moderate]
+      ConstructionDetail:  [pleated, none]
+    avoid:
+      FabricWeight:        [very_light, light]
+      FabricDrape:         [fluid]
+      ConstructionDetail:  [ruched, gathered]             # adds further volume
+    notes: Structured Banarasi, Kanjeevaram silk, rigid tussar, brocade.
+      Avoid fluid chiffons, anything ruched at midsection.
+
+ArmVolume:
+  Slim:
+    flatters:
+      SleeveLength:        [sleeveless, cap, short, three_quarter, full]
+      FitEase:             [regular, slim]                # at sleeves
+    avoid:
+      ConstructionDetail:  [gathered]                     # at sleeve, makes thin arms look thinner
+    notes: All sleeve lengths flatter; can wear sleeveless cholis,
+      spaghetti-strap blouses, sheer sleeves.
+
+  Medium:
+    flatters:
+      SleeveLength:        [cap, short, elbow, three_quarter, full]
+      FitEase:             [regular]
+    avoid: {}
+    notes: Most sleeve cuts work; let occasion and archetype lead.
+
+  Full:
+    flatters:
+      SleeveLength:        [three_quarter, full]
+      FitEase:             [relaxed]                      # at sleeve
+      FabricDrape:         [fluid, soft_structured]
+      ConstructionDetail:  [draped, gathered, pleated]    # sleeve gives camouflage
+    avoid:
+      SleeveLength:        [sleeveless, cap]
+      FitEase:             [slim]                         # at sleeve
+    notes: 3/4 sleeve kurta, full-sleeve anarkali, elbow-length saree
+      blouse with bell sleeve, bishop-sleeve cholis. Avoid sleeveless
+      bandhgala, halter-neck tops, tight-fit cap sleeves.
+
+BustVolume:
+  "Flat / Minimal":
+    flatters:
+      NecklineType:        [boat, halter, sweetheart, square, asymmetric]
+      ConstructionDetail:  [ruched, gathered, pleated]    # at bust
+      EmbellishmentZone:   [neckline, shoulder]
+      VolumeProfile:       [moderate]                     # at bust
+    avoid:
+      NecklineType:        [v_neck]                       # accentuates flatness
+      NecklineDepth:       [deep, very_deep]              # combined with scoop, accentuates flatness
+      FitType:             [tailored]                     # at bust if too rigid
+    notes: Halter cholis, sweetheart-neck blouses, ruched/gathered
+      bust on lehenga choli give flattering volume illusion.
+
+  Small:
+    flatters:
+      NecklineType:        [boat, scoop, square, sweetheart]
+      ConstructionDetail:  [ruched, gathered, draped]
+    avoid: {}
+    notes: Most necklines work; gather/ruche details enhance.
+
+  Medium:
+    flatters: {}
+    avoid: {}
+    notes: Carries all neckline shapes.
+
+  Prominent:
+    flatters:
+      NecklineType:        [v_neck, scoop, sweetheart, halter]
+      NecklineDepth:       [moderate]
+      FitType:             [tailored, slim]
+      ConstructionDetail:  [none]                         # at bust
+    avoid:
+      NecklineType:        [crew, high_neck, boat]        # ages bust line
+      NecklineDepth:       [closed, shallow]
+      ConstructionDetail:  [ruched, gathered, smocked]    # at bust
+    notes: V-neck saree blouse, scoop-neck kurta, sweetheart choli.
+      High-necks and ruched bust-lines add unnecessary volume. A well-
+      fitted bandhgala-collar kurta works only with a deep V slit below.
+
+  "Very Prominent":
+    flatters:
+      NecklineType:        [v_neck, scoop]
+      NecklineDepth:       [moderate, deep]
+      FitType:             [tailored]
+      FabricDrape:         [crisp, soft_structured]
+    avoid:
+      NecklineType:        [crew, high_neck, boat, halter] # halter overemphasises
+      ConstructionDetail:  [ruched, gathered, smocked]
+      FabricDrape:         [fluid]                        # clings
+    notes: Deep V kurta, scoop-neck saree blouse with structured fabric.
+      Sturdy support is a styling priority — avoid clingy chiffons at
+      bust, halter cuts, rouched bust panels.
+
+MidsectionState:
+  Flat:
+    flatters:
+      WaistDefinition:     [defined, cinched, belted, natural]
+      FitType:             [slim, tailored]
+      ConstructionDetail:  [none]
+    avoid:
+      WaistDefinition:     [empire, undefined]            # wastes the asset
+    notes: Show off a flat midsection — fitted lehenga choli, belted
+      anarkali, fitted saree blouse with low-rise saree drape.
+
+  "Moderate Fullness":
+    flatters:
+      WaistDefinition:     [natural, empire, undefined]
+      FitType:             [regular, relaxed]
+      FabricDrape:         [fluid, soft_structured]
+      ConstructionDetail:  [draped, gathered]             # below waist, not at it
+    avoid:
+      WaistDefinition:     [cinched, belted]
+      ConstructionDetail:  [ruched]                       # at midsection
+      FabricDrape:         [rigid]                        # at midsection
+    notes: A-line anarkali, empire-waist kurta, kaftan, saree pallu
+      draped to skim midsection. Skip belt-cinched lehengas.
+
+  "Significant Fullness":
+    flatters:
+      WaistDefinition:     [empire, undefined]
+      FitType:             [regular, relaxed]
+      SilhouetteContour:   [a_line, empire, asymmetrical]
+      FabricDrape:         [fluid, soft_structured]
+      GarmentLength:       [knee, calf, floor]            # longer to skim
+      ConstructionDetail:  [draped]
+    avoid:
+      WaistDefinition:     [defined, cinched, belted]
+      SilhouetteContour:   [fitted, peplum, mermaid]
+      ConstructionDetail:  [ruched, smocked]
+      FitType:             [slim, tailored]
+    notes: Empire-waist anarkali (essential), kaftan, A-line floor-length
+      kurta, layered saree drape (Bengali or Maharashtrian style with
+      generous pallu). Avoid all waist-emphasising silhouettes.
+
+ShoulderSlope:
+  Square:
+    flatters:
+      ShoulderStructure:   [natural, dropped]             # softens square
+      NecklineType:        [v_neck, scoop, sweetheart]
+    avoid:
+      ShoulderStructure:   [extended, padded, sculpted]
+      NecklineType:        [boat, square, halter]
+    notes: Soften the square line — dropped shoulder kurta, V-neck
+      saree blouse. Avoid heavily padded sherwani-style shoulders.
+
+  Average:
+    flatters:
+      ShoulderStructure:   [natural, sculpted]
+      NecklineType:        [crew, v_neck, scoop, collared, boat, square]
+    avoid: {}
+    notes: Most cuts work.
+
+  Sloped:
+    flatters:
+      ShoulderStructure:   [extended, padded, sculpted]
+      NecklineType:        [boat, square, halter]         # creates horizontal line
+      EmbellishmentZone:   [shoulder]                     # adds visual weight
+    avoid:
+      ShoulderStructure:   [dropped]
+      NecklineType:        [v_neck]
+      NecklineDepth:       [deep, very_deep]              # extends sloped shoulder line further
+    notes: Build the shoulder line — structured kurta yoke, padded
+      anarkali, boat-neck saree blouse. Heavy zardozi work on shoulders
+      of bridal lehenga choli.
+
+NeckLength:
+  Short:
+    flatters:
+      NecklineType:        [v_neck, scoop, sweetheart, asymmetric]
+      NecklineDepth:       [moderate, deep, very_deep]
+      LineDirection:       [vertical]
+    avoid:
+      NecklineType:        [crew, high_neck, mandarin, boat]   # boat is horizontal — visually shortens neck further
+      NecklineDepth:       [closed, shallow]
+    notes: Open up the neckline vertically — V-neck kurta, scoop-neck
+      blouse, sweetheart choli. Avoid bandhgala collars, mandarin-collar
+      kurta, choker-style high necks. Boat-neck looks horizontal and
+      shortens an already-short neck.
+
+  Average:
+    flatters:
+      NecklineType:        [crew, v_neck, scoop, collared, square, boat, sweetheart]
+    avoid: {}
+    notes: All necklines work.
+
+  Long:
+    flatters:
+      NecklineType:        [crew, high_neck, collared, mandarin, boat, halter]
+      NecklineDepth:       [closed, shallow, moderate]
+      EmbellishmentZone:   [neckline]                     # show off the canvas
+    avoid: {}
+    notes: A long neck is a styling asset — bandhgala collars, mandarin-
+      collar kurta, choker-style necklines, statement neckpieces with
+      saree all flatter. Long necks also frame heavily embellished
+      necklines beautifully.
+
+JawlineDefinition:
+  Soft:
+    flatters:
+      NecklineType:        [collared, mandarin, square, boat]   # adds structure
+      EdgeSharpness:       [defined, sharp]
+    avoid:
+      NecklineType:        [scoop, sweetheart]                  # too round
+      EdgeSharpness:       [soft]
+    notes: Add structural lines near the face — collared shirt under
+      bandi, mandarin-collar kurta, square-neck saree blouse.
+
+  Balanced:
+    flatters:
+      NecklineType:        [crew, v_neck, scoop, collared, square, boat]
+    avoid: {}
+    notes: All neckline shapes work.
+
+  Sharp:
+    flatters:
+      NecklineType:        [scoop, sweetheart, boat]    # softens
+      EdgeSharpness:       [soft]
+    avoid:
+      NecklineType:        [square, mandarin, collared]          # mirrors sharp
+      EdgeSharpness:       [sharp]
+    notes: Soften the angular jaw — scoop-neck kurta, sweetheart blouse,
+      off-shoulder choli. Avoid mandarin collars + sharp tailoring head-
+      to-toe (looks severe).
+
+FaceShape:
+  Oval:
+    flatters:
+      NecklineType:        [crew, v_neck, scoop, collared, square, boat, sweetheart, halter]
+    avoid: {}
+    notes: All neckline shapes work — balanced canvas.
+
+  Round:
+    flatters:
+      NecklineType:        [v_neck, sweetheart]
+      NecklineDepth:       [moderate, deep]
+      LineDirection:       [vertical]
+    avoid:
+      NecklineType:        [crew, scoop, boat]                  # echoes round
+      NecklineDepth:       [closed, shallow]
+    notes: Lengthen the face — V-neck kurta, sweetheart choli. Avoid
+      crew-neck closed silhouettes that mirror round.
+
+  Square:
+    flatters:
+      NecklineType:        [scoop, sweetheart, v_neck]
+      EdgeSharpness:       [soft]
+    avoid:
+      NecklineType:        [square, boat]                       # mirrors square jaw
+      EdgeSharpness:       [sharp]
+    notes: Soften strong jaw — round/scoop necklines, fluid drape.
+
+  Rectangle:
+    flatters:
+      NecklineType:        [scoop, sweetheart, boat, halter]
+      NecklineDepth:       [moderate]
+    avoid:
+      NecklineType:        [v_neck, square]                     # extends length
+    notes: Don't elongate further — wide necklines balance proportions.
+
+  Oblong:
+    flatters:
+      NecklineType:        [crew, scoop, boat, halter, square]
+      NecklineDepth:       [shallow, moderate]
+    avoid:
+      NecklineType:        [v_neck]
+      NecklineDepth:       [deep, very_deep]
+    notes: Boat-neck saree blouse, crew-neck kurta — break the vertical line.
+
+  Heart:
+    flatters:
+      NecklineType:        [scoop, square, boat, sweetheart]
+    avoid:
+      NecklineType:        [v_neck, halter]                     # mirrors pointed chin
+    notes: Balance wide forehead, narrow chin with rounded/wide necklines.
+
+  Diamond:
+    flatters:
+      NecklineType:        [scoop, sweetheart, v_neck]
+      NecklineDepth:       [moderate]
+    avoid:
+      NecklineType:        [boat, square]                       # widens cheekbones further
+    notes: Soften prominent cheekbones with curved necklines.
+
+  Triangle:
+    flatters:
+      NecklineType:        [boat, square, asymmetric]
+      EmbellishmentZone:   [shoulder, neckline]
+    avoid:
+      NecklineType:        [v_neck]
+    notes: Wider top half balances broader jaw — boat-neck saree blouse,
+      embellished shoulder yoke on anarkali.
+
+HairLength:
+  Cropped:
+    flatters:
+      NecklineType:        [crew, collared, mandarin, boat, square]
+      EmbellishmentZone:   [neckline]                           # fully visible
+    avoid: {}
+    notes: Bold neckline embellishment shines — face-framing earrings
+      take centre stage.
+
+  Short:
+    flatters:
+      NecklineType:        [crew, scoop, boat, square, collared]
+      EmbellishmentZone:   [neckline, shoulder]
+    avoid: {}
+    notes: Bob/lob length frames the upper neckline area — make it
+      a styling asset.
+
+  Medium:
+    flatters:
+      NecklineType:        [v_neck, scoop, square, sweetheart, halter]
+      EmbellishmentZone:   [neckline]
+    avoid:
+      EmbellishmentZone:   [allover]                            # competes with hair-frame
+    notes: Versatile — hair frames most necklines without overwhelming.
+
+  Long:
+    flatters:
+      NecklineType:        [v_neck, scoop, sweetheart, boat, halter]
+      NecklineDepth:       [moderate, deep]
+      EmbellishmentZone:   [back, hem]                          # back is visible if hair pulled aside
+    avoid: {}
+    notes: Long hair frames a deep V or off-shoulder beautifully. Back
+      embellishment on a saree blouse only reads if hair is styled aside.
+
+FrameStructure:
+  "Light and Narrow":
+    flatters:
+      FabricWeight:        [very_light, light]
+      FabricDrape:         [fluid, soft_structured]
+      VolumeProfile:       [flat, moderate]
+      EdgeSharpness:       [soft, defined]
+    avoid:
+      FabricWeight:        [heavy]
+      FabricDrape:         [rigid, sculpted]
+      VolumeProfile:       [exaggerated]
+    notes: Chiffon, georgette, mulmul, light cotton. Avoid heavy
+      Banarasi/Kanjeevaram (overwhelms).
+
+  "Light and Broad":
+    flatters:
+      FabricWeight:        [light, medium]
+      FabricDrape:         [soft_structured, fluid]
+    avoid:
+      FabricWeight:        [heavy]
+    notes: Lightweight but with some structure — soft silk, light tussar.
+
+  "Medium and Balanced":
+    flatters:
+      FabricWeight:        [light, medium]
+      FabricDrape:         [fluid, soft_structured, crisp]
+    avoid: {}
+    notes: Most fabrics work — let occasion lead.
+
+  "Solid and Narrow":
+    flatters:
+      FabricWeight:        [medium, heavy]
+      FabricDrape:         [soft_structured, crisp]
+    avoid:
+      FabricDrape:         [fluid]                              # clings on solid frame
+    notes: Tussar, raw silk, structured cotton — silhouette stays clean.
+
+  "Solid and Balanced":
+    flatters:
+      FabricWeight:        [medium, heavy]
+      FabricDrape:         [crisp, rigid, sculpted]
+      EdgeSharpness:       [defined, sharp]
+    avoid:
+      FabricWeight:        [very_light]
+    notes: Banarasi silk, Kanjeevaram, brocade lehenga — fabric carries
+      the frame beautifully.
+
+  "Solid and Broad":
+    flatters:
+      FabricWeight:        [medium, heavy]
+      FabricDrape:         [crisp, rigid, sculpted]
+      EdgeSharpness:       [sharp]
+      VolumeProfile:       [moderate]
+    avoid:
+      FabricWeight:        [very_light, light]
+      FabricDrape:         [fluid]
+      VolumeProfile:       [exaggerated]
+    notes: Structured silk, brocade, heavy zardozi — frame supports
+      generous fabric without disappearing under it. Avoid clingy
+      fluid drapes.
+
+HeightCategory:
+  Petite:
+    flatters:
+      GarmentLength:       [waist, hip, knee, calf]             # nothing floor-grazing without altering
+      PatternScale:        [micro, small]
+      LineDirection:       [vertical]
+      VolumeProfile:       [flat, moderate]
+      ColorCount:          [single, tonal]
+      EmbellishmentLevel:  [minimal, subtle, moderate]
+    avoid:
+      GarmentLength:       [floor]                              # overwhelms unless altered
+      PatternScale:        [large, oversized]
+      VolumeProfile:       [voluminous, exaggerated]
+      EmbellishmentLevel:  [heavy, statement]
+    notes: Calf-length anarkali, mid-rise lehenga, well-altered saree
+      drape, cropped jackets, slim-fit kurtas. Avoid trail-length
+      lehengas with heavy borders, oversized cholis.
+
+  Average:
+    flatters: {}
+    avoid: {}
+    notes: All lengths and scales work.
+
+  Tall:
+    flatters:
+      GarmentLength:       [calf, ankle, floor]
+      PatternScale:        [medium, large, oversized]
+      VolumeProfile:       [moderate, voluminous]
+      EmbellishmentLevel:  [moderate, heavy, statement]
+    avoid:
+      PatternScale:        [micro]                              # gets lost on tall frame
+      GarmentLength:       [waist, hip]                         # disproportionate
+    notes: Floor-length anarkali, full-volume lehenga, heavy zardozi
+      bridal — tall frames carry it.
+
+WaistSizeBand:
+  "Very Small":
+    flatters:
+      WaistDefinition:     [defined, cinched, belted]
+      FitType:             [tailored, slim]
+      ConstructionDetail:  [none, ruched]
+    avoid: {}
+    notes: Show the waist — fitted choli, cinched anarkali, belt-tied saree.
+
+  Small:
+    flatters:
+      WaistDefinition:     [defined, cinched, belted, natural]
+      FitType:             [slim, tailored, regular]
+    avoid: {}
+    notes: Most waist treatments flatter; fitted styles especially.
+
+  Medium:
+    flatters:
+      WaistDefinition:     [natural, defined]
+      FitType:             [regular, slim]
+    avoid: {}
+    notes: Natural waist treatment without aggressive cinching.
+
+  Large:
+    flatters:
+      WaistDefinition:     [empire, natural, undefined]
+      FitType:             [regular, relaxed]
+      ConstructionDetail:  [draped]
+    avoid:
+      WaistDefinition:     [cinched, belted]
+      ConstructionDetail:  [ruched, smocked]
+    notes: Empire-waist anarkali, A-line kurta, straight-fit saree
+      blouse with skim-not-cling drape.
+
+  "Very Large":
+    flatters:
+      WaistDefinition:     [empire, undefined]
+      FitType:             [relaxed, regular]
+      SilhouetteContour:   [a_line, empire]
+      FabricDrape:         [fluid, soft_structured]
+    avoid:
+      WaistDefinition:     [defined, cinched, belted]
+      FitType:             [slim, tailored]
+      SilhouetteContour:   [fitted, peplum, mermaid]
+    notes: Floor-length empire anarkali, kaftan, layered saree drape
+      with generous pallu — silhouette flows past the waist.
