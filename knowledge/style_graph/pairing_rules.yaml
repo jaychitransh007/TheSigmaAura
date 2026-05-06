@@ -168,20 +168,25 @@ pairing_rules:
       two_patterns:
         description: |
           2 patterned slots is OK ONLY if:
-          - Different PatternScale (micro + medium / small + large)
+          - Different PatternScale (the compatibility_matrix encodes
+            which scale pairs work — see below)
           - Same color family or same ContrastLevel
-          - At least one is a "small-scale" pattern (micro / small)
+          The matrix is the single source of truth — it captures both
+          the "different scale" requirement and the specific exclusions
+          (medium+medium reads as no scale variety; large+oversized is
+          chaotic; oversized + medium-or-larger is overwhelming).
         # Cross-slot constraint: if BOTH slots are patterned, their
         # PatternScale values should differ. The compatibility_matrix
         # is the single source of truth for which pairs are valid;
         # `flatters` lists every value that can appear in at least
         # one valid pair, and `avoid` is empty (no PatternScale value
         # is universally disallowed — only specific pairs).
+        # The matrix is symmetric: if A allows B, B allows A.
         compatibility_matrix:
-          micro:     [small, medium, large, oversized]
-          small:     [micro, medium, large, oversized]
-          medium:    [micro, small, large]                          # avoid medium+medium (no scale variety)
-          large:     [micro, small, medium]                         # avoid large+large + large+oversized
+          micro:     [small, medium, large, oversized, mixed]
+          small:     [micro, medium, large, oversized, mixed]
+          medium:    [micro, small, large, mixed]                  # avoid medium+medium (no scale variety)
+          large:     [micro, small, medium]                         # avoid large+large + large+oversized + large+mixed
           oversized: [micro, small]                                 # oversized only with smallest scales
           mixed:     [micro, small, medium]                         # mixed-scale slot needs a quiet partner
         flatters:
