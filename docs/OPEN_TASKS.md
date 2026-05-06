@@ -171,20 +171,21 @@ Profile the current 2.9s pgvector query — likely missing HNSW index, doing pre
 
 Pick provider: `claude-haiku-4-5` (recommended for conversational handling) or `gpt-4.1-nano` (cheapest). Build shadow mode: keep `gpt-5-mini` as production planner; call new model in parallel; log both. Run shadow for 2-3 days on real traffic. Manually review 50-100 disagreements; identify systematic errors. Calibrate confidence threshold based on actual error rates. Add hard-rule fallback triggers: schema validation failures, incoherent intent/action combos, multi-clause conditional messages, follow-up patterns ("more X", "different from"). Promote new model to production with fallback to `gpt-5-mini` reasoning for low-confidence. Expected: 7.1s → <500ms.
 
+**Status (May 13 2026):** shadow infrastructure shipped. Set `AURA_PLANNER_SHADOW_MODEL=gpt-4.1-nano` (or any OpenAI model id) in the deploy env to enable. Production response is unaffected; shadow runs in a daemon thread after the production response returns and writes a structured log line via the `aura.planner.shadow` logger (`shadow_compare` event with `intent_match`, `action_match`, latency comparison, both confidences, and the user message snippet). Add `claude-haiku-4-5` shadow vendor adapter when ready to evaluate that path. Promotion to production (with low-confidence fallback to `gpt-5-mini`) blocked on 2-3 days of accumulated traffic + manual review of 50-100 disagreements.
+
 ### 1.4 Switch architect + composer to faster reasoning model (2-3 days)
 
 A/B test `claude-sonnet-4-7` and `gemini-2.5-pro` against `gpt-5.4` on the eval set (Phase 4.6). Score outputs against held-out cases and against the existing rater's judgment as proxy. Pick winner; ship config change. Expected: architect 27.6s → ~12-15s; composer 13.3s → ~6-8s.
 
-### 1.5 Add streaming card delivery (1-2 days)
-
-Refactor the recommendation endpoint to stream NDJSON or SSE. Frontend renders each card as it arrives, not all-at-once. Skeleton states render in <100ms while backend works. Try-on starts loading on each card the moment it renders; doesn't block visibility. Real latency unchanged; perceived latency drops dramatically (~30s).
+**Status (May 13 2026):** blocked on Phase 4.6 eval set (100-500 hand-curated representative queries). Without the eval, we'd be A/B-ing against the existing rater's judgment of itself, which closes the loop. Once Phase 4.6 lands, this task is a config-flip + comparison run. Carry into Phase 4 sequencing if Phase 4.6 ships before the rest of Phase 1 lands; otherwise gate this on eval completion.
 
 ### Phase 1 test gate
 
-- Cold-path latency p95: ≤30s (from 64s)
-- Perceived latency p95: ≤15s (with streaming)
-- Quality on eval set: ≥95% agreement with current production
+- Cold-path latency p95: ≤30s (from 64s, after 1.1 rater + 1.2 retrieval RPC ship)
+- Quality on eval set: ≥95% agreement with current production (deferred until eval set exists)
 - No regressions on the 50 hand-picked test queries
+
+> **Note:** streaming card delivery (NDJSON/SSE + frontend) was previously listed here as 1.5. Moved to **Phase 6** so the Phase 1 push focuses purely on real-latency wins, not perceived-latency UX. Phase 6 now owns all streaming work (cards + try-on).
 
 ---
 
@@ -353,19 +354,29 @@ Feature flag rollout: 10% → 50% → 100%.
 
 ---
 
-## Phase 6 — Try-on async streaming (P1, Weeks 8-10, parallel with Phase 5)
+## Phase 6 — Streaming delivery: cards + try-on (P1, Weeks 8-10, parallel with Phase 5)
 
-**Goal:** decouple try-on from card rendering. Cards visible <3s; try-on streams in 10-30s after.
+**Goal:** decouple rendering from total-pipeline wall time. Cards visible <3s as the composer/rater finalizes them; try-on streams in 10-30s after. Real latency unchanged from Phase 1-5; perceived latency drops dramatically.
 
-### 6.1 SSE try-on streaming endpoint (3-5 days)
+This phase is intentionally last in the active push because perceived-latency wins should layer on top of an already-fast real-latency pipeline — streaming a 60s pipeline into the UI just spreads the wait. After Phases 1-5 land, the cold-path is ~25-30s and the cache-hit path is <500ms; streaming converts those into <3s first-card-visible across the board.
+
+### 6.1 NDJSON/SSE recommendation endpoint (1-2 days)
+
+Refactor the recommendation endpoint to stream NDJSON or SSE. Server-side: emit each composed+rated card as soon as it's ready instead of buffering all 6. Skeleton states render on the frontend within <100ms of request submission. Real latency unchanged; perceived latency drops to first-card-visible (~3s on cache hit, <8s on cache miss after Phase 1-5).
+
+### 6.2 Frontend card streaming consumer (1-2 days)
+
+Update `modules/agentic_application/src/agentic_application/ui.py` to consume the streamed cards as they arrive. Each card renders independently; try-on starts loading on each card the moment it renders, doesn't block visibility of others.
+
+### 6.3 SSE try-on streaming endpoint (3-5 days)
 
 New endpoint `GET /v1/turns/{turn_id}/tryon/stream`. Server-side: as each Gemini render completes, push to the SSE channel. Token-based authentication.
 
-### 6.2 Frontend SSE consumer (2-3 days)
+### 6.4 Frontend try-on SSE consumer (2-3 days)
 
-Cards render with try-on placeholders. SSE updates fill in try-on images as they complete. Update `modules/agentic_application/src/agentic_application/ui.py`.
+Cards render with try-on placeholders (from 6.2). SSE updates from 6.3 fill in try-on images as they complete.
 
-### 6.3 Pre-warm worker for predicted recipes (1 week)
+### 6.5 Pre-warm worker for predicted recipes (1 week)
 
 `ops/scripts/tryon_prewarm.py`. For each active user, predict top-N likely recipe cells based on profile + `recent_user_actions`. Resolve to garment sets via Phase 4 composition engine. Render Gemini try-on; write to existing try-on cache. Per-user pre-warm budget cap (max 10 renders/user/day) to prevent runaway Gemini cost.
 
@@ -373,9 +384,10 @@ Cards render with try-on placeholders. SSE updates fill in try-on images as they
 
 ### Phase 6 test gate
 
-- Cards visible <3s
-- Try-on images stream in 10-30s after
+- First card visible p95: <3s on cache hit, <8s on cache miss
+- Try-on images stream in 10-30s after card visibility
 - Pre-warm cache hit rate: ≥40% on alpha traffic by week 4
+- No regression in real-latency p95 from Phase 5 baseline
 
 ---
 
