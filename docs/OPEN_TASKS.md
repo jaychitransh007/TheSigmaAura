@@ -143,12 +143,32 @@ Build `ops/scripts/architect_replay_eval.py` that:
 
 **The anchor document for the latency-reduction work.** Replaces the prior pre-launch / launch / post-launch framing with a 7-phase execution plan, each with explicit test gates. We test query response after every phase before progressing.
 
+## Status as of May 14 2026
+
+| Phase | Status | Notes |
+|---|---|---|
+| Phase 1 — Operational quick wins | ✅ **SHIPPED + verified** | Rater parallelization, retrieval RPC fix, planner shadow infra (dormant), gpt-5.4 → gpt-5.2 architect/composer swap. ~6s saved per turn. |
+| Phase 2 — Caching layer | ✅ **SHIPPED + applied to staging** | All 4 migrations live on Aura-Staging. **Hit rate ~0% in practice** because planner output is non-deterministic — same query produces different occasion_signal + style_goal. User declined to constrain planner. Phase 4 fixes the root cause; Phase 2 infrastructure compounds with it then. |
+| Phase 3 — Prompt compression | ⏸ Not started | ~1.5 weeks. Realistic ~10s win on architect, ~7s on composer. |
+| Phase 4 prep (4.1, 4.4, 4.5) | ✅ **SHIPPED** | Composition semantics spec, bootstrap grid YAML loader, MIGRATED prompt markers. |
+| Phase 4.7 — Engine implementation | 🛠 **NEXT MAJOR LIFT** | ~10-13 days, 6 sub-PRs. Replaces architect LLM with deterministic YAML lookup. Architect drops 19s → 500ms; cache hit rate jumps because inputs become deterministic. |
+| Phase 4.2 — Stylist YAML review | 🔒 Blocked on human | Paid consultant pass. Output: revised YAMLs + canonical-schema fixes. |
+| Phase 4.6 — Eval set curation | 🔒 Blocked on human | 100-500 hand-curated queries with hand-rated outputs. Gates Phase 4.8 + 4.10. |
+| Phase 4.8, 4.9, 4.10 | ⏸ Gated on 4.7 + 4.6 | Quality validator, hot-path router, production rollout. |
+| Phase 5 — Composer engine | ⏸ Not started | Same pattern as 4.7 for the composer. |
+| Phase 6 — Streaming delivery | ⏸ Not started | ~2-3 weeks. Cards visible <3s on cache hit, <8s on miss. UX win independent of cache hit rate. |
+| Phase 7 — Distillation | ⏸ Months 4+, gated on 10K+ traces | distillation_traces table now live (May 14 2026 migration), accumulating data. |
+
+**Production model lineup:** architect + composer on **gpt-5.2** (was gpt-5.4); planner + rater on **gpt-5-mini**; style advisor on **gpt-5.4**. All five env-configurable via `PLANNER_MODEL`, `ARCHITECT_MODEL`, `COMPOSER_MODEL`, `RATER_MODEL`, `STYLE_ADVISOR_MODEL`.
+
+**See also:** `docs/composition_semantics.md` for the Phase 4 engine spec; `~/.claude/projects/.../memory/project_phase_2_4_status.md` for full handoff context.
+
 **Foundation already shipped:**
-- **PR #109** — `distillation_traces` table + `record_stage_trace` context manager wired into 5 stages (production-ready trace pipeline; full I/O captured per turn for future distillation training)
-- **PR #110** — bootstrap intent grid + synthetic profile pool (5,424 cells, regenerable via `ops/scripts/generate_bootstrap_grid.py`; available as Phase 4 input)
+- **PR #109** — `distillation_traces` table + `record_stage_trace` context manager wired into 5 stages (production-ready trace pipeline; full I/O captured per turn for future distillation training). Migration applied to staging on May 14 2026 — was a silent no-op until then.
+- **PR #110** — bootstrap intent grid + synthetic profile pool (5,424 cells, regenerable via `ops/scripts/generate_bootstrap_grid.py`; available as Phase 4 input). **Phase 4.4 (May 14 2026): generator now reads from `occasion.yaml` directly** — drift vector eliminated.
 - **PRs #111–#117** — 8-file style graph (~5,500 lines of Indian-urban fashion knowledge as YAMLs) covering body_frame (M+F), archetype, palette, occasion, weather, query_structure, pairing_rules. Plus 2 reusable validators (`ops/scripts/validate_style_graph_yaml.py`, `validate_style_graph_conflicts.py`).
 
-These foundations remain available; their consumers (the composition engine in Phase 4, the cache layer in Phase 2) are upcoming work below.
+These foundations remain available; their consumers (the composition engine in Phase 4, the cache layer in Phase 2) ship below.
 
 **Strategic context:**
 The composition engine (Phase 4) is the architectural endpoint that makes the YAMLs runtime-load-bearing. Phases 1–3 are operational wins that get us most of the way to sub-3s on the common path *before* the engine ships. Phases 5–7 extend the wins to the cold path and post-launch optimization.
@@ -295,7 +315,16 @@ This is **not** training data — it's the eval ground truth used for Phase 4.8 
 
 #### 4.7 Implement composition engine (1-2 weeks)
 
-New module `modules/agentic_application/src/agentic_application/composition/`. Reads 8 YAMLs from `knowledge/style_graph/`. Applies intersect/union semantics with precedence rules from 4.1. Outputs structured `direction` object matching architect's existing schema. Empty-intersection fallback: drop most-restrictive contributor by precedence; on full failure, fall through to LLM architect.
+New module `modules/agentic_application/src/agentic_application/composition/`. Reads 8 YAMLs from `knowledge/style_graph/`. Applies intersect/union semantics with precedence rules from `docs/composition_semantics.md` (PR #144 + #147). Outputs structured `direction` object matching architect's existing schema. Empty-intersection fallback per spec §3.2; on full failure, fall through to LLM architect.
+
+Decomposed into 6 sequential sub-PRs (~10-13 working days total):
+
+- **4.7a** — YAML parser module (`composition/yaml_loader.py`). Loads all 8 YAMLs into typed dataclasses at startup. Validates required fields + unknown attribute names. Pure function after load. **1-2 days, gates everything else in 4.7.**
+- **4.7b** — Per-attribute reduction (intersect ∩, union ∪, avoid wins). Pure function, heavily tested against worked examples in spec §6. **2 days.**
+- **4.7c** — Empty-intersection relaxation (drop softs in §3.3 declaration order one-at-a-time, then widen hards while preserving all `avoid`) + provenance trail. **2-3 days.**
+- **4.7d** — `compose_direction()` top-level + confidence scoring per spec §8 (penalty 0.45 on YAML gap, threshold ≥0.60) + `needs_disambiguation` signal. **2 days.**
+- **4.7e** — `query_document` rendering: composed attributes → embedding query text. Mirrors what the LLM architect emits today; tests verify the rendered query passes the architect's existing query-document constraints. **2-3 days.**
+- **4.7f** — Engine tests against the 4 worked examples in spec §6. **1 day.**
 
 #### 4.8 Quality validator (2-3 days)
 
