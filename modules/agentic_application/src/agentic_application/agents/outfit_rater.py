@@ -449,6 +449,12 @@ class OutfitRater:
         # parse the first ranked_outfits entry, accumulate raw responses
         # + token usage; we merge after `as_completed`.
         worker_count = min(len(composed_outfits), _RATE_MAX_WORKERS) or 1
+        # Warm the cached_property in the main thread so concurrent
+        # workers don't race on first-access OpenAI() construction
+        # (review of PR #122). The cached_property is not lock-protected
+        # in CPython; concurrent first-access can cause duplicate client
+        # instantiation — wasteful even if functionally correct.
+        _ = self._client
         per_outfit: List[Tuple[ComposedOutfit, Dict[str, Any], Dict[str, int], str]] = [
             (o, {}, {}, "") for o in composed_outfits
         ]

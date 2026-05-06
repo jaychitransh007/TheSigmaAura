@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
 import re
-import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
@@ -222,6 +223,36 @@ def build_planner_input(
 
 _SHADOW_LOG = logging.getLogger("aura.planner.shadow")
 
+# Phase 1.3 review (May 13 2026): pool sized for one shadow call per
+# concurrent in-flight turn. 5 is an order-of-magnitude over Aura's
+# current alpha turn rate (a handful per minute) and well below
+# OpenAI's per-account RPM ceiling. Pool is created once per process,
+# shared across all CopilotPlanner instances. Shadow mode is opt-in
+# via AURA_PLANNER_SHADOW_MODEL; when no shadow is configured anywhere
+# in the process, no threads ever get spun up.
+_SHADOW_EXECUTOR: Optional[ThreadPoolExecutor] = None
+_SHADOW_EXECUTOR_LOCK: Optional[Any] = None
+
+
+def _get_shadow_executor() -> ThreadPoolExecutor:
+    """Lazily construct a process-wide shadow executor. Idempotent."""
+    global _SHADOW_EXECUTOR, _SHADOW_EXECUTOR_LOCK
+    if _SHADOW_EXECUTOR is None:
+        if _SHADOW_EXECUTOR_LOCK is None:
+            import threading as _threading
+            _SHADOW_EXECUTOR_LOCK = _threading.Lock()
+        with _SHADOW_EXECUTOR_LOCK:
+            if _SHADOW_EXECUTOR is None:
+                _SHADOW_EXECUTOR = ThreadPoolExecutor(
+                    max_workers=5,
+                    thread_name_prefix="planner-shadow",
+                )
+                # Ensure the executor drains and shuts down cleanly on
+                # process exit so daemon-style shadow calls don't get
+                # silently aborted mid-flight.
+                atexit.register(_SHADOW_EXECUTOR.shutdown, wait=False)
+    return _SHADOW_EXECUTOR
+
 
 class CopilotPlanner:
     def __init__(
@@ -315,14 +346,18 @@ class CopilotPlanner:
         production_result: CopilotPlanResult,
         production_latency_ms: int,
     ) -> None:
-        """Fire-and-forget shadow call; never blocks the caller."""
-        thread = threading.Thread(
-            target=self._run_shadow,
-            args=(planner_input, production_result, production_latency_ms),
-            name=f"planner-shadow-{self._shadow_model}",
-            daemon=True,
+        """Fire-and-forget shadow call; never blocks the caller.
+
+        Submits to the process-wide ThreadPoolExecutor (review of PR #124)
+        so we don't pay thread-creation overhead per turn or risk runaway
+        thread counts under load.
+        """
+        _get_shadow_executor().submit(
+            self._run_shadow,
+            planner_input,
+            production_result,
+            production_latency_ms,
         )
-        thread.start()
 
     def _run_shadow(
         self,
@@ -378,7 +413,10 @@ class CopilotPlanner:
             )
             return
 
-        shadow_usage = _extract(response) or {}
+        # extract_token_usage always returns a dict with int values for
+        # the standard token keys — defensive coercions removed (review
+        # of PR #124).
+        shadow_usage = _extract(response)
         intent_match = production_result.intent == shadow_result.intent
         action_match = production_result.action == shadow_result.action
         _SHADOW_LOG.info(
@@ -396,7 +434,7 @@ class CopilotPlanner:
                 "shadow_confidence": shadow_result.intent_confidence,
                 "production_latency_ms": production_latency_ms,
                 "shadow_latency_ms": shadow_latency_ms,
-                "shadow_total_tokens": int(shadow_usage.get("total_tokens", 0) or 0),
+                "shadow_total_tokens": shadow_usage.get("total_tokens", 0),
                 "user_message": str(planner_input.get("user_message", ""))[:200],
             },
         )
