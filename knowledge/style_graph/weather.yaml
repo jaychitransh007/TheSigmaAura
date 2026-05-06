@@ -1,0 +1,270 @@
+# Weather → garment attribute mapping (Indian urban context)
+#
+# Indian climate is granular — Delhi May ≠ Bombay July ≠ Bangalore Aug ≠
+# Kashmir January. Generic 4-season Western framing collapses real
+# regional differences that matter for fabric choice (cotton vs silk vs
+# wool vs polyester blend), coverage (sleeveless vs full sleeve), and
+# layering count.
+#
+# 10 climate buckets covering Indian urban / regional weather contexts.
+# Each carries:
+#   description:     plain-English what this climate feels like
+#   indian_regions:  example Indian cities/states where it dominates
+#   temp_range_c:    rough temperature band
+#   flatters / avoid: target garment-attribute values
+#   notes:           Indian-urban stylist context
+#
+# Composition rule: weather modifies SubSeason / archetype / occasion
+# choices but never overrides them. A bridal lehenga in Delhi-cold-dry
+# adds a pashmina shawl; it doesn't become a parka.
+#
+# Canonical garment-attribute values: ./modules/style_engine/configs/config/garment_attributes.json
+
+weather:
+
+  hot_humid:
+    description: "Sticky hot — sweating immediately on walking 5 minutes"
+    indian_regions: [Mumbai summer, Chennai year-round, Goa monsoon, Kolkata summer, Kerala lowlands]
+    temp_range_c: "28-38°C, humidity >70%"
+    flatters:
+      FabricWeight:        [very_light, light]
+      FabricTexture:       [smooth, knit, matte]
+      FabricDrape:         [fluid]
+      SkinExposureLevel:   [medium, high]
+      SleeveLength:        [sleeveless, cap, short, elbow]
+      StretchLevel:        [low, moderate]
+      FitType:             [regular, relaxed]
+      FitEase:             [regular, relaxed]
+      ColorValue:          [light, mid]
+    avoid:
+      FabricWeight:        [medium, heavy]
+      FabricTexture:       [embroidered, metallic, ribbed]
+      FabricDrape:         [rigid, sculpted, crisp]
+      SkinExposureLevel:   [very_low]
+      SleeveLength:        [full]
+      FitType:             [tailored, slim]                # cling + sweat
+    notes: >
+      Cotton, mulmul, georgette, light chiffon, light linen. Fluid
+      drape that allows airflow. Silk is risky — heat retention plus
+      water spots if it rains. Skin exposure is practical, not just
+      style. Sleeveless cholis, cotton kurti + palazzo, short-sleeve
+      shirts. Avoid wool, polyester, heavy synthetics, raw silk.
+
+  hot_dry:
+    description: "Heat dome — air feels like an oven; UV brutal"
+    indian_regions: [Delhi May-June, Rajasthan summer, Gujarat May, Punjab summer]
+    temp_range_c: "38-46°C, humidity <30%"
+    flatters:
+      FabricWeight:        [very_light, light]
+      FabricTexture:       [smooth, matte, textured]
+      FabricDrape:         [fluid, soft_structured]
+      SkinExposureLevel:   [low, medium]                   # sun protection vs cooling
+      SleeveLength:        [short, elbow, three_quarter]   # arms covered for sun
+      ColorValue:          [very_light, light]             # heat reflection
+      FitType:             [regular, relaxed]
+      ColorTemperature:    [warm, neutral]
+    avoid:
+      FabricWeight:        [heavy]
+      FabricTexture:       [embroidered, metallic, ribbed]
+      FabricDrape:         [rigid, sculpted]
+      ColorValue:          [very_dark, dark]                # heat absorption
+      FitType:             [slim, tailored]                  # tight = heat trap
+      SleeveLength:        [sleeveless]                      # sun burn
+    notes: >
+      Cotton, linen, mulmul, khadi — natural fibres that breathe AND
+      block UV. White / off-white / light cream / soft beige (heat
+      reflection). Light pastels work. Loose-cut anarkali, kaftan,
+      relaxed-fit kurta with full coverage. Counter-intuitively cover
+      MORE skin than humid climate — sun is the enemy. Avoid silk
+      (heat retention) and dark colors.
+
+  warm_temperate:
+    description: "Pleasantly warm — Bangalore most days; everywhere autumn"
+    indian_regions: [Bangalore Mar-May & Sep-Nov, Pune all year ex-monsoon, Hyderabad mild months]
+    temp_range_c: "20-28°C, moderate humidity"
+    flatters:
+      FabricWeight:        [light, medium]
+      FabricTexture:       [smooth, knit, ribbed, matte, sheen]
+      FabricDrape:         [fluid, soft_structured, crisp]
+      SkinExposureLevel:   [low, medium]
+      SleeveLength:        [short, elbow, three_quarter, full]
+      StretchLevel:        [low, moderate, high]
+      FitType:             [tailored, slim, regular, relaxed]
+    avoid:
+      FabricWeight:        [heavy]                          # too warm for daily
+      FabricDrape:         [rigid, sculpted]                # mostly avoid except formal evenings
+    notes: >
+      The most flexible climate in India — almost any fabric / fit
+      works. Cotton, silk, light wool blends, knit. Layer for evenings
+      (light jacket, shawl). Bangalore weather is Aura's most flexible
+      target; rules apply mostly to evening events at this climate.
+
+  mild_pleasant:
+    description: "Crisp, comfortable — Delhi spring/autumn, the rare 'good' weeks"
+    indian_regions: [Delhi Oct-Mar transitions, Mumbai winter, Hyderabad winter]
+    temp_range_c: "15-25°C"
+    flatters:
+      FabricWeight:        [light, medium]
+      FabricTexture:       [smooth, knit, ribbed, pleated, matte, sheen, embroidered]
+      FabricDrape:         [fluid, soft_structured, crisp]
+      SkinExposureLevel:   [low, medium]
+      SleeveLength:        [elbow, three_quarter, full]
+      StretchLevel:        [low, moderate]
+      FitType:             [tailored, slim, regular]
+    avoid:
+      FabricWeight:        [very_light]                     # too thin for cool mornings
+      SleeveLength:        [sleeveless]                      # bit cool morning/evening
+    notes: >
+      Indian autumn / Delhi October — the sweet spot. Wedding season
+      sweet spot too — cotton-silk saree, structured anarkali, sherwani
+      all work without temperature stress. Layered outfits land cleanly.
+      Good time for embroidered fabrics that get heavy in summer.
+
+  cool_dry:
+    description: "Crisp cold — needs a shawl or jacket; Delhi/Punjab winter"
+    indian_regions: [Delhi Nov-Feb, Punjab winter, Haryana winter, Lucknow winter]
+    temp_range_c: "8-18°C, dry"
+    flatters:
+      FabricWeight:        [medium, heavy]
+      FabricTexture:       [knit, ribbed, textured, smooth, embroidered, pleated]
+      FabricDrape:         [soft_structured, crisp, sculpted]
+      SkinExposureLevel:   [very_low, low]
+      SleeveLength:        [three_quarter, full]
+      FitType:             [tailored, slim, regular]
+      StylingCompleteness: [needs_topwear, dual_dependency]   # implies layering
+    avoid:
+      FabricWeight:        [very_light]
+      FabricDrape:         [fluid]                            # no insulation
+      SleeveLength:        [sleeveless, cap]                  # too exposed
+      SkinExposureLevel:   [medium, high]
+    notes: >
+      Heavy silk, wool blends, structured cotton, pashmina, light
+      cashmere. Layer everything: anarkali + shawl, kurta + bandi
+      (waistcoat) over, blazer + saree blouse + saree. Wedding-season
+      heavy lehenga lands beautifully here — Delhi December-January
+      is THE Indian wedding peak. Bridal heavy zardozi reads as luxury,
+      not heat-stress.
+
+  cold_dry:
+    description: "Real winter — wool / pashmina necessary; might snow"
+    indian_regions: [Shimla winter, Kashmir Dec-Mar, Manali winter, Darjeeling winter]
+    temp_range_c: "-5 to 10°C, dry/snowy"
+    flatters:
+      FabricWeight:        [heavy]
+      FabricTexture:       [knit, ribbed, textured]
+      FabricDrape:         [rigid, sculpted, soft_structured]
+      SkinExposureLevel:   [very_low]
+      SleeveLength:        [full]
+      FitType:             [tailored, slim, regular]
+      ColorValue:          [mid, dark, very_dark]            # warmth absorption + practical
+      StylingCompleteness: [dual_dependency]                  # 3+ layers
+    avoid:
+      FabricWeight:        [very_light, light]
+      FabricTexture:       [smooth, sheen, metallic]         # cold; also slippery
+      FabricDrape:         [fluid]
+      SkinExposureLevel:   [low, medium, high]               # frostbite real
+      SleeveLength:        [sleeveless, cap, short, elbow]
+    notes: >
+      Wool, pashmina, fleece-lined, cashmere. Layered: thermal base +
+      kurta or shirt + jacket / coat / shawl. Indian: Kashmiri pheran
+      (traditional cloak), pashmina shawl over saree (wedding
+      destination guests), wool kurta-pyjama, full-length sherwani in
+      heavier weave. Avoid silk (cold against skin) and light cotton.
+
+  monsoon_warm:
+    description: "Heavy rain + warm air — Mumbai July, Kerala June-Aug"
+    indian_regions: [Mumbai Jun-Sep, Kerala Jun-Aug, Goa Jun-Sep, Chennai Oct-Nov]
+    temp_range_c: "26-32°C, humidity >85%, heavy intermittent rain"
+    flatters:
+      FabricWeight:        [very_light, light]
+      FabricTexture:       [smooth, matte]                   # water-shedding
+      FabricDrape:         [fluid]
+      SkinExposureLevel:   [medium, high]
+      SleeveLength:        [sleeveless, cap, short]
+      ColorValue:          [mid, dark]                       # water spots invisible
+      FitType:             [regular, relaxed]                 # quick-drying preferred
+    avoid:
+      FabricWeight:        [medium, heavy]
+      FabricTexture:       [embroidered, metallic, ribbed, knit, textured]
+      FabricDrape:         [rigid, sculpted, crisp]
+      ColorValue:          [very_light]                       # transparent when wet, water marks
+      SkinExposureLevel:   [very_low]                          # sticks to skin when wet
+      SleeveLength:        [full]                              # heavy when wet
+    notes: >
+      Synthetic blends counter-intuitively work well — they shed water
+      and dry fast. Polyester-cotton blend, jersey knit, lightweight
+      synthetics. Light cotton acceptable but takes long to dry.
+      AVOID silk (water spots), embroidered (hard to clean / dry),
+      pure cotton white (transparent + clings when wet), wool.
+
+  monsoon_mild:
+    description: "Cooler rain — Bangalore monsoon, Pune monsoon"
+    indian_regions: [Bangalore Jun-Aug, Pune Jun-Aug, Hyderabad late monsoon]
+    temp_range_c: "20-26°C, humidity 70%, intermittent rain"
+    flatters:
+      FabricWeight:        [light, medium]
+      FabricTexture:       [smooth, knit, matte]
+      FabricDrape:         [fluid, soft_structured]
+      SkinExposureLevel:   [low, medium]
+      SleeveLength:        [elbow, three_quarter]
+      FitType:             [regular, slim]
+      ColorValue:          [mid, dark]                       # water-mark hiding
+    avoid:
+      FabricTexture:       [embroidered, metallic, sheen]
+      FabricDrape:         [rigid]
+      ColorValue:          [very_light]
+      SleeveLength:        [sleeveless]                       # bit cool
+    notes: >
+      Cooler than Mumbai monsoon — light layering helps. Cotton kurta
+      + churidar, knit kurti + jeans, dark structured shirt + chino.
+      Carry a light water-resistant jacket. Avoid silk and heavy
+      embroidery.
+
+  high_altitude_cool:
+    description: "Hill-station summer — cool with wind, sunny"
+    indian_regions: [Shimla May-Sep, Manali Apr-Sep, Darjeeling Apr-Oct, Mussoorie summer]
+    temp_range_c: "12-22°C, dry, windy"
+    flatters:
+      FabricWeight:        [light, medium]
+      FabricTexture:       [knit, ribbed, textured, smooth]
+      FabricDrape:         [soft_structured, crisp]
+      SkinExposureLevel:   [low]
+      SleeveLength:        [three_quarter, full]
+      FitType:             [regular, slim]
+      StylingCompleteness: [needs_topwear]                    # light jacket
+    avoid:
+      FabricWeight:        [very_light, heavy]
+      FabricDrape:         [fluid]                             # wind blows it around
+      SkinExposureLevel:   [medium, high]
+      SleeveLength:        [sleeveless, cap, short]
+    notes: >
+      Hill station holiday wear. Layered cotton-knit kurti + churidar,
+      light wool blazer over kurta, structured shirt + chinos + sweater.
+      Wind matters — fluid drape (loose dupatta, flowy saree pallu)
+      becomes impractical. Stick to soft-structured.
+
+  high_altitude_cold:
+    description: "Snow / extreme cold — high mountains in winter"
+    indian_regions: [Ladakh winter, Spiti winter, Gulmarg, Sikkim high winter]
+    temp_range_c: "-20 to 5°C"
+    flatters:
+      FabricWeight:        [heavy]
+      FabricTexture:       [knit, ribbed, textured]
+      FabricDrape:         [rigid, sculpted]
+      SkinExposureLevel:   [very_low]
+      SleeveLength:        [full]
+      FitType:             [regular, relaxed]                 # bulk for layering
+      ColorValue:          [mid, dark, very_dark]
+      StylingCompleteness: [dual_dependency]                   # 4+ layers
+    avoid:
+      FabricWeight:        [very_light, light]
+      FabricTexture:       [smooth, sheen, metallic]
+      FabricDrape:         [fluid, soft_structured]                # `fluid` is FabricDrape, not FabricTexture
+      SkinExposureLevel:   [low, medium, high]
+      SleeveLength:        [sleeveless, cap, short, elbow]
+    notes: >
+      Specialized cold-weather wear — wool, fleece, down. Indian
+      bridal context here means heavy pashmina shawls layered over
+      sherwani. Daily wear is wool kurta-pyjama under a heavy coat,
+      structured wool blazer, fleece-lined trousers. Survival before
+      style.
