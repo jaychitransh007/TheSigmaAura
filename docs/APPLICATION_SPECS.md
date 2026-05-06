@@ -2010,9 +2010,9 @@ All features complete — no outstanding blockers.
 
 ---
 
-# Live System Reference (May 3, 2026)
+# Live System Reference (May 6, 2026)
 
-_Migrated from `CURRENT_STATE.md` on May 3, 2026. This is the authoritative "what is running right now" view that other docs delegate to. The historical decision-log (Phase 9–15) lives at the bottom of `docs/WORKFLOW_REFERENCE.md`._
+_Migrated from `CURRENT_STATE.md` on May 3, 2026. Refreshed May 6, 2026 to reflect the post-PR-#101 system (6-dim 1/2/3 rater, episodic memory at the architect, source_preference→catalog default, composer-emitted card names). This is the authoritative "what is running right now" view that other docs delegate to. The historical decision-log (Phase 9–15) lives at the bottom of `docs/WORKFLOW_REFERENCE.md`._
 
 ## Active Runtime
 
@@ -2177,87 +2177,64 @@ Status:
 - active
 - usable end-to-end
 - not yet final-quality
-- verification basis: 92+ tests in `tests/test_agentic_application.py` cover orchestrator routing, the planner→architect→search→assemble→evaluate→format pipeline, wardrobe-first short-circuits, hybrid pivot, disliked-product suppression, cross-outfit diversity, and metadata persistence. Live verification against a staging Supabase + real catalog embeddings is governed by the gates in `docs/RELEASE_READINESS.md` and is **not** complete.
+- verification basis: **458 L0 tests** in `tests/` (May 6, 2026 post-PR-#101) cover orchestrator routing, the planner→architect→search→composer→rater→tryon→format pipeline, wardrobe-first short-circuits with the ≥2-per-role coverage gate, hybrid pivot, disliked-product suppression, cross-outfit diversity, episodic memory hydration, the R7 6-dim 1/2/3 rater contract, and metadata persistence. Live verification against a staging Supabase + real catalog embeddings is governed by the gates in `docs/RELEASE_READINESS.md`.
 
 Implemented:
 - orchestrated recommendation pipeline with LLM copilot planner front-end
-- copilot planner (`gpt-5-mini` since May 5, 2026; was `gpt-5.5` May 1–4, `gpt-5.4` before) classifies intent and decides action — replaces legacy keyword router + context gate
-- **intent registry** (`intent_registry.py`): single source of truth for all 12 intents, 9 actions, and 7 follow-up intents via Python `StrEnum` — consumed by planner, orchestrator, agents, API, and tests
-- planner actions: `run_recommendation_pipeline`, `run_outfit_check`, `run_shopping_decision`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`, `run_product_browse`
-- `response_type` field: `"recommendation"` | `"clarification"`
-- saved user context loading
-- conversation memory carry-forward
-- LLM-only architect planner — no deterministic fallback (model: `gpt-5.4` since May 5, 2026; `reasoning_effort=low` via the Responses API as of the May 5 latency-fix pass; was `gpt-5.5` May 1–4, `gpt-5.4` before)
+- **copilot planner** (`gpt-5-mini`) classifies intent and decides action — replaces legacy keyword router + context gate
+- **intent registry** (`intent_registry.py`): 6 intents (`occasion_recommendation`, `pairing_request`, `style_discovery`, `explanation_request`, `feedback_submission`, `wardrobe_ingestion`) and 5 actions (`run_recommendation_pipeline`, `respond_directly`, `ask_clarification`, `save_wardrobe_item`, `save_feedback`) via Python `StrEnum` — consumed by planner, orchestrator, agents, API, and tests. The Phase 12A consolidation collapsed the previous 12-intent + 9-action taxonomy.
+- **source_preference routing** (PR #82, May 5 2026): planner sets `resolved_context.source_preference` to one of `"auto"` (default — routes to catalog), `"wardrobe"` (explicit), or `"catalog"` (explicit). Wardrobe-first only fires on `"wardrobe"`; auto and catalog both run the full catalog pipeline. When wardrobe-first IS requested, the orchestrator gates on a strict-AND minimum-coverage check: ≥2 tops AND ≥2 bottoms AND ≥2 one-pieces. Below that, falls through to a `wardrobe_unavailable` answer-source with the actual counts surfaced ("you have 2 tops, 2 bottoms, 0 dresses"). Metadata exposes a `wardrobe_coverage` block.
+- **outfit architect** — LLM-only, no deterministic fallback (model: `gpt-5.4`, `reasoning_effort=medium`)
 - strict JSON schema with enum-constrained hard filter vocabulary
-- hard filters: `gender_expression` (always), `garment_subtype` (conditional — only when user names a specific garment type); `garment_category` and `styling_completeness` are **soft signals** in the query document text only (April 9 2026 tiering)
+- hard filters: `gender_expression` (always), `garment_subtype` (conditional — only when user names a specific garment type); `garment_category` and `styling_completeness` are **soft signals** in the query document text only
 - soft signals via embedding only: `occasion_fit`, `formality_level`, `time_of_day`
-- no filter relaxation — single search pass per query
-- direction-aware retrieval: `needs_bottomwear` / `needs_topwear` / `complete`
-- complete-outfit and paired top/bottom support
-- assembly layer with deterministic compatibility pruning
-- evaluator with graceful fallback (model: `gpt-5-mini`), 8 style archetype percentage scoring (0–100 per archetype), and server-side output validation (score clamping, item_id verification, note backfill)
-- architect failure returns error to user (no silent degradation)
-- latency tracking via `time.monotonic()` on architect, search, evaluator (persisted as `latency_ms`)
-- style archetype override: user's saved `style_preference.primaryArchetype` is the default, but if the user's message or conversation history explicitly requests a different style, the architect uses the requested style instead; the response formatter reads the archetype from the plan's query documents (not just the profile) so the response message reflects the actual style used
+- direction-aware retrieval: `complete` / `paired` (top + bottom) / `three_piece` (top + bottom + outerwear)
+- **episodic memory** (PR #90 / #92 / #93, May 5 2026): the architect's input includes `recent_user_actions` — a chronological 30-day timeline of like/dislike events. Each row carries the `user_query` that produced the outfit and the garment's full attribute set. The architect prompt instructs the LLM to find context-dependent patterns (different occasions can take the same attribute differently) and bias retrieval queries — never as blanket exclusions. Loaded via `ConversationRepository.list_recent_user_actions(user_id, lookback_days=30)`.
+- **outfit composer** (PR #30 May 3 + PR #81 + PR #88, model: `gpt-5.4`, `reasoning_effort=low`): builds up to 10 coherent outfits from the retrieved pool, each one-shot with one item per role. Emits a per-outfit stylist-flavored `name` (e.g. *"Camel Sand Refined"*, *"Sharp Navy Boardroom"*) that surfaces directly as the user-facing card title (PR #88). Schema enforces `direction_id` is one of the architect's letters (PR #80 dynamic enum); per-attempt logging via `on_attempt` callback puts one `model_call_logs` row per LLM call (PR #80) with real `latency_ms` (PR #95).
+- **outfit rater** (PR #30 + R7 in PR #101, May 5 2026, model: `gpt-5-mini`, `reasoning_effort=minimal`): scores each composed outfit on **six dimensions** — `occasion_fit`, `body_harmony`, `color_harmony`, `pairing` (fit + fabric only, post-R7), `formality` (request match + inter-item consistency, new in R7), `statement` (pattern density + embellishment intensity, new in R7) — each on a **1/2/3 scale** (1=clear miss, 2=works, 3=clear win). Schema enforces the enum. `unsuitable=True` is a hard veto; the archetypal-preferences veto was removed in PR #89. Past likes/dislikes are applied upstream by the Architect (retrieval bias) and Composer (item-selection bias); the Rater scores what's in front of it on its own merits.
+- **fashion_score blend** in Python via `compute_fashion_score`: `raw = Σ subscore × weight` (1.0..3.0), then `score = ((raw − 1) / 2) × 100` (0..100). Five weight profiles — `default`, `ceremonial`, `slimming`, `bold`, `comfortable` — picked by `select_weight_profile()` from planner-resolved context. All sum to 1.0. For `complete` (single-item) outfits the `pairing` dim drops and the remaining five weights renormalize.
+- **threshold gate** at `_RECOMMENDATION_FASHION_THRESHOLD = 50` (PR #101, was 60 pre-R7, 75 pre-#81): outfits below the floor or flagged `unsuitable=True` never reach the user. An outfit at 2 across the board lands at exactly 50 (every dim at least neutral barely clears).
 - response formatting (max 3 outfits) and UI rendering support
-- virtual try-on via Gemini (`gemini-3.1-flash-image-preview`), parallel generation for all outfits, persistent storage to disk + DB with cache reuse by garment ID set
-- turn artifact persistence
-- dependency-validation instrumentation: turn-completion events across web / WhatsApp, referral events, and retention reporting for first/second/third session behavior, cohort anchors, and memory-input lift
+- **virtual try-on** via Gemini (`gemini-3.1-flash-image-preview`), top-3 candidates rendered in parallel via `ThreadPoolExecutor`, persistent storage to disk + DB with cache reuse by garment-ID set
+- turn artifact persistence: full Composer + Rater raw responses to `model_call_logs.response_json`; per-outfit sub-scores to `tool_traces.rater_decision.output_json.ranked_outfits`
+- dependency-validation instrumentation: turn-completion events on `dependency_validation_events`, referral events, retention reporting for first/second/third session behavior
 
 Main remaining gaps:
-- none for the documented next-phase checklist
+- see `docs/OPEN_TASKS.md` for the running list
 
 
 ## Application Layer: Current Behavioral Reality
 
 Current execution order:
-1. load user context
+1. load user context (profile, derived interpretations, wardrobe items)
 2. build conversation memory from prior turn state
-3. copilot planner (gpt-5-mini) — classifies intent, decides action (`run_recommendation_pipeline`, `respond_directly`, `ask_clarification`, `run_virtual_tryon`, `save_wardrobe_item`, `save_feedback`), resolves context
-4. action dispatch — if `respond_directly` or `ask_clarification`, return planner response directly (skip stages 5-10)
-5. generate recommendation plan via outfit architect LLM (gpt-5.5) — no fallback, failure = error to user
-6. retrieve catalog products per query direction (text-embedding-3-small, single search pass)
-7. assemble outfit candidates (deterministic)
-8. evaluate and rank candidates (gpt-5-mini, fallback: fashion_score)
-9. format response payload (max 3 outfits)
-10. generate virtual try-on images (gemini-3.1-flash-image-preview, parallel) — checks cache by user + garment IDs first; saves new results to disk + `virtual_tryon_images` table
-11. persist turn artifacts and updated conversation context
+3. **copilot planner** (gpt-5-mini) — classifies intent + action; resolves `source_preference` (`auto` | `wardrobe` | `catalog`)
+4. action dispatch — if `respond_directly` or `ask_clarification`, return planner response directly (skip stages 5–11)
+5. **wardrobe-first short-circuit** — only fires when `source_preference == "wardrobe"` AND wardrobe meets the ≥2-per-role coverage gate (PR #82). Below the gate falls through to `wardrobe_unavailable` fallback with counts surfaced.
+6. **outfit architect** (gpt-5.4, reasoning_effort=medium) — generates the recommendation plan; reads `recent_user_actions` (30-day episodic timeline, PR #90) to bias retrieval queries by context-dependent patterns. No deterministic fallback; failure = error to user.
+7. retrieve catalog products per query direction (text-embedding-3-small + pgvector cosine, single search pass)
+8. **outfit composer** (gpt-5.4, reasoning_effort=low) — constructs up to 10 coherent outfits from the retrieved pool; emits per-outfit `name` (PR #88) as the user-facing card title. One LLM call; on hallucinated item_ids the composer retries once with a stricter suffix (PR #80 smart retry).
+9. **outfit rater** (gpt-5-mini, reasoning_effort=minimal) — scores each composed outfit on the six 1/2/3 dimensions. Computes `fashion_score` (0–100) in Python via `compute_fashion_score` with the planner-selected weight profile. Hard veto via `unsuitable=True` (rare); no archetypal-preferences veto post-PR-#89.
+10. **threshold gate** at fashion_score ≥ 50 — pre-render filter so we don't burn Gemini renders on outfits the gate would drop.
+11. **virtual try-on** (gemini-3.1-flash-image-preview, parallel) — top-3 by fashion_score; checks cache by user + garment IDs first; saves new results to disk + `virtual_tryon_images` table
+12. format response payload (max 3 outfits with rater dims rescaled 1/2/3 → 0/50/100 for the radar `_pct` fields)
+13. persist turn artifacts and updated conversation context
 
-Current supported plan modes:
-- `complete_only`
-- `paired_only`
-- `mixed` (standard for broad occasion requests — typically 1 complete + 1 paired + 1 three_piece)
-
-Current supported direction types:
-- `complete` — single query, role=complete (kurta_set, suit_set, dress)
+Current supported direction types (architect output):
+- `complete` — single query, role=complete (kurta_set, suit_set, dress, jumpsuit)
 - `paired` — two queries: role=top + role=bottom
 - `three_piece` — three queries: role=top + role=bottom + role=outerwear (blazer, nehru_jacket, jacket)
 
-Current supported retrieval directions:
-- complete outfit
-- paired top
-- paired bottom
-
-Current follow-up support:
-- `increase_boldness`
-- `decrease_formality`
-- `increase_formality`
-- `change_color`
-- `full_alternative`
-- `more_options`
-- `similar_to_previous`
+Current follow-up support (planner-detected, persisted, structurally honored):
+- `increase_boldness` · `decrease_formality` · `increase_formality` · `change_color` · `full_alternative` · `more_options` · `similar_to_previous`
 
 Current nuance:
-- all follow-up intents are detected, persisted, and have structured runtime effect across architect, assembler, evaluator, and response formatter
-- `change_color`: architect preserves non-color dimensions while shifting colors; assembler penalizes +0.10 per overlapping color with previous; evaluator reports preserved non-color attributes in style_note; formatter opens with "fresh color direction" and shows intent-specific follow-up chips
-- `similar_to_previous`: architect preserves all dimensions from previous recommendation; assembler boosts -0.05 for matching occasion and -0.03 per shared color; evaluator reports all shared dimensions (colors, patterns, volume, fit, silhouette) in style_note; formatter opens with "similar style" and shows intent-specific follow-up chips
-- evaluator receives candidate-by-candidate deltas against the previous recommendation with 8 signals: colors, occasions, roles, formality levels, pattern types, volume profiles, fit types, silhouette types
-- evaluator payload includes `body_context_summary` (height_category, frame_structure, body_shape) for body-aware ranking
-- evaluator returns 16 percentage scores (all integers 0–100, clamped server-side):
-  - 8 evaluation criteria: body_harmony_pct, color_suitability_pct, style_fit_pct, risk_tolerance_pct, occasion_pct, comfort_boundary_pct, specific_needs_pct, pairing_coherence_pct — how well the outfit fits this user; fallback derives from fashion_score
-  - 8 style archetype: classic_pct, dramatic_pct, romantic_pct, natural_pct, minimalist_pct, creative_pct, sporty_pct, edgy_pct — outfit's aesthetic profile, not user preference
-- full evaluation output (all notes, all 16 _pct fields) is persisted in turn artifacts
-- LLM evaluator outputs are normalized so sparse follow-up notes are backfilled from candidate deltas
+- All follow-up intents are detected, persisted, and have structured runtime effect across architect + composer + response formatter.
+- `change_color`: architect preserves non-color dimensions while shifting colors; formatter opens with "fresh color direction" and shows intent-specific follow-up chips.
+- `similar_to_previous`: architect preserves all dimensions from previous recommendation; formatter opens with "similar style".
+- **Rater output (R7, PR #101)**: per-outfit row carries `composer_id`, `rank`, computed `fashion_score` (0–100), six 1/2/3 sub-scores (`occasion_fit`, `body_harmony`, `color_harmony`, `pairing`, `formality`, `statement`), `rationale` (two short sentences, stylist-to-stylist register), `unsuitable` flag.
+- **OutfitCard radar dims** (post-R7): six `_pct` fields rescaled from 1/2/3 sub-scores via `((value − 1) / 2) × 100` → values land at 0, 50, or 100. UI renders a 6-axis hexagon (5-axis pentagon for `complete` outfits where `pairing_pct=None`). The legacy 8-axis archetype + 8-axis evaluation radar (visual_evaluator output) was removed in V2.
+- Full Composer + Rater raw response is persisted in `model_call_logs.response_json`; distilled per-outfit decision in `tool_traces.{composer_decision, rater_decision}.output_json` for offline replay + ops queries.
 
 
 ## Retrieval Reality
@@ -2305,9 +2282,10 @@ Current runtime product cards carry:
 Current response behavior:
 - UI renders `result.outfits` as 3-column PDP cards
 - `OutfitCard.tryon_image` is populated by the orchestrator with a serveable URL (not base64) pointing to a persisted try-on image on disk; rendered as the default hero image
-- `OutfitCard` carries 16 `_pct` fields: 8 evaluation criteria (rendered as progress bars) + 8 style archetypes (rendered as radar chart)
+- `OutfitCard.title` = the composer-emitted per-outfit `name` (PR #88, e.g. *"Camel Sand Refined"*); falls back to `f"Outfit {rank}"` only if the LLM somehow omitted the field
+- `OutfitCard` carries **six rater `_pct` fields** (post-R7 PR #101): `occasion_pct`, `body_harmony_pct`, `color_suitability_pct`, `pairing_pct`, `formality_pct`, `statement_pct` — each rescaled from the 1/2/3 rater sub-score (1→0, 2→50, 3→100). Plus `fashion_score_pct` (0–100, blended in code via `compute_fashion_score`). Rendered as a 6-axis hexagon radar; `pairing_pct=None` for `complete` (single-item) outfits drops the axis → 5-axis pentagon.
 - `response.metadata` includes `turn_id` for feedback correlation
-- both internal (`agentic_application/schemas.py`) and shared (`platform_core/api_schemas.py`) schemas are aligned
+- both internal (`agentic_application/schemas.py`) and shared (`platform_core/api_schemas.py`) schemas are aligned on the six-dim contract
 
 
 ## Persistence Reality
