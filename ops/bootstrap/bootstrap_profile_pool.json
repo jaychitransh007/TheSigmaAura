@@ -9,7 +9,7 @@
     "age_band": "30_35",
     "body_frame": "inverted_triangle",
     "height_band": "short",
-    "skin_palette": "true_summer",
+    "skin_palette": "cool_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "formal",
     "budget_band": "budget"
@@ -24,7 +24,7 @@
     "age_band": "25_30",
     "body_frame": "rectangle",
     "height_band": "short",
-    "skin_palette": "warm_spring",
+    "skin_palette": "light_spring",
     "risk_tolerance": "conservative",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -39,7 +39,7 @@
     "age_band": "18_24",
     "body_frame": "athletic",
     "height_band": "short",
-    "skin_palette": "warm_autumn",
+    "skin_palette": "deep_autumn",
     "risk_tolerance": "adventurous",
     "formality_lean": "balanced",
     "budget_band": "budget"
@@ -54,7 +54,7 @@
     "age_band": "25_30",
     "body_frame": "pear",
     "height_band": "short",
-    "skin_palette": "true_summer",
+    "skin_palette": "cool_summer",
     "risk_tolerance": "moderate",
     "formality_lean": "casual",
     "budget_band": "budget"
@@ -69,7 +69,7 @@
     "age_band": "25_30",
     "body_frame": "inverted_triangle",
     "height_band": "tall",
-    "skin_palette": "cool_summer",
+    "skin_palette": "light_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "formal",
     "budget_band": "mid"
@@ -84,7 +84,7 @@
     "age_band": "18_24",
     "body_frame": "inverted_triangle",
     "height_band": "average",
-    "skin_palette": "cool_winter",
+    "skin_palette": "deep_winter",
     "risk_tolerance": "adventurous",
     "formality_lean": "balanced",
     "budget_band": "premium"
@@ -99,7 +99,7 @@
     "age_band": "18_24",
     "body_frame": "triangle",
     "height_band": "average",
-    "skin_palette": "warm_spring",
+    "skin_palette": "light_spring",
     "risk_tolerance": "conservative",
     "formality_lean": "casual",
     "budget_band": "mid"
@@ -114,7 +114,7 @@
     "age_band": "30_35",
     "body_frame": "pear",
     "height_band": "short",
-    "skin_palette": "light_summer",
+    "skin_palette": "soft_summer",
     "risk_tolerance": "moderate",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -129,7 +129,7 @@
     "age_band": "30_35",
     "body_frame": "triangle",
     "height_band": "tall",
-    "skin_palette": "deep_winter",
+    "skin_palette": "clear_winter",
     "risk_tolerance": "conservative",
     "formality_lean": "casual",
     "budget_band": "mid"
@@ -144,7 +144,7 @@
     "age_band": "30_35",
     "body_frame": "inverted_triangle",
     "height_band": "short",
-    "skin_palette": "cool_winter",
+    "skin_palette": "deep_winter",
     "risk_tolerance": "moderate",
     "formality_lean": "casual",
     "budget_band": "budget"
@@ -159,7 +159,7 @@
     "age_band": "25_30",
     "body_frame": "inverted_triangle",
     "height_band": "short",
-    "skin_palette": "true_summer",
+    "skin_palette": "cool_summer",
     "risk_tolerance": "adventurous",
     "formality_lean": "formal",
     "budget_band": "mid"
@@ -174,7 +174,7 @@
     "age_band": "25_30",
     "body_frame": "apple",
     "height_band": "short",
-    "skin_palette": "cool_summer",
+    "skin_palette": "light_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -189,7 +189,7 @@
     "age_band": "25_30",
     "body_frame": "athletic",
     "height_band": "average",
-    "skin_palette": "true_summer",
+    "skin_palette": "cool_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "formal",
     "budget_band": "mid"
@@ -204,7 +204,7 @@
     "age_band": "18_24",
     "body_frame": "hourglass",
     "height_band": "tall",
-    "skin_palette": "light_spring",
+    "skin_palette": "clear_spring",
     "risk_tolerance": "adventurous",
     "formality_lean": "balanced",
     "budget_band": "premium"
@@ -219,7 +219,7 @@
     "age_band": "25_30",
     "body_frame": "athletic",
     "height_band": "tall",
-    "skin_palette": "cool_summer",
+    "skin_palette": "light_summer",
     "risk_tolerance": "adventurous",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -234,7 +234,7 @@
     "age_band": "25_30",
     "body_frame": "pear",
     "height_band": "short",
-    "skin_palette": "cool_summer",
+    "skin_palette": "light_summer",
     "risk_tolerance": "moderate",
     "formality_lean": "casual",
     "budget_band": "mid"
@@ -249,7 +249,7 @@
     "age_band": "30_35",
     "body_frame": "triangle",
     "height_band": "tall",
-    "skin_palette": "warm_spring",
+    "skin_palette": "light_spring",
     "risk_tolerance": "adventurous",
     "formality_lean": "balanced",
     "budget_band": "premium"
@@ -279,7 +279,7 @@
     "age_band": "18_24",
     "body_frame": "inverted_triangle",
     "height_band": "average",
-    "skin_palette": "true_summer",
+    "skin_palette": "cool_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -309,7 +309,7 @@
     "age_band": "18_24",
     "body_frame": "inverted_triangle",
     "height_band": "tall",
-    "skin_palette": "true_winter",
+    "skin_palette": "cool_winter",
     "risk_tolerance": "moderate",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -354,7 +354,7 @@
     "age_band": "30_35",
     "body_frame": "rectangle",
     "height_band": "short",
-    "skin_palette": "warm_spring",
+    "skin_palette": "light_spring",
     "risk_tolerance": "conservative",
     "formality_lean": "balanced",
     "budget_band": "budget"
@@ -369,7 +369,7 @@
     "age_band": "30_35",
     "body_frame": "hourglass",
     "height_band": "tall",
-    "skin_palette": "true_winter",
+    "skin_palette": "cool_winter",
     "risk_tolerance": "adventurous",
     "formality_lean": "balanced",
     "budget_band": "budget"
@@ -384,7 +384,7 @@
     "age_band": "18_24",
     "body_frame": "apple",
     "height_band": "average",
-    "skin_palette": "true_autumn",
+    "skin_palette": "warm_autumn",
     "risk_tolerance": "moderate",
     "formality_lean": "balanced",
     "budget_band": "premium"
@@ -399,7 +399,7 @@
     "age_band": "30_35",
     "body_frame": "inverted_triangle",
     "height_band": "short",
-    "skin_palette": "true_summer",
+    "skin_palette": "cool_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -414,7 +414,7 @@
     "age_band": "25_30",
     "body_frame": "hourglass",
     "height_band": "short",
-    "skin_palette": "warm_autumn",
+    "skin_palette": "deep_autumn",
     "risk_tolerance": "adventurous",
     "formality_lean": "casual",
     "budget_band": "budget"
@@ -429,7 +429,7 @@
     "age_band": "18_24",
     "body_frame": "athletic",
     "height_band": "average",
-    "skin_palette": "warm_autumn",
+    "skin_palette": "deep_autumn",
     "risk_tolerance": "conservative",
     "formality_lean": "balanced",
     "budget_band": "budget"
@@ -444,7 +444,7 @@
     "age_band": "25_30",
     "body_frame": "inverted_triangle",
     "height_band": "average",
-    "skin_palette": "deep_winter",
+    "skin_palette": "clear_winter",
     "risk_tolerance": "adventurous",
     "formality_lean": "formal",
     "budget_band": "premium"
@@ -459,7 +459,7 @@
     "age_band": "18_24",
     "body_frame": "rectangle",
     "height_band": "tall",
-    "skin_palette": "deep_winter",
+    "skin_palette": "clear_winter",
     "risk_tolerance": "adventurous",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -489,7 +489,7 @@
     "age_band": "30_35",
     "body_frame": "triangle",
     "height_band": "tall",
-    "skin_palette": "true_winter",
+    "skin_palette": "cool_winter",
     "risk_tolerance": "conservative",
     "formality_lean": "formal",
     "budget_band": "budget"
@@ -504,7 +504,7 @@
     "age_band": "30_35",
     "body_frame": "pear",
     "height_band": "short",
-    "skin_palette": "cool_summer",
+    "skin_palette": "light_summer",
     "risk_tolerance": "moderate",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -519,7 +519,7 @@
     "age_band": "18_24",
     "body_frame": "apple",
     "height_band": "tall",
-    "skin_palette": "true_winter",
+    "skin_palette": "cool_winter",
     "risk_tolerance": "conservative",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -534,7 +534,7 @@
     "age_band": "18_24",
     "body_frame": "hourglass",
     "height_band": "average",
-    "skin_palette": "cool_summer",
+    "skin_palette": "light_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "balanced",
     "budget_band": "premium"
@@ -549,7 +549,7 @@
     "age_band": "18_24",
     "body_frame": "inverted_triangle",
     "height_band": "short",
-    "skin_palette": "warm_spring",
+    "skin_palette": "light_spring",
     "risk_tolerance": "adventurous",
     "formality_lean": "formal",
     "budget_band": "budget"
@@ -564,7 +564,7 @@
     "age_band": "30_35",
     "body_frame": "inverted_triangle",
     "height_band": "tall",
-    "skin_palette": "warm_autumn",
+    "skin_palette": "deep_autumn",
     "risk_tolerance": "moderate",
     "formality_lean": "casual",
     "budget_band": "budget"
@@ -579,7 +579,7 @@
     "age_band": "25_30",
     "body_frame": "hourglass",
     "height_band": "tall",
-    "skin_palette": "cool_summer",
+    "skin_palette": "light_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "formal",
     "budget_band": "mid"
@@ -594,7 +594,7 @@
     "age_band": "18_24",
     "body_frame": "hourglass",
     "height_band": "tall",
-    "skin_palette": "true_spring",
+    "skin_palette": "warm_spring",
     "risk_tolerance": "moderate",
     "formality_lean": "formal",
     "budget_band": "premium"
@@ -609,7 +609,7 @@
     "age_band": "25_30",
     "body_frame": "rectangle",
     "height_band": "average",
-    "skin_palette": "true_summer",
+    "skin_palette": "cool_summer",
     "risk_tolerance": "adventurous",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -624,7 +624,7 @@
     "age_band": "18_24",
     "body_frame": "hourglass",
     "height_band": "average",
-    "skin_palette": "true_spring",
+    "skin_palette": "warm_spring",
     "risk_tolerance": "conservative",
     "formality_lean": "formal",
     "budget_band": "mid"
@@ -639,7 +639,7 @@
     "age_band": "18_24",
     "body_frame": "rectangle",
     "height_band": "average",
-    "skin_palette": "true_spring",
+    "skin_palette": "warm_spring",
     "risk_tolerance": "moderate",
     "formality_lean": "casual",
     "budget_band": "budget"
@@ -654,7 +654,7 @@
     "age_band": "18_24",
     "body_frame": "hourglass",
     "height_band": "short",
-    "skin_palette": "cool_winter",
+    "skin_palette": "deep_winter",
     "risk_tolerance": "conservative",
     "formality_lean": "balanced",
     "budget_band": "mid"
@@ -684,7 +684,7 @@
     "age_band": "25_30",
     "body_frame": "rectangle",
     "height_band": "short",
-    "skin_palette": "true_winter",
+    "skin_palette": "cool_winter",
     "risk_tolerance": "moderate",
     "formality_lean": "balanced",
     "budget_band": "premium"
@@ -699,7 +699,7 @@
     "age_band": "30_35",
     "body_frame": "hourglass",
     "height_band": "average",
-    "skin_palette": "true_spring",
+    "skin_palette": "warm_spring",
     "risk_tolerance": "adventurous",
     "formality_lean": "balanced",
     "budget_band": "budget"
@@ -714,7 +714,7 @@
     "age_band": "18_24",
     "body_frame": "inverted_triangle",
     "height_band": "tall",
-    "skin_palette": "light_summer",
+    "skin_palette": "soft_summer",
     "risk_tolerance": "adventurous",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -729,7 +729,7 @@
     "age_band": "25_30",
     "body_frame": "pear",
     "height_band": "tall",
-    "skin_palette": "light_spring",
+    "skin_palette": "clear_spring",
     "risk_tolerance": "conservative",
     "formality_lean": "balanced",
     "budget_band": "premium"
@@ -744,7 +744,7 @@
     "age_band": "30_35",
     "body_frame": "rectangle",
     "height_band": "average",
-    "skin_palette": "cool_summer",
+    "skin_palette": "light_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "balanced",
     "budget_band": "premium"
@@ -759,7 +759,7 @@
     "age_band": "25_30",
     "body_frame": "hourglass",
     "height_band": "tall",
-    "skin_palette": "warm_autumn",
+    "skin_palette": "deep_autumn",
     "risk_tolerance": "adventurous",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -774,7 +774,7 @@
     "age_band": "30_35",
     "body_frame": "pear",
     "height_band": "short",
-    "skin_palette": "true_summer",
+    "skin_palette": "cool_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "casual",
     "budget_band": "budget"
@@ -789,7 +789,7 @@
     "age_band": "25_30",
     "body_frame": "inverted_triangle",
     "height_band": "short",
-    "skin_palette": "deep_winter",
+    "skin_palette": "clear_winter",
     "risk_tolerance": "adventurous",
     "formality_lean": "balanced",
     "budget_band": "mid"
@@ -804,7 +804,7 @@
     "age_band": "25_30",
     "body_frame": "triangle",
     "height_band": "short",
-    "skin_palette": "deep_winter",
+    "skin_palette": "clear_winter",
     "risk_tolerance": "adventurous",
     "formality_lean": "balanced",
     "budget_band": "budget"
@@ -819,7 +819,7 @@
     "age_band": "25_30",
     "body_frame": "inverted_triangle",
     "height_band": "average",
-    "skin_palette": "true_winter",
+    "skin_palette": "cool_winter",
     "risk_tolerance": "adventurous",
     "formality_lean": "formal",
     "budget_band": "mid"
@@ -834,7 +834,7 @@
     "age_band": "25_30",
     "body_frame": "pear",
     "height_band": "short",
-    "skin_palette": "cool_winter",
+    "skin_palette": "deep_winter",
     "risk_tolerance": "moderate",
     "formality_lean": "formal",
     "budget_band": "mid"
@@ -849,7 +849,7 @@
     "age_band": "30_35",
     "body_frame": "pear",
     "height_band": "short",
-    "skin_palette": "cool_summer",
+    "skin_palette": "light_summer",
     "risk_tolerance": "moderate",
     "formality_lean": "balanced",
     "budget_band": "premium"
@@ -864,7 +864,7 @@
     "age_band": "30_35",
     "body_frame": "triangle",
     "height_band": "tall",
-    "skin_palette": "true_summer",
+    "skin_palette": "cool_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "balanced",
     "budget_band": "mid"
@@ -879,7 +879,7 @@
     "age_band": "18_24",
     "body_frame": "apple",
     "height_band": "average",
-    "skin_palette": "true_winter",
+    "skin_palette": "cool_winter",
     "risk_tolerance": "adventurous",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -894,7 +894,7 @@
     "age_band": "25_30",
     "body_frame": "athletic",
     "height_band": "tall",
-    "skin_palette": "deep_winter",
+    "skin_palette": "clear_winter",
     "risk_tolerance": "adventurous",
     "formality_lean": "formal",
     "budget_band": "premium"
@@ -909,7 +909,7 @@
     "age_band": "25_30",
     "body_frame": "apple",
     "height_band": "short",
-    "skin_palette": "true_autumn",
+    "skin_palette": "warm_autumn",
     "risk_tolerance": "moderate",
     "formality_lean": "formal",
     "budget_band": "premium"
@@ -924,7 +924,7 @@
     "age_band": "30_35",
     "body_frame": "rectangle",
     "height_band": "average",
-    "skin_palette": "true_winter",
+    "skin_palette": "cool_winter",
     "risk_tolerance": "adventurous",
     "formality_lean": "formal",
     "budget_band": "budget"
@@ -939,7 +939,7 @@
     "age_band": "18_24",
     "body_frame": "rectangle",
     "height_band": "average",
-    "skin_palette": "true_autumn",
+    "skin_palette": "warm_autumn",
     "risk_tolerance": "moderate",
     "formality_lean": "casual",
     "budget_band": "mid"
@@ -954,7 +954,7 @@
     "age_band": "25_30",
     "body_frame": "rectangle",
     "height_band": "average",
-    "skin_palette": "true_spring",
+    "skin_palette": "warm_spring",
     "risk_tolerance": "adventurous",
     "formality_lean": "formal",
     "budget_band": "budget"
@@ -969,7 +969,7 @@
     "age_band": "30_35",
     "body_frame": "rectangle",
     "height_band": "short",
-    "skin_palette": "true_summer",
+    "skin_palette": "cool_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -984,7 +984,7 @@
     "age_band": "30_35",
     "body_frame": "triangle",
     "height_band": "average",
-    "skin_palette": "deep_winter",
+    "skin_palette": "clear_winter",
     "risk_tolerance": "moderate",
     "formality_lean": "balanced",
     "budget_band": "budget"
@@ -999,7 +999,7 @@
     "age_band": "18_24",
     "body_frame": "rectangle",
     "height_band": "average",
-    "skin_palette": "true_winter",
+    "skin_palette": "cool_winter",
     "risk_tolerance": "adventurous",
     "formality_lean": "balanced",
     "budget_band": "mid"
@@ -1014,7 +1014,7 @@
     "age_band": "30_35",
     "body_frame": "triangle",
     "height_band": "short",
-    "skin_palette": "deep_winter",
+    "skin_palette": "clear_winter",
     "risk_tolerance": "moderate",
     "formality_lean": "formal",
     "budget_band": "premium"
@@ -1044,7 +1044,7 @@
     "age_band": "25_30",
     "body_frame": "apple",
     "height_band": "tall",
-    "skin_palette": "light_spring",
+    "skin_palette": "clear_spring",
     "risk_tolerance": "moderate",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -1059,7 +1059,7 @@
     "age_band": "25_30",
     "body_frame": "inverted_triangle",
     "height_band": "average",
-    "skin_palette": "light_summer",
+    "skin_palette": "soft_summer",
     "risk_tolerance": "conservative",
     "formality_lean": "casual",
     "budget_band": "mid"
@@ -1074,7 +1074,7 @@
     "age_band": "30_35",
     "body_frame": "athletic",
     "height_band": "average",
-    "skin_palette": "true_spring",
+    "skin_palette": "warm_spring",
     "risk_tolerance": "moderate",
     "formality_lean": "balanced",
     "budget_band": "budget"
@@ -1089,7 +1089,7 @@
     "age_band": "25_30",
     "body_frame": "inverted_triangle",
     "height_band": "tall",
-    "skin_palette": "cool_summer",
+    "skin_palette": "light_summer",
     "risk_tolerance": "adventurous",
     "formality_lean": "casual",
     "budget_band": "premium"
@@ -1104,7 +1104,7 @@
     "age_band": "25_30",
     "body_frame": "triangle",
     "height_band": "tall",
-    "skin_palette": "warm_autumn",
+    "skin_palette": "deep_autumn",
     "risk_tolerance": "adventurous",
     "formality_lean": "formal",
     "budget_band": "mid"
@@ -1119,7 +1119,7 @@
     "age_band": "18_24",
     "body_frame": "athletic",
     "height_band": "tall",
-    "skin_palette": "true_summer",
+    "skin_palette": "cool_summer",
     "risk_tolerance": "moderate",
     "formality_lean": "formal",
     "budget_band": "premium"

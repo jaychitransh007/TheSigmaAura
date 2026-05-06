@@ -51,13 +51,16 @@ BODY_FRAMES: Dict[str, List[str]] = {
 
 HEIGHT_BANDS: List[str] = ["short", "average", "tall"]
 
-# 12 sub-season palette taxonomy (deterministic interpreter is the source
-# of truth — see modules/user/src/user/analysis.py).
+# 12 sub-season palette taxonomy. Names match the canonical values
+# emitted by the deterministic interpreter at
+# `modules/user/src/user/interpreter.py` (`_SUB_SEASON_RULES`,
+# lines 399–422). Each season has 3 sub-seasons identified by which
+# dimension is most extreme (warmth, depth, or chroma).
 PALETTES: List[str] = [
-    "true_spring", "warm_spring", "light_spring",
-    "true_summer", "cool_summer", "light_summer",
-    "true_autumn", "warm_autumn", "soft_autumn",
-    "true_winter", "cool_winter", "deep_winter",
+    "warm_spring", "light_spring", "clear_spring",
+    "cool_summer", "light_summer", "soft_summer",
+    "warm_autumn", "deep_autumn", "soft_autumn",
+    "cool_winter", "deep_winter", "clear_winter",
 ]
 
 RISK_TOLERANCE: List[str] = ["conservative", "moderate", "adventurous"]

@@ -131,7 +131,6 @@ primary_archetype:
       ColorSaturation:       [muted, medium]
       ColorTemperature:      [warm, neutral]
       EmbellishmentZone:     [neckline, sleeve, hem]
-      ConstructionDetail:    [ruched, gathered, draped]
     avoid:
       PatternType:           [animal, geometric, abstract]
       EmbellishmentType:     [studs, distressing, mirror_work]
@@ -230,7 +229,6 @@ primary_archetype:
       EmbellishmentLevel:    [none, minimal]
       ColorCount:            [single]
       FabricTexture:         [smooth, sheen]
-      SilhouetteType:        []
     notes: >
       Western: print-mixing midi dress, eclectic statement jewellery,
       mixed-medium handbag. Indian urban (where creative thrives):

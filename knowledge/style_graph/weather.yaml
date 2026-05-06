@@ -58,8 +58,8 @@ weather:
       FabricWeight:        [very_light, light]
       FabricTexture:       [smooth, matte, textured]
       FabricDrape:         [fluid, soft_structured]
-      SkinExposureLevel:   [low, medium]                   # sun protection vs cooling
-      SleeveLength:        [short, elbow, three_quarter]   # arms covered for sun
+      SkinExposureLevel:   [very_low, low, medium]         # sun protection in extreme dry heat
+      SleeveLength:        [short, elbow, three_quarter, full]   # arms covered for sun
       ColorValue:          [very_light, light]             # heat reflection
       FitType:             [regular, relaxed]
       ColorTemperature:    [warm, neutral]
@@ -69,7 +69,7 @@ weather:
       FabricDrape:         [rigid, sculpted]
       ColorValue:          [very_dark, dark]                # heat absorption
       FitType:             [slim, tailored]                  # tight = heat trap
-      SleeveLength:        [sleeveless]                      # sun burn
+      SleeveLength:        [sleeveless, cap]                 # cap sleeves give minimal UV protection
     notes: >
       Cotton, linen, mulmul, khadi — natural fibres that breathe AND
       block UV. White / off-white / light cream / soft beige (heat
@@ -181,7 +181,7 @@ weather:
       FabricDrape:         [fluid]
       SkinExposureLevel:   [medium, high]
       SleeveLength:        [sleeveless, cap, short]
-      ColorValue:          [mid, dark]                       # water spots invisible
+      ColorValue:          [mid, dark, very_dark]             # water spots invisible
       FitType:             [regular, relaxed]                 # quick-drying preferred
     avoid:
       FabricWeight:        [medium, heavy]
@@ -189,7 +189,8 @@ weather:
       FabricDrape:         [rigid, sculpted, crisp]
       ColorValue:          [very_light]                       # transparent when wet, water marks
       SkinExposureLevel:   [very_low]                          # sticks to skin when wet
-      SleeveLength:        [full]                              # heavy when wet
+      SleeveLength:        [elbow, three_quarter, full]        # heavy when wet
+      FitType:             [tailored, slim]                    # cling when wet
     notes: >
       Synthetic blends counter-intuitively work well — they shed water
       and dry fast. Polyester-cotton blend, jersey knit, lightweight
@@ -227,7 +228,7 @@ weather:
     flatters:
       FabricWeight:        [light, medium]
       FabricTexture:       [knit, ribbed, textured, smooth]
-      FabricDrape:         [soft_structured, crisp]
+      FabricDrape:         [soft_structured, crisp, rigid, sculpted]   # wind resistance
       SkinExposureLevel:   [low]
       SleeveLength:        [three_quarter, full]
       FitType:             [regular, slim]
@@ -259,7 +260,7 @@ weather:
     avoid:
       FabricWeight:        [very_light, light]
       FabricTexture:       [smooth, sheen, metallic]
-      FabricDrape:         [fluid, soft_structured]                # `fluid` is FabricDrape, not FabricTexture
+      FabricDrape:         [fluid, soft_structured]
       SkinExposureLevel:   [low, medium, high]
       SleeveLength:        [sleeveless, cap, short, elbow]
     notes: >
