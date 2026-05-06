@@ -23,7 +23,13 @@ from platform_core.request_context import (
 
 from .agents.catalog_search_agent import CatalogSearchAgent
 from .agents.copilot_planner import CopilotPlanner, build_planner_input
-from .agents.outfit_architect import OutfitArchitect
+from .agents.outfit_architect import OutfitArchitect, PROMPT_VERSION as ARCHITECT_PROMPT_VERSION
+from .cache.architect_cache_key import (
+    build_architect_cache_key,
+    cluster_for_context,
+    denormalised_key_fields,
+)
+from .cache.architect_cache_repository import ArchitectCacheRepository
 from .agents.outfit_composer import OutfitComposer
 from .agents.outfit_rater import OutfitRater
 # Evaluator history (May 5 2026):
@@ -284,6 +290,12 @@ class AgenticOrchestrator:
         _style_advisor_model = self._str_from_config(config, "style_advisor_model")
 
         self.outfit_architect = OutfitArchitect(model=_architect_model, reasoning_effort=_architect_effort)
+        # Phase 2.2 architect output cache (May 14 2026). Wraps the
+        # architect call: profile cluster + per-turn signals → hash key
+        # → lookup. Hit skips the LLM entirely (~19s on gpt-5.2). Miss
+        # runs the architect normally and writes the output for next time.
+        # See docs/phase_2_cache_design.md.
+        self._architect_cache = ArchitectCacheRepository(repo.client)
         # Evaluator history (see top of file): OutfitCheckAgent and
         # VisualEvaluatorAgent both removed; the Rater is the sole
         # scoring engine and feeds the radar UI directly.
@@ -4767,6 +4779,21 @@ class AgenticOrchestrator:
         # here instead of silently falling back to a stale literal.
         _architect_model = self.outfit_architect._model
         _architect_effort_used = self.outfit_architect._reasoning_effort
+        # Phase 2.2: try the architect cache first. Hit → skip the LLM.
+        # `intent` here is the planner's primary intent string (set
+        # earlier in this method as `plan_result.intent`). Best-effort
+        # — any cache error falls through to the LLM path silently.
+        _arch_cache_cluster = cluster_for_context(combined_context)
+        _arch_cache_key = build_architect_cache_key(
+            tenant_id="default",
+            intent=plan_result.intent,
+            cluster=_arch_cache_cluster,
+            combined_context=combined_context,
+            architect_prompt_version=ARCHITECT_PROMPT_VERSION,
+        )
+        _arch_cache_hit_plan = self._architect_cache.get(
+            tenant_id="default", cache_key=_arch_cache_key,
+        )
         emit("outfit_architect", "started")
         trace_start("outfit_architect", model=_architect_model, input_summary=f"message={message[:80]}")
         t0 = time.monotonic()
@@ -4779,7 +4806,31 @@ class AgenticOrchestrator:
                 model=_architect_model,
                 full_input={"combined_context": to_jsonable(combined_context)},
             ) as _trace_ctx:
-                plan = self.outfit_architect.plan(combined_context)
+                if _arch_cache_hit_plan is not None:
+                    # Cache hit: serve the cached plan, skip the LLM
+                    # entirely. `plan_source='cache'` is stamped by the
+                    # repository so trace logs make this visible.
+                    plan = _arch_cache_hit_plan
+                    self._architect_cache.touch(
+                        tenant_id="default", cache_key=_arch_cache_key,
+                    )
+                else:
+                    plan = self.outfit_architect.plan(combined_context)
+                    # Cache miss: write through. Best-effort; if the
+                    # write fails, the user's turn still completes.
+                    self._architect_cache.put(
+                        tenant_id="default",
+                        cache_key=_arch_cache_key,
+                        plan=plan,
+                        denormalised=denormalised_key_fields(
+                            tenant_id="default",
+                            intent=plan_result.intent,
+                            cluster=_arch_cache_cluster,
+                            combined_context=combined_context,
+                            architect_prompt_version=ARCHITECT_PROMPT_VERSION,
+                            architect_model=_architect_model,
+                        ),
+                    )
                 _trace_ctx.full_output = to_jsonable(plan)
         except Exception as exc:
             architect_ms = int((time.monotonic() - t0) * 1000)
