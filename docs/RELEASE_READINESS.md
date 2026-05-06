@@ -156,6 +156,26 @@ These are explicit non-goals — do not block the release on them:
 
 _Migrated from `CURRENT_STATE.md`. The May-1 "Open Items Plan" — every item now ✅ shipped — is preserved here as a record of work landed during the platform pass. For ongoing release readiness criteria see the Gates above._
 
+## May 6–7, 2026 — Phase 4.7+ composition engine + canonicalization + observability
+
+A 7-PR push that shipped the deterministic YAML-driven composition engine, the input-canonicalization layer that makes it work on real planner output, and the observability surface around both.
+
+| PR | Title | Net change |
+|---|---|---|
+| #149 | Phase 4.7 + 4.8 + 4.9 + 4.10 — engine, validator, router, flag | New `composition/` package: `yaml_loader.py` → `reduction.py` → `relaxation.py` → `engine.py` → `render.py` → `quality.py` → `router.py`. `compose_direction()` reduces 8 style-graph YAMLs into a `DirectionSpec` deterministically; router applies spec §9 fall-through criteria; orchestrator wires it behind `AURA_COMPOSITION_ENGINE_ENABLED` (default false). 691 → 599 → 654 tests across the sub-PRs. |
+| #150 | Pre-flag observability instrumentation | `aura_composition_router_decision_total` counter, engine latency under `aura_turn_duration_seconds{stage="composition_engine"}`, YAML-gap surfacer in distillation traces, `aura_composition_yaml_load_failure_total` + alert. |
+| #151 | Phase 4.11 input canonicalization via embedding nearest-neighbour | The pivotal piece. `composition/canonicalize.py` two-phase (exact-match → batched `text-embedding-3-small`) maps free-text planner output to YAML-canonical keys. 350KB pre-computed embedding bank (`canonical_embeddings.json`). Confidence threshold recalibrated 0.60 → 0.50. Engine bug fix: seasonal_color_group dual-dimension lookup. |
+| #152 | `tool_traces` CHECK-constraint fix | Every cache-hit try-on candidate was silently dropping its trace row (`status='cache_hit'` violated the table's `('ok', 'error')` enum). `_coerce_tryon_trace_db_status()` helper coerces the rich path enum to the constrained domain. |
+| #153 | `model_call_logs.model` origin stamping | Per-model rollups were attributing every cache + engine row to gpt-5.2 (phantom 0-token rows). New `_resolve_architect_origin_model()` stamps `cache` / `composition_engine` / LLM model id; tokens forced to 0 on non-LLM paths. |
+| #154 | Comprehensive observability follow-up | 4 new metrics (canonicalize result counter, embed-duration histogram, tool_traces failure counter, attribute-status counter). 4 new dashboard panels (21 plan-source distribution, 22 yaml-gap distribution, 23 per-attribute status, 24 single-turn diagnostic). `RouterDecision.provenance_summary` plumbed into traces. OPERATIONS.md "A4: Composition engine flag-on regressions" runbook. `ops/scripts/turn_forensics.py`. |
+| #155 | OPEN_TASKS.md refresh | Updated the Phase status table + foundation list + per-phase detail to reflect the above shipped state. |
+
+**Verified end-to-end on 2026-05-06:** a real flag-on staging turn (`b356a1bf`, "Find me casual outfits for weekend outing") produced `used_engine=true, engine_confidence=1.0, engine_ms=0`. Total turn 83s → 63s vs the flag-off baseline; per-turn cost ~$0.19 → ~$0.15. Architect stage 19s → ~0ms is the dominant saving.
+
+**Still gated on humans:**
+- Phase 4.2 — paid stylist YAML content review (revised YAMLs, edge-case calls, canonical-schema fixes)
+- Phase 4.6 — eval-set curation (100-500 hand-curated queries) — required for confidence-threshold calibration, A/B model swap (Phase 1.4), and the bucketed-rollout ramp
+
 ## May 5–6, 2026 — episodic memory + R7 rater + composer name + ops recalibration
 
 A 22-PR sweep that overhauled the rater rubric, added episodic memory at the architect, made every outfit a first-class named card, fixed three silent failure modes, and rebuilt the observability surface to match the new system. Grouped by area:

@@ -2,6 +2,8 @@
 
 **Status:** decisions locked May 13 2026. Revised after PR #131 review (May 13 2026 evening) — see "Revision history" at the bottom.
 
+> **Update 2026-05-07:** the cache infrastructure shipped (PRs #131-#136) but sat at ~0% hit rate because the upstream planner emitted non-deterministic `occasion_signal` / `style_goal` values — same user query produced different cache keys. **Phase 4.7 + 4.11 (composition engine + input canonicalization, PRs #149 + #151) made engine inputs canonical**, so identical user queries now resolve to byte-identical cache keys when the engine accepts. Note that engine plans themselves intentionally bypass the architect cache during the manual flag-on phase (cohort-leak avoidance — see PR #149); LLM-fallback turns continue to use the cache. The original cache-hit-rate projections in this doc apply to the LLM fallback path; engine acceptance becomes the new "hit" path with sub-millisecond latency that doesn't need caching.
+
 Locks the cluster-key shape, prompt-versioning approach, and multi-tenancy posture so 2.1 / 2.2 / 2.3 don't relitigate them mid-PR.
 
 ---
