@@ -295,7 +295,16 @@ def _collect_contributions(
     elif inputs.frame_structure:
         gaps.append(f"frame_structure:{inputs.frame_structure}")
 
+    # Spec §1 says seasonal_color_group is the 12-entry SubSeason
+    # name, but profile data sometimes stores the 4-entry
+    # SeasonalColorGroup form ("Autumn" instead of "Soft Autumn").
+    # palette.yaml carries both dimensions; try SubSeason first, fall
+    # back to SeasonalColorGroup before flagging a YAML gap.
     sub = graph.palette.get("SubSeason", {}).get(inputs.seasonal_color_group)
+    if sub is None:
+        sub = graph.palette.get("SeasonalColorGroup", {}).get(
+            inputs.seasonal_color_group
+        )
     if sub is not None:
         _add_mapping(
             by_attr,
