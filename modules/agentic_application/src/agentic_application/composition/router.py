@@ -36,6 +36,12 @@ from ..schemas import (
     RecommendationPlan,
     ResolvedContextBlock,
 )
+from .canonicalize import (
+    CanonicalEmbeddings,
+    EmbedClient,
+    canonicalize_inputs,
+    load_canonical_embeddings,
+)
 from .engine import (
     CONFIDENCE_THRESHOLD,
     CompositionInputs,
@@ -268,6 +274,8 @@ def route_recommendation_plan(
     architect_plan_callable,
     enabled: bool = False,
     graph: StyleGraph | None = None,
+    canonical_embeddings: CanonicalEmbeddings | None = None,
+    embed_client: EmbedClient | None = None,
 ) -> RouterDecision:
     """Decide whether to use the engine or the LLM architect for this turn.
 
@@ -280,6 +288,13 @@ def route_recommendation_plan(
     routes every turn through the engine first; per-turn fall-through
     on confidence / YAML gap / disambiguation still applies via the
     spec §9 acceptance gates.
+
+    ``canonical_embeddings`` + ``embed_client`` enable the canonicalize
+    layer: the router maps free-text planner output to YAML-canonical
+    keys before invoking compose_direction. Both default to None;
+    callers that want the optimization pass them in. With both None,
+    the engine sees raw planner output and gaps on any non-canonical
+    value (the pre-canonicalize behavior).
     """
     # Phase 4.10 flag — stop here on disabled, before any work.
     if not enabled:
@@ -308,6 +323,20 @@ def route_recommendation_plan(
     if graph is None:
         graph = load_style_graph()
     inputs = extract_engine_inputs(combined_context)
+
+    # Canonicalize free-text planner output → YAML-canonical keys
+    # before the engine sees them. Skipped when the caller didn't
+    # provide the embedding bank (tests, or canonicalize disabled).
+    # Embedding lookup only fires for axes that DON'T exact-match a
+    # YAML key, so the cheap path adds 0ms.
+    if canonical_embeddings is not None:
+        inputs, _canon_result = canonicalize_inputs(
+            inputs,
+            graph=graph,
+            embeddings=canonical_embeddings,
+            embed_client=embed_client,
+        )
+
     _engine_t0 = time.monotonic()
     result = compose_direction(
         inputs=inputs, graph=graph, user=combined_context.user

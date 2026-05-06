@@ -326,6 +326,14 @@ class AgenticOrchestrator:
             config, "composition_engine_enabled", False
         )
         self._composition_graph = None
+        # Phase 4.11 — input canonicalization: lazy-loaded embedding
+        # bank (one-time disk read) + lazy-init OpenAI embed client
+        # (one-time openai.OpenAI() construction). Both stay None
+        # until the engine path is exercised. Construction failures
+        # disable canonicalization for the rest of the process; the
+        # engine still runs but sees raw planner output.
+        self._composition_canonical_embeddings = None
+        self._composition_embed_client = None
         # Phase 2.3 composer output cache (May 14 2026). Stacks on top
         # of the architect cache: keyed on (architect_direction_id +
         # retrieval fingerprint + cluster + composer_prompt_version).
@@ -4873,11 +4881,37 @@ class AgenticOrchestrator:
                                 observe_composition_yaml_load_failure()
                             except Exception:  # noqa: BLE001 — metrics never break the pipeline
                                 pass
+                    if (
+                        self._composition_engine_enabled
+                        and self._composition_canonical_embeddings is None
+                    ):
+                        # Lazy-load the canonicalization layer next to the
+                        # YAML graph. A missing embeddings file degrades
+                        # gracefully (canonicalize becomes a no-op) — the
+                        # load itself returns an empty bank with a warning.
+                        # Embed-client failure here disables canonicalize
+                        # for the rest of the process; the engine still
+                        # runs on raw planner output.
+                        try:
+                            from .composition.canonicalize import (
+                                default_embed_client,
+                                load_canonical_embeddings,
+                            )
+                            self._composition_canonical_embeddings = load_canonical_embeddings()
+                            self._composition_embed_client = default_embed_client()
+                        except Exception as exc:
+                            _log.exception(
+                                "Composition canonicalize init failed: %s", exc
+                            )
+                            self._composition_canonical_embeddings = None
+                            self._composition_embed_client = None
                     _router_decision = route_recommendation_plan(
                         combined_context=combined_context,
                         architect_plan_callable=self.outfit_architect.plan,
                         enabled=self._composition_engine_enabled,
                         graph=self._composition_graph,
+                        canonical_embeddings=self._composition_canonical_embeddings,
+                        embed_client=self._composition_embed_client,
                     )
                     plan = _router_decision.plan
                     # Structured router decision log: human-readable
