@@ -309,6 +309,19 @@ class RepositoryPutTests(unittest.TestCase):
         self.assertEqual(rows[0]["tenant_id"], "default")
         self.assertEqual(rows[0]["intent"], "occasion_recommendation")
 
+    def test_put_does_not_overwrite_hit_count(self) -> None:
+        # Review of PR #134: hit_count must NOT be in the upsert
+        # payload. On primary-key conflict, leaving it out preserves
+        # the existing row's accumulated hit_count.
+        self.repo.put(
+            tenant_id="default",
+            cache_key="abc",
+            plan=RecommendationPlan(directions=[]),
+            denormalised={"intent": "occasion_recommendation"},
+        )
+        rows = self.client.upsert_many.call_args[0][1]
+        self.assertNotIn("hit_count", rows[0])
+
     def test_put_swallows_exceptions(self) -> None:
         self.client.upsert_many.side_effect = RuntimeError("disk full")
         # Must not raise — write failure should never break the user turn.
@@ -319,8 +332,18 @@ class RepositoryPutTests(unittest.TestCase):
             denormalised={},
         )
 
+    def test_touch_calls_atomic_rpc(self) -> None:
+        # Review of PR #134: touch must atomically bump hit_count, not
+        # just refresh last_used_at. Implemented via the
+        # architect_cache_touch RPC.
+        self.repo.touch(tenant_id="default", cache_key="abc")
+        self.client.rpc.assert_called_once_with(
+            "architect_cache_touch",
+            {"p_tenant_id": "default", "p_cache_key": "abc"},
+        )
+
     def test_touch_swallows_exceptions(self) -> None:
-        self.client.update_one.side_effect = RuntimeError("oops")
+        self.client.rpc.side_effect = RuntimeError("oops")
         self.repo.touch(tenant_id="default", cache_key="abc")  # should not raise
 
 

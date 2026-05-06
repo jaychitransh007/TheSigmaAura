@@ -306,6 +306,19 @@ class RepositoryPutTests(unittest.TestCase):
         self.assertIn("outfits", rows[0]["outfits_json"])
         self.assertEqual(rows[0]["outfits_json"]["overall_assessment"], "strong")
 
+    def test_put_does_not_overwrite_hit_count(self) -> None:
+        # Review of PR #134: same fix as architect cache. hit_count
+        # must NOT be in the upsert payload — on conflict the
+        # existing row's accumulated count survives.
+        self.repo.put(
+            tenant_id="default",
+            cache_key="abc",
+            result=ComposerResult(),
+            denormalised={},
+        )
+        rows = self.client.upsert_many.call_args[0][1]
+        self.assertNotIn("hit_count", rows[0])
+
     def test_put_swallows_exceptions(self) -> None:
         self.client.upsert_many.side_effect = RuntimeError("oops")
         # Must not raise.
@@ -316,8 +329,16 @@ class RepositoryPutTests(unittest.TestCase):
             denormalised={},
         )
 
+    def test_touch_calls_atomic_rpc(self) -> None:
+        # Review of PR #134: same fix as architect cache.
+        self.repo.touch(tenant_id="default", cache_key="abc")
+        self.client.rpc.assert_called_once_with(
+            "composer_cache_touch",
+            {"p_tenant_id": "default", "p_cache_key": "abc"},
+        )
+
     def test_touch_swallows_exceptions(self) -> None:
-        self.client.update_one.side_effect = RuntimeError("oops")
+        self.client.rpc.side_effect = RuntimeError("oops")
         self.repo.touch(tenant_id="default", cache_key="abc")
 
 

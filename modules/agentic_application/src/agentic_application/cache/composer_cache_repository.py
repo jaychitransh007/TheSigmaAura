@@ -84,6 +84,8 @@ class ComposerCacheRepository:
         # Store only the fields that survive across calls — outfits +
         # overall_assessment + pool_unsuitable. Skip raw_response /
         # usage / attempt_count (those are per-call artefacts).
+        # hit_count intentionally absent so upsert-on-conflict
+        # preserves the existing row's count (review of PR #134).
         outfits_payload = {
             "outfits": [o.model_dump(mode="json") for o in result.outfits],
             "overall_assessment": result.overall_assessment,
@@ -94,7 +96,6 @@ class ComposerCacheRepository:
             "tenant_id": tenant_id or "default",
             "cache_key": cache_key,
             "outfits_json": outfits_payload,
-            "hit_count": 0,
         }
         try:
             self._client.upsert_many(_TABLE, [row], on_conflict="tenant_id,cache_key")
@@ -106,14 +107,19 @@ class ComposerCacheRepository:
             )
 
     def touch(self, *, tenant_id: str, cache_key: str) -> None:
+        """Atomically bump hit_count + refresh last_used_at. Never raises.
+
+        Calls the ``composer_cache_touch`` RPC (added in
+        20260514020000_cache_touch_rpcs.sql) — single server-side
+        UPDATE, no race on concurrent hits (review of PR #134).
+        """
         try:
-            self._client.update_one(
-                _TABLE,
-                filters={
-                    "tenant_id": f"eq.{tenant_id or 'default'}",
-                    "cache_key": f"eq.{cache_key}",
+            self._client.rpc(
+                "composer_cache_touch",
+                {
+                    "p_tenant_id": tenant_id or "default",
+                    "p_cache_key": cache_key,
                 },
-                patch={"last_used_at": datetime.now(timezone.utc).isoformat()},
             )
         except Exception:  # noqa: BLE001
             _log.debug("composer_cache.touch failed for key=%s", cache_key[:16], exc_info=True)
