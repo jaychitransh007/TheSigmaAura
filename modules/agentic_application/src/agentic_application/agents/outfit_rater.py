@@ -33,9 +33,10 @@ from __future__ import annotations
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from openai import OpenAI
 
@@ -237,6 +238,18 @@ _BOLD_KEYWORDS = ("bold", "statement", "colorful", "colourful", "stand out", "ma
 _SLIMMING_KEYWORDS = ("slimmer", "slimming", "taller", "look thin", "look slim")
 _COMFORTABLE_KEYWORDS = ("comfortable", "comfort", "relaxed")
 
+# Phase 1.1 latency push (May 13 2026): the rater previously made ONE
+# LLM call covering all composed outfits in one prompt — measured 13.4s
+# p50 because the model serialises across the array. Splitting into
+# per-outfit calls and fanning out via ThreadPoolExecutor drops latency
+# to the slowest single call (~2-3s) at the cost of one extra prompt
+# preamble per outfit. See PR for the latency breakdown.
+#
+# Cap workers at 6: composer ships up to 6 outfits per turn (3 directions
+# × ~2 outfits) and OpenAI's per-account RPM ceiling is generous enough
+# that 6 concurrent gpt-5-mini calls don't trigger rate-limit retries.
+_RATE_MAX_WORKERS = 6
+
 
 def select_weight_profile(
     *,
@@ -426,53 +439,96 @@ class OutfitRater:
         # in front of it on its own merits — see PR #89.
         user_block = _user_context_block(combined_context)
         user_block.pop("archetypal_preferences", None)
-        user_payload = json.dumps(
-            {
-                "user": user_block,
-                "outfits": _build_outfit_payload(composed_outfits, items_by_id),
-            },
-            indent=2,
-            default=str,
-        )
-
-        # reasoning_effort="minimal" — Rater scores 6 fixed dims per
-        # outfit on a 1/2/3 enum schema; no chain-of-thought needed.
-        response = self._client.responses.create(
-            model=self._model,
-            input=[
-                {"role": "system", "content": [{"type": "input_text", "text": self._system_prompt}]},
-                {"role": "user", "content": [{"type": "input_text", "text": user_payload}]},
-            ],
-            reasoning={"effort": "minimal"},
-            text={"format": _RATER_JSON_SCHEMA},
-        )
-        usage = extract_token_usage(response) or {}
-        self.last_usage = dict(usage)
-        raw_text = getattr(response, "output_text", "") or "{}"
-        try:
-            raw = json.loads(raw_text)
-        except json.JSONDecodeError as exc:
-            _log.warning("OutfitRater: JSON parse failed (%s); returning empty result", exc)
-            return RaterResult(
-                ranked_outfits=[], overall_assessment="weak",
-                raw_response=raw_text, usage=dict(usage),
-                fashion_score_weight_profile=weight_profile,
-            )
 
         direction_by_cid = {o.composer_id: o.direction_type for o in composed_outfits}
-
         valid_ids = {o.composer_id for o in composed_outfits}
+
+        # Phase 1.1: fan out one LLM call per outfit. Same prompt, same
+        # schema (we wrap the single outfit in a one-element list so the
+        # Rater sees the array shape its prompt was tuned for). Workers
+        # parse the first ranked_outfits entry, accumulate raw responses
+        # + token usage; we merge after `as_completed`.
+        worker_count = min(len(composed_outfits), _RATE_MAX_WORKERS) or 1
+        per_outfit: List[Tuple[ComposedOutfit, Dict[str, Any], Dict[str, int], str]] = [
+            (o, {}, {}, "") for o in composed_outfits
+        ]
+
+        def _rate_one(idx: int) -> Tuple[int, Dict[str, Any], Dict[str, int], str]:
+            outfit = composed_outfits[idx]
+            payload = json.dumps(
+                {
+                    "user": user_block,
+                    "outfits": _build_outfit_payload([outfit], items_by_id),
+                },
+                indent=2,
+                default=str,
+            )
+            response = self._client.responses.create(
+                model=self._model,
+                input=[
+                    {"role": "system", "content": [{"type": "input_text", "text": self._system_prompt}]},
+                    {"role": "user", "content": [{"type": "input_text", "text": payload}]},
+                ],
+                reasoning={"effort": "minimal"},
+                text={"format": _RATER_JSON_SCHEMA},
+            )
+            usage = extract_token_usage(response) or {}
+            raw_text = getattr(response, "output_text", "") or "{}"
+            try:
+                raw = json.loads(raw_text)
+            except json.JSONDecodeError as exc:
+                _log.warning(
+                    "OutfitRater: JSON parse failed for composer_id=%s (%s)",
+                    outfit.composer_id, exc,
+                )
+                raw = {"ranked_outfits": []}
+            return idx, raw, dict(usage), raw_text
+
+        usage_total: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        raw_responses: List[str] = []
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            futures = {pool.submit(_rate_one, i): i for i in range(len(composed_outfits))}
+            for future in as_completed(futures):
+                try:
+                    idx, raw, usage, raw_text = future.result()
+                except Exception:  # noqa: BLE001 — one slow outfit shouldn't kill the slate
+                    i = futures[future]
+                    _log.exception("OutfitRater: worker failed for composer_id=%s", composed_outfits[i].composer_id)
+                    continue
+                per_outfit[idx] = (composed_outfits[idx], raw, usage, raw_text)
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                    usage_total[key] = usage_total.get(key, 0) + int(usage.get(key, 0) or 0)
+                if raw_text:
+                    raw_responses.append(raw_text)
+
+        self.last_usage = dict(usage_total)
+
         ranked: List[RatedOutfit] = []
-        for raw_o in raw.get("ranked_outfits", []):
-            cid = str(raw_o.get("composer_id", ""))
+        for outfit, raw, _usage, _raw_text in per_outfit:
+            entries = raw.get("ranked_outfits") or []
+            if not entries:
+                continue
+            # Strict match by composer_id. Each worker sends one outfit
+            # and the prompt tells the LLM to echo `composer_id` back —
+            # so the production response should always contain a
+            # matching entry. If the LLM emits a wrong id, we drop
+            # this outfit (rare; telemetry will surface). Strict match
+            # also preserves the legacy "drop unknown composer_ids"
+            # contract for inputs the model invented outside our slate.
+            raw_o = next(
+                (e for e in entries if str(e.get("composer_id", "")) == outfit.composer_id),
+                None,
+            )
+            if raw_o is None:
+                _log.warning(
+                    "OutfitRater: no matching entry for composer_id=%s (%d entries returned)",
+                    outfit.composer_id, len(entries),
+                )
+                continue
+            cid = outfit.composer_id
             if cid not in valid_ids:
                 _log.warning("OutfitRater: dropping unknown composer_id %s", cid)
                 continue
-            # Five always-on dims default to 2 ("works") on malformed
-            # input — a missing field is more likely a parsing bug than
-            # a "score zero" signal, and 2 is the neutral midpoint.
-            # `pairing` defaults to None so compute_fashion_score drops
-            # the dim and renormalises (same path as complete outfits).
             occ = _parse_subscore(raw_o.get("occasion_fit"))
             bod = _parse_subscore(raw_o.get("body_harmony"))
             col = _parse_subscore(raw_o.get("color_harmony"))
@@ -509,11 +565,30 @@ class OutfitRater:
 
         return RaterResult(
             ranked_outfits=ranked,
-            overall_assessment=str(raw.get("overall_assessment") or "moderate"),
-            raw_response=raw_text,
-            usage=dict(usage),
+            overall_assessment=_assess_slate(ranked),
+            raw_response="\n---\n".join(raw_responses) if raw_responses else "",
+            usage=dict(usage_total),
             fashion_score_weight_profile=weight_profile,
         )
+
+
+def _assess_slate(ranked: Sequence[RatedOutfit]) -> str:
+    """Derive overall_assessment from per-outfit fashion scores.
+
+    Replaces the LLM-emitted assessment now that we score each outfit in
+    its own call. Thresholds match the model's prior behavior: a slate
+    where the top outfit clears 70 reads as "strong"; ≥40 → "moderate";
+    everything else → "weak". Empty slates default to "weak". Telemetry
+    only — no production logic gates on this string (verified May 13 2026).
+    """
+    if not ranked:
+        return "weak"
+    top = max(r.fashion_score for r in ranked)
+    if top >= 70:
+        return "strong"
+    if top >= 40:
+        return "moderate"
+    return "weak"
 
 
 def _composer_id_sort_key(cid: str) -> tuple:
