@@ -20,6 +20,15 @@ class AuraRuntimeConfig:
     # (low | medium | high | xhigh — full gpt-5.4/5.5 vocabulary).
     architect_reasoning_effort: str = "low"
 
+    # Phase 1.4 latency push (May 13 2026): architect + composer model
+    # strings exposed as env vars for fast within-OpenAI swap testing.
+    # Defaults match the production lineup (gpt-5.4 with reasoning).
+    # Override for staging tests via ARCHITECT_MODEL / COMPOSER_MODEL.
+    # Cross-vendor swaps (claude-sonnet-4-7, gemini-2.5-pro) require a
+    # vendor adapter and are not supported here — only OpenAI model ids.
+    architect_model: str = "gpt-5.4"
+    composer_model: str = "gpt-5.4"
+
 
 def _resolve_env_file(explicit_path: str | None = None) -> str:
     if explicit_path:
@@ -104,9 +113,18 @@ def load_config() -> AuraRuntimeConfig:
         # than crash.
         architect_effort = "low"
 
+    # Phase 1.4: ARCHITECT_MODEL / COMPOSER_MODEL allow swapping the
+    # architect/composer to a faster OpenAI model (e.g. gpt-5-mini)
+    # without code changes. Trim + fallback on empty so an unset env
+    # var keeps the production default.
+    architect_model = os.getenv("ARCHITECT_MODEL", "").strip() or "gpt-5.4"
+    composer_model = os.getenv("COMPOSER_MODEL", "").strip() or "gpt-5.4"
+
     return AuraRuntimeConfig(
         supabase_rest_url=_ensure_rest_url(supabase_url),
         supabase_service_role_key=service_key,
         catalog_csv_path=catalog_csv_path,
         architect_reasoning_effort=architect_effort,
+        architect_model=architect_model,
+        composer_model=composer_model,
     )

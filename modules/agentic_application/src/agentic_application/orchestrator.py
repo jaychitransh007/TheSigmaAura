@@ -252,7 +252,18 @@ class AgenticOrchestrator:
         # only ever sees real strings.
         _architect_effort_raw = getattr(config, "architect_reasoning_effort", "medium")
         _architect_effort = _architect_effort_raw if isinstance(_architect_effort_raw, str) else "medium"
-        self.outfit_architect = OutfitArchitect(reasoning_effort=_architect_effort)
+        # Phase 1.4 (May 13 2026): architect + composer model strings
+        # flow from AuraRuntimeConfig so they can be flipped per-env via
+        # ARCHITECT_MODEL / COMPOSER_MODEL without a code change. Same
+        # boundary-coercion as `architect_reasoning_effort` above —
+        # tests pass `config=Mock()` and Mock auto-creates attribute
+        # access (returning a Mock) which would break the agents'
+        # constructors that expect a real str.
+        _architect_model_raw = getattr(config, "architect_model", "gpt-5.4")
+        _architect_model = _architect_model_raw if isinstance(_architect_model_raw, str) else "gpt-5.4"
+        _composer_model_raw = getattr(config, "composer_model", "gpt-5.4")
+        _composer_model = _composer_model_raw if isinstance(_composer_model_raw, str) else "gpt-5.4"
+        self.outfit_architect = OutfitArchitect(model=_architect_model, reasoning_effort=_architect_effort)
         # Evaluator history (see top of file): OutfitCheckAgent and
         # VisualEvaluatorAgent both removed; the Rater is the sole
         # scoring engine and feeds the radar UI directly.
@@ -264,7 +275,7 @@ class AgenticOrchestrator:
         # May 3 2026: OutfitAssembler + Reranker replaced by the Composer
         # + Rater LLM ranker pipeline. See agents/outfit_composer.py and
         # agents/outfit_rater.py.
-        self.outfit_composer = OutfitComposer()
+        self.outfit_composer = OutfitComposer(model=_composer_model)
         self.outfit_rater = OutfitRater()
         # Pool / final caps live here (no longer on a Reranker instance).
         self.recommendation_final_top_n = 3
