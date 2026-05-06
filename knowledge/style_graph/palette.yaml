@@ -1,0 +1,734 @@
+# Palette → garment attribute mapping (Indian urban context)
+#
+# 10 palette-group user attributes mapped to canonical garment attribute
+# values. SubSeason is the dominant signal — fully specified for all 12
+# values including the rare-in-India spring/summer sub-seasons. The other
+# 9 attributes (skin/hair/eye/contrast) refine within sub-season — they
+# don't override it, just nudge.
+#
+# Garment attribute values: ./modules/style_engine/configs/config/garment_attributes.json
+# User attribute values: ./prompt/color_analysis_headshot.md +
+#                        ./modules/user/src/user/interpreter.py (derived)
+#
+# PrimaryColor and SecondaryColor are text attributes — values below are
+# specific named hues, expressed in stylist vocabulary. The runtime
+# resolver embeds these against catalog products.
+#
+# Composition rule: SubSeason takes precedence over individual color
+# attrs. ContrastLevel and SkinHairContrast modify *within* sub-season
+# (e.g., a Warm Autumn with high contrast wears bolder accents than a
+# Warm Autumn with low contrast). Skin/hair/eye are even softer
+# refinements; they almost never override SubSeason calls.
+
+SubSeason:
+
+  True Spring:
+    flatters:
+      PrimaryColor:        [warm ivory, golden beige, camel, warm peach, coral]
+      SecondaryColor:      [warm red, golden yellow, turquoise, light gold]
+      ColorTemperature:    [warm]
+      ColorValue:          [light, mid]
+      ColorSaturation:     [medium, high]
+      ContrastLevel:       [medium]
+      ColorCount:          [tonal, two_color]
+      PatternType:         [floral, motif, geometric]
+      PatternScale:        [small, medium]
+      FabricTexture:       [smooth, sheen]
+      EmbellishmentType:   [embroidery, beading, sequins]
+    avoid:
+      PrimaryColor:        [icy blue, dark navy, charcoal, cool grey, jet black, dusty pink]
+      ColorTemperature:    [cool]
+      ColorValue:          [very_dark]
+      ColorSaturation:     [muted]
+      FabricTexture:       [matte]
+    notes: >
+      Pure spring — warm + clear + medium-light. Rare in India but appears
+      in fairer South / North-East / North-West Indian users. Indian
+      embodiment: warm peach saree, golden ivory anarkali, coral dupatta,
+      light gold zardozi. Avoid cool jewel tones (emerald, sapphire,
+      ruby) — they fight the warmth.
+
+  Warm Spring:
+    flatters:
+      PrimaryColor:        [warm ivory, light camel, warm peach, golden beige]
+      SecondaryColor:      [coral, warm yellow, soft turquoise, golden brown]
+      ColorTemperature:    [warm]
+      ColorValue:          [light, mid]
+      ColorSaturation:     [medium, high]
+      ContrastLevel:       [low, medium]
+      ColorCount:          [tonal, two_color]
+      PatternType:         [floral, motif]
+      PatternScale:        [small, medium]
+      FabricTexture:       [smooth, sheen]
+      EmbellishmentType:   [embroidery, beading]
+    avoid:
+      PrimaryColor:        [icy blue, charcoal, jet black, cool pink, dusty rose]
+      ColorTemperature:    [cool]
+      ColorValue:          [very_dark, very_light]
+      FabricTexture:       [matte, metallic]
+    notes: >
+      Warmest of the springs — golden / honey skin tones with warm hair.
+      Indian: golden-mango saree, soft coral kurta, warm ivory anarkali,
+      delicate gold thread embroidery. Avoid silver — go with gold.
+
+  Light Spring:
+    flatters:
+      PrimaryColor:        [ivory, light camel, soft peach, light gold]
+      SecondaryColor:      [light coral, peach, aqua, bright salmon, light turquoise]
+      ColorTemperature:    [warm, neutral]
+      ColorValue:          [very_light, light]
+      ColorSaturation:     [medium]
+      ContrastLevel:       [low]
+      ColorCount:          [tonal]
+      PatternType:         [floral, motif]
+      PatternScale:        [micro, small]
+      FabricTexture:       [smooth, sheen]
+      EmbellishmentType:   [embroidery, beading, lace]
+    avoid:
+      PrimaryColor:        [black, charcoal, dark brown, deep burgundy, dark navy, oxblood]
+      ColorTemperature:    [cool]
+      ColorValue:          [very_dark, dark]
+      ContrastLevel:       [high, very_high]
+      FabricTexture:       [matte, metallic]
+    notes: >
+      Lightest of the springs — very fair, light hair, light eyes. Rare
+      in India. Indian embodiment: light gold-edged Chanderi saree,
+      pastel-peach anarkali, soft cream + light coral combinations,
+      delicate lace work. Heavy black or oxblood reads harsh.
+
+  True Summer:
+    flatters:
+      PrimaryColor:        [soft white, dove grey, rose taupe, soft navy]
+      SecondaryColor:      [dusty pink, soft blue, sage, lavender]
+      ColorTemperature:    [cool]
+      ColorValue:          [light, mid]
+      ColorSaturation:     [muted, medium]
+      ContrastLevel:       [low, medium]
+      ColorCount:          [tonal, two_color]
+      PatternType:         [floral, stripes_vertical, geometric]
+      PatternScale:        [small, medium]
+      FabricTexture:       [smooth, matte, pleated]
+      EmbellishmentType:   [embroidery, beading, lace]
+    avoid:
+      PrimaryColor:        [orange, warm gold, tomato red, olive, mustard]
+      ColorTemperature:    [warm]
+      ColorSaturation:     [very_high]
+      ContrastLevel:       [very_high]
+      FabricTexture:       [metallic]
+    notes: >
+      Pure summer — cool + soft + light-medium. Rare in India but
+      appears in light cool-toned Kashmiri / North Indian users. Indian:
+      dusty rose kurta, soft chiffon saree in dove grey or soft navy,
+      pearl detailing rather than gold zardozi. Avoid mustard-yellow,
+      saffron, deep rust — too warm.
+
+  Cool Summer:
+    flatters:
+      PrimaryColor:        [cool white, soft grey, blue grey, cool navy]
+      SecondaryColor:      [icy blue, soft mauve, slate, dusty rose]
+      ColorTemperature:    [cool]
+      ColorValue:          [light, mid]
+      ColorSaturation:     [muted, medium]
+      ContrastLevel:       [medium]
+      ColorCount:          [tonal, two_color]
+      PatternType:         [stripes_vertical, geometric, floral]
+      PatternScale:        [small, medium]
+      FabricTexture:       [smooth, matte, pleated]
+      EmbellishmentType:   [embroidery, beading]
+    avoid:
+      PrimaryColor:        [warm gold, orange, mustard, rust, terracotta, warm brown]
+      ColorTemperature:    [warm]
+      ColorSaturation:     [very_high]
+      FabricTexture:       [metallic]
+    notes: >
+      Coolest of the summers. Indian: silver-edged blue saree, slate
+      kurta with cool-pearl detailing, dusty mauve anarkali. Silver
+      jewellery flatters (gold reads warm against cool skin).
+
+  Light Summer:
+    flatters:
+      PrimaryColor:        [soft white, light grey, light pink, sky blue]
+      SecondaryColor:      [pale lavender, mint, dusty pink, light blue]
+      ColorTemperature:    [cool, neutral]
+      ColorValue:          [very_light, light]
+      ColorSaturation:     [muted, medium]
+      ContrastLevel:       [low]
+      ColorCount:          [tonal]
+      PatternType:         [floral, geometric]
+      PatternScale:        [micro, small]
+      FabricTexture:       [smooth, matte, pleated]
+      EmbellishmentType:   [embroidery, lace, beading]
+    avoid:
+      PrimaryColor:        [black, charcoal, dark brown, oxblood, deep burgundy]
+      ColorTemperature:    [warm]
+      ColorValue:          [dark, very_dark]
+      ColorSaturation:     [high, very_high]
+      ContrastLevel:       [high, very_high]
+    notes: >
+      Lightest of the summers — pastel palette dominates. Indian: pale
+      pink Chanderi saree, sky-blue anarkali, soft mint kurta, delicate
+      pearl jewellery. Avoid heavy zardozi or deep jewel tones.
+
+  True Autumn:
+    flatters:
+      PrimaryColor:        [warm camel, golden brown, warm bronze, dark honey, deep olive]
+      SecondaryColor:      [terracotta, burnt sienna, mustard, warm coral, deep teal]
+      ColorTemperature:    [warm]
+      ColorValue:          [mid, dark]
+      ColorSaturation:     [muted, medium]
+      ContrastLevel:       [medium]
+      ColorCount:          [tonal, two_color]
+      PatternType:         [floral, motif, ethnic, geometric, animal]
+      PatternScale:        [small, medium, large]
+      FabricTexture:       [textured, embroidered, matte, sheen]
+      EmbellishmentType:   [embroidery, beading, mirror_work, applique]
+    avoid:
+      PrimaryColor:        [icy blue, fuchsia, jet black, stark white, cool pink]
+      ColorTemperature:    [cool]
+      ColorSaturation:     [very_high]
+    notes: >
+      Pure autumn — warm + medium-deep + muted. Common in Indian skin
+      tones. Indian: warm rust kurta, mustard-and-mehendi-green saree,
+      banarasi in deep camel + bronze zardozi, golden-bronze sherwani.
+      Antique gold jewellery (not bright gold). Pattern: paisley,
+      block-print, herringbone, organic florals.
+
+  Warm Autumn:
+    flatters:
+      PrimaryColor:        [rust, olive, mustard, camel, deep terracotta, forest green, bronze]
+      SecondaryColor:      [oat, soft white, denim indigo, plum, mehendi green]
+      ColorTemperature:    [warm]
+      ColorValue:          [mid, dark]
+      ColorSaturation:     [muted, medium]
+      ContrastLevel:       [low, medium]
+      ColorCount:          [tonal, two_color]
+      PatternType:         [floral, motif, ethnic, geometric]
+      PatternScale:        [medium, large]
+      FabricTexture:       [textured, embroidered, sheen]
+      EmbellishmentType:   [embroidery, mirror_work, applique, beading]
+    avoid:
+      PrimaryColor:        [icy blue, jet black, hot pink, lavender, cool grey, fuchsia]
+      ColorTemperature:    [cool]
+      ColorSaturation:     [very_high]
+      FabricTexture:       [metallic]
+    notes: >
+      Warmest of the autumns. THE most common Indian sub-season — rich
+      golden-warm skin with warm dark hair. Indian: rust banarasi saree
+      with golden zardozi, mustard anarkali, mehendi-green kurta,
+      paisley-print Patola, terracotta lehenga. Antique gold > bright
+      gold > silver (silver fights the warmth).
+
+  Soft Autumn:
+    flatters:
+      PrimaryColor:        [warm taupe, soft khaki, muted olive, warm grey]
+      SecondaryColor:      [sage green, muted terracotta, dusty coral, soft rust, warm mauve]
+      ColorTemperature:    [warm, neutral]
+      ColorValue:          [light, mid]
+      ColorSaturation:     [muted]
+      ContrastLevel:       [low]
+      ColorCount:          [tonal]
+      PatternType:         [floral, motif, ethnic]
+      PatternScale:        [small, medium]
+      FabricTexture:       [textured, matte, embroidered]
+      EmbellishmentType:   [embroidery, applique, mirror_work]
+    avoid:
+      PrimaryColor:        [neon, royal blue, fuchsia, stark black, electric colors]
+      ColorTemperature:    [cool]
+      ColorSaturation:     [high, very_high]
+      ContrastLevel:       [high, very_high]
+      FabricTexture:       [metallic, sheen]
+    notes: >
+      Softest of the autumns — muted and dusty. Common in fairer Indian
+      users with warm undertones. Indian: warm taupe saree, dusty coral
+      anarkali, soft sage kurta, antique gold (matte not shiny) zardozi,
+      tonal tonal-on-tonal layering. Avoid bright sequins.
+
+  True Winter:
+    flatters:
+      PrimaryColor:        [pure white, jet black, true red, royal blue, emerald, ruby]
+      SecondaryColor:      [icy pink, sapphire, deep purple, cool grey, silver]
+      ColorTemperature:    [cool]
+      ColorValue:          [very_light, very_dark]
+      ColorSaturation:     [high, very_high]
+      ContrastLevel:       [high, very_high]
+      ColorCount:          [single, two_color]
+      PatternType:         [solid, geometric, abstract, stripes_vertical]
+      PatternScale:        [medium, large]
+      FabricTexture:       [smooth, sheen, metallic, embroidered]
+      EmbellishmentType:   [sequins, beading, embroidery, mirror_work]
+    avoid:
+      PrimaryColor:        [warm beige, mustard, peach, coral, warm gold, ivory]
+      ColorTemperature:    [warm]
+      ColorSaturation:     [muted]
+      ContrastLevel:       [low]
+      ColorCount:          [tonal]
+    notes: >
+      Pure winter — cool + clear + high-contrast. Common in dark-haired
+      Indian users with cool undertones. Indian: ruby-red bridal lehenga
+      with silver work, royal-blue saree, jet-black kurta with white
+      embroidery, emerald sherwani. Statement contrast (red + white,
+      black + gold) is the signature. Silver jewellery flatters; bright
+      gold can fight cool undertones — antique silver / oxidised
+      silver / platinum work better.
+
+  Cool Winter:
+    flatters:
+      PrimaryColor:        [pure white, true black, blue red, deep purple, navy]
+      SecondaryColor:      [icy pink, soft fuchsia, slate, sapphire, silver]
+      ColorTemperature:    [cool]
+      ColorValue:          [very_light, dark, very_dark]
+      ColorSaturation:     [high, very_high]
+      ContrastLevel:       [high, very_high]
+      ColorCount:          [single, two_color]
+      PatternType:         [solid, geometric, abstract]
+      PatternScale:        [medium, large]
+      FabricTexture:       [smooth, sheen, embroidered]
+      EmbellishmentType:   [sequins, beading, embroidery]
+    avoid:
+      PrimaryColor:        [warm gold, mustard, terracotta, ivory, peach, olive]
+      ColorTemperature:    [warm]
+      ColorSaturation:     [muted]
+      ContrastLevel:       [low]
+    notes: >
+      Coolest of the winters. Indian: blue-red (rather than orange-red)
+      bridal saree, deep navy kurta, true black with silver detailing,
+      icy fuchsia anarkali. Silver / platinum jewellery essential.
+
+  Deep Winter:
+    flatters:
+      PrimaryColor:        [jet black, true white, deep ruby, deep emerald, deep navy, deep aubergine]
+      SecondaryColor:      [oxblood, deep teal, charcoal, sapphire, deep purple]
+      ColorTemperature:    [cool, neutral]
+      ColorValue:          [dark, very_dark]
+      ColorSaturation:     [high, very_high]
+      ContrastLevel:       [high, very_high]
+      ColorCount:          [single, two_color]
+      PatternType:         [solid, geometric, abstract, motif]
+      PatternScale:        [medium, large]
+      FabricTexture:       [smooth, sheen, metallic, embroidered]
+      EmbellishmentType:   [sequins, beading, embroidery, mirror_work]
+    avoid:
+      PrimaryColor:        [pastel pink, powder blue, light lavender, stark white, icy grey, ivory]
+      ColorTemperature:    [warm]
+      ColorValue:          [very_light, light]
+      ColorSaturation:     [muted]
+      ContrastLevel:       [low]
+    notes: >
+      Deepest of the winters — common in Indian users with dark skin and
+      dark hair. Bridal red, deep emerald lehenga, oxblood velvet saree,
+      jet black with statement gold. Both gold and silver work — go for
+      antique gold or oxidised silver, not bright shiny finishes.
+
+
+SeasonalColorGroup:
+
+  Spring:
+    flatters:
+      ColorTemperature:    [warm]
+      ColorValue:          [light, mid]
+      ColorSaturation:     [medium, high]
+      ContrastLevel:       [medium]
+    avoid:
+      ColorTemperature:    [cool]
+      ColorValue:          [very_dark]
+      ColorSaturation:     [muted]
+    notes: 4-class fallback when SubSeason is unavailable. Spring =
+      warm + clear + light. Spring sub-seasons (true / warm / light)
+      narrow further.
+
+  Summer:
+    flatters:
+      ColorTemperature:    [cool]
+      ColorValue:          [light, mid]
+      ColorSaturation:     [muted, medium]
+      ContrastLevel:       [low, medium]
+    avoid:
+      ColorTemperature:    [warm]
+      ColorSaturation:     [very_high]
+      ContrastLevel:       [very_high]
+    notes: 4-class fallback. Summer = cool + soft + light-medium.
+
+  Autumn:
+    flatters:
+      ColorTemperature:    [warm]
+      ColorValue:          [mid, dark]
+      ColorSaturation:     [muted, medium]
+      ContrastLevel:       [medium]
+    avoid:
+      ColorTemperature:    [cool]
+      ColorSaturation:     [very_high]
+    notes: 4-class fallback. Autumn = warm + medium-deep + muted.
+      Most common Indian fallback when sub-season analysis is uncertain.
+
+  Winter:
+    flatters:
+      ColorTemperature:    [cool]
+      ColorValue:          [very_light, dark, very_dark]
+      ColorSaturation:     [high, very_high]
+      ContrastLevel:       [high, very_high]
+    avoid:
+      ColorTemperature:    [warm]
+      ColorSaturation:     [muted]
+      ContrastLevel:       [low]
+    notes: 4-class fallback. Winter = cool + clear + high-contrast.
+
+
+SkinSurfaceColor:
+  # Skin depth/value of face area. Modifies ColorValue choices on tops
+  # (where adjacency to face matters most). Doesn't override SubSeason.
+
+  Fair:
+    flatters:
+      ColorValue:          [light, mid]
+      ContrastLevel:       [medium, high]
+    avoid:
+      ColorValue:          [very_dark]                     # next-to-face contrast harsh
+    notes: Light skin — adjacent dark colours read as harsh contrast
+      against face. Use very dark only as accent or in lower body.
+
+  Light:
+    flatters:
+      ColorValue:          [light, mid]
+      ContrastLevel:       [medium]
+    avoid: {}
+    notes: Most colour values work; lean toward palette mid-range.
+
+  Medium:
+    flatters:
+      ColorValue:          [light, mid, dark]
+      ContrastLevel:       [low, medium, high]
+    avoid: {}
+    notes: All colour values work. Most flexibility.
+
+  Tan:
+    flatters:
+      ColorValue:          [mid, dark]
+      ContrastLevel:       [medium, high]
+    avoid:
+      ColorValue:          [very_light]                    # washes out adjacent to face
+    notes: Tan skin — adjacent very-light colours can wash out. Use
+      whites and pastels in lower body or with strong ContrastLevel.
+
+  Dark:
+    flatters:
+      ColorValue:          [mid, dark, very_dark]
+      ContrastLevel:       [medium, high, very_high]
+    avoid:
+      ColorValue:          [very_light]
+    notes: Dark skin carries jewel tones and deep saturated palette
+      beautifully. Avoid washed-out pastels next to face.
+
+  Deep:
+    flatters:
+      ColorValue:          [dark, very_dark]
+      ColorSaturation:     [high, very_high]
+      ContrastLevel:       [high, very_high]
+    avoid:
+      ColorValue:          [very_light]
+      ColorSaturation:     [muted]
+    notes: Deep skin — high-saturation jewel tones flatter most. Stark
+      white provides dramatic contrast (works); muted pastels can
+      visually wash.
+
+
+HairColor:
+  # Affects ColorTemperature confidence and ContrastLevel ceiling.
+  # Refines, doesn't override SubSeason.
+
+  Black:
+    flatters:
+      ColorTemperature:    [cool, neutral]
+      ContrastLevel:       [high, very_high]
+    avoid: {}
+    notes: Black hair carries high-contrast outfits well. The most
+      common Indian hair color.
+
+  Dark Brown:
+    flatters:
+      ColorTemperature:    [warm, neutral, cool]
+      ContrastLevel:       [medium, high]
+    avoid: {}
+    notes: Versatile. Common in Indian users.
+
+  Medium Brown:
+    flatters:
+      ColorTemperature:    [warm, neutral]
+      ContrastLevel:       [medium]
+    avoid: {}
+    notes: Slight warm lean. Common.
+
+  Light Brown:
+    flatters:
+      ColorTemperature:    [warm]
+      ContrastLevel:       [low, medium]
+    avoid:
+      ContrastLevel:       [very_high]                     # washes lighter hair
+    notes: Lighter hair shows higher contrast against face — moderate
+      contrast outfit reads as high.
+
+  Auburn:
+    flatters:
+      ColorTemperature:    [warm]
+      ContrastLevel:       [medium]
+    avoid:
+      ColorTemperature:    [cool]                          # fights warm hair
+    notes: Strong warm signal. Push palette toward warm sub-season
+      regardless of skin's borderline call.
+
+  Red:
+    flatters:
+      ColorTemperature:    [warm]
+      ContrastLevel:       [medium, high]
+    avoid:
+      ColorTemperature:    [cool]
+    notes: Same as Auburn but stronger. Pure warm anchor.
+
+  Blonde:
+    flatters:
+      ColorTemperature:    [warm, neutral]
+      ContrastLevel:       [low, medium]
+    avoid:
+      ContrastLevel:       [very_high]                     # blonde + black-and-white reads stark
+    notes: Rare in Indian users. Light-spring / light-summer leaning.
+
+  Grey:
+    flatters:
+      ColorTemperature:    [cool, neutral]
+      ContrastLevel:       [medium, high]
+    avoid: {}
+    notes: Grey hair is its own statement — works with cool-toned
+      tonal palettes (silver, slate, navy) or with high-contrast jewel.
+
+  White:
+    flatters:
+      ColorTemperature:    [cool, neutral]
+      ContrastLevel:       [high, very_high]
+    avoid: {}
+    notes: White hair carries high-contrast outfits gracefully. Avoid
+      muted everything — risks looking faded.
+
+
+HairColorTemperature:
+  # Most direct signal for ColorTemperature.
+
+  Cool:
+    flatters:
+      ColorTemperature:    [cool, neutral]
+    avoid:
+      ColorTemperature:    [warm]
+    notes: Strong cool-toned signal. Push toward cool sub-seasons
+      (winter / summer) when skin reading is borderline.
+
+  Neutral:
+    flatters:
+      ColorTemperature:    [neutral, warm, cool]
+    avoid: {}
+    notes: All temperatures work. Defer to skin + eye for sub-season.
+
+  Warm:
+    flatters:
+      ColorTemperature:    [warm, neutral]
+    avoid:
+      ColorTemperature:    [cool]
+    notes: Strong warm-toned signal. Push toward warm sub-seasons
+      (spring / autumn).
+
+
+EyeColor:
+  # Soft accent — outfit can pull eye color. Affects EmbellishmentType
+  # (metallic compatibility scaled by eye clarity).
+
+  Black-Brown:
+    flatters:
+      ColorValue:          [dark, very_dark]
+      EmbellishmentType:   [sequins, mirror_work, beading]
+    avoid: {}
+    notes: Most common Indian eye colour. Carries deep jewel tones.
+
+  Dark Brown:
+    flatters:
+      ColorValue:          [mid, dark]
+      EmbellishmentType:   [sequins, beading, embroidery]
+    avoid: {}
+    notes: Common. Versatile.
+
+  Medium Brown:
+    flatters:
+      ColorValue:          [mid]
+      EmbellishmentType:   [embroidery, beading]
+    avoid: {}
+    notes: Slight warm lean.
+
+  Light Brown:
+    flatters:
+      ColorValue:          [light, mid]
+      EmbellishmentType:   [embroidery, beading]
+    avoid:
+      EmbellishmentType:   [studs]                         # heavy hardware overpowers
+    notes: Lighter eyes — softer accents read better than heavy
+      hardware.
+
+  Hazel:
+    flatters:
+      ColorValue:          [mid]
+      EmbellishmentType:   [embroidery, beading, sequins]
+    avoid: {}
+    notes: Multi-tonal eyes. Outfit can pick up green or gold from
+      hazel depending on outfit context.
+
+  Green:
+    flatters:
+      ColorValue:          [mid]
+      EmbellishmentType:   [embroidery, beading]
+    avoid: {}
+    notes: Green eyes flatter against burgundy / oxblood / forest
+      green / mustard accents.
+
+  Blue:
+    flatters:
+      ColorValue:          [light, mid]
+      EmbellishmentType:   [sequins, beading]
+    avoid: {}
+    notes: Blue eyes flatter against cool jewel tones (sapphire,
+      emerald) or warm-contrast (rust, terracotta).
+
+  Grey:
+    flatters:
+      ColorValue:          [light, mid]
+      EmbellishmentType:   [sequins, beading]
+    avoid: {}
+    notes: Grey eyes carry cool tonal palettes (silver, slate, navy)
+      well.
+
+
+EyeClarity:
+  # Drives metallic / sheen / sparkle compatibility.
+
+  Clear:
+    flatters:
+      EmbellishmentType:   [sequins, beading, mirror_work]
+      FabricTexture:       [sheen, metallic]
+    avoid: {}
+    notes: Clear bright eyes carry metallic and sparkle. Statement
+      sequins, mirror-work cholis, metallic-thread embroidery all
+      flatter.
+
+  Soft:
+    flatters:
+      EmbellishmentType:   [embroidery, beading]
+      FabricTexture:       [sheen]
+    avoid:
+      FabricTexture:       [metallic]                      # too harsh
+    notes: Softer eyes prefer subtle sheen over bright metallic.
+
+  Muted:
+    flatters:
+      EmbellishmentType:   [embroidery]
+      FabricTexture:       [matte, smooth]
+    avoid:
+      EmbellishmentType:   [sequins, mirror_work]
+      FabricTexture:       [metallic]
+    notes: Muted eyes are softened by matte fabrics. Avoid heavy
+      sequins or metallic — competes with the soft register.
+
+
+ContrastLevel:
+  # Overall observable contrast of the user. Drives ContrastLevel target
+  # within outfit AND ColorCount preference.
+
+  Low:
+    flatters:
+      ContrastLevel:       [low]
+      ColorCount:          [single, tonal]
+      ColorValue:          [light, mid]
+    avoid:
+      ContrastLevel:       [very_high]
+      ColorCount:          [multi_color]
+      ColorValue:          [very_dark]                     # against light overall
+    notes: Tonal layering, monochromatic looks. Low-contrast people
+      flatter in soft palettes; high-contrast outfits dominate them.
+
+  Medium-Low:
+    flatters:
+      ContrastLevel:       [low, medium]
+      ColorCount:          [single, tonal, two_color]
+    avoid:
+      ContrastLevel:       [very_high]
+    notes: Soft to medium contrast.
+
+  Medium:
+    flatters:
+      ContrastLevel:       [medium]
+      ColorCount:          [tonal, two_color]
+    avoid: {}
+    notes: Most outfit contrast levels work.
+
+  Medium-High:
+    flatters:
+      ContrastLevel:       [medium, high]
+      ColorCount:          [two_color, single]
+    avoid:
+      ContrastLevel:       [low]                           # outfit reads less than self
+    notes: Slight high-contrast preference.
+
+  High:
+    flatters:
+      ContrastLevel:       [high, very_high]
+      ColorCount:          [single, two_color]
+      ColorValue:          [very_light, very_dark]
+    avoid:
+      ContrastLevel:       [low]
+      ColorCount:          [tonal]                         # outfit visually disappears
+    notes: High-contrast people are made for jewel-tone-on-white,
+      black-and-gold, cobalt-and-cream. Low-contrast tonal looks read
+      flat against them.
+
+
+SkinHairContrast:
+  # Top-of-outfit (face-adjacent) contrast strategy.
+
+  Low:
+    flatters:
+      ContrastLevel:       [low, medium]
+      ColorValue:          [light, mid]                    # at top slot
+    avoid:
+      ColorValue:          [very_dark]                     # at top slot — too harsh
+    notes: Low skin-to-hair contrast (e.g., light skin + light hair,
+      or medium skin + medium hair) — top slot should match register.
+      Save deep-dark for bottom slot.
+
+  Medium:
+    flatters:
+      ContrastLevel:       [medium]
+      ColorValue:          [light, mid, dark]              # at top slot
+    avoid: {}
+    notes: Versatile. Top slot can carry most colour values.
+
+  High:
+    flatters:
+      ContrastLevel:       [high, very_high]
+      ColorValue:          [very_light, very_dark]         # at top slot
+    avoid: {}
+    notes: High skin-to-hair contrast (e.g., dark skin + black hair,
+      fair skin + black hair) — top slot can carry stark contrast
+      well. Black-on-fair skin or white-on-dark skin both flatter.
+
+
+ColorDimensionProfile:
+  # Composite signal — the condensed warmth × depth × contrast × chroma
+  # readout. Often sufficient as the only color attribute the runtime
+  # resolver consults.
+
+  composite:
+    notes: >
+      Composite dict structure (no flatters/avoid here — the values
+      decompose into existing attrs at lookup time):
+
+        warmth   ∈ {warm, neutral, cool}        → ColorTemperature
+        depth    ∈ {light, medium, deep}        → ColorValue
+        contrast ∈ {low, medium, high}          → ContrastLevel
+        chroma   ∈ {muted, medium, saturated}   → ColorSaturation
+
+      The composite is the most efficient lookup — one lookup yields
+      the four primary garment colour-attribute targets directly.
+      ContrastLevel and SkinHairContrast still modify within these.
