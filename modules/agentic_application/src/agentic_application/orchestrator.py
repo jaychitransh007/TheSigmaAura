@@ -4866,6 +4866,13 @@ class AgenticOrchestrator:
                             # process and fall through to the LLM.
                             _log.exception("Composition engine YAML load failed: %s", exc)
                             self._composition_engine_enabled = False
+                            try:
+                                from platform_core.metrics import (
+                                    observe_composition_yaml_load_failure,
+                                )
+                                observe_composition_yaml_load_failure()
+                            except Exception:  # noqa: BLE001 — metrics never break the pipeline
+                                pass
                     _router_decision = route_recommendation_plan(
                         combined_context=combined_context,
                         architect_plan_callable=self.outfit_architect.plan,
@@ -4873,14 +4880,41 @@ class AgenticOrchestrator:
                         graph=self._composition_graph,
                     )
                     plan = _router_decision.plan
+                    # Structured router decision log: human-readable
+                    # for greppability + JSON tail so log scrapers can
+                    # extract used_engine / fallback_reason / yaml_gaps
+                    # without regex-parsing the format string.
                     _log.info(
                         "composition_router_decision used_engine=%s "
-                        "fallback_reason=%s confidence=%s gaps=%d",
+                        "fallback_reason=%s confidence=%s gaps=%d engine_ms=%s",
                         _router_decision.used_engine,
                         _router_decision.fallback_reason,
                         _router_decision.engine_confidence,
                         len(_router_decision.yaml_gaps),
+                        _router_decision.engine_ms,
                     )
+                    # Prometheus: counter sliced by engine usage +
+                    # fallback reason. Histogram observation under
+                    # stage="composition_engine" is conditional on the
+                    # engine actually running (engine_ms is None on
+                    # paths that never invoked it: flag off, anchor,
+                    # followup, has_previous_recommendations).
+                    try:
+                        from platform_core.metrics import (
+                            observe_composition_router_decision,
+                            observe_turn_stage,
+                        )
+                        observe_composition_router_decision(
+                            used_engine=_router_decision.used_engine,
+                            fallback_reason=_router_decision.fallback_reason,
+                        )
+                        if _router_decision.engine_ms is not None:
+                            observe_turn_stage(
+                                "composition_engine",
+                                _router_decision.engine_ms,
+                            )
+                    except Exception:  # noqa: BLE001 — metrics never break the pipeline
+                        pass
                     # Cache miss: write through, but ONLY for LLM-derived
                     # plans. The architect cache key is profile/cluster-
                     # scoped, not user-scoped, so caching engine plans
@@ -4903,7 +4937,25 @@ class AgenticOrchestrator:
                                 architect_model=_architect_model,
                             ),
                         )
-                _trace_ctx.full_output = to_jsonable(plan)
+                # On the engine/LLM router path, attach the router
+                # decision next to the plan in the distillation trace
+                # so downstream slicing (yaml-gap surfacer, fallback-
+                # reason histogram) doesn't require log scraping. On
+                # the cache-hit path the trace just carries the plan
+                # — there's no router decision to capture.
+                if _arch_cache_hit_plan is not None:
+                    _trace_ctx.full_output = to_jsonable(plan)
+                else:
+                    _trace_ctx.full_output = {
+                        "plan": to_jsonable(plan),
+                        "router_decision": {
+                            "used_engine": _router_decision.used_engine,
+                            "fallback_reason": _router_decision.fallback_reason,
+                            "engine_confidence": _router_decision.engine_confidence,
+                            "engine_ms": _router_decision.engine_ms,
+                            "yaml_gaps": list(_router_decision.yaml_gaps),
+                        },
+                    }
         except Exception as exc:
             architect_ms = int((time.monotonic() - t0) * 1000)
             trace_end("outfit_architect", status="error", error=str(exc)[:200])

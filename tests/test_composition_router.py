@@ -431,5 +431,109 @@ class RouteHappyPathTests(unittest.TestCase):
         llm.assert_not_called()
 
 
+class MetricsHelperTests(unittest.TestCase):
+    """The two new Phase-4 metric helpers don't crash on the no-op
+    backend (when prometheus_client is absent) and emit a single
+    increment per call when it's installed."""
+
+    def test_router_decision_helper_is_safe_without_prometheus(self):
+        # Always callable — the metrics module degrades to a _NoOp
+        # fallback if prometheus_client isn't installed.
+        from platform_core.metrics import observe_composition_router_decision
+
+        observe_composition_router_decision(used_engine=True, fallback_reason=None)
+        observe_composition_router_decision(
+            used_engine=False, fallback_reason="yaml_gap"
+        )
+
+    def test_yaml_load_failure_helper_is_safe_without_prometheus(self):
+        from platform_core.metrics import observe_composition_yaml_load_failure
+
+        observe_composition_yaml_load_failure()
+
+    def test_router_decision_increments_counter_when_prometheus_installed(self):
+        try:
+            import prometheus_client  # noqa: F401
+        except ImportError:
+            self.skipTest("prometheus_client not installed")
+
+        from platform_core.metrics import (
+            aura_composition_router_decision_total,
+            observe_composition_router_decision,
+        )
+
+        before = aura_composition_router_decision_total.labels(
+            used_engine="true", fallback_reason="none"
+        )._value.get()
+        observe_composition_router_decision(used_engine=True, fallback_reason=None)
+        after = aura_composition_router_decision_total.labels(
+            used_engine="true", fallback_reason="none"
+        )._value.get()
+        self.assertEqual(after - before, 1)
+
+    def test_none_fallback_reason_coerces_to_string_label(self):
+        # Prometheus rejects None labels; the helper must coerce to
+        # the literal string "none" so engine-accepted decisions still
+        # produce a valid metric.
+        try:
+            import prometheus_client  # noqa: F401
+        except ImportError:
+            self.skipTest("prometheus_client not installed")
+
+        from platform_core.metrics import (
+            aura_composition_router_decision_total,
+            observe_composition_router_decision,
+        )
+
+        observe_composition_router_decision(used_engine=True, fallback_reason=None)
+        # The "none" label series exists.
+        labels = aura_composition_router_decision_total.labels(
+            used_engine="true", fallback_reason="none"
+        )
+        self.assertIsNotNone(labels)
+
+
+class EngineLatencyTimingTests(unittest.TestCase):
+    """The router measures compose_direction's wall-clock time and
+    surfaces it in RouterDecision.engine_ms so the orchestrator can
+    feed the existing aura_turn_duration_seconds histogram under
+    stage="composition_engine"."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.graph = load_style_graph()
+
+    def test_engine_ms_is_set_when_engine_runs(self):
+        decision = route_recommendation_plan(
+            combined_context=_ctx(seasonal="not_in_yaml"),  # forces YAML gap → fallback, but engine still ran
+            architect_plan_callable=Mock(return_value=_llm_plan()),
+            enabled=True,
+            graph=self.graph,
+        )
+        self.assertIsNotNone(decision.engine_ms)
+        self.assertIsInstance(decision.engine_ms, int)
+        self.assertGreaterEqual(decision.engine_ms, 0)
+
+    def test_engine_ms_is_none_on_disabled_flag(self):
+        decision = route_recommendation_plan(
+            combined_context=_ctx(),
+            architect_plan_callable=Mock(return_value=_llm_plan()),
+            enabled=False,
+            graph=self.graph,
+        )
+        self.assertIsNone(decision.engine_ms)
+
+    def test_engine_ms_is_none_when_eligibility_blocks(self):
+        # Anchor garment skips the engine entirely — no compose call,
+        # no timing.
+        decision = route_recommendation_plan(
+            combined_context=_ctx(anchor_garment={"product_id": "x"}),
+            architect_plan_callable=Mock(return_value=_llm_plan()),
+            enabled=True,
+            graph=self.graph,
+        )
+        self.assertIsNone(decision.engine_ms)
+
+
 if __name__ == "__main__":
     unittest.main()

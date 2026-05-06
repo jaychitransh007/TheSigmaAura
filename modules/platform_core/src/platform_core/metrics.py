@@ -114,6 +114,32 @@ aura_in_flight_turns = Gauge(
 )
 
 
+# ── Composition engine (Phase 4.7+) ───────────────────────────────────
+# The router emits one decision per cache-miss architect turn. Slicing
+# by used_engine + fallback_reason gives the operational read-out for
+# flag-on rollouts: how often the engine is accepted, which reasons
+# dominate the fall-throughs (yaml_gap → stylist YAML expansion;
+# needs_disambiguation → spec §4.2 review; low_confidence → §8
+# threshold calibration). fallback_reason cardinality is bounded by
+# the router's enum (currently 9 values + "none" sentinel) so this
+# label is safe.
+aura_composition_router_decision_total = Counter(
+    "aura_composition_router_decision_total",
+    "Composition router decisions, sliced by engine usage + fallback reason.",
+    labelnames=("used_engine", "fallback_reason"),
+)
+
+# YAML load failures disable the engine for the rest of the process
+# (orchestrator catches the exception, flips the flag off in-process).
+# This counter exists so an alert can fire if the metric ticks at all,
+# even though the user-visible behaviour is graceful (turn falls
+# through to LLM). One increment per process per failure.
+aura_composition_yaml_load_failure_total = Counter(
+    "aura_composition_yaml_load_failure_total",
+    "Composition engine YAML load failures (engine disabled in-process).",
+)
+
+
 # ── Convenience helpers ───────────────────────────────────────────────
 
 
@@ -175,5 +201,36 @@ def observe_turn_outcome(*, intent: str, action: str, status: str) -> None:
 def observe_tryon_quality_gate(*, passed: bool) -> None:
     try:
         aura_tryon_quality_gate_total.labels(passed="true" if passed else "false").inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_composition_router_decision(
+    *, used_engine: bool, fallback_reason: Optional[str]
+) -> None:
+    """Increment the router decision counter.
+
+    ``fallback_reason`` is None on the engine-accepted path; the metric
+    coerces None to ``"none"`` so the label set is never empty. All
+    expected fallback-reason strings are bounded by the router's enum
+    (engine_disabled | anchor_present | followup_request |
+    has_previous_recommendations | no_direction | yaml_gap |
+    low_confidence | needs_disambiguation | excessive_widening) so
+    cardinality stays low."""
+    try:
+        aura_composition_router_decision_total.labels(
+            used_engine="true" if used_engine else "false",
+            fallback_reason=fallback_reason or "none",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_composition_yaml_load_failure() -> None:
+    """Tick the YAML load failure counter. Called from the orchestrator
+    when load_style_graph raises; the engine is then disabled for the
+    rest of the process and turns silently fall through to the LLM."""
+    try:
+        aura_composition_yaml_load_failure_total.inc()
     except Exception:  # noqa: BLE001
         pass
