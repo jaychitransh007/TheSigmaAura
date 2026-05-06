@@ -224,6 +224,31 @@ def _role_for_position(composed: "ComposedOutfit", items_so_far: List[Dict[str, 
     return ""
 
 
+# Per-candidate try-on path status values (`_candidate_status` in the
+# tryon batch closure) carry richer information than the
+# ``tool_traces.status`` CHECK constraint allows — the column accepts
+# only ``'ok'`` or ``'error'``. The full path label (cache_hit,
+# skipped_no_urls, tryon_failed, quality_gate_failed, tryon_no_image,
+# decode_failed, decode_empty, ok, error) still flows through
+# ``output_json.status`` so consumers don't lose path info.
+_TRYON_TRACE_DB_OK_STATUSES: frozenset[str] = frozenset({
+    "ok",
+    "cache_hit",
+    "skipped_no_urls",
+})
+
+
+def _coerce_tryon_trace_db_status(path_status: str) -> str:
+    """Map the per-candidate try-on path status to a value that satisfies
+    the ``tool_traces_status_check`` constraint (``'ok'`` | ``'error'``).
+
+    Successful paths (ok | cache_hit | skipped_no_urls) → ``'ok'``.
+    Everything else (tryon_failed | quality_gate_failed | tryon_no_image
+    | decode_failed | decode_empty | error | unknown) → ``'error'``.
+    """
+    return "ok" if path_status in _TRYON_TRACE_DB_OK_STATUSES else "error"
+
+
 def extract_urls(message: str) -> List[str]:
     """URL detection helper inlined from the (now-deleted) shopping_decision_agent.
 
@@ -6030,6 +6055,11 @@ class AgenticOrchestrator:
 
             def _log_candidate_trace(garment_ids_local: List[str]) -> None:
                 latency = int((time.monotonic() - _candidate_started) * 1000)
+                # Coerce the path-status (cache_hit / skipped_no_urls /
+                # tryon_failed / etc.) to the constrained DB enum
+                # {'ok', 'error'}. Full path label still goes into
+                # output_json.status so the trace data is intact.
+                _db_status = _coerce_tryon_trace_db_status(_candidate_status)
                 try:
                     self.repo.log_tool_trace(
                         conversation_id=conversation_id,
@@ -6046,7 +6076,7 @@ class AgenticOrchestrator:
                             "error": _candidate_error,
                         },
                         latency_ms=latency,
-                        status=_candidate_status,
+                        status=_db_status,
                         error_message=_candidate_error or "",
                     )
                 except Exception:  # noqa: BLE001
