@@ -135,9 +135,11 @@ def _paginate(
         if len(rows) < _PAGE_SIZE:
             return
         last_cursor = rows[-1].get(cursor_column)
-        if not last_cursor:
-            # Defensive: a row missing the cursor column is a schema
-            # surprise. Stop rather than loop forever.
+        if last_cursor is None:
+            # Schema surprise — row missing the cursor column. Stop
+            # rather than loop forever. `is None` (not `not`) so we
+            # don't trip on falsy-but-valid cursor values (integer 0,
+            # empty string from a stripped column).
             print(f"WARN: pagination on {table} hit a row with no {cursor_column}; stopping")
             return
         filters = {**filters, cursor_column: f"gt.{last_cursor}"}
