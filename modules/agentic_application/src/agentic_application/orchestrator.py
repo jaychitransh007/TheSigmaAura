@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 from platform_core.config import AuraRuntimeConfig
+from platform_core.distillation_traces import record_stage_trace, to_jsonable
 from platform_core.fallback_messages import graceful_policy_message
 from platform_core.restricted_categories import detect_restricted_record
 from platform_core.repositories import ConversationRepository
@@ -1328,7 +1329,16 @@ class AgenticOrchestrator:
         trace_start("copilot_planner", model=_planner_model, input_summary=f"message={message[:80]}, has_image={bool(image_data)}")
         t0 = time.monotonic()
         try:
-            plan_result = self._copilot_planner.plan(planner_input)
+            with record_stage_trace(
+                repo=self.repo,
+                turn_id=turn_id,
+                conversation_id=conversation_id,
+                stage="copilot_planner",
+                model=_planner_model,
+                full_input={"planner_input": to_jsonable(planner_input)},
+            ) as _trace_ctx:
+                plan_result = self._copilot_planner.plan(planner_input)
+                _trace_ctx.full_output = to_jsonable(plan_result)
         except Exception as exc:
             planner_ms = int((time.monotonic() - t0) * 1000)
             _log.error("Copilot planner failed: %s", exc, exc_info=True)
@@ -4730,7 +4740,16 @@ class AgenticOrchestrator:
         trace_start("outfit_architect", model=_architect_model, input_summary=f"message={message[:80]}")
         t0 = time.monotonic()
         try:
-            plan = self.outfit_architect.plan(combined_context)
+            with record_stage_trace(
+                repo=self.repo,
+                turn_id=turn_id,
+                conversation_id=conversation_id,
+                stage="outfit_architect",
+                model=_architect_model,
+                full_input={"combined_context": to_jsonable(combined_context)},
+            ) as _trace_ctx:
+                plan = self.outfit_architect.plan(combined_context)
+                _trace_ctx.full_output = to_jsonable(plan)
         except Exception as exc:
             architect_ms = int((time.monotonic() - t0) * 1000)
             trace_end("outfit_architect", status="error", error=str(exc)[:200])
@@ -4859,7 +4878,19 @@ class AgenticOrchestrator:
             emit("catalog_search", "started")
             trace_start("catalog_search", input_summary=f"{len(plan.directions)} directions, retrieval_count={plan.retrieval_count}")
             t0 = time.monotonic()
-            retrieved_sets = self.catalog_search_agent.search(plan, combined_context)
+            with record_stage_trace(
+                repo=self.repo,
+                turn_id=turn_id,
+                conversation_id=conversation_id,
+                stage="catalog_search",
+                model="text-embedding-3-small",
+                full_input={
+                    "plan": to_jsonable(plan),
+                    "combined_context": to_jsonable(combined_context),
+                },
+            ) as _trace_ctx:
+                retrieved_sets = self.catalog_search_agent.search(plan, combined_context)
+                _trace_ctx.full_output = {"retrieved_sets": to_jsonable(retrieved_sets)}
             search_ms = int((time.monotonic() - t0) * 1000)
             for rs in retrieved_sets:
                 self.repo.log_tool_trace(
@@ -4994,9 +5025,21 @@ class AgenticOrchestrator:
                 except Exception:  # noqa: BLE001 — telemetry must never break pipeline
                     _log.exception("composer per-attempt log failed; ignoring")
 
-            composer_result = self.outfit_composer.compose(
-                combined_context, retrieved_sets, on_attempt=_record_attempt,
-            )
+            with record_stage_trace(
+                repo=self.repo,
+                turn_id=turn_id,
+                conversation_id=conversation_id,
+                stage="outfit_composer",
+                model=self.outfit_composer._model,
+                full_input={
+                    "combined_context": to_jsonable(combined_context),
+                    "retrieved_sets": to_jsonable(retrieved_sets),
+                },
+            ) as _trace_ctx:
+                composer_result = self.outfit_composer.compose(
+                    combined_context, retrieved_sets, on_attempt=_record_attempt,
+                )
+                _trace_ctx.full_output = to_jsonable(composer_result)
             compose_ms = int((time.monotonic() - t_compose) * 1000)
             emit(
                 "outfit_composer", "completed",
@@ -5071,9 +5114,22 @@ class AgenticOrchestrator:
                 input_summary=f"{len(composer_result.outfits)} composed outfits",
             )
             t_rate = time.monotonic()
-            rater_result = self.outfit_rater.rate(
-                combined_context, composer_result.outfits, retrieved_sets,
-            )
+            with record_stage_trace(
+                repo=self.repo,
+                turn_id=turn_id,
+                conversation_id=conversation_id,
+                stage="outfit_rater",
+                model="gpt-5-mini",
+                full_input={
+                    "combined_context": to_jsonable(combined_context),
+                    "composed_outfits": to_jsonable(composer_result.outfits),
+                    "retrieved_sets": to_jsonable(retrieved_sets),
+                },
+            ) as _trace_ctx:
+                rater_result = self.outfit_rater.rate(
+                    combined_context, composer_result.outfits, retrieved_sets,
+                )
+                _trace_ctx.full_output = to_jsonable(rater_result)
             rate_ms = int((time.monotonic() - t_rate) * 1000)
             emit(
                 "outfit_rater", "completed",

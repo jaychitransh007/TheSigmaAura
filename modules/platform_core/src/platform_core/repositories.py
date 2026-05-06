@@ -1134,6 +1134,53 @@ class ConversationRepository:
             payload["latency_ms"] = latency_ms
         return self.client.insert_one("tool_traces", payload)
 
+    def log_distillation_trace(
+        self,
+        *,
+        turn_id: str,
+        conversation_id: str,
+        stage: str,
+        model: str,
+        full_input: Dict[str, Any],
+        input_hash: str,
+        full_output: Optional[Dict[str, Any]] = None,
+        latency_ms: Optional[int] = None,
+        status: str = "ok",
+        error_message: str = "",
+        tenant_id: str = "default",
+        redact_pii: bool = True,
+    ) -> Dict[str, Any]:
+        """Persist full LLM stage I/O for distillation training data.
+
+        Coexists with ``log_model_call`` (which stores summaries for
+        analytics) — see migration 20260506120000_distillation_traces.sql.
+        Unlike ``log_model_call``, this method never samples bodies: every
+        row is stored in full because the supervised training set must be
+        complete.
+        """
+        if redact_pii:
+            from .pii_redactor import redact_value as _redact
+            full_input = _redact(full_input)
+            if full_output:
+                full_output = _redact(full_output)
+            error_message = _redact(error_message) if error_message else error_message
+        payload: Dict[str, Any] = {
+            "turn_id": turn_id,
+            "conversation_id": conversation_id,
+            "stage": stage,
+            "model": model,
+            "full_input": full_input,
+            "full_output": full_output,
+            "input_hash": input_hash,
+            "status": status,
+            "error_message": error_message,
+            "tenant_id": tenant_id,
+            "created_at": _now_iso(),
+        }
+        if latency_ms is not None:
+            payload["latency_ms"] = latency_ms
+        return self.client.insert_one("distillation_traces", payload)
+
     # -- virtual_tryon_images -------------------------------------------------
 
     def insert_tryon_image(
