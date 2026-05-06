@@ -30,35 +30,36 @@ from catalog.retrieval.vector_store import SupabaseVectorStore
 
 
 # Representative filter mixes spanning the 3-direction × 2-3-role fan-out
-# the architect emits. Keep these in sync with build_directional_filters
-# if that contract changes.
+# the architect emits. Filter values match the catalog taxonomy as of
+# May 2026 (gender: feminine/masculine/unisex; categories: top/bottom/
+# outerwear/set/one_piece; formality: casual/smart_casual/semi_formal/
+# ceremonial). Keep in sync with build_directional_filters if that
+# contract changes.
 FILTER_PROFILES: List[Dict[str, Any]] = [
     {
         "name": "anchor_top_minimal",
-        "filters": {"gender_expression": "female", "garment_category": "topwear"},
+        "filters": {"gender_expression": "feminine", "garment_category": "top"},
     },
     {
         "name": "anchor_top_full",
         "filters": {
-            "gender_expression": "female",
-            "garment_category": "topwear",
-            "formality_level": "3",
-            "occasion_fit": "social_casual",
-            "time_of_day": "evening",
+            "gender_expression": "feminine",
+            "garment_category": "top",
+            "formality_level": "smart_casual",
         },
     },
     {
         "name": "needs_bottomwear",
         "filters": {
-            "gender_expression": "female",
-            "garment_category": "bottomwear",
+            "gender_expression": "feminine",
+            "garment_category": "bottom",
             "styling_completeness": "needs_topwear",
         },
     },
     {
         "name": "outerwear_three_piece",
         "filters": {
-            "gender_expression": "female",
+            "gender_expression": "masculine",
             "garment_category": "outerwear",
             "styling_completeness": ["needs_innerwear", "needs_topwear"],
         },
@@ -66,16 +67,15 @@ FILTER_PROFILES: List[Dict[str, Any]] = [
     {
         "name": "high_selectivity",
         "filters": {
-            "gender_expression": "female",
-            "garment_category": "ethnic_wear",
-            "garment_subtype": ["anarkali", "kurta_set", "lehenga_set"],
-            "formality_level": "5",
-            "occasion_fit": "wedding",
+            "gender_expression": "feminine",
+            "garment_category": "outerwear",
+            "garment_subtype": ["blazer", "jacket"],
+            "formality_level": "smart_casual",
         },
     },
     {
         "name": "low_selectivity",
-        "filters": {"gender_expression": "female"},
+        "filters": {"gender_expression": "feminine"},
     },
 ]
 
