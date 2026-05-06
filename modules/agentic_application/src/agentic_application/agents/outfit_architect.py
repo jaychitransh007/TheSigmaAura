@@ -74,6 +74,24 @@ def _assemble_system_prompt(
     return "\n\n".join(parts)
 
 
+# Phase 2.2 cache version (May 14 2026): hash of base + all conditionally
+# loaded modules. Editing ANY of the prompt files (base, anchor, followup)
+# changes this hash → invalidates the entire architect cache space.
+# Read at module load — set once per process. See
+# docs/phase_2_cache_design.md "Prompt versioning" for rationale.
+import hashlib as _hashlib
+
+def _compute_prompt_version() -> str:
+    base = _load_prompt()
+    anchor = _load_module("anchor")
+    followup = _load_module("followup")
+    payload = "\n---\n".join([base or "", anchor or "", followup or ""])
+    return _hashlib.sha1(payload.encode("utf-8")).hexdigest()[:8]
+
+
+PROMPT_VERSION = _compute_prompt_version()
+
+
 _PLAN_JSON_SCHEMA: Dict[str, Any] = {
     "type": "json_schema",
     "name": "recommendation_plan",
