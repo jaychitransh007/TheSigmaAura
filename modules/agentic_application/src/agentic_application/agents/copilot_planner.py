@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import threading
+import time
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from openai import OpenAI
 
@@ -217,8 +220,16 @@ def build_planner_input(
     }
 
 
+_SHADOW_LOG = logging.getLogger("aura.planner.shadow")
+
+
 class CopilotPlanner:
-    def __init__(self, model: str = "gpt-5-mini") -> None:
+    def __init__(
+        self,
+        model: str = "gpt-5-mini",
+        *,
+        shadow_model: Optional[str] = None,
+    ) -> None:
         # May 5, 2026: downgraded from gpt-5.5 to gpt-5-mini. Earlier
         # rationale (the planner is high-leverage so it gets the bigger
         # model) overweighted the routing-failure risk. With strict
@@ -235,6 +246,19 @@ class CopilotPlanner:
         # The client materialises on first attribute access via the
         # cached_property below.
         self._model = model
+        # Phase 1.3 latency push (May 13 2026): shadow mode. When
+        # AURA_PLANNER_SHADOW_MODEL is set, every plan() call fires a
+        # background OpenAI call against the shadow model with the same
+        # input AFTER the production response has returned to the
+        # caller. The shadow thread logs the production-vs-shadow diff
+        # to the `aura.planner.shadow` logger so operators can review
+        # routing-disagreement rates before promoting the shadow model
+        # to production. Daemon thread is fire-and-forget — production
+        # latency is unaffected. To support a non-OpenAI shadow vendor
+        # (claude-haiku-4-5), add a vendor adapter and switch on
+        # AURA_PLANNER_SHADOW_VENDOR; the shadow thread plumbing here
+        # is vendor-agnostic.
+        self._shadow_model = shadow_model or os.getenv("AURA_PLANNER_SHADOW_MODEL", "").strip() or None
         self._system_prompt = _load_prompt()
         # Item 4 (May 1, 2026): exposed for the orchestrator's log_model_call
         # site to pick up. Reset on every plan() entry so a stale read can't
@@ -254,6 +278,7 @@ class CopilotPlanner:
         # Planner is fuzzy-NL → strict-enum classification, doesn't
         # benefit from chain-of-thought. Cuts ~600 reasoning tokens
         # per call, drops latency from ~12s → ~3-4s expected.
+        prod_t0 = time.monotonic()
         response = self._client.responses.create(
             model=self._model,
             input=[
@@ -274,10 +299,107 @@ class CopilotPlanner:
             reasoning={"effort": "minimal"},
             text={"format": _PLAN_JSON_SCHEMA},
         )
+        prod_latency_ms = int((time.monotonic() - prod_t0) * 1000)
         self.last_usage = extract_token_usage(response)
 
         raw = json.loads(getattr(response, "output_text", "") or "{}")
-        return self._parse_result(raw)
+        result = self._parse_result(raw)
+
+        if self._shadow_model:
+            self._spawn_shadow(planner_input, result, prod_latency_ms)
+        return result
+
+    def _spawn_shadow(
+        self,
+        planner_input: Dict[str, Any],
+        production_result: CopilotPlanResult,
+        production_latency_ms: int,
+    ) -> None:
+        """Fire-and-forget shadow call; never blocks the caller."""
+        thread = threading.Thread(
+            target=self._run_shadow,
+            args=(planner_input, production_result, production_latency_ms),
+            name=f"planner-shadow-{self._shadow_model}",
+            daemon=True,
+        )
+        thread.start()
+
+    def _run_shadow(
+        self,
+        planner_input: Dict[str, Any],
+        production_result: CopilotPlanResult,
+        production_latency_ms: int,
+    ) -> None:
+        from platform_core.cost_estimator import extract_token_usage as _extract
+
+        shadow_t0 = time.monotonic()
+        try:
+            response = self._client.responses.create(
+                model=self._shadow_model,
+                input=[
+                    {
+                        "role": "system",
+                        "content": [{"type": "input_text", "text": self._system_prompt}],
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": json.dumps(planner_input, indent=2, default=str),
+                            }
+                        ],
+                    },
+                ],
+                reasoning={"effort": "minimal"},
+                text={"format": _PLAN_JSON_SCHEMA},
+            )
+        except Exception as exc:  # noqa: BLE001 — shadow path never raises
+            _SHADOW_LOG.warning(
+                "shadow_call_failed",
+                extra={
+                    "shadow_model": self._shadow_model,
+                    "production_model": self._model,
+                    "error": str(exc)[:500],
+                },
+            )
+            return
+        shadow_latency_ms = int((time.monotonic() - shadow_t0) * 1000)
+        try:
+            shadow_raw = json.loads(getattr(response, "output_text", "") or "{}")
+            shadow_result = self._parse_result(shadow_raw)
+        except Exception as exc:  # noqa: BLE001
+            _SHADOW_LOG.warning(
+                "shadow_parse_failed",
+                extra={
+                    "shadow_model": self._shadow_model,
+                    "error": str(exc)[:200],
+                },
+            )
+            return
+
+        shadow_usage = _extract(response) or {}
+        intent_match = production_result.intent == shadow_result.intent
+        action_match = production_result.action == shadow_result.action
+        _SHADOW_LOG.info(
+            "shadow_compare",
+            extra={
+                "production_model": self._model,
+                "shadow_model": self._shadow_model,
+                "production_intent": production_result.intent,
+                "shadow_intent": shadow_result.intent,
+                "production_action": production_result.action,
+                "shadow_action": shadow_result.action,
+                "intent_match": intent_match,
+                "action_match": action_match,
+                "production_confidence": production_result.intent_confidence,
+                "shadow_confidence": shadow_result.intent_confidence,
+                "production_latency_ms": production_latency_ms,
+                "shadow_latency_ms": shadow_latency_ms,
+                "shadow_total_tokens": int(shadow_usage.get("total_tokens", 0) or 0),
+                "user_message": str(planner_input.get("user_message", ""))[:200],
+            },
+        )
 
     def _parse_result(self, raw: Dict[str, Any]) -> CopilotPlanResult:
         resolved_raw = raw.get("resolved_context") or {}
