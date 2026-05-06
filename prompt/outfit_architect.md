@@ -108,6 +108,12 @@ When weather or time-of-day is in `live_context`, factor explicitly into fabric 
 
 ## Direction Rules
 
+<!-- MIGRATED: knowledge/style_graph/query_structure.yaml — encodes
+     intent × occasion → direction_type dispatch + role-aware anchor
+     rules. Phase 4.7 composition engine resolves direction_type via
+     this YAML; the architect prompt's role assignments below are
+     duplicated here only until 4.10 cutover. -->
+
 - `complete` — one query, `role: "complete"`. Standalone outfit items (kurta_set, co_ord_set, suit_set, dress, jumpsuit).
 - `paired` — two queries, `role: "top"` + `role: "bottom"`.
 - `three_piece` — three queries, `role: "top"` + `role: "bottom"` + `role: "outerwear"` (blazer, nehru_jacket, jacket, shacket, cardigan).
@@ -332,6 +338,13 @@ casual | smart_casual | semi_formal | formal | ceremonial
 
 ## Occasion Calibration — Formality, Fabric, Embellishment
 
+<!-- MIGRATED: knowledge/style_graph/occasion.yaml — each occasion entry
+     carries archetype, formality, time, seasons, plus flatters/avoid
+     with FabricTexture, FabricWeight, FabricDrape, EmbellishmentLevel,
+     EmbellishmentType, EmbellishmentZone. Phase 4.7 composition engine
+     reads this YAML; this section is kept here only until 4.10 cutover
+     completes. New occasion rules go to the YAML directly. -->
+
 Calibrate to the SPECIFIC sub-occasion, not parent category:
 
 | Sub-occasion | Formality | Fabric | Embellishment | Avoid |
@@ -355,6 +368,13 @@ Core rules:
 
 ## Visual Direction (Body Calibration)
 
+<!-- MIGRATED: knowledge/style_graph/body_frame/{female,male}.yaml —
+     each FrameStructure value (Light and Narrow / Light and Broad /
+     Medium and Balanced / Solid and Narrow / Solid and Balanced /
+     Solid and Broad) maps to flatters/avoid lists for VerticalWeightBias,
+     LineDirection, SilhouetteType, VolumeProfile, StructuralFocus,
+     PatternScale. New frame-driven rules go to body_frame YAMLs. -->
+
 | Attribute | Setting |
 |---|---|
 | FrameStructure: Light and Narrow | VerticalWeightBias: upper_biased |
@@ -366,6 +386,13 @@ Core rules:
 | HeightCategory: Average | minimal or vertical |
 
 ### BodyShape → Silhouette + Volume + StructuralFocus
+
+<!-- MIGRATED: knowledge/style_graph/body_frame/{female,male}.yaml —
+     each BodyShape (pear/hourglass/apple/inverted_triangle/rectangle/
+     diamond/trapezoid) carries flatters/avoid for SilhouetteType,
+     VolumeProfile, StructuralFocus, BodyFocusZone. Per architect line
+     380 + composition_semantics.md §4.1: BodyShape > FrameStructure
+     on width-signal conflicts. -->
 
 | BodyShape | Silhouette | Volume | StructuralFocus |
 |---|---|---|---|
@@ -380,6 +407,12 @@ Core rules:
 When BodyShape and FrameStructure conflict on width signals, **BodyShape priority** (it captures the full-body proportion that drives fit).
 
 ## Pattern Calibration (Scale + Contrast)
+
+<!-- MIGRATED: PatternScale rules → knowledge/style_graph/body_frame/
+     {female,male}.yaml (each FrameStructure has a PatternScale flatters
+     list). ContrastLevel rules → knowledge/style_graph/palette.yaml
+     (each sub-season carries ContrastLevel: low/medium/high/very_high).
+     Phase 4.7 engine composes both. -->
 
 Pattern is *derived from the user's body and coloring*, not a stored preference. Two independent rules govern pattern emission in `PATTERN_AND_COLOR` sections of the query_document:
 
