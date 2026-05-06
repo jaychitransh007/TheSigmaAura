@@ -1,0 +1,1100 @@
+# Occasion → garment attribute mapping (Indian urban context)
+#
+# 45+ occasions spanning work / social / evening / formal / festive /
+# wedding cycle / dating / beach / family. Each occasion carries:
+#
+#   metadata:
+#     archetype:    one of 8 canonical occasion_archetype values
+#                   (work_mode, social_casual, night_out, formal_events,
+#                    festive, beach_vacation, dating, wedding_vibes)
+#     formality:    one of 5 canonical FormalityLevel values
+#     time:         daytime | evening | flexible
+#     seasons:      list of seasons where the occasion makes sense
+#                   (e.g., diwali only in autumn; beach only in warm)
+#
+#   flatters / avoid: target garment-attribute values per outfit
+#   notes:            Indian-urban stylist context
+#
+# This list expands the 31-occasion taxonomy in `ops/bootstrap/bootstrap_grid.csv`
+# (Pre-launch Step 2). The bootstrap grid will need regeneration with this
+# expanded list before any actual bootstrap run.
+#
+# Canonical garment-attribute values: ./modules/style_engine/configs/config/garment_attributes.json
+
+occasion:
+
+# ─────────────────────────────────────────────────────────────────────────
+# WORK / PROFESSIONAL (work_mode archetype)
+# ─────────────────────────────────────────────────────────────────────────
+
+  daily_office_mnc:
+    archetype: work_mode
+    formality: smart_casual
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, formal]
+      FormalitySignalStrength: [medium, high]
+      OccasionFit:           [smart_casual, workwear, formal]
+      OccasionSignal:        [office, daily]
+      TimeOfDay:             [day]
+      FabricTexture:         [smooth, ribbed, pleated]
+      FabricWeight:          [light, medium]
+      EmbellishmentLevel:    [none, minimal, subtle]
+      EmbellishmentType:     [none, embroidery]
+      StylingCompleteness:   [complete, needs_topwear, needs_bottomwear]
+      ColorSaturation:       [muted, medium]
+      ColorValue:            [light, mid]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      OccasionFit:           [very_casual, festive, traditional, party, active]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      EmbellishmentType:     [sequins, mirror_work, distressing, studs]
+      FabricTexture:         [metallic, embroidered]
+    notes: >
+      MNC corporate floor — most Western-formal of the work occasions.
+      Indo-Western fusion accepted: cigarette pant + tucked silk shirt
+      + bandi, tailored shirt + chinos. Cotton saree (tant, mul) with
+      crisp pleats and a structured blouse. No zardozi, no sequins,
+      not even subtle ones.
+
+  daily_office_indian_corp:
+    archetype: work_mode
+    formality: smart_casual
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, formal]
+      FormalitySignalStrength: [medium, high]
+      OccasionFit:           [smart_casual, workwear, traditional]
+      OccasionSignal:        [office, daily]
+      TimeOfDay:             [day]
+      FabricTexture:         [smooth, pleated, embroidered]
+      FabricWeight:          [light, medium]
+      EmbellishmentLevel:    [minimal, subtle]
+      EmbellishmentType:     [embroidery]
+      ColorSaturation:       [muted, medium]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      OccasionFit:           [very_casual, festive, party]
+      EmbellishmentLevel:    [heavy, statement]
+      EmbellishmentType:     [sequins, mirror_work, distressing, studs]
+      FabricTexture:         [metallic]
+    notes: >
+      Indian corporate (TCS, Infosys, Wipro, Tata floor). Slightly more
+      ethnic-friendly than MNC. Cotton kurta + slim trouser, kurti +
+      churidar, structured saree (cotton or fine silk) very acceptable
+      daily. Subtle thread embroidery on yoke / cuffs is fine; mirror
+      work and sequins still reserved for festive.
+
+  daily_office_startup:
+    archetype: work_mode
+    formality: smart_casual
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [casual, smart_casual]
+      FormalitySignalStrength: [low, medium]
+      OccasionFit:           [casual, smart_casual, workwear]
+      OccasionSignal:        [daily, office]
+      TimeOfDay:             [day]
+      FabricTexture:         [smooth, ribbed, knit, matte]
+      EmbellishmentLevel:    [none, minimal]
+      ColorSaturation:       [muted, medium]
+    avoid:
+      FormalityLevel:        [formal, ceremonial]
+      OccasionFit:           [festive, traditional]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+    notes: >
+      Startup / tech / agency. Lowest formality floor of work. Tee +
+      jeans, kurta + jeans (Indo-fusion), structured shirt + chino,
+      knit kurti + churidar. Sneakers acceptable. Suit jackets feel
+      out of register most days.
+
+  formal_office:
+    archetype: work_mode
+    formality: formal
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, formal]
+      FormalitySignalStrength: [high, very_high]
+      OccasionFit:           [formal, workwear]
+      OccasionSignal:        [office]
+      TimeOfDay:             [day]
+      FabricTexture:         [smooth, pleated]
+      FabricWeight:          [medium]
+      FabricDrape:           [crisp, soft_structured]
+      EmbellishmentLevel:    [none, minimal]
+      EdgeSharpness:         [defined, sharp]
+      FitType:               [tailored, slim]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      OccasionFit:           [casual, very_casual, festive, party]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      FitType:               [boxy, loose, relaxed]
+    notes: >
+      Audit, board review, partner-level meeting, regulatory
+      presentation. Suit / pantsuit / structured bandhgala / formal
+      saree (silk, structured blouse with pearl detail). Closed shoes,
+      neutral palette.
+
+  business_meeting:
+    archetype: work_mode
+    formality: formal
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, formal]
+      FormalitySignalStrength: [high]
+      OccasionFit:           [smart_casual, formal, workwear]
+      OccasionSignal:        [office]
+      FabricTexture:         [smooth, pleated]
+      EmbellishmentLevel:    [minimal, subtle]
+      EdgeSharpness:         [defined, sharp]
+      FitType:               [tailored, slim]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      OccasionFit:           [festive, traditional, party]
+    notes: >
+      Client meeting, partner conversation. Smart-formal — slightly
+      more put-together than daily office. Tailored sherwani for grooms
+      meeting in-laws (treated as business-meeting analogue). Subtle
+      embroidery acceptable.
+
+  interview:
+    archetype: work_mode
+    formality: formal
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, formal]
+      FormalitySignalStrength: [high]
+      OccasionFit:           [formal, workwear]
+      OccasionSignal:        [office]
+      ColorSaturation:       [muted, medium]
+      ColorValue:            [light, mid]
+      FabricTexture:         [smooth, pleated]
+      EmbellishmentLevel:    [none, minimal]
+      EdgeSharpness:         [defined, sharp]
+      FitType:               [tailored, slim]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      OccasionFit:           [festive, traditional, party, very_casual]
+      ColorSaturation:       [very_high]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      EmbellishmentType:     [print, sequins, mirror_work, distressing]
+    notes: >
+      Conservative palette (navy, charcoal, beige, muted neutrals — no
+      red, no fluorescents). Indian: cotton kurta + slim trouser,
+      structured saree (light silk / cotton). Avoid distracting print
+      or shine.
+
+  workplace_event:
+    archetype: work_mode
+    formality: smart_casual
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [smart_casual, semi_formal, party]
+      OccasionSignal:        [evening, party]
+      TimeOfDay:             [evening, day_to_night]
+      FabricTexture:         [smooth, sheen, pleated]
+      EmbellishmentLevel:    [subtle, moderate]
+      ColorValue:            [mid, dark]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      OccasionFit:           [very_casual]
+      EmbellishmentLevel:    [statement]                   # too much for office party
+    notes: >
+      Office Diwali party, Christmas dinner, work anniversary. Slightly
+      more festive than daily office, less than wedding. Indian:
+      embroidered kurti, light-zardozi anarkali (NOT bridal-level),
+      cotton-silk saree with mild sequin work, semi-formal sherwani.
+
+  business_dinner:
+    archetype: formal_events
+    formality: formal
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [semi_formal, formal]
+      FormalitySignalStrength: [high]
+      OccasionFit:           [semi_formal, formal]
+      OccasionSignal:        [evening]
+      TimeOfDay:             [evening]
+      FabricTexture:         [smooth, pleated, sheen]
+      ColorValue:            [mid, dark, very_dark]
+      EmbellishmentLevel:    [subtle, moderate]
+      EdgeSharpness:         [defined]
+    avoid:
+      FormalityLevel:        [casual]
+      OccasionFit:           [casual, festive]
+      ColorValue:            [very_light]
+      EmbellishmentLevel:    [statement]
+    notes: >
+      Client dinner, partner-level evening. More formal than workplace
+      event, less embellished than gala. Indian: silk saree with
+      structured pleated blouse, tailored bandhgala in dark wool / silk,
+      structured sherwani in muted jewel tones.
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# SOCIAL CASUAL (social_casual archetype)
+# ─────────────────────────────────────────────────────────────────────────
+
+  weekend_brunch:
+    archetype: social_casual
+    formality: casual
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [casual, smart_casual]
+      OccasionFit:           [casual, smart_casual]
+      OccasionSignal:        [daily]
+      TimeOfDay:             [day]
+      FabricTexture:         [smooth, knit, ribbed, matte]
+      EmbellishmentLevel:    [none, minimal, subtle]
+      ColorSaturation:       [muted, medium, high]
+    avoid:
+      FormalityLevel:        [formal, ceremonial]
+      OccasionFit:           [formal, traditional]
+      EmbellishmentLevel:    [heavy, statement]
+    notes: >
+      Saturday brunch in BKC, Cyber Hub, Indiranagar. Indian urban:
+      tucked tee + jeans + structured jacket, kurti + jeans, casual
+      saree (cotton block-print) with simple blouse, summer dress,
+      rompers. Sneakers or block heels.
+
+  casual_lunch:
+    archetype: social_casual
+    formality: casual
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [casual, smart_casual]
+      OccasionFit:           [casual, smart_casual]
+      OccasionSignal:        [daily]
+      TimeOfDay:             [day]
+      FabricTexture:         [smooth, knit, ribbed]
+      EmbellishmentLevel:    [none, minimal]
+    avoid:
+      FormalityLevel:        [formal, ceremonial]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+    notes: >
+      Daytime catch-up. Lighter than brunch in formality. Cotton kurta
+      + jeans, casual midi dress, structured tee + chino.
+
+  coffee_meetup:
+    archetype: social_casual
+    formality: casual
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [casual, smart_casual]
+      OccasionFit:           [casual]
+      FabricTexture:         [smooth, knit, ribbed]
+      EmbellishmentLevel:    [none, minimal]
+    avoid:
+      FormalityLevel:        [formal, ceremonial]
+      OccasionFit:           [festive, traditional, party]
+    notes: >
+      Friend / colleague catch-up. Most relaxed daytime.
+
+  everyday_casual:
+    archetype: social_casual
+    formality: casual
+    time: flexible
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [casual]
+      OccasionFit:           [very_casual, casual]
+      FabricTexture:         [smooth, knit, ribbed]
+      EmbellishmentLevel:    [none, minimal]
+    avoid:
+      FormalityLevel:        [formal, ceremonial]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+    notes: >
+      Generic catch-all. Errands, home, neighborhood walk.
+
+  travel_day:
+    archetype: beach_vacation
+    formality: casual
+    time: flexible
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [casual, smart_casual]
+      OccasionFit:           [travel, casual]
+      OccasionSignal:        [travel]
+      FabricTexture:         [smooth, knit, ribbed]
+      StretchLevel:          [moderate, high]
+      FitType:               [regular, relaxed]
+      FabricWeight:          [light]
+    avoid:
+      FormalityLevel:        [formal, ceremonial]
+      FabricTexture:         [metallic, embroidered]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      FitType:               [tailored]                    # uncomfortable for long flights
+    notes: >
+      Flight / long-distance travel. Comfort dominates: stretch fabric,
+      relaxed fit, easy layering. Athleisure-fusion, knit kurti +
+      churidar, structured tee + joggers.
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# EVENING / NIGHT OUT (night_out archetype)
+# ─────────────────────────────────────────────────────────────────────────
+
+  cocktail_party:
+    archetype: night_out
+    formality: semi_formal
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [semi_formal]
+      FormalitySignalStrength: [high]
+      OccasionFit:           [semi_formal, party]
+      OccasionSignal:        [evening, party]
+      TimeOfDay:             [evening]
+      FabricTexture:         [smooth, sheen, embroidered]
+      ColorValue:            [mid, dark, very_dark]
+      EmbellishmentLevel:    [subtle, moderate]
+      EmbellishmentType:     [sequins, embroidery, beading]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      OccasionFit:           [casual, very_casual]
+      ColorValue:            [very_light]                   # at evening, washes
+      EmbellishmentLevel:    [none, statement]              # too much or too little
+    notes: >
+      Indian urban cocktail evening. Gowns, cocktail dresses, sequinned
+      sarees, embroidered anarkali at semi-formal level, bandhgala with
+      detail. Deep jewel tones, evening palette.
+
+  rooftop_bar:
+    archetype: night_out
+    formality: smart_casual
+    time: evening
+    seasons: [spring, summer, autumn]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [smart_casual, semi_formal, party]
+      OccasionSignal:        [evening]
+      TimeOfDay:             [evening]
+      FabricTexture:         [smooth, sheen, knit]
+      ColorValue:            [mid, dark]
+      EmbellishmentLevel:    [minimal, subtle, moderate]
+    avoid:
+      FormalityLevel:        [formal, ceremonial]
+      OccasionFit:           [formal, traditional]
+      EmbellishmentLevel:    [statement]
+    notes: >
+      Skybar, rooftop lounge, modern urban evening. Skirt + structured
+      top, tailored jumpsuit, fitted kurta in deep tones, bandi over
+      shirt. Open at top (not winter — too cold).
+
+  dinner_party:
+    archetype: night_out
+    formality: smart_casual
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [smart_casual, semi_formal]
+      OccasionSignal:        [evening]
+      TimeOfDay:             [evening]
+      FabricTexture:         [smooth, sheen, embroidered]
+      EmbellishmentLevel:    [subtle, moderate]
+      ColorValue:            [mid, dark]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      OccasionFit:           [very_casual, festive]
+    notes: >
+      Friends or family hosting dinner. Smart-casual to semi-formal
+      depending on host. Polished casual: silk shirt + chinos, kurti
+      + churidar with light embroidery, light-silk saree.
+
+  fine_dining:
+    archetype: night_out
+    formality: semi_formal
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [semi_formal, formal]
+      OccasionFit:           [semi_formal, formal]
+      OccasionSignal:        [evening]
+      TimeOfDay:             [evening]
+      FabricTexture:         [smooth, sheen, pleated]
+      EdgeSharpness:         [defined, sharp]
+      ColorValue:            [mid, dark]
+      EmbellishmentLevel:    [subtle, moderate]
+    avoid:
+      FormalityLevel:        [casual]
+      OccasionFit:           [casual, very_casual]
+      EmbellishmentLevel:    [statement]
+    notes: >
+      Upscale restaurant, anniversary dinner, milestone celebration.
+      Polished evening register — silk saree, tailored bandhgala,
+      sheath dress, structured anarkali.
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# FORMAL EVENTS (formal_events archetype)
+# ─────────────────────────────────────────────────────────────────────────
+
+  gala_dinner:
+    archetype: formal_events
+    formality: ceremonial
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [formal, ceremonial]
+      FormalitySignalStrength: [very_high]
+      OccasionFit:           [formal, festive, party]
+      TimeOfDay:             [evening]
+      FabricTexture:         [sheen, embroidered, metallic]
+      FabricWeight:          [medium, heavy]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      EmbellishmentType:     [sequins, beading, embroidery, mirror_work]
+      ColorValue:            [dark, very_dark]
+      ColorSaturation:       [high, very_high]
+    avoid:
+      FormalityLevel:        [casual, smart_casual]
+      OccasionFit:           [casual, smart_casual, very_casual]
+      EmbellishmentLevel:    [none, minimal]
+      ColorValue:            [very_light]
+    notes: >
+      Black-tie equivalent. Indian: heavily embellished gown, sequinned
+      saree with statement blouse, designer lehenga, fully-embellished
+      bandhgala / sherwani. Statement jewellery, evening palette.
+
+  award_ceremony:
+    archetype: formal_events
+    formality: ceremonial
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [formal, ceremonial]
+      OccasionFit:           [formal, festive]
+      TimeOfDay:             [evening]
+      FabricTexture:         [sheen, embroidered]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      ColorValue:            [dark, very_dark]
+    avoid:
+      FormalityLevel:        [casual, smart_casual]
+      EmbellishmentLevel:    [none, minimal]
+    notes: >
+      Receiving / attending an award. Statement-level outfit but
+      slightly less heavy than gala. Tailored designer outfit.
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# FESTIVE — INDIAN (festive archetype)
+# ─────────────────────────────────────────────────────────────────────────
+
+  diwali:
+    archetype: festive
+    formality: ceremonial
+    time: evening
+    seasons: [autumn]
+    flatters:
+      FormalityLevel:        [semi_formal, formal, ceremonial]
+      FormalitySignalStrength: [high, very_high]
+      OccasionFit:           [festive, traditional, formal]
+      OccasionSignal:        [festive, evening]
+      TimeOfDay:             [evening]
+      FabricTexture:         [sheen, embroidered, metallic, textured]
+      FabricWeight:          [medium, heavy]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      EmbellishmentType:     [embroidery, sequins, beading, mirror_work, applique]
+      ColorValue:            [mid, dark, very_dark]
+      ColorSaturation:       [high, very_high]
+      ColorTemperature:      [warm]
+    avoid:
+      FormalityLevel:        [casual]
+      OccasionFit:           [casual, very_casual, workwear]
+      EmbellishmentLevel:    [none, minimal]
+      ColorTemperature:      [cool]                        # Diwali leans warm — fire/lights
+    notes: >
+      Festival of Lights — Hindu Indian's biggest dressing-up evening.
+      Female: heavily embroidered anarkali (gold zardozi, mirror work),
+      banarasi / kanjeevaram saree, lehenga choli, gota patti dupatta.
+      Male: silk kurta + churidar, bandhgala, sherwani for puja-night
+      dinners. Antique gold jewellery, marigold/rust/maroon palette.
+
+  karva_chauth:
+    archetype: festive
+    formality: ceremonial
+    time: evening
+    seasons: [autumn]
+    flatters:
+      FormalityLevel:        [semi_formal, formal, ceremonial]
+      OccasionFit:           [traditional, festive]
+      OccasionSignal:        [festive, evening]
+      TimeOfDay:             [evening]
+      FabricTexture:         [sheen, embroidered, metallic]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      EmbellishmentType:     [embroidery, sequins, beading]
+      ColorValue:            [mid, dark]
+      ColorSaturation:       [high, very_high]
+      ColorTemperature:      [warm]                         # red dominates
+    avoid:
+      FormalityLevel:        [casual, smart_casual]
+      OccasionFit:           [casual, workwear]
+      EmbellishmentLevel:    [none, minimal]
+      ColorTemperature:      [cool]
+    notes: >
+      Married women fast for husband's longevity. Traditional palette:
+      red / maroon / orange / pink (red is the dominant color). Bridal
+      lehenga from wedding often re-worn; heavily embroidered red saree
+      / kanjeevaram / banarasi; embroidered red kurta or gota-patti
+      anarkali. Heavy gold jewellery, sindoor, mehendi, full bridal
+      makeup.
+
+  navratri:
+    archetype: festive
+    formality: smart_casual
+    time: evening
+    seasons: [autumn]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal, ceremonial]
+      OccasionFit:           [festive, traditional]
+      OccasionSignal:        [festive, evening]
+      TimeOfDay:             [evening]
+      FabricTexture:         [textured, embroidered, sheen]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      EmbellishmentType:     [mirror_work, embroidery, beading, applique]
+      ColorSaturation:       [high, very_high]
+    avoid:
+      FormalityLevel:        [casual]
+      OccasionFit:           [casual, workwear]
+      EmbellishmentLevel:    [none, minimal]
+    notes: >
+      9 nights × specific designated daily color (varies by year — runs
+      grey/orange/white/red/royal blue/yellow/green/peacock green/pink
+      typical sequence). Garba / Dandiya night at Gujarati / Delhi /
+      Bombay temples. Mirror-work chaniya choli, kediyu (men's
+      traditional), embroidered ghagra. Heavy oxidised silver
+      jewellery, jhumka earrings.
+
+  holi:
+    archetype: festive
+    formality: casual
+    time: daytime
+    seasons: [spring]
+    flatters:
+      FormalityLevel:        [casual, smart_casual]
+      OccasionFit:           [casual, festive]
+      OccasionSignal:        [festive, daily]
+      TimeOfDay:             [day]
+      FabricTexture:         [smooth]                      # easy to wash colors out
+      FabricWeight:          [light]
+      EmbellishmentLevel:    [none]                        # colors will ruin it
+      ColorValue:            [very_light, light]           # white traditional
+      PrimaryColor:          [white, off-white]
+    avoid:
+      FormalityLevel:        [formal, ceremonial]
+      OccasionFit:           [formal, traditional]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      EmbellishmentType:     [embroidery, sequins, beading, mirror_work]
+      FabricTexture:         [embroidered, metallic]
+      ColorValue:            [dark, very_dark]
+    notes: >
+      Festival of Colors. White / off-white kurta-pyjama or kurti +
+      palazzo (traditional — the colors show beautifully). Disposable
+      or old clothing. Cotton, no embroidery (stains permanent).
+
+  raksha_bandhan:
+    archetype: festive
+    formality: smart_casual
+    time: daytime
+    seasons: [autumn]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [festive, traditional, smart_casual]
+      OccasionSignal:        [festive, daily]
+      TimeOfDay:             [day]
+      FabricTexture:         [smooth, embroidered]
+      EmbellishmentLevel:    [subtle, moderate]
+      EmbellishmentType:     [embroidery, applique]
+      ColorTemperature:      [warm]
+    avoid:
+      OccasionFit:           [casual, very_casual, party]
+      EmbellishmentLevel:    [statement]                    # daytime register
+    notes: >
+      Sister-brother festival. Daytime, semi-festive. Indian: cotton-
+      silk kurta, light anarkali, simple silk saree, bandi for men.
+      Subtle gold or silver work.
+
+  eid:
+    archetype: festive
+    formality: ceremonial
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [semi_formal, formal, ceremonial]
+      OccasionFit:           [traditional, festive, formal]
+      OccasionSignal:        [festive]
+      FabricTexture:         [embroidered, sheen, metallic]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      EmbellishmentType:     [embroidery, beading, sequins]
+      ColorSaturation:       [medium, high, very_high]
+    avoid:
+      FormalityLevel:        [casual]
+      OccasionFit:           [casual, very_casual, workwear]
+      EmbellishmentLevel:    [none, minimal]
+    notes: >
+      Muslim festival (Eid al-Fitr / Eid al-Adha). Heavy embroidery,
+      pearl / zardozi work. Female: anarkali, sharara, gharara, salwar
+      suit. Male: heavy embroidered kurta-pyjama, sherwani, pathani
+      suit. Pastels and jewel tones both work depending on time of day.
+
+  christmas:
+    archetype: festive
+    formality: semi_formal
+    time: evening
+    seasons: [winter]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal, formal]
+      OccasionFit:           [smart_casual, semi_formal, festive]
+      OccasionSignal:        [festive, evening]
+      TimeOfDay:             [evening]
+      FabricTexture:         [sheen, embroidered, smooth]
+      ColorValue:            [mid, dark]
+      ColorSaturation:       [medium, high]
+    avoid:
+      FormalityLevel:        [casual]
+      EmbellishmentLevel:    [statement]                    # less heavy than Diwali
+    notes: >
+      Urban Indian Christmas. Western-leaning: structured dress, sequin
+      detailing, festive sweater + skirt. For Indian families: light
+      anarkali in red/green/cream, traditional kurta. Mid-formality.
+
+  dussehra:
+    archetype: festive
+    formality: smart_casual
+    time: daytime
+    seasons: [autumn]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [traditional, festive]
+      OccasionSignal:        [festive, daily]
+      EmbellishmentLevel:    [subtle, moderate]
+    avoid:
+      OccasionFit:           [casual, very_casual]
+    notes: >
+      Lighter festive than Diwali. Cotton-silk kurta, light anarkali,
+      casual-festive saree, bandi over kurta.
+
+  festival_lunch:
+    archetype: festive
+    formality: smart_casual
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [traditional, festive, smart_casual]
+      OccasionSignal:        [festive, daily]
+      EmbellishmentLevel:    [subtle, moderate]
+    avoid:
+      OccasionFit:           [casual]
+      EmbellishmentLevel:    [statement]
+    notes: >
+      Generic family festival lunch — Pongal, Onam, Janmashtami, etc.
+      Daytime, cotton + light embroidery, regional traditional dress.
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# WEDDING CYCLE (wedding_vibes archetype)
+# ─────────────────────────────────────────────────────────────────────────
+
+  roka:
+    archetype: wedding_vibes
+    formality: semi_formal
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [smart_casual, semi_formal, traditional]
+      OccasionSignal:        [festive, daily]
+      EmbellishmentLevel:    [subtle, moderate]
+      EmbellishmentType:     [embroidery, beading]
+      FabricTexture:         [embroidered, sheen]
+      ColorSaturation:       [medium, high]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      EmbellishmentLevel:    [statement]                    # save for later events
+    notes: >
+      Engagement-engagement (informal proposal acceptance). Light
+      pastels or warm tones. Female: pastel anarkali, embroidered
+      saree, kurta with light embroidery. Male: sherwani-lite, kurta-
+      pyjama with bandi. Lower than wedding ceremony in embellishment.
+
+  sagai_engagement:
+    archetype: wedding_vibes
+    formality: ceremonial
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [semi_formal, formal, ceremonial]
+      FormalitySignalStrength: [high, very_high]
+      OccasionFit:           [traditional, festive]
+      OccasionSignal:        [festive, evening]
+      TimeOfDay:             [evening]
+      FabricTexture:         [embroidered, sheen, metallic]
+      FabricWeight:          [medium, heavy]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      EmbellishmentType:     [embroidery, beading, sequins, mirror_work]
+      ColorValue:            [mid, dark, very_dark]
+      ColorSaturation:       [high, very_high]
+    avoid:
+      FormalityLevel:        [casual, smart_casual]
+      OccasionFit:           [casual, workwear]
+      EmbellishmentLevel:    [none, minimal]
+    notes: >
+      Formal engagement / ring ceremony. Statement outfit. Heavy
+      lehenga, embellished saree, sharara / gharara, fully embroidered
+      sherwani for groom. Antique gold heavy jewellery.
+
+  haldi:
+    archetype: wedding_vibes
+    formality: smart_casual
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [traditional, festive]
+      OccasionSignal:        [festive, daily]
+      TimeOfDay:             [day]
+      FabricTexture:         [smooth, embroidered]
+      EmbellishmentLevel:    [subtle, moderate]
+      ColorTemperature:      [warm]
+      PrimaryColor:          [yellow, mustard, marigold, ochre]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      EmbellishmentLevel:    [statement]                    # turmeric will stain heavy work
+      ColorTemperature:      [cool]
+    notes: >
+      Pre-wedding turmeric ceremony. Yellow / mustard / marigold dominant.
+      Female: yellow lehenga, mustard kurti + dhoti pant, gota-patti
+      yellow saree, simple anarkali. Male: yellow / cream kurta-pyjama,
+      bandi. NOTHING that turmeric stains will ruin.
+
+  mehndi:
+    archetype: wedding_vibes
+    formality: semi_formal
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal, ceremonial]
+      OccasionFit:           [traditional, festive]
+      OccasionSignal:        [festive, evening]
+      FabricTexture:         [embroidered, sheen, metallic]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      EmbellishmentType:     [mirror_work, embroidery, applique, beading]
+      ColorTemperature:      [warm]
+      PrimaryColor:          [green, mehendi green, lime, mustard, orange]
+    avoid:
+      FormalityLevel:        [casual]
+      EmbellishmentType:     [distressing, studs]
+      ColorTemperature:      [cool]
+    notes: >
+      Henna ceremony. Green / yellow / mustard / orange dominant
+      (green most traditional). Mirror-work chaniya choli (Gujarati),
+      embellished sharara, lehenga in mehendi-green or mustard, kurta-
+      sharara set. Loud color, loud embroidery, heavy-mid jewellery.
+
+  sangeet:
+    archetype: wedding_vibes
+    formality: ceremonial
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [semi_formal, formal, ceremonial]
+      FormalitySignalStrength: [high, very_high]
+      OccasionFit:           [festive, traditional, party]
+      OccasionSignal:        [festive, evening, party]
+      TimeOfDay:             [evening]
+      FabricTexture:         [embroidered, sheen, metallic]
+      FabricWeight:          [medium, heavy]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      EmbellishmentType:     [sequins, beading, mirror_work, embroidery]
+      ColorValue:            [mid, dark, very_dark]
+      ColorSaturation:       [high, very_high]
+    avoid:
+      FormalityLevel:        [casual, smart_casual]
+      OccasionFit:           [casual, workwear]
+      EmbellishmentLevel:    [none, minimal]
+    notes: >
+      Music night — most fashion-forward of the wedding events. Heavily
+      embellished lehenga (Sabyasachi, Manish Malhotra), designer saree
+      with statement blouse, bandhgala / fully embellished sherwani,
+      Indo-Western jumpsuit. Statement jewellery, festive evening
+      palette. Fashion show energy.
+
+  baraat:
+    archetype: wedding_vibes
+    formality: ceremonial
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [ceremonial]
+      FormalitySignalStrength: [very_high]
+      OccasionFit:           [traditional, festive]
+      OccasionSignal:        [festive]
+      FabricTexture:         [embroidered, metallic, sheen]
+      FabricWeight:          [heavy]
+      EmbellishmentLevel:    [heavy, statement]
+      EmbellishmentType:     [embroidery, beading, sequins, mirror_work]
+      ColorValue:            [mid, dark, very_dark]
+      ColorSaturation:       [high, very_high]
+    avoid:
+      FormalityLevel:        [casual, smart_casual, semi_formal]
+      OccasionFit:           [casual, workwear]
+      EmbellishmentLevel:    [none, minimal, subtle]
+    notes: >
+      Groom's procession to bride's home. Groom: full sherwani with
+      heavy zardozi, mojari shoes, sehra (turban with veil). Family/
+      friends: heavy lehenga, embellished saree, banarasi kanjeevaram.
+      Statement-level outfit.
+
+  wedding_ceremony:
+    archetype: wedding_vibes
+    formality: ceremonial
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [ceremonial]
+      FormalitySignalStrength: [very_high]
+      OccasionFit:           [traditional, festive]
+      OccasionSignal:        [festive]
+      FabricTexture:         [embroidered, sheen, metallic]
+      FabricWeight:          [medium, heavy]
+      EmbellishmentLevel:    [heavy, statement]
+      EmbellishmentType:     [embroidery, beading, sequins, mirror_work, applique]
+      ColorValue:            [mid, dark, very_dark]
+      ColorSaturation:       [high, very_high]
+    avoid:
+      FormalityLevel:        [casual, smart_casual, semi_formal]
+      EmbellishmentLevel:    [none, minimal, subtle]
+    notes: >
+      Main ceremony (pheras / agni / vows). For BRIDE: red/maroon/
+      bridal-pink lehenga or Banarasi/Kanjeevaram saree, full bridal
+      jewellery. For GROOM: heavily embroidered sherwani / bandhgala
+      with sehra. For GUESTS: ceremonial silk saree, lehenga, full
+      sherwani. THE most heavily-embellished outfit context in Indian
+      fashion.
+
+  wedding_reception:
+    archetype: wedding_vibes
+    formality: ceremonial
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [formal, ceremonial]
+      FormalitySignalStrength: [very_high]
+      OccasionFit:           [festive, traditional, formal, party]
+      OccasionSignal:        [festive, evening]
+      TimeOfDay:             [evening]
+      FabricTexture:         [embroidered, sheen, metallic]
+      FabricWeight:          [medium, heavy]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+      EmbellishmentType:     [sequins, beading, embroidery, mirror_work]
+      ColorValue:            [dark, very_dark]
+      ColorSaturation:       [high, very_high]
+    avoid:
+      FormalityLevel:        [casual, smart_casual]
+      EmbellishmentLevel:    [none, minimal]
+    notes: >
+      Evening reception — even more upscale than wedding ceremony in
+      some communities. Bride/groom in second outfit (often more
+      Western-fashion-forward — gowns, designer suits). Guests in
+      formal Indian (heavy saree, lehenga) or formal Western (gown,
+      suit). Fully embellished register.
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# DATING (dating archetype)
+# ─────────────────────────────────────────────────────────────────────────
+
+  first_date:
+    archetype: dating
+    formality: smart_casual
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [smart_casual, semi_formal]
+      OccasionSignal:        [evening]
+      TimeOfDay:             [evening]
+      FabricTexture:         [smooth, sheen, knit]
+      EmbellishmentLevel:    [subtle, moderate]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      OccasionFit:           [festive, traditional]         # too much for first impression
+      EmbellishmentLevel:    [statement]
+    notes: >
+      Smart casual — too casual reads disinterested, too formal reads
+      tense. Indian urban: kurti + jeans + statement earring,
+      structured dress + jacket, slim shirt + chino. Polished but
+      relaxed.
+
+  date_night:
+    archetype: dating
+    formality: smart_casual
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [smart_casual, semi_formal, party]
+      TimeOfDay:             [evening]
+      FabricTexture:         [smooth, sheen, embroidered]
+      ColorValue:            [mid, dark]
+      EmbellishmentLevel:    [subtle, moderate]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      OccasionFit:           [traditional]
+    notes: >
+      Established couple's evening. Slightly more relaxed than first
+      date. Anarkali-fitted saree, statement dress, kurta + slim
+      trouser combo.
+
+  anniversary_dinner:
+    archetype: dating
+    formality: semi_formal
+    time: evening
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [semi_formal, formal]
+      OccasionFit:           [semi_formal, formal]
+      TimeOfDay:             [evening]
+      FabricTexture:         [smooth, sheen, embroidered]
+      ColorValue:            [mid, dark, very_dark]
+      EmbellishmentLevel:    [moderate]
+    avoid:
+      FormalityLevel:        [casual]
+      OccasionFit:           [casual, very_casual]
+    notes: >
+      Milestone dinner. Polished, intentional. Silk saree, sheath dress,
+      tailored bandhgala. Slightly more dressed than date_night.
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# BEACH / VACATION (beach_vacation archetype)
+# ─────────────────────────────────────────────────────────────────────────
+
+  beach_day:
+    archetype: beach_vacation
+    formality: casual
+    time: daytime
+    seasons: [spring, summer]
+    flatters:
+      FormalityLevel:        [casual]
+      OccasionFit:           [casual, very_casual, travel]
+      OccasionSignal:        [daily, travel]
+      TimeOfDay:             [day]
+      FabricTexture:         [smooth, knit, ribbed, matte]
+      FabricWeight:          [very_light, light]
+      EmbellishmentLevel:    [none, minimal]
+      FitType:               [regular, relaxed]
+    avoid:
+      FormalityLevel:        [smart_casual, formal, ceremonial]
+      OccasionFit:           [formal, traditional, festive]
+      FabricTexture:         [embroidered, metallic, sheen]
+      FabricWeight:          [heavy]
+      EmbellishmentLevel:    [moderate, heavy, statement]
+    notes: >
+      Beach holiday daytime. Cotton tunic, light kaftan, swim cover-up,
+      flowy maxi dress, linen shirt + shorts. Avoid silk, sequins, anything
+      that doesn't survive sand and water.
+
+  vacation_dinner:
+    archetype: beach_vacation
+    formality: smart_casual
+    time: evening
+    seasons: [spring, summer]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [smart_casual, casual]
+      OccasionSignal:        [evening, travel]
+      TimeOfDay:             [evening]
+      FabricTexture:         [smooth, sheen, embroidered]
+      FabricWeight:          [light]
+      EmbellishmentLevel:    [subtle, moderate]
+    avoid:
+      FormalityLevel:        [formal, ceremonial]
+      EmbellishmentLevel:    [heavy, statement]
+    notes: >
+      Resort evening dinner. Lightweight festive — kurti + palazzo,
+      flowy sundress + statement earring, light embroidered saree,
+      linen shirt + chino. Holiday-festive but not bridal-festive.
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# FAMILY / DAILY (mostly social_casual / festive crossover)
+# ─────────────────────────────────────────────────────────────────────────
+
+  family_pooja:
+    archetype: festive
+    formality: smart_casual
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [traditional, smart_casual, festive]
+      OccasionSignal:        [festive, daily]
+      EmbellishmentLevel:    [subtle, moderate]
+      EmbellishmentType:     [embroidery]
+      FabricTexture:         [smooth, embroidered]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      EmbellishmentLevel:    [statement, heavy]
+    notes: >
+      Religious worship at home. Cotton-silk kurta, simple silk saree,
+      pyjama-kurta. Conservative, modest. No statement sequinned outfits.
+
+  in_laws_first_meeting:
+    archetype: social_casual
+    formality: semi_formal
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [smart_casual, traditional]
+      OccasionSignal:        [daily]
+      TimeOfDay:             [day]
+      FabricTexture:         [smooth, embroidered]
+      EmbellishmentLevel:    [subtle, moderate]
+      ColorSaturation:       [muted, medium]
+      ColorValue:            [light, mid]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      OccasionFit:           [festive, very_casual]         # too eager / too casual
+      EmbellishmentLevel:    [statement]
+      ColorValue:            [very_dark]                     # severe, evening register
+    notes: >
+      Culturally-loaded conservative meeting. Female: pastel anarkali,
+      simple silk saree, embroidered kurta + churidar. Male: kurta-pyjama
+      + bandi, light sherwani-lite, structured shirt + slim trouser.
+      Avoid red (saved for wedding day), avoid skin exposure, modest
+      neckline, knee-or-longer.
+
+  kitty_party:
+    archetype: festive
+    formality: semi_formal
+    time: daytime
+    seasons: [spring, summer, autumn, winter]
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      OccasionFit:           [smart_casual, semi_formal, festive]
+      EmbellishmentLevel:    [moderate]
+      EmbellishmentType:     [embroidery, beading]
+      FabricTexture:         [embroidered, sheen]
+    avoid:
+      FormalityLevel:        [casual, ceremonial]
+      EmbellishmentLevel:    [statement]
+    notes: >
+      Indian women's social gathering — festive but not ceremonial.
+      Embroidered anarkali, designer saree, statement kurta-set.
+      Statement jewellery normal — kitty parties are about showing
+      what you have without going full bridal.
