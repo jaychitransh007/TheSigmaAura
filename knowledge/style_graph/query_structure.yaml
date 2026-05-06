@@ -37,7 +37,7 @@ query_structure:
       default_structure: paired
       alternative_structures: [three_piece]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency]
+        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency, needs_innerwear]
       avoid:
         StylingCompleteness: [complete]                 # complete kurta_set / saree out of MNC register
       notes: >
@@ -50,7 +50,7 @@ query_structure:
       default_structure: paired
       alternative_structures: [complete, three_piece]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete, needs_innerwear]
       avoid: {}
       notes: >
         Indian corp accepts kurta + slim trouser (paired), kurta_set
@@ -82,7 +82,7 @@ query_structure:
       default_structure: three_piece
       alternative_structures: [paired]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency]
+        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency, needs_innerwear]
       avoid: {}
       notes: Three-piece preferred — adds gravitas. Tailored sherwani,
         bandhgala over kurta, blazer + saree blouse + saree.
@@ -91,7 +91,7 @@ query_structure:
       default_structure: three_piece
       alternative_structures: [paired]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency]
+        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency, needs_innerwear]
       avoid:
         StylingCompleteness: [complete]                 # kurta_set reads less professional
       notes: Suit, pantsuit, structured sherwani for grooms. Sober
@@ -101,7 +101,7 @@ query_structure:
       default_structure: paired
       alternative_structures: [complete, three_piece]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete, needs_innerwear]
       avoid: {}
       notes: Office Diwali / Christmas — embroidered kurti + palazzo
         (paired), light anarkali (complete), structured saree
@@ -111,7 +111,7 @@ query_structure:
       default_structure: three_piece
       alternative_structures: [complete, paired]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency, complete]
+        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency, complete, needs_innerwear]
       avoid: {}
       notes: Tailored bandhgala, structured sherwani, silk saree, sheath
         dress + jacket. Polished evening register.
@@ -169,7 +169,7 @@ query_structure:
       default_structure: complete
       alternative_structures: [paired, three_piece]
       flatters:
-        StylingCompleteness: [complete, needs_topwear, needs_bottomwear]
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear, needs_innerwear]
       avoid: {}
       notes: Cocktail dress (complete), embroidered anarkali (complete),
         sequinned saree (complete), bandhgala over kurta (three_piece),
@@ -197,7 +197,7 @@ query_structure:
       default_structure: complete
       alternative_structures: [three_piece, paired]
       flatters:
-        StylingCompleteness: [complete, needs_topwear, needs_bottomwear, dual_dependency]
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear, dual_dependency, needs_innerwear]
       avoid: {}
       notes: Silk saree, tailored bandhgala, sheath dress, structured
         anarkali. Polished register.
@@ -209,7 +209,7 @@ query_structure:
       default_structure: complete
       alternative_structures: [three_piece]
       flatters:
-        StylingCompleteness: [complete, dual_dependency]
+        StylingCompleteness: [complete, dual_dependency, needs_innerwear]
       avoid:
         StylingCompleteness: [needs_topwear, needs_bottomwear]   # base layers alone insufficient
       notes: Gown (complete), heavily embellished saree (complete),
@@ -220,7 +220,7 @@ query_structure:
       default_structure: complete
       alternative_structures: [three_piece]
       flatters:
-        StylingCompleteness: [complete, dual_dependency]
+        StylingCompleteness: [complete, dual_dependency, needs_innerwear]
       avoid: {}
       notes: Same register as gala — designer outfit, statement-level
         embellishment.
@@ -235,9 +235,10 @@ query_structure:
         indian_traditional: complete                   # anarkali, kurta_set, saree, lehenga_set
         indian_fusion: three_piece                     # kurta + dhoti + bandi
       flatters:
-        StylingCompleteness: [complete, dual_dependency]
-      avoid:
-        StylingCompleteness: [needs_topwear, needs_bottomwear]   # base layers don't carry the festive register
+        # complete + dual_dependency for the indian_traditional default; needs_*
+        # for the indian_fusion three_piece variant (kurta + dhoti + bandi).
+        StylingCompleteness: [complete, dual_dependency, needs_topwear, needs_bottomwear, needs_innerwear]
+      avoid: {}                                         # all completeness types valid for at least one variant
       notes: Heavy anarkali (complete), banarasi/kanjeevaram saree
         (complete), bridal lehenga set, sherwani (complete or with
         statement bandi). Western paired separates rare for Diwali —
@@ -288,7 +289,7 @@ query_structure:
       default_structure: complete
       alternative_structures: [three_piece]
       flatters:
-        StylingCompleteness: [complete, dual_dependency]
+        StylingCompleteness: [complete, dual_dependency, needs_innerwear]
       avoid:
         StylingCompleteness: [needs_topwear, needs_bottomwear]
       notes: Anarkali, sharara, gharara, salwar suit (all complete).
@@ -298,7 +299,7 @@ query_structure:
       default_structure: paired
       alternative_structures: [complete, three_piece]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete, needs_innerwear]
       avoid: {}
       notes: Western-leaning urban Christmas. Sweater + skirt (paired),
         festive dress (complete), structured sherwani (three_piece) for
@@ -337,7 +338,7 @@ query_structure:
       default_structure: complete
       alternative_structures: [three_piece]
       flatters:
-        StylingCompleteness: [complete, dual_dependency]
+        StylingCompleteness: [complete, dual_dependency, needs_innerwear]
       avoid:
         StylingCompleteness: [needs_topwear, needs_bottomwear]
       notes: Pastel anarkali (complete), embroidered saree (complete),
@@ -347,7 +348,7 @@ query_structure:
       default_structure: complete
       alternative_structures: [three_piece]
       flatters:
-        StylingCompleteness: [complete, dual_dependency]
+        StylingCompleteness: [complete, dual_dependency, needs_innerwear]
       avoid:
         StylingCompleteness: [needs_topwear, needs_bottomwear]
       notes: Lehenga_set, embellished saree, sharara, gharara, full
@@ -379,7 +380,7 @@ query_structure:
       default_structure: complete
       alternative_structures: [three_piece]
       flatters:
-        StylingCompleteness: [complete, dual_dependency]
+        StylingCompleteness: [complete, dual_dependency, needs_innerwear]
       avoid:
         StylingCompleteness: [needs_topwear, needs_bottomwear]
       notes: Heavily embellished lehenga (complete), designer saree
@@ -398,14 +399,15 @@ query_structure:
 
     wedding_ceremony:
       default_structure: complete
-      alternative_structures: []
+      alternative_structures: [three_piece]                            # western variant
       cultural_variants:
         indian_traditional: complete                  # bridal lehenga / kanjeevaram / sherwani
         western: three_piece                          # gown + jacket OR formal suit
       flatters:
-        StylingCompleteness: [complete]
-      avoid:
-        StylingCompleteness: [needs_topwear, needs_bottomwear]
+        # complete for the indian_traditional default; needs_* + dual_dependency
+        # for the western three_piece variant.
+        StylingCompleteness: [complete, dual_dependency, needs_topwear, needs_bottomwear, needs_innerwear]
+      avoid: {}
       notes: THE most ceremonial-complete moment in Indian fashion. For
         Indian families: bridal red lehenga_set or banarasi/kanjeevaram
         saree (bride), full embroidered sherwani with sehra (groom).
@@ -416,11 +418,12 @@ query_structure:
       alternative_structures: [three_piece]
       cultural_variants:
         indian_traditional: complete
-        western_evening: complete                     # gown still complete
+        western: complete                              # gown still complete
       flatters:
-        StylingCompleteness: [complete, dual_dependency]
-      avoid:
-        StylingCompleteness: [needs_topwear, needs_bottomwear]
+        # complete + dual_dependency for the indian_traditional default; needs_*
+        # for the three_piece alternative (designer suit, structured sherwani).
+        StylingCompleteness: [complete, dual_dependency, needs_topwear, needs_bottomwear, needs_innerwear]
+      avoid: {}
       notes: Even more designer-statement than wedding ceremony in some
         communities. Bride/groom in second outfit. Designer lehenga,
         gown, structured sherwani.
@@ -450,7 +453,7 @@ query_structure:
       default_structure: complete
       alternative_structures: [paired, three_piece]
       flatters:
-        StylingCompleteness: [complete, needs_topwear, needs_bottomwear, dual_dependency]
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear, dual_dependency, needs_innerwear]
       avoid: {}
       notes: Silk saree, sheath dress, tailored bandhgala — polished
         evening register.
@@ -512,7 +515,10 @@ query_structure:
       alternative_structures: [three_piece]
       fills_slots: [bottom, outerwear]
       flatters:
-        StylingCompleteness: [needs_bottomwear]
+        # Anchor is a top (StylingCompleteness: needs_bottomwear).
+        # Architect must RETRIEVE: a bottom (which carries needs_topwear)
+        # + optional outerwear (needs_innerwear or dual_dependency).
+        StylingCompleteness: [needs_topwear, needs_innerwear, dual_dependency]
       avoid:
         StylingCompleteness: [complete]                 # already complete = no pairing needed
       notes: >
@@ -527,7 +533,10 @@ query_structure:
       alternative_structures: [three_piece]
       fills_slots: [top, outerwear]
       flatters:
-        StylingCompleteness: [needs_topwear]
+        # Anchor is a bottom (StylingCompleteness: needs_topwear).
+        # Architect must RETRIEVE: a top (needs_bottomwear) + optional
+        # outerwear (needs_innerwear or dual_dependency).
+        StylingCompleteness: [needs_bottomwear, needs_innerwear, dual_dependency]
       avoid:
         StylingCompleteness: [complete]
       notes: >
@@ -540,7 +549,11 @@ query_structure:
       alternative_structures: [paired]
       fills_slots: [top, bottom]
       flatters:
-        StylingCompleteness: [needs_innerwear, needs_topwear, needs_bottomwear]
+        # Anchor is outerwear (StylingCompleteness: needs_innerwear).
+        # Architect must RETRIEVE: top (needs_bottomwear) + bottom
+        # (needs_topwear). needs_innerwear is the anchor's own type — not
+        # a fill target.
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
       avoid:
         StylingCompleteness: [complete]
       notes: >
@@ -577,7 +590,7 @@ query_structure:
       default_structure: paired
       alternative_structures: [complete, three_piece]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete, needs_innerwear]
       avoid: {}
       notes: When in doubt, default to paired. Most occasions accept
         it; specialized occasions get explicit rules above.

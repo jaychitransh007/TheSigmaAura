@@ -22,7 +22,7 @@
 
 SubSeason:
 
-  True Spring:
+  Clear Spring:
     flatters:
       PrimaryColor:        [warm ivory, golden beige, camel, warm peach, coral]
       SecondaryColor:      [warm red, golden yellow, turquoise, light gold]
@@ -96,7 +96,7 @@ SubSeason:
       pastel-peach anarkali, soft cream + light coral combinations,
       delicate lace work. Heavy black or oxblood reads harsh.
 
-  True Summer:
+  Soft Summer:
     flatters:
       PrimaryColor:        [soft white, dove grey, rose taupe, soft navy]
       SecondaryColor:      [dusty pink, soft blue, sage, lavender]
@@ -169,7 +169,7 @@ SubSeason:
       pink Chanderi saree, sky-blue anarkali, soft mint kurta, delicate
       pearl jewellery. Avoid heavy zardozi or deep jewel tones.
 
-  True Autumn:
+  Deep Autumn:
     flatters:
       PrimaryColor:        [warm camel, golden brown, warm bronze, dark honey, deep olive]
       SecondaryColor:      [terracotta, burnt sienna, mustard, warm coral, deep teal]
@@ -243,7 +243,7 @@ SubSeason:
       anarkali, soft sage kurta, antique gold (matte not shiny) zardozi,
       tonal tonal-on-tonal layering. Avoid bright sequins.
 
-  True Winter:
+  Clear Winter:
     flatters:
       PrimaryColor:        [pure white, jet black, true red, royal blue, emerald, ruby]
       SecondaryColor:      [icy pink, sapphire, deep purple, cool grey, silver]
@@ -601,34 +601,37 @@ EyeColor:
       well.
 
 
-EyeClarity:
-  # Drives metallic / sheen / sparkle compatibility.
+EyeChroma:
+  # Drives metallic / sheen / sparkle compatibility. Canonical attribute
+  # name `EyeChroma` matches `prompt/color_analysis_headshot.md` enum
+  # (`Soft / Muted | Balanced | Bright / Clear`) and the interpreter's
+  # `_value(attributes, "EyeChroma")` lookup at interpreter.py:207.
 
-  Clear:
+  Bright / Clear:
     flatters:
       EmbellishmentType:   [sequins, beading, mirror_work]
       FabricTexture:       [sheen, metallic]
     avoid: {}
-    notes: Clear bright eyes carry metallic and sparkle. Statement
+    notes: Bright / Clear eyes carry metallic and sparkle. Statement
       sequins, mirror-work cholis, metallic-thread embroidery all
       flatter.
 
-  Soft:
+  Balanced:
     flatters:
       EmbellishmentType:   [embroidery, beading]
       FabricTexture:       [sheen]
     avoid:
       FabricTexture:       [metallic]                      # too harsh
-    notes: Softer eyes prefer subtle sheen over bright metallic.
+    notes: Balanced eyes prefer subtle sheen over bright metallic.
 
-  Muted:
+  Soft / Muted:
     flatters:
       EmbellishmentType:   [embroidery]
       FabricTexture:       [matte, smooth]
     avoid:
       EmbellishmentType:   [sequins, mirror_work]
       FabricTexture:       [metallic]
-    notes: Muted eyes are softened by matte fabrics. Avoid heavy
+    notes: Soft / Muted eyes are softened by matte fabrics. Avoid heavy
       sequins or metallic — competes with the soft register.
 
 
@@ -717,9 +720,10 @@ SkinHairContrast:
 ColorDimensionProfile:
   # Composite signal — the condensed warmth × depth × contrast × chroma
   # readout. Often sufficient as the only color attribute the runtime
-  # resolver consults.
+  # resolver consults. Key `computed` matches the interpreter's emitted
+  # `value: "computed"` at interpreter.py:478.
 
-  composite:
+  computed:
     notes: >
       Composite dict structure (no flatters/avoid here — the values
       decompose into existing attrs at lookup time):
