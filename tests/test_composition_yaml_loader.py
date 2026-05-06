@@ -40,7 +40,10 @@ for p in (
 
 from agentic_application.composition.yaml_loader import (
     AttributeMapping,
+    ColorHarmonyType,
+    FusionRule,
     OccasionEntry,
+    PairingRule,
     PairingRuleGroup,
     QueryStructureEntry,
     StyleGraph,
@@ -121,12 +124,93 @@ class StyleGraphLoadTests(unittest.TestCase):
         self.assertEqual(anchor_top.fills_slots, ("bottom", "outerwear"))
         self.assertEqual(anchor_top.cultural_variants, {})
 
-    def test_pairing_rule_group_carries_rule_type(self):
+    def test_pairing_rule_group_carries_typed_rules(self):
         graph = load_style_graph()
         formality = graph.pairing_rules["formality_alignment"]
         self.assertIsInstance(formality, PairingRuleGroup)
         self.assertEqual(formality.rule_type, "hard_constraint")
-        self.assertIn("rules", formality.raw)
+        # rules → typed PairingRule instances
+        rule = formality.rules["formality_within_one_step"]
+        self.assertIsInstance(rule, PairingRule)
+        # formality_within_one_step carries the canonical scale + matrix
+        self.assertEqual(
+            rule.formality_scale,
+            ("casual", "smart_casual", "semi_formal", "formal", "ceremonial"),
+        )
+        self.assertIn("casual", rule.compatibility_matrix)
+        # examples_valid / examples_invalid lift cleanly into tuples
+        self.assertGreater(len(rule.examples_valid), 0)
+        self.assertGreater(len(rule.examples_invalid), 0)
+
+    def test_pairing_rule_numeric_value_field_preserved(self):
+        # max_dominant_colors is the only sub-rule with `value: 3`.
+        graph = load_style_graph()
+        max_colors = graph.pairing_rules["color_story"].rules["max_dominant_colors"]
+        self.assertEqual(max_colors.value, 3)
+
+    def test_pairing_rule_group_color_harmony_types_typed(self):
+        graph = load_style_graph()
+        color_story = graph.pairing_rules["color_story"]
+        # The 5 named harmony types live under color_harmony_types,
+        # not under rules — verify they decode into typed instances.
+        self.assertEqual(
+            set(color_story.color_harmony_types.keys()),
+            {"monochromatic", "analogous", "complementary", "tonal", "neutral_plus_anchor"},
+        )
+        mono = color_story.color_harmony_types["monochromatic"]
+        self.assertIsInstance(mono, ColorHarmonyType)
+        self.assertIn("ColorCount", mono.flatters)
+
+    def test_pairing_rule_group_fusion_rules_typed(self):
+        graph = load_style_graph()
+        cultural = graph.pairing_rules["cultural_coherence"]
+        self.assertEqual(
+            set(cultural.fusion_rules.keys()),
+            {
+                "indian_traditional_only",
+                "indo_western_fusion",
+                "western_only",
+                "heavy_traditional_no_western_fusion",
+            },
+        )
+        rule = cultural.fusion_rules["indo_western_fusion"]
+        self.assertIsInstance(rule, FusionRule)
+        self.assertTrue(rule.description)
+
+    def test_pairing_rule_group_level_metadata_lifted(self):
+        graph = load_style_graph()
+        # anchor_constraints carries a group-level description.
+        anchor = graph.pairing_rules["anchor_constraints"]
+        self.assertTrue(anchor.description)
+        # scale_balance carries a group-level statement_definition.
+        scale = graph.pairing_rules["scale_balance"]
+        self.assertTrue(scale.statement_definition)
+
+    def test_pairing_rules_attribute_names_validated(self):
+        # Tampering: inject an unknown attribute under a sub-rule's flatters
+        # block. Loader must catch it the same way it catches unknowns in
+        # the other YAMLs.
+        import shutil, tempfile, yaml as _yaml
+
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            sg = tmp / "style_graph"
+            shutil.copytree(CANON_STYLE_GRAPH_DIR, sg)
+            pr_path = sg / "pairing_rules.yaml"
+            with open(pr_path) as f:
+                doc = _yaml.safe_load(f)
+            doc["pairing_rules"]["bridal_specific"]["rules"]["bridal_lehenga_pairing"][
+                "flatters"
+            ]["BogusAttr"] = ["x"]
+            with open(pr_path, "w") as f:
+                _yaml.safe_dump(doc, f)
+            clear_cache()
+            with self.assertRaises(StyleGraphValidationError) as cm:
+                load_style_graph(sg)
+            self.assertIn("BogusAttr", str(cm.exception))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+            clear_cache()
 
     def test_attribute_mapping_values_are_tuples(self):
         graph = load_style_graph()

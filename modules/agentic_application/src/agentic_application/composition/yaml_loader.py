@@ -131,16 +131,73 @@ class QueryStructureEntry:
 
 
 @dataclass(frozen=True)
+class PairingRule:
+    """One sub-rule under a pairing-rule group's ``rules:`` block.
+
+    Most rules carry ``description``, ``flatters``/``avoid``, and ``notes``.
+    Some additionally carry ``compatibility_matrix`` (a per-value adjacency
+    table — formality_within_one_step, contrast_alignment, two_patterns,
+    texture_mixing, weight_pairing), ``formality_scale`` (the canonical
+    ordering on formality_within_one_step), ``examples_valid`` /
+    ``examples_invalid`` (string lists), or a numeric ``value`` (only on
+    max_dominant_colors). Empty defaults make per-rule field access
+    branchless at call sites."""
+
+    name: str
+    description: str
+    notes: str
+    flatters: Mapping[str, tuple[str, ...]]
+    avoid: Mapping[str, tuple[str, ...]]
+    compatibility_matrix: Mapping[str, tuple[str, ...]]
+    formality_scale: tuple[str, ...]
+    examples_valid: tuple[str, ...]
+    examples_invalid: tuple[str, ...]
+    value: int | None
+
+
+@dataclass(frozen=True)
+class ColorHarmonyType:
+    """One harmony type under ``color_story.color_harmony_types``
+    (monochromatic, analogous, complementary, tonal, neutral_plus_anchor)."""
+
+    name: str
+    description: str
+    notes: str
+    flatters: Mapping[str, tuple[str, ...]]
+    avoid: Mapping[str, tuple[str, ...]]
+
+
+@dataclass(frozen=True)
+class FusionRule:
+    """One fusion-register rule under ``cultural_coherence.fusion_rules``
+    (indian_traditional_only, indo_western_fusion, western_only,
+    heavy_traditional_no_western_fusion)."""
+
+    name: str
+    description: str
+    notes: str
+    flatters: Mapping[str, tuple[str, ...]]
+    avoid: Mapping[str, tuple[str, ...]]
+
+
+@dataclass(frozen=True)
 class PairingRuleGroup:
     """One of the 9 relational rule groups in ``pairing_rules.yaml``.
 
-    Sub-PR 4.7d will likely refine this into a tighter schema once the
-    composer's needs are concrete; for 4.7a we capture ``rule_type`` (the
-    only field used uniformly across groups) plus the raw payload."""
+    The 9 groups have heterogeneous shapes: most carry ``rules`` (a dict of
+    PairingRule), some additionally carry a group-level ``description``
+    (anchor_constraints) or ``statement_definition`` (scale_balance);
+    color_story carries ``color_harmony_types``; cultural_coherence carries
+    ``fusion_rules`` instead of ``rules``. Empty defaults keep call sites
+    free of conditional shape checks."""
 
     name: str
     rule_type: str
-    raw: Mapping[str, Any]
+    description: str
+    statement_definition: str
+    rules: Mapping[str, PairingRule]
+    color_harmony_types: Mapping[str, ColorHarmonyType]
+    fusion_rules: Mapping[str, FusionRule]
 
 
 @dataclass(frozen=True)
@@ -375,22 +432,185 @@ def _load_query_structure(
     return MappingProxyType(out)
 
 
-def _load_pairing_rules(path: Path) -> Mapping[str, PairingRuleGroup]:
+def _build_pairing_rule(
+    name: str,
+    body: Mapping[str, Any],
+    label: str,
+    unknown_sink: list[str],
+    known: frozenset[str],
+) -> PairingRule:
+    flatters = _freeze_attr_lists(body.get("flatters"))
+    avoid = _freeze_attr_lists(body.get("avoid"))
+    _collect_unknown_attrs(label + ".flatters", flatters, known, unknown_sink)
+    _collect_unknown_attrs(label + ".avoid", avoid, known, unknown_sink)
+
+    matrix_raw = body.get("compatibility_matrix") or {}
+    if not isinstance(matrix_raw, dict):
+        raise StyleGraphValidationError(
+            f"{label}: compatibility_matrix must be a mapping if present"
+        )
+    matrix: dict[str, tuple[str, ...]] = {}
+    for k, vs in matrix_raw.items():
+        if vs is None:
+            matrix[str(k)] = ()
+            continue
+        if not isinstance(vs, list):
+            raise StyleGraphValidationError(
+                f"{label}.compatibility_matrix[{k!r}]: expected list"
+            )
+        matrix[str(k)] = tuple(str(v) for v in vs)
+
+    raw_value = body.get("value")
+    parsed_value: int | None
+    if raw_value is None:
+        parsed_value = None
+    elif isinstance(raw_value, bool):
+        # YAML treats `value: true` as bool; reject — `value` is numeric.
+        raise StyleGraphValidationError(
+            f"{label}.value: expected int, got bool"
+        )
+    elif isinstance(raw_value, int):
+        parsed_value = raw_value
+    else:
+        raise StyleGraphValidationError(
+            f"{label}.value: expected int, got {type(raw_value).__name__}"
+        )
+
+    return PairingRule(
+        name=name,
+        description=str(body.get("description") or "").strip(),
+        notes=str(body.get("notes") or "").strip(),
+        flatters=flatters,
+        avoid=avoid,
+        compatibility_matrix=MappingProxyType(matrix),
+        formality_scale=tuple(str(s) for s in (body.get("formality_scale") or ())),
+        examples_valid=tuple(str(s) for s in (body.get("examples_valid") or ())),
+        examples_invalid=tuple(str(s) for s in (body.get("examples_invalid") or ())),
+        value=parsed_value,
+    )
+
+
+def _build_color_harmony(
+    name: str,
+    body: Mapping[str, Any],
+    label: str,
+    unknown_sink: list[str],
+    known: frozenset[str],
+) -> ColorHarmonyType:
+    flatters = _freeze_attr_lists(body.get("flatters"))
+    avoid = _freeze_attr_lists(body.get("avoid"))
+    _collect_unknown_attrs(label + ".flatters", flatters, known, unknown_sink)
+    _collect_unknown_attrs(label + ".avoid", avoid, known, unknown_sink)
+    return ColorHarmonyType(
+        name=name,
+        description=str(body.get("description") or "").strip(),
+        notes=str(body.get("notes") or "").strip(),
+        flatters=flatters,
+        avoid=avoid,
+    )
+
+
+def _build_fusion_rule(
+    name: str,
+    body: Mapping[str, Any],
+    label: str,
+    unknown_sink: list[str],
+    known: frozenset[str],
+) -> FusionRule:
+    flatters = _freeze_attr_lists(body.get("flatters"))
+    avoid = _freeze_attr_lists(body.get("avoid"))
+    _collect_unknown_attrs(label + ".flatters", flatters, known, unknown_sink)
+    _collect_unknown_attrs(label + ".avoid", avoid, known, unknown_sink)
+    return FusionRule(
+        name=name,
+        description=str(body.get("description") or "").strip(),
+        notes=str(body.get("notes") or "").strip(),
+        flatters=flatters,
+        avoid=avoid,
+    )
+
+
+def _load_pairing_rules(
+    path: Path,
+    unknown_sink: list[str],
+    known: frozenset[str],
+) -> Mapping[str, PairingRuleGroup]:
     doc = _read_yaml(path)
     if "pairing_rules" not in doc or not isinstance(doc["pairing_rules"], dict):
         raise StyleGraphValidationError(
             f"{path}: expected top-level 'pairing_rules:' mapping"
         )
     out: dict[str, PairingRuleGroup] = {}
-    for name, body in doc["pairing_rules"].items():
+    for group_name, body in doc["pairing_rules"].items():
         if not isinstance(body, dict):
             raise StyleGraphValidationError(
-                f"{path}: pairing_rules.{name} not a mapping"
+                f"{path}: pairing_rules.{group_name} not a mapping"
             )
-        out[str(name)] = PairingRuleGroup(
-            name=str(name),
+
+        rules_raw = body.get("rules") or {}
+        if not isinstance(rules_raw, dict):
+            raise StyleGraphValidationError(
+                f"pairing_rules.{group_name}.rules: expected mapping"
+            )
+        rules: dict[str, PairingRule] = {}
+        for rule_name, rule_body in rules_raw.items():
+            if not isinstance(rule_body, dict):
+                raise StyleGraphValidationError(
+                    f"pairing_rules.{group_name}.rules.{rule_name}: "
+                    "expected mapping"
+                )
+            label = f"pairing_rules.{group_name}.rules.{rule_name}"
+            rules[str(rule_name)] = _build_pairing_rule(
+                str(rule_name), rule_body, label, unknown_sink, known
+            )
+
+        harmony_raw = body.get("color_harmony_types") or {}
+        if not isinstance(harmony_raw, dict):
+            raise StyleGraphValidationError(
+                f"pairing_rules.{group_name}.color_harmony_types: "
+                "expected mapping"
+            )
+        harmonies: dict[str, ColorHarmonyType] = {}
+        for h_name, h_body in harmony_raw.items():
+            if not isinstance(h_body, dict):
+                raise StyleGraphValidationError(
+                    f"pairing_rules.{group_name}.color_harmony_types.{h_name}: "
+                    "expected mapping"
+                )
+            label = (
+                f"pairing_rules.{group_name}.color_harmony_types.{h_name}"
+            )
+            harmonies[str(h_name)] = _build_color_harmony(
+                str(h_name), h_body, label, unknown_sink, known
+            )
+
+        fusion_raw = body.get("fusion_rules") or {}
+        if not isinstance(fusion_raw, dict):
+            raise StyleGraphValidationError(
+                f"pairing_rules.{group_name}.fusion_rules: expected mapping"
+            )
+        fusions: dict[str, FusionRule] = {}
+        for fr_name, fr_body in fusion_raw.items():
+            if not isinstance(fr_body, dict):
+                raise StyleGraphValidationError(
+                    f"pairing_rules.{group_name}.fusion_rules.{fr_name}: "
+                    "expected mapping"
+                )
+            label = f"pairing_rules.{group_name}.fusion_rules.{fr_name}"
+            fusions[str(fr_name)] = _build_fusion_rule(
+                str(fr_name), fr_body, label, unknown_sink, known
+            )
+
+        out[str(group_name)] = PairingRuleGroup(
+            name=str(group_name),
             rule_type=str(body.get("rule_type", "")),
-            raw=MappingProxyType(body),
+            description=str(body.get("description") or "").strip(),
+            statement_definition=str(
+                body.get("statement_definition") or ""
+            ).strip(),
+            rules=MappingProxyType(rules),
+            color_harmony_types=MappingProxyType(harmonies),
+            fusion_rules=MappingProxyType(fusions),
         )
     return MappingProxyType(out)
 
@@ -451,7 +671,9 @@ def load_style_graph(
     query_structure = _load_query_structure(
         style_graph_dir / "query_structure.yaml", unknowns, known
     )
-    pairing_rules = _load_pairing_rules(style_graph_dir / "pairing_rules.yaml")
+    pairing_rules = _load_pairing_rules(
+        style_graph_dir / "pairing_rules.yaml", unknowns, known
+    )
 
     # Structural sanity checks — fail loudly if a YAML lost its anchor
     # dimensions to a typo.
