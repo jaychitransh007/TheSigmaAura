@@ -6,6 +6,8 @@ When a task is picked up, replace the brief with a link to the PR/branch. When i
 
 For per-PR record of what's already shipped, see `RELEASE_READINESS.md` § Recently Shipped.
 
+The bottom half of this file is the **Sub-3s latency push** — the anchor execution plan we work from. All operations and development going forward thread through that plan.
+
 ---
 
 ## Catalog vocabulary cleanup — Phase 2 of the May-3 occasion-tag refactor
@@ -63,7 +65,7 @@ Pre-PR-#81 baseline was $0.029/turn (gpt-5-mini composer + gpt-5.5 planner). Pos
 
 Two angles to attack if the cost panel says we need to:
 - **Try-on render count.** 3 sequential Gemini renders dominate. Render only the top 1 inline and over-render lazily on a "Get a deeper read" CTA — but that CTA was removed in V2; revisit only if the cost lever justifies bringing it back.
-- **Architect prompt size.** Episodic memory adds ~3K tokens per power user (Panel 17). Tighten `_RECENT_USER_ACTIONS_MAX` from 30 → 20 if Panel 17 p95 stays >14K.
+- **Architect prompt size.** Episodic memory adds ~3K tokens per power user (Panel 17). Tighten `_RECENT_USER_ACTIONS_MAX` from 30 → 20 if Panel 17 p95 stays >14K. (This is now also Phase 3.4 of the latency push below.)
 
 **Trigger to act:** the LLM-cost-budget alert fires (currently $500/day — see PR #94), OR Panel 17 p95 stabilises above 14K input tokens.
 
@@ -137,346 +139,326 @@ Build `ops/scripts/architect_replay_eval.py` that:
 ---
 ---
 
-# Sub-3s latency push (May 6 revision — pre-launch / launch / post-launch)
+# Sub-3s latency push — phased execution plan
 
-The original P0/P1/P2 sequencing assumed the slow pipeline would ship to friendly users for trace collection, then optimize. That breaks because 60–70s pre-tryon latency makes shipping unviable. Replaced with **pre-launch (offline cache build) → launch (closed alpha, narrow scope) → post-launch (cold-path optimization)** ordering.
+**The anchor document for the latency-reduction work.** Replaces the prior pre-launch / launch / post-launch framing with a 7-phase execution plan, each with explicit test gates. We test query response after every phase before progressing.
 
-Cache (recipe library) is the launch unlock, NOT fine-tuning. The slow pipeline is the teacher; the cache is the precomputed lookup. Fine-tuning is a post-launch optimization for the rare cache miss.
+**Foundation already shipped:**
+- **PR #109** — `distillation_traces` table + `record_stage_trace` context manager wired into 5 stages (production-ready trace pipeline; full I/O captured per turn for future distillation training)
+- **PR #110** — bootstrap intent grid + synthetic profile pool (5,424 cells, regenerable via `ops/scripts/generate_bootstrap_grid.py`; available as Phase 4 input)
+- **PRs #111–#117** — 8-file style graph (~5,500 lines of Indian-urban fashion knowledge as YAMLs) covering body_frame (M+F), archetype, palette, occasion, weather, query_structure, pairing_rules. Plus 2 reusable validators (`ops/scripts/validate_style_graph_yaml.py`, `validate_style_graph_conflicts.py`).
 
----
+These foundations remain available; their consumers (the composition engine in Phase 4, the cache layer in Phase 2) are upcoming work below.
 
-## Pre-launch Step 1 — Trace schema + writer
-
-**Status:** ✓ **shipped May 6, 2026 (PR #109)** · **Cost:** ~½ dev day · **Risk:** low
-
-Implementation note: while surveying the codebase, I confirmed that `model_call_logs` already exists but stores only hand-built summaries in `request_json` (the architect logs `{gender, occasion, message, is_followup}` — not the 14K-token actual prompt). That's fine for cost/latency analytics but unusable for fine-tuning. Resolution: a separate `distillation_traces` table coexists with `model_call_logs`, captures full I/O at every stage call site, and never samples bodies. The original "traces unblock distillation" framing still holds — this is just the right table shape.
-
-What landed:
-- Migration `20260506120000_distillation_traces.sql` — table + 4 indexes (turn, stage, input_hash, tenant). `tenant_id TEXT NOT NULL DEFAULT 'default'` from day one (multi-tenancy hook).
-- `Repositories.log_distillation_trace` — mirrors `log_tool_trace` style; reuses the same `pii_redactor`.
-- `record_stage_trace` context manager in `platform_core/distillation_traces.py` — wraps a stage call, swallows writer failures so a Supabase hiccup never fails a turn. Plus `to_jsonable()` helper.
-- Wired into 5 stage call sites in `orchestrator.py`: copilot_planner, outfit_architect, catalog_search, outfit_composer, outfit_rater.
-- `ops/scripts/backfill_quality_signal.py` — idempotent skeleton joining traces to `feedback_events`. Manual run for now; cron is a follow-up.
-- 13 unit tests in `tests/test_distillation_traces.py`. Full suite passes (471/471).
-
-Acceptance checked: every turn writes one row per stage ✓; sample queries pull (input, output, latency) ✓; back-fill skeleton runnable manually ✓.
-
-Follow-ups: cron-wire the back-fill script; expand `quality_signal` beyond user feedback to include downstream stage acceptance + implicit signals (these unblock once real traffic accumulates).
+**Strategic context:**
+The composition engine (Phase 4) is the architectural endpoint that makes the YAMLs runtime-load-bearing. Phases 1–3 are operational wins that get us most of the way to sub-3s on the common path *before* the engine ships. Phases 5–7 extend the wins to the cold path and post-launch optimization.
 
 ---
 
-## Pre-launch Step 2 — Synthetic intent grid + profile sampling
+## Phase 1 — Operational quick wins (P0, Week 1)
 
-**Status:** ✓ **shipped May 6, 2026 (PR pending)** · **Cost:** ~½ dev day · **Risk:** medium (coverage decisions)
+**Goal:** 64s → ~25-30s without architectural changes. All tasks are independent, parallelizable, low-risk.
 
-What landed:
-- `modules/agentic_application/src/agentic_application/recipes/profiles.py` — synthetic profile pool (12 archetypes × 2 genders, with first-pass coverage of all 24 base combos plus weighted sampling toward production-frequent archetypes; deterministic seed).
-- `modules/agentic_application/src/agentic_application/recipes/grid.py` — curated 31-occasion taxonomy (work_mode, social_casual, night_out, formal_events, festive, beach_vacation, dating, wedding_vibes), grid enumerator, cost estimator, coverage-filter Protocol.
-- `ops/scripts/generate_bootstrap_grid.py` — deterministic generator. Without `--with-coverage` runs offline; produces grid CSV + profile pool JSON + cost estimate.
-- `ops/data/bootstrap_grid.csv` (5,424 cells), `ops/data/bootstrap_profile_pool.json` (75 profiles) — committed for review; regeneratable byte-identically with `--seed=42`.
-- 23 unit tests covering profile determinism, grid enumeration, occasion-season exclusion, cost scaling, coverage filter caching.
+### 1.1 Parallelize the rater (1 day)
 
-**Important finding on the budget:** the original $10–20K LLM-spend estimate (and $1–2/cell rate) was off by ~20×. Actual per-cell cost from the May 6 cost re-baseline is ~$0.09/cell (architect $0.053 + composer $0.036 + rater + planner). The 5,424-cell grid estimates to **~$542 total**. This means either (a) keep the conservative budget for safety margin, or (b) expand the grid 5–10× to get richer coverage. Step 3 should make this call before kicking off the bootstrap run.
+Replace the single 6-outfit `outfit_rater.rate()` call with `asyncio.gather` over 6 parallel calls. Each call rates one outfit independently against the absolute 75-threshold. If composer produces 6 and we pick top 3 (rather than just gate-keep), add a tie-breaking comparative pass (~500ms) after parallel scoring. Verify in production: same scores within tolerance, latency drops from 13.4s to ~2-3s.
 
-Acceptance checked: grid file enumerated and reviewed ✓ (`bootstrap_grid.csv` in `ops/data/`); coverage analysis runnable but requires Supabase access (Protocol mockable in tests, real run deferred to bootstrap pipeline); estimated cost within budget ✓ (~$542 vs $10–20K cap).
+### 1.2 Fix retrieval (hours)
 
----
+Profile the current 2.9s pgvector query — likely missing HNSW index, doing pre-filtering wrong, or re-running embedding model on query without caching. Add HNSW index if absent: `CREATE INDEX ON catalog_item_embeddings USING hnsw (embedding vector_cosine_ops)`. Cache the query embedding model in memory; don't reload per request. Move metadata filters (size, gender, in-stock) to indexed columns; apply at SQL level not Python loop. Expected: retrieval drops from 2.9s to <100ms.
 
-## Pre-launch Step 2 (original spec, kept for reference)
+### 1.3 Switch planner to fast non-reasoning model (1-2 days)
 
-**Status:** superseded by the shipped version above · **Cost:** ~1 dev week · **Risk:** medium (coverage decisions)
+Pick provider: `claude-haiku-4-5` (recommended for conversational handling) or `gpt-4.1-nano` (cheapest). Build shadow mode: keep `gpt-5-mini` as production planner; call new model in parallel; log both. Run shadow for 2-3 days on real traffic. Manually review 50-100 disagreements; identify systematic errors. Calibrate confidence threshold based on actual error rates. Add hard-rule fallback triggers: schema validation failures, incoherent intent/action combos, multi-clause conditional messages, follow-up patterns ("more X", "different from"). Promote new model to production with fallback to `gpt-5-mini` reasoning for low-confidence. Expected: 7.1s → <500ms.
 
-Define which (intent × archetype × occasion × season) cells the bootstrap will populate. Coverage decisions made here dictate launch alpha scope — cells outside the grid become "we don't cover that yet" graceful refusals at launch.
+### 1.4 Switch architect + composer to faster reasoning model (2-3 days)
 
-Build:
-1. **Intent enumeration:** primary on `occasion_recommendation` (most traffic); secondary on `pairing_request` and `garment_evaluation`; lower coverage on the tail.
-2. **Archetype enumeration:** 8 style archetypes from existing taxonomy.
-3. **Occasion enumeration:** ~25–40 canonical occasions curated from current `prompt/outfit_architect.md` + market research (office, wedding-guest, dinner-date, weekend-brunch, etc.).
-4. **Season + climate enumeration:** 4 seasons × climate variants (humid/dry/temperate).
-5. **Profile sampling:** 50–100 synthetic user profiles spanning (body_type × palette × archetype × budget) used as architect inputs during bootstrap so recipes capture profile-conditional variation.
-6. **Catalog feasibility filter:** drop cells where `catalog_enriched` has <100 SKUs matching slot specs (skip "evening gowns" if you have 12).
-7. **Output:** `bootstrap_grid.csv` with ~5,000–10,000 cells, cost-estimated.
+A/B test `claude-sonnet-4-7` and `gemini-2.5-pro` against `gpt-5.4` on the eval set (Phase 4.6). Score outputs against held-out cases and against the existing rater's judgment as proxy. Pick winner; ship config change. Expected: architect 27.6s → ~12-15s; composer 13.3s → ~6-8s.
 
-**Trigger:** parallel to Step 1.
+### 1.5 Add streaming card delivery (1-2 days)
 
-**Acceptance:** grid file enumerated and reviewed; coverage analysis confirms each cell has feasible catalog support; estimated bootstrap cost ($1–2/cell × cell count) within $10–20K budget.
+Refactor the recommendation endpoint to stream NDJSON or SSE. Frontend renders each card as it arrives, not all-at-once. Skeleton states render in <100ms while backend works. Try-on starts loading on each card the moment it renders; doesn't block visibility. Real latency unchanged; perceived latency drops dramatically (~30s).
+
+### Phase 1 test gate
+
+- Cold-path latency p95: ≤30s (from 64s)
+- Perceived latency p95: ≤15s (with streaming)
+- Quality on eval set: ≥95% agreement with current production
+- No regressions on the 50 hand-picked test queries
 
 ---
 
-## Pre-launch Step 3 — Recipe bootstrap runner
+## Phase 2 — Caching layer (P0, Weeks 2-3)
 
-**Status:** queued · **Cost:** ~2 dev weeks + ~$500–$3K LLM spend (revised down from $10–20K based on Step 2 cost finding — see updated Step 2 above) · **Risk:** medium
+**Goal:** cache architect + composer outputs keyed on profile cluster. Hit rate grows organically from real traffic. Replaces the bootstrap-then-cache plan from the earlier draft — runtime cache is lighter weight and learns from real distribution.
 
-The bootstrap. For each grid cell, run the existing slow pipeline (architect → composer) and normalize output into a recipe row.
+### 2.1 Define profile clustering function (2 days)
 
-Build:
-1. New module `modules/agentic_application/src/agentic_application/recipes/` (schema, library, lookup).
-2. Postgres `recipes` table: `(recipe_id, intent, archetype, occasion, season, style_axis, slot_specs JSONB, source_trace_ids UUID[], tenant_id NOT NULL DEFAULT 'default', created_at)`.
-3. Bootstrap script `ops/scripts/generate_recipes.py`:
-   - Iterates grid from Step 2 with concurrency (10–20 workers, rate-limit aware).
-   - For each cell: synthetic user_context + occasion → `OutfitArchitect.plan()` → `OutfitComposer.compose()` → extract catalog-independent slot specs from composer output.
-   - Writes recipe row + backreference to source trace IDs (for distillation later).
-   - Resumable checkpoints every 100 cells.
-4. Cost monitor with kill-switch at $25K spend.
-5. Quality sampling: 20 random recipes per 1K generated get a manual sanity-check before continuing.
+~20-50 buckets across `(body_frame_class × archetype × palette_class × gender × formality_lean)` for cache key generation. Coarse buckets to start; refine if hit rate too low. Don't over-engineer.
 
-Multi-tenancy hook: recipes catalog-independent by design ("structured navy blazer, formality 3-4" — never product_ids).
+### 2.2 Build architect output cache (3-4 days)
 
-**Trigger:** Steps 1 + 2 must land first.
+Postgres table `architect_direction_cache` with JSONB output. Cache key: hash of `(intent, profile_cluster, occasion, season, formality, architect_prompt_version)`. TTL 7-14 days; invalidation on `architect_prompt_version` bump. Wrap architect call: hit → skip architect entirely; miss → run architect → cache the output. Expected hit rate: 0% on day 1, ~40% by day 7, ~70% by week 4 as cache populates.
 
-**Acceptance:** ≥5K recipes covering high-frequency intent × archetype × occasion combos; lookup by (intent, archetype, occasion, season) returns recipe in <50ms; bootstrap traces populate the traces table.
+### 2.3 Build composer output cache (2-3 days)
 
----
+Same pattern as 2.2 with key: hash of `(architect_direction, retrieval_result_fingerprint, profile_cluster, composer_prompt_version)`. Fingerprint retrieval results by sorted SKU IDs (different SKUs = different cache key, prevents stale outfits).
 
-## Pre-launch Step 4 — Feasibility index against current catalog
+### 2.4 Cache invalidation strategy (included in 2.2, 2.3)
 
-**Status:** queued · **Cost:** ~1.5 dev weeks · **Risk:** low
+Invalidate on prompt-version bump (the `architect_prompt_version`, `composer_prompt_version` in cache keys handle this automatically). No per-entry TTL needed beyond default. Keep entries for 7-14 days; refresh on access.
 
-For each recipe slot, precompute the top-K catalog products that fill it. Without this, recipes are abstract and can't be served.
+### 2.5 Cache hit/miss metrics dashboard (1 day)
 
-Build:
-1. New module `modules/catalog/src/catalog/feasibility/`.
-2. Postgres `recipe_slot_candidates` table: `(recipe_id, slot_index, product_id, score, tenant_id NOT NULL DEFAULT 'default')`, indexed on `(recipe_id, slot_index, score DESC)`.
-3. Builder: embed slot spec text via existing `text-embedding-3-small`, run cosine search against `catalog_item_embeddings`, store top-50 product_ids per slot with scores.
-4. Refresh: re-run on `catalog_enriched` change (manual today; webhook-driven post multi-tenant launch).
-5. Coverage report: flags recipes with <10 viable candidates per slot for redesign or removal from launch grid.
+Monitor hit rate by cluster. Surface low-hit clusters as "needs more traffic" or "clustering too granular". Track cache miss latency to confirm Phase 1 baseline holds.
 
-**Trigger:** Step 3 must populate recipes.
+### Phase 2 test gate
 
-**Acceptance:** every recipe has top-50 candidates per slot; lookup `(recipe_id, slot_index) → ranked product_ids` returns in <20ms; coverage report identifies slot-level gaps.
+- Cache hit rate after 1 week of alpha traffic: ≥30%
+- Cache hits: <100ms architect + composer combined latency
+- Cache misses: same as Phase 1 baseline (~25s on cold path)
+- Quality unchanged on cache hits (cached output = original architect/composer output)
+- p95 across mixed traffic: ≤15s
 
 ---
 
-## Pre-launch Step 5 — Manual eval set curation
+## Phase 3 — Prompt compression (P1, Weeks 3-4, parallel with Phase 2)
 
-**Status:** queued · **Cost:** ~1–2 dev weeks human curation · **Risk:** low
+**Goal:** shrink architect + composer prompts; further reduce cold-path latency on cache miss.
 
-The ground-truth set used to validate cache quality before launch. **NOT training data — eval data only.**
+### 3.1 Audit architect 14K input (1 day)
 
-Build:
-1. Pick 100–500 representative test queries spanning the launch grid (mix of common, edge, novel).
-2. Run the slow pipeline against each, capture full outputs (architect plan + 6 composed outfits + rater scores + try-on for top 3).
-3. Hand-rate each output on the same 6 axes the rater uses (occasion fit, body harmony, color harmony, archetype match, formality, statement).
-4. Store as `eval_set.jsonl` versioned in repo (`tests/eval/`).
-5. Eval harness `ops/scripts/eval_cache_quality.py` runs queries against the cache and diffs outputs vs eval set.
+Categorize tokens by source: static fashion knowledge (~3-4K, replaceable with YAML row injection), catalog summary (~2-3K, per-request keep), user profile (~1-2K, per-request keep), output format spec (~1-2K, replaceable with structured output / constrained JSON), few-shot examples (~3-4K, filter to only relevant archetype/occasion examples per request).
 
-**Trigger:** parallel with Steps 3–4 (independent of cache build).
+### 3.2 Compress architect prompt (3-4 days)
 
-**Acceptance:** ≥100 hand-rated cases with full ratings; eval harness produces a per-case quality-delta report (cache vs slow pipeline); inter-rater agreement spot-checked on ≥20 cases by a second reviewer.
+Inject relevant YAML rows for *this user* (palette for their sub-season, body_frame for their shape, archetype for their style) instead of generic prose. Use OpenAI `response_format` or Anthropic tool-calling for structured output, removing in-prompt format examples. Target: 14K → 4-5K input tokens, same model from Phase 1.4.
 
----
+### 3.3 Compress composer prompt (2-3 days)
 
-## Pre-launch Step 6 — Hot-path router and assembly
+Same approach: identify static fashion knowledge in prompt, replace with `pairing_rules.yaml` injection. Filter few-shot examples to relevant ones for the architect direction.
 
-**Status:** queued · **Cost:** ~2 dev weeks · **Risk:** medium
+### 3.4 Cap `_RECENT_USER_ACTIONS_MAX` 30 → 20 (hours)
 
-The mechanism that produces sub-3s. New module `modules/agentic_application/src/agentic_application/hot_path.py`. `process_turn` becomes a router: hot path on cache hit; fall through to existing orchestrator (cold path) on miss.
+Saves ~2K input tokens. Trigger if Panel 17 p95 stays >14K input tokens. (Cross-references the per-turn cost re-baseline task above.)
 
-Hot-path flow:
-1. Fast intent classifier → `(intent, archetype, occasion, season)` keys (Step 7).
-2. Recipe lookup → recipe_id.
-3. Feasibility lookup → product_ids per slot.
-4. Diverse-sample assembly → 6 outfit candidates via cheap deterministic compat (item-attribute pair scoring).
-5. Existence verification → confirm product_ids still in `catalog_enriched`.
-6. Lightweight rater → deterministic 6-axis score (cosine to archetype centroid + palette match + role coverage).
-7. Return cards.
+### Phase 3 test gate
 
-Cache miss → cold path (existing orchestrator) + write-back (Launch Step 2).
-
-**Trigger:** Steps 3 + 4 must be populated.
-
-**Acceptance:** pre-tryon p95 <3s on cache hits; cache miss fallback to cold path is transparent; deterministic rater agrees with LLM rater ≥85% on Step 5 eval set.
+- Architect input tokens: ≤5K
+- Composer input tokens: ≤4K
+- Cold-path architect latency: ~8-10s (with Phase 1.4 model swap stacked)
+- Quality regression on eval set: <2%
+- Cache hits (~60-70%): <100ms
+- Cache misses: ~25-30s p95 (down from ~50s)
 
 ---
 
-## Pre-launch Step 7 — Fast intent classifier
+## Phase 4 — Composition engine for architect (P0 strategic, Weeks 5-7)
 
-**Status:** queued · **Cost:** ~3 dev days · **Risk:** low
+**Goal:** replace architect with YAML-driven composition on the common path. The architectural endpoint that makes the 8 YAMLs runtime-load-bearing.
 
-The 7.1s copilot_planner is the hot-path entry point. Replace with gpt-5-mini + prompt caching for ~500–800ms classification, no model change. Distillation to a fine-tuned encoder (~50ms) deferred to post-launch.
+### Pre-work (Week 4, parallel with Phase 2/3)
 
-Build:
-1. Move planner system prompt to a stable cacheable prefix.
-2. Switch to gpt-5-mini with `prompt_cache_key` set per (system_prompt_version, intent_registry_version).
-3. Wire as the entry point of the hot-path router.
+#### 4.1 Composition semantics spec (3-5 days)
 
-**Trigger:** parallel to Step 6.
+Write `docs/composition_semantics.md` covering:
+- Empty-intersection handling (most common case across 7 mappings)
+- Soft vs hard constraint distinction
+- Weighted preferences within `flatters` lists (currently flat — need ordering or explicit weights)
+- Conflict precedence: 28 pair relationships including BodyShape > FrameStructure, SubSeason > individual color attrs, etc.
+- Worked examples for each conflict type
 
-**Acceptance:** planner stage p95 <800ms; intent classification ≥90% agreement with current planner on Step 5 eval set.
+#### 4.2 Stylist review of 8 YAMLs (1-2 weeks, parallel)
+
+Paid consultant pass focused on edge cases: Diamond body type (genuinely tricky), `off_shoulder` workarounds (canonical schema gap), regional festival variants (Onam, Navratri day-color sequence by year), bridal vs non-bridal calls, Indian fabric pairing rules. Output: revised YAMLs + list of canonical-schema fixes needed.
+
+#### 4.3 Add `hard:` / `soft:` distinction to YAML schema (2 days)
+
+Extend the 8 YAMLs with constraint-type markers; update validators (`ops/scripts/validate_style_graph_yaml.py`). Migrate existing entries (most defaults: physical-frame is hard, archetype is soft).
+
+#### 4.4 Refactor bootstrap grid generator (1 day)
+
+Update `ops/scripts/generate_bootstrap_grid.py` to read occasion list from `knowledge/style_graph/occasion.yaml` (currently has 31; YAML has 45+). Eliminates the stale-grid drift vector flagged in PR #114.
+
+#### 4.5 Begin one-way prompt → YAML migration (ongoing)
+
+Add `MIGRATED:` markers in `prompt/outfit_architect.md` next to rules now in YAML. New rules go to YAML directly. Once composition engine ships and replaces the architect, the prompt's migrated sections get pruned. **Decision committed: one-way migration — no dual updates.**
+
+#### 4.6 Manual eval set curation (1-2 weeks human curation, parallel)
+
+100-500 representative test queries spanning the launch grid (mix of common, edge, novel). Run the slow pipeline against each; capture full outputs (architect plan + 6 composed outfits + rater scores + try-on for top 3). Hand-rate each output on the same 6 axes the rater uses. Store as `eval_set.jsonl` versioned in `tests/eval/`. Inter-rater agreement spot-checked on ≥20 cases by a second reviewer.
+
+This is **not** training data — it's the eval ground truth used for Phase 4.8 quality validation, Phase 5.4 composer A/B testing, and ongoing regression detection.
+
+### Engine work (Weeks 5-6)
+
+#### 4.7 Implement composition engine (1-2 weeks)
+
+New module `modules/agentic_application/src/agentic_application/composition/`. Reads 8 YAMLs from `knowledge/style_graph/`. Applies intersect/union semantics with precedence rules from 4.1. Outputs structured `direction` object matching architect's existing schema. Empty-intersection fallback: drop most-restrictive contributor by precedence; on full failure, fall through to LLM architect.
+
+#### 4.8 Quality validator (2-3 days)
+
+Compare composition engine output to current architect output on the eval set (4.6). Flag divergences for stylist review. Builds confidence-score per cell on whether engine is ready to replace LLM there.
+
+#### 4.9 Integrate with hot-path router (3-5 days)
+
+Wrap architect call: try composition engine first; fall through to LLM architect (with Phase 1 model swap, ~12s) on low-confidence or genuine YAML gap. Log every fall-through with the input that didn't compose cleanly — feedback for YAML expansion.
+
+### Cutover (Week 7)
+
+#### 4.10 Production rollout (1 week)
+
+Feature flag: 10% → 50% → 100% over a week. Monitor quality metrics + latency at each step. Roll back on quality regression.
+
+### Phase 4 test gate
+
+- Composition engine handles ≥80% of cache-miss requests without LLM fallback
+- Engine latency p95: <500ms
+- Quality on eval set: ≥90% agreement with LLM architect
+- Cold-path architect average: <2s on engine hit, ~10s on engine miss
+- Cache layer continues to provide <100ms on cache hit (regardless of whether origin was engine or LLM)
 
 ---
 
-## Pre-launch Step 8 — Quality validation gate
+## Phase 5 — Composition engine for composer (P1, Weeks 8-10)
 
-**Status:** queued · **Cost:** ~3 dev days · **Risk:** low
+**Goal:** replace composer with `pairing_rules.yaml` + constrained graph search.
 
-Before launch, run the eval harness against the full hot-path. Validates cache outputs match slow-pipeline outputs on quality dimensions.
+### 5.1 Pairing rules engine spec (3-5 days)
 
-Build:
-1. Run hot-path against the 100–500 eval queries from Step 5.
-2. Diff per-axis ratings (cache outfit ratings vs hand-rated ground truth).
-3. Generate launch-readiness report: per (intent × occasion) cell, agreement rate.
-4. Cells below threshold (e.g., <80% per-axis agreement) excluded from the launch alpha scope — those cells fall back to the cold path with refusal UI (Launch Step 3).
+Formality_alignment matrix application; color_story enforcement (5 harmony types); pattern_mixing logic (single, dual with constraints); scale_balance (statement-piece-per-outfit rule); bridal exception logic; anchor-driven rules for `pairing_request` intent.
 
-**Trigger:** Steps 3, 4, 5 must be done.
+### 5.2 Compatibility scoring against catalog (1 week)
 
-**Acceptance:** report identifies launch-ready cells; ≥80% of high-frequency cells pass quality gate; failing cells excluded from launch grid; report committed to repo for audit.
+Score `(top × bottom × outerwear)` tuples in the retrieved pool against `pairing_rules.yaml` constraints. Use enrichment attributes (formality, color, pattern, scale) as scoring inputs.
+
+### 5.3 Diverse outfit assembly (3-5 days)
+
+Top-K with diversity constraints: max 1 outfit per direction, palette spread, role coverage. Output 6 candidates for the rater (matching current contract).
+
+### 5.4 A/B test against LLM composer (parallel)
+
+Run both on eval set; rate outputs. Identify specific failure modes of the engine for stylist review.
+
+### 5.5 Production rollout (1 week)
+
+Feature flag rollout: 10% → 50% → 100%.
+
+### Phase 5 test gate
+
+- Composer engine hit rate: ≥70% of cache misses
+- Engine latency p95: <300ms
+- Quality on eval set: ≥85% agreement with LLM composer
+- Cold-path composer average: <500ms on engine hit, ~6s on engine miss
 
 ---
 
-## Launch Step 1 — Per-stage budget caps + cold-path safety net
+## Phase 6 — Try-on async streaming (P1, Weeks 8-10, parallel with Phase 5)
 
-**Status:** queued (Launch phase) · **Cost:** ~2 dev days · **Risk:** low
+**Goal:** decouple try-on from card rendering. Cards visible <3s; try-on streams in 10-30s after.
 
-Wraps the cold path that's still there for cache misses. Originally Pre-launch P0; moved to Launch because the slow pipeline is offline-only during pre-launch (no users yet).
+### 6.1 SSE try-on streaming endpoint (3-5 days)
+
+New endpoint `GET /v1/turns/{turn_id}/tryon/stream`. Server-side: as each Gemini render completes, push to the SSE channel. Token-based authentication.
+
+### 6.2 Frontend SSE consumer (2-3 days)
+
+Cards render with try-on placeholders. SSE updates fill in try-on images as they complete. Update `modules/agentic_application/src/agentic_application/ui.py`.
+
+### 6.3 Pre-warm worker for predicted recipes (1 week)
+
+`ops/scripts/tryon_prewarm.py`. For each active user, predict top-N likely recipe cells based on profile + `recent_user_actions`. Resolve to garment sets via Phase 4 composition engine. Render Gemini try-on; write to existing try-on cache. Per-user pre-warm budget cap (max 10 renders/user/day) to prevent runaway Gemini cost.
+
+**Why not cross-user fan-out.** "Render once per garment set, composite onto each user" is not actionable — `gemini-3.1-flash-image-preview` renders garment-on-body in a single forward pass; can't separate the rendered garment from the body without losing body-conforming drape ([tryon_service.py:18–44](modules/agentic_application/src/agentic_application/services/tryon_service.py:18)). Doing that properly requires a two-stage diffusion pipeline (research project) or classical CV warping (visible quality regression).
+
+### Phase 6 test gate
+
+- Cards visible <3s
+- Try-on images stream in 10-30s after
+- Pre-warm cache hit rate: ≥40% on alpha traffic by week 4
+
+---
+
+## Phase 7 — Distillation (P2, Months 4+, gated on data)
+
+**Goal:** distill slow LLM stages on accumulated trace data. Final cold-path optimization.
+
+**Trigger:** ≥10K rater traces accumulated. Synthetic bootstrap counts; real traces preferred for refinement.
+
+### 7.1 Distilled rater (3 weeks + ~$2K compute)
+
+Fine-tune 3-8B model (Qwen2.5-7B / similar) on 6-axis hexagon traces from `distillation_traces`. Single A10/L4 serving via vLLM. Confidence-gated fallback to gpt-5-mini on low-confidence cases. New module `modules/style_engine/distilled/`.
+
+### 7.2 Distilled architect / composer for novel cases (3-4 weeks)
+
+For cases where Phase 4 + 5 composition engines fall through. Fine-tune small model on cache-miss outputs once 10K+ traces exist. Confidence-gated; if low confidence, fall through to current LLM (already faster from Phase 1+3).
+
+### 7.3 Cold-path replacement (2 weeks)
+
+Distilled models become the LLM-fallback path. gpt-5-class models reserved for very-low-confidence cases only.
+
+### Phase 7 test gate
+
+- Distilled rater p95: <600ms; ≥90% agreement with gpt-5-mini
+- Cold-path total p95: <5s
+- All paths sub-3s p95 across alpha traffic
+
+---
+
+## Launch readiness (P0, after Phase 4 + 6)
+
+Items needed before opening the first alpha cohort. Slot in alongside Phase 4/5/6 work — small, independent.
+
+### LR.1 Per-stage budget caps + cold-path safety net (2 days)
 
 Wrap each stage in `process_turn` with timeout + deterministic fallback:
-- Architect over budget → use closest-matching cached recipe via fuzzy intent/occasion match.
-- Composer over budget → top-K from retrieval with diversity.
-- Rater over budget → cheap deterministic score (cosine to archetype centroid + palette match).
+- Architect over budget → use closest-matching cached entry via fuzzy intent/occasion match
+- Composer over budget → top-K from retrieval with diversity
+- Rater over budget → cheap deterministic score (cosine to archetype centroid + palette match)
 
-Initial budgets: planner 1.5s, architect 4s, composer 2s, rater 1.5s. Tune from p50 traces.
+Initial budgets: planner 1.5s, architect 4s, composer 2s, rater 1.5s. Tune from p50 traces. **Acceptance:** synthetic slow-stage tests confirm fallback fires at budget; zero hard errors on stage timeout.
 
-**Trigger:** before opening alpha to users.
+### LR.2 Out-of-scope graceful refusal UI (3 days)
 
-**Acceptance:** synthetic slow-stage tests confirm fallback fires at budget; zero hard errors on stage timeout; cold-path total p95 bounded by sum of budgets (~9s).
+For requests outside cached scope where composition engine has low confidence AND cold-path quality gate fails: "Aura is still learning [X] occasions — try [Y] instead" with quick-reply chips for in-scope alternatives. Telemetry: refusal events logged with intent + occasion so post-launch grid expansion targets actual misses.
 
----
+### LR.3 Closed alpha onboarding + dashboard (1 week)
 
-## Launch Step 2 — Cold-path write-back to recipe library
+Define alpha scope: cells from Phase 4 quality gate that pass. Onboarding: existing flow + a "what Aura covers" page setting expectations on supported intents/occasions. Internal dashboard: cache hit rate, cold-path rate, refusal rate, p95 pre-tryon latency, user feedback per cell. Manual user review cadence: weekly review of refusals + low-rated outputs to drive grid expansion.
 
-**Status:** queued (Launch phase) · **Cost:** ~3 dev days · **Risk:** low
-
-When the hot path misses and the cold path produces a successful outfit, normalize the cold-path output into a recipe and insert it into the library. Future similar requests hit the cache.
-
-Build:
-1. Recipe-extraction logic: takes architect plan + composed outfits → catalog-independent slot specs (same normalization as Step 3 bootstrap).
-2. Write to `recipes` + `recipe_slot_candidates` tables.
-3. Quality gate: only write back if cold-path output passed the rater threshold (current `_RECOMMENDATION_FASHION_THRESHOLD`).
-4. Source attribution: tag with `source='cold_path'` so post-launch analysis can compare bootstrap vs organic recipes.
-
-**Trigger:** Launch Step 1 done.
-
-**Acceptance:** cold-path successes write back to cache; subsequent identical requests hit the cache; organic-vs-bootstrap recipe count tracked in dashboard.
-
----
-
-## Launch Step 3 — Out-of-scope graceful refusal UI
-
-**Status:** queued (Launch phase) · **Cost:** ~3 dev days · **Risk:** low
-
-For requests outside cached scope (where cold-path quality gate fails or no recipe match exists), the UI must respond honestly rather than serve a slow degraded result. Critical for protecting the alpha experience.
-
-Build:
-1. Cold-path quality gate: predicted match score below threshold → refusal path.
-2. Refusal copy + alternative suggestions in [ui.py](modules/agentic_application/src/agentic_application/ui.py): "Aura is still learning [X] occasions — try [Y] instead" with quick-reply chips for in-scope alternatives.
-3. Telemetry: refusal events logged with intent + occasion so post-launch grid expansion targets actual misses.
-
-**Trigger:** before opening alpha.
-
-**Acceptance:** out-of-scope queries show refusal UI, not slow degraded outfits; refusals logged + dashboarded; in-scope alternative chips correctly map to launch grid cells.
-
----
-
-## Launch Step 4 — Closed alpha onboarding + dashboard
-
-**Status:** queued (Launch phase) · **Cost:** ~1 dev week · **Risk:** medium (UX decisions)
-
-Define alpha scope and observability for the first 5–15 friendly users.
-
-Build:
-1. **Launch grid:** cells from Pre-launch Step 8 quality gate that pass.
-2. **Onboarding:** existing flow + a "what Aura covers" page setting expectations on supported intents/occasions.
-3. **Feedback collection:** existing per-card thumbs + textarea — no new build.
-4. **Internal dashboard:** cache hit rate, cold-path rate, refusal rate, p95 pre-tryon latency, user feedback per cell.
-5. **Manual user review cadence:** weekly review of refusals + low-rated outputs to drive grid expansion.
-
-**Trigger:** Launch Steps 1–3 done.
-
-**Acceptance:** 5–15 alpha users onboarded; production traces accumulating; dashboard live; cache hit rate ≥60% on alpha traffic by week 2; weekly review producing concrete grid-expansion candidates.
-
----
-
-## Post-launch — Distilled rater (cold-path optimization)
-
-**Status:** queued (Post-launch) · **Cost:** ~3 dev weeks + ~$2K compute · **Risk:** medium
-
-Cold-path stage with cleanest distillation profile — fixed 6-axis schema, structured output, abundant supervision. Fine-tune a 3–8B model (Qwen2.5-7B or similar, single A10/L4 serving) on accumulated rater traces (synthetic from Pre-launch Step 3 + real from Launch). Confidence-gated fallback to gpt-5-mini.
-
-New module `modules/style_engine/distilled/`. Serving via vLLM or equivalent.
-
-**Trigger:** ≥10K rater traces accumulated (synthetic bootstrap counts; ~immediately after Pre-launch Step 3 completes for v1, refined post-launch with real traces).
-
-**Acceptance:** distilled rater p95 <600ms; ≥90% agreement with gpt-5-mini on held-out replay; no quality regression on Pre-launch Step 5 eval set.
-
----
-
-## Post-launch — Graph composer (cold-path optimization)
-
-**Status:** queued (Post-launch) · **Cost:** ~4 dev weeks · **Risk:** medium-high
-
-The 13.3s composer is the slowest survivable cold-path stage. Replace with learned compatibility graph + top-K diverse sampling.
-
-Build:
-1. Pairwise compat training set from rater traces (`(item_a, item_b) → compat_score` from 6-axis aggregate).
-2. Compat model: LightGBM over enrichment attributes, or small MLP over item embeddings + attribute features.
-3. Catalog compat projection (single tenant today, tenant_id-aware shape).
-4. Graph composer: top-K search with diversity constraints (max 1 outfit per direction, palette spread, role coverage).
-
-Multi-tenancy hook: compat model can train on aggregated traces across tenants (with opt-out) when platform goes multi-tenant.
-
-**Trigger:** after distilled rater ships (compat training depends on rater output volume).
-
-**Acceptance:** graph composer p95 <300ms; human eval on 100 held-out turns shows quality on par with LLM composer; cold-path total pre-tryon p95 <5s.
-
----
-
-## Post-launch — SSE try-on streaming
-
-**Status:** parked (Post-launch) · **Cost:** ~1 dev week · **Risk:** low
-
-Cards return immediately with try-on placeholders; new endpoint `GET /v1/turns/{turn_id}/tryon/stream` (SSE) streams images as they render. Frontend updates in [ui.py](modules/agentic_application/src/agentic_application/ui.py) consume the stream.
-
-Addresses *perceived* end-to-end latency (cards in <3s, try-ons follow over 10–30s); not part of the pre-tryon push.
-
-**Trigger:** after pre-tryon p95 reliably <3s in production (Pre-launch + Launch stable), or if user perceived-latency complaints surface earlier.
-
-**Acceptance:** cards visible <3s; try-on images stream in over the following 10–30s.
-
----
-
-## Post-launch — Pre-warm renders for predicted recipes
-
-**Status:** parked (Post-launch — sub-task of SSE streaming) · **Cost:** ~1 dev week + ongoing Gemini compute · **Risk:** low
-
-Predict each user's likely outfits from profile + recent activity, render try-ons in the background, write to existing try-on cache. Hot path checks try-on cache before returning cards; hit → inline image; miss → SSE streaming fallback. The path to try-on inside the 3s budget on cache hit.
-
-Build:
-1. Pre-warm worker `ops/scripts/tryon_prewarm.py` — for each active user, pulls their top-N most-likely (intent, occasion, archetype) recipe cells based on profile + `recent_user_actions`, resolves to garment sets via the feasibility index, renders Gemini try-on, writes to the existing try-on cache.
-2. Hot-path tryon cache check before returning cards.
-3. Per-user pre-warm budget cap (max 10 renders/user/day) to prevent runaway Gemini cost.
-4. Heuristic ranking initially (top-5 cells by `recent_user_actions` frequency); upgrade to a small `(user, recipe) → likelihood` model later.
-
-**Why not cross-user fan-out.** "Render once per garment set, composite onto each user" amortizes Gemini cost across users requesting the same outfit. But `gemini-3.1-flash-image-preview` renders garment-on-body in a single forward pass; can't separate the rendered garment from the body without losing body-conforming drape ([tryon_service.py:18–44](modules/agentic_application/src/agentic_application/services/tryon_service.py:18)). Doing this properly requires a two-stage diffusion pipeline (research project) or classical CV warping (visible quality regression). Park as a "if try-on cost becomes a wall at scale" lever; not actionable today.
-
-**Trigger:** after Pre-launch Steps 3 + 4 (recipe + feasibility) AND SSE streaming live.
-
-**Acceptance:** ≥50% of try-on requests hit the pre-warm cache on real traffic; pre-warm cost stays under per-tenant Gemini budget; no quality regression vs request-time renders.
+**Acceptance:** 5–15 alpha users onboarded; production traces accumulating; dashboard live; cache hit rate ≥60% on alpha traffic by week 2.
 
 ---
 
 ## Cross-cutting — Multi-tenancy data hooks
 
-**Status:** parked (guidance applied to all Pre-launch + Launch work) · **Cost:** trivial if done now; expensive to retrofit · **Risk:** low
+**Status:** parked (guidance applied to all phase work) · **Cost:** trivial if done now; expensive to retrofit · **Risk:** low
 
 Multi-tenancy is deferred from this latency push, but five hooks are zero-cost now and save a painful migration when Shopify multi-tenancy lands:
 
-1. Every new table (`traces`, `recipes`, `recipe_slot_candidates`, future compat tables) includes `tenant_id TEXT NOT NULL DEFAULT 'default'`.
-2. Recipes stay catalog-independent ("structured navy blazer, formality 3-4" — never product_ids). Keeps the recipe library reusable across tenants.
+1. Every new table (caches, future compat tables) includes `tenant_id TEXT NOT NULL DEFAULT 'default'`.
+2. Cached architect / composer outputs stay catalog-independent ("structured navy blazer, formality 3-4" — never product_ids). Keeps cache reusable across tenants.
 3. Prompts stay catalog-neutral (no "Aura's catalog" or brand-specific framing). Lets per-tenant prompt overlays slot in cleanly later.
 4. Logs and traces tag with `tenant_id` from day one.
 5. **Do not** migrate user-scoped tables (`users`, `conversations`, `feedback_events`) — that's a real migration owed when multi-tenancy actually ships, not now.
 
-**Trigger:** apply continuously to all Pre-launch + Launch work above.
+**Trigger:** apply continuously to all phase work above.
 
-**Acceptance:** no new table created without `tenant_id`; no recipe references SKUs; no prompt references catalog identity; user-scoped tables left alone.
+**Acceptance:** no new table created without `tenant_id`; no cached output references SKUs; no prompt references catalog identity; user-scoped tables left alone.
+
+---
+
+## End-state latency budget
+
+After Phase 5 (estimated Week 10):
+
+| Path | Frequency | Latency p95 |
+|---|---|---|
+| Cache hit (warm) | ~70% | <500ms |
+| Cache miss → engine compose | ~25% | <2s |
+| Cache miss → engine miss → LLM fallback | ~5% | ~10s |
+| **Average user experience** | — | **2-3s** |
+
+After Phase 7 (months later):
+- All paths sub-3s p95
+- LLM only for genuine novelty (<2% of traffic)
