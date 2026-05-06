@@ -6,6 +6,12 @@ cell it runs the existing slow architect + composer against a synthetic
 profile drawn from the profile pool, normalizes the output into a
 catalog-independent recipe, and writes it to the recipe library.
 
+Occasions are loaded from ``knowledge/style_graph/occasion.yaml`` —
+the canonical list (Phase 4.4 refactor, May 14 2026). Previously the
+list was hardcoded here at 31 occasions and drifted from the YAML's
+45+; reading the YAML eliminates that drift vector. Tests assert the
+two stay in sync.
+
 Coverage filter (``evaluate_coverage``) is a coarse pre-filter against
 ``catalog_enriched`` — it drops grid buckets where the catalog has too
 few SKUs to support recipes for that (gender, formality) combo. Step 4
@@ -21,6 +27,8 @@ import csv
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional, Protocol
+
+import yaml
 
 from .profiles import ARCHETYPES, GENDERS, SyntheticProfile
 
@@ -55,47 +63,47 @@ class OccasionSpec:
     seasons: tuple[str, ...]
 
 
-OCCASIONS: List[OccasionSpec] = [
-    # work_mode (5)
-    OccasionSpec("daily_office",        "work_mode",       "smart_casual", "daytime",  ALL_SEASONS),
-    OccasionSpec("formal_office",       "work_mode",       "formal",       "daytime",  ALL_SEASONS),
-    OccasionSpec("business_meeting",    "work_mode",       "formal",       "daytime",  ALL_SEASONS),
-    OccasionSpec("interview",           "work_mode",       "formal",       "daytime",  ALL_SEASONS),
-    OccasionSpec("workplace_event",     "work_mode",       "smart_casual", "evening",  ALL_SEASONS),
-    # social_casual (5)
-    OccasionSpec("weekend_brunch",      "social_casual",   "casual",       "daytime",  ALL_SEASONS),
-    OccasionSpec("casual_lunch",        "social_casual",   "casual",       "daytime",  ALL_SEASONS),
-    OccasionSpec("everyday_casual",     "social_casual",   "casual",       "flexible", ALL_SEASONS),
-    OccasionSpec("coffee_meetup",       "social_casual",   "casual",       "daytime",  ALL_SEASONS),
-    OccasionSpec("shopping_outing",     "social_casual",   "casual",       "daytime",  ALL_SEASONS),
-    # night_out (4)
-    OccasionSpec("cocktail_party",      "night_out",       "semi_formal",  "evening",  ALL_SEASONS),
-    OccasionSpec("rooftop_bar",         "night_out",       "smart_casual", "evening",  NON_WINTER),
-    OccasionSpec("club_night",          "night_out",       "smart_casual", "evening",  ALL_SEASONS),
-    OccasionSpec("dinner_party",        "night_out",       "smart_casual", "evening",  ALL_SEASONS),
-    # formal_events (3)
-    OccasionSpec("gala_dinner",         "formal_events",   "ceremonial",   "evening",  ALL_SEASONS),
-    OccasionSpec("award_ceremony",      "formal_events",   "ceremonial",   "evening",  ALL_SEASONS),
-    OccasionSpec("business_dinner",     "formal_events",   "formal",       "evening",  ALL_SEASONS),
-    # festive (3)
-    OccasionSpec("festival",            "festive",         "smart_casual", "flexible", ALL_SEASONS),
-    OccasionSpec("diwali",              "festive",         "ceremonial",   "evening",  ("autumn",)),
-    OccasionSpec("holiday_gathering",   "festive",         "smart_casual", "evening",  ("winter",)),
-    # beach_vacation (3)
-    OccasionSpec("beach_day",           "beach_vacation",  "casual",       "daytime",  WARM_SEASONS),
-    OccasionSpec("vacation_dinner",     "beach_vacation",  "smart_casual", "evening",  WARM_SEASONS),
-    OccasionSpec("travel_day",          "beach_vacation",  "casual",       "flexible", ALL_SEASONS),
-    # dating (3)
-    OccasionSpec("first_date",          "dating",          "smart_casual", "evening",  ALL_SEASONS),
-    OccasionSpec("date_night",          "dating",          "smart_casual", "evening",  ALL_SEASONS),
-    OccasionSpec("anniversary_dinner",  "dating",          "semi_formal",  "evening",  ALL_SEASONS),
-    # wedding_vibes (5)
-    OccasionSpec("wedding_ceremony",    "wedding_vibes",   "ceremonial",   "daytime",  ALL_SEASONS),
-    OccasionSpec("wedding_engagement",  "wedding_vibes",   "ceremonial",   "evening",  ALL_SEASONS),
-    OccasionSpec("wedding_reception",   "wedding_vibes",   "ceremonial",   "evening",  ALL_SEASONS),
-    OccasionSpec("sangeet",             "wedding_vibes",   "ceremonial",   "evening",  ALL_SEASONS),
-    OccasionSpec("mehndi",              "wedding_vibes",   "ceremonial",   "daytime",  ALL_SEASONS),
-]
+# Repo-relative path to the canonical occasion list. Resolved against
+# the package install location, then walked up to the repo root.
+_REPO_ROOT = Path(__file__).resolve().parents[5]
+_OCCASION_YAML = _REPO_ROOT / "knowledge" / "style_graph" / "occasion.yaml"
+
+
+def _load_occasions_from_yaml(path: Path = _OCCASION_YAML) -> List[OccasionSpec]:
+    """Parse occasion.yaml into a list of OccasionSpec.
+
+    Each top-level entry under the ``occasion:`` root carries the same
+    four fields the OccasionSpec dataclass needs (archetype, formality,
+    time, seasons). Extra fields (`flatters`, `avoid`, `notes`) are
+    skipped — those are inputs to the composition engine (4.7), not
+    the bootstrap grid.
+
+    Raises FileNotFoundError if the YAML is missing — bootstrap grid
+    generation should fail loudly rather than silently use a stale
+    hardcoded list.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        doc = yaml.safe_load(f)
+    if not isinstance(doc, dict) or "occasion" not in doc:
+        raise ValueError(f"{path}: expected top-level `occasion:` key, got {type(doc).__name__}")
+    out: List[OccasionSpec] = []
+    for name, fields in (doc["occasion"] or {}).items():
+        if not isinstance(fields, dict):
+            continue
+        out.append(OccasionSpec(
+            occasion=str(name),
+            occasion_archetype=str(fields.get("archetype", "")),
+            formality=str(fields.get("formality", "")),
+            time=str(fields.get("time", "")),
+            seasons=tuple(fields.get("seasons") or ALL_SEASONS),
+        ))
+    return out
+
+
+# Loaded once at module import. Tests use _load_occasions_from_yaml
+# directly to assert against the file without relying on import-time
+# state.
+OCCASIONS: List[OccasionSpec] = _load_occasions_from_yaml()
 
 
 # ─────────────────────────────────────────────────────────────────────────

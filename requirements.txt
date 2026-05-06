@@ -64,6 +64,16 @@ opentelemetry-sdk>=1.27.0
 opentelemetry-exporter-otlp>=1.27.0
 opentelemetry-instrumentation-fastapi>=0.48b0
 
+# ── YAML parsing ──────────────────────────────────────────────────────
+# Phase 4 (composition engine) reads the 8 style_graph YAML files —
+# occasion.yaml, archetype.yaml, body_frame/{female,male}.yaml,
+# palette.yaml, weather.yaml, query_structure.yaml, pairing_rules.yaml.
+# The bootstrap grid generator (Phase 4.4) is the first consumer;
+# the engine itself (Phase 4.7) will use the same parser. Validator
+# scripts continue using their existing line-oriented parsing for
+# their narrow attribute-name validation use case.
+PyYAML==6.0.1
+
 # ── Test runner ───────────────────────────────────────────────────────
 # pytest is used for @pytest.mark.parametrize decorators in
 # tests/test_qna_messages.py. CI's `unittest discover` ignores the
