@@ -30,6 +30,7 @@ from .cache.architect_cache_key import (
     denormalised_key_fields,
 )
 from .cache.architect_cache_repository import ArchitectCacheRepository
+from .composition.router import route_recommendation_plan
 from .cache.composer_cache_key import (
     architect_direction_id,
     build_composer_cache_key,
@@ -237,6 +238,17 @@ class AgenticOrchestrator:
     """Application-layer orchestrator implementing the 7-component pipeline."""
 
     @staticmethod
+    def _bool_from_config(config: Any, attr: str, fallback: bool = False) -> bool:
+        """Pull a bool-valued field from an ``AuraRuntimeConfig`` (or
+        ``Mock``) defensively. Same boundary-coerce pattern as
+        ``_str_from_config`` — Mock attribute access returns Mock,
+        which is truthy by default; this helper only treats real
+        booleans as themselves and falls back otherwise so a Mock
+        config never silently enables a flag."""
+        raw = getattr(config, attr, fallback)
+        return raw if isinstance(raw, bool) else fallback
+
+    @staticmethod
     def _str_from_config(config: Any, attr: str, fallback: Optional[str] = None) -> str:
         """Pull a string-valued field from an ``AuraRuntimeConfig`` (or
         ``Mock``) defensively.
@@ -303,6 +315,17 @@ class AgenticOrchestrator:
         # runs the architect normally and writes the output for next time.
         # See docs/phase_2_cache_design.md.
         self._architect_cache = ArchitectCacheRepository(repo.client)
+        # Phase 4.10 — composition engine feature flag. False (default)
+        # means the router falls straight through to the LLM architect;
+        # True routes every turn through the engine first (with the
+        # engine's spec §9 fall-through criteria still applying).
+        # Bucketed rollout will follow once eval data lands. The graph
+        # is loaded lazily on first use, skipping the YAML I/O when the
+        # flag is off.
+        self._composition_engine_enabled: bool = self._bool_from_config(
+            config, "composition_engine_enabled", False
+        )
+        self._composition_graph = None
         # Phase 2.3 composer output cache (May 14 2026). Stacks on top
         # of the architect cache: keyed on (architect_direction_id +
         # retrieval fingerprint + cluster + composer_prompt_version).
@@ -4827,22 +4850,59 @@ class AgenticOrchestrator:
                         tenant_id="default", cache_key=_arch_cache_key,
                     )
                 else:
-                    plan = self.outfit_architect.plan(combined_context)
-                    # Cache miss: write through. Best-effort; if the
-                    # write fails, the user's turn still completes.
-                    self._architect_cache.put(
-                        tenant_id="default",
-                        cache_key=_arch_cache_key,
-                        plan=plan,
-                        denormalised=denormalised_key_fields(
-                            tenant_id="default",
-                            intent=plan_result.intent,
-                            cluster=_arch_cache_cluster,
-                            combined_context=combined_context,
-                            architect_prompt_version=ARCHITECT_PROMPT_VERSION,
-                            architect_model=_architect_model,
-                        ),
+                    # Phase 4.9 — try the composition engine first; fall
+                    # back to the LLM architect on any rejection. Phase
+                    # 4.10 — the engine flag gates this entirely; default
+                    # False means "never engine". The router is total:
+                    # it always returns a plan from one of the two
+                    # sources.
+                    if self._composition_engine_enabled and self._composition_graph is None:
+                        from .composition.yaml_loader import load_style_graph
+                        try:
+                            self._composition_graph = load_style_graph()
+                        except Exception as exc:
+                            # YAML load failure must never break a turn.
+                            # Disable the engine for the rest of this
+                            # process and fall through to the LLM.
+                            _log.exception("Composition engine YAML load failed: %s", exc)
+                            self._composition_engine_enabled = False
+                    _router_decision = route_recommendation_plan(
+                        combined_context=combined_context,
+                        architect_plan_callable=self.outfit_architect.plan,
+                        enabled=self._composition_engine_enabled,
+                        graph=self._composition_graph,
                     )
+                    plan = _router_decision.plan
+                    _log.info(
+                        "composition_router_decision used_engine=%s "
+                        "fallback_reason=%s confidence=%s gaps=%d",
+                        _router_decision.used_engine,
+                        _router_decision.fallback_reason,
+                        _router_decision.engine_confidence,
+                        len(_router_decision.yaml_gaps),
+                    )
+                    # Cache miss: write through, but ONLY for LLM-derived
+                    # plans. The architect cache key is profile/cluster-
+                    # scoped, not user-scoped, so caching engine plans
+                    # during manual flag-on testing would persist them
+                    # for retrieval after the flag flips off — leaking
+                    # the engine path across runs. LLM plans cache
+                    # normally. Best-effort write; if it fails the
+                    # user's turn still completes.
+                    if not _router_decision.used_engine:
+                        self._architect_cache.put(
+                            tenant_id="default",
+                            cache_key=_arch_cache_key,
+                            plan=plan,
+                            denormalised=denormalised_key_fields(
+                                tenant_id="default",
+                                intent=plan_result.intent,
+                                cluster=_arch_cache_cluster,
+                                combined_context=combined_context,
+                                architect_prompt_version=ARCHITECT_PROMPT_VERSION,
+                                architect_model=_architect_model,
+                            ),
+                        )
                 _trace_ctx.full_output = to_jsonable(plan)
         except Exception as exc:
             architect_ms = int((time.monotonic() - t0) * 1000)

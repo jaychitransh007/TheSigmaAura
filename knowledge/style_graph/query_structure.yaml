@@ -408,7 +408,8 @@ query_structure:
         # for the western three_piece variant.
         StylingCompleteness: [complete, dual_dependency, needs_topwear, needs_bottomwear, needs_innerwear]
       avoid: {}
-      notes: THE most ceremonial-complete moment in Indian fashion. For
+      notes: >
+        THE most ceremonial-complete moment in Indian fashion. For
         Indian families: bridal red lehenga_set or banarasi/kanjeevaram
         saree (bride), full embroidered sherwani with sehra (groom).
         Western variant exists but rare in urban India.

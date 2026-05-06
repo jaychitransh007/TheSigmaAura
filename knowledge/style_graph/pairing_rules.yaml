@@ -109,7 +109,8 @@ pairing_rules:
         description: All slots same hue, varying ColorValue
         flatters:
           ColorCount: [single, tonal]
-        notes: Cleanest combo. Tonal navy outfit (light blue top + mid
+        notes: >
+          Cleanest combo. Tonal navy outfit (light blue top + mid
           navy trouser + dark navy blazer). Indian context: tonal
           maroon banarasi (light maroon blouse + dark maroon saree),
           all-cream wedding for Indian summer brunch.
@@ -120,7 +121,8 @@ pairing_rules:
         flatters:
           ColorTemperature: [warm, cool, neutral]                # both same
           ColorCount: [tonal, two_color]
-        notes: Indian: rust + mustard + olive (Warm Autumn analogous
+        notes: >
+          Indian: rust + mustard + olive (Warm Autumn analogous
           run), navy + slate + dusty pink (Cool Summer / True Summer).
 
       complementary:
@@ -130,7 +132,8 @@ pairing_rules:
           ColorCount: [two_color]
         avoid:
           ColorCount: [multi_color]                              # gets noisy
-        notes: Indian: deep teal saree + rust blouse (cool + warm
+        notes: >
+          Indian: deep teal saree + rust blouse (cool + warm
           complementary), navy bandhgala + mustard pocket square.
 
       tonal:
@@ -192,7 +195,8 @@ pairing_rules:
         flatters:
           PatternScale: [micro, small, medium, large, mixed, oversized]
         avoid: {}
-        notes: Indian: small-print shirt + medium-check trouser,
+        notes: >
+          Indian: small-print shirt + medium-check trouser,
           paisley saree + micro-floral blouse. Bohemian archetype only —
           for classic / minimalist this combo reads chaotic.
 

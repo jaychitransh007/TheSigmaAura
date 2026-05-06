@@ -40,6 +40,14 @@ class AuraRuntimeConfig:
     rater_model: str = "gpt-5-mini"
     style_advisor_model: str = "gpt-5.4"
 
+    # Phase 4.10 — composition engine feature flag. False (default)
+    # always takes the LLM architect path; True routes every turn
+    # through the composition engine first (with the engine's spec §9
+    # fall-through criteria still applying per-turn). The env var is
+    # AURA_COMPOSITION_ENGINE_ENABLED — bucketed rollout will follow
+    # later, once eval data calibrates the §8 threshold.
+    composition_engine_enabled: bool = False
+
 
 def _resolve_env_file(explicit_path: str | None = None) -> str:
     if explicit_path:
@@ -134,6 +142,13 @@ def load_config() -> AuraRuntimeConfig:
     rater_model = os.getenv("RATER_MODEL", "").strip() or AuraRuntimeConfig.rater_model
     style_advisor_model = os.getenv("STYLE_ADVISOR_MODEL", "").strip() or AuraRuntimeConfig.style_advisor_model
 
+    # Phase 4.10 — composition engine flag. Accepts the standard
+    # truthy strings ("1", "true", "yes", "on", case-insensitive); any
+    # other value (including misset garbage) leaves the engine off.
+    # Degraded operation beats outage on a misset ops env var.
+    flag_raw = os.getenv("AURA_COMPOSITION_ENGINE_ENABLED", "").strip().lower()
+    composition_engine_enabled = flag_raw in {"1", "true", "yes", "on"}
+
     return AuraRuntimeConfig(
         supabase_rest_url=_ensure_rest_url(supabase_url),
         supabase_service_role_key=service_key,
@@ -144,4 +159,5 @@ def load_config() -> AuraRuntimeConfig:
         composer_model=composer_model,
         rater_model=rater_model,
         style_advisor_model=style_advisor_model,
+        composition_engine_enabled=composition_engine_enabled,
     )
