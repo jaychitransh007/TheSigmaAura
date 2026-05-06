@@ -249,6 +249,40 @@ def _coerce_tryon_trace_db_status(path_status: str) -> str:
     return "ok" if path_status in _TRYON_TRACE_DB_OK_STATUSES else "error"
 
 
+# Sentinel model names stamped on architect ``model_call_logs`` rows
+# when no LLM call actually happened. Cache hits and engine-served
+# plans previously inherited the LLM model id, which made per-model
+# cost / latency rollups misleading (a phantom 0-token gpt-5.2 row
+# per cache or engine turn).
+ARCHITECT_MODEL_CACHE = "cache"
+ARCHITECT_MODEL_ENGINE = "composition_engine"
+
+
+def _resolve_architect_origin_model(
+    *,
+    cache_hit: bool,
+    router_decision,
+    llm_model: str,
+) -> str:
+    """Return the ``model`` value to stamp on the architect's
+    ``model_call_logs`` row, given which subsystem actually produced
+    the plan this turn:
+
+    - ``cache_hit=True``                              → "cache"
+    - ``router_decision.used_engine=True``            → "composition_engine"
+    - otherwise (LLM architect ran)                   → ``llm_model``
+
+    ``router_decision`` is ``None`` on cache-hit turns (the router
+    never ran). The function tolerates that: the cache_hit branch
+    short-circuits before any router attribute access.
+    """
+    if cache_hit:
+        return ARCHITECT_MODEL_CACHE
+    if router_decision is not None and getattr(router_decision, "used_engine", False):
+        return ARCHITECT_MODEL_ENGINE
+    return llm_model
+
+
 def extract_urls(message: str) -> List[str]:
     """URL detection helper inlined from the (now-deleted) shopping_decision_agent.
 
@@ -4862,6 +4896,11 @@ class AgenticOrchestrator:
         _arch_cache_hit_plan = self._architect_cache.get(
             tenant_id="default", cache_key=_arch_cache_key,
         )
+        # Track whether the engine path ran so the architect's
+        # model_call_logs row gets stamped with the right origin
+        # (cache | composition_engine | LLM model id) instead of
+        # always inheriting the LLM model on every turn.
+        _router_decision = None
         emit("outfit_architect", "started")
         trace_start("outfit_architect", model=_architect_model, input_summary=f"message={message[:80]}")
         t0 = time.monotonic()
@@ -5081,13 +5120,33 @@ class AgenticOrchestrator:
         else:
             effective_live_context = initial_live_context
 
-        _arch_usage = getattr(self.outfit_architect, "last_usage", {}) or {}
+        # Resolve who actually produced this plan (cache | engine | LLM)
+        # so the model_call_logs row reflects the real origin. The
+        # LLM path keeps its model attribution; cache hits stamp
+        # "cache"; engine accepts stamp "composition_engine". Tokens
+        # are forced to 0 on non-LLM paths so a stale ``last_usage``
+        # from a prior LLM turn in the same process can't bleed into
+        # this row's cost rollup.
+        _origin_model = _resolve_architect_origin_model(
+            cache_hit=_arch_cache_hit_plan is not None,
+            router_decision=_router_decision,
+            llm_model=_architect_model,
+        )
+        if _origin_model in (ARCHITECT_MODEL_CACHE, ARCHITECT_MODEL_ENGINE):
+            _arch_prompt_tokens: Optional[int] = 0
+            _arch_completion_tokens: Optional[int] = 0
+            _arch_total_tokens: Optional[int] = 0
+        else:
+            _arch_usage = getattr(self.outfit_architect, "last_usage", {}) or {}
+            _arch_prompt_tokens = _arch_usage.get("prompt_tokens")
+            _arch_completion_tokens = _arch_usage.get("completion_tokens")
+            _arch_total_tokens = _arch_usage.get("total_tokens")
         trace.add_model_cost_from_row(self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
             call_type="outfit_architect",
-            model=_architect_model,
+            model=_origin_model,
             request_json={
                 "combined_context_summary": {
                     "gender": user_context.gender,
@@ -5100,9 +5159,9 @@ class AgenticOrchestrator:
             response_json=plan.model_dump(),
             reasoning_notes=[],
             latency_ms=architect_ms,
-            prompt_tokens=_arch_usage.get("prompt_tokens"),
-            completion_tokens=_arch_usage.get("completion_tokens"),
-            total_tokens=_arch_usage.get("total_tokens"),
+            prompt_tokens=_arch_prompt_tokens,
+            completion_tokens=_arch_completion_tokens,
+            total_tokens=_arch_total_tokens,
         ))
         emit("outfit_architect", "completed", ctx={
             "direction_types": sorted({d.direction_type for d in plan.directions}),
