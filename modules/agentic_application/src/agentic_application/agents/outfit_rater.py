@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from functools import cached_property
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -378,6 +378,22 @@ def _build_outfit_payload(
     return payload
 
 
+@lru_cache(maxsize=1)
+def _shared_openai_client() -> OpenAI:
+    """Process-wide OpenAI client for the rater.
+
+    Mirrors the embedder's ``_shared_openai_client`` pattern
+    (`catalog/retrieval/embedder.py:_shared_openai_client`).
+    ``functools.lru_cache`` provides thread-safe single-instance
+    construction; replaces the previous ``cached_property``-based client
+    which had a race when the rater's ThreadPoolExecutor workers AND
+    concurrent ``rate()`` callers both triggered first-access on a
+    shared OutfitRater (review of PR #125). Tests that need an isolated
+    client can call ``_shared_openai_client.cache_clear()``.
+    """
+    return OpenAI(api_key=get_api_key())
+
+
 class OutfitRater:
     """LLM-driven outfit scorer. One gpt-5-mini call per turn.
 
@@ -395,9 +411,9 @@ class OutfitRater:
             "total_tokens": 0,
         }
 
-    @cached_property
+    @property
     def _client(self) -> OpenAI:
-        return OpenAI(api_key=get_api_key())
+        return _shared_openai_client()
 
     def rate(
         self,
@@ -449,12 +465,6 @@ class OutfitRater:
         # parse the first ranked_outfits entry, accumulate raw responses
         # + token usage; we merge after `as_completed`.
         worker_count = min(len(composed_outfits), _RATE_MAX_WORKERS) or 1
-        # Warm the cached_property in the main thread so concurrent
-        # workers don't race on first-access OpenAI() construction
-        # (review of PR #122). The cached_property is not lock-protected
-        # in CPython; concurrent first-access can cause duplicate client
-        # instantiation — wasteful even if functionally correct.
-        _ = self._client
         per_outfit: List[Tuple[ComposedOutfit, Dict[str, Any], Dict[str, int], str]] = [
             (o, {}, {}, "") for o in composed_outfits
         ]

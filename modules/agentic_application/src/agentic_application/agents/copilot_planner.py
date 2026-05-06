@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import atexit
 import json
 import logging
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from functools import cached_property
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -223,6 +223,21 @@ def build_planner_input(
 
 _SHADOW_LOG = logging.getLogger("aura.planner.shadow")
 
+
+@lru_cache(maxsize=1)
+def _shared_openai_client() -> OpenAI:
+    """Process-wide OpenAI client for the planner.
+
+    Mirrors the embedder's ``_shared_openai_client`` pattern
+    (`catalog/retrieval/embedder.py:_shared_openai_client`).
+    ``functools.lru_cache`` provides thread-safe single-instance
+    construction; a previous ``cached_property``-based approach had a
+    race when two request threads triggered first-access concurrently
+    on a shared CopilotPlanner (review of PR #125). Tests that need an
+    isolated client can call ``_shared_openai_client.cache_clear()``.
+    """
+    return OpenAI(api_key=get_api_key())
+
 # Phase 1.3 review (May 13 2026): pool sized for one shadow call per
 # concurrent in-flight turn. 5 is an order-of-magnitude over Aura's
 # current alpha turn rate (a handful per minute) and well below
@@ -231,26 +246,30 @@ _SHADOW_LOG = logging.getLogger("aura.planner.shadow")
 # via AURA_PLANNER_SHADOW_MODEL; when no shadow is configured anywhere
 # in the process, no threads ever get spun up.
 _SHADOW_EXECUTOR: Optional[ThreadPoolExecutor] = None
-_SHADOW_EXECUTOR_LOCK: Optional[Any] = None
+# Module-level lock — created at import time so the lock itself is not
+# subject to a creation race. (Review of PR #125: the previous lazy
+# lock-init had a TOCTOU hole where two threads could both observe
+# None and create separate locks, defeating the purpose.)
+_SHADOW_EXECUTOR_LOCK = threading.Lock()
 
 
 def _get_shadow_executor() -> ThreadPoolExecutor:
-    """Lazily construct a process-wide shadow executor. Idempotent."""
-    global _SHADOW_EXECUTOR, _SHADOW_EXECUTOR_LOCK
+    """Lazily construct a process-wide shadow executor. Idempotent.
+
+    No explicit atexit shutdown: Python 3.9+ ``ThreadPoolExecutor``
+    registers its own atexit handler that waits for in-flight tasks on
+    interpreter shutdown, which is exactly the behavior we want for
+    fire-and-forget shadow calls (let them finish so we don't lose
+    comparison data on a graceful restart).
+    """
+    global _SHADOW_EXECUTOR
     if _SHADOW_EXECUTOR is None:
-        if _SHADOW_EXECUTOR_LOCK is None:
-            import threading as _threading
-            _SHADOW_EXECUTOR_LOCK = _threading.Lock()
         with _SHADOW_EXECUTOR_LOCK:
             if _SHADOW_EXECUTOR is None:
                 _SHADOW_EXECUTOR = ThreadPoolExecutor(
                     max_workers=5,
                     thread_name_prefix="planner-shadow",
                 )
-                # Ensure the executor drains and shuts down cleanly on
-                # process exit so daemon-style shadow calls don't get
-                # silently aborted mid-flight.
-                atexit.register(_SHADOW_EXECUTOR.shutdown, wait=False)
     return _SHADOW_EXECUTOR
 
 
@@ -274,8 +293,8 @@ class CopilotPlanner:
         #
         # Lazy OpenAI client: do NOT touch get_api_key() here so the
         # constructor stays env-free for tests that mock the agent.
-        # The client materialises on first attribute access via the
-        # cached_property below.
+        # The client is fetched per-call from the module-level
+        # _shared_openai_client() (lru_cache, thread-safe).
         self._model = model
         # Phase 1.3 latency push (May 13 2026): shadow mode. When
         # AURA_PLANNER_SHADOW_MODEL is set, every plan() call fires a
@@ -296,9 +315,9 @@ class CopilotPlanner:
         # mislabel a later turn.
         self.last_usage: Dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-    @cached_property
+    @property
     def _client(self) -> OpenAI:
-        return OpenAI(api_key=get_api_key())
+        return _shared_openai_client()
 
     def plan(self, planner_input: Dict[str, Any]) -> CopilotPlanResult:
         from platform_core.cost_estimator import extract_token_usage
