@@ -3,6 +3,8 @@
 -- Regenerate with: python3 ops/scripts/extract_dashboard_sql.py
 
 -- architect_prompt_tokens_p50_p95_last_7d
+-- Excludes cache + composition_engine sentinel rows (PR #153) which
+-- carry zero tokens and would dilute LLM input-token percentiles.
 SELECT
     date_trunc('day', created_at) AS day,
     COUNT(*) AS calls,
@@ -11,6 +13,7 @@ SELECT
     MAX(prompt_tokens) AS p_max
 FROM model_call_logs
 WHERE call_type = 'outfit_architect'
+  AND model NOT IN ('cache', 'composition_engine')
   AND created_at >= now() - interval '7 days'
   AND prompt_tokens IS NOT NULL
 GROUP BY 1

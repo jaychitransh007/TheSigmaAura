@@ -4960,6 +4960,7 @@ class AgenticOrchestrator:
                     # followup, has_previous_recommendations).
                     try:
                         from platform_core.metrics import (
+                            observe_composition_attribute_status,
                             observe_composition_router_decision,
                             observe_turn_stage,
                         )
@@ -4972,6 +4973,15 @@ class AgenticOrchestrator:
                                 "composition_engine",
                                 _router_decision.engine_ms,
                             )
+                        # Tick per-attribute status counters from the
+                        # provenance summary. Empty dict (engine didn't
+                        # run, e.g. flag off / eligibility blocked)
+                        # produces no ticks.
+                        for status, attrs in (
+                            _router_decision.provenance_summary or {}
+                        ).items():
+                            for _ in attrs:
+                                observe_composition_attribute_status(status)
                     except Exception:  # noqa: BLE001 — metrics never break the pipeline
                         pass
                     # Cache miss: write through, but ONLY for LLM-derived
@@ -5013,6 +5023,16 @@ class AgenticOrchestrator:
                             "engine_confidence": _router_decision.engine_confidence,
                             "engine_ms": _router_decision.engine_ms,
                             "yaml_gaps": list(_router_decision.yaml_gaps),
+                            # Per-attribute trail (compact: only non-clean
+                            # entries surface; clean attributes are the
+                            # bulk and absence is the signal). Powers
+                            # panel_23_composition_attribute_status.sql.
+                            "provenance_summary": {
+                                status: list(attrs)
+                                for status, attrs in (
+                                    _router_decision.provenance_summary or {}
+                                ).items()
+                            },
                         },
                     }
         except Exception as exc:
@@ -6081,6 +6101,13 @@ class AgenticOrchestrator:
                     )
                 except Exception:  # noqa: BLE001
                     _log.warning("Failed to persist per-candidate tryon trace", exc_info=True)
+                    try:
+                        from platform_core.metrics import (
+                            observe_tool_traces_insert_failure,
+                        )
+                        observe_tool_traces_insert_failure("tryon_render")
+                    except Exception:  # noqa: BLE001
+                        pass
 
             def _result(path: str, *, attempted: bool, qg_failed: bool = False) -> Dict[str, Any]:
                 return {

@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
 from ..schemas import (
     CombinedContext,
@@ -98,7 +98,16 @@ class RouterDecision:
     fall-through, so the ops layer can tell "engine tried but
     rejected" apart from "engine never ran". ``engine_ms`` carries
     the wall-clock duration of the compose_direction call (None when
-    the engine wasn't attempted)."""
+    the engine wasn't attempted).
+
+    ``provenance_summary`` carries the compact per-attribute trail
+    from the engine's ProvenanceEntry list — only attributes that
+    needed relaxation or were omitted are surfaced (clean attributes
+    are the bulk and the absence of a label is the signal). Three
+    keys: ``omitted`` (final_flatters empty), ``hard_widened``
+    (≥1 hard source widened), ``soft_relaxed`` (≥1 soft dropped).
+    Each maps to a tuple of attribute names. Empty when the engine
+    didn't run (flag off / eligibility fail)."""
 
     plan: RecommendationPlan
     used_engine: bool
@@ -106,6 +115,9 @@ class RouterDecision:
     engine_confidence: float | None
     yaml_gaps: tuple[str, ...] = field(default_factory=tuple)
     engine_ms: int | None = None
+    provenance_summary: Mapping[str, tuple[str, ...]] = field(
+        default_factory=dict
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -343,6 +355,25 @@ def route_recommendation_plan(
     )
     engine_ms = int((time.monotonic() - _engine_t0) * 1000)
 
+    # Compact per-attribute trail — surface only the non-clean entries
+    # so the trace + metrics ingest doesn't get flooded with "all 35
+    # attributes status=clean" noise. Three buckets so dashboards can
+    # slice trend lines without parsing string statuses.
+    _omitted = tuple(
+        p.attribute for p in result.provenance if p.status == "omitted"
+    )
+    _widened = tuple(
+        p.attribute for p in result.provenance if p.status == "hard_widened"
+    )
+    _relaxed = tuple(
+        p.attribute for p in result.provenance if p.status == "soft_relaxed"
+    )
+    provenance_summary = {
+        "omitted": _omitted,
+        "hard_widened": _widened,
+        "soft_relaxed": _relaxed,
+    }
+
     accept, reject_reason = is_engine_acceptable(result)
     if not accept:
         return RouterDecision(
@@ -352,6 +383,7 @@ def route_recommendation_plan(
             engine_confidence=result.confidence,
             yaml_gaps=result.yaml_gaps,
             engine_ms=engine_ms,
+            provenance_summary=provenance_summary,
         )
 
     # Engine accepted.
@@ -362,4 +394,5 @@ def route_recommendation_plan(
         engine_confidence=result.confidence,
         yaml_gaps=result.yaml_gaps,
         engine_ms=engine_ms,
+        provenance_summary=provenance_summary,
     )

@@ -25,6 +25,10 @@ this directory makes the SQL paste-ready for Supabase Studio / Metabase / Grafan
 - [`panel_18_rater_unsuitable_rate.sql`](panel_18_rater_unsuitable_rate.sql)
 - [`panel_19_composer_latency.sql`](panel_19_composer_latency.sql)
 - [`panel_20_episodic_memory_population.sql`](panel_20_episodic_memory_population.sql)
+- [`panel_21_composition_plan_source_distribution.sql`](panel_21_composition_plan_source_distribution.sql)
+- [`panel_22_composition_yaml_gap_distribution.sql`](panel_22_composition_yaml_gap_distribution.sql)
+- [`panel_23_composition_per_attribute_status.sql`](panel_23_composition_per_attribute_status.sql)
+- [`panel_24_composition_engine_runbook_diagnostic_queries.sql`](panel_24_composition_engine_runbook_diagnostic_queries.sql)
 <!-- preserve-below -->
 <!-- Content below this marker is curator-maintained and survives regeneration
      by ops/scripts/extract_dashboard_sql.py. See PR #96 for the marker logic. -->

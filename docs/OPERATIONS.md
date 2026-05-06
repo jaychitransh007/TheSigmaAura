@@ -669,6 +669,8 @@ distribution so we know when to revisit `_RECENT_USER_ACTIONS_MAX`.
 
 ```sql
 -- architect_prompt_tokens_p50_p95_last_7d
+-- Excludes cache + composition_engine sentinel rows (PR #153) which
+-- carry zero tokens and would dilute LLM input-token percentiles.
 SELECT
     date_trunc('day', created_at) AS day,
     COUNT(*) AS calls,
@@ -677,6 +679,7 @@ SELECT
     MAX(prompt_tokens) AS p_max
 FROM model_call_logs
 WHERE call_type = 'outfit_architect'
+  AND model NOT IN ('cache', 'composition_engine')
   AND created_at >= now() - interval '7 days'
   AND prompt_tokens IS NOT NULL
 GROUP BY 1
@@ -867,6 +870,176 @@ for warnings.
 
 ---
 
+## Panel 21 — Composition Plan-Source Distribution
+
+**Question:** of the architect-stage rows produced today, what
+fraction came from the LLM, the composition engine, and the cache?
+
+**Context:** PR #149 introduced the composition engine; PR #150
+added router-decision metadata; PR #151 wired canonicalization;
+PR #153 stamped `model_call_logs.model` with three sentinels:
+`cache` (architect cache hit), `composition_engine` (engine
+accepted), or the LLM model id (e.g., `gpt-5.2`). This panel
+tracks the steady-state mix once the engine flag is on.
+
+```sql
+-- composition_plan_source_distribution_last_7d
+SELECT
+    date_trunc('day', created_at) AS day,
+    CASE
+        WHEN model = 'cache'              THEN 'cache'
+        WHEN model = 'composition_engine' THEN 'engine'
+        ELSE                                   'llm'
+    END                                AS plan_source,
+    COUNT(*)                           AS rows,
+    AVG(latency_ms)::int               AS avg_latency_ms,
+    SUM(prompt_tokens + completion_tokens) AS total_tokens
+FROM model_call_logs
+WHERE call_type = 'outfit_architect'
+  AND status = 'ok'
+  AND created_at >= now() - interval '7 days'
+GROUP BY 1, 2
+ORDER BY 1 DESC, 2;
+```
+
+**Healthy:** with engine flag on, expect ~50–70% engine, ~10–20%
+cache, ~10–30% LLM (cold-start + fall-through). The exact mix
+depends on canonicalize hit rate and the eligibility-skip share.
+LLM-row latency p50 ~12s; engine + cache rows ≤ 3s.
+
+**Degraded:** engine share <20% with flag on means canonicalize is
+failing too often or fall-through criteria are too tight. Drill
+into `panel_22` (yaml_gap distribution) and the
+`aura_composition_router_decision_total{fallback_reason}` Prometheus
+counter to see which fall-through reason dominates.
+
+**Unhealthy:** zero engine rows despite the flag being on — almost
+always means `AURA_COMPOSITION_ENGINE_ENABLED` didn't propagate to
+the runtime process. Check the boot log for the resolved flag value.
+
+---
+
+## Panel 22 — Composition YAML-Gap Distribution
+
+**Question:** which planner-emitted values are blocking the
+composition engine most often, and where should Phase 4.2 stylist
+review focus next?
+
+**Context:** PR #150 captures `yaml_gaps[]` in
+`distillation_traces.full_output.router_decision`. Each entry is
+`<axis>:<value>` (e.g., `occasion_signal:bachelorette_party`,
+`weather_context:gloomy`). The canonicalize layer (PR #151) bridges
+common variants, but genuinely novel inputs gap. This panel surfaces
+the top-N gaps so the YAML expansion backlog is data-driven.
+
+```sql
+-- composition_yaml_gap_top_n_last_30d
+WITH gaps AS (
+    SELECT
+        gap_value AS gap,
+        created_at::date AS day
+    FROM distillation_traces,
+         jsonb_array_elements_text(
+             COALESCE(full_output -> 'router_decision' -> 'yaml_gaps', '[]'::jsonb)
+         ) AS gap_value
+    WHERE stage = 'outfit_architect'
+      AND created_at >= now() - interval '30 days'
+)
+SELECT
+    gap,
+    COUNT(*) AS occurrences,
+    COUNT(DISTINCT day) AS days_seen,
+    MIN(day) AS first_seen,
+    MAX(day) AS last_seen
+FROM gaps
+GROUP BY gap
+ORDER BY occurrences DESC
+LIMIT 30;
+```
+
+**How to use:** read top to bottom; the first 5–10 entries are the
+candidates for Phase 4.2 stylist YAML review. A gap with high
+occurrence + recent `last_seen` is a real, recurring miss; a gap
+with low occurrence and old `last_seen` is a one-off.
+
+---
+
+## Panel 23 — Composition Per-Attribute Status
+
+**Question:** of the engine-accepted turns, which garment attributes
+get omitted, widened, or relaxed most often — i.e., where is the
+algorithm under stress?
+
+**Context:** PR #149's engine emits a per-attribute provenance
+trail (`status` ∈ `{clean, soft_relaxed, hard_widened, omitted}`).
+This PR (post-#153) surfaces the non-clean entries in
+`distillation_traces.full_output.router_decision.provenance_summary`.
+Frequent omissions on a specific attribute (e.g., `EmbellishmentLevel`)
+are an early signal that the YAML's `flatters` lists are too narrow
+for that attribute or that the planner's per-turn signals conflict
+on it.
+
+```sql
+-- composition_attribute_status_last_30d
+WITH entries AS (
+    SELECT
+        status,
+        attribute,
+        created_at::date AS day
+    FROM distillation_traces,
+         jsonb_each(
+             COALESCE(full_output -> 'router_decision' -> 'provenance_summary', '{}'::jsonb)
+         ) AS s(status, attrs),
+         jsonb_array_elements_text(attrs) AS attribute
+    WHERE stage = 'outfit_architect'
+      AND created_at >= now() - interval '30 days'
+)
+SELECT
+    status,
+    attribute,
+    COUNT(*) AS occurrences,
+    COUNT(DISTINCT day) AS days_seen
+FROM entries
+GROUP BY status, attribute
+ORDER BY status, occurrences DESC;
+```
+
+**Healthy:** each `status` has its top-attribute occurrence count
+under, say, 20% of engine turns. No single attribute dominates.
+
+**Degraded:** one attribute appears >40% of engine turns under
+`omitted` — that attribute's flatters intersection is collapsing
+on too many turns; review the YAML rows for it.
+
+**Unhealthy:** an attribute that *never* clears (always omitted)
+points to a contradictory YAML setup — usually two sources have
+disjoint flatters that no relaxation order can reconcile.
+
+---
+
+## Panel 24 — Composition Engine Runbook (diagnostic queries)
+
+**Question:** for a specific turn that misbehaved (slow, wrong
+recommendation, fell through unexpectedly), what did the
+composition router decide and why?
+
+```sql
+-- diagnose_one_turn — replace ::uuid with the actual turn_id
+SELECT
+    stage,
+    model,
+    latency_ms,
+    full_output -> 'router_decision' AS router_decision
+FROM distillation_traces
+WHERE turn_id = '00000000-0000-0000-0000-000000000000'::uuid
+ORDER BY created_at;
+```
+
+For a richer side-by-side comparison across multiple recent turns,
+use `ops/scripts/turn_forensics.py` (see Ops Scripts section).
+
+---
+
 ## How to refresh
 
 1. Open Supabase Studio (or your preferred SQL client) connected to staging.
@@ -971,6 +1144,34 @@ work the diagnosis there.
   2. If wallclock per cold render >> 30 s, the Gemini API is degraded — check Google's status page and consider a graceful degrade (skip try-on, ship text-only outfits with attribute-fallback evaluator scores).
   3. Cross-check Panel 10 (try-on quality gate) — high QG-failure rates trigger over-generation, which adds a second parallel batch and roughly doubles the rendering wallclock.
 
+### A4: Composition engine flag-on regressions (Phase 4.7+)
+
+The composition engine (PR #149) replaces the LLM architect with deterministic YAML reduction when `AURA_COMPOSITION_ENGINE_ENABLED=true`. Three failure modes are worth a runbook entry:
+
+**A4.1 — Engine flag set but every turn shows `fallback_reason=engine_disabled`.**
+- **Signal:** `composition_router_decision used_engine=False fallback_reason=engine_disabled` in the orchestrator log on every turn, even though the env var is set in the shell.
+- **Cause (almost always):** the env var was assigned but not exported, so the python subprocess didn't inherit it. Or it was set but the orchestrator process was started before the env update.
+- **First three actions:**
+  1. Check `.env.staging` (or `.env.local`) contains `AURA_COMPOSITION_ENGINE_ENABLED=true`. The dotenv loader reads at process boot.
+  2. Restart the orchestrator process (`AuraRuntimeConfig` reads env at startup, not per-request).
+  3. Run `python ops/scripts/turn_forensics.py <turn_id>` — confirm `used_engine: True` after the restart.
+
+**A4.2 — Engine runs but every turn falls through with `yaml_gap`.**
+- **Signal:** `fallback_reason=yaml_gap` plus `yaml_gaps=["occasion_signal:...", ...]` in router_decision.
+- **Cause:** the planner is emitting values that aren't canonical YAML keys *and* the canonicalize layer (PR #151) couldn't bridge them above the 0.50 cosine threshold.
+- **First three actions:**
+  1. Run Panel 22 (YAML-Gap Distribution) to see top-N gaps over the last 30 days.
+  2. For each frequent gap (≥10 occurrences), decide: add as a YAML alias (cheap), enrich the YAML notes so embedding matches better (best), or accept fall-through and rely on LLM (no-op).
+  3. After YAML edits, regenerate the embedding bank: `python ops/scripts/build_canonical_embeddings.py` and commit the new `canonical_embeddings.json`.
+
+**A4.3 — `aura_composition_yaml_load_failure_total` ticks (alert P2).**
+- **Signal:** the alert `aura_composition_yaml_load_failure` fires.
+- **Cause:** a YAML in `knowledge/style_graph/*.yaml` failed to parse or validate at process boot. The orchestrator caught it and disabled the engine for the rest of the process — turns silently fall through to LLM.
+- **First three actions:**
+  1. Grep the application stdout for `Composition engine YAML load failed:` — the exception message names the offending file + reason.
+  2. Run the YAML validator locally: `python ops/scripts/validate_style_graph_yaml.py` and `validate_style_graph_conflicts.py`.
+  3. Once fixed on main, restart the affected pods (the in-process disable persists until restart).
+
 ### Escalation timeline
 
 | Stage | Trigger | Action |
@@ -1015,6 +1216,9 @@ _Migrated from `CURRENT_STATE.md`. Operational scripts, run instructions, and Su
 | `ops/scripts/bootstrap_env_files.py` | Create .env.local and .env.staging from .env.example |
 | `ops/scripts/backfill_catalog_urls.py` | Backfill missing canonical product URLs |
 | `ops/scripts/schema_audit.py` | Audit database schema |
+| `ops/scripts/turn_forensics.py` | Per-turn forensics: latency / cost / router decision side-by-side |
+| `ops/scripts/build_canonical_embeddings.py` | Regenerate `composition/canonical_embeddings.json` after a YAML change |
+| `ops/scripts/composition_quality_eval.py` | Engine-vs-LLM divergence eval (consumes Phase 4.6 eval set) |
 
 
 ## How To Run
