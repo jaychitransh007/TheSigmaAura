@@ -326,7 +326,7 @@ Feature flag: 10% → 50% → 100% over a week. Monitor quality metrics + latenc
 
 ### 5.1 Pairing rules engine spec (3-5 days)
 
-Formality_alignment matrix application; color_story enforcement (5 harmony types); pattern_mixing logic (single, dual with constraints); scale_balance (statement-piece-per-outfit rule); bridal exception logic; anchor-driven rules for `pairing_request` intent.
+formality_alignment matrix application; color_story enforcement (5 harmony types); pattern_mixing logic (single, dual with constraints); scale_balance (statement-piece-per-outfit rule); bridal exception logic; anchor-driven rules for `pairing_request` intent.
 
 ### 5.2 Compatibility scoring against catalog (1 week)
 
@@ -369,7 +369,7 @@ Cards render with try-on placeholders. SSE updates fill in try-on images as they
 
 `ops/scripts/tryon_prewarm.py`. For each active user, predict top-N likely recipe cells based on profile + `recent_user_actions`. Resolve to garment sets via Phase 4 composition engine. Render Gemini try-on; write to existing try-on cache. Per-user pre-warm budget cap (max 10 renders/user/day) to prevent runaway Gemini cost.
 
-**Why not cross-user fan-out.** "Render once per garment set, composite onto each user" is not actionable — `gemini-3.1-flash-image-preview` renders garment-on-body in a single forward pass; can't separate the rendered garment from the body without losing body-conforming drape ([tryon_service.py:18–44](modules/agentic_application/src/agentic_application/services/tryon_service.py:18)). Doing that properly requires a two-stage diffusion pipeline (research project) or classical CV warping (visible quality regression).
+**Why not cross-user fan-out.** "Render once per garment set, composite onto each user" is not actionable — `gemini-3.1-flash-image-preview` renders garment-on-body in a single forward pass; can't separate the rendered garment from the body without losing body-conforming drape ([tryon_service.py:18–44](modules/agentic_application/src/agentic_application/services/tryon_service.py#L18-L44)). Doing that properly requires a two-stage diffusion pipeline (research project) or classical CV warping (visible quality regression).
 
 ### Phase 6 test gate
 

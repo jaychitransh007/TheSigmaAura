@@ -172,8 +172,11 @@ pairing_rules:
           - Same color family or same ContrastLevel
           - At least one is a "small-scale" pattern (micro / small)
         # Cross-slot constraint: if BOTH slots are patterned, their
-        # PatternScale values should differ (matrix below). Single-
-        # patterned outfits (one slot solid) bypass this matrix.
+        # PatternScale values should differ. The compatibility_matrix
+        # is the single source of truth for which pairs are valid;
+        # `flatters` lists every value that can appear in at least
+        # one valid pair, and `avoid` is empty (no PatternScale value
+        # is universally disallowed — only specific pairs).
         compatibility_matrix:
           micro:     [small, medium, large, oversized]
           small:     [micro, medium, large, oversized]
@@ -182,9 +185,8 @@ pairing_rules:
           oversized: [micro, small]                                 # oversized only with smallest scales
           mixed:     [micro, small, medium]                         # mixed-scale slot needs a quiet partner
         flatters:
-          PatternScale: [micro, small, medium, large, mixed]
-        avoid:
-          PatternScale: [oversized]                                 # paired with anything large = chaos (see matrix)
+          PatternScale: [micro, small, medium, large, mixed, oversized]
+        avoid: {}
         notes: Indian: small-print shirt + medium-check trouser,
           paisley saree + micro-floral blouse. Bohemian archetype only —
           for classic / minimalist this combo reads chaotic.
