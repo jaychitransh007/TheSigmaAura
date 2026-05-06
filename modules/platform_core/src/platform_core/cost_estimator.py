@@ -30,7 +30,12 @@ from typing import Dict, Optional
 _TEXT_PRICING: Dict[str, Dict[str, float]] = {
     # OpenAI
     "gpt-5.5":                       {"input_per_1m": 5.00,  "output_per_1m": 30.00},
-    "gpt-5.4":                       {"input_per_1m": 2.50,  "output_per_1m": 10.00},  # OutfitArchitect (May 5, 2026 — was gpt-5.5)
+    "gpt-5.4":                       {"input_per_1m": 2.50,  "output_per_1m": 10.00},  # was OutfitArchitect/Composer prior to May 13, 2026
+    # FIXME (May 13, 2026): gpt-5.2 list price not yet looked up against
+    # OpenAI's developer pricing page. Using gpt-5.4 rates as a
+    # conservative ceiling — at worst over-reports cost, never silently
+    # drops to $0. Replace these numbers when the real rate is verified.
+    "gpt-5.2":                       {"input_per_1m": 2.50,  "output_per_1m": 10.00},  # OutfitArchitect/Composer (May 13, 2026)
     "gpt-5-mini":                    {"input_per_1m": 0.15,  "output_per_1m": 0.60},
     "text-embedding-3-small":        {"input_per_1m": 0.02,  "output_per_1m": 0.0},
     # Anthropic — listed for completeness, not currently used by Aura
