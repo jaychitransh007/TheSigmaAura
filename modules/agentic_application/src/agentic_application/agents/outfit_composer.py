@@ -80,6 +80,15 @@ def _load_prompt() -> str:
     return (_find_prompt_dir() / "outfit_composer.md").read_text(encoding="utf-8").strip()
 
 
+# Phase 2.3 cache version (May 14 2026): hash of the composer prompt.
+# No conditionally-loaded fragments here (unlike outfit_architect.py),
+# so a single sha1 of the base file is enough. Editing the file
+# changes this hash → invalidates the entire composer cache space.
+import hashlib as _hashlib
+
+PROMPT_VERSION = _hashlib.sha1(_load_prompt().encode("utf-8")).hexdigest()[:8]
+
+
 # Strict JSON schema for the structured-output contract. The Composer
 # response is validated against this server-side by the Responses API.
 def _build_composer_json_schema(direction_letters: Sequence[str]) -> Dict[str, Any]:
