@@ -1,0 +1,583 @@
+# Query intent → outfit structure mapping (Indian urban context)
+#
+# Sixth mapping table. Determines outfit structure (paired / three_piece /
+# complete) given the (intent, occasion, anchor_role) tuple. Different
+# shape from the other mappings — this is a dispatch table that drives
+# the architect's `structure` field, not a flatters/avoid pair.
+#
+# Structures (from prompt/outfit_architect.md):
+#   complete:    one query, role: "complete" — standalone garments
+#                (kurta_set, lehenga_set, saree, anarkali, dress,
+#                 jumpsuit, gown, salwar_suit, suit_set, sherwani-as-set)
+#   paired:      two queries, role: "top" + role: "bottom"
+#                (shirt+trouser, kurti+palazzo, blouse+skirt, kurta+pyjama)
+#   three_piece: three queries, role: "top" + "bottom" + "outerwear"
+#                (shirt+trouser+blazer, kurta+pyjama+nehru_jacket,
+#                 blouse+skirt+jacket)
+#
+# For pairing_request, structure derives from the anchor garment's role —
+# the anchor takes one slot and other slots fill around it.
+#
+# Cultural variants matter: a wedding ceremony defaults to `complete`
+# (kurta_set / lehenga_set / saree) for Indian-traditional, but
+# `three_piece` (gown + jacket) is valid for Western-style.
+#
+# Canonical garment-attribute values: ./modules/style_engine/configs/config/garment_attributes.json
+
+query_structure:
+
+  occasion_recommendation:
+    # Each occasion lists default + alternative outfit structures.
+    # `flatters` / `avoid` constrain StylingCompleteness — what kinds of
+    # catalog items the architect should retrieve.
+
+    # ── Work / Professional ───────────────────────────────────────────
+
+    daily_office_mnc:
+      default_structure: paired
+      alternative_structures: [three_piece]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency]
+      avoid:
+        StylingCompleteness: [complete]                 # complete kurta_set / saree out of MNC register
+      notes: >
+        Western-leaning workwear: tailored shirt + trouser, blouse +
+        skirt + structured blazer (three_piece). Cotton saree is
+        acceptable but rare in MNC daily — most users default to
+        paired Western.
+
+    daily_office_indian_corp:
+      default_structure: paired
+      alternative_structures: [complete, three_piece]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+      avoid: {}
+      notes: >
+        Indian corp accepts kurta + slim trouser (paired), kurta_set
+        (complete), saree (complete), and Western shirt + chino
+        (paired). Three structures all work; user preference + ease.
+
+    daily_office_startup:
+      default_structure: paired
+      alternative_structures: []
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      avoid:
+        StylingCompleteness: [complete]
+      notes: Casual-paired only. Tee + jeans, kurti + jeans, structured
+        shirt + chino. No kurta_set / saree register here.
+
+    formal_office:
+      default_structure: three_piece
+      alternative_structures: [paired]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency, needs_innerwear]
+      avoid:
+        StylingCompleteness: [complete]
+      notes: Suit / pantsuit / structured bandhgala over kurta. Jacket-
+        forward. Saree (complete) acceptable for Indian-corp formal
+        events.
+
+    business_meeting:
+      default_structure: three_piece
+      alternative_structures: [paired]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency]
+      avoid: {}
+      notes: Three-piece preferred — adds gravitas. Tailored sherwani,
+        bandhgala over kurta, blazer + saree blouse + saree.
+
+    interview:
+      default_structure: three_piece
+      alternative_structures: [paired]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency]
+      avoid:
+        StylingCompleteness: [complete]                 # kurta_set reads less professional
+      notes: Suit, pantsuit, structured sherwani for grooms. Sober
+        palette. Always structured outerwear.
+
+    workplace_event:
+      default_structure: paired
+      alternative_structures: [complete, three_piece]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+      avoid: {}
+      notes: Office Diwali / Christmas — embroidered kurti + palazzo
+        (paired), light anarkali (complete), structured saree
+        (complete), bandi over kurta (three_piece).
+
+    business_dinner:
+      default_structure: three_piece
+      alternative_structures: [complete, paired]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, dual_dependency, complete]
+      avoid: {}
+      notes: Tailored bandhgala, structured sherwani, silk saree, sheath
+        dress + jacket. Polished evening register.
+
+
+    # ── Social Casual ──────────────────────────────────────────────────
+
+    weekend_brunch:
+      default_structure: paired
+      alternative_structures: [complete]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+      avoid: {}
+      notes: Tee + jeans + jacket, kurti + jeans, summer dress
+        (complete), light cotton saree (complete).
+
+    casual_lunch:
+      default_structure: paired
+      alternative_structures: [complete]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+      avoid: {}
+      notes: Casual paired or summer dress.
+
+    coffee_meetup:
+      default_structure: paired
+      alternative_structures: []
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      avoid:
+        StylingCompleteness: [complete]                 # too formal
+      notes: Most relaxed — paired only.
+
+    everyday_casual:
+      default_structure: paired
+      alternative_structures: []
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      avoid: {}
+      notes: Tee + chino, kurti + jeans.
+
+    travel_day:
+      default_structure: paired
+      alternative_structures: []
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      avoid:
+        StylingCompleteness: [complete]                 # saree on a flight is impractical
+      notes: Stretch, comfort, layered. Paired top + bottom.
+
+
+    # ── Night Out ──────────────────────────────────────────────────────
+
+    cocktail_party:
+      default_structure: complete
+      alternative_structures: [paired, three_piece]
+      flatters:
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear]
+      avoid: {}
+      notes: Cocktail dress (complete), embroidered anarkali (complete),
+        sequinned saree (complete), bandhgala over kurta (three_piece),
+        skirt + sequinned top (paired).
+
+    rooftop_bar:
+      default_structure: paired
+      alternative_structures: [complete]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+      avoid: {}
+      notes: Skirt + structured top, fitted dress (complete), tailored
+        jumpsuit (complete).
+
+    dinner_party:
+      default_structure: paired
+      alternative_structures: [complete]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+      avoid: {}
+      notes: Silk shirt + chino, kurta + slim trouser, light silk saree
+        (complete), kurti + churidar (paired).
+
+    fine_dining:
+      default_structure: complete
+      alternative_structures: [three_piece, paired]
+      flatters:
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear, dual_dependency]
+      avoid: {}
+      notes: Silk saree, tailored bandhgala, sheath dress, structured
+        anarkali. Polished register.
+
+
+    # ── Formal Events ──────────────────────────────────────────────────
+
+    gala_dinner:
+      default_structure: complete
+      alternative_structures: [three_piece]
+      flatters:
+        StylingCompleteness: [complete, dual_dependency]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]   # base layers alone insufficient
+      notes: Gown (complete), heavily embellished saree (complete),
+        designer lehenga (complete), full sherwani (complete or
+        three_piece with statement bandi).
+
+    award_ceremony:
+      default_structure: complete
+      alternative_structures: [three_piece]
+      flatters:
+        StylingCompleteness: [complete, dual_dependency]
+      avoid: {}
+      notes: Same register as gala — designer outfit, statement-level
+        embellishment.
+
+
+    # ── Festive (Indian) ───────────────────────────────────────────────
+
+    diwali:
+      default_structure: complete
+      alternative_structures: [three_piece]
+      cultural_variants:
+        indian_traditional: complete                   # anarkali, kurta_set, saree, lehenga_set
+        indian_fusion: three_piece                     # kurta + dhoti + bandi
+      flatters:
+        StylingCompleteness: [complete, dual_dependency]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]   # base layers don't carry the festive register
+      notes: Heavy anarkali (complete), banarasi/kanjeevaram saree
+        (complete), bridal lehenga set, sherwani (complete or with
+        statement bandi). Western paired separates rare for Diwali —
+        the festival pulls toward traditional.
+
+    karva_chauth:
+      default_structure: complete
+      alternative_structures: []
+      flatters:
+        StylingCompleteness: [complete]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      notes: Bridal-style traditional only. Saree (complete), lehenga_set
+        (complete), heavy anarkali (complete). Almost never Western
+        paired separates.
+
+    navratri:
+      default_structure: complete
+      alternative_structures: []
+      flatters:
+        StylingCompleteness: [complete]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      notes: Mirror-work chaniya choli (lehenga_set), traditional
+        chiffon saree, full anarkali. Garba dance requires complete-set
+        outfits with movement.
+
+    holi:
+      default_structure: paired
+      alternative_structures: []
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      avoid:
+        StylingCompleteness: [complete]                 # silk saree wrecked by colors
+      notes: Disposable white kurta + pyjama (paired), white kurti +
+        churidar (paired). Cotton only — colors stain.
+
+    raksha_bandhan:
+      default_structure: complete
+      alternative_structures: [paired]
+      flatters:
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear]
+      avoid: {}
+      notes: Kurta_set (complete), simple silk saree (complete), kurti
+        + palazzo (paired).
+
+    eid:
+      default_structure: complete
+      alternative_structures: [three_piece]
+      flatters:
+        StylingCompleteness: [complete, dual_dependency]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      notes: Anarkali, sharara, gharara, salwar suit (all complete).
+        Sherwani for men (complete or three_piece).
+
+    christmas:
+      default_structure: paired
+      alternative_structures: [complete, three_piece]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+      avoid: {}
+      notes: Western-leaning urban Christmas. Sweater + skirt (paired),
+        festive dress (complete), structured sherwani (three_piece) for
+        Indian families.
+
+    dussehra:
+      default_structure: complete
+      alternative_structures: [paired]
+      flatters:
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear]
+      avoid: {}
+      notes: Light festive — kurta_set (complete), simple silk saree
+        (complete), bandi over kurta (three_piece).
+
+    festival_lunch:
+      default_structure: complete
+      alternative_structures: [paired]
+      flatters:
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear]
+      avoid: {}
+      notes: Generic family festival. Kurta_set, simple saree, kurti +
+        palazzo.
+
+    family_pooja:
+      default_structure: complete
+      alternative_structures: [paired]
+      flatters:
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear]
+      avoid: {}
+      notes: Light traditional — kurta_set, simple silk saree.
+
+
+    # ── Wedding Cycle ──────────────────────────────────────────────────
+
+    roka:
+      default_structure: complete
+      alternative_structures: [three_piece]
+      flatters:
+        StylingCompleteness: [complete, dual_dependency]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      notes: Pastel anarkali (complete), embroidered saree (complete),
+        sherwani (complete or three_piece). Lighter than wedding-day.
+
+    sagai_engagement:
+      default_structure: complete
+      alternative_structures: [three_piece]
+      flatters:
+        StylingCompleteness: [complete, dual_dependency]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      notes: Lehenga_set, embellished saree, sharara, gharara, full
+        sherwani — all complete. Statement outfit register.
+
+    haldi:
+      default_structure: complete
+      alternative_structures: []
+      flatters:
+        StylingCompleteness: [complete]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      notes: Yellow lehenga_set, yellow kurti + dhoti pant (this is
+        complete in Indian categorization), yellow saree. Turmeric will
+        ruin paired separates with white shirts.
+
+    mehndi:
+      default_structure: complete
+      alternative_structures: []
+      flatters:
+        StylingCompleteness: [complete]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      notes: Mirror-work chaniya choli (lehenga_set), embellished
+        sharara, kurta-sharara set, lehenga in mehendi-green or mustard
+        — all complete.
+
+    sangeet:
+      default_structure: complete
+      alternative_structures: [three_piece]
+      flatters:
+        StylingCompleteness: [complete, dual_dependency]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      notes: Heavily embellished lehenga (complete), designer saree
+        (complete), bandhgala / sherwani (complete or three_piece),
+        Indo-Western jumpsuit (complete). Maximum statement.
+
+    baraat:
+      default_structure: complete
+      alternative_structures: []
+      flatters:
+        StylingCompleteness: [complete]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      notes: Full ceremonial sherwani (complete with sehra), bridal-
+        weight lehenga_set, banarasi saree.
+
+    wedding_ceremony:
+      default_structure: complete
+      alternative_structures: []
+      cultural_variants:
+        indian_traditional: complete                  # bridal lehenga / kanjeevaram / sherwani
+        western: three_piece                          # gown + jacket OR formal suit
+      flatters:
+        StylingCompleteness: [complete]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      notes: THE most ceremonial-complete moment in Indian fashion. For
+        Indian families: bridal red lehenga_set or banarasi/kanjeevaram
+        saree (bride), full embroidered sherwani with sehra (groom).
+        Western variant exists but rare in urban India.
+
+    wedding_reception:
+      default_structure: complete
+      alternative_structures: [three_piece]
+      cultural_variants:
+        indian_traditional: complete
+        western_evening: complete                     # gown still complete
+      flatters:
+        StylingCompleteness: [complete, dual_dependency]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
+      notes: Even more designer-statement than wedding ceremony in some
+        communities. Bride/groom in second outfit. Designer lehenga,
+        gown, structured sherwani.
+
+
+    # ── Dating ─────────────────────────────────────────────────────────
+
+    first_date:
+      default_structure: paired
+      alternative_structures: [complete]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+      avoid: {}
+      notes: Smart-casual paired — kurti + jeans, structured shirt +
+        chino. Fitted dress (complete) works too.
+
+    date_night:
+      default_structure: paired
+      alternative_structures: [complete]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+      avoid: {}
+      notes: Fitted dress (complete), kurta + slim trouser, fitted
+        saree (complete) for special evenings.
+
+    anniversary_dinner:
+      default_structure: complete
+      alternative_structures: [paired, three_piece]
+      flatters:
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear, dual_dependency]
+      avoid: {}
+      notes: Silk saree, sheath dress, tailored bandhgala — polished
+        evening register.
+
+
+    # ── Beach / Vacation ───────────────────────────────────────────────
+
+    beach_day:
+      default_structure: paired
+      alternative_structures: [complete]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+      avoid: {}
+      notes: Top + shorts (paired), summer dress / kaftan (complete).
+
+    vacation_dinner:
+      default_structure: paired
+      alternative_structures: [complete]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+      avoid: {}
+      notes: Light kurti + palazzo (paired), summer dress (complete),
+        light saree (complete).
+
+
+    # ── Family / Cultural ──────────────────────────────────────────────
+
+    in_laws_first_meeting:
+      default_structure: complete
+      alternative_structures: [paired]
+      flatters:
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear]
+      avoid: {}
+      notes: Pastel anarkali (complete), simple silk saree (complete),
+        embroidered kurta + churidar (paired). Conservative — modest
+        coverage, light embroidery.
+
+    kitty_party:
+      default_structure: complete
+      alternative_structures: [paired]
+      flatters:
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear]
+      avoid: {}
+      notes: Embroidered anarkali, designer saree, statement kurta_set
+        — Indian women's social. Festive without bridal-heavy.
+
+
+  # ─────────────────────────────────────────────────────────────────────
+  # PAIRING REQUEST — anchor-driven structure
+  # ─────────────────────────────────────────────────────────────────────
+
+  pairing_request:
+    # User uploads / refers to an existing item ("anchor"). The architect
+    # fills slots OTHER than the anchor's role. Structure derives from
+    # the anchor's GarmentCategory rather than from occasion alone.
+
+    anchor_top:
+      default_structure: paired
+      alternative_structures: [three_piece]
+      fills_slots: [bottom, outerwear]
+      flatters:
+        StylingCompleteness: [needs_bottomwear]
+      avoid:
+        StylingCompleteness: [complete]                 # already complete = no pairing needed
+      notes: >
+        Anchor = top (shirt, kurta, blouse, kurti). Recipe builds
+        bottom (trouser, palazzo, skirt, jeans) + optional outerwear
+        (blazer, bandi, jacket). For shirt-anchor: trouser/chino +
+        optional blazer. For kurta-anchor: churidar/pyjama + optional
+        bandi/Nehru jacket.
+
+    anchor_bottom:
+      default_structure: paired
+      alternative_structures: [three_piece]
+      fills_slots: [top, outerwear]
+      flatters:
+        StylingCompleteness: [needs_topwear]
+      avoid:
+        StylingCompleteness: [complete]
+      notes: >
+        Anchor = bottom (trouser, palazzo, skirt, jeans, churidar).
+        Recipe builds top + optional outerwear. For palazzo: kurti or
+        crop top. For trouser: structured shirt or kurta.
+
+    anchor_outerwear:
+      default_structure: three_piece
+      alternative_structures: [paired]
+      fills_slots: [top, bottom]
+      flatters:
+        StylingCompleteness: [needs_innerwear, needs_topwear, needs_bottomwear]
+      avoid:
+        StylingCompleteness: [complete]
+      notes: >
+        Anchor = jacket / blazer / bandhgala / bandi / cardigan / coat.
+        Recipe fills top + bottom that work as a unit underneath. For
+        bandhgala: white shirt + slim trouser. For bandi: kurta +
+        churidar.
+
+    anchor_complete:
+      default_structure: complete
+      alternative_structures: []
+      fills_slots: []                                     # nothing — already complete
+      flatters:
+        StylingCompleteness: [complete]
+      avoid:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, needs_innerwear, dual_dependency]
+      notes: >
+        Anchor is itself complete (saree, kurta_set, lehenga_set, dress,
+        gown, jumpsuit, sherwani-as-set, anarkali, salwar_suit). Pairing
+        is accessory-level only — no garment slots to fill. Architect
+        should return accessory recommendations (jewellery, dupatta
+        replacement, footwear) instead of garments.
+
+
+  # ─────────────────────────────────────────────────────────────────────
+  # FALLBACKS — generic when no specific occasion/anchor matches
+  # ─────────────────────────────────────────────────────────────────────
+
+  fallback:
+    # Used when the (intent, occasion) combination doesn't match any
+    # specific entry. Leans toward the most flexible option.
+
+    default:
+      default_structure: paired
+      alternative_structures: [complete, three_piece]
+      flatters:
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+      avoid: {}
+      notes: When in doubt, default to paired. Most occasions accept
+        it; specialized occasions get explicit rules above.
