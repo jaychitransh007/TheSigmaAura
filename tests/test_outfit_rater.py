@@ -163,7 +163,13 @@ class OutfitRaterContractTests(unittest.TestCase):
         self.assertEqual(3, ro.pairing)
         self.assertEqual(3, ro.formality)
         self.assertEqual(3, ro.statement)
-        self.assertEqual("moderate", result.overall_assessment)
+        # Phase 1.1 (May 13 2026): overall_assessment is now derived
+        # deterministically from per-outfit fashion scores instead of
+        # echoing the LLM's emitted assessment — the rater fans out one
+        # call per outfit, so there's no single LLM-emitted assessment
+        # to surface. Top score 100 → "strong" by _assess_slate
+        # thresholds (≥70 strong, ≥40 moderate, else weak).
+        self.assertEqual("strong", result.overall_assessment)
 
 
 class OutfitRaterDefensiveTests(unittest.TestCase):
