@@ -22,6 +22,7 @@ different item picks, so the cluster has to discriminate.
 from __future__ import annotations
 
 import hashlib
+import json
 from typing import Iterable, List
 
 from ..schemas import RecommendationPlan, RetrievedSet
@@ -31,30 +32,50 @@ from .profile_cluster import ProfileCluster
 def architect_direction_id(plan: RecommendationPlan) -> str:
     """SHA1 hex digest of the architect's RecommendationPlan output.
 
-    Collapses the plan to a stable JSON form (Pydantic's model_dump_json
-    is sorted-key-stable for our schemas) and hashes. Used both as the
-    composer cache key component AND as a pointer the orchestrator can
-    log on cache hits.
+    Collapses the plan to a JSON form with **sorted keys at every
+    nesting level** before hashing. Pydantic's ``model_dump_json``
+    preserves declaration order for model fields but does NOT guarantee
+    key order for nested ``Dict[str, Any]`` fields like
+    ``QuerySpec.hard_filters`` — those follow insertion order, which
+    varies based on how the architect constructed them. Sorted-keys
+    JSON is the only way to guarantee a stable hash for plans that are
+    semantically identical but were assembled in different dict orders
+    (review of PR #136).
+
+    Used both as the composer cache key component AND as a pointer the
+    orchestrator can log on cache hits.
     """
-    payload = plan.model_dump_json()
+    payload = json.dumps(plan.model_dump(mode="json"), sort_keys=True)
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
 def retrieval_fingerprint(retrieved_sets: Iterable[RetrievedSet]) -> str:
-    """SHA1 of the sorted SKU id list across all retrieved sets.
+    """SHA1 of the role-aware SKU list across all retrieved sets.
+
+    Each retrieved product is fingerprinted as
+    ``<direction_id>:<role>:<product_id>`` so that a SKU appearing in
+    different roles (top vs bottom) or different directions (A vs B)
+    produces a distinct fingerprint. Without role-awareness the cache
+    would collide when retrieval swaps products between roles for the
+    same plan — serving an outfit composed against a different
+    role-assignment than the current turn (review of PR #136).
 
     Catalog drift (new product added, old product disabled) → different
-    sorted SKU list → different fingerprint → different cache key →
-    no stale catalog references in cached outfits.
+    SKU list → different fingerprint → no stale catalog references in
+    cached outfits. Empty / blank product_ids are skipped.
     """
-    sku_ids: List[str] = []
+    parts: List[str] = []
     for rs in retrieved_sets or []:
+        direction = str(getattr(rs, "direction_id", "") or "").strip()
+        role = str(getattr(rs, "role", "") or "").strip().lower()
         for product in (rs.products or []):
             pid = str(product.product_id or "").strip()
             if pid:
-                sku_ids.append(pid)
-    sku_ids.sort()
-    payload = "|".join(sku_ids)
+                parts.append(f"{direction}:{role}:{pid}")
+    # Sort the role-aware tuples so caller-side ordering of
+    # retrieved_sets can't fragment the fingerprint.
+    parts.sort()
+    payload = "|".join(parts)
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 

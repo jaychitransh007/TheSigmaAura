@@ -64,11 +64,16 @@ def _plan(label: str = "Sharp Navy") -> RecommendationPlan:
     )
 
 
-def _retrieved_set(sku_ids: list[str], direction_id: str = "A") -> RetrievedSet:
+def _retrieved_set(
+    sku_ids: list[str],
+    direction_id: str = "A",
+    role: str = "top",
+    query_id: str = "A1",
+) -> RetrievedSet:
     return RetrievedSet(
         direction_id=direction_id,
-        query_id="A1",
-        role="top",
+        query_id=query_id,
+        role=role,
         products=[
             RetrievedProduct(product_id=pid, similarity=0.9, metadata={}, enriched_data={})
             for pid in sku_ids
@@ -94,6 +99,44 @@ class ArchitectDirectionIdTests(unittest.TestCase):
         self.assertEqual(len(out), 40)
         int(out, 16)  # raises if not hex
 
+    def test_id_stable_across_dict_insertion_order(self) -> None:
+        # Review of PR #136: nested Dict[str, Any] fields like
+        # QuerySpec.hard_filters preserve insertion order, not sorted
+        # order, in Pydantic's JSON output. Two semantically identical
+        # plans constructed with the same filters in different
+        # insertion orders MUST produce the same hash. The fix uses
+        # json.dumps(..., sort_keys=True) at every nesting level.
+        plan_a = RecommendationPlan(directions=[
+            DirectionSpec(
+                direction_id="A",
+                direction_type="paired",
+                label="Sharp Navy",
+                queries=[QuerySpec(
+                    query_id="A1",
+                    role="top",
+                    query_document="navy blazer",
+                    hard_filters={"gender_expression": "feminine", "garment_category": "top"},
+                )],
+            ),
+        ])
+        # Same plan, but the hard_filters dict is built with the keys
+        # inserted in opposite order. Without sort_keys, Pydantic's
+        # JSON would carry the differing insertion order through.
+        plan_b = RecommendationPlan(directions=[
+            DirectionSpec(
+                direction_id="A",
+                direction_type="paired",
+                label="Sharp Navy",
+                queries=[QuerySpec(
+                    query_id="A1",
+                    role="top",
+                    query_document="navy blazer",
+                    hard_filters={"garment_category": "top", "gender_expression": "feminine"},
+                )],
+            ),
+        ])
+        self.assertEqual(architect_direction_id(plan_a), architect_direction_id(plan_b))
+
 
 class RetrievalFingerprintTests(unittest.TestCase):
 
@@ -114,6 +157,58 @@ class RetrievalFingerprintTests(unittest.TestCase):
             retrieval_fingerprint([_retrieved_set(["sku1", "sku2"])]),
             retrieval_fingerprint([_retrieved_set(["sku1", "sku3"])]),
         )
+
+    def test_role_swap_changes_fingerprint(self) -> None:
+        # Review of PR #136: same SKUs in swapped roles must yield
+        # DIFFERENT fingerprints. Without role-awareness the cache
+        # could serve outfits composed against a different
+        # role-assignment than the current turn.
+        as_top = retrieval_fingerprint([
+            _retrieved_set(["sku1", "sku2"], role="top"),
+        ])
+        as_bottom = retrieval_fingerprint([
+            _retrieved_set(["sku1", "sku2"], role="bottom"),
+        ])
+        self.assertNotEqual(as_top, as_bottom)
+
+    def test_direction_swap_changes_fingerprint(self) -> None:
+        # Same SKUs assigned to different directions (A vs B) →
+        # different fingerprint. Direction encodes which architect
+        # query the SKUs answered, which materially shapes which
+        # outfits the composer builds.
+        as_a = retrieval_fingerprint([
+            _retrieved_set(["sku1"], direction_id="A"),
+        ])
+        as_b = retrieval_fingerprint([
+            _retrieved_set(["sku1"], direction_id="B"),
+        ])
+        self.assertNotEqual(as_a, as_b)
+
+    def test_same_role_same_skus_match(self) -> None:
+        # Same SKUs in the same role across calls — fingerprint stable.
+        a = retrieval_fingerprint([
+            _retrieved_set(["sku1", "sku2"], role="top", direction_id="A"),
+            _retrieved_set(["sku3", "sku4"], role="bottom", direction_id="A"),
+        ])
+        b = retrieval_fingerprint([
+            _retrieved_set(["sku1", "sku2"], role="top", direction_id="A"),
+            _retrieved_set(["sku3", "sku4"], role="bottom", direction_id="A"),
+        ])
+        self.assertEqual(a, b)
+
+    def test_set_order_independent(self) -> None:
+        # Caller-side order of retrieved_sets shouldn't fragment the
+        # fingerprint — same role+direction+sku triplets in different
+        # set order should still match.
+        a = retrieval_fingerprint([
+            _retrieved_set(["sku1"], role="top", direction_id="A"),
+            _retrieved_set(["sku2"], role="bottom", direction_id="A"),
+        ])
+        b = retrieval_fingerprint([
+            _retrieved_set(["sku2"], role="bottom", direction_id="A"),
+            _retrieved_set(["sku1"], role="top", direction_id="A"),
+        ])
+        self.assertEqual(a, b)
 
     def test_empty_returns_stable_value(self) -> None:
         # Edge case: no products. Fingerprint of empty SKU list is
