@@ -116,9 +116,11 @@ def load_config() -> AuraRuntimeConfig:
     # Phase 1.4: ARCHITECT_MODEL / COMPOSER_MODEL allow swapping the
     # architect/composer to a faster OpenAI model (e.g. gpt-5-mini)
     # without code changes. Trim + fallback on empty so an unset env
-    # var keeps the production default.
-    architect_model = os.getenv("ARCHITECT_MODEL", "").strip() or "gpt-5.4"
-    composer_model = os.getenv("COMPOSER_MODEL", "").strip() or "gpt-5.4"
+    # var keeps the production default; fallback references the
+    # dataclass attribute so a single edit to the class default also
+    # moves the env-loader's default (review of PR #128).
+    architect_model = os.getenv("ARCHITECT_MODEL", "").strip() or AuraRuntimeConfig.architect_model
+    composer_model = os.getenv("COMPOSER_MODEL", "").strip() or AuraRuntimeConfig.composer_model
 
     return AuraRuntimeConfig(
         supabase_rest_url=_ensure_rest_url(supabase_url),
