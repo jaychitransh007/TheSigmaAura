@@ -156,6 +156,79 @@ These are explicit non-goals — do not block the release on them:
 
 _Migrated from `CURRENT_STATE.md`. The May-1 "Open Items Plan" — every item now ✅ shipped — is preserved here as a record of work landed during the platform pass. For ongoing release readiness criteria see the Gates above._
 
+## May 5–6, 2026 — episodic memory + R7 rater + composer name + ops recalibration
+
+A 22-PR sweep that overhauled the rater rubric, added episodic memory at the architect, made every outfit a first-class named card, fixed three silent failure modes, and rebuilt the observability surface to match the new system. Grouped by area:
+
+### Composer (PRs #80, #81, #83, #88, #91, #95)
+
+| PR | Title | Net change |
+|---|---|---|
+| #80 | Harden direction_id contract + per-attempt logging | Dynamic enum on `direction_id` (LLM physically can't write a SKU there); per-attempt callback so `model_call_logs` gets one row per LLM call instead of summing tokens across the retry. T6 turn that "appeared" to have a 24K-token prompt was actually 12K + 12K — the doubling now visible. |
+| #81 | Composer → gpt-5.4 + threshold 75 → 60 + weight rebalance | Promoted from gpt-5-mini for the heavier reasoning task. Default weight profile rebalanced (occ 0.35 / body 0.20 / col 0.25 / inter 0.20). Threshold lowered to 60 to compensate for the more honest score distribution under the new model. (Both superseded again by R7 — see below.) |
+| #83 | Source composer model from agent instance | Trace + log rows now read `self.outfit_composer._model` rather than a hardcoded literal, mirroring the architect's drift-protection pattern. |
+| #88 | Composer emits per-outfit `name` | Cards previously rendered as "Outfit 1", "Outfit 2" — composer now writes a stylist-flavored title (e.g. *"Sharp Navy Boardroom"*, *"Camel Sand Refined"*) per outfit. Surfaces directly as the user-facing card title. |
+| #91 | Composer name schema cap + null safety | `maxLength: 100` on `name` in the strict-output schema (review fix); parser uses `or ""` so an explicit JSON null doesn't ship as `"None"`. |
+| #95 | Composer `model_call_logs.latency_ms` was always 0 | `_invoke()` never timed `responses.create()`; the per-attempt payload didn't carry latency at all. Fixed: any panel computing composer p50/p95 from `model_call_logs` now reads real values. |
+
+### Rater (PRs #89, #101)
+
+| PR | Title | Net change |
+|---|---|---|
+| #89 | Drop rater veto on `archetypal_preferences.disliked` | T12 had **8/8 outfits vetoed** because each touched a single disliked attribute (color_temperature: neutral, pattern: solid). Per-dim scores were healthy 70–88; the aggregate-veto rule was punching above its weight. Removed entirely; the rater no longer reads `archetypal_preferences`. |
+| #101 | **R7: 6 dims on a 1/2/3 scale** | Most consequential change of the sweep. Rater contract moved from 4 dims on 0–100 → 6 dims on 1/2/3, schema-locked via `enum: [1, 2, 3]` per sub-score. Added Formality (was double-counted across `occasion_fit` + `inter_item_coherence`) and Statement (was a fractional sub-check inside `inter_item_coherence`). Renamed `inter_item_coherence` → `pairing`, scoped to fit + fabric only. Threshold moved 60 → 50 (all-2s outfit lands at exactly 50). Blend math: `((Σ subscore × weight) − 1) / 2 × 100` rescales to 0–100 for the card center. All five weight profiles rebalanced across 6 dims. |
+
+### Architect — episodic memory (PRs #90, #92, #93, #97)
+
+| PR | Title | Net change |
+|---|---|---|
+| #90 | Surface recent like/dislike timeline to the architect | New repo method `list_recent_user_actions(user_id, lookback_days=30)` returns a chronological 30-day timeline of like/dislike events, each row carrying `user_query`, `created_at`, `event_type`, and the garment's full attribute set. The architect prompt has a new "Recent user actions (episodic memory)" section instructing it to find context-dependent patterns (different occasions can take the same attribute differently) and bias retrieval queries — never as blanket exclusions. Replaces the old aggregate-veto signal with raw evidence the LLM can reason over. |
+| #92 | PascalCase fix — episodic memory was empty for every user | PR #90 shipped with snake_case column names (`color_temperature`, `pattern_type`) in the `catalog_enriched` query. The actual schema uses **PascalCase** (`ColorTemperature`, `PatternType`). PostgREST 400-errored on every call; the `except Exception` swallowed it; every user got an empty timeline since #90 merged. Mocks also used snake_case, so tests didn't catch it. |
+| #93 | Consolidate catalog attr mappings + log silent excepts | Single `_CATALOG_ATTR_MAP` (snake_case prompt key → PascalCase DB column) replaces the two parallel mappings that drifted in #90. Five `except Exception:` blocks across `aggregate_archetypal_feedback` + `list_recent_user_actions` now log `_log.warning(..., exc_info=True)` instead of swallowing — the next failure surfaces in logs instead of vanishing. |
+| #97 | Narrow broad excepts to `(SupabaseError, httpx.RequestError)` | The five `except Exception:` blocks were catching too much — a `KeyError` from `_CATALOG_ATTR_MAP` or a `TypeError` mid-comprehension would silently degrade to an empty timeline (the same shape PR #92 just fixed). Logic errors now propagate fast. |
+
+### Default routing — catalog-first (PR #82)
+
+| PR | Title | Net change |
+|---|---|---|
+| #82 | Auto → catalog default; ≥2-per-role wardrobe coverage gate | Pre-#82, `source_preference="auto"` (no explicit signal) routed to the **wardrobe-first** path. Now the default routes to the **catalog**; wardrobe-first only fires on explicit "from my wardrobe" / "use my wardrobe". When the user does ask for wardrobe-first, a new minimum-coverage gate requires ≥2 tops AND ≥2 bottoms AND ≥2 one-pieces — falls through to a `wardrobe_unavailable` answer-source with the actual counts surfaced ("you have 2 tops, 2 bottoms, 0 dresses"). New `wardrobe_coverage` metadata block exposes counts + sufficient-flag for observability. |
+
+### Observability + ops (PRs #94, #95, #96, #98, #99, #100)
+
+| PR | Title | Net change |
+|---|---|---|
+| #94 | Recalibrate alerts + Panel 3 / 6 for the auto→catalog flip | LLM-cost daily-budget alert: $50 → $500 (gpt-5.4 composer was tripping the old threshold on every quiet day). Panel 3 + Panel 6 SQL + narration updated for the new dominant `answer_source` mix. Carve-out paragraph in Panel 16 + the try-on QG alert noting the post-#89 `unsuitable=True` rate baseline shift. |
+| #96 | Add Panels 17–20 + script preserve-marker | New panels: **17** Architect Input Token Growth (PR #90/#92), **18** Rater Unsuitable Rate (PR #89 baseline), **19** Composer Latency (PR #95 baseline), **20** Episodic Memory Population (PR #90/#92). Plus `extract_dashboard_sql.py` now preserves curator content past a `<!-- preserve-below -->` marker so README.md no longer gets eaten on every regen. |
+| #98 | Drop dates from panel filenames; SUM(CASE) → COUNT FILTER | Renamed `panel_16_*may_3_2026.sql` → `panel_16_low_confidence_catalog_responses.sql` (and 17–20 likewise). Cleaner SQL idiom. |
+| #99 | Panel 20 query label was last_7d, CTE was 30d | Single-line comment fix to match the actual query window. |
+| #100 | Panel 16 `NULLIF` → `nullif` | Casing alignment with every other panel in OPERATIONS.md. |
+
+### Review-fix follow-ups (PRs #84, #85, #86, #87)
+
+Four small PRs addressing reviewer feedback on PRs #82 + #88: precompute wardrobe coverage once and thread through both the wardrobe-first builder and the fallback (avoid double-walk on the insufficient-coverage path); inline a single-use local; drop a `list(... or [])` defensive wrapper that the schema's `default_factory=list` already covered; switch `getattr(user_context, ...)` to direct attribute access at call sites where `user_context` is statically known to be a `UserContext`.
+
+### Pipeline shape (post-sweep)
+
+```
+copilot_planner (gpt-5-mini, 7s)
+  → outfit_architect (gpt-5.4, 22-28s, ~15K input tokens with episodic memory)
+  → catalog retrieval (text-embedding-3-small + pgvector, 3s)
+  → outfit_composer (gpt-5.4, 13s, emits per-outfit name)
+  → outfit_rater (gpt-5-mini, 13s, 6 dims on 1/2/3 scale)
+  → tryon_render (gemini-3.1-flash-image-preview, 3 parallel, ~25s wallclock)
+  → response_formatter
+```
+
+Threshold gate moved 60 → 50 (R7). All 6 weight profiles sum to 1.0. Pairing drops for `complete` (single-item) outfits → 5 axes; the orchestrator renormalizes the remaining 5 weights at compute time.
+
+### Live verification (T13, 2026-05-05 17:21)
+
+The first turn after R7 merged shipped 3 outfits with stylist-flavored names ("Camel Sand Refined" / "Chalk Navy Balance" / "Olive Mocha Office"). Rater emitted 1/2/3 across all six dims, no `unsuitable=True`, fashion_scores 87/92/94. Total turn cost 20.81¢, latency 100s — comparable to T10/T11 (3 try-on shipped) within margin; +6K architect tokens vs pre-#90 baseline (episodic memory carries weight).
+
+**L0 tests:** 458 pass post-#101 (up from 434 at start of sweep; net change includes the rater test rewrite for the 6-dim 1/2/3 contract + new tests for composer name, episodic memory hydration, narrow except, threshold gate fixtures).
+
+---
+
 ## May 3, 2026 — LLM ranker rollout
 
 | PR | Title | Net change |
