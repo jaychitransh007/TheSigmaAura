@@ -70,40 +70,62 @@ def _paginate(
     table: str,
     columns: str,
     filters: Dict[str, Any],
+    cursor_column: str = "id",
 ):
-    """Iterate over a select_many result in pages of ``_PAGE_SIZE``.
+    """Iterate over a ``select_many`` result in pages of ``_PAGE_SIZE``.
 
-    Keyset pagination on ``id`` (every Aura table has a unique id PK).
-    Cursoring on ``id`` rather than ``created_at`` because:
+    Keyset pagination on a unique column (default ``id``). The cursor
+    column must be unique within the filtered window (otherwise rows
+    sharing the boundary value get skipped, same problem as
+    ``created_at`` keyset).
 
-    1. ``created_at`` isn't unique (bursty writes share a timestamp);
-       ``gt.{ts}`` would skip rows that share the boundary timestamp
-       (review of PR #137).
-    2. ``id`` is a UUID PK — guaranteed unique, no boundary collision.
+    Args:
+      cursor_column: Unique column to keyset on. Defaults to ``id`` —
+        every Aura table with an ``id`` PK works out of the box. For
+        tables with composite primary keys and no ``id`` column
+        (e.g. ``architect_direction_cache`` / ``composer_outfit_cache``
+        which use ``(tenant_id, cache_key)``), pass
+        ``cursor_column="cache_key"``. The cache_key is a SHA1 hex
+        which is unique within the `tenant_id='default'` filter set
+        and globally unique once tenant_id is part of the hash inputs
+        (it is — see docs/phase_2_cache_design.md).
 
-    Trade-off: pages don't arrive in chronological order. That's fine
-    here — every caller aggregates counts over the whole window, so
-    order within the window doesn't affect the metric.
+    Trade-off: pages don't arrive in chronological order when cursoring
+    on ``id`` (UUID) or ``cache_key`` (hash). That's fine for every
+    caller — they all aggregate counts over the window, so order
+    within the window doesn't affect the metric.
 
-    The function automatically appends ``id`` to ``columns`` if not
-    already present, so callers can't accidentally produce silent
-    truncation by forgetting to select the cursor field.
+    Pre-conditions:
+      - ``filters`` MUST NOT already constrain ``cursor_column`` —
+        the pagination logic owns that key (review of PR #139). Pass
+        a different cursor_column if the caller needs to range-bound
+        the original. Raises ``ValueError`` if the contract is broken.
+      - The function auto-includes ``cursor_column`` in ``columns`` if
+        absent so callers can't accidentally produce silent truncation
+        by forgetting it.
     """
-    # Ensure 'id' is in the projected columns — without it the cursor
-    # is None on every page and pagination silently stops after the
-    # first page (review of PR #137).
+    if cursor_column in filters:
+        raise ValueError(
+            f"_paginate cannot paginate when `filters` already constrains "
+            f"cursor_column='{cursor_column}'. Drop that filter or pass a "
+            f"different cursor_column."
+        )
+
+    # Ensure cursor_column is in the projected columns. Without it,
+    # the cursor read returns None and pagination silently stops
+    # after the first page.
     cols = [c.strip() for c in columns.split(",") if c.strip()]
-    if "id" not in cols:
-        cols.insert(0, "id")
-    columns_with_id = ",".join(cols)
+    if cursor_column not in cols:
+        cols.insert(0, cursor_column)
+    columns_with_cursor = ",".join(cols)
 
     pages = 0
     while pages < _MAX_PAGES:
         rows = client.select_many(
             table,
-            columns=columns_with_id,
+            columns=columns_with_cursor,
             filters=dict(filters),
-            order="id.asc",
+            order=f"{cursor_column}.asc",
             limit=_PAGE_SIZE,
         )
         if not rows:
@@ -112,13 +134,13 @@ def _paginate(
             yield r
         if len(rows) < _PAGE_SIZE:
             return
-        last_id = rows[-1].get("id")
-        if not last_id:
-            # Defensive: a row with no id is a schema surprise. Stop
-            # rather than loop forever.
-            print(f"WARN: pagination on {table} hit a row with no id; stopping")
+        last_cursor = rows[-1].get(cursor_column)
+        if not last_cursor:
+            # Defensive: a row missing the cursor column is a schema
+            # surprise. Stop rather than loop forever.
+            print(f"WARN: pagination on {table} hit a row with no {cursor_column}; stopping")
             return
-        filters = {**filters, "id": f"gt.{last_id}"}
+        filters = {**filters, cursor_column: f"gt.{last_cursor}"}
         pages += 1
     print(
         f"WARN: pagination cap hit on {table} "
