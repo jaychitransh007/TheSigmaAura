@@ -40,6 +40,12 @@ class AuraRuntimeConfig:
     rater_model: str = "gpt-5-mini"
     style_advisor_model: str = "gpt-5.4"
 
+    # Phase 4.10 — staged rollout of the composition engine. 0 = always
+    # take the LLM architect path (default until ops flips it on);
+    # 100 = always try the engine first. Values in between deterministically
+    # bucket users by user_id so per-cohort metrics stay attributable.
+    composition_rollout_pct: int = 0
+
 
 def _resolve_env_file(explicit_path: str | None = None) -> str:
     if explicit_path:
@@ -134,6 +140,16 @@ def load_config() -> AuraRuntimeConfig:
     rater_model = os.getenv("RATER_MODEL", "").strip() or AuraRuntimeConfig.rater_model
     style_advisor_model = os.getenv("STYLE_ADVISOR_MODEL", "").strip() or AuraRuntimeConfig.style_advisor_model
 
+    # Phase 4.10 rollout pct. Bad values clamp to [0, 100] rather than
+    # crashing app start — degraded operation beats outage on a misset
+    # ops env var.
+    rollout_raw = os.getenv("AURA_COMPOSITION_ROLLOUT_PCT", "").strip()
+    try:
+        composition_rollout_pct = int(rollout_raw) if rollout_raw else AuraRuntimeConfig.composition_rollout_pct
+    except ValueError:
+        composition_rollout_pct = AuraRuntimeConfig.composition_rollout_pct
+    composition_rollout_pct = max(0, min(100, composition_rollout_pct))
+
     return AuraRuntimeConfig(
         supabase_rest_url=_ensure_rest_url(supabase_url),
         supabase_service_role_key=service_key,
@@ -144,4 +160,5 @@ def load_config() -> AuraRuntimeConfig:
         composer_model=composer_model,
         rater_model=rater_model,
         style_advisor_model=style_advisor_model,
+        composition_rollout_pct=composition_rollout_pct,
     )
