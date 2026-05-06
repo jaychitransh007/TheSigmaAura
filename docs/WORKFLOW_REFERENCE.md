@@ -1,6 +1,6 @@
 # Workflow Reference — Intent Execution Flows
 
-Last updated: May 3, 2026 (LLM ranker live — Composer + Rater replace OutfitAssembler + Reranker; cosine similarity is now retrieval-only; gate moves from `assembly_score` 0.75 to `fashion_score` 75)
+Last updated: May 6, 2026 (post-PR-#101: rater on a 6-dim 1/2/3 scale; episodic memory at the architect; source_preference→catalog default; composer-emitted card names; threshold 50)
 
 > **What this is (and isn't):** This is **reference documentation for humans
 > reading the codebase**. It describes how each intent is executed by the
@@ -17,83 +17,109 @@ Last updated: May 3, 2026 (LLM ranker live — Composer + Rater replace OutfitAs
 
 ---
 
-## Phase 12 Summary (Current State)
+## Current State (post-R7, May 6, 2026)
 
-The Phase 12 re-architecture (Phases 12A–12E, completed April 2026) consolidated the intent taxonomy from 12 → 7 advisory + feedback + silent wardrobe_ingestion, moved evaluation to a visual-grounded post-tryon position, and split inline planner-text generation into a dedicated `StyleAdvisorAgent`. This summary lists the **current** taxonomy and pipeline shapes; the per-intent sections below contain the historical detail and may reference removed paths — refer to this summary for what runs today.
+The system has evolved across three major reshapings since the original Phase 12 architecture: Phase 12 itself (intent consolidation, April 2026), the LLM ranker rollout (Composer + Rater replace deterministic Assembler + Reranker, May 3 2026), and the May 5–6 sweep that introduced the R7 6-dim 1/2/3 rater, episodic memory at the architect, the auto→catalog default routing, and per-outfit composer names. This summary describes what runs today; the per-intent sections below contain historical detail and may reference removed paths — refer here for the current shape.
 
-### Current intent taxonomy (7 advisory + feedback + 1 silent)
+### Current intent taxonomy (6 intents, 5 actions)
 
 | Intent | Action | Pipeline shape |
 |---|---|---|
-| `occasion_recommendation` | `RUN_RECOMMENDATION_PIPELINE` | architect → search → composer (LLM) → rater (LLM) → tryon (top-3, parallel) → visual_evaluator → format. Photo upload is mandatory; on transient visual-evaluator failure the response formatter returns a graceful "try again" empty response (the legacy text-only `OutfitEvaluator` fallback was removed April 9, 2026). Absorbs the old `product_browse` intent via `target_product_type`. |
-| `pairing_request` | `RUN_RECOMMENDATION_PIPELINE` | Same as occasion_recommendation, with `enriched_data["is_anchor"]=True` on the synthetic anchor `RetrievedProduct`. The diversity pass exempts anchors so all 3 outfits survive. |
-| `garment_evaluation` | `RUN_GARMENT_EVALUATION` | tryon → visual_evaluator → format with optional buy/skip verdict. Replaces `shopping_decision`, `garment_on_me_request`, and `virtual_tryon_request`. Photo-only input. `purchase_intent: bool` from the planner controls whether the verdict block renders. |
-| `outfit_check` | `RUN_OUTFIT_CHECK` | visual_evaluator on the user's photo → format → async decomposition. No try-on (the user is already wearing the outfit), no architect call. |
+| `occasion_recommendation` | `RUN_RECOMMENDATION_PIPELINE` | planner → (optional wardrobe-first short-circuit) → architect → search → composer (LLM, emits per-outfit `name`) → rater (LLM, 6 dims on 1/2/3) → threshold gate (50) → tryon (top-3 parallel) → format. Default `source_preference="auto"` routes to the catalog (PR #82); wardrobe-first only fires when explicit AND ≥2-per-role coverage holds. Absorbs the old `product_browse` intent via `target_product_type`. |
+| `pairing_request` | `RUN_RECOMMENDATION_PIPELINE` | Same as occasion_recommendation, with `enriched_data["is_anchor"]=True` on the synthetic anchor `RetrievedProduct`. The diversity pass exempts anchors so all 3 outfits survive. Photo upload is mandatory. |
 | `style_discovery` | `RESPOND_DIRECTLY` | Layered: deterministic topical helpers (collar, color, pattern, silhouette, archetype) for matched topics; `StyleAdvisorAgent` LLM fallback in `discovery` mode for open-ended questions. |
 | `explanation_request` | `RESPOND_DIRECTLY` | Layered: `StyleAdvisorAgent` in `explanation` mode when `previous_recommendations` exists; deterministic explanation summary as the fallback. |
-| `feedback_submission` | `SAVE_FEEDBACK` | Pure event capture, no LLM. Drives `comfort_learning` for `like` events. |
+| `feedback_submission` | `SAVE_FEEDBACK` | Pure event capture, no LLM. Writes a `feedback_events` row (event_type ∈ {`like`, `dislike`}); the row's `turn_id` + `garment_id` is the same signal `list_recent_user_actions` reads to build the architect's episodic memory on subsequent turns. |
 | `wardrobe_ingestion` | `SAVE_WARDROBE_ITEM` | **Silent** — not exposed in the planner prompt's user-facing intent list. Available for programmatic / bulk upload paths only. |
 
-### Removed in Phase 12
+### Removed since Phase 12
 
 - `capsule_or_trip_planning` — handler deleted (Phase 12A); to return in a future phase
 - `product_browse` — folded into `occasion_recommendation` via `CopilotResolvedContext.target_product_type`
-- `virtual_tryon_request` — absorbed into `garment_evaluation`
-- `shopping_decision` — absorbed into `garment_evaluation`
-- `garment_on_me_request` — absorbed into `garment_evaluation`
+- `virtual_tryon_request` / `shopping_decision` / `garment_on_me_request` — absorbed into `garment_evaluation` (Phase 12A)
+- **`garment_evaluation`** — removed in V2 (May 5 2026) when `visual_evaluator_agent.py` was deleted. "Should I buy this?" + "How does this look on me?" requests are now handled by `pairing_request` (the user uploads the anchor; the system pairs it with complementary pieces; the resulting card inherently shows whether the piece works).
+- **`outfit_check`** — removed in V2 alongside `visual_evaluator`. Standalone outfit evaluation isn't a live flow today.
+- **`visual_evaluator_agent.py`** — the entire vision-grounded evaluator was removed in V2. The Rater is now the sole evaluator, scoring composed outfits on six 1/2/3 sub-scores. The legacy 8-axis archetype + 9-dim fit/eval split-polar radar is gone; the OutfitCard radar is now a 6-axis hexagon (5-axis pentagon for `complete` outfits) populated directly from rater sub-scores.
 
-### Key building blocks added in Phase 12
+### Current rater rubric (R7, PR #101 May 5 2026)
 
-| Component | Phase | Purpose |
+| Dim | Default weight | What's scored |
+|---|---:|---|
+| `occasion_fit` | 0.25 | occasion + time-of-day match (formality scored separately) |
+| `color_harmony` | 0.20 | inter-item palette agreement + season/undertone fit |
+| `body_harmony` | 0.15 | anatomy snapshot ↔ silhouette/fit |
+| `pairing` | 0.15 | fit-type compatibility + fabric pairing (multi-item only; drops to None for `complete` outfits) |
+| `formality` | 0.13 | request-formality match + inter-item formality consistency |
+| `statement` | 0.12 | pattern density + embellishment intensity, weighed against the user's risk_tolerance and the occasion |
+
+Each sub-score is a **discrete integer in `{1, 2, 3}`** — schema-locked via `enum: [1, 2, 3]` per property. 1 = clear miss, 2 = works, 3 = clear win. The 1/2/3 scale was deliberate: LLMs cluster ~70–90 on a 0–100 scale with no real discrimination; a discrete 3-point choice forces honest sub-scores.
+
+The orchestrator blends them in Python via `compute_fashion_score`:
+
+```
+raw   = Σ subscore × weight        (1.0 .. 3.0)
+score = ((raw − 1) / 2) × 100      (0 .. 100)
+```
+
+All-1s outfit → 0. All-2s → 50. All-3s → 100. The threshold gate at `_RECOMMENDATION_FASHION_THRESHOLD = 50` (PR #101) lands on "every dim is at least neutral barely clears" — an outfit at 2 across the board barely clears; one with even one "1" on a heavily-weighted axis falls below.
+
+Five weight profiles, picked by `select_weight_profile()` from planner-resolved context, all summing to 1.0:
+
+- **default** (the table above)
+- **ceremonial** — `occasion_fit` + `formality` dominate; fired when occasion ∈ {wedding, festival, ceremony, …}
+- **slimming** — `body_harmony` leads; fired when user message contains "slimmer" / "taller" / "look thin"
+- **bold** — `color_harmony` + `statement` lead; fired on "bold" / "statement" / "colorful"
+- **comfortable** — `body_harmony` + `pairing` lead; fired on "comfortable" / "relaxed"
+
+For `complete` (single-item) outfits, `pairing` drops out and the remaining five weights renormalize to sum to 1.0. The Rater emits `pairing: 3` in this case and `compute_fashion_score` ignores it.
+
+`unsuitable=True` is the only hard veto. PR #89 (May 5 2026) removed the `archetypal_preferences.disliked` aggregate-veto rule that was producing systematic empty responses (T12 had 8/8 outfits vetoed); past likes/dislikes are now applied upstream by the Architect (retrieval bias via episodic memory) and the Composer (item-selection bias).
+
+### Episodic memory at the architect (PR #90 / #92 / #93)
+
+The architect input includes `recent_user_actions` — a chronological 30-day timeline of like/dislike events. Each row carries:
+
+- `event_type`: `"like"` or `"dislike"`
+- `created_at`: ISO timestamp
+- `turn_id`: the turn that produced the outfit
+- `user_query`: the chat message that produced the outfit (e.g. "what should I wear to the office")
+- `item`: garment attributes — `title`, `primary_color`, `garment_subtype`, `color_temperature`, `pattern_type`, `fit_type`, `silhouette_type`, `embellishment_level`, `formality_level`, `occasion_fit`
+
+Loaded via `ConversationRepository.list_recent_user_actions(user_id, lookback_days=30)`. The architect prompt instructs the LLM to use this as **pattern evidence, not rules** — find context-dependent signals (different occasions can take the same attribute differently — a user who disliked solid navy at the office may still want it for date night), and bias `query_document` text + `hard_filters` toward likes / away from dislikes **in similar contexts**. Capped at 30 most recent events to bound prompt size; configurable via `RECENT_USER_ACTIONS_LOOKBACK_DAYS_DEFAULT`.
+
+PR #92 caught a silent failure: the original snake_case query against `catalog_enriched` returned PostgREST 400-errors (the schema uses PascalCase: `ColorTemperature`, `PatternType`, etc.), and the surrounding `except Exception` swallowed it, so every user got an empty timeline since #90 merged. PR #93 consolidated the catalog attr mapping into a single `_CATALOG_ATTR_MAP` (snake_case prompt key → PascalCase DB column) to prevent the same drift; PR #97 narrowed the broad excepts to `(SupabaseError, httpx.RequestError)` so logic errors propagate instead of silently degrading.
+
+### source_preference routing (PR #82, May 5 2026)
+
+The planner extracts `source_preference` into `CopilotResolvedContext`:
+
+| Value | Trigger | Routing |
 |---|---|---|
-| `agents/visual_evaluator_agent.py` | 12B | Vision-grounded per-candidate evaluator — the **sole evaluator** in the system (legacy `OutfitEvaluator` and `OutfitCheckAgent` removed April 9, 2026). 9 dimension scores (5 always-evaluated + 4 context-gated), 8 archetype scores, optional `overall_verdict`/`strengths`/`improvements`. Three modes: `recommendation`, `single_garment`, `outfit_check`. |
-| `agents/outfit_composer.py` | LLM ranker (May 3 2026, PR #29) | gpt-5-mini constructs up to 10 outfits from the retrieved item pool, grouped by direction (A/B/C). Emits per-outfit rationale; validates every item_id against the pool with a hallucination retry. Replaces the old `OutfitAssembler`. |
-| `agents/outfit_rater.py` | LLM ranker (May 3 2026, PR #29) | gpt-5-mini scores each composed outfit on a four-dimension rubric (`occasion_fit`, `body_harmony`, `color_harmony`, `archetype_match`), emits a blended `fashion_score` 0–100, ranks them, marks any `unsuitable`. Replaces the old `Reranker`. |
-| `agents/style_advisor_agent.py` | 12C | LLM advisor for open-ended `style_discovery` and `explanation_request` (against prior turn artifacts). Returns structured advice with prose answer + bullets + cited attributes + dominant directions. |
-| Four thinking directions | 12C | Reasoning axes propagated through architect / visual evaluator / advisor prompts: physical+color, comfort, occasion, weather/time. NOT fixed weights — the agent identifies which 1-2 dominate per turn. |
-| `weather_context` / `time_of_day` / `target_product_type` | 12A/C | New `CopilotResolvedContext` fields extracted by the planner, consumed by the architect and visual evaluator. |
-| `purchase_intent: bool` | 12A | New `CopilotActionParameters` field. Replaces the legacy `verdict` string. Controls whether the `garment_evaluation` formatter renders the buy/skip verdict block. |
+| `"wardrobe"` | User says "from my wardrobe", "use my wardrobe", "from my closet" | Wardrobe-first short-circuit fires; if the wardrobe meets ≥2 tops AND ≥2 bottoms AND ≥2 one-pieces, the orchestrator builds a wardrobe outfit (with optional hybrid catalog gap-fill) and skips the architect/composer/rater pipeline. Below the gate, falls through to `wardrobe_unavailable` answer-source with the actual counts surfaced. |
+| `"catalog"` | User says "from the catalog", "skip my wardrobe", "catalog only" | Full catalog pipeline; wardrobe-first never fires. |
+| `"auto"` (default) | Anything else | **Routes to catalog** (default flipped from wardrobe-first in PR #82). Full architect → composer → rater → tryon pipeline. |
+
+Pre-#82, `"auto"` defaulted to wardrobe-first; the resulting confusion (catalog turns getting blocked by thin wardrobes) drove the flip. The minimum-coverage gate when wardrobe IS requested protects against the new failure mode where an opted-in wardrobe-first user has insufficient items.
+
+### Key building blocks
+
+| Component | Source | Purpose |
+|---|---|---|
+| `agents/copilot_planner.py` | Phase 12 | gpt-5-mini classifies intent + action and resolves `live_context` (occasion_signal, formality_hint, time_of_day, weather_context, source_preference, target_product_type, specific_needs, etc.). Strict structured-output schema with enum-locked intent + action vocabularies. |
+| `agents/outfit_architect.py` | Phase 12 | gpt-5.4, `reasoning_effort=medium`. Plans 1–3 directions per turn with role-typed queries (`complete` / `paired` / `three_piece`). Reads `recent_user_actions` (PR #90) for episodic memory bias. Hard filters limited to `gender_expression` + `garment_subtype`. |
+| `agents/outfit_composer.py` | LLM ranker (May 3, PR #29) | gpt-5.4, `reasoning_effort=low` (promoted from gpt-5-mini in PR #81 for the heavier reasoning task). Builds up to 10 coherent outfits from the retrieved pool; emits a per-outfit `name` (PR #88, e.g. *"Camel Sand Refined"*) that surfaces as the user-facing card title. Schema-locked `direction_id` enum (PR #80) so the LLM physically can't write a SKU there. Per-attempt `on_attempt` callback gives one `model_call_logs` row per LLM call (PR #80) with real `latency_ms` (PR #95). Smart retry on hallucinated item_ids. |
+| `agents/outfit_rater.py` | LLM ranker (May 3, PR #29) + R7 (May 5, PR #101) | gpt-5-mini, `reasoning_effort=minimal`. Scores each composed outfit on six 1/2/3 sub-scores (`occasion_fit`, `body_harmony`, `color_harmony`, `pairing`, `formality`, `statement`). Schema enforces `enum: [1, 2, 3]` per dim. `unsuitable: bool` is the only hard veto; the archetypal-preferences veto was removed in PR #89. Past likes/dislikes are applied upstream — the Rater scores what's in front of it. |
+| `agents/style_advisor_agent.py` | 12C | LLM advisor for open-ended `style_discovery` and `explanation_request`. Returns structured advice with prose answer + bullets + cited attributes + dominant directions. |
+| `compute_fashion_score()` | `outfit_rater.py` | Deterministic Python blender. `raw = Σ subscore × weight` (1.0..3.0), `score = ((raw − 1) / 2) × 100` (0..100). Drops `pairing` for `complete` outfits and renormalizes the remaining five weights. Five profiles, all summing to 1.0. |
+| `_RECOMMENDATION_FASHION_THRESHOLD` | `orchestrator.py:92` | Pre-render gate at `50`. Outfits below the floor or flagged `unsuitable` never reach the user. History: `75` → `60` (PR #81) → `50` (PR #101 R7). |
+| `list_recent_user_actions()` | `repositories.py` (PR #90) | Pulls feedback_events for the user (last 30 days, like+dislike), hydrates garment attrs from `catalog_enriched`, joins `user_query` from `conversation_turns`. Cap of 30 events per user. Empty list on cold start. |
+| `_wardrobe_meets_minimum_coverage()` | `orchestrator.py` (PR #82) | Returns `(sufficient, counts_by_role)`. Strict-AND: ≥2 tops AND ≥2 bottoms AND ≥2 one-pieces. Used by both `_build_wardrobe_first_occasion_response` (the gate) and `_build_wardrobe_only_occasion_fallback` (the message), threaded via `precomputed_coverage` to avoid double-walking the same wardrobe. |
+| `_CATALOG_ATTR_MAP` | `repositories.py` (PR #93) | Single source of truth for snake_case prompt key → PascalCase DB column on `catalog_enriched`. Used by `aggregate_archetypal_feedback` and `list_recent_user_actions`. |
+| `weather_context` / `time_of_day` / `target_product_type` | 12A/C | New `CopilotResolvedContext` fields extracted by the planner, consumed by the architect. |
 | `is_anchor` flag on candidate items | 12D | Set by orchestrator anchor injection; consumed by `_enforce_cross_outfit_diversity` to exempt anchor products from the "no repeats" rule. Fixes the pre-existing bug where pairing turns collapsed to 1 outfit. |
-| Wardrobe-anchor image resolution | 12D follow-up (April 8, 2026) | `_product_to_item` now resolves `image_url` from `enriched_data["image_path"]` and tags wardrobe rows with `source="wardrobe"`. `tryon_service.generate_tryon_outfit` dispatches HTTP(S) URLs to `_download_image` and local `data/...` paths to `_load_local_image`. Without this, the visual-eval try-on render path silently dropped wardrobe-anchor garments because their `image_url` was empty, and Gemini hallucinated a stand-in instead of using the user's uploaded photo. |
-| Wardrobe-write gating by intent | 12D follow-up (April 9, 2026) | Wardrobe persistence is now gated on intent. The orchestrator calls `save_uploaded_chat_wardrobe_item(persist=False)` for ALL uploads (so the planner can read the 46-attribute enrichment in its prompt context), then conditionally promotes the pending dict to a real `user_wardrobe_items` row via `persist_pending_wardrobe_item` ONLY when the planner classifies the turn as `pairing_request` or `outfit_check`. `garment_evaluation` ("should I buy this?") and `style_discovery` uploads are consumed in-memory for the response and discarded — the user is asking about a piece they don't own, so persisting it would pollute their wardrobe and produce a self-match in `_compute_wardrobe_overlap`. The overlap check now also defensively skips any wardrobe row whose id matches the attached item's id. |
-| Browser-safe image URL on attached items | 12D follow-up (April 9, 2026) | `_attached_item_to_outfit_item` now wraps `image_url` / `image_path` in `_browser_safe_image_url`, matching `_wardrobe_item_to_outfit_item`. Without this, the PDP card thumbnail of an uploaded garment fails to load (the browser tries to fetch a relative `data/...` path as a URL) and only the try-on render is visible. |
-| `enrichment_status` on saved wardrobe rows | 12D | New top-level field on the dict returned by `save_wardrobe_item` so the orchestrator can detect failed enrichment without parsing nested JSON. The orchestrator returns a clarification asking for a clearer photo when this is `"failed"`. |
-| `is_garment_photo` + `garment_present_confidence` on saved wardrobe rows | 12D follow-up (April 9, 2026) | Two new fields the wardrobe-only enrichment schema returns. The vision model classifies whether the upload is actually a wearable garment BEFORE extracting the 46 attributes. The orchestrator's `non_garment_image` guard fires when `is_garment_photo is False` OR `garment_present_confidence < 0.5`, short-circuiting the entire pipeline (no architect, no catalog search, no wardrobe persistence) and returning a clarification: "I couldn't see a garment in that photo — it looks like something else. Could you upload a clearer photo of the piece you'd like me to pair with?" `garment_evaluation` is exempt because the visual evaluator handles edge cases the enrichment can't. The wardrobe-persistence promotion block also checks `action != ASK_CLARIFICATION` so non-garment uploads NEVER reach `user_wardrobe_items` even on `pairing_request` / `outfit_check` intents. |
-| Tryon over-generation metrics | 12E | `tryon_attempted_count`, `tryon_succeeded_count`, `tryon_quality_gate_failures`, `tryon_overgeneration_used`, `evaluator_path` surfaced in `response.metadata` and `dependency_validation_events.metadata_json` for the operations dashboard. |
-
-### Contextual evaluation: 5 always + 4 context-gated (Phase 12B follow-ups, April 9 2026)
-
-The visual evaluator scores **5 dimensions for every candidate** and **4 dimensions only when their gating condition is met**. The always-evaluated set are the dimensions whose inputs are guaranteed by completed onboarding (body shape, palette, style preference, etc.). The context-gated set depends on either what the user actually said this turn (`live_context` inputs) or which intent the planner classified.
-
-| Always evaluate (5) | Context-gated (4) | Gating condition |
-|---|---|---|
-| `body_harmony_pct` | | profile (always present) |
-| `color_suitability_pct` | | derived_interpretations (always present) |
-| `style_fit_pct` | | style_preference (always present) |
-| `risk_tolerance_pct` | | style_preference (always present) |
-| `comfort_boundary_pct` | | style_preference (always present) |
-| | `pairing_coherence_pct` | `intent` is `occasion_recommendation`, `outfit_check`, or `pairing_request` (an outfit is being composed or evaluated). Null for `garment_evaluation` / `style_discovery` / `explanation_request`. |
-| | `occasion_pct` | `live_context.occasion_signal` non-null |
-| | `weather_time_pct` | `live_context.weather_context` OR `time_of_day` non-empty |
-| | `specific_needs_pct` | `live_context.specific_needs` non-empty |
-
-**The contract:** when a context-gated dimension's input is absent, the visual evaluator returns `null` for that field — not 0, not a neutral default. `null` propagates all the way through to the OutfitCard. The frontend filters null dimensions out of the **bottom semicircle of the split polar bar chart** before rendering, so the chart vertex count adapts to 4-7 fit-profile axes based on what was actually evaluated (Body, Color, Risk, Comfort always; Pairing / Occasion / Needs only when their gating condition is met; `style_fit_pct` is intentionally excluded from the bottom semicircle because the 8 archetype scores in the **top semicircle** already convey style aesthetically). The purchase verdict averages only the dimensions that were actually scored.
-
-**No-occasion handling at each stage:**
-
-| Stage | Behavior when `occasion_signal` is null |
-|---|---|
-| **Planner** | For `occasion_recommendation` requests it MAY default to `"general"` / `"everyday"` so the architect has something to plan against. For `garment_evaluation`, `pairing_request`, `style_discovery`, and browse-by-category requests it leaves `occasion_signal` explicitly null. |
-| **Architect** | If weather/time-of-day are present, factors those in; otherwise leans on the user's profile — never a fictional occasion. |
-| **Visual evaluator (any mode)** | Returns `occasion_pct: null`. The PDP card radar drops the slice. |
-| **Purchase verdict** (`_compute_purchase_verdict`) | Averages `[body, color, style] + filter(None, [occasion, weather])`. With no occasion + no weather, the verdict rests on body/color/style alone — three honest signals, not five with synthetic defaults. |
-| **Holistic `match_score`** | The model is instructed to compute it from only the dimensions actually scored. |
-
-**Example:** "Should I buy these jeans?" with no occasion, no weather, no specific need:
-- Radar chart shows 6 axes: Body / Color / Style / Risk / Comfort / Pairing.
-- `occasion_pct`, `weather_time_pct`, `specific_needs_pct` are all null in the response payload.
-- Buy/skip verdict is `(body + color + style) / 3` against the standard thresholds (>=78 buy, >=60 conditional, else skip).
-- If the user follows up with "Actually, for the office tomorrow when it's 5°C," the next turn re-scores with `occasion_pct` and `weather_time_pct` populated.
+| Wardrobe-anchor image resolution | 12D follow-up | `_product_to_item` resolves `image_url` from `enriched_data["image_path"]` and tags wardrobe rows with `source="wardrobe"`. `tryon_service.generate_tryon_outfit` dispatches HTTP(S) URLs to `_download_image` and local `data/...` paths to `_load_local_image`. |
+| `is_garment_photo` + `garment_present_confidence` | 12D follow-up | Vision model classifies whether the upload is actually a wearable garment BEFORE extracting the 46 attributes. The orchestrator's `non_garment_image` guard fires when `is_garment_photo is False` OR `garment_present_confidence < 0.5`, short-circuiting the entire pipeline and returning a clarification. |
+| Try-on parallel renders + over-generation metrics | 12E | `ThreadPoolExecutor`-based parallel render of top-3 candidates. `tryon_attempted_count`, `tryon_succeeded_count`, `tryon_quality_gate_failures`, `tryon_overgeneration_used` surfaced in `response.metadata` for the operations dashboard. |
 
 ### Phase 13/13B: Outfit Architect Prompt & Schema Remediation (April 10, 2026)
 
