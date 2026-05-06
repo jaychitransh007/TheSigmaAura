@@ -66,8 +66,11 @@ def retrieval_fingerprint(retrieved_sets: Iterable[RetrievedSet]) -> str:
     """
     parts: List[str] = []
     for rs in retrieved_sets or []:
-        direction = str(getattr(rs, "direction_id", "") or "").strip()
-        role = str(getattr(rs, "role", "") or "").strip().lower()
+        # Direct attribute access — RetrievedSet is a Pydantic model
+        # with required `direction_id`, `role`, and `products` fields.
+        # Consistent with `rs.products` below (review of PR #138).
+        direction = str(rs.direction_id or "").strip()
+        role = str(rs.role or "").strip().lower()
         for product in (rs.products or []):
             pid = str(product.product_id or "").strip()
             if pid:
