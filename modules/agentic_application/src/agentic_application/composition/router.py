@@ -27,7 +27,6 @@ side effect) only on fall-through paths.
 """
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass, field
 from typing import Any, Dict
 
@@ -144,22 +143,6 @@ def is_engine_acceptable(result: CompositionResult) -> tuple[bool, str | None]:
         if len(entry.widened_hards) >= MAX_HARD_WIDENINGS_PER_ATTR:
             return False, "excessive_widening"
     return True, None
-
-
-def is_user_in_rollout_bucket(user_id: str, rollout_pct: int) -> bool:
-    """Deterministic per-user bucketing for staged rollout (Phase 4.10).
-
-    ``rollout_pct=0`` → never; ``rollout_pct=100`` → always; otherwise
-    a stable SHA-256 hash of ``user_id`` mod 100 < rollout_pct. Same
-    user always gets the same bucket assignment, so user-level metrics
-    (engagement, retention) stay attributable per cohort."""
-    if rollout_pct >= 100:
-        return True
-    if rollout_pct <= 0:
-        return False
-    digest = hashlib.sha256((user_id or "").encode("utf-8")).hexdigest()
-    bucket = int(digest[:8], 16) % 100
-    return bucket < rollout_pct
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -279,7 +262,7 @@ def route_recommendation_plan(
     *,
     combined_context: CombinedContext,
     architect_plan_callable,
-    rollout_pct: int = 0,
+    enabled: bool = False,
     graph: StyleGraph | None = None,
 ) -> RouterDecision:
     """Decide whether to use the engine or the LLM architect for this turn.
@@ -288,18 +271,18 @@ def route_recommendation_plan(
     the test suite passes a Mock to avoid the real OpenAI call. In
     production the orchestrator passes ``self.outfit_architect.plan``.
 
-    ``rollout_pct`` (Phase 4.10) gates the engine path entirely on a
-    deterministic per-user bucket. Default 0 means "never use the
-    engine" — the lever is built but inert until ops flips it on.
+    ``enabled`` (Phase 4.10) is the feature flag. False (default) means
+    "never use the engine" — the router goes straight to the LLM. True
+    routes every turn through the engine first; per-turn fall-through
+    on confidence / YAML gap / disambiguation still applies via the
+    spec §9 acceptance gates.
     """
-    user_id = combined_context.user.user_id or ""
-
-    # Phase 4.10 bucket — stop here on rollout misses, before any work.
-    if not is_user_in_rollout_bucket(user_id, rollout_pct):
+    # Phase 4.10 flag — stop here on disabled, before any work.
+    if not enabled:
         return RouterDecision(
             plan=architect_plan_callable(combined_context),
             used_engine=False,
-            fallback_reason="rollout_skipped",
+            fallback_reason="engine_disabled",
             engine_confidence=None,
             yaml_gaps=(),
         )

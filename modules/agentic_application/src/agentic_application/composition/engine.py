@@ -54,10 +54,16 @@ HARD_WIDEN_PENALTY = 0.20
 ATTR_OMIT_PENALTY = 0.30
 YAML_GAP_PENALTY = 0.45
 
-# §8 acceptance threshold — strict, the asymmetric YAML-gap penalty
-# (0.45 > 1 - 0.60 = 0.40) intentionally tips any genuine gap below
-# the floor so it always falls through.
-CONFIDENCE_THRESHOLD = 0.60
+# §8 acceptance threshold. Calibration knob — spec §10 acknowledges
+# the value is preliminary until eval-set data lands. Currently 0.50
+# rather than the spec's 0.60 because (a) downstream composer + rater
+# rerank by score, so an engine plan that's "merely passable" still
+# surfaces good outfits, and (b) at 0.60 the engine almost always
+# falls through on real Indian inputs (4-5 of ~35 attributes typically
+# need relaxation, accumulating penalties below 0.60). YAML gaps
+# always trigger fallback regardless of threshold via the explicit
+# ``has_yaml_gap`` branch in compose_direction.
+CONFIDENCE_THRESHOLD = 0.50
 
 
 # Color attributes from weather get the soft-tier treatment (§3.3

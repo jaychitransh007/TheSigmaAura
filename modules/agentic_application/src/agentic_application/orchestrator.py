@@ -238,20 +238,15 @@ class AgenticOrchestrator:
     """Application-layer orchestrator implementing the 7-component pipeline."""
 
     @staticmethod
-    def _int_from_config(config: Any, attr: str, fallback: int = 0) -> int:
-        """Pull an int-valued field from an ``AuraRuntimeConfig`` (or
+    def _bool_from_config(config: Any, attr: str, fallback: bool = False) -> bool:
+        """Pull a bool-valued field from an ``AuraRuntimeConfig`` (or
         ``Mock``) defensively. Same boundary-coerce pattern as
-        ``_str_from_config`` — Mock attribute access returns Mock and
-        would crash ``int()``."""
+        ``_str_from_config`` — Mock attribute access returns Mock,
+        which is truthy by default; this helper only treats real
+        booleans as themselves and falls back otherwise so a Mock
+        config never silently enables a flag."""
         raw = getattr(config, attr, fallback)
-        if isinstance(raw, bool):
-            return fallback
-        if isinstance(raw, int):
-            return raw
-        try:
-            return int(raw)
-        except (TypeError, ValueError):
-            return fallback
+        return raw if isinstance(raw, bool) else fallback
 
     @staticmethod
     def _str_from_config(config: Any, attr: str, fallback: Optional[str] = None) -> str:
@@ -320,14 +315,15 @@ class AgenticOrchestrator:
         # runs the architect normally and writes the output for next time.
         # See docs/phase_2_cache_design.md.
         self._architect_cache = ArchitectCacheRepository(repo.client)
-        # Phase 4.10 — composition engine rollout. 0 means the router
-        # always falls through to the LLM architect; values up to 100
-        # bucket users by user_id and try the engine first. The graph
-        # is loaded lazily on first use (skip the YAML I/O when rollout
-        # is 0). _composition_graph stays None until the first non-zero
-        # rollout call to route_recommendation_plan.
-        self._composition_rollout_pct: int = max(
-            0, min(100, self._int_from_config(config, "composition_rollout_pct", 0))
+        # Phase 4.10 — composition engine feature flag. False (default)
+        # means the router falls straight through to the LLM architect;
+        # True routes every turn through the engine first (with the
+        # engine's spec §9 fall-through criteria still applying).
+        # Bucketed rollout will follow once eval data lands. The graph
+        # is loaded lazily on first use, skipping the YAML I/O when the
+        # flag is off.
+        self._composition_engine_enabled: bool = self._bool_from_config(
+            config, "composition_engine_enabled", False
         )
         self._composition_graph = None
         # Phase 2.3 composer output cache (May 14 2026). Stacks on top
@@ -4856,11 +4852,11 @@ class AgenticOrchestrator:
                 else:
                     # Phase 4.9 — try the composition engine first; fall
                     # back to the LLM architect on any rejection. Phase
-                    # 4.10 — the rollout pct gates the engine path
-                    # entirely; default 0 means "never engine". The
-                    # router is total: it always returns a plan from
-                    # one of the two sources.
-                    if self._composition_rollout_pct > 0 and self._composition_graph is None:
+                    # 4.10 — the engine flag gates this entirely; default
+                    # False means "never engine". The router is total:
+                    # it always returns a plan from one of the two
+                    # sources.
+                    if self._composition_engine_enabled and self._composition_graph is None:
                         from .composition.yaml_loader import load_style_graph
                         try:
                             self._composition_graph = load_style_graph()
@@ -4869,11 +4865,11 @@ class AgenticOrchestrator:
                             # Disable the engine for the rest of this
                             # process and fall through to the LLM.
                             _log.exception("Composition engine YAML load failed: %s", exc)
-                            self._composition_rollout_pct = 0
+                            self._composition_engine_enabled = False
                     _router_decision = route_recommendation_plan(
                         combined_context=combined_context,
                         architect_plan_callable=self.outfit_architect.plan,
-                        rollout_pct=self._composition_rollout_pct,
+                        enabled=self._composition_engine_enabled,
                         graph=self._composition_graph,
                     )
                     plan = _router_decision.plan
@@ -4887,28 +4883,13 @@ class AgenticOrchestrator:
                     )
                     # Cache miss: write through, but ONLY for LLM-derived
                     # plans. The architect cache key is profile/cluster-
-                    # scoped, not user-scoped — so an engine-derived plan
-                    # written during a partial rollout (rollout_pct < 100)
-                    # would be served back via cache.get to non-rollout
-                    # users in the same cluster, leaking the engine path
-                    # across cohorts and breaking per-cohort metrics.
-                    # Skip the engine-path put until rollout reaches 100;
-                    # at full rollout, every user is in-cohort and the
-                    # leak is harmless. Best-effort write; if it fails
-                    # the user's turn still completes.
-                    if (
-                        not _router_decision.used_engine
-                        or self._composition_rollout_pct >= 100
-                    ):
-                        # Stamp the actual originator on the cache row.
-                        # Engine-derived plans use the engine sentinel
-                        # rather than the LLM model id so cache analytics
-                        # can correctly correlate hit rate with origin.
-                        _origin_model = (
-                            "composition_engine"
-                            if _router_decision.used_engine
-                            else _architect_model
-                        )
+                    # scoped, not user-scoped, so caching engine plans
+                    # during manual flag-on testing would persist them
+                    # for retrieval after the flag flips off — leaking
+                    # the engine path across runs. LLM plans cache
+                    # normally. Best-effort write; if it fails the
+                    # user's turn still completes.
+                    if not _router_decision.used_engine:
                         self._architect_cache.put(
                             tenant_id="default",
                             cache_key=_arch_cache_key,
@@ -4919,7 +4900,7 @@ class AgenticOrchestrator:
                                 cluster=_arch_cache_cluster,
                                 combined_context=combined_context,
                                 architect_prompt_version=ARCHITECT_PROMPT_VERSION,
-                                architect_model=_origin_model,
+                                architect_model=_architect_model,
                             ),
                         )
                 _trace_ctx.full_output = to_jsonable(plan)

@@ -285,18 +285,23 @@ confidence = 1.0
 clamped to [0.0, 1.0]
 ```
 
-Threshold for engine acceptance: **confidence ≥ 0.60** (strict). A YAML gap deducts 0.45, landing at 0.55 — below threshold, triggering fallback as §9 requires. The asymmetry (penalty > 1 - threshold) is intentional: a YAML gap is a genuine "engine doesn't know" signal that should always fall through, not a "marginal confidence" call.
+Threshold for engine acceptance: **confidence ≥ 0.50** (current runtime value; spec originally specified 0.60 — see calibration note below). YAML gaps always trigger fallback regardless of threshold via the explicit `has_yaml_gap` branch in `compose_direction()` — they're a genuine "engine doesn't know" signal handled outside the formula.
 
-**🎨 STYLIST SIGN-OFF NEEDED** on the threshold value once we have eval set (4.6) data — the 0.60 floor and 0.45 gap penalty are both calibration guesses to be tightened against ground truth.
+**Calibration note (May 2026):** the runtime threshold was lowered from the spec's original 0.60 to 0.50 because (a) downstream composer + rater rerank by score, so an engine plan that's "merely passable" still surfaces good outfits, and (b) at 0.60 the engine almost always falls through on real Indian inputs (4-5 of ~35 attributes typically need relaxation, accumulating penalties below the threshold). The 0.45 YAML-gap penalty + the formula coefficients themselves are still calibration guesses to be tightened against eval-set ground truth (Phase 4.6).
+
+**🎨 STYLIST SIGN-OFF NEEDED** on the final threshold value once eval data lands.
 
 ## 9. Fall-through criteria summary
 
 The hot-path router falls through to the LLM architect when ANY of:
 
-1. Engine returns `confidence < 0.60`
+1. Engine returns `confidence < 0.50` (current runtime threshold; see §8 calibration note)
 2. Engine returns no `DirectionSpec` (full failure)
 3. Genuine YAML gap (input value not in any YAML — e.g., a new occasion not yet added)
-4. Provenance shows ≥2 hard-source widenings (semantic drift risk)
+4. Provenance shows ≥2 hard-source widenings on a single attribute (semantic drift risk)
+5. Engine emits `needs_disambiguation` (§7) — peer-pair conflict the engine can't resolve
+
+Plus the router's pre-engine eligibility gates: anchor-garment turns, follow-up turns, and `previous_recommendations`-bearing turns all skip the engine and go straight to the LLM. The engine doesn't yet handle those flows.
 
 Every fall-through is logged with the input that didn't compose, feeding the YAML expansion backlog (4.2 stylist review pass after each rollout step).
 

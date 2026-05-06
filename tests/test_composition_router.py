@@ -27,7 +27,6 @@ from agentic_application.composition.router import (
     extract_engine_inputs,
     is_engine_acceptable,
     is_engine_eligible,
-    is_user_in_rollout_bucket,
     route_recommendation_plan,
 )
 from agentic_application.orchestrator import AgenticOrchestrator
@@ -291,71 +290,53 @@ class AcceptanceTests(unittest.TestCase):
         self.assertIsNone(reason)
 
 
-class IntFromConfigTests(unittest.TestCase):
-    """Boundary coercion for ``composition_rollout_pct`` reads from a
-    ``Mock`` config (which existing orchestrator tests pass). Mocks
-    return Mock for any attribute access; ``int(Mock())`` would crash
-    without this defensive coerce."""
+class BoolFromConfigTests(unittest.TestCase):
+    """Boundary coercion for ``composition_engine_enabled`` reads from
+    a ``Mock`` config (which existing orchestrator tests pass). Mocks
+    are truthy by default; without this helper an unrelated test that
+    passes ``config=Mock()`` would silently turn the engine on. The
+    helper only accepts real ``bool`` values."""
 
     def test_mock_attribute_falls_back_to_default(self):
         from unittest.mock import Mock as _Mock
 
         cfg = _Mock()
-        # Mock auto-creates composition_rollout_pct as a Mock object —
-        # int() on it raises TypeError; the helper must catch and use
-        # the fallback.
-        out = AgenticOrchestrator._int_from_config(cfg, "composition_rollout_pct", 0)
-        self.assertEqual(out, 0)
+        out = AgenticOrchestrator._bool_from_config(
+            cfg, "composition_engine_enabled", False
+        )
+        self.assertFalse(out)
 
-    def test_real_int_passes_through(self):
-        cfg = type("C", (), {"composition_rollout_pct": 25})()
-        out = AgenticOrchestrator._int_from_config(cfg, "composition_rollout_pct", 0)
-        self.assertEqual(out, 25)
+    def test_real_true_passes_through(self):
+        cfg = type("C", (), {"composition_engine_enabled": True})()
+        out = AgenticOrchestrator._bool_from_config(
+            cfg, "composition_engine_enabled", False
+        )
+        self.assertTrue(out)
 
-    def test_string_int_coerces(self):
-        cfg = type("C", (), {"composition_rollout_pct": "42"})()
-        out = AgenticOrchestrator._int_from_config(cfg, "composition_rollout_pct", 0)
-        self.assertEqual(out, 42)
+    def test_real_false_passes_through(self):
+        cfg = type("C", (), {"composition_engine_enabled": False})()
+        out = AgenticOrchestrator._bool_from_config(
+            cfg, "composition_engine_enabled", True
+        )
+        self.assertFalse(out)
 
-    def test_bool_rejected_to_fallback(self):
-        # Python treats bool as int; allowing True → 1 would silently
-        # enable a 1% rollout. Reject explicitly.
-        cfg = type("C", (), {"composition_rollout_pct": True})()
-        out = AgenticOrchestrator._int_from_config(cfg, "composition_rollout_pct", 0)
-        self.assertEqual(out, 0)
-
-    def test_garbage_string_falls_back(self):
-        cfg = type("C", (), {"composition_rollout_pct": "not a number"})()
-        out = AgenticOrchestrator._int_from_config(cfg, "composition_rollout_pct", 7)
-        self.assertEqual(out, 7)
+    def test_truthy_non_bool_falls_back(self):
+        # Truthy strings / ints are NOT promoted to True — the env
+        # loader does the string→bool coerce; the orchestrator only
+        # trusts real booleans.
+        for v in ("true", 1, [True], {"x": 1}):
+            cfg = type("C", (), {"composition_engine_enabled": v})()
+            out = AgenticOrchestrator._bool_from_config(
+                cfg, "composition_engine_enabled", False
+            )
+            self.assertFalse(out, f"value {v!r} should not coerce to True")
 
     def test_missing_attribute_falls_back(self):
         cfg = type("C", (), {})()
-        out = AgenticOrchestrator._int_from_config(cfg, "composition_rollout_pct", 99)
-        self.assertEqual(out, 99)
-
-
-class RolloutBucketTests(unittest.TestCase):
-    def test_zero_pct_never_in_bucket(self):
-        for u in ("a", "b", "c", "very-long-user-id-23"):
-            self.assertFalse(is_user_in_rollout_bucket(u, 0))
-
-    def test_hundred_pct_always_in_bucket(self):
-        for u in ("a", "b", "c"):
-            self.assertTrue(is_user_in_rollout_bucket(u, 100))
-
-    def test_partial_pct_is_deterministic_per_user(self):
-        for u in ("a1", "a2", "a3"):
-            results = [is_user_in_rollout_bucket(u, 50) for _ in range(5)]
-            self.assertEqual(len(set(results)), 1, f"user {u!r} oscillated")
-
-    def test_partial_pct_distributes_roughly(self):
-        # 10000 users at 30% should land somewhere in [25%, 35%].
-        ins = sum(
-            is_user_in_rollout_bucket(f"u{i}", 30) for i in range(10_000)
+        out = AgenticOrchestrator._bool_from_config(
+            cfg, "composition_engine_enabled", True
         )
-        self.assertGreater(ins, 2_500)
-        self.assertLess(ins, 3_500)
+        self.assertTrue(out)
 
 
 class RouteHappyPathTests(unittest.TestCase):
@@ -365,16 +346,16 @@ class RouteHappyPathTests(unittest.TestCase):
     def setUpClass(cls):
         cls.graph = load_style_graph()
 
-    def test_rollout_zero_skips_engine_entirely(self):
+    def test_disabled_flag_skips_engine_entirely(self):
         llm = Mock(return_value=_llm_plan())
         decision = route_recommendation_plan(
             combined_context=_ctx(),
             architect_plan_callable=llm,
-            rollout_pct=0,
+            enabled=False,
             graph=self.graph,
         )
         self.assertFalse(decision.used_engine)
-        self.assertEqual(decision.fallback_reason, "rollout_skipped")
+        self.assertEqual(decision.fallback_reason, "engine_disabled")
         self.assertIsNone(decision.engine_confidence)
         self.assertEqual(decision.plan.plan_source, "llm")
         llm.assert_called_once()
@@ -384,7 +365,7 @@ class RouteHappyPathTests(unittest.TestCase):
         decision = route_recommendation_plan(
             combined_context=_ctx(anchor_garment={"product_id": "x"}),
             architect_plan_callable=llm,
-            rollout_pct=100,
+            enabled=True,
             graph=self.graph,
         )
         self.assertFalse(decision.used_engine)
@@ -399,7 +380,7 @@ class RouteHappyPathTests(unittest.TestCase):
         decision = route_recommendation_plan(
             combined_context=ctx,
             architect_plan_callable=llm,
-            rollout_pct=100,
+            enabled=True,
             graph=self.graph,
         )
         self.assertFalse(decision.used_engine)
@@ -439,7 +420,7 @@ class RouteHappyPathTests(unittest.TestCase):
             decision = route_recommendation_plan(
                 combined_context=_ctx(),
                 architect_plan_callable=llm,
-                rollout_pct=100,
+                enabled=True,
                 graph=self.graph,
             )
         self.assertTrue(decision.used_engine)
