@@ -378,6 +378,16 @@ def _build_outfit_payload(
     return payload
 
 
+# Per-request timeout for rater OpenAI calls. Six concurrent worker
+# calls per turn make a stuck connection especially expensive — without
+# an explicit timeout the SDK default of 600s could pile up. 30s covers
+# the rater's expected tail (target ~2-3s post-parallelization) with
+# headroom. Mirrors the embedder's explicit-timeout pattern
+# (`catalog/retrieval/embedder.py:_EMBEDDING_TIMEOUT_SECONDS`).
+# Review of PR #126.
+_RATER_TIMEOUT_SECONDS = 30.0
+
+
 @lru_cache(maxsize=1)
 def _shared_openai_client() -> OpenAI:
     """Process-wide OpenAI client for the rater.
@@ -391,7 +401,7 @@ def _shared_openai_client() -> OpenAI:
     shared OutfitRater (review of PR #125). Tests that need an isolated
     client can call ``_shared_openai_client.cache_clear()``.
     """
-    return OpenAI(api_key=get_api_key())
+    return OpenAI(api_key=get_api_key(), timeout=_RATER_TIMEOUT_SECONDS)
 
 
 class OutfitRater:
