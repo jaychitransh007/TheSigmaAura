@@ -30,6 +30,7 @@ from agentic_application.recipes.profiles import (
 from agentic_application.recipes.grid import (
     OCCASIONS,
     GridCell,
+    _load_occasions_from_yaml,
     enumerate_grid,
     estimate_cost,
     evaluate_coverage,
@@ -148,6 +149,68 @@ class GridEnumerationTests(unittest.TestCase):
         cells = enumerate_grid(self.profiles)
         diwali_seasons = {c.season for c in cells if c.occasion == "diwali"}
         self.assertEqual(diwali_seasons, {"autumn"})
+
+
+class OccasionYamlLoaderTests(unittest.TestCase):
+    """Regression tests for the Phase 4.4 YAML refactor.
+
+    OCCASIONS used to be a hardcoded 31-entry list that drifted from
+    knowledge/style_graph/occasion.yaml (45+ entries). Now it loads
+    from the YAML at module import; these tests guard against silent
+    truncation, schema drift, or an empty load.
+    """
+
+    def test_loads_at_least_30_occasions(self):
+        # Floor — the YAML has 45+ entries and shouldn't shrink in
+        # ordinary edits. If it does, that's a stylist deletion event
+        # worth reviewing.
+        self.assertGreaterEqual(len(OCCASIONS), 30)
+
+    def test_each_occasion_has_required_fields(self):
+        for o in OCCASIONS:
+            with self.subTest(occasion=o.occasion):
+                self.assertTrue(o.occasion, "occasion name should be non-empty")
+                self.assertTrue(o.occasion_archetype, "archetype should be non-empty")
+                self.assertTrue(o.formality, "formality should be non-empty")
+                self.assertTrue(o.time, "time should be non-empty")
+                self.assertGreater(len(o.seasons), 0, "seasons should be non-empty tuple")
+
+    def test_formality_uses_canonical_values(self):
+        # Per architect prompt: business_casual / ultra_formal don't
+        # exist on rows. Stick to the 5 canonical FormalityLevel values.
+        canonical = {"casual", "smart_casual", "semi_formal", "formal", "ceremonial"}
+        for o in OCCASIONS:
+            with self.subTest(occasion=o.occasion):
+                self.assertIn(o.formality, canonical)
+
+    def test_time_uses_canonical_values(self):
+        canonical = {"daytime", "evening", "flexible"}
+        for o in OCCASIONS:
+            with self.subTest(occasion=o.occasion):
+                self.assertIn(o.time, canonical)
+
+    def test_seasons_use_canonical_values(self):
+        canonical = {"spring", "summer", "autumn", "winter"}
+        for o in OCCASIONS:
+            with self.subTest(occasion=o.occasion):
+                self.assertTrue(set(o.seasons).issubset(canonical),
+                                f"{o.occasion}: unknown season(s) {set(o.seasons) - canonical}")
+
+    def test_loader_function_directly(self):
+        # The module-level OCCASIONS calls _load_occasions_from_yaml at
+        # import time. Calling it again with the default path should
+        # produce the same list — pure function, no caching.
+        reloaded = _load_occasions_from_yaml()
+        self.assertEqual(len(reloaded), len(OCCASIONS))
+        self.assertEqual(
+            [o.occasion for o in reloaded],
+            [o.occasion for o in OCCASIONS],
+        )
+
+    def test_unique_occasion_names(self):
+        names = [o.occasion for o in OCCASIONS]
+        self.assertEqual(len(names), len(set(names)),
+                         "duplicate occasion names in YAML")
 
 
 class CostEstimateTests(unittest.TestCase):
