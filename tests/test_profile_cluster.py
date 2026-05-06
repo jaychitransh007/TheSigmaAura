@@ -1,17 +1,22 @@
 """Unit tests for the Phase 2 profile clustering function.
 
-The cluster maps a UserContext to one of 36 buckets:
-gender (3) × season_group_broad (4) × frame_class (3). See
+The cluster maps a UserContext to one of 96 buckets:
+gender (3) × season_group_broad (4) × body_shape (8). See
 docs/phase_2_cache_design.md for the rationale.
+
+History: the initial 36-bucket design (PR #131) used frame_class.
+Replaced with body_shape per PR #131 review — BodyShape has priority
+over FrameStructure in the architect prompt.
 
 Tests focus on:
 - All 12 SeasonalColorGroup sub-seasons map to the correct broad season
-- All 6 FrameStructure labels map to the correct frame_class
+- All 7 canonical BodyShape values map to their bucket
 - Missing / "Unable to Assess" inputs route to "unknown" buckets
 - Gender variants (feminine / female / f / case-mixed) all canonicalise
 - ProfileCluster is hashable (so it can serve as a dict key)
 - str(cluster) is deterministic and pipe-separated
-- The full Cartesian product of valid inputs really yields 36 distinct strings
+- The full Cartesian product of valid inputs really yields 96 distinct strings
+- BodyShape is read from analysis_attributes (raw), not derived_interpretations
 """
 
 from __future__ import annotations
@@ -35,20 +40,29 @@ for p in (
 
 from agentic_application.cache import ProfileCluster, cluster_for
 from agentic_application.cache.profile_cluster import (
+    _BODY_SHAPE_BUCKETS,
     _BROAD_SEASONS,
-    _FRAME_BUCKETS,
 )
 from agentic_application.schemas import UserContext
 
 
-# Helper: build a UserContext with the relevant derived_interpretations
-def _user(gender: str = "feminine", *, season: str = "Soft Autumn", frame: str = "Medium and Balanced") -> UserContext:
+def _user(
+    gender: str = "feminine",
+    *,
+    season: str = "Soft Autumn",
+    body_shape: str = "Hourglass",
+) -> UserContext:
+    """Build a UserContext with the cluster-relevant attributes set.
+
+    BodyShape lives in analysis_attributes (raw); SeasonalColorGroup
+    in derived_interpretations (interpreter-wrapped).
+    """
     return UserContext(
         user_id="u1",
         gender=gender,
+        analysis_attributes={"BodyShape": body_shape},
         derived_interpretations={
             "SeasonalColorGroup": {"value": season, "confidence": 0.8},
-            "FrameStructure": {"value": frame, "confidence": 0.7},
         },
     )
 
@@ -67,8 +81,6 @@ class GenderBucketingTests(unittest.TestCase):
         self.assertEqual(cluster_for(_user(gender="U")).gender, "unisex")
 
     def test_unknown_gender_routes_to_unisex(self) -> None:
-        # Defensive: if a user record has an empty/strange gender string,
-        # bucket as unisex rather than crashing or routing unpredictably.
         self.assertEqual(cluster_for(_user(gender="")).gender, "unisex")
         self.assertEqual(cluster_for(_user(gender="other")).gender, "unisex")
 
@@ -79,10 +91,6 @@ class GenderBucketingTests(unittest.TestCase):
 
 class SeasonBucketingTests(unittest.TestCase):
 
-    # All 12 sub-seasons from interpreter.SUB_SEASON_PALETTE_MAP must
-    # map to the broad season suffix. If interpreter adds new
-    # sub-seasons, both this list and the production code need
-    # updating — keep them in lockstep.
     SUB_SEASONS = {
         "Spring": ["Warm Spring", "Light Spring", "Clear Spring"],
         "Summer": ["Cool Summer", "Light Summer", "Soft Summer"],
@@ -106,91 +114,121 @@ class SeasonBucketingTests(unittest.TestCase):
         self.assertEqual(cluster_for(_user(season="")).season_group, "unknown")
 
     def test_unrecognised_value_routes_to_unknown(self) -> None:
-        # Defensive: if interpreter ever emits an unexpected value,
-        # don't silently bucket it under one of the known seasons.
         self.assertEqual(cluster_for(_user(season="Mystery Season")).season_group, "unknown")
 
     def test_raw_string_value_supported(self) -> None:
-        # Legacy/test-fixture path: derived_interpretations may carry
-        # a raw string rather than the standard {"value": ...} dict.
         u = UserContext(
             user_id="u1",
             gender="feminine",
+            analysis_attributes={"BodyShape": "Hourglass"},
             derived_interpretations={"SeasonalColorGroup": "Soft Autumn"},
         )
         self.assertEqual(cluster_for(u).season_group, "autumn")
 
 
-class FrameBucketingTests(unittest.TestCase):
+class BodyShapeBucketingTests(unittest.TestCase):
 
-    def test_all_6_frame_labels_map_correctly(self) -> None:
-        # Source of truth: interpreter._derive_frame_structure label dict
-        expected = {
-            "Light and Narrow": "slim",
-            "Light and Broad": "slim",
-            "Medium and Balanced": "medium",
-            "Solid and Narrow": "sturdy",
-            "Solid and Balanced": "sturdy",
-            "Solid and Broad": "sturdy",
-        }
-        for label, bucket in expected.items():
-            with self.subTest(frame_label=label):
-                self.assertEqual(cluster_for(_user(frame=label)).frame_class, bucket)
+    # All 7 canonical BodyShape values from prompt/outfit_architect.md:255.
+    CANONICAL_SHAPES = {
+        "Pear": "pear",
+        "Hourglass": "hourglass",
+        "Apple": "apple",
+        "Inverted Triangle": "inverted_triangle",
+        "Rectangle": "rectangle",
+        "Diamond": "diamond",
+        "Trapezoid": "trapezoid",
+    }
+
+    def test_all_7_canonical_shapes_map_correctly(self) -> None:
+        for label, bucket in self.CANONICAL_SHAPES.items():
+            with self.subTest(body_shape=label):
+                self.assertEqual(
+                    cluster_for(_user(body_shape=label)).body_shape,
+                    bucket,
+                )
+
+    def test_case_insensitive(self) -> None:
+        self.assertEqual(cluster_for(_user(body_shape="HOURGLASS")).body_shape, "hourglass")
+        self.assertEqual(cluster_for(_user(body_shape="inverted triangle")).body_shape, "inverted_triangle")
 
     def test_unable_to_assess_routes_to_unknown(self) -> None:
-        self.assertEqual(cluster_for(_user(frame="Unable to Assess")).frame_class, "unknown")
+        self.assertEqual(cluster_for(_user(body_shape="Unable to Assess")).body_shape, "unknown")
 
     def test_empty_routes_to_unknown(self) -> None:
-        self.assertEqual(cluster_for(_user(frame="")).frame_class, "unknown")
+        self.assertEqual(cluster_for(_user(body_shape="")).body_shape, "unknown")
+
+    def test_unrecognised_value_routes_to_unknown(self) -> None:
+        self.assertEqual(cluster_for(_user(body_shape="Banana")).body_shape, "unknown")
+
+    def test_body_shape_read_from_analysis_attributes(self) -> None:
+        # BodyShape lives in analysis_attributes (raw), not
+        # derived_interpretations — the interpreter does not transform
+        # it. If someone moves it later, both this test and the
+        # production code need updating.
+        u = UserContext(
+            user_id="u1",
+            gender="feminine",
+            analysis_attributes={"BodyShape": "Pear"},
+            derived_interpretations={"SeasonalColorGroup": {"value": "Soft Autumn"}},
+        )
+        self.assertEqual(cluster_for(u).body_shape, "pear")
+
+    def test_raw_string_value_supported(self) -> None:
+        # Production stores BodyShape as a raw string; legacy fixtures
+        # may wrap it in {"value": ...}. Handle both.
+        u = UserContext(
+            user_id="u1",
+            gender="feminine",
+            analysis_attributes={"BodyShape": {"value": "Hourglass"}},
+            derived_interpretations={"SeasonalColorGroup": {"value": "Soft Autumn"}},
+        )
+        self.assertEqual(cluster_for(u).body_shape, "hourglass")
 
 
 class ProfileClusterValueTests(unittest.TestCase):
 
     def test_str_is_pipe_separated(self) -> None:
-        c = ProfileCluster(gender="feminine", season_group="autumn", frame_class="medium")
-        self.assertEqual(str(c), "feminine|autumn|medium")
+        c = ProfileCluster(gender="feminine", season_group="autumn", body_shape="hourglass")
+        self.assertEqual(str(c), "feminine|autumn|hourglass")
 
     def test_is_hashable(self) -> None:
-        # Must be usable as a dict key for the metrics dashboard.
-        c1 = ProfileCluster("feminine", "autumn", "medium")
-        c2 = ProfileCluster("feminine", "autumn", "medium")
+        c1 = ProfileCluster("feminine", "autumn", "hourglass")
+        c2 = ProfileCluster("feminine", "autumn", "hourglass")
         d = {c1: 1}
         self.assertEqual(d[c2], 1)
 
     def test_distinct_clusters_distinct_strings(self) -> None:
         # The full Cartesian product of valid (non-unknown) buckets
-        # must yield exactly 36 distinct cache-key strings.
+        # must yield exactly 96 distinct cache-key strings:
+        # 3 genders × 4 broad seasons × 8 body shapes = 96.
+        # (8 = 7 canonical + "unknown"; we include "unknown" as a
+        # valid bucket so unknown users still get their own slot.)
         seen: set[str] = set()
+        body_buckets = set(_BODY_SHAPE_BUCKETS.values()) | {"unknown"}
+        self.assertEqual(len(body_buckets), 8)
         for g in ("feminine", "masculine", "unisex"):
             for s in _BROAD_SEASONS:
-                for f in set(_FRAME_BUCKETS.values()):
-                    seen.add(str(ProfileCluster(g, s, f)))
-        self.assertEqual(len(seen), 3 * 4 * 3)
+                for b in body_buckets:
+                    seen.add(str(ProfileCluster(g, s, b)))
+        self.assertEqual(len(seen), 3 * 4 * 8)
 
 
 class IntegrationTests(unittest.TestCase):
 
     def test_typical_alpha_user(self) -> None:
-        user = _user(gender="feminine", season="Soft Autumn", frame="Medium and Balanced")
+        user = _user(gender="feminine", season="Soft Autumn", body_shape="Hourglass")
         c = cluster_for(user)
         self.assertEqual(c.gender, "feminine")
         self.assertEqual(c.season_group, "autumn")
-        self.assertEqual(c.frame_class, "medium")
-        self.assertEqual(str(c), "feminine|autumn|medium")
+        self.assertEqual(c.body_shape, "hourglass")
+        self.assertEqual(str(c), "feminine|autumn|hourglass")
 
     def test_minimal_profile_routes_through_unknowns(self) -> None:
-        # A user mid-onboarding may not have SeasonalColorGroup or
-        # FrameStructure derived yet. The cluster falls through to
-        # unknown buckets — they still get cached, just under
-        # gender|unknown|unknown which serves anyone with the same
-        # gender and a not-yet-derived profile.
         user = UserContext(user_id="u1", gender="masculine")
         c = cluster_for(user)
         self.assertEqual(c, ProfileCluster("masculine", "unknown", "unknown"))
 
     def test_function_is_pure(self) -> None:
-        # Running cluster_for twice on the same user gives the same
-        # result. No side effects, no state.
         user = _user()
         self.assertEqual(cluster_for(user), cluster_for(user))
 

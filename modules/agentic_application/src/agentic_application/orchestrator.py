@@ -223,6 +223,24 @@ def extract_urls(message: str) -> List[str]:
 class AgenticOrchestrator:
     """Application-layer orchestrator implementing the 7-component pipeline."""
 
+    @staticmethod
+    def _str_from_config(config: Any, attr: str, fallback: Optional[str] = None) -> str:
+        """Pull a string-valued field from an ``AuraRuntimeConfig`` (or
+        ``Mock``) defensively.
+
+        Mock objects auto-create attributes that return ``Mock`` instances
+        on access — passing those to an agent constructor that expects
+        ``str`` would crash. The boundary coercion here ensures
+        downstream constructors only ever see real strings.
+
+        ``fallback`` overrides the default; when omitted, the dataclass
+        attribute on ``AuraRuntimeConfig`` is used so a single edit to
+        the class default propagates everywhere (review of PR #128).
+        """
+        default = fallback if fallback is not None else getattr(AuraRuntimeConfig, attr)
+        raw = getattr(config, attr, default)
+        return raw if isinstance(raw, str) else default
+
     def __init__(
         self,
         *,
@@ -250,35 +268,20 @@ class AgenticOrchestrator:
         # would still return a Mock). Coerce anything non-string to
         # the constructor default so the constructor's own validation
         # only ever sees real strings.
-        _architect_effort_raw = getattr(config, "architect_reasoning_effort", "medium")
-        _architect_effort = _architect_effort_raw if isinstance(_architect_effort_raw, str) else "medium"
-        # Phase 1.4 (May 13 2026): architect + composer model strings
-        # flow from AuraRuntimeConfig so they can be flipped per-env via
-        # ARCHITECT_MODEL / COMPOSER_MODEL without a code change. Same
-        # boundary-coercion as `architect_reasoning_effort` above —
+        _architect_effort = self._str_from_config(config, "architect_reasoning_effort", "medium")
+        # Phase 1.4 (May 13 2026): every agent's model flows from
+        # AuraRuntimeConfig so per-env swaps don't require a code
+        # change. Boundary-coerce each value via _str_from_config —
         # tests pass `config=Mock()` and Mock auto-creates attribute
         # access (returning a Mock) which would break the agents'
         # constructors that expect a real str. Fallbacks reference the
         # dataclass attributes so a single edit to the class defaults
-        # also moves the orchestrator's defaults (review of PR #128).
-        # Phase 1.4 (May 13 2026): every agent's model flows from
-        # AuraRuntimeConfig so per-env swaps don't require a code
-        # change. Boundary-coerce each value the same way as
-        # architect_reasoning_effort above — tests pass `config=Mock()`
-        # and Mock auto-creates attribute access (returning a Mock)
-        # which would break the agents' constructors that expect a
-        # real str. Fallbacks reference the dataclass attributes so a
-        # single edit to the class defaults moves them everywhere.
-        def _str_from_config(attr: str) -> str:
-            default = getattr(AuraRuntimeConfig, attr)
-            raw = getattr(config, attr, default)
-            return raw if isinstance(raw, str) else default
-
-        _planner_model = _str_from_config("planner_model")
-        _architect_model = _str_from_config("architect_model")
-        _composer_model = _str_from_config("composer_model")
-        _rater_model = _str_from_config("rater_model")
-        _style_advisor_model = _str_from_config("style_advisor_model")
+        # moves them everywhere.
+        _planner_model = self._str_from_config(config, "planner_model")
+        _architect_model = self._str_from_config(config, "architect_model")
+        _composer_model = self._str_from_config(config, "composer_model")
+        _rater_model = self._str_from_config(config, "rater_model")
+        _style_advisor_model = self._str_from_config(config, "style_advisor_model")
 
         self.outfit_architect = OutfitArchitect(model=_architect_model, reasoning_effort=_architect_effort)
         # Evaluator history (see top of file): OutfitCheckAgent and
