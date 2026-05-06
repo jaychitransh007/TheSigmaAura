@@ -34,6 +34,7 @@ from .relaxation import (
     RelaxedReduction,
     reduce_with_relaxation,
 )
+from .render import render_query_document
 from .yaml_loader import (
     AttributeMapping,
     OccasionEntry,
@@ -407,11 +408,13 @@ def _resolve_query_structure(
 def _build_query_specs(
     direction_type: str,
     direction_id: str,
+    composed_attributes: Mapping[str, tuple[str, ...]],
     user: UserContext,
 ) -> list[QuerySpec]:
-    """Emit QuerySpec stubs (one per role) for the resolved direction
-    type. ``query_document`` is left empty here; 4.7e renders it from
-    the composed attributes."""
+    """Emit one QuerySpec per role for the resolved direction type, with
+    ``query_document`` rendered from the engine's per-attribute output
+    (4.7e). ``hard_filters`` carries the always-applied global filters
+    (gender_expression at minimum)."""
     base_filters = build_global_hard_filters(user)
     if direction_type == "complete":
         roles = ("complete",)
@@ -424,7 +427,11 @@ def _build_query_specs(
             query_id=f"{direction_id}{i + 1}",
             role=role,
             hard_filters=dict(base_filters),
-            query_document="",
+            query_document=render_query_document(
+                composed_attributes=composed_attributes,
+                role=role,
+                direction_type=direction_type,
+            ),
         )
         for i, role in enumerate(roles)
     ]
@@ -512,7 +519,14 @@ def compose_direction(
     has_yaml_gap = bool(gaps)
     confidence = _compute_confidence(provenance, has_yaml_gap)
 
-    queries = _build_query_specs(direction_type, inputs.direction_id, user)
+    composed_attributes: dict[str, tuple[str, ...]] = {
+        p.attribute: p.final_flatters
+        for p in provenance
+        if p.final_flatters
+    }
+    queries = _build_query_specs(
+        direction_type, inputs.direction_id, composed_attributes, user
+    )
     label = inputs.direction_label or _default_label(inputs)
 
     direction = DirectionSpec(
