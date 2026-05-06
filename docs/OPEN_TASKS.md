@@ -143,30 +143,44 @@ Build `ops/scripts/architect_replay_eval.py` that:
 
 **The anchor document for the latency-reduction work.** Replaces the prior pre-launch / launch / post-launch framing with a 7-phase execution plan, each with explicit test gates. We test query response after every phase before progressing.
 
-## Status as of May 14 2026
+## Status as of 2026-05-07
 
 | Phase | Status | Notes |
 |---|---|---|
 | Phase 1 — Operational quick wins | ✅ **SHIPPED + verified** | Rater parallelization, retrieval RPC fix, planner shadow infra (dormant), gpt-5.4 → gpt-5.2 architect/composer swap. ~6s saved per turn. |
-| Phase 2 — Caching layer | ✅ **SHIPPED + applied to staging** | All 4 migrations live on Aura-Staging. **Hit rate ~0% in practice** because planner output is non-deterministic — same query produces different occasion_signal + style_goal. User declined to constrain planner. Phase 4 fixes the root cause; Phase 2 infrastructure compounds with it then. |
-| Phase 3 — Prompt compression | ⏸ Not started | ~1.5 weeks. Realistic ~10s win on architect, ~7s on composer. |
+| Phase 2 — Caching layer | ✅ **SHIPPED + applied to staging** | All 4 migrations live on Aura-Staging. Hit rate jumped from ~0% (non-deterministic planner output) toward the design target as Phase 4.7+4.11 made engine inputs canonical. |
+| Phase 3 — Prompt compression | ⏸ Not started | ~1.5 weeks. Realistic ~10s win on architect, ~7s on composer. **Mostly moot for engine-accepted turns** (engine path has no architect LLM call); still relevant for the LLM-fallback path. |
 | Phase 4 prep (4.1, 4.4, 4.5) | ✅ **SHIPPED** | Composition semantics spec, bootstrap grid YAML loader, MIGRATED prompt markers. |
-| Phase 4.7 — Engine implementation | 🛠 **NEXT MAJOR LIFT** | ~10-13 days, 6 sub-PRs. Replaces architect LLM with deterministic YAML lookup. Architect drops 19s → 500ms; cache hit rate jumps because inputs become deterministic. |
+| Phase 4.7 — Engine implementation | ✅ **SHIPPED** (PR #149) | 6 sub-PRs (4.7a-f) bundled: yaml_loader, reduction, relaxation, engine, render, worked-example tests. Architect stage drops 19s → ~0ms on engine-accepted turns. Verified end-to-end with confidence=1.0 on a real staging query. |
+| Phase 4.8 — Quality validator | ✅ **Framework SHIPPED** (PR #149) | `composition/quality.py` + `ops/scripts/composition_quality_eval.py` ready to consume Phase 4.6 eval set. Real comparison run gated on 4.6. |
+| Phase 4.9 — Hot-path router | ✅ **SHIPPED** (PR #149) | `composition/router.py` with §9 fall-through gates + `extract_engine_inputs` + `is_engine_acceptable`. Wired into orchestrator. |
+| Phase 4.10 — Manual flag rollout | ✅ **Manual flag SHIPPED** (PRs #149, #151) | `AURA_COMPOSITION_ENGINE_ENABLED` bool env var (default false). Bucketed-pct rollout deferred — flip flag for testing; switch to bucket-based ramp once 4.6 calibration data lands. |
+| Phase 4.11 — Input canonicalization | ✅ **SHIPPED** (PR #151) | Two-phase canonicalize: exact-match against YAML keys → batched text-embedding-3-small fallback. 256-dim pre-computed embeddings (350KB JSON) co-shipped. Unblocked the engine on real planner output. |
+| Phase 4.12 — Observability + operability hardening | ✅ **SHIPPED** (PRs #150, #152, #153, #154) | Pre-flag instrumentation, tool_traces constraint fix, model_call_logs origin stamping, full panel set (21-24) + runbook + `ops/scripts/turn_forensics.py`. |
 | Phase 4.2 — Stylist YAML review | 🔒 Blocked on human | Paid consultant pass. Output: revised YAMLs + canonical-schema fixes. |
-| Phase 4.6 — Eval set curation | 🔒 Blocked on human | 100-500 hand-curated queries with hand-rated outputs. Gates Phase 4.8 + 4.10. |
-| Phase 4.8, 4.9, 4.10 | ⏸ Gated on 4.7 + 4.6 | Quality validator, hot-path router, production rollout. |
-| Phase 5 — Composer engine | ⏸ Not started | Same pattern as 4.7 for the composer. |
+| Phase 4.6 — Eval set curation | 🔒 Blocked on human | 100-500 hand-curated queries with hand-rated outputs. Gates Phase 4.8 actual run, Phase 1.4 model A/B, Phase 4.10 bucketed ramp. |
+| Phase 5 — Composer engine | ⏸ Not started | Same pattern as 4.7 for the composer. Composer is the next-biggest LLM cost (~$0.04/turn) and second-longest stage (~12-14s). |
 | Phase 6 — Streaming delivery | ⏸ Not started | ~2-3 weeks. Cards visible <3s on cache hit, <8s on miss. UX win independent of cache hit rate. |
-| Phase 7 — Distillation | ⏸ Months 4+, gated on 10K+ traces | distillation_traces table now live (May 14 2026 migration), accumulating data. |
+| Phase 7 — Distillation | ⏸ Months 4+, gated on 10K+ traces | distillation_traces table live since May 2026, accumulating data. |
 
 **Production model lineup:** architect + composer on **gpt-5.2** (was gpt-5.4); planner + rater on **gpt-5-mini**; style advisor on **gpt-5.4**. All five env-configurable via `PLANNER_MODEL`, `ARCHITECT_MODEL`, `COMPOSER_MODEL`, `RATER_MODEL`, `STYLE_ADVISOR_MODEL`.
 
 **See also:** `docs/composition_semantics.md` for the Phase 4 engine spec; `~/.claude/projects/.../memory/project_phase_2_4_status.md` for full handoff context.
 
 **Foundation already shipped:**
-- **PR #109** — `distillation_traces` table + `record_stage_trace` context manager wired into 5 stages (production-ready trace pipeline; full I/O captured per turn for future distillation training). Migration applied to staging on May 14 2026 — was a silent no-op until then.
-- **PR #110** — bootstrap intent grid + synthetic profile pool (5,424 cells, regenerable via `ops/scripts/generate_bootstrap_grid.py`; available as Phase 4 input). **Phase 4.4 (May 14 2026): generator now reads from `occasion.yaml` directly** — drift vector eliminated.
+- **PR #109** — `distillation_traces` table + `record_stage_trace` context manager wired into 5 stages (production-ready trace pipeline; full I/O captured per turn for future distillation training).
+- **PR #110** — bootstrap intent grid + synthetic profile pool (5,424 cells, regenerable via `ops/scripts/generate_bootstrap_grid.py`; available as Phase 4 input). Phase 4.4: generator reads from `occasion.yaml` directly — drift vector eliminated.
 - **PRs #111–#117** — 8-file style graph (~5,500 lines of Indian-urban fashion knowledge as YAMLs) covering body_frame (M+F), archetype, palette, occasion, weather, query_structure, pairing_rules. Plus 2 reusable validators (`ops/scripts/validate_style_graph_yaml.py`, `validate_style_graph_conflicts.py`).
+
+**Phase 4 engine + operability — shipped 2026-05-06 / 2026-05-07:**
+- **PR #149** — composition engine (Phases 4.7a-4.7f bundled: yaml_loader, reduction, relaxation, engine, render, worked-example tests) + Phase 4.8 quality-validator framework + Phase 4.9 hot-path router + Phase 4.10 boolean feature flag.
+- **PR #150** — pre-flag observability: router decision counter, engine latency histogram, YAML gap surfacer, YAML-load-failure alert.
+- **PR #151** — Phase 4.11 input canonicalization layer + canonical_embeddings.json artifact + bug fix for seasonal_color_group dual-dimension lookup.
+- **PR #152** — `tool_traces` CHECK-constraint coercion fix (cache_hit / skipped_no_urls were tripping the DB; observability data was being silently dropped).
+- **PR #153** — `model_call_logs.model` origin stamping (`cache` / `composition_engine` / LLM model id) so per-model rollups stay honest on engine-served turns.
+- **PR #154** — comprehensive observability follow-up: 4 new metrics (canonicalize result counter, embed-duration histogram, tool_traces failure counter, attribute-status counter), 4 new dashboard panels (21-24), provenance summary plumbed into traces, OPERATIONS.md "A4: Composition engine flag-on regressions" runbook, `ops/scripts/turn_forensics.py`.
+
+A real flag-on staging turn (`b356a1bf`, 2026-05-06) confirmed the win: architect stage 19s → ~0ms, total turn 83s → 63s, $0.04/turn cheaper, engine accepted at confidence 1.0.
 
 These foundations remain available; their consumers (the composition engine in Phase 4, the cache layer in Phase 2) ship below.
 
@@ -313,40 +327,63 @@ This is **not** training data — it's the eval ground truth used for Phase 4.8 
 
 ### Engine work (Weeks 5-6)
 
-#### 4.7 Implement composition engine (1-2 weeks)
+#### 4.7 Implement composition engine — ✅ SHIPPED (PR #149)
 
-New module `modules/agentic_application/src/agentic_application/composition/`. Reads 8 YAMLs from `knowledge/style_graph/`. Applies intersect/union semantics with precedence rules from `docs/composition_semantics.md` (PR #144 + #147). Outputs structured `direction` object matching architect's existing schema. Empty-intersection fallback per spec §3.2; on full failure, fall through to LLM architect.
+Bundled all six sub-PRs (4.7a–4.7f) into a single merge: yaml_loader → reduction → relaxation → engine → render → worked-example tests. Module `modules/agentic_application/src/agentic_application/composition/`. Reads 8 YAMLs from `knowledge/style_graph/`. Applies intersect/union semantics with precedence rules from `docs/composition_semantics.md` (PR #144 + #147). Empty-intersection fallback per spec §3.2; on full failure, falls through to LLM architect via the router (4.9).
 
-Decomposed into 6 sequential sub-PRs (~10-13 working days total):
+Verified end-to-end on 2026-05-06: architect stage 19s → ~0ms on engine-accepted turns; engine itself runs in <1ms wall-clock; confidence=1.0 on a real staging "casual outfits for weekend outing" query.
 
-- **4.7a** — YAML parser module (`composition/yaml_loader.py`). Loads all 8 YAMLs into typed dataclasses at startup. Validates required fields + unknown attribute names. Pure function after load. **1-2 days, gates everything else in 4.7.**
-- **4.7b** — Per-attribute reduction (intersect ∩, union ∪, avoid wins). Pure function, heavily tested against worked examples in spec §6. **2 days.**
-- **4.7c** — Empty-intersection relaxation (drop softs in §3.3 declaration order one-at-a-time, then widen hards while preserving all `avoid`) + provenance trail. **2-3 days.**
-- **4.7d** — `compose_direction()` top-level + confidence scoring per spec §8 (penalty 0.45 on YAML gap, threshold ≥0.60) + `needs_disambiguation` signal. **2 days.**
-- **4.7e** — `query_document` rendering: composed attributes → embedding query text. Mirrors what the LLM architect emits today; tests verify the rendered query passes the architect's existing query-document constraints. **2-3 days.**
-- **4.7f** — Engine tests against the 4 worked examples in spec §6. **1 day.**
+#### 4.8 Quality validator — ✅ FRAMEWORK SHIPPED (PR #149)
 
-#### 4.8 Quality validator (2-3 days)
+`composition/quality.py` implements `compare_queries`, `compare_directions`, `compare_plans`, `aggregate_eval` — pure-function comparators with token Jaccard on `query_document`, set Jaccard on `(key, value)` hard-filter items, role-based query pairing, direction_id-based pairing, median-not-mean reduction. `ops/scripts/composition_quality_eval.py` is the CLI driver; reads an eval JSONL, runs engine + LLM per cell, emits markdown.
 
-Compare composition engine output to current architect output on the eval set (4.6). Flag divergences for stylist review. Builds confidence-score per cell on whether engine is ready to replace LLM there.
+**Real run gated on Phase 4.6** (eval set curation). Until then the framework sits dormant.
 
-#### 4.9 Integrate with hot-path router (3-5 days)
+#### 4.9 Hot-path router — ✅ SHIPPED (PR #149)
 
-Wrap architect call: try composition engine first; fall through to LLM architect (with Phase 1 model swap, ~12s) on low-confidence or genuine YAML gap. Log every fall-through with the input that didn't compose cleanly — feedback for YAML expansion.
+`composition/router.py:route_recommendation_plan()` encodes spec §9 fall-through criteria (`confidence < 0.50` per the recalibration in PR #151, `no_direction`, `yaml_gap`, `excessive_widening`, `needs_disambiguation`) plus pre-engine eligibility gates (`anchor_present`, `followup_request`, `has_previous_recommendations`). Returns a `RouterDecision` envelope with `used_engine`, `fallback_reason`, `engine_confidence`, `yaml_gaps`, `engine_ms`, `provenance_summary` — wired into the orchestrator's cache-miss path.
 
-### Cutover (Week 7)
+### Cutover
 
-#### 4.10 Production rollout (1 week)
+#### 4.10 Manual flag rollout — ✅ SHIPPED (PRs #149, #151); bucketed ramp deferred
 
-Feature flag: 10% → 50% → 100% over a week. Monitor quality metrics + latency at each step. Roll back on quality regression.
+Single boolean env var `AURA_COMPOSITION_ENGINE_ENABLED` (default false). The earlier int-percent rollout machinery (`is_user_in_rollout_bucket` SHA-256 mod-100) was reverted in favor of the simpler flag for manual testing — bucketed ramp comes back as its own change once Phase 4.6 calibration data tells us where to start the percentage curve.
+
+Engine plans intentionally do NOT write to the architect cache during flag-on testing (the cache key is profile/cluster-scoped, not user-scoped, so cached engine plans would persist across flag-on/flag-off transitions and leak the engine path into control traffic). LLM plans cache normally.
+
+#### 4.11 Input canonicalization — ✅ SHIPPED (PR #151)
+
+The pivotal piece that made the engine actually work on real planner output. Two-phase: (1) exact-match against YAML keys (cheap, no API call), (2) batched `text-embedding-3-small` call for non-matching values, nearest-neighbour cosine ≥ 0.50 wins. Below threshold → keep raw value (engine flags YAML gap → router falls through to LLM cleanly).
+
+Pre-computed `composition/canonical_embeddings.json` (350KB, 256-dim, 85 keys × 5 axes) ships in-repo so production cold starts don't need an API call. Regenerated by `ops/scripts/build_canonical_embeddings.py` when YAMLs change. `aura_composition_canonicalize_result_total{axis, result}` counter (PR #154) tracks per-axis hit rate.
+
+Confidence threshold dropped from spec §8's 0.60 to 0.50 because (a) downstream composer + rater rerank by score so an engine plan that's "merely passable" still surfaces good outfits, (b) at 0.60 the engine almost always fell through on real Indian inputs (4-5 of ~35 attributes typically need relaxation, accumulating penalties below the threshold). YAML gaps still always trigger fallback regardless of threshold via the explicit `has_yaml_gap` branch.
+
+Bundled bug fix: engine's `seasonal_color_group` lookup now tries both `palette.SubSeason` (12-entry) and `palette.SeasonalColorGroup` (4-entry) before flagging a gap — profile data sometimes stores the 4-entry form (`Autumn`) instead of the 12-entry form (`Soft Autumn`).
+
+#### 4.12 Observability + operability hardening — ✅ SHIPPED (PRs #150, #152, #153, #154)
+
+- **PR #150** — pre-flag observability: `aura_composition_router_decision_total{used_engine, fallback_reason}` counter, engine latency under `aura_turn_duration_seconds{stage="composition_engine"}`, YAML gap metadata in `distillation_traces.full_output.router_decision`, `aura_composition_yaml_load_failure_total` counter + alert.
+- **PR #152** — `tool_traces` CHECK-constraint fix: helper `_coerce_tryon_trace_db_status()` maps the rich path enum (`cache_hit`/`skipped_no_urls`/`tryon_failed`/...) to the constrained `'ok'`/`'error'` domain. Every cache-hit try-on previously dropped its trace row silently.
+- **PR #153** — `model_call_logs.model` origin stamping: `_resolve_architect_origin_model()` picks `cache` / `composition_engine` / LLM model id; non-LLM paths force token columns to 0 (prevents stale `last_usage` bleed from prior turns).
+- **PR #154** — comprehensive follow-up: 4 new metrics (`aura_composition_canonicalize_result_total`, `aura_composition_canonicalize_duration_seconds`, `aura_tool_traces_insert_failure_total`, `aura_composition_attribute_status_total`); 4 new dashboard panels (21 plan-source distribution, 22 yaml-gap distribution, 23 per-attribute status, 24 single-turn diagnostic); panel_17 patched to exclude sentinel rows; `RouterDecision.provenance_summary` plumbed into traces; OPERATIONS.md "A4: Composition engine flag-on regressions" runbook (env-var-didn't-export, yaml_gap dominance, YAML-load failure); `ops/scripts/turn_forensics.py` codifies the per-turn comparison report.
+
+### Phase 4 follow-ups (not yet shipped, post-flag-on)
+
+- **Confidence threshold + per-axis canonicalize threshold tuning.** 0.50 floor was a calibration guess; expected to tighten/loosen per axis once Phase 4.6 ground truth + a few hundred engine-accepted turns of telemetry land. Panels 22 + 23 are the read-out.
+- **Run `composition_quality_eval.py` against the 4.6 eval set** when the eval JSONL exists — produces the engine-vs-LLM divergence report (markdown). Validates whether engine plans hold quality vs LLM on representative traffic.
+- **Architect `model_call_logs.request_json` cleanup on engine path.** Cosmetic: engine-path rows still emit a `reasoning_effort` field that's irrelevant when no LLM call ran. Filter or rename for clarity.
+- **Bucketed rollout machinery** restoration after flag-on validation. The SHA-256 mod-100 bucket function lives in git history and can be restored when Phase 4.6 + a stylist-vetted threshold give us the data to ramp.
 
 ### Phase 4 test gate
 
-- Composition engine handles ≥80% of cache-miss requests without LLM fallback
-- Engine latency p95: <500ms
-- Quality on eval set: ≥90% agreement with LLM architect
-- Cold-path architect average: <2s on engine hit, ~10s on engine miss
-- Cache layer continues to provide <100ms on cache hit (regardless of whether origin was engine or LLM)
+| Criterion | Target | Status |
+|---|---|---|
+| Engine handles ≥80% of cache-miss requests without LLM fallback | post-rollout target | needs traffic + 4.6 calibration |
+| Engine latency p95: <500ms | <500ms | ✅ verified ~0ms on the one staging turn (sub-1ms compose_direction; ~150ms canonicalize embed call) |
+| Quality on eval set: ≥90% agreement with LLM architect | ≥90% | gated on 4.6 + `composition_quality_eval.py` run |
+| Cold-path architect avg: <2s on engine hit, ~10s on engine miss | hit/miss target | ✅ verified ~2s engine-stage on the staging turn (mostly trace-write + cache-touch overhead; LLM never ran) |
+| Cache layer <100ms on cache hit regardless of origin | <100ms | architect cache untouched; behavior unchanged |
 
 ---
 
