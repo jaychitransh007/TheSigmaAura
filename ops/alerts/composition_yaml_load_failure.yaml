@@ -1,0 +1,19 @@
+alert: aura_composition_yaml_load_failure
+description: |
+  The composition engine YAMLs (knowledge/style_graph/*.yaml) failed to
+  load. The orchestrator catches the exception and disables the engine
+  for the rest of the process — turns silently fall through to the LLM
+  architect, so users aren't directly impacted, but the flag-on
+  rollout is silently broken on this pod until it restarts.
+expr: |
+  increase(aura_composition_yaml_load_failure_total[5m]) > 0
+for: 1m
+severity: P2
+runbook: docs/OPERATIONS.md
+panel: docs/OPERATIONS.md
+labels:
+  team: aura
+  service: agentic_application
+annotations:
+  summary: Composition engine YAML load failed
+  description: "Engine disabled in-process; turns falling through to LLM. Likely a YAML-syntax regression or a missing knowledge/style_graph/*.yaml file. Restart the affected pod after fixing the YAML on main."

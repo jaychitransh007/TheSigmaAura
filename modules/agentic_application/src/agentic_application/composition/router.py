@@ -27,6 +27,7 @@ side effect) only on fall-through paths.
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict
 
@@ -86,16 +87,19 @@ class RouterDecision:
     any rejection). ``used_engine`` is True only when every acceptance
     criterion passed; ``fallback_reason`` is set on every path that
     didn't use the engine. ``engine_confidence`` is None when the
-    engine wasn't even attempted (e.g. anchor turn, rollout-skipped
-    bucket); set to the actual confidence when it WAS attempted, even
-    on fall-through, so the ops layer can tell "engine tried but
-    rejected" apart from "engine never ran"."""
+    engine wasn't even attempted (e.g. anchor turn, flag disabled);
+    set to the actual confidence when it WAS attempted, even on
+    fall-through, so the ops layer can tell "engine tried but
+    rejected" apart from "engine never ran". ``engine_ms`` carries
+    the wall-clock duration of the compose_direction call (None when
+    the engine wasn't attempted)."""
 
     plan: RecommendationPlan
     used_engine: bool
     fallback_reason: str | None
     engine_confidence: float | None
     yaml_gaps: tuple[str, ...] = field(default_factory=tuple)
+    engine_ms: int | None = None
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -298,13 +302,17 @@ def route_recommendation_plan(
             yaml_gaps=(),
         )
 
-    # Try the engine.
+    # Try the engine. Time the compose_direction call so the
+    # orchestrator can emit per-call latency to the existing
+    # aura_turn_duration_seconds histogram under stage="composition_engine".
     if graph is None:
         graph = load_style_graph()
     inputs = extract_engine_inputs(combined_context)
+    _engine_t0 = time.monotonic()
     result = compose_direction(
         inputs=inputs, graph=graph, user=combined_context.user
     )
+    engine_ms = int((time.monotonic() - _engine_t0) * 1000)
 
     accept, reject_reason = is_engine_acceptable(result)
     if not accept:
@@ -314,6 +322,7 @@ def route_recommendation_plan(
             fallback_reason=reject_reason,
             engine_confidence=result.confidence,
             yaml_gaps=result.yaml_gaps,
+            engine_ms=engine_ms,
         )
 
     # Engine accepted.
@@ -323,4 +332,5 @@ def route_recommendation_plan(
         fallback_reason=None,
         engine_confidence=result.confidence,
         yaml_gaps=result.yaml_gaps,
+        engine_ms=engine_ms,
     )
