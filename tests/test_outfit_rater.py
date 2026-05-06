@@ -129,6 +129,13 @@ def _mock_response(payload: dict) -> Mock:
 
 
 def _patch_rater():
+    # Phase 1.3 review (May 13 2026): the rater's OpenAI client now lives
+    # behind a module-level @lru_cache(maxsize=1) for thread safety.
+    # Without clearing the cache between tests, the first test's Mock
+    # client would persist for every subsequent test, ignoring later
+    # `patch("...OpenAI")` calls.
+    from agentic_application.agents.outfit_rater import _shared_openai_client
+    _shared_openai_client.cache_clear()
     return patch("agentic_application.agents.outfit_rater.OpenAI")
 
 
