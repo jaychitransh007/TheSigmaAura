@@ -304,30 +304,28 @@ def compute_fashion_score(
     down the recommendation pipeline.
     """
     weights = WEIGHT_PROFILES.get(profile) or WEIGHT_PROFILES[_DEFAULT_WEIGHT_PROFILE]
-    drop_pairing = (
-        (direction_type or "").strip().lower() == "complete"
-        or pairing is None
-    )
-    if drop_pairing:
+    if (direction_type or "").strip().lower() == "complete" or pairing is None:
+        # Drop pairing and renormalise the remaining five weights so
+        # they sum to 1.0 — this is the only branch where `weights`
+        # mutates. Iterating over `weights.keys()` below picks up the
+        # drop automatically, so we don't need a parallel sum-shape.
         kept = {k: v for k, v in weights.items() if k != _COMPLETE_OUTFIT_DROP_KEY}
         denom = sum(kept.values())
         weights = {k: v / denom for k, v in kept.items()} if denom > 0 else kept
-        raw = (
-            occasion_fit * weights["occasion_fit"]
-            + body_harmony * weights["body_harmony"]
-            + color_harmony * weights["color_harmony"]
-            + formality * weights["formality"]
-            + statement * weights["statement"]
-        )
-    else:
-        raw = (
-            occasion_fit * weights["occasion_fit"]
-            + body_harmony * weights["body_harmony"]
-            + color_harmony * weights["color_harmony"]
-            + pairing * weights["pairing"]
-            + formality * weights["formality"]
-            + statement * weights["statement"]
-        )
+
+    # Single sum-shape for both branches (PR #106 review of #101 — drop
+    # the duplicated raw = ... blocks). Iterating `weights.keys()` is
+    # safe: when pairing is dropped the key isn't in `weights`, so
+    # `scores["pairing"]` (which may be None) is never read.
+    scores = {
+        "occasion_fit":  occasion_fit,
+        "body_harmony":  body_harmony,
+        "color_harmony": color_harmony,
+        "pairing":       pairing,
+        "formality":     formality,
+        "statement":     statement,
+    }
+    raw = sum(scores[k] * weights[k] for k in weights)
     score = ((raw - 1.0) / 2.0) * 100.0
     return _clamp_to_100(int(round(score)))
 
