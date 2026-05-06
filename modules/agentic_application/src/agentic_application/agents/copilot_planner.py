@@ -224,6 +224,17 @@ def build_planner_input(
 _SHADOW_LOG = logging.getLogger("aura.planner.shadow")
 
 
+# Per-request timeout for planner OpenAI calls. The SDK retries twice by
+# default, so worst-case tail is ~3× this value. 30s is generous for the
+# production planner (currently ~7s on gpt-5-mini, target <500ms after
+# the 1.4 model swap) and also covers shadow-path calls (gpt-4.1-nano,
+# <500ms expected). Mirrors the embedder's explicit-timeout pattern
+# (`catalog/retrieval/embedder.py:_EMBEDDING_TIMEOUT_SECONDS`); without
+# this, the SDK default of 600s (10min) would let stuck connections
+# starve the pool. Review of PR #126.
+_PLANNER_TIMEOUT_SECONDS = 30.0
+
+
 @lru_cache(maxsize=1)
 def _shared_openai_client() -> OpenAI:
     """Process-wide OpenAI client for the planner.
@@ -236,7 +247,7 @@ def _shared_openai_client() -> OpenAI:
     on a shared CopilotPlanner (review of PR #125). Tests that need an
     isolated client can call ``_shared_openai_client.cache_clear()``.
     """
-    return OpenAI(api_key=get_api_key())
+    return OpenAI(api_key=get_api_key(), timeout=_PLANNER_TIMEOUT_SECONDS)
 
 # Phase 1.3 review (May 13 2026): pool sized for one shadow call per
 # concurrent in-flight turn. 5 is an order-of-magnitude over Aura's

@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import sys
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -128,15 +129,29 @@ def _mock_response(payload: dict) -> Mock:
     return m
 
 
+@contextmanager
 def _patch_rater():
-    # Phase 1.3 review (May 13 2026): the rater's OpenAI client now lives
-    # behind a module-level @lru_cache(maxsize=1) for thread safety.
-    # Without clearing the cache between tests, the first test's Mock
-    # client would persist for every subsequent test, ignoring later
-    # `patch("...OpenAI")` calls.
+    """Context manager that patches the rater's OpenAI class AND clears
+    the lru_cache around the wrapped block.
+
+    Phase 1.3 review (May 13 2026): the rater's OpenAI client lives
+    behind a module-level ``@lru_cache(maxsize=1)`` for thread safety.
+    Without clearing the cache around each test, the first test's Mock
+    client would persist for every subsequent test, ignoring later
+    ``patch("...OpenAI")`` calls.
+
+    Implemented as a ``@contextmanager`` (review of PR #126) rather
+    than a plain function so cache_clear runs *per enter*, not once at
+    decoration/import time. Clearing on exit too keeps Mock state from
+    leaking into the next test that doesn't use this helper.
+    """
     from agentic_application.agents.outfit_rater import _shared_openai_client
     _shared_openai_client.cache_clear()
-    return patch("agentic_application.agents.outfit_rater.OpenAI")
+    try:
+        with patch("agentic_application.agents.outfit_rater.OpenAI") as oc:
+            yield oc
+    finally:
+        _shared_openai_client.cache_clear()
 
 
 class OutfitRaterContractTests(unittest.TestCase):
