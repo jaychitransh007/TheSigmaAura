@@ -47,117 +47,68 @@ What's left: the rare values with ≤5 rows each — `poncho` (5), `leggings` (4
 
 ---
 
-## Pipeline latency — 4m31s end-to-end on `daily office wear` turn
-
-**Status:** queued · **Cost:** dev time only · **Risk:** medium
-
-Turn `86a0a95f-ae12-4cea-9b03-238b30d50b27` (May 3, 2026 — "Find me an outfit to buy for daily office wear") shipped successfully but took **4m31s end-to-end**. The dominant stages:
-
-| Stage | Latency | Model |
-|---|---|---|
-| outfit_rater | 72.9s | gpt-5-mini |
-| outfit_composer | 72.0s | gpt-5-mini |
-| visual_evaluation | 64.3s | gpt-5-mini (×3 candidates) |
-| outfit_architect | 37.5s | gpt-5.5 |
-
-70+ second gpt-5-mini calls are abnormal — should be 5-10s each. Hypotheses to investigate:
-1. **Composer retry-on-hallucination firing too often.** The 16K total tokens for one Composer turn suggests two attempts. Look at `tool_traces.composer_decision` for retry-fire rate.
-2. **Long output tokens (10 outfits × full rationale).** Trim the Composer's `up to 10 outfits` cap to 5–6 if the speedup justifies it.
-3. **gpt-5-mini queue depth at the provider.** Check whether latency spikes correlate with time-of-day or burst traffic.
-
-**Trigger to act:** more than two production turns over 60s wallclock, OR the operations p95-latency dashboard crosses 30s.
-
----
-
-## Per-turn cost too high — $0.29 on a single recommendation
+## Per-turn cost re-baseline (May 6, 2026)
 
 **Status:** queued · **Cost:** dev time only · **Risk:** low
 
-Same turn as above billed $0.29 USD. Breakdown:
+Pre-PR-#81 baseline was $0.029/turn (gpt-5-mini composer + gpt-5.5 planner). Post-sweep (PR #81 → #101) T13 came in at **$0.208/turn** when 3 outfits ship — driven by:
 
-| Call | Cost | % of turn |
-|---|---|---|
-| outfit_architect (gpt-5.5) | $0.127 | 43% |
-| virtual_tryon ×3 (Gemini) | $0.117 | 40% |
-| copilot_planner (gpt-5.5) | $0.041 | 14% |
-| Everything else (Composer, Rater, visual_eval, embedding) | $0.012 | 4% |
+| Call | Cost | % of turn | Notes |
+|---|---|---|---|
+| virtual_tryon × 3 (Gemini) | $0.117 | 56% | Single biggest line; sequential renders. |
+| outfit_architect (gpt-5.4) | $0.053 | 25% | +56% vs pre-#90 ($0.034) due to ~6K extra input tokens from episodic memory. |
+| outfit_composer (gpt-5.4) | $0.036 | 17% | New since #81 — was ~$0.0015 on gpt-5-mini. |
+| outfit_rater (gpt-5-mini) | $0.001 | 1% | Smallest line; 6 dims on 1/2/3 keeps tokens tight. |
+| copilot_planner (gpt-5-mini) | $0.001 | 1% | |
 
-The architect alone pays nearly half the bill (10.5K tokens at gpt-5.5 pricing). Two angles to attack:
+Two angles to attack if the cost panel says we need to:
+- **Try-on render count.** 3 sequential Gemini renders dominate. Render only the top 1 inline and over-render lazily on a "Get a deeper read" CTA — but that CTA was removed in V2; revisit only if the cost lever justifies bringing it back.
+- **Architect prompt size.** Episodic memory adds ~3K tokens per power user (Panel 17). Tighten `_RECENT_USER_ACTIONS_MAX` from 30 → 20 if Panel 17 p95 stays >14K.
 
-- **Architect prompt size.** PR #29 trimmed it to 4.8K tokens but it can shrink further — anchor + follow-up modules are conditionally appended; review if the base prompt has dead sections.
-- **Try-on render count.** 3 × Gemini renders at $0.039 each. If the LLM Rater's `fashion_score` is highly predictive of which outfits would render well, render only the top 1 first and over-render only on visual-eval failure.
-
-**Re-baseline note (May 5, 2026):** the table above predates two model changes that should reduce these numbers — planner moved to `gpt-5-mini` (~$0.041 → ~$0.001) and architect re-tiered to `gpt-5.4` with `reasoning_effort=medium` (input price 50% lower, output price 67% lower vs gpt-5.5 — expected $0.127 → ~$0.04–0.06 depending on reasoning-token mix). Re-pull a single representative turn after a week of production traffic to refresh the breakdown before deciding which angles to pursue further.
-
-**Trigger to act:** $0.30+/turn average sustained (after re-baseline), or the LLM-cost-budget alert fires.
+**Trigger to act:** the LLM-cost-budget alert fires (currently $500/day — see PR #94), OR Panel 17 p95 stabilises above 14K input tokens.
 
 ---
 
-## Telemetry follow-up — visual_eval on-demand uptake
+## Phase out `archetypal_preferences` from the composer
 
-**Status:** queued · **Cost:** dev time only · **Risk:** none
+**Status:** queued · **Cost:** small · **Risk:** low
 
-May 5, 2026 shipped the on-demand visual_evaluator: default recommendation cards carry Rater-only dims with `visual_evaluation_status="pending"`, and a "Get a deeper read" CTA on each card calls `POST /v1/turns/{turn_id}/outfits/{rank}/visual-eval` to populate the full 17-dim radar lazily. Outfit_check + garment_evaluation handlers still run the evaluator inline (the user's photo upload IS the intent signal there).
+Post-PR-#89 the rater no longer reads `archetypal_preferences` — past likes/dislikes flow upstream through the architect's episodic memory (`recent_user_actions`, PR #90). The composer still reads it as a **soft preference** ("when the user has disliked an attribute at least twice, prefer to avoid it" — see `prompt/outfit_composer.md`). This is the last consumer of the aggregate signal.
 
-What we need to learn from production:
+Two ways to clean up:
+1. **Drop the soft preference from the composer**, fall back entirely on episodic memory at the architect (which biases retrieval queries). Smallest code change; bet is the architect's bias is enough.
+2. **Switch the composer to also read `recent_user_actions`** (the raw 30-day timeline, not the aggregate). Symmetric with the architect; lets the composer reason on context-dependent patterns the same way.
 
-- **Click-through rate.** New event `visual_evaluator_on_demand` shows up in `model_call_logs` whenever the CTA fires. Wire a panel that reports clicks/turn over a rolling 7-day window. Hypothesis: if <5% of shipped cards get clicked, the post-render check is rarely catching anything → schedule a follow-up to consider dropping `visual_evaluator` entirely (option c). If >30%, the deeper read is genuinely valued → invest in richer Rater output so the default card carries more signal too.
-- **Time-to-click.** Distribution would tell us whether users decide quickly (signal: card content is missing something) or slowly (signal: idle scrutiny). Use as a sanity check on the CTA copy.
-- **Re-click on cached cards.** If users return to the same turn and re-click, the cache should hit and the eval shouldn't re-run. Verify via the idempotent path in `run_on_demand_visual_eval`.
-
-**Trigger:** review the dashboard ~4 weeks after rollout (around June 2, 2026).
+**Trigger to act:** if (a) Panel 18 (rater unsuitable rate) holds <5% over a stable post-#101 week — meaning episodic memory at the architect is producing acceptable retrieval + composer item selection without needing the aggregate signal — or (b) the `aggregate_archetypal_feedback` repo method becomes a maintenance burden (it has its own catalog_enriched hydration that overlaps with `list_recent_user_actions`).
 
 ---
 
-## Eval + observability — planner moved to gpt-5-mini (May 5, 2026)
+## Hard cap on composer outfit count at the schema level
 
-**Status:** queued · **Cost:** dev time only · **Risk:** medium (routing accuracy regression would be user-visible)
+**Status:** queued · **Cost:** trivial (~5-line schema change + 1 test) · **Risk:** none
 
-May 5, 2026 swapped CopilotPlanner from `gpt-5.5` → `gpt-5-mini` ([copilot_planner.py:220](modules/agentic_application/src/agentic_application/agents/copilot_planner.py:220)) on the argument that strict-JSON-schema enums make the planner's task structurally similar to other gpt-5-mini callers (Composer, Rater, visual_evaluator). The architecture-grade reasoning (body × palette × occasion → catalog queries) still lives downstream in OutfitArchitect, which has its own re-tiering work (see "Architect re-tier" below). Pricing ratio is ~33× (gpt-5.5 input $5/M, gpt-5-mini input $0.15/M) so the planner line item should drop from ~$0.041/turn → ~$0.001/turn — meaningful given planner runs on every turn including non-recommendation ones.
+The composer's "up to 10 outfits" is enforced **conventionally** via the prompt (`prompt/outfit_composer.md:3, 20`); the JSON schema does not carry `maxItems: 10` on the `outfits` array. Production usually sees 6–8 outfits per turn (T13: 6) so the cap is honoured today, but a future prompt tweak that drops the "up to 10" copy would silently lift the ceiling and the parser would happily accept N outfits.
 
-**The change shipped without an offline eval first.** Validating it as production data accumulates:
+Two-line fix: add `"maxItems": 10` to the `outfits` array property in `_build_composer_json_schema` (LLM physically can't emit an 11th under strict structured output), plus a parser-level `kept[:10]` belt against future schema-rule changes.
 
-1. **Offline routing-accuracy eval.** Pull ~200 historical planner inputs from `tool_traces` (across all 8 intents). Run each through both `gpt-5.5` and `gpt-5-mini` with the existing prompt. Compare:
-   - Intent label match rate (gate ≥95%)
-   - Action label match rate (gate ≥98% — action drives dispatch, miss = wrong handler ships)
-   - `purchase_intent` / `target_piece` / `is_followup` accuracy
-   - Subjective spot-check on `assistant_message` tone (50 samples by hand — this is the only stylist-voice text the user sees on advisor intents before the StyleAdvisor takes over)
-
-   Scaffold this as a new mode of `ops/scripts/run_agentic_eval.py` (model-comparison mode). If gpt-5-mini misses on routing fields, revert and instead trim the planner prompt.
-
-2. **Production observability — planner-failure rate.** Wire a Grafana panel for the rolling 7-day rate of `clarification` actions and `error` paths attributed to the planner. A spike post-May-5 = mini misclassifying.
-
-3. **Production observability — `purchase_intent` accuracy proxy.** When the planner sets `purchase_intent=true` on a `garment_evaluation` and the user dismisses the buy/skip verdict block without engaging, that's a soft signal of misclassification. Track engagement vs dismissal rate before vs after the swap.
-
-**Trigger to act on item 1:** within 1 week of merge, while the gpt-5.5 baseline is still fresh in production traces. Items 2–3 are ongoing — no specific trigger, just wire the panels and watch.
-
-**Rollback path:** swap the default in [copilot_planner.py:220](modules/agentic_application/src/agentic_application/agents/copilot_planner.py:220) back to `"gpt-5.5"`; the orchestrator's log/trace sites read from `self._copilot_planner._model` so they pick up the change automatically. One-line revert.
+**Trigger:** any prompt edit to `outfit_composer.md` that touches the "up to 10 outfits" line, OR a single production turn observed with >10 outfits in `tool_traces.composer_decision`.
 
 ---
 
-## Architect re-tier — gpt-5.4 + reasoning_effort=medium (May 5, 2026)
+## R7 calibration replay — once 7 days of post-#101 traffic accumulate
 
-**Status:** queued · **Cost:** dev time only · **Risk:** medium (architect drives retrieval quality across the entire pipeline — a regression here surfaces as worse outfits, not as an error)
+**Status:** queued · **Cost:** ~½ dev day · **Risk:** none (offline replay)
 
-May 5, 2026 retiered OutfitArchitect from `gpt-5.5` → `gpt-5.4` and explicitly set `reasoning_effort="medium"` ([outfit_architect.py:227](modules/agentic_application/src/agentic_application/agents/outfit_architect.py:227)). The model swap is the doc-aligned cost lever (OpenAI's lineup positions gpt-5.4 as the lower-cost reasoning tier — input $2.50/M vs $5.00/M, output $10/M vs $30/M); the explicit effort knob lets us tune within-model chain-of-thought without changing models again. Reasoning effort is wired through `AuraRuntimeConfig.architect_reasoning_effort` so it's flippable per-environment via `ARCHITECT_REASONING_EFFORT` (low | medium | high) without code change. Both values are written into `model_call_logs.request_json` for every architect call so the parameter is auditable post-fact.
+PR #101 shifted the rater from 4 dims on 0–100 to 6 dims on 1/2/3. Threshold moved 60 → 50 to land on "every dim is at least neutral". The new bands need empirical validation:
 
-What we need to learn:
+1. **Panel 18 baseline.** Pull 7 days of `tool_traces.rater_decision` post-#101 and compute the steady-state `unsuitable=True` rate. Healthy band per OPERATIONS.md is 0–5%; needs real numbers to confirm.
+2. **Panel 16 baseline shift.** PR #89 + #101 should have lowered `catalog_low_confidence` rate vs the pre-#89 baseline (when the rater veto was driving outfits below threshold). Compare 7-day rolling rates pre + post.
+3. **Score distribution check.** Are sub-scores actually using all three values {1, 2, 3}? If 95% of outputs are 2s, the prompt's calibration anchors aren't biting and the scale collapsed back to a binary. Histogram the sub-score values per dim to confirm.
+4. **Spot-check 50 turns by hand.** Read each outfit's six sub-scores + rationale and check they add up to a coherent stylist judgment. Catches drift the per-dim aggregates miss.
 
-1. **Cost re-baseline.** Architect was 43% of per-turn cost ($0.127) at gpt-5.5. Expected drop to ~$0.04–0.06 at gpt-5.4 with medium effort, but the actual depends on the reasoning-token mix that "medium" emits. Pull a representative turn after a week and compare against the May-3 baseline. Update the breakdown table in this file.
+**Trigger:** ~7 days post-#101 (around 2026-05-12).
 
-2. **Latency re-baseline.** Architect was 4–8s typical, 37.5s on the May-3 outlier. Reasoning-effort steps tend to move latency proportionally with reasoning-token count. Confirm the new median/p95 in `turn_traces.steps[]` filtered by `step="outfit_architect"`.
-
-3. **Retrieval-quality regression check.** This is the one to actually worry about. The architect's output drives directions / hard_filters / query_documents — bad output means worse retrievals means worse outfits. Two signals:
-   - **`catalog_low_confidence` rate** — already tracked in OPEN_TASKS Phase 2 trigger condition. A spike post-May-5 = architect is producing weaker queries.
-   - **Spot-check 50 production turns** for direction sensibility (right archetype mix, right palette pulls, right formality level) by hand. Not automatable today, but high-signal.
-
-4. **A/B knob — try `low` once `medium` looks stable.** If the cost panel says "good, no quality regression," step the env var to `low` for a week and re-run the same checks. If `medium` itself regresses, step to `high` instead (cheaper than reverting all the way to gpt-5.5).
-
-**Trigger to act on items 1–2:** within 1 week of merge while the gpt-5.5 baseline is still fresh. **Item 3** is ongoing — wire the catalog_low_confidence panel and watch.
-
-**Rollback path:** two layers, in order of aggressiveness:
-- **Effort only:** `ARCHITECT_REASONING_EFFORT=high` env var (no code change, picks up at next process restart).
-- **Model only:** revert the default in [outfit_architect.py:227](modules/agentic_application/src/agentic_application/agents/outfit_architect.py:227) from `"gpt-5.4"` back to `"gpt-5.5"`. Orchestrator log/trace sites read `self.outfit_architect._model` so they pick up automatically.
+**Acceptance:** `unsuitable_pct` <5% sustained, `catalog_low_confidence_pct` no worse than pre-#89, sub-score distributions show meaningful spread across {1, 2, 3} on every dim.
 
 ---
 
@@ -171,7 +122,7 @@ The May 2026 style-preference removal stopped feeding `primaryArchetype` / `seco
 
 Build `ops/scripts/architect_replay_eval.py` that:
 1. Pulls ~100 historical recommendation turns from `tool_traces.composer_decision` joined to the architect input from `model_call_logs.request_json`.
-2. Re-runs `OutfitArchitect.plan(...)` with the OLD payload (carrying the now-deleted `style_preference` block) vs the NEW payload (carrying only `risk_tolerance`).
+2. Re-runs `OutfitArchitect.plan(...)` with the OLD payload (carrying the now-deleted `style_preference` block) vs the NEW payload (carrying only `risk_tolerance` + `recent_user_actions`).
 3. Diffs the two architect outputs per turn:
    - `directions[]` count + `direction_type` distribution
    - `query_document` text similarity (jaccard or embedding cosine)
@@ -179,7 +130,6 @@ Build `ops/scripts/architect_replay_eval.py` that:
    - `retrieval_count`
 4. Emits a markdown report sliced by intent (occasion_recommendation / pairing_request) and by whether the user had high vs low style-preference completeness in the OLD model.
 
-**Trigger to act:** when production has 100+ recommendation turns post-rollout (estimate ~1 month given current traffic), OR if the `catalog_low_confidence` rate spikes meaningfully — that would be a signal the new architect output is producing weaker queries.
+**Trigger to act:** when production has 100+ recommendation turns post-rollout, OR if the `catalog_low_confidence` rate spikes meaningfully — that would be a signal the new architect output is producing weaker queries.
 
-**Acceptance criteria for "quality holds":** median turn produces ≥0.85 cosine similarity on query_document text, AND identical hard_filter set on ≥80% of turns. If those hold, the removal is validated. If not, look at which dimensions (palette pulls, formality, silhouette) drift most and refine the architect prompt's body+palette rules.
-
+**Acceptance criteria for "quality holds":** median turn produces ≥0.85 cosine similarity on query_document text, AND identical hard_filter set on ≥80% of turns. If those hold, the removal is validated.
