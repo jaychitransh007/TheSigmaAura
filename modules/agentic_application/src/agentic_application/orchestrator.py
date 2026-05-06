@@ -30,7 +30,14 @@ from .cache.architect_cache_key import (
     denormalised_key_fields,
 )
 from .cache.architect_cache_repository import ArchitectCacheRepository
-from .agents.outfit_composer import OutfitComposer
+from .cache.composer_cache_key import (
+    architect_direction_id,
+    build_composer_cache_key,
+    denormalised_key_fields as composer_denormalised_key_fields,
+    retrieval_fingerprint,
+)
+from .cache.composer_cache_repository import ComposerCacheRepository
+from .agents.outfit_composer import OutfitComposer, PROMPT_VERSION as COMPOSER_PROMPT_VERSION
 from .agents.outfit_rater import OutfitRater
 # Evaluator history (May 5 2026):
 #   - Phase 12B (April 2026): OutfitEvaluator (text-only) replaced by
@@ -296,6 +303,11 @@ class AgenticOrchestrator:
         # runs the architect normally and writes the output for next time.
         # See docs/phase_2_cache_design.md.
         self._architect_cache = ArchitectCacheRepository(repo.client)
+        # Phase 2.3 composer output cache (May 14 2026). Stacks on top
+        # of the architect cache: keyed on (architect_direction_id +
+        # retrieval fingerprint + cluster + composer_prompt_version).
+        # Hit skips the composer LLM (~13s on gpt-5.2).
+        self._composer_cache = ComposerCacheRepository(repo.client)
         # Evaluator history (see top of file): OutfitCheckAgent and
         # VisualEvaluatorAgent both removed; the Rater is the sole
         # scoring engine and feeds the radar UI directly.
@@ -5107,6 +5119,24 @@ class AgenticOrchestrator:
                 except Exception:  # noqa: BLE001 — telemetry must never break pipeline
                     _log.exception("composer per-attempt log failed; ignoring")
 
+            # Phase 2.3 composer cache: try cache before LLM. Cache key
+            # captures (architect_direction_id, retrieval fingerprint,
+            # cluster, prompt_version) — different SKUs always miss
+            # because the fingerprint flips, preventing stale catalog
+            # references in cached outfits.
+            _comp_cache_cluster = cluster_for_context(combined_context)
+            _comp_arch_id = architect_direction_id(plan)
+            _comp_retrieval_fp = retrieval_fingerprint(retrieved_sets)
+            _comp_cache_key = build_composer_cache_key(
+                tenant_id="default",
+                architect_direction_id_value=_comp_arch_id,
+                retrieval_fingerprint_value=_comp_retrieval_fp,
+                cluster=_comp_cache_cluster,
+                composer_prompt_version=COMPOSER_PROMPT_VERSION,
+            )
+            _comp_cached = self._composer_cache.get(
+                tenant_id="default", cache_key=_comp_cache_key,
+            )
             with record_stage_trace(
                 repo=self.repo,
                 turn_id=turn_id,
@@ -5118,9 +5148,28 @@ class AgenticOrchestrator:
                     "retrieved_sets": to_jsonable(retrieved_sets),
                 },
             ) as _trace_ctx:
-                composer_result = self.outfit_composer.compose(
-                    combined_context, retrieved_sets, on_attempt=_record_attempt,
-                )
+                if _comp_cached is not None:
+                    composer_result = _comp_cached
+                    self._composer_cache.touch(
+                        tenant_id="default", cache_key=_comp_cache_key,
+                    )
+                else:
+                    composer_result = self.outfit_composer.compose(
+                        combined_context, retrieved_sets, on_attempt=_record_attempt,
+                    )
+                    self._composer_cache.put(
+                        tenant_id="default",
+                        cache_key=_comp_cache_key,
+                        result=composer_result,
+                        denormalised=composer_denormalised_key_fields(
+                            tenant_id="default",
+                            architect_direction_id_value=_comp_arch_id,
+                            retrieval_fingerprint_value=_comp_retrieval_fp,
+                            cluster=_comp_cache_cluster,
+                            composer_prompt_version=COMPOSER_PROMPT_VERSION,
+                            composer_model=self.outfit_composer._model,
+                        ),
+                    )
                 _trace_ctx.full_output = to_jsonable(composer_result)
             compose_ms = int((time.monotonic() - t_compose) * 1000)
             emit(
