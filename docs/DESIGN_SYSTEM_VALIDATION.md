@@ -124,7 +124,7 @@ For each viewport, walk the journey and confirm every box.
       uppercase-label track-in and the outfit card staggered entrance.
 - [ ] Tab order through the homepage hits primary CTA → "More ways to
       style" toggle → secondary cards in order.
-- [ ] Outfit card split polar bar chart (Nightingale-style: 8 archetype axes top + 4-7 fit profile axes bottom) has a `role="img"` + `aria-label` so screen readers can interpret it.
+- [ ] Outfit card rater radar (post-R7, May 2026: 6-axis hexagon — Occasion / Body / Color / Pairing / Formality / Statement; 5-axis pentagon for `complete` single-item outfits where Pairing drops) has a `role="img"` + `aria-label` so screen readers can interpret it.
 - [ ] All interactive elements have visible focus rings.
 - [ ] No animation uses a curve other than `--ease` (`cubic-bezier(.2, .7, .1, 1)`).
 - [ ] No duration outside `--dur-1 / --dur-2 / --dur-3` (120 / 240 / 480 ms).
