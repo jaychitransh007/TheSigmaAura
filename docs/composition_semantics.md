@@ -67,8 +67,8 @@ In words:
 
 The most common edge case. If `final(attr)` is empty after intersection + avoid-removal:
 
-1. Apply **soft-source relaxation**: drop the lowest-precedence soft contributor (see §4) and recompute.
-2. If still empty after dropping all softs, apply **hard-source widening**: re-include the lowest-precedence hard contributor's `flatters` only (not avoid).
+1. Apply **soft-source relaxation**: drop the lowest-precedence soft contributor (see §4) and recompute. Peers (e.g. archetype and risk_tolerance share precedence at the soft tier) are dropped **one at a time, in declaration order from §3.3**, not simultaneously — each drop gets its own recompute pass before moving to the next.
+2. If still empty after dropping all softs, apply **hard-source widening**: re-include the lowest-precedence hard contributor's `flatters` while **preserving all `avoid` constraints from every source**, including the source being widened. Widening relaxes "must be in this set" but never "must NOT be in this set" — the avoid invariant carries the strongest stylist signal and is never softened.
 3. If still empty, the attribute is **omitted from the composed direction**. The query_document renders without it; downstream retrieval scopes broader.
 
 Empty-intersection events are logged with full input + attribute + sources for stylist review (Phase 4.7 requirement).
@@ -104,7 +104,7 @@ When two sources disagree on the same attribute, precedence resolves the conflic
 | `SubSeason` | `BaseColors` (individual) | architect prompt — palette is canonical |
 | `formality_hint`+`occasion` | `style_goal` | architect prompt: occasion is hard, style_goal is soft |
 | `style_goal` | `risk_tolerance` | architect prompt L440-446 |
-| `risk_tolerance` | `formality_hint`+`occasion` | architect prompt L440-446 |
+| `formality_hint`+`occasion` | `risk_tolerance` | hard-source-wins-over-soft (§3.3) — risk_tolerance is soft, formality+occasion is hard. Earlier draft of this spec had this row reversed; fixed in the §4.2 matrix. |
 
 ### 4.2 Derived by hard > soft, plus body > color > archetype rule
 
@@ -242,6 +242,10 @@ Construct a pathological case: hyper-restrictive style_goal contradicting hard s
 class CompositionResult:
     direction: Optional[DirectionSpec]   # None on full failure
     confidence: float                    # 0.0 (full LLM fallback) → 1.0 (clean compose)
+    needs_disambiguation: bool           # True when at least one peer-pair conflict
+                                         # surfaced during composition (§4.2 = entries).
+                                         # Hot-path router treats this as a fall-through
+                                         # signal even if confidence ≥ threshold.
     provenance: List[ProvenanceEntry]    # per-attribute trail for ops audit
     fallback_reason: Optional[str]       # why we returned low_confidence
 
@@ -277,11 +281,13 @@ confidence = 1.0
            - 0.10 * count(soft_sources_dropped)
            - 0.20 * count(hard_sources_widened)
            - 0.30 * count(attributes_omitted)
-           - 0.40 * (any genuine YAML gap)
+           - 0.45 * (any genuine YAML gap)
 clamped to [0.0, 1.0]
 ```
 
-Threshold for engine acceptance: **0.60**. Below threshold, full LLM fallback. **🎨 STYLIST SIGN-OFF NEEDED** on the threshold value once we have eval set (4.6) data.
+Threshold for engine acceptance: **confidence ≥ 0.60** (strict). A YAML gap deducts 0.45, landing at 0.55 — below threshold, triggering fallback as §9 requires. The asymmetry (penalty > 1 - threshold) is intentional: a YAML gap is a genuine "engine doesn't know" signal that should always fall through, not a "marginal confidence" call.
+
+**🎨 STYLIST SIGN-OFF NEEDED** on the threshold value once we have eval set (4.6) data — the 0.60 floor and 0.45 gap penalty are both calibration guesses to be tightened against ground truth.
 
 ## 9. Fall-through criteria summary
 
