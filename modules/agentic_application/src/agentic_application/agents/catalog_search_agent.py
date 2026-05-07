@@ -57,38 +57,56 @@ def _apply_hard_attr_penalty(
     products: List[Any],
     hard_attrs: Optional[Dict[str, List[str]]],
     retrieval_count: int,
-) -> List[Any]:
+) -> Tuple[List[Any], Dict[str, Dict[str, int]]]:
     """Re-rank ``products`` by penalizing each violation of ``hard_attrs``
     against each product's ``enriched_data``. Items that lack the attribute
     (no opinion) carry no penalty. Total per-item deduction is capped at
     ``_HARD_ATTR_PENALTY_CAP`` so cumulative violations across many attrs
-    can't drag cosine sim into deep negatives. Returns the top
-    ``retrieval_count`` items by adjusted similarity.
+    can't drag cosine sim into deep negatives.
+
+    Returns ``(products, summary)`` where:
+
+    - ``products`` is the top ``retrieval_count`` items by adjusted similarity
+    - ``summary`` is a per-attribute breakdown of the rerank pool, shape
+      ``{attr_name: {"items_with_attr": N, "violations": M}}``. ``N`` is
+      the count of products in the pool that carried a non-empty value
+      for the attribute (the eligible denominator for that axis). ``M``
+      is the count among those that violated the architect's allowed
+      list. Empty dict on the no-op path (``hard_attrs`` falsy) so
+      callers don't need to special-case.
 
     Composer engine still applies its own per-tuple hard_attr penalty at
     scoring time (different stage, different role — uniform tuple-level
-    scoring across paired/three_piece). No-op (just truncates) when
-    ``hard_attrs`` is falsy — preserves backward compatibility with the
-    LLM-architect path that doesn't populate hard_attrs and didn't
-    receive any user-explicit preferences from the planner either."""
+    scoring across paired/three_piece)."""
     if not hard_attrs:
-        return products[:retrieval_count]
+        return products[:retrieval_count], {}
     # Pre-build allowed-value sets once; per-item membership is now O(1)
     # instead of an O(N) scan against the original list each iteration.
     allowed_sets: Dict[str, set] = {
         attr: set(values) for attr, values in hard_attrs.items() if values
     }
     if not allowed_sets:
-        return products[:retrieval_count]
+        return products[:retrieval_count], {}
+
+    # Per-attribute breakdown: items_with_attr (denominator), violations
+    # (numerator). Initialize so attrs that ended up zero-violation
+    # still appear in the summary — distinguishes "no items had this
+    # attr" from "all items matched" in the dashboard panel.
+    summary: Dict[str, Dict[str, int]] = {
+        attr: {"items_with_attr": 0, "violations": 0} for attr in allowed_sets
+    }
+
     for p in products:
         ed = getattr(p, "enriched_data", None) or {}
         violations = 0
         for attr_name, allowed_set in allowed_sets.items():
             val = ed.get(attr_name)
             if val is None or val == "":
-                continue  # no opinion, no penalty
+                continue  # no opinion, no penalty, no counter tick
+            summary[attr_name]["items_with_attr"] += 1
             if str(val) not in allowed_set:
                 violations += 1
+                summary[attr_name]["violations"] += 1
         if violations:
             raw_penalty = _HARD_ATTR_PENALTY * violations
             penalty = min(raw_penalty, _HARD_ATTR_PENALTY_CAP)
@@ -108,8 +126,18 @@ def _apply_hard_attr_penalty(
                     "hard_attr_penalty: could not update similarity on %s: %s",
                     getattr(p, "product_id", "<unknown>"), exc,
                 )
+    # Batch-emit Prometheus counter ticks once at the end (one inc()
+    # per attribute, sized by the violation count) instead of per-item.
+    try:
+        from platform_core.metrics import observe_retrieval_attr_violation
+        for attr_name, counts in summary.items():
+            v = counts.get("violations") or 0
+            if v:
+                observe_retrieval_attr_violation(attr_name, v)
+    except Exception:  # noqa: BLE001 — telemetry never breaks pipeline
+        pass
     products.sort(key=lambda x: -float(getattr(x, "similarity", 0.0)))
-    return products[:retrieval_count]
+    return products[:retrieval_count], summary
 
 
 class CatalogSearchAgent:
@@ -288,9 +316,11 @@ class CatalogSearchAgent:
 
             # Engine-resolved hard-attr re-rank: penalize products whose
             # enriched_data violates the architect's resolved per-attr
-            # allowed lists. Truncates to retrieval_count.
+            # allowed lists. Truncates to retrieval_count. The returned
+            # summary breaks the penalty down by attribute so dashboards
+            # can answer "which axis is doing all the work?".
             pre_rerank = len(products)
-            products = _apply_hard_attr_penalty(
+            products, attr_summary = _apply_hard_attr_penalty(
                 products, query.hard_attrs or None, plan.retrieval_count,
             )
             _log.info(
@@ -308,6 +338,7 @@ class CatalogSearchAgent:
                 role=query.role,
                 products=products,
                 applied_filters=applied_filters_meta,
+                attr_violation_summary=attr_summary,
             )
 
         workers = min(len(tasks), _MAX_SEARCH_WORKERS) if tasks else 1

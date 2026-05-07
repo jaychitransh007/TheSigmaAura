@@ -44,7 +44,7 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
             _Product("p1", 0.80, {"SleeveLength": "short"}),
             _Product("p2", 0.70, {"SleeveLength": "full"}),
         ]
-        out = _apply_hard_attr_penalty(products, None, retrieval_count=10)
+        out, _summary = _apply_hard_attr_penalty(products, None, retrieval_count=10)
         # Order unchanged, similarities unchanged.
         self.assertEqual([p.product_id for p in out], ["p1", "p2"])
         self.assertAlmostEqual(out[0].similarity, 0.80)
@@ -59,7 +59,7 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
             _Product("p1_short", 0.80, {"SleeveLength": "short"}),
             _Product("p2_full", 0.65, {"SleeveLength": "full"}),
         ]
-        out = _apply_hard_attr_penalty(
+        out, _summary = _apply_hard_attr_penalty(
             products,
             {"SleeveLength": ["three_quarter", "full"]},
             retrieval_count=10,
@@ -79,7 +79,7 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
             _Product("p1_short", 0.75, {"SleeveLength": "short"}),
             _Product("p2_full", 0.70, {"SleeveLength": "full"}),
         ]
-        out = _apply_hard_attr_penalty(
+        out, _summary = _apply_hard_attr_penalty(
             products,
             {"SleeveLength": ["three_quarter", "full"]},
             retrieval_count=10,
@@ -93,7 +93,7 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
             _Product("p1_unknown", 0.80, {}),  # no SleeveLength at all
             _Product("p2_full", 0.70, {"SleeveLength": "full"}),
         ]
-        out = _apply_hard_attr_penalty(
+        out, _summary = _apply_hard_attr_penalty(
             products,
             {"SleeveLength": ["three_quarter", "full"]},
             retrieval_count=10,
@@ -117,7 +117,7 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
                 {"SleeveLength": "full", "FabricWeight": "light"},
             ),
         ]
-        out = _apply_hard_attr_penalty(
+        out, _summary = _apply_hard_attr_penalty(
             products,
             {
                 "SleeveLength": ["three_quarter", "full"],
@@ -138,7 +138,7 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
             _Product("p_minimal", 0.75, {"EmbellishmentLevel": "minimal"}),
             _Product("p_heavy",   0.70, {"EmbellishmentLevel": "heavy"}),
         ]
-        out = _apply_hard_attr_penalty(
+        out, _summary = _apply_hard_attr_penalty(
             products,
             {"EmbellishmentLevel": ["heavy", "statement"]},
             retrieval_count=10,
@@ -165,7 +165,7 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
                 },
             ),
         ]
-        out = _apply_hard_attr_penalty(
+        out, _summary = _apply_hard_attr_penalty(
             products,
             {
                 "SleeveLength": ["full"],
@@ -187,7 +187,7 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
             _Product(f"p{i}", 1.0 - i * 0.01, {"SleeveLength": "full"})
             for i in range(20)
         ]
-        out = _apply_hard_attr_penalty(
+        out, _summary = _apply_hard_attr_penalty(
             products,
             {"SleeveLength": ["three_quarter", "full"]},
             retrieval_count=5,
@@ -201,8 +201,81 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
 
     def test_truncates_when_no_hard_attrs(self):
         products = [_Product(f"p{i}", 1.0 - i * 0.01) for i in range(20)]
-        out = _apply_hard_attr_penalty(products, None, retrieval_count=5)
+        out, _summary = _apply_hard_attr_penalty(products, None, retrieval_count=5)
         self.assertEqual(len(out), 5)
+
+    def test_summary_empty_on_noop_path(self):
+        products = [_Product("p1", 0.80, {"SleeveLength": "short"})]
+        out, summary = _apply_hard_attr_penalty(products, None, retrieval_count=10)
+        self.assertEqual(summary, {})
+        out, summary = _apply_hard_attr_penalty(products, {}, retrieval_count=10)
+        self.assertEqual(summary, {})
+        # Empty allowed-value list also short-circuits.
+        out, summary = _apply_hard_attr_penalty(
+            products, {"SleeveLength": []}, retrieval_count=10,
+        )
+        self.assertEqual(summary, {})
+
+    def test_summary_counts_eligible_and_violations_per_attr(self):
+        # 4 products, mixed enrichment — distinguishes "no opinion"
+        # (skipped from denominator) from "violated" (counted).
+        products = [
+            _Product("p1", 0.80, {"SleeveLength": "short"}),       # eligible + violation
+            _Product("p2", 0.79, {"SleeveLength": "full"}),        # eligible + clean
+            _Product("p3", 0.78, {"SleeveLength": "three_quarter"}),  # eligible + clean
+            _Product("p4", 0.77, {}),                                # not eligible (no opinion)
+        ]
+        _out, summary = _apply_hard_attr_penalty(
+            products,
+            {"SleeveLength": ["three_quarter", "full"]},
+            retrieval_count=10,
+        )
+        self.assertEqual(summary["SleeveLength"]["items_with_attr"], 3)
+        self.assertEqual(summary["SleeveLength"]["violations"], 1)
+
+    def test_summary_initialized_with_zeros_for_unenriched_axes(self):
+        # An axis the architect resolved but no product carries should
+        # still appear in the summary (with both counts at zero), so the
+        # dashboard distinguishes "axis didn't bite" from "axis missing".
+        products = [
+            _Product("p1", 0.80, {"SleeveLength": "full"}),
+        ]
+        _out, summary = _apply_hard_attr_penalty(
+            products,
+            {
+                "SleeveLength": ["full"],
+                "EmbellishmentLevel": ["heavy"],  # no product carries this
+            },
+            retrieval_count=10,
+        )
+        self.assertEqual(
+            summary["EmbellishmentLevel"],
+            {"items_with_attr": 0, "violations": 0},
+        )
+        self.assertEqual(summary["SleeveLength"]["items_with_attr"], 1)
+        self.assertEqual(summary["SleeveLength"]["violations"], 0)
+
+    def test_summary_emits_prometheus_per_attribute(self):
+        from unittest.mock import patch
+        products = [
+            _Product("p1", 0.80, {"SleeveLength": "short", "FabricWeight": "very_heavy"}),
+            _Product("p2", 0.79, {"SleeveLength": "full", "FabricWeight": "very_heavy"}),
+        ]
+        with patch(
+            "platform_core.metrics.observe_retrieval_attr_violation"
+        ) as obs:
+            _apply_hard_attr_penalty(
+                products,
+                {
+                    "SleeveLength": ["full"],   # 1 violation (p1)
+                    "FabricWeight": ["light"],  # 2 violations (both)
+                },
+                retrieval_count=10,
+            )
+        # One inc() per attribute, sized by the violation count.
+        calls = {c.args[0]: c.args[1] for c in obs.call_args_list}
+        self.assertEqual(calls.get("SleeveLength"), 1)
+        self.assertEqual(calls.get("FabricWeight"), 2)
 
     def test_real_world_over_fetch_pulls_clean_items_to_top(self):
         # Simulates the actual Manali scenario: cosine top-5 are mixed
@@ -222,7 +295,7 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
             _Product("c9_full",  0.69, {"SleeveLength": "three_quarter"}),
             _Product("c10_full", 0.68, {"SleeveLength": "full"}),
         ]
-        out = _apply_hard_attr_penalty(
+        out, _summary = _apply_hard_attr_penalty(
             products,
             {"SleeveLength": ["three_quarter", "full"]},
             retrieval_count=5,
