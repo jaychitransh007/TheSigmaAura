@@ -123,6 +123,14 @@ def _build_composer_json_schema(direction_letters: Sequence[str]) -> Dict[str, A
             "properties": {
                 "outfits": {
                     "type": "array",
+                    # Phase 5f cap (long-queued open-task): the prompt
+                    # text says "up to 10 outfits"; mirror it at the
+                    # schema level so a future prompt edit dropping the
+                    # cap can't silently let the model emit N outfits.
+                    # Composer engine targets MAX_OUTFITS=6, but the LLM
+                    # path keeps the historic 10 ceiling — engine drops
+                    # to 6 via its own logic, not via this schema.
+                    "maxItems": 10,
                     "items": {
                         "type": "object",
                         "additionalProperties": False,
@@ -663,6 +671,17 @@ class OutfitComposer:
                 drop_reasons.append(err)
                 continue
             kept.append(outfit)
+
+        # Phase 5f belt: the JSON schema's maxItems=10 already caps the
+        # LLM, but trim post-parse too so a future schema-rule change
+        # can't sneak past. 10 is the historic prompt ceiling; engine
+        # path uses its own MAX_OUTFITS=6 via composer_engine.py.
+        if len(kept) > 10:
+            _log.warning(
+                "OutfitComposer: trimming %d outfits to 10 (schema-rule belt)",
+                len(kept),
+            )
+            kept = kept[:10]
 
         result = ComposerResult(
             outfits=kept,
