@@ -226,17 +226,11 @@ class EligibilityGateTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIsNone(reason)
 
-    def test_non_followup_with_prior_recs_still_blocks(self):
-        # Edge: a fresh turn (not a follow-up) that somehow has prior
-        # recs in context should STILL block. The relaxation is scoped
-        # to engine-friendly follow-ups only.
-        ok, reason = is_engine_eligible(
-            _ctx(previous_recommendations=[{"outfit_id": "x"}])
-        )
-        self.assertFalse(ok)
-        self.assertEqual(reason, "has_previous_recommendations")
-
     def test_previous_recommendations_blocks(self):
+        # Non-followup turn with prior recs in context blocks. The
+        # PR #191 relaxation that bypasses this gate is scoped to
+        # engine-friendly follow-ups only — fresh turns still hit
+        # the gate.
         ok, reason = is_engine_eligible(
             _ctx(previous_recommendations=[{"outfit_id": "x"}])
         )

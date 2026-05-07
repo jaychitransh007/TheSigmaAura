@@ -416,11 +416,11 @@ def _apply_target_product_type_to_plan(
     target = (target_product_type or "").strip().lower()
     if not target:
         return
-    directions = getattr(plan, "directions", []) or []
-    if len(directions) != 1:
+    directions = getattr(plan, "directions", None) or []
+    if len(directions) != 1 or directions[0] is None:
         return
-    queries = getattr(directions[0], "queries", []) or []
-    if len(queries) != 1:
+    queries = getattr(directions[0], "queries", None) or []
+    if len(queries) != 1 or queries[0] is None:
         return
     query = queries[0]
     existing = dict(getattr(query, "hard_filters", None) or {})
@@ -2110,15 +2110,20 @@ class AgenticOrchestrator:
         from datetime import datetime, timezone
         from pathlib import Path
 
-        # Tryon flag (May 8 2026): when AURA_TRYON_ENABLED is off,
-        # the earlier tryon_render stage was skipped — and the
-        # generation path inside _generate_for_outfit below is gated
-        # too so it doesn't burn Gemini calls. But we DO still let
-        # cache lookups proceed: previously rendered images are zero
-        # cost and zero latency to attach (PR #185 review).
-        person_path = self.onboarding_gateway.get_person_image_path(external_user_id)
-        if not person_path:
-            return
+        # PR #190 review: defer get_person_image_path until generation
+        # is actually about to fire. Cache lookups don't need the
+        # person path (cached images were rendered against whatever
+        # person photo was current at the time), so on flag-off / cache-hit
+        # turns we save a DB call. Captured lazily via a [None] cell so
+        # closures can populate it on first generation attempt.
+        _person_path_cell: list[str | None] = [None]
+        _person_path_loaded = [False]
+
+        def _person_path() -> str:
+            if not _person_path_loaded[0]:
+                _person_path_cell[0] = self.onboarding_gateway.get_person_image_path(external_user_id)
+                _person_path_loaded[0] = True
+            return _person_path_cell[0] or ""
 
         tryon_dir = Path("data/tryon/images")
         tryon_dir.mkdir(parents=True, exist_ok=True)
@@ -2136,7 +2141,9 @@ class AgenticOrchestrator:
 
             garment_ids = self._extract_garment_ids(outfit)
 
-            # Cache lookup
+            # Cache lookup — proceeds regardless of flag or person_path.
+            # Cached tryon images were rendered against whatever person
+            # photo was current at the time; reattaching them is free.
             if garment_ids:
                 cached = self.repo.find_tryon_image_by_garments(external_user_id, garment_ids)
                 if cached and cached.get("file_path"):
@@ -2145,11 +2152,14 @@ class AgenticOrchestrator:
                         _log.info("Try-on cache hit for outfit #%s", outfit.rank)
                         return outfit, self._tryon_image_url(str(cached_path))
 
-            # Generate. Flag-gated (May 8 2026, PR #185 review): cache
-            # lookups above are free and proceed regardless, but the
-            # Gemini call itself only fires when AURA_TRYON_ENABLED is
-            # true. Flag-off cache miss → outfit ships without an image.
+            # Generate. Two gates: (1) flag must be on (PR #185
+            # review), (2) person photo must exist (Gemini needs an
+            # input image). Cache lookups above are free; only the
+            # Gemini call requires both gates.
             if not self._tryon_enabled:
+                return outfit, ""
+            person_path = _person_path()
+            if not person_path:
                 return outfit, ""
             try:
                 result = self.tryon_service.generate_tryon_outfit(
