@@ -282,15 +282,13 @@ def _user_context_block(ctx: CombinedContext) -> Dict[str, Any]:
         # `catalog_search_agent`, so the Composer never sees them; and
         # opaque IDs without item attributes don't help the LLM reason
         # about archetypal dislikes ("loud florals", "boxy fits").
-        # ── Archetypal preferences (R4, PR #67) ───────────────────────
-        # Aggregated like/dislike axes from recent feedback_events,
-        # joined to catalog_enriched. Each axis lists at most 3 values
-        # with count >= 2. Empty dict on cold-start users. The Rater's
-        # veto rule ("previously-disliked pattern/color") now has real
-        # evidence to draw on; the Composer should also avoid heavily
-        # disliked attributes when constructing outfits in the first
-        # place.
-        "archetypal_preferences": dict(getattr(ctx, "archetypal_preferences", {}) or {}),
+        #
+        # archetypal_preferences was the last consumer of the aggregate
+        # like/dislike axis signal (PR #89 moved the rater off it). It
+        # was dropped May 8 2026: the rater now applies context-aware
+        # avoidance via the episodic timeline (recent_user_actions);
+        # the composer doesn't need to pre-filter — outfits the rater
+        # would veto downstream are dropped at the rater stage.
     }
 
 

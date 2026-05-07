@@ -460,11 +460,11 @@ class OutfitRater:
             for p in rs.products:
                 items_by_id[p.product_id] = p
 
-        # Past likes/dislikes are applied upstream (Architect retrieval
-        # bias, Composer item selection bias). The rater scores what's
-        # in front of it on its own merits — see PR #89.
+        # Past likes/dislikes are applied upstream — the architect
+        # reads the episodic timeline (recent_user_actions) for
+        # context-aware avoidance. The rater scores what's in front
+        # of it on its own merits.
         user_block = _user_context_block(combined_context)
-        user_block.pop("archetypal_preferences", None)
 
         direction_by_cid = {o.composer_id: o.direction_type for o in composed_outfits}
         valid_ids = {o.composer_id for o in composed_outfits}
