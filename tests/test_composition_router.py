@@ -190,10 +190,11 @@ class EligibilityGateTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIsNone(reason)
 
-    def test_followup_with_change_color_still_blocks(self):
-        # Engine has no prior-color context; LLM still owns these.
+    def test_followup_with_full_alternative_still_blocks(self):
+        # full_alternative is the remaining intent that still requires
+        # the LLM (engine has no signal for "completely different").
         ok, reason = is_engine_eligible(
-            _ctx(is_followup=True, followup_intent="change_color")
+            _ctx(is_followup=True, followup_intent="full_alternative")
         )
         self.assertFalse(ok)
         self.assertEqual(reason, "followup_request")
@@ -206,6 +207,25 @@ class EligibilityGateTests(unittest.TestCase):
         # in the same space (the "more_options" semantic).
         ok, reason = is_engine_eligible(
             _ctx(is_followup=True, followup_intent="more_options")
+        )
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
+    def test_followup_with_similar_to_previous_is_eligible(self):
+        # similar_to_previous is engine-friendly — same path as
+        # more_options (fresh plan + prev_rec_ids exclusion).
+        ok, reason = is_engine_eligible(
+            _ctx(is_followup=True, followup_intent="similar_to_previous")
+        )
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
+    def test_followup_with_change_color_is_eligible(self):
+        # change_color is engine-friendly; the orchestrator's
+        # _apply_change_color_avoidance layers prior-color avoidance
+        # on top of the engine's plan post-architect.
+        ok, reason = is_engine_eligible(
+            _ctx(is_followup=True, followup_intent="change_color")
         )
         self.assertTrue(ok)
         self.assertIsNone(reason)

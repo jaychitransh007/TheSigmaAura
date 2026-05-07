@@ -188,13 +188,22 @@ class IsEngineEligibleTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIsNone(reason)
 
-    def test_followup_with_change_color_still_ineligible(self):
+    def test_followup_with_full_alternative_still_ineligible(self):
+        # full_alternative is the only intent that still requires LLM.
+        live = _live()
+        live.is_followup = True  # pyright: ignore
+        live.followup_intent = "full_alternative"  # pyright: ignore
+        ok, reason = is_engine_eligible(_ctx(live=live), _plan())
+        self.assertFalse(ok)
+        self.assertEqual(reason, "followup_request")
+
+    def test_followup_with_change_color_eligible(self):
         live = _live()
         live.is_followup = True  # pyright: ignore
         live.followup_intent = "change_color"  # pyright: ignore
         ok, reason = is_engine_eligible(_ctx(live=live), _plan())
-        self.assertFalse(ok)
-        self.assertEqual(reason, "followup_request")
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
 
     def test_followup_with_more_options_eligible(self):
         # Mirror of the architect router test (PR #191). Composer

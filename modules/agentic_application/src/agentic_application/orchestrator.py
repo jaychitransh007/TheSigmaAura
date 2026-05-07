@@ -385,6 +385,60 @@ def _apply_user_preferences_to_plan(
             query.hard_attrs = existing
 
 
+def _apply_change_color_avoidance(
+    plan: Any,
+    previous_recommendations: Optional[List[Dict[str, Any]]],
+    followup_intent: str,
+) -> None:
+    """When the user's follow-up intent is ``change_color``, remove
+    the prior recommendation's primary_colors from the engine's
+    resolved ``PrimaryColor`` hard_attr so retrieval surfaces
+    different colors.
+
+    Layered on AFTER the architect runs (alongside
+    ``_apply_user_preferences_to_plan`` and
+    ``_apply_target_product_type_to_plan``). The engine itself has
+    no prior-state input, so the orchestrator does this post-hoc
+    transform on the QuerySpec hard_attrs — the simplest place to
+    encode "avoid these colors."
+
+    No-op when:
+    - intent is anything other than ``change_color``
+    - previous_recommendations is empty / None
+    - prior colors couldn't be extracted
+
+    Preserves the original allowed-color list when filtering would
+    empty it (don't fully suppress the axis — better to over-show
+    same colors than return zero products).
+    """
+    if (followup_intent or "").strip() != "change_color":
+        return
+    if not previous_recommendations:
+        return
+    prior_colors: set[str] = set()
+    for rec in previous_recommendations:
+        for color in (rec or {}).get("primary_colors") or []:
+            v = str(color).strip().lower()
+            if v:
+                prior_colors.add(v)
+    if not prior_colors:
+        return
+    for direction in getattr(plan, "directions", []) or []:
+        for query in getattr(direction, "queries", []) or []:
+            ha = dict(getattr(query, "hard_attrs", None) or {})
+            if "PrimaryColor" not in ha:
+                continue
+            allowed = ha["PrimaryColor"]
+            filtered = [
+                c for c in allowed
+                if str(c).strip().lower() not in prior_colors
+            ]
+            if filtered:
+                ha["PrimaryColor"] = filtered
+                query.hard_attrs = ha
+            # else: keep original to avoid empty-flatters → penalize-everything
+
+
 def _apply_target_product_type_to_plan(
     plan: Any,
     target_product_type: str,
@@ -5452,6 +5506,16 @@ class AgenticOrchestrator:
         # user's specific-garment ask regardless of architect path.
         _apply_target_product_type_to_plan(
             plan, initial_live_context.target_product_type,
+        )
+
+        # When the user's follow-up intent is `change_color`, drop
+        # prior recommendation's primary_colors from the engine's
+        # resolved PrimaryColor hard_attr so retrieval surfaces
+        # different colors. No-op for other intents.
+        _apply_change_color_avoidance(
+            plan,
+            list(previous_context.get("last_recommendations") or []),
+            str(getattr(initial_live_context, "followup_intent", "") or ""),
         )
 
         resolved = plan.resolved_context

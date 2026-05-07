@@ -100,6 +100,20 @@ ENGINE_FRIENDLY_FOLLOWUP_INTENTS: frozenset[str] = frozenset({
     # plan + prior-item exclusion = different products in the same
     # space, which is exactly the "more_options" semantic.
     FollowUpIntent.MORE_OPTIONS.value,
+    # similar_to_previous ("more like that one") — semantically
+    # nearly identical to more_options as far as the engine is
+    # concerned: produce a plan from the same profile/intent context
+    # (which is similar by definition to the prior turn's), rely on
+    # prev_rec_ids to surface different products. Distinct only at
+    # the planner / UX level (the user's phrasing).
+    FollowUpIntent.SIMILAR_TO_PREVIOUS.value,
+    # change_color ("show me different colors") needs prior-color
+    # avoidance, applied via _apply_change_color_avoidance in the
+    # orchestrator (drops prior primary_colors from the engine's
+    # resolved PrimaryColor hard_attr). Eligibility-wise it's
+    # engine-friendly because the engine still produces a clean
+    # plan; the avoidance is layered on after.
+    FollowUpIntent.CHANGE_COLOR.value,
 })
 
 
