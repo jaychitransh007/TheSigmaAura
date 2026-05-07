@@ -11,10 +11,23 @@ Two test classes:
 from __future__ import annotations
 
 import os
+import sys
 import unittest
+from pathlib import Path
 
-# sys.path setup is centralised in tests/conftest.py — including
-# tests/eval/, which makes open_axis_eval importable as a flat module.
+# CI runs `python -m unittest discover` which doesn't load conftest.py
+# (pytest-only). Older tests carry an inline sys.path bootstrap that
+# adds modules/*/src to sys.path; that side effect makes those tests
+# work under unittest discover too. This file's imports go ONE step
+# further: open_axis_eval lives in tests/eval/ which isn't on sys.path
+# unless we explicitly add it. Self-contained block here so this test
+# works under both pytest (via conftest) and unittest discover.
+_ROOT = Path(__file__).resolve().parents[1]
+for _p in (_ROOT / "tests" / "eval",):
+    _sp = str(_p)
+    if _sp not in sys.path:
+        sys.path.insert(0, _sp)
+
 from open_axis_eval import (
     AxisStats,
     CaseResult,
