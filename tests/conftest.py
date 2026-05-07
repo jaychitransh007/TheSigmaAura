@@ -33,6 +33,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _MODULE_SRC_DIRS = (
     _REPO_ROOT,
     *sorted((_REPO_ROOT / "modules").glob("*/src"), reverse=True),
+    # Phase 5x.4b — make eval-harness modules (tests/eval/*.py)
+    # importable as flat top-level modules, so tests can do
+    # ``from open_axis_eval import ...``. Avoids needing __init__.py
+    # files in tests/ (which would change pytest's discovery semantics
+    # for the rest of the suite).
+    _REPO_ROOT / "tests" / "eval",
 )
 
 # Move-to-front (rather than insert-only-if-absent) so the local source

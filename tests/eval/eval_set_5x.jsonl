@@ -1,0 +1,13 @@
+{"id": "embellish_high", "user_message": "I want something with more embellishment", "expected_extracted_preferences": {"EmbellishmentLevel": ["heavy", "statement"]}, "notes": "single-axis: explicit 'more X' direction"}
+{"id": "embellish_minimal", "user_message": "Keep it minimal and clean, no decoration", "expected_extracted_preferences": {"EmbellishmentLevel": ["minimal", "subtle"]}, "notes": "single-axis: explicit 'minimal' direction"}
+{"id": "contrast_low", "user_message": "Show me low-contrast outfits", "expected_extracted_preferences": {"ContrastLevel": ["very_low", "low"]}, "notes": "single-axis"}
+{"id": "fabric_flowy", "user_message": "I want flowy fabric pieces", "expected_extracted_preferences": {"FabricDrape": ["fluid"]}, "notes": "single-axis: 'flowy' maps to fluid drape"}
+{"id": "color_saturated", "user_message": "Saturated jewel tones please", "expected_extracted_preferences": {"ColorSaturation": ["high", "very_high"]}, "notes": "single-axis: 'saturated/jewel' is the prompt's example"}
+{"id": "garment_midi", "user_message": "I want a midi length dress", "expected_extracted_preferences": {"GarmentLength": ["midi"]}, "notes": "single-axis: explicit length"}
+{"id": "color_warm", "user_message": "Warm earth tones for autumn", "expected_extracted_preferences": {"ColorTemperature": ["warm"]}, "notes": "single-axis: 'warm tones' direction"}
+{"id": "neckline_v", "user_message": "I'd like a v-neck top", "expected_extracted_preferences": {"NecklineType": ["v_neck"]}, "notes": "single-axis: explicit neckline"}
+{"id": "multi_neckline_fit", "user_message": "A v-neck top, fitted but not tight", "expected_extracted_preferences": {"NecklineType": ["v_neck"], "FitEase": ["fitted", "regular"]}, "notes": "multi-axis: neckline + fit"}
+{"id": "multi_pattern_scale", "user_message": "Small geometric prints", "expected_extracted_preferences": {"PatternType": ["geometric"], "PatternScale": ["micro", "small"]}, "notes": "multi-axis: pattern type + scale"}
+{"id": "multi_drape_embellish", "user_message": "Formal but not stiff, with subtle embellishment", "expected_extracted_preferences": {"FabricDrape": ["fluid", "soft_structured"], "EmbellishmentLevel": ["minimal", "subtle"]}, "notes": "multi-axis. FormalityLevel goes in formality_hint, not extracted_preferences"}
+{"id": "negative_goa_beach", "user_message": "Find me outfits for Goa beaches", "expected_extracted_preferences": {}, "notes": "negative: weather/occasion go in their own resolved_context fields, not in extracted_preferences"}
+{"id": "negative_office", "user_message": "What should I wear to office tomorrow", "expected_extracted_preferences": {}, "notes": "negative: occasion only, no axis preferences"}
