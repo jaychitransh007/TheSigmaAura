@@ -1040,6 +1040,183 @@ use `ops/scripts/turn_forensics.py` (see Ops Scripts section).
 
 ---
 
+## Panel 25 — Composer Plan-Source Distribution
+
+**Question:** of the composer-stage decisions made today, what
+fraction came from the LLM, the composer engine, or the cache?
+
+**Context:** PR 5d (Phase 5d) introduced
+`aura_composer_router_decision_total{used_engine, fallback_reason}`
+and started tagging distillation traces with the composer router
+decision. This panel is the composer-side mirror of Panel 21.
+Composer cache hits are a separate code path (orchestrator-level
+hash on architect_direction_id × retrieval_fingerprint × cluster ×
+composer_prompt_version) and surface as `model_call_logs.model =
+'cache'` rows on the `outfit_composer` call_type.
+
+```sql
+-- composer_plan_source_distribution_last_7d
+SELECT
+    date_trunc('day', created_at) AS day,
+    CASE
+        WHEN model = 'cache'           THEN 'cache'
+        WHEN model = 'composer_engine' THEN 'engine'
+        ELSE                                'llm'
+    END                            AS plan_source,
+    COUNT(*)                       AS rows,
+    AVG(latency_ms)::int           AS avg_latency_ms,
+    SUM(prompt_tokens + completion_tokens) AS total_tokens
+FROM model_call_logs
+WHERE call_type = 'outfit_composer'
+  AND status = 'ok'
+  AND created_at >= now() - interval '7 days'
+GROUP BY 1, 2
+ORDER BY 1 DESC, 2;
+```
+
+**Healthy:** with the engine flag on and the architect engine running
+upstream, expect ~50–70% engine, ~10–20% cache, ~15–35% LLM
+(eligibility-skip + fall-through). LLM-row p50 latency ~12–14s;
+engine + cache rows ≤ 1s.
+
+**Degraded:** engine share <20% with `AURA_COMPOSER_ENGINE_ENABLED=1`
+means either canonicalize is failing too often upstream OR the
+engine's pool eligibility / confidence gates are too tight. Drill
+into Panel 26 (rule-violation distribution) and the
+`aura_composer_router_decision_total{fallback_reason}` Prometheus
+counter.
+
+**Unhealthy:** zero engine rows despite the flag — almost always
+means the env var didn't propagate. Check the boot log.
+
+---
+
+## Panel 26 — Composer Rule-Violation Distribution
+
+**Question:** which pairing rules are dropping engine tuples most
+often, and which YAML categories need stylist review next?
+
+**Context:** PR 5c (Phase 5c) emits per-tuple provenance with
+`drop_reason` ∈ {formality_alignment, color_story, pattern_mixing,
+scale_balance, bridal_specific, low_picks, low_confidence,
+pool_too_sparse, none}. The router's `provenance_summary` keeps
+counts per drop_reason. Panel surfaces top reasons over a 30-day
+window.
+
+```sql
+-- composer_drop_reason_distribution_last_30d
+WITH reasons AS (
+    SELECT
+        kv.key  AS drop_reason,
+        kv.value::int AS count,
+        created_at::date AS day
+    FROM distillation_traces,
+         jsonb_each_text(
+             COALESCE(
+                 full_output -> 'composer_router_decision' -> 'provenance_summary' -> 'dropped_by_reason',
+                 '{}'::jsonb
+             )
+         ) AS kv
+    WHERE stage = 'outfit_composer'
+      AND created_at >= now() - interval '30 days'
+)
+SELECT
+    drop_reason,
+    SUM(count)        AS total_drops,
+    COUNT(DISTINCT day) AS days_seen,
+    MIN(day)          AS first_seen,
+    MAX(day)          AS last_seen
+FROM reasons
+GROUP BY drop_reason
+ORDER BY total_drops DESC
+LIMIT 30;
+```
+
+**How to use:** the top 5 drop_reasons are the highest-leverage
+candidates for stylist YAML review. Phase 4.2 stylist pass should
+prioritize these; the same data slices to "where the engine sees
+real-world tuples that look problematic to it."
+
+---
+
+## Panel 27 — Composer Per-Tuple Score Distribution
+
+**Question:** how does the engine's tuple scoring distribute on
+real traffic — is the diversity penalty + soft-violation accumulation
+producing a useful spread, or is everything bunching at 1.0?
+
+**Context:** PR 5c emits `base_score` per tuple (1.0 minus
+`SOFT_PENALTY * soft_violations`). Picked tuples additionally get
+`diversity_multiplier` ∈ {1.0, 0.6, 0.42, ...}. Healthy spread
+suggests the engine has discrimination room; bunching at 1.0
+suggests soft rules aren't biting.
+
+```sql
+-- composer_tuple_score_histogram_last_7d
+WITH scores AS (
+    SELECT
+        (entry ->> 'base_score')::float AS base_score,
+        (entry ->> 'diversity_multiplier')::float AS diversity_multiplier,
+        (entry ->> 'picked')::bool      AS picked
+    FROM distillation_traces,
+         jsonb_array_elements(
+             COALESCE(
+                 full_output -> 'composer_router_decision' -> 'provenance',
+                 '[]'::jsonb
+             )
+         ) AS entry
+    WHERE stage = 'outfit_composer'
+      AND created_at >= now() - interval '7 days'
+)
+SELECT
+    width_bucket(base_score, 0.0, 1.0, 10) AS score_bucket,
+    COUNT(*)                                AS tuples,
+    SUM(CASE WHEN picked THEN 1 ELSE 0 END) AS picked,
+    AVG(diversity_multiplier)               AS avg_diversity_multiplier
+FROM scores
+GROUP BY score_bucket
+ORDER BY score_bucket;
+```
+
+**Healthy:** scores spread across at least 3 buckets; picked tuples
+concentrate in the upper-2 buckets but aren't always 1.0.
+
+**Degraded:** every tuple at 1.0 means soft rules don't fire on
+production data — review pairing.py's per-category evaluators
+against actual catalog enrichment shapes.
+
+---
+
+## Panel 28 — Composer Single-Turn Diagnostic
+
+**Question:** for a specific turn, what did the composer router
+decide, what tuples were enumerated, what dropped where, and what
+got picked?
+
+```sql
+-- composer_diagnose_one_turn — replace ::uuid with the actual turn_id
+SELECT
+    stage,
+    model,
+    latency_ms,
+    full_output -> 'composer_router_decision' AS composer_decision,
+    full_output -> 'composer_router_decision' -> 'provenance_summary' AS provenance_summary,
+    full_output -> 'composer_router_decision' -> 'shadow_comparison' AS shadow_comparison
+FROM distillation_traces
+WHERE turn_id = '00000000-0000-0000-0000-000000000000'::uuid
+  AND stage = 'outfit_composer'
+ORDER BY created_at;
+```
+
+`shadow_comparison` is null on every non-shadow turn; populated when
+`AURA_COMPOSER_SHADOW=1` is on AND the engine produced output.
+
+For a richer side-by-side comparison across multiple recent turns,
+use `ops/scripts/composer_quality_eval.py` (Phase 4.6 eval set
+required) or `ops/scripts/turn_forensics.py`.
+
+---
+
 ## How to refresh
 
 1. Open Supabase Studio (or your preferred SQL client) connected to staging.
@@ -1172,6 +1349,34 @@ The composition engine (PR #149) replaces the LLM architect with deterministic Y
   2. Run the YAML validator locally: `python ops/scripts/validate_style_graph_yaml.py` and `validate_style_graph_conflicts.py`.
   3. Once fixed on main, restart the affected pods (the in-process disable persists until restart).
 
+### A5: Composer engine flag-on regressions (Phase 5d+)
+
+The composer engine (PR 5c, wired in PR 5d) replaces the LLM `OutfitComposer` with deterministic tuple scoring + greedy top-K when `AURA_COMPOSER_ENGINE_ENABLED=true`. Same shape of failure modes as A4 — three runbook entries:
+
+**A5.1 — Engine flag set but every turn shows `fallback_reason=engine_disabled` on the composer router.**
+- **Signal:** `composer_router_decision used_engine=False fallback_reason=engine_disabled` in the orchestrator log on every turn.
+- **Cause (almost always):** env var was assigned but not exported, OR the orchestrator process started before the env update.
+- **First three actions:**
+  1. Confirm `.env.staging` (or `.env.local`) contains `AURA_COMPOSER_ENGINE_ENABLED=true`.
+  2. Restart the orchestrator process (config is read at startup).
+  3. Run `python ops/scripts/turn_forensics.py <turn_id>` — confirm composer-side `used_engine: True` after the restart.
+
+**A5.2 — Engine runs but every turn falls through with `pool_too_sparse`.**
+- **Signal:** `fallback_reason=pool_too_sparse` (composer-side) on most turns; Panel 25 shows engine share <10%.
+- **Cause:** the architect is emitting directions whose retrieval pools have <2 items per role. Most often this means upstream retrieval is returning fewer items than expected (catalog SKU coverage gap, over-aggressive hard filters), or the architect is emitting directions that don't match the catalog inventory shape.
+- **First three actions:**
+  1. Cross-check Panel 16 (low_confidence_catalog_responses) — if architect+composer pool sizes look low, retrieval is the upstream cause.
+  2. Inspect `model_call_logs.request_json` on a sparse turn for the architect's emitted directions; verify they map to actual catalog inventory via `ops/scripts/turn_forensics.py`.
+  3. If retrieval is underperforming generally, that's a catalog data problem, not a composer problem — engine will start succeeding once retrieval recovers.
+
+**A5.3 — Engine accepts but Panel 18 (rater unsuitable rate) ticks above 5%.**
+- **Signal:** rater-side `unsuitable=True` rate climbs after the composer flag flips.
+- **Cause:** the engine is producing tuples that pass its hard rules but the rater (which has aesthetic judgment the engine doesn't) flags as unsuitable. Likely candidates: diversity penalty too lax (similar outfits dominating picks), OR `MIN_OUTFIT_SCORE` floor too low (weak tuples surviving).
+- **First three actions:**
+  1. Run Panel 26 (rule-violation distribution) — heavy soft-violation accumulation correlates with rater rejection.
+  2. Run Panel 27 (per-tuple score histogram) — if picks are bunching at base_score < 0.7, the engine isn't filtering hard enough; calibrate `MIN_OUTFIT_SCORE`.
+  3. Capture 50 unsuitable-rated engine outfits via Panel 28 + `ops/scripts/turn_forensics.py`; spot-check what the engine missed that the rater caught — this is the YAML-tuning backlog.
+
 ### Escalation timeline
 
 | Stage | Trigger | Action |
@@ -1218,7 +1423,8 @@ _Migrated from `CURRENT_STATE.md`. Operational scripts, run instructions, and Su
 | `ops/scripts/schema_audit.py` | Audit database schema |
 | `ops/scripts/turn_forensics.py` | Per-turn forensics: latency / cost / router decision side-by-side |
 | `ops/scripts/build_canonical_embeddings.py` | Regenerate `composition/canonical_embeddings.json` after a YAML change |
-| `ops/scripts/composition_quality_eval.py` | Engine-vs-LLM divergence eval (consumes Phase 4.6 eval set) |
+| `ops/scripts/composition_quality_eval.py` | Architect engine-vs-LLM divergence eval (consumes Phase 4.6 eval set) |
+| `ops/scripts/composer_quality_eval.py` | Composer engine-vs-LLM divergence eval (consumes Phase 4.6 eval set + retrieval pools per cell) |
 
 
 ## How To Run
