@@ -34,16 +34,35 @@ _MAX_SEARCH_WORKERS = 2
 _SEARCH_MAX_RETRIES = 1
 _SEARCH_RETRY_DELAY_S = 0.5
 
-# Hard-attr re-rank (May 7 2026 — turn 8316c476). When the architect
-# engine resolved hard_attrs (SleeveLength, FabricWeight, etc.), the
-# rich attribute data lives in catalog_enriched, which we hydrate
-# AFTER cosine retrieval. So we over-fetch from cosine and re-rank
-# in Python by adding a per-violation penalty (matches the SQL function's
-# hard_penalty constant). Items violating drop in rank; items missing
-# the attribute (no opinion) are unchanged. Final list is truncated
-# back to retrieval_count.
+# Hard-attr re-rank. The architect engine emits a wide hard_attrs set
+# (~19 attrs covering body, palette, weather, formality, occasion).
+# Applying the full set as a retrieval penalty was too aggressive —
+# items partial-matching across many soft preferences accumulated 5+
+# violations × 0.30 = -1.5+ penalty, dragging cosine sim from ~0.75
+# into deep negatives (turn 5e2180aa). Two-stage fix:
+#
+# 1. Filter to ``_RETRIEVAL_HARD_ATTR_KEYS`` — the genuinely categorical
+#    contextual attributes where a mismatch reads as wrong (cool weather +
+#    short sleeves; ceremonial occasion + casual fabric). Body-shape,
+#    palette, and silhouette preferences stay in query_document text
+#    only (handled by cosine fuzziness) and apply later as a tuple-level
+#    penalty in the composer engine via TupleContext.hard_attrs.
+# 2. Lower per-violation penalty to 0.10 (was 0.30). With ~6 keys max
+#    in the retrieval set, total penalty bounded at 0.6 — meaningful
+#    but not crushing.
+#
+# Composer engine still uses the FULL hard_attrs at tuple scoring;
+# this filter only narrows the retrieval-stage penalty.
 _RERANK_OVER_FETCH_FACTOR = 4
-_HARD_ATTR_PENALTY = 0.30
+_HARD_ATTR_PENALTY = 0.10
+_RETRIEVAL_HARD_ATTR_KEYS = frozenset({
+    "FormalityLevel",
+    "OccasionFit",
+    "SleeveLength",
+    "FabricWeight",
+    "FabricDrape",
+    "SkinExposureLevel",
+})
 
 
 def _apply_hard_attr_penalty(
@@ -52,19 +71,28 @@ def _apply_hard_attr_penalty(
     retrieval_count: int,
 ) -> List[Any]:
     """Re-rank ``products`` by adding ``_HARD_ATTR_PENALTY`` per violation
-    of ``hard_attrs`` against each product's ``enriched_data``. Items
-    that lack the attribute (no opinion) carry no penalty. Returns the
-    top ``retrieval_count`` items by adjusted similarity.
+    of the retrieval-narrow ``hard_attrs`` subset against each product's
+    ``enriched_data``. Items that lack the attribute (no opinion) carry
+    no penalty. Returns the top ``retrieval_count`` items by adjusted
+    similarity.
 
-    No-op (just truncates to retrieval_count) when ``hard_attrs`` is
-    falsy — preserves backward compatibility with the LLM-architect path
-    which doesn't populate hard_attrs."""
+    Filters ``hard_attrs`` to ``_RETRIEVAL_HARD_ATTR_KEYS`` before
+    applying — the wider engine-resolved set still flows to the
+    composer engine for tuple-level scoring (different stage, different
+    role). No-op (just truncates to retrieval_count) when ``hard_attrs``
+    is falsy — preserves backward compatibility with the LLM-architect
+    path which doesn't populate hard_attrs."""
     if not hard_attrs:
+        return products[:retrieval_count]
+    narrow = {
+        k: v for k, v in hard_attrs.items() if k in _RETRIEVAL_HARD_ATTR_KEYS
+    }
+    if not narrow:
         return products[:retrieval_count]
     for p in products:
         ed = getattr(p, "enriched_data", None) or {}
         violations = 0
-        for attr_name, allowed in hard_attrs.items():
+        for attr_name, allowed in narrow.items():
             val = ed.get(attr_name)
             if val is None or val == "":
                 continue  # no opinion, no penalty

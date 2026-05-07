@@ -725,5 +725,153 @@ class MultiDirectionTests(unittest.TestCase):
         self.assertGreaterEqual(len(dirs), 2)
 
 
+class TupleDedupeTests(unittest.TestCase):
+    """The catalog has products that share product_id across multiple
+    embedding rows (size/color variants). Without dedup, the same
+    product appears in top + bottom + outerwear pools and the
+    cartesian product yields (X, X, X) tuples. The fix: filter
+    duplicates within and across role pools."""
+
+    def _enriched(self, role_subtype: str) -> dict:
+        # Distinct enriched fields per call so projection produces
+        # different Item objects (but same product_id when needed).
+        return {
+            "GarmentSubtype": role_subtype,
+            "FormalityLevel": "smart_casual",
+            "PrimaryColor": "navy",
+            "FitType": "tailored",
+            "FabricDrape": "crisp",
+            "FabricTexture": "smooth",
+            "FabricWeight": "light",
+            "SleeveLength": "full",
+        }
+
+    def test_paired_tuples_have_distinct_item_ids(self):
+        # Construct a pool where the SAME product_id appears in BOTH top
+        # and bottom pools (catalog corruption simulation). Cartesian
+        # without dedup → (X, X) tuples; with dedup → only (X≠Y) tuples.
+        plan = _paired_plan()
+        sets = [
+            RetrievedSet(direction_id="A", query_id="A1", role="top", products=[
+                _rp("DUP1", **self._enriched("shirt")),
+                _rp("UNIQ_T", **self._enriched("tshirt")),
+            ]),
+            RetrievedSet(direction_id="A", query_id="A2", role="bottom", products=[
+                _rp("DUP1", **self._enriched("trouser")),  # SAME id, different role
+                _rp("UNIQ_B", **self._enriched("jeans")),
+            ]),
+        ]
+        result = compose_outfits(
+            plan=plan, retrieved_sets=sets,
+            ctx=_ctx(palette_anchors=("navy",)), graph=_graph(),
+        )
+        if result.composer_result is not None:
+            for o in result.composer_result.outfits:
+                self.assertEqual(
+                    len(set(o.item_ids)), len(o.item_ids),
+                    f"outfit {o.composer_id} has duplicate item_ids: {o.item_ids}",
+                )
+
+    def test_three_piece_tuples_have_distinct_item_ids(self):
+        # Same uniqueness check for three_piece (3 items per tuple).
+        plan = RecommendationPlan(
+            retrieval_count=5,
+            directions=[
+                DirectionSpec(
+                    direction_id="A", direction_type="three_piece", label="Layered",
+                    queries=[
+                        QuerySpec(query_id="A1", role="top", hard_filters={}, query_document=""),
+                        QuerySpec(query_id="A2", role="bottom", hard_filters={}, query_document=""),
+                        QuerySpec(query_id="A3", role="outerwear", hard_filters={}, query_document=""),
+                    ],
+                ),
+            ],
+        )
+        # SAME product_id appears in all 3 role pools.
+        DUP = "DUP_X"
+        sets = [
+            RetrievedSet(direction_id="A", query_id="A1", role="top", products=[
+                _rp(DUP, **self._enriched("shirt")),
+                _rp("UNIQ_T1", **self._enriched("tshirt")),
+                _rp("UNIQ_T2", **self._enriched("sweater")),
+            ]),
+            RetrievedSet(direction_id="A", query_id="A2", role="bottom", products=[
+                _rp(DUP, **self._enriched("trouser")),
+                _rp("UNIQ_B1", **self._enriched("jeans")),
+                _rp("UNIQ_B2", **self._enriched("trouser")),
+            ]),
+            RetrievedSet(direction_id="A", query_id="A3", role="outerwear", products=[
+                _rp(DUP, **self._enriched("jacket")),
+                _rp("UNIQ_OW1", **self._enriched("jacket")),
+                _rp("UNIQ_OW2", **self._enriched("blazer")),
+            ]),
+        ]
+        result = compose_outfits(
+            plan=plan, retrieved_sets=sets,
+            ctx=_ctx(palette_anchors=("navy",)), graph=_graph(),
+        )
+        if result.composer_result is not None:
+            for o in result.composer_result.outfits:
+                self.assertEqual(
+                    len(set(o.item_ids)), len(o.item_ids),
+                    f"outfit {o.composer_id} has duplicate item_ids: {o.item_ids}",
+                )
+
+
+class TupleHardAttrPenaltyTests(unittest.TestCase):
+    """Engine pulls hard_attrs from each direction's QuerySpec and
+    threads them into TupleContext so score_tuple applies a tuple-level
+    per-violation penalty across all items. Same loop shape applies to
+    paired (2 items) and three_piece (3 items) tuples — the iteration
+    just walks the items."""
+
+    def _violator_pool(self, **overrides) -> RetrievedProduct:
+        # Item with SleeveLength="short" (violates the architect's
+        # high_altitude_cool hard_attrs).
+        base = dict(
+            FormalityLevel="smart_casual", PrimaryColor="navy",
+            ContrastLevel="medium", PatternType="solid",
+            EmbellishmentLevel="minimal", FitType="tailored",
+            FabricDrape="crisp", FabricTexture="smooth",
+            FabricWeight="light", GarmentSubtype="shirt",
+            SleeveLength="short",
+        )
+        base.update(overrides)
+        return _rp(f"P{id(base)}", **base)
+
+    def test_tuple_with_hard_attrs_violation_scores_lower(self):
+        # Two paired tuples in the SAME direction, same colors, same
+        # everything EXCEPT one tuple has a SleeveLength violator
+        # (short) and the other doesn't (full). Tuple-level penalty
+        # should rank the clean one higher.
+        plan = _paired_plan()
+
+        full_top = _clean_top_rp(1, SleeveLength="full")
+        short_top = _clean_top_rp(2, SleeveLength="short", PrimaryColor="charcoal")
+        bottom = _clean_bottom_rp(1)
+
+        # Architect's hard_attrs: weather demands full or 3/4 sleeves.
+        plan.directions[0].queries[0].hard_attrs = {
+            "SleeveLength": ["three_quarter", "full"]
+        }
+        plan.directions[0].queries[1].hard_attrs = {
+            "SleeveLength": ["three_quarter", "full"]
+        }
+
+        sets = _retrieved_pair("A", tops=[full_top, short_top], bottoms=[bottom, _clean_bottom_rp(2)])
+        result = compose_outfits(
+            plan=plan, retrieved_sets=sets,
+            ctx=_ctx(palette_anchors=_varied_palette()),
+            graph=_graph(),
+        )
+        if result.composer_result is not None and result.composer_result.outfits:
+            # The first outfit should NOT contain the short-sleeve item
+            # (T2 is the short_top). Tuple-level penalty pushes
+            # short-sleeve tuples below clean ones.
+            top_item_ids = result.composer_result.outfits[0].item_ids
+            self.assertNotIn("T2", top_item_ids,
+                "tuple containing short-sleeve top should rank lower than clean tuples")
+
+
 if __name__ == "__main__":
     unittest.main()
