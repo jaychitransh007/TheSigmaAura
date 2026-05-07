@@ -27,6 +27,33 @@ Phase 2 finishes the cleanup on the catalog side:
 
 ---
 
+## Catalog content gap — masculine top coverage
+
+**Status:** queued · **Cost:** content task (catalog enrichment) · **Risk:** low
+
+Surfaced May 8 2026 during the turn `9abaf4d4` audit. Masculine `catalog_enriched` carries only 8 subtypes:
+
+| subtype | count |
+|---|---|
+| trouser | 327 |
+| blazer | 315 |
+| jeans | 274 |
+| track_pants | 41 |
+| shorts | 34 |
+| kurta | 7 |
+| co_ord_set | 1 |
+| kurta_set | 1 |
+
+There are zero tshirts / polos / sweatshirts / hoodies / shirts in the masculine catalog. So when a male user asks for "loungewear" or "casual day-out" outfits, the architect emits reasonable subtype guesses (tshirt, hoodie) that retrieval can't satisfy — total products = 0 across all queries. PR #192 (empty-retrieval auto-relaxation) routes around the gap by dropping the subtype filter; PRs #186/#187 route around it by binding `OccasionFit ∈ {very_casual, active}` to find the 39 matching items. Both are workarounds — the underlying gap is content.
+
+**Trigger to act:** when the masculine cohort hits production and we see empty-result rates / auto-relax rates for masculine users above some threshold.
+
+**Acceptance:** at least 50 masculine items each across `tshirt`, `polo_tshirt`, `shirt`, `sweatshirt`, `hoodie` subtypes — enough that browse-by-garment and loungewear-style requests have a real catalog to draw from before relaxation kicks in.
+
+**Note:** this is NOT a latency-optimization task even though it surfaced in latency review. It's content / catalog work. Filed here under general catalog hygiene, not under the sub-3s latency push below.
+
+---
+
 ## Catalog vocabulary consolidation — rare-value cleanup (Phase 3 follow-up)
 
 **Status:** parked · **Cost:** small · **Risk:** low
