@@ -125,6 +125,19 @@ class RouterDecision:
 # ─────────────────────────────────────────────────────────────────────────
 
 
+# Follow-up intents the engine can serve directly — they map cleanly
+# onto inputs the engine already handles (formality_hint is a hard-tier
+# source per composition_semantics.md §3.3, so adjusting it changes
+# the resolved direction deterministically). Other intents
+# (change_color, similar_to_previous, full_alternative, more_options,
+# increase_boldness) need prior-recommendation context the engine
+# doesn't carry today, so they keep going to the LLM.
+_ENGINE_FRIENDLY_FOLLOWUP_INTENTS: frozenset[str] = frozenset({
+    "decrease_formality",
+    "increase_formality",
+})
+
+
 def is_engine_eligible(combined_context: CombinedContext) -> tuple[bool, str | None]:
     """Pre-engine gate. Skip the engine entirely for input shapes it
     can't handle today; the LLM keeps these turns."""
@@ -132,7 +145,15 @@ def is_engine_eligible(combined_context: CombinedContext) -> tuple[bool, str | N
     if getattr(live, "anchor_garment", None):
         return False, "anchor_present"
     if getattr(live, "is_followup", False):
-        return False, "followup_request"
+        # May 8 2026: formality follow-ups are an exception. The
+        # planner sets is_followup=true for "more relaxed" /
+        # "dressier" phrasings AND emits a normalized formality_hint.
+        # That's exactly the engine's input shape — no prior-turn
+        # context needed. Forcing these to the LLM produced 35s + 0
+        # products on turn 9abaf4d4 (May 8 review).
+        followup_intent = str(getattr(live, "followup_intent", "") or "").strip()
+        if followup_intent not in _ENGINE_FRIENDLY_FOLLOWUP_INTENTS:
+            return False, "followup_request"
     if combined_context.previous_recommendations:
         return False, "has_previous_recommendations"
     return True, None

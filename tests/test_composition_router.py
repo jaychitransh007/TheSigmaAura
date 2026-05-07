@@ -48,6 +48,7 @@ from agentic_application.schemas import (
 def _ctx(
     *,
     is_followup: bool = False,
+    followup_intent: str = "",
     anchor_garment=None,
     previous_recommendations=None,
     occasion_signal: str = "daily_office_mnc",
@@ -81,6 +82,7 @@ def _ctx(
             time_of_day=time_of_day,
             style_goal=style_goal,
             is_followup=is_followup,
+            followup_intent=(followup_intent or None) if is_followup else None,
             anchor_garment=anchor_garment,
         ),
         previous_recommendations=previous_recommendations,
@@ -169,6 +171,38 @@ class EligibilityGateTests(unittest.TestCase):
 
     def test_followup_blocks(self):
         ok, reason = is_engine_eligible(_ctx(is_followup=True))
+        self.assertFalse(ok)
+        self.assertEqual(reason, "followup_request")
+
+    def test_followup_with_decrease_formality_is_eligible(self):
+        # May 8 2026: formality follow-ups carry an adjusted
+        # formality_hint that's a clean engine input. Engine accepts.
+        ok, reason = is_engine_eligible(
+            _ctx(is_followup=True, followup_intent="decrease_formality")
+        )
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
+    def test_followup_with_increase_formality_is_eligible(self):
+        ok, reason = is_engine_eligible(
+            _ctx(is_followup=True, followup_intent="increase_formality")
+        )
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
+    def test_followup_with_change_color_still_blocks(self):
+        # Engine has no prior-color context; LLM still owns these.
+        ok, reason = is_engine_eligible(
+            _ctx(is_followup=True, followup_intent="change_color")
+        )
+        self.assertFalse(ok)
+        self.assertEqual(reason, "followup_request")
+
+    def test_followup_with_more_options_still_blocks(self):
+        # Conservative — engine has no prior-batch context.
+        ok, reason = is_engine_eligible(
+            _ctx(is_followup=True, followup_intent="more_options")
+        )
         self.assertFalse(ok)
         self.assertEqual(reason, "followup_request")
 
