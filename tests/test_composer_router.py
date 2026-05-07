@@ -196,6 +196,34 @@ class IsEngineEligibleTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(reason, "followup_request")
 
+    def test_followup_with_more_options_eligible(self):
+        # Mirror of the architect router test (PR #191). Composer
+        # engine accepts more_options follow-ups; orchestrator's
+        # prev_rec_ids exclusion handles "show different products."
+        live = _live()
+        live.is_followup = True  # pyright: ignore
+        live.followup_intent = "more_options"  # pyright: ignore
+        ok, reason = is_engine_eligible(_ctx(live=live), _plan())
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
+    def test_engine_friendly_followup_with_prior_recs_still_eligible(self):
+        # PR #191 review: composer router relaxation must mirror the
+        # architect router's. Engine-friendly follow-up with prior
+        # recs in context should bypass the has_previous_recommendations
+        # gate. Without this check the composer engine would silently
+        # decline every follow-up (since follow-ups always carry prior
+        # recs), undoing the architect-side enablement.
+        live = _live()
+        live.is_followup = True  # pyright: ignore
+        live.followup_intent = "decrease_formality"  # pyright: ignore
+        ok, reason = is_engine_eligible(
+            _ctx(live=live, previous_recommendations=[{"composer_id": "X1"}]),
+            _plan(),
+        )
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
     def test_previous_recommendations_ineligible(self):
         ok, reason = is_engine_eligible(
             _ctx(previous_recommendations=[{"composer_id": "X1"}]), _plan()

@@ -118,14 +118,28 @@ class AttachTryonImagesGateTests(unittest.TestCase):
         # Cache lookup happened (regardless of result).
         orch.repo.find_tryon_image_by_garments.assert_called()
 
-    def test_flag_on_proceeds_to_person_image_lookup(self):
-        # With the flag ON we DO get past the gate and hit the person
-        # image lookup. The test stops there — we don't want to
-        # exercise the full Gemini path in a unit test.
+    def test_person_image_path_lookup_is_lazy(self):
+        # PR #190 review: get_person_image_path is only called when
+        # generation is about to fire. Cache-only / empty-outfit paths
+        # don't pay for the DB lookup. Verifies the lazy-cell behavior
+        # added in the review-feedback PR.
         orch = self._build_orchestrator(tryon_enabled=True)
-        outfits: list = []  # empty outfit list → loop is no-op past the gate
+        outfits: list = []  # empty outfits → loop body never runs
         orch._attach_tryon_images(outfits, "external_user_id")
-        orch.onboarding_gateway.get_person_image_path.assert_called_with("external_user_id")
+        orch.onboarding_gateway.get_person_image_path.assert_not_called()
+
+    def test_flag_off_skips_person_image_lookup_too(self):
+        # Flag off with cache miss: generation gate trips before the
+        # person path lookup, so the lookup is also skipped.
+        from agentic_application.schemas import OutfitCard
+        orch = self._build_orchestrator(tryon_enabled=False)
+        orch.repo.find_tryon_image_by_garments.return_value = None
+        outfits = [OutfitCard(
+            rank=1, title="t", reasoning="r",
+            items=[{"product_id": "p1", "image_url": "http://x/p1.jpg", "role": "top"}],
+        )]
+        orch._attach_tryon_images(outfits, "external_user_id")
+        orch.onboarding_gateway.get_person_image_path.assert_not_called()
 
 
 if __name__ == "__main__":
