@@ -154,6 +154,50 @@ class OverrideTelemetryTests(unittest.TestCase):
             )
         obs.assert_called_with("FabricWeight")
 
+    def test_override_observer_fires_for_attr_only_in_non_first_direction(self):
+        # PR #180 review: baseline_keys must aggregate across ALL
+        # directions, not just the first one. Different directions
+        # can in principle resolve different hard_attrs (e.g.,
+        # weather contributes SleeveLength in direction A but the
+        # occasion contributes EmbellishmentLevel in direction B).
+        # The override observer should fire for either case.
+        plan = RecommendationPlan(
+            retrieval_count=5,
+            directions=[
+                # First direction: only FabricWeight
+                DirectionSpec(
+                    direction_id="A", direction_type="paired", label="A",
+                    queries=[
+                        QuerySpec(
+                            query_id="A1", role="top", hard_filters={},
+                            query_document="t",
+                            hard_attrs={"FabricWeight": ["medium"]},
+                        ),
+                    ],
+                ),
+                # Second direction: only EmbellishmentLevel — NOT in
+                # the first direction. The old code (first-direction
+                # only) would have missed this override.
+                DirectionSpec(
+                    direction_id="B", direction_type="paired", label="B",
+                    queries=[
+                        QuerySpec(
+                            query_id="B1", role="top", hard_filters={},
+                            query_document="t",
+                            hard_attrs={"EmbellishmentLevel": ["minimal"]},
+                        ),
+                    ],
+                ),
+            ],
+        )
+        with patch(
+            "platform_core.metrics.observe_user_preference_override"
+        ) as obs:
+            _apply_user_preferences_to_plan(
+                plan, {"EmbellishmentLevel": ["heavy"]},
+            )
+        obs.assert_called_with("EmbellishmentLevel")
+
     def test_override_observer_does_not_fire_for_new_attribute(self):
         # User-explicit EmbellishmentLevel doesn't override any
         # architect-derived value, so the override observer must NOT

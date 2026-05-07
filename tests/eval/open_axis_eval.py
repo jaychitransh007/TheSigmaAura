@@ -78,9 +78,10 @@ class CaseResult:
     expected: Dict[str, List[str]]
     actual: Dict[str, List[str]]
     status: str  # "pass" | "partial" | "fail"
-    extra_axes: List[str] = field(default_factory=list)  # axes in actual not in expected
-    missing_axes: List[str] = field(default_factory=list)  # axes in expected not in actual
-    value_partial_axes: List[str] = field(default_factory=list)  # axes present in both but value subset
+    extra_axes: List[str] = field(default_factory=list)  # axes in actual not in expected (key-level over-extraction)
+    missing_axes: List[str] = field(default_factory=list)  # axes in expected not in actual (under-extraction)
+    value_fail_axes: List[str] = field(default_factory=list)  # axes present in both, actual has values not in expected (value-level over-extraction)
+    value_partial_axes: List[str] = field(default_factory=list)  # axes present in both, actual is a strict subset of expected values
 
 
 @dataclass(frozen=True)
@@ -196,8 +197,9 @@ def compare_extraction(
         return CaseResult(
             case_id=case_id, user_message=user_message,
             expected=dict(expected), actual=dict(actual),
-            status="fail", extra_axes=value_fail_axes,
+            status="fail", extra_axes=[],
             missing_axes=missing_axes,
+            value_fail_axes=sorted(value_fail_axes),
             value_partial_axes=sorted(value_partial_axes),
         )
 
@@ -386,7 +388,9 @@ def format_report(agg: Aggregate, results: Sequence[CaseResult]) -> str:
             lines.append(f"- expected: `{r.expected}`")
             lines.append(f"- actual:   `{r.actual}`")
             if r.extra_axes:
-                lines.append(f"- over-extracted: {r.extra_axes}")
+                lines.append(f"- over-extracted axes: {r.extra_axes}")
+            if r.value_fail_axes:
+                lines.append(f"- axes with unexpected values: {r.value_fail_axes}")
             if r.missing_axes:
                 lines.append(f"- missing: {r.missing_axes}")
             if r.value_partial_axes:

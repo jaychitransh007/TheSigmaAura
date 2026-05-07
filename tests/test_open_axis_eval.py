@@ -71,12 +71,16 @@ class CompareExtractionTests(unittest.TestCase):
 
     def test_extra_value_in_shared_axis_fails(self):
         # Planner included a value not in the expected set → fail.
+        # Reports under value_fail_axes (not extra_axes) so the report
+        # distinguishes "axis you didn't ask for" from "axis you asked
+        # for but with values you didn't ask for". (PR #182 review.)
         r = compare_extraction(
             {"EmbellishmentLevel": ["heavy"]},
             {"EmbellishmentLevel": ["heavy", "minimal"]},
         )
         self.assertEqual(r.status, "fail")
-        self.assertIn("EmbellishmentLevel", r.extra_axes)
+        self.assertIn("EmbellishmentLevel", r.value_fail_axes)
+        self.assertEqual(r.extra_axes, [])  # not over-extracted at the key level
 
     def test_missing_axis_is_partial(self):
         r = compare_extraction(
@@ -201,7 +205,8 @@ class OpenAxisEvalIntegrationTests(unittest.TestCase):
         fail_cases = [r for r in results if r.status == "fail"]
         self.assertEqual(
             agg.fail, 0,
-            f"hard fails: {[(r.case_id, r.extra_axes, r.actual) for r in fail_cases]}",
+            f"hard fails: "
+            f"{[(r.case_id, r.extra_axes, r.value_fail_axes, r.actual) for r in fail_cases]}",
         )
         # Soft floor: at least 50% of cases should be exact-pass. If
         # this falls, the prompt has drifted and needs review (or the
