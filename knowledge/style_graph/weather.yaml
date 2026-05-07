@@ -23,7 +23,7 @@
 weather:
 
   hot_humid:
-    description: "Sticky hot — sweating immediately on walking 5 minutes"
+    description: "Sticky hot, humid tropical coastal weather — sweating immediately on walking 5 minutes. Indian coast, sea breeze, beach climate, port-city humidity, jungle humidity, lowland tropical summer."
     indian_regions: [Mumbai summer, Chennai year-round, Goa monsoon, Kolkata summer, Kerala lowlands]
     temp_range_c: "28-38°C, humidity >70%"
     flatters:
@@ -51,7 +51,7 @@ weather:
       shirts. Avoid wool, polyester, heavy synthetics, raw silk.
 
   hot_dry:
-    description: "Heat dome — air feels like an oven; UV brutal"
+    description: "Heat dome, arid desert plains, scorching dry summer — air feels like an oven; UV brutal. Rajasthan desert, sandy arid land, dusty plains, sun-baked dry heat."
     indian_regions: [Delhi May-June, Rajasthan summer, Gujarat May, Punjab summer]
     temp_range_c: "38-46°C, humidity <30%"
     flatters:
@@ -79,7 +79,7 @@ weather:
       (heat retention) and dark colors.
 
   warm_temperate:
-    description: "Pleasantly warm — Bangalore most days; everywhere autumn"
+    description: "Pleasantly warm, comfortable, mild plateau climate — Bangalore most days; everywhere autumn. Spring weather, gentle southern Indian climate, breezy comfortable daytime."
     indian_regions: [Bangalore Mar-May & Sep-Nov, Pune all year ex-monsoon, Hyderabad mild months]
     temp_range_c: "20-28°C, moderate humidity"
     flatters:
@@ -100,7 +100,7 @@ weather:
       target; rules apply mostly to evening events at this climate.
 
   mild_pleasant:
-    description: "Crisp, comfortable — Delhi spring/autumn, the rare 'good' weeks"
+    description: "Crisp, comfortable, breezy transitional weather — Delhi spring/autumn, the rare 'good' weeks. Gentle winter, cool morning, pleasant evening, mild Indian winter cities."
     indian_regions: [Delhi Oct-Mar transitions, Mumbai winter, Hyderabad winter]
     temp_range_c: "15-25°C"
     flatters:
@@ -121,7 +121,7 @@ weather:
       Good time for embroidered fabrics that get heavy in summer.
 
   cool_dry:
-    description: "Crisp cold — needs a shawl or jacket; Delhi/Punjab winter"
+    description: "Crisp cold, chilly North Indian winter — needs a shawl or jacket; Delhi/Punjab winter. Foggy plains, dry cold, cool morning, chilly evening, winter season North India."
     indian_regions: [Delhi Nov-Feb, Punjab winter, Haryana winter, Lucknow winter]
     temp_range_c: "8-18°C, dry"
     flatters:
@@ -146,7 +146,7 @@ weather:
       not heat-stress.
 
   cold_dry:
-    description: "Real winter — wool / pashmina necessary; might snow"
+    description: "Real winter, deep snowy mountain cold, freezing — wool / pashmina necessary; might snow. Himalayan winter, hill-station deep cold, snowy peaks, sub-zero alpine."
     indian_regions: [Shimla winter, Kashmir Dec-Mar, Manali winter, Darjeeling winter]
     temp_range_c: "-5 to 10°C, dry/snowy"
     flatters:
@@ -172,7 +172,7 @@ weather:
       heavier weave. Avoid silk (cold against skin) and light cotton.
 
   monsoon_warm:
-    description: "Heavy rain + warm air — Mumbai July, Kerala June-Aug"
+    description: "Heavy rain + warm humid air, tropical coastal monsoon — Mumbai July, Kerala June-Aug. Rainy season, wet hot tropical, drenched coast, sticky monsoon, jungle rain."
     indian_regions: [Mumbai Jun-Sep, Kerala Jun-Aug, Goa Jun-Sep, Chennai Oct-Nov]
     temp_range_c: "26-32°C, humidity >85%, heavy intermittent rain"
     flatters:
@@ -199,7 +199,7 @@ weather:
       pure cotton white (transparent + clings when wet), wool.
 
   monsoon_mild:
-    description: "Cooler rain — Bangalore monsoon, Pune monsoon"
+    description: "Cooler rain, mild plateau monsoon — Bangalore monsoon, Pune monsoon. Light rain, drizzle, gentle wet weather, southern Indian monsoon, cool rainy days."
     indian_regions: [Bangalore Jun-Aug, Pune Jun-Aug, Hyderabad late monsoon]
     temp_range_c: "20-26°C, humidity 70%, intermittent rain"
     flatters:
@@ -222,7 +222,7 @@ weather:
       embroidery.
 
   high_altitude_cool:
-    description: "Hill-station summer — cool with wind, sunny"
+    description: "Hill-station summer, breezy mountain cool, windy hills — cool with wind, sunny. Himalayan summer, hill-resort weather, mountain breeze, alpine summer, hill country."
     indian_regions: [Shimla May-Sep, Manali Apr-Sep, Darjeeling Apr-Oct, Mussoorie summer]
     temp_range_c: "12-22°C, dry, windy"
     flatters:
@@ -245,7 +245,7 @@ weather:
       becomes impractical. Stick to soft-structured.
 
   high_altitude_cold:
-    description: "Snow / extreme cold — high mountains in winter"
+    description: "Snow / extreme cold, freezing Himalayan winter — high mountains in winter. Snowy peaks, sub-zero altitude, alpine deep winter, snowbound mountains, frozen highlands."
     indian_regions: [Ladakh winter, Spiti winter, Gulmarg, Sikkim high winter]
     temp_range_c: "-20 to 5°C"
     flatters:
