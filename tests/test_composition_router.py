@@ -198,13 +198,43 @@ class EligibilityGateTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(reason, "followup_request")
 
-    def test_followup_with_more_options_still_blocks(self):
-        # Conservative — engine has no prior-batch context.
+    def test_followup_with_more_options_is_eligible(self):
+        # May 8 2026: more_options is an engine-friendly intent.
+        # The orchestrator's catalog_search already excludes
+        # previously-shown items via prev_rec_ids, so a fresh engine
+        # plan + prior-item exclusion gives the user different products
+        # in the same space (the "more_options" semantic).
         ok, reason = is_engine_eligible(
             _ctx(is_followup=True, followup_intent="more_options")
         )
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
+    def test_engine_friendly_followup_with_prior_recs_still_eligible(self):
+        # Follow-up turns ALWAYS carry previous_recommendations in
+        # combined_context (they're a follow-up TO something). Without
+        # this relaxation, the has_previous_recommendations gate below
+        # would block engine-friendly intents the previous gate let
+        # through. Verify they're allowed end-to-end.
+        ok, reason = is_engine_eligible(
+            _ctx(
+                is_followup=True,
+                followup_intent="decrease_formality",
+                previous_recommendations=[{"outfit_id": "x"}],
+            )
+        )
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
+    def test_non_followup_with_prior_recs_still_blocks(self):
+        # Edge: a fresh turn (not a follow-up) that somehow has prior
+        # recs in context should STILL block. The relaxation is scoped
+        # to engine-friendly follow-ups only.
+        ok, reason = is_engine_eligible(
+            _ctx(previous_recommendations=[{"outfit_id": "x"}])
+        )
         self.assertFalse(ok)
-        self.assertEqual(reason, "followup_request")
+        self.assertEqual(reason, "has_previous_recommendations")
 
     def test_previous_recommendations_blocks(self):
         ok, reason = is_engine_eligible(

@@ -93,6 +93,13 @@ class FollowUpIntent(StrEnum):
 ENGINE_FRIENDLY_FOLLOWUP_INTENTS: frozenset[str] = frozenset({
     FollowUpIntent.DECREASE_FORMALITY.value,
     FollowUpIntent.INCREASE_FORMALITY.value,
+    # more_options ("show me more like that") needs no prior-state
+    # plumbing into the engine — the orchestrator's catalog_search
+    # already excludes previously-shown items via prev_rec_ids
+    # (see catalog_search_agent.py exclude_ids logic). A fresh engine
+    # plan + prior-item exclusion = different products in the same
+    # space, which is exactly the "more_options" semantic.
+    FollowUpIntent.MORE_OPTIONS.value,
 })
 
 
