@@ -63,9 +63,10 @@ Pre-PR-#81 baseline was $0.029/turn (gpt-5-mini composer + gpt-5.5 planner). Pos
 | outfit_rater (gpt-5-mini) | $0.001 | 1% | Smallest line; 6 dims on 1/2/3 keeps tokens tight. |
 | copilot_planner (gpt-5-mini) | $0.001 | 1% | |
 
-Two angles to attack if the cost panel says we need to:
-- **Try-on render count.** 3 sequential Gemini renders dominate. Render only the top 1 inline and over-render lazily on a "Get a deeper read" CTA — but that CTA was removed in V2; revisit only if the cost lever justifies bringing it back.
+One angle to attack if the cost panel says we need to:
 - **Architect prompt size.** Episodic memory adds ~3K tokens per power user (Panel 17). Tighten `_RECENT_USER_ACTIONS_MAX` from 30 → 20 if Panel 17 p95 stays >14K. (This is now also Phase 3.4 of the latency push below.)
+
+Try-on render count was previously listed as the second cost lever — dropped May 8 2026. Now mooted by `AURA_TRYON_ENABLED=false` (PR #185), which zeroes Gemini cost during dev / testing entirely. When the flag is flipped on for production / demos, paying the full 3-render cost is the deliberate UX choice; reducing render count would compromise the deeper-read offering with no clean alternative since the V2 CTA was removed.
 
 **Trigger to act:** the LLM-cost-budget alert fires (currently $500/day — see PR #94), OR Panel 17 p95 stabilises above 14K input tokens.
 
@@ -486,14 +487,9 @@ Distilled models become the LLM-fallback path. gpt-5-class models reserved for v
 
 Items needed before opening the first alpha cohort. Slot in alongside Phase 4/5/6 work — small, independent.
 
-### LR.1 Per-stage budget caps + cold-path safety net (2 days)
+### LR.1 — DROPPED (May 8 2026)
 
-Wrap each stage in `process_turn` with timeout + deterministic fallback:
-- Architect over budget → use closest-matching cached entry via fuzzy intent/occasion match
-- Composer over budget → top-K from retrieval with diversity
-- Rater over budget → cheap deterministic score (cosine to archetype centroid + palette match)
-
-Initial budgets: planner 1.5s, architect 4s, composer 2s, rater 1.5s. Tune from p50 traces. **Acceptance:** synthetic slow-stage tests confirm fallback fires at budget; zero hard errors on stage timeout.
+Per-stage budget caps + cold-path safety net is no longer planned. The latency push removed the cold path's worst tail risks via the architect engine (~19s → ~0ms on accepted turns), composer engine, and rater parallelization (13.4s → 6.5s). The remaining LLM-fallback cases are bounded by per-call SDK timeouts (e.g., `_PLANNER_TIMEOUT_SECONDS=30`); a separate per-stage budget framework would duplicate that with a deterministic-fallback layer we don't have a tested replacement for. If P95 tail returns as a problem in production, revisit; until then the existing timeouts are the safety net.
 
 ### LR.2 Out-of-scope graceful refusal UI (3 days)
 
