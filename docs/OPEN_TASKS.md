@@ -408,9 +408,7 @@ Bundled bug fix: engine's `seasonal_color_group` lookup now tries both `palette.
 
 Total: 154 new tests across the 6 PRs, 902/902 passing post-5f. Engine is dormant (default-false flag); ready for operational rollout once Phase 4.2 stylist YAML review + Phase 4.6 eval-set ground truth land.
 
-**Composer-side `model_call_logs.model="composer_engine"` origin stamping** is the one piece deferred from 5d's scope; engine path currently writes no row, mirroring today's cache-hit behavior. Standalone follow-up PR.
-
-**Orchestrator-level shadow-mode wiring** (`AURA_COMPOSER_SHADOW=1` env var driving `composer_shadow_decision` tool_trace writes) is also a follow-up — the router supports it (PR 5e), orchestrator opt-in is incremental.
+**Composer-side `model_call_logs.model="composer_engine"` origin stamping** — ✅ shipped in PR #180 (Phase 5x.4a). `_resolve_composer_origin_model()` writes a synthetic row stamped `composer_engine` / `cache` on engine and cache paths, mirroring the architect's pattern.
 
 ### Phase 5 test gate
 
