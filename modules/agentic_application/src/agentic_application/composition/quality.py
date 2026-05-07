@@ -28,7 +28,13 @@ import statistics
 from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
-from ..schemas import DirectionSpec, QuerySpec, RecommendationPlan
+from ..schemas import (
+    ComposedOutfit,
+    ComposerResult,
+    DirectionSpec,
+    QuerySpec,
+    RecommendationPlan,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -269,9 +275,6 @@ def aggregate_eval(comparisons: Sequence[PlanComparison]) -> EvalSummary:
 # that direction (the LLM might emit 2 outfits for direction A and the
 # engine 3 — meaningful overlap is at the item-ID set level, not at the
 # composer_id level which is engine/LLM-derived and unstable).
-
-
-from ..schemas import ComposedOutfit, ComposerResult
 
 
 @dataclass(frozen=True)

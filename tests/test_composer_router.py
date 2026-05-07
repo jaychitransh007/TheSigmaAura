@@ -184,10 +184,15 @@ class IsEngineEligibleTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(reason, "has_previous_recommendations")
 
-    def test_architect_cache_plan_ineligible(self):
+    def test_architect_cache_plan_still_eligible(self):
+        # Earlier drafts had an architect_plan_from_cache gate; that was
+        # a copy-paste from the architect router and was wrong here.
+        # The composer engine accepts plans from any source — LLM,
+        # architect engine, or architect cache — they're all the same
+        # RecommendationPlan shape.
         ok, reason = is_engine_eligible(_ctx(), _plan(plan_source="cache"))
-        self.assertFalse(ok)
-        self.assertEqual(reason, "architect_plan_from_cache")
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -245,16 +250,20 @@ class RouteFlagAndEligibilityTests(unittest.TestCase):
         llm.assert_called_once()
 
     def test_eligibility_failure_short_circuits_to_llm(self):
+        # Use anchor_present (the most stable ineligibility cause)
+        # since architect_plan_from_cache is no longer a gate.
+        live = _live()
+        live.anchor_garment = {"id": "A1"}  # pyright: ignore
         llm = _llm_callable()
         decision = route_composer_plan(
-            plan=_plan(plan_source="cache"),
+            plan=_plan(),
             retrieved_sets=[],
-            combined_context=_ctx(),
+            combined_context=_ctx(live=live),
             composer_callable=llm,
             enabled=True,
         )
         self.assertFalse(decision.used_engine)
-        self.assertEqual(decision.fallback_reason, "architect_plan_from_cache")
+        self.assertEqual(decision.fallback_reason, "anchor_present")
         self.assertIsNone(decision.engine_confidence)
         llm.assert_called_once()
 

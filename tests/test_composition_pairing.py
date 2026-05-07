@@ -383,6 +383,19 @@ class ColorStoryTests(unittest.TestCase):
         )
         self.assertFalse(any(v.rule == "palette_anchor_required" for v in violations))
 
+    def test_palette_anchor_skipped_when_any_item_lacks_color(self):
+        # Skip-if-empty: an item with no dominant_color might itself be
+        # an anchor color; the rule abstains rather than reporting a
+        # false-positive violation.
+        items = (
+            _smart_casual_top(dominant_color="emerald"),  # not an anchor
+            _smart_casual_bottom(dominant_color=""),       # color unknown
+        )
+        violations = evaluate_constraint(
+            "color_story", items, _ctx(palette_anchors=("navy", "cream")), _graph()
+        )
+        self.assertFalse(any(v.rule == "palette_anchor_required" for v in violations))
+
     def test_high_plus_low_contrast_violates(self):
         items = (
             _smart_casual_top(contrast_level="high"),
@@ -446,6 +459,23 @@ class PatternMixingTests(unittest.TestCase):
         )
         violations = evaluate_constraint("pattern_mixing", items, _ctx(), _graph())
         self.assertTrue(any(v.rule == "two_patterns_color_family" for v in violations))
+
+    def test_two_patterns_color_family_skipped_when_metadata_missing(self):
+        # Skip-if-empty: when an item is missing dominant_color OR
+        # contrast_level, we can't confirm there's no link.
+        items = (
+            _smart_casual_top(
+                pattern_type="floral", pattern_scale="micro",
+                dominant_color="",  # missing
+                contrast_level="high",
+            ),
+            _smart_casual_bottom(
+                pattern_type="checks", pattern_scale="medium",
+                dominant_color="rust", contrast_level="low",
+            ),
+        )
+        violations = evaluate_constraint("pattern_mixing", items, _ctx(), _graph())
+        self.assertFalse(any(v.rule == "two_patterns_color_family" for v in violations))
 
     def test_three_patterns_violates(self):
         items = (
@@ -642,6 +672,18 @@ class CulturalCoherenceTests(unittest.TestCase):
         )
         violations = evaluate_constraint("cultural_coherence", items, _ctx(), _graph())
         self.assertTrue(any(v.rule == "indo_western_fusion" for v in violations))
+
+    def test_indo_western_fusion_skipped_when_register_missing(self):
+        # Skip-if-empty: a 3-slot tuple with one register missing might
+        # have an indo_western bridge in the unknown slot, so the rule
+        # can't confirm the violation.
+        items = (
+            _smart_casual_top(cultural_register="indian_traditional"),
+            _smart_casual_bottom(cultural_register="western"),
+            _structured_outerwear(cultural_register=""),  # unknown
+        )
+        violations = evaluate_constraint("cultural_coherence", items, _ctx(), _graph())
+        self.assertFalse(any(v.rule == "indo_western_fusion" for v in violations))
 
     def test_traditional_plus_western_with_fusion_bridge_passes(self):
         items = (
