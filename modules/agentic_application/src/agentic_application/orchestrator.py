@@ -358,16 +358,21 @@ def _apply_user_preferences_to_plan(
     if not cleaned:
         return
     # Tick override counter once per (attribute, plan) when the user's
-    # explicit value REPLACES an architect-derived value. Guarded on
-    # the first direction's first query — the architect emits identical
-    # hard_attrs across every QuerySpec in a direction, so a single
-    # observation per attribute per plan is the right unit (avoids
-    # double-counting across directions × roles).
+    # explicit value REPLACES an architect-derived value. The baseline
+    # is the UNION of hard_attrs keys across all directions × queries
+    # — different directions can in principle resolve different attrs
+    # (PR #180 review), so checking only the first direction's first
+    # query would miss legitimate overrides emitted on other direction
+    # branches. Single observation per attribute per plan is still the
+    # right unit (don't double-count across directions × roles); the
+    # set semantics of `baseline_keys` enforce that.
     try:
         from platform_core.metrics import observe_user_preference_override
-        first_dir = (getattr(plan, "directions", []) or [None])[0]
-        first_query = (getattr(first_dir, "queries", []) or [None])[0] if first_dir else None
-        baseline_keys = set((getattr(first_query, "hard_attrs", None) or {}).keys()) if first_query else set()
+        baseline_keys: set[str] = set()
+        for direction in getattr(plan, "directions", []) or []:
+            for query in getattr(direction, "queries", []) or []:
+                ha = getattr(query, "hard_attrs", None) or {}
+                baseline_keys.update(ha.keys())
         for attr in cleaned:
             if attr in baseline_keys:
                 observe_user_preference_override(attr)
