@@ -69,6 +69,15 @@ class ComposerRouterDecision:
     counts the dashboards consume: total tuples scored, tuples kept,
     tuples picked, tuples by drop_reason. Empty when the engine wasn't
     attempted.
+
+    ``shadow_comparison`` is populated only when ``shadow=True`` was
+    passed to ``route_composer_plan`` AND the LLM ran (either via
+    eligible-but-shadow-only path, or because the engine declined).
+    It carries the engine's parallel composition + the head-to-head
+    comparison vs the LLM result so the orchestrator can persist it
+    to a ``composer_shadow_decision`` tool_trace. None on every path
+    where shadow mode wasn't requested or the comparison wasn't
+    runnable.
     """
 
     composer_result: ComposerResult
@@ -78,6 +87,7 @@ class ComposerRouterDecision:
     yaml_gaps: tuple[str, ...] = field(default_factory=tuple)
     engine_ms: int | None = None
     provenance_summary: Mapping[str, Any] = field(default_factory=dict)
+    shadow_comparison: Any = None
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -197,6 +207,7 @@ def route_composer_plan(
     composer_callable: Callable[[], ComposerResult],
     enabled: bool = False,
     graph: StyleGraph | None = None,
+    shadow: bool = False,
 ) -> ComposerRouterDecision:
     """Decide whether the composer engine or the LLM ``OutfitComposer``
     handles this turn.
@@ -210,6 +221,17 @@ def route_composer_plan(
     every turn through the engine first; per-turn fall-through still
     applies via composer_semantics.md §7.2 acceptance gates.
 
+    ``shadow`` (Phase 5e) toggles shadow mode. When True, the engine
+    runs in addition to the LLM regardless of ``enabled``, and the
+    decision returned ALWAYS uses the LLM's result (never the engine's).
+    The engine's output + a head-to-head comparison are surfaced via
+    ``ComposerRouterDecision.shadow_comparison`` for the orchestrator
+    to persist as a ``composer_shadow_decision`` tool_trace. When
+    ``shadow`` and ``enabled`` are both True, ``enabled`` wins —
+    production paths shouldn't run BOTH engine and LLM in parallel
+    every turn. ``shadow`` is intended for the eval-data-gathering
+    phase before the engine is flag-on for production.
+
     The function is total — even on engine errors it returns a populated
     ``composer_result`` from the LLM fallback. Engine exceptions don't
     propagate; they're caught and treated as a fall-through with
@@ -217,15 +239,45 @@ def route_composer_plan(
     """
     sets_list = list(retrieved_sets)
 
-    if not enabled:
-        return ComposerRouterDecision(
-            composer_result=composer_callable(),
-            used_engine=False,
-            fallback_reason="engine_disabled",
-            engine_confidence=None,
-            yaml_gaps=(),
+    # Production engine path (enabled=True wins over shadow).
+    if enabled:
+        return _route_engine_first(
+            plan=plan,
+            retrieved_sets=sets_list,
+            combined_context=combined_context,
+            composer_callable=composer_callable,
+            graph=graph,
         )
 
+    # Shadow mode: run both, return LLM, surface comparison for ops.
+    if shadow:
+        return _route_shadow(
+            plan=plan,
+            retrieved_sets=sets_list,
+            combined_context=combined_context,
+            composer_callable=composer_callable,
+            graph=graph,
+        )
+
+    # Default disabled-and-not-shadow path: LLM only.
+    return ComposerRouterDecision(
+        composer_result=composer_callable(),
+        used_engine=False,
+        fallback_reason="engine_disabled",
+        engine_confidence=None,
+        yaml_gaps=(),
+    )
+
+
+def _route_engine_first(
+    *,
+    plan: RecommendationPlan,
+    retrieved_sets: list[RetrievedSet],
+    combined_context: CombinedContext,
+    composer_callable: Callable[[], ComposerResult],
+    graph: StyleGraph | None,
+) -> ComposerRouterDecision:
+    """Engine-first path. Eligibility → engine → fall-through to LLM."""
     eligible, reason = is_engine_eligible(combined_context, plan)
     if not eligible:
         return ComposerRouterDecision(
@@ -244,7 +296,7 @@ def route_composer_plan(
     _engine_t0 = time.monotonic()
     try:
         result = compose_outfits(
-            plan=plan, retrieved_sets=sets_list, ctx=ctx, graph=graph,
+            plan=plan, retrieved_sets=retrieved_sets, ctx=ctx, graph=graph,
         )
     except Exception:  # noqa: BLE001 — engine error must never break the turn
         engine_ms = int((time.monotonic() - _engine_t0) * 1000)
@@ -261,7 +313,6 @@ def route_composer_plan(
     provenance_summary = _summarize_provenance(result)
 
     if result.composer_result is None:
-        # Engine self-declined. Trust its fallback_reason.
         return ComposerRouterDecision(
             composer_result=composer_callable(),
             used_engine=False,
@@ -280,6 +331,92 @@ def route_composer_plan(
         yaml_gaps=result.yaml_gaps,
         engine_ms=engine_ms,
         provenance_summary=provenance_summary,
+    )
+
+
+def _route_shadow(
+    *,
+    plan: RecommendationPlan,
+    retrieved_sets: list[RetrievedSet],
+    combined_context: CombinedContext,
+    composer_callable: Callable[[], ComposerResult],
+    graph: StyleGraph | None,
+) -> ComposerRouterDecision:
+    """Shadow path: LLM is authoritative; engine runs for comparison.
+
+    Sequential, not concurrent — keeps the implementation tractable
+    and avoids the orchestrator needing to manage extra threads. The
+    engine call adds ~300ms to the turn's wall time; intentional cost
+    of the eval-gathering phase. Production callers should pass
+    ``shadow=False``.
+    """
+    # Run LLM first so any LLM exception surfaces normally.
+    llm_result = composer_callable()
+
+    # Engine eligibility — if ineligible, we still ran the LLM (which
+    # is the correct production behavior); just no comparison row.
+    eligible, reason = is_engine_eligible(combined_context, plan)
+    if not eligible:
+        return ComposerRouterDecision(
+            composer_result=llm_result,
+            used_engine=False,
+            fallback_reason=f"shadow:{reason}",
+            engine_confidence=None,
+            yaml_gaps=(),
+            shadow_comparison=None,
+        )
+
+    if graph is None:
+        graph = load_style_graph()
+    ctx = extract_tuple_context(combined_context)
+
+    _engine_t0 = time.monotonic()
+    try:
+        engine = compose_outfits(
+            plan=plan, retrieved_sets=retrieved_sets, ctx=ctx, graph=graph,
+        )
+    except Exception:  # noqa: BLE001
+        engine_ms = int((time.monotonic() - _engine_t0) * 1000)
+        return ComposerRouterDecision(
+            composer_result=llm_result,
+            used_engine=False,
+            fallback_reason="shadow:engine_error",
+            engine_confidence=None,
+            yaml_gaps=(),
+            engine_ms=engine_ms,
+            shadow_comparison=None,
+        )
+    engine_ms = int((time.monotonic() - _engine_t0) * 1000)
+
+    # Build comparison only when engine produced output. Engine misses
+    # surface as shadow_comparison=None; ops dashboards distinguish
+    # via fallback_reason.
+    shadow_comparison: Any = None
+    if engine.composer_result is not None:
+        from .quality import compare_composer_outputs
+
+        shadow_comparison = {
+            "engine_confidence": engine.confidence,
+            "engine_yaml_gaps": list(engine.yaml_gaps),
+            "engine_outfit_count": len(engine.composer_result.outfits),
+            "llm_outfit_count": len(llm_result.outfits),
+            "comparison": compare_composer_outputs(
+                engine.composer_result, llm_result
+            ),
+        }
+
+    return ComposerRouterDecision(
+        composer_result=llm_result,
+        used_engine=False,
+        fallback_reason=(
+            f"shadow:{engine.fallback_reason}" if engine.fallback_reason
+            else "shadow:engine_accepted_but_shadow"
+        ),
+        engine_confidence=engine.confidence,
+        yaml_gaps=engine.yaml_gaps,
+        engine_ms=engine_ms,
+        provenance_summary=_summarize_provenance(engine),
+        shadow_comparison=shadow_comparison,
     )
 
 
