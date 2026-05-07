@@ -168,6 +168,7 @@ def _project_item(product: RetrievedProduct, slot: str) -> Item:
         fabric_drape=get_str("FabricDrape"),
         fabric_texture=get_str("FabricTexture"),
         fabric_weight=get_str("FabricWeight"),
+        sleeve_length=get_str("SleeveLength"),
         cultural_register=_infer_cultural_register(subtype),
         subtype=subtype,
     )
@@ -200,24 +201,58 @@ def _direction_is_eligible(
     return False
 
 
+def _dedupe_by_item_id(items: Sequence[Item]) -> list[Item]:
+    """Drop duplicate item_ids within a single role pool, keeping the
+    first occurrence (which is the highest-similarity item per the
+    cosine ranking from retrieval). The catalog has products that
+    appear as multiple embedding rows under the same product_id (size
+    / color variants); without this dedup the retrieved pool is
+    effectively narrower than its row count suggests."""
+    seen: set[str] = set()
+    out: list[Item] = []
+    for it in items:
+        if it.item_id and it.item_id not in seen:
+            seen.add(it.item_id)
+            out.append(it)
+    return out
+
+
 def _enumerate_direction_tuples(
     direction_id: str,
     direction_type: str,
     pools_by_role: Mapping[str, Sequence[Item]],
 ) -> list[tuple[Item, ...]]:
-    """Cartesian product across roles, capped at MAX_POOL_PER_ROLE."""
+    """Cartesian product across roles, capped at MAX_POOL_PER_ROLE.
+
+    Per-role pools are deduped by ``item_id`` first (catalog has
+    duplicate product_ids across embedding rows). Then for paired and
+    three_piece, the cartesian is filtered so all items in a tuple
+    have distinct item_ids — otherwise the same product showing up in
+    top + bottom + outerwear pools (catalog data corruption — same
+    product_id with different subtypes per row) yields outfits like
+    (X, X, X). Same uniqueness rule for paired (2 items) and
+    three_piece (3 items)."""
     cap = MAX_POOL_PER_ROLE
     if direction_type == "complete":
-        return [(it,) for it in list(pools_by_role.get("complete", []))[:cap]]
+        complete = _dedupe_by_item_id(list(pools_by_role.get("complete", [])))[:cap]
+        return [(it,) for it in complete]
     if direction_type == "paired":
-        tops = list(pools_by_role.get("top", []))[:cap]
-        bottoms = list(pools_by_role.get("bottom", []))[:cap]
-        return [(t, b) for t in tops for b in bottoms]
+        tops = _dedupe_by_item_id(list(pools_by_role.get("top", [])))[:cap]
+        bottoms = _dedupe_by_item_id(list(pools_by_role.get("bottom", [])))[:cap]
+        return [
+            (t, b)
+            for t in tops for b in bottoms
+            if t.item_id != b.item_id
+        ]
     if direction_type == "three_piece":
-        tops = list(pools_by_role.get("top", []))[:cap]
-        bottoms = list(pools_by_role.get("bottom", []))[:cap]
-        outers = list(pools_by_role.get("outerwear", []))[:cap]
-        return [(t, b, o) for t in tops for b in bottoms for o in outers]
+        tops = _dedupe_by_item_id(list(pools_by_role.get("top", [])))[:cap]
+        bottoms = _dedupe_by_item_id(list(pools_by_role.get("bottom", [])))[:cap]
+        outers = _dedupe_by_item_id(list(pools_by_role.get("outerwear", [])))[:cap]
+        return [
+            (t, b, o)
+            for t in tops for b in bottoms for o in outers
+            if t.item_id != b.item_id and t.item_id != o.item_id and b.item_id != o.item_id
+        ]
     return []
 
 
@@ -501,11 +536,39 @@ def compose_outfits(
 
     direction_label_map = {d.direction_id: d.label for d in plan.directions}
 
-    # Enumerate + score across eligible directions.
+    # Per-direction hard_attrs: the architect engine emits identical
+    # hard_attrs across every QuerySpec in a direction, so any query's
+    # value works as the direction-level constraint set used for tuple
+    # scoring. Empty dict for LLM-architect-path plans (they don't
+    # populate hard_attrs); score_tuple's tuple-level penalty no-ops.
+    direction_hard_attrs: dict[str, Mapping[str, tuple[str, ...]]] = {}
+    for d in plan.directions:
+        if d.queries:
+            ha = d.queries[0].hard_attrs or {}
+            direction_hard_attrs[d.direction_id] = {
+                k: tuple(v) for k, v in ha.items()
+            }
+
+    # Enumerate + score across eligible directions. Each direction's
+    # hard_attrs flow into the per-tuple TupleContext so score_tuple
+    # can apply its tuple-level penalty (-0.10 per item-per-violation
+    # across the tuple).
     all_scored: list[tuple[str, str, tuple[Item, ...], TupleScore]] = []
     for direction_id, direction_type, _label, pools in eligible_directions:
+        ha = direction_hard_attrs.get(direction_id) or {}
+        # Replace ctx.hard_attrs with this direction's resolved set;
+        # other ctx fields (formality_hint, body_shape, etc.) carry
+        # over unchanged for the non-hard-attr pairing rules.
+        scoped_ctx = TupleContext(
+            formality_hint=ctx.formality_hint,
+            occasion_signal=ctx.occasion_signal,
+            palette_anchors=ctx.palette_anchors,
+            body_shape=ctx.body_shape,
+            intent=ctx.intent,
+            hard_attrs=ha,
+        )
         for items in _enumerate_direction_tuples(direction_id, direction_type, pools):
-            score = score_tuple(items, ctx, graph)
+            score = score_tuple(items, scoped_ctx, graph)
             all_scored.append((direction_id, direction_type, items, score))
 
     kept = [s for s in all_scored if not s[3].dropped]

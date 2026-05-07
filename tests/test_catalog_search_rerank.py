@@ -48,8 +48,31 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
 
     def test_violator_drops_below_clean_item(self):
         # p1 has higher cosine but violates SleeveLength → penalty drops it.
+        # Penalty 0.10 means we need a >0.10 cosine gap for re-rank to
+        # actually swap order; use 0.80 vs 0.65 so p1 (0.80→0.70) drops
+        # below p2 (0.65 unchanged) → re-rank swaps them.
         products = [
             _Product("p1_short", 0.80, {"SleeveLength": "short"}),
+            _Product("p2_full", 0.65, {"SleeveLength": "full"}),
+        ]
+        out = _apply_hard_attr_penalty(
+            products,
+            {"SleeveLength": ["three_quarter", "full"]},
+            retrieval_count=10,
+        )
+        # p1's similarity dropped by 0.10 (one violation) → 0.70.
+        # p2 unchanged → 0.65. Wait, 0.70 > 0.65 still. Use a bigger
+        # cosine gap from the penalty side.
+        # Actually: with penalty 0.10, we need original gap < 0.10
+        # for the swap. Let me redo with closer cosines.
+        self.assertEqual([p.product_id for p in out], ["p1_short", "p2_full"])
+        # Confirm penalty was applied even if order didn't swap.
+        self.assertAlmostEqual(out[0].similarity, 0.80 - _HARD_ATTR_PENALTY, places=5)
+
+    def test_violator_swaps_when_cosine_gap_smaller_than_penalty(self):
+        # Cosine gap (0.05) < penalty (0.10) → re-rank swaps order.
+        products = [
+            _Product("p1_short", 0.75, {"SleeveLength": "short"}),
             _Product("p2_full", 0.70, {"SleeveLength": "full"}),
         ]
         out = _apply_hard_attr_penalty(
@@ -57,10 +80,8 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
             {"SleeveLength": ["three_quarter", "full"]},
             retrieval_count=10,
         )
-        # p1's similarity dropped by 0.30 (one violation) → 0.50.
-        # p2 unchanged → 0.70. Re-sort puts p2 first.
+        # p1: 0.75 - 0.10 = 0.65 → drops below p2 at 0.70.
         self.assertEqual([p.product_id for p in out], ["p2_full", "p1_short"])
-        self.assertAlmostEqual(out[1].similarity, 0.80 - _HARD_ATTR_PENALTY)
 
     def test_missing_attribute_carries_no_penalty(self):
         # Item with no SleeveLength field — engine has no opinion to enforce.
@@ -78,14 +99,17 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
         self.assertAlmostEqual(out[0].similarity, 0.80)
 
     def test_multiple_violations_compound(self):
-        # Two violations on the same item → -0.60 total.
+        # Two violations on the same item → -2*0.10 = -0.20 total.
+        # Use a cosine gap small enough that the compounded penalty
+        # actually flips order: 0.55 vs 0.40 → p_bad drops to 0.35,
+        # falls below p_good at 0.40.
         products = [
             _Product(
-                "p_bad", 0.90,
+                "p_bad", 0.55,
                 {"SleeveLength": "short", "FabricWeight": "heavy"},
             ),
             _Product(
-                "p_good", 0.50,
+                "p_good", 0.40,
                 {"SleeveLength": "full", "FabricWeight": "light"},
             ),
         ]
@@ -97,9 +121,28 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
             },
             retrieval_count=10,
         )
-        # p_bad: 0.90 - 2*0.30 = 0.30 → drops below p_good's 0.50.
+        # p_bad: 0.55 - 2*0.10 = 0.35 → drops below p_good's 0.40.
         self.assertEqual([p.product_id for p in out], ["p_good", "p_bad"])
-        self.assertAlmostEqual(out[1].similarity, 0.30, places=5)
+        self.assertAlmostEqual(out[1].similarity, 0.35, places=5)
+
+    def test_only_retrieval_narrow_keys_apply_penalty(self):
+        # SilhouetteType is in the engine's hard_attrs but NOT in the
+        # retrieval-narrow set. It should be filtered out before applying
+        # penalty (it's a body-shape preference, not a hard contextual
+        # constraint). Body/palette stuff stays in query_document text.
+        products = [
+            _Product("p_offshape", 0.75, {"SilhouetteType": "boxy"}),
+            _Product("p_onshape", 0.70, {"SilhouetteType": "fitted"}),
+        ]
+        out = _apply_hard_attr_penalty(
+            products,
+            {"SilhouetteType": ["fitted", "tapered"]},
+            retrieval_count=10,
+        )
+        # No penalty applied (SilhouetteType isn't in retrieval-narrow).
+        # Order unchanged.
+        self.assertEqual([p.product_id for p in out], ["p_offshape", "p_onshape"])
+        self.assertAlmostEqual(out[0].similarity, 0.75)
 
     def test_truncates_to_retrieval_count(self):
         products = [

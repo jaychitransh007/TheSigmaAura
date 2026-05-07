@@ -26,9 +26,10 @@ Pure functions. No I/O, no clock, no randomness. Same inputs → same output.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import combinations
-from typing import Callable, Sequence
+from types import MappingProxyType
+from typing import Callable, Mapping, Sequence
 
 from .yaml_loader import StyleGraph
 
@@ -83,8 +84,38 @@ class Item:
     fabric_drape: str = ""
     fabric_texture: str = ""
     fabric_weight: str = ""
+    sleeve_length: str = ""
     cultural_register: str = ""  # "indian_traditional" | "indo_western" | "western"
     subtype: str = ""  # e.g. "bandhgala", "lehenga", "saree" — for bridal_specific
+
+
+# Maps architect hard_attrs key (PascalCase, catalog-side) → Item field
+# (lowercase snake_case, engine-side). Attributes that aren't on Item
+# (SilhouetteType, VolumeProfile, ShoulderStructure, etc.) get skipped
+# at tuple-level scoring — they're either body-shape preferences that
+# stay in query_document text, or attrs we don't track in the engine.
+HARD_ATTR_TO_ITEM_FIELD: dict[str, str] = {
+    "FormalityLevel": "formality",
+    "FabricDrape": "fabric_drape",
+    "FabricWeight": "fabric_weight",
+    "FabricTexture": "fabric_texture",
+    "SleeveLength": "sleeve_length",
+    "FitType": "fit_type",
+    "PatternType": "pattern_type",
+    "PatternScale": "pattern_scale",
+    "EmbellishmentLevel": "embellishment_level",
+    "ColorSaturation": "color_saturation",
+    "PrimaryColor": "dominant_color",
+    "ContrastLevel": "contrast_level",
+}
+
+
+# Per-violation penalty applied at tuple scoring (composer engine)
+# when an item's enriched attribute value isn't in the architect's
+# resolved allowed list. Same magnitude as a soft pairing-rule
+# violation so neither dominates. Uniform across paired (2 items) and
+# three_piece (3 items) tuples — the loop just iterates items.
+HARD_ATTR_TUPLE_PENALTY: float = 0.10
 
 
 @dataclass(frozen=True)
@@ -92,6 +123,12 @@ class TupleContext:
     """Per-tuple context the evaluators need: planner output + select
     user-profile signals. Decoupled from CombinedContext so tests can
     construct minimal cases without touching the full request shape.
+
+    ``hard_attrs`` carries the architect-engine-resolved per-attribute
+    allowed-value lists (see engine.py:_build_hard_attrs). When set,
+    score_tuple applies a per-item-per-violation penalty across the
+    full tuple. Default empty preserves the spec §3 scoring (pairing
+    rules only) for tests / direct callers that don't want this.
     """
 
     formality_hint: str = ""
@@ -99,6 +136,7 @@ class TupleContext:
     palette_anchors: tuple[str, ...] = ()
     body_shape: str = ""
     intent: str = "recommendation_request"
+    hard_attrs: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -207,6 +245,33 @@ def evaluate_constraint(
     return fn(items, ctx, graph)
 
 
+def _count_tuple_hard_attr_violations(
+    items: Sequence[Item], hard_attrs: Mapping[str, Sequence[str]]
+) -> int:
+    """Sum hard_attrs violations across the tuple. Each item's enriched
+    field (mapped via HARD_ATTR_TO_ITEM_FIELD) is checked against the
+    architect's resolved allowed-value list; values not in the list
+    count as a violation. Empty fields (``""``) and unmapped attribute
+    names count as no opinion → no violation. Same loop shape applies
+    to paired (2 items) and three_piece (3 items) tuples; complete
+    direction iterates the single item."""
+    if not hard_attrs:
+        return 0
+    count = 0
+    for attr_name, allowed in hard_attrs.items():
+        field_name = HARD_ATTR_TO_ITEM_FIELD.get(attr_name)
+        if field_name is None:
+            continue  # attr not on Item; skip (e.g., SilhouetteType)
+        allowed_set = set(allowed) if allowed else set()
+        if not allowed_set:
+            continue
+        for item in items:
+            val = getattr(item, field_name, "") or ""
+            if val and val not in allowed_set:
+                count += 1
+    return count
+
+
 def score_tuple(
     items: Sequence[Item],
     ctx: TupleContext,
@@ -219,6 +284,16 @@ def score_tuple(
     run, so dropped tuples carry only the hard violation that caused
     the drop). Surviving tuples accumulate soft penalties at -0.10
     each.
+
+    Tuple-level hard_attrs penalty (added May 7 2026): when
+    ``ctx.hard_attrs`` is populated, the score is further reduced by
+    ``HARD_ATTR_TUPLE_PENALTY (0.10)`` per-item-per-violation across
+    the tuple. A 3-item tuple where 2 items violate `SleeveLength` and
+    1 violates `FabricWeight` accumulates 3 violations → -0.30. This
+    runs in addition to the per-item retrieval penalty (catalog_search_
+    agent's _apply_hard_attr_penalty) — they're at different stages and
+    serve different roles: retrieval ranks within a role pool;
+    composer-tuple ranks across the full outfit.
 
     Empty tuple → dropped with reason "empty_tuple".
     """
@@ -245,7 +320,13 @@ def score_tuple(
     for cat in SOFT_CATEGORIES:
         soft_violations.extend(evaluate_constraint(cat, items_t, ctx, graph))
 
-    score = BASE_SCORE - SOFT_PENALTY * len(soft_violations)
+    hard_attr_violations = _count_tuple_hard_attr_violations(items_t, ctx.hard_attrs)
+
+    score = (
+        BASE_SCORE
+        - SOFT_PENALTY * len(soft_violations)
+        - HARD_ATTR_TUPLE_PENALTY * hard_attr_violations
+    )
     return TupleScore(
         base_score=score,
         violations=tuple(soft_violations),
