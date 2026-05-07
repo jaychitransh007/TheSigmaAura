@@ -153,7 +153,7 @@ Build `ops/scripts/architect_replay_eval.py` that:
 | Phase 4.12 — Observability + operability hardening | ✅ **SHIPPED** (PRs #150, #152, #153, #154) | Pre-flag instrumentation, tool_traces constraint fix, model_call_logs origin stamping, full panel set (21-24) + runbook + `ops/scripts/turn_forensics.py`. |
 | Phase 4.2 — Stylist YAML review | 🔒 Blocked on human | Paid consultant pass. Output: revised YAMLs + canonical-schema fixes. |
 | Phase 4.6 — Eval set curation | 🔒 Blocked on human | 100-500 hand-curated queries with hand-rated outputs. Gates Phase 4.8 actual run, Phase 1.4 model A/B, Phase 4.10 bucketed ramp. |
-| Phase 5 — Composer engine | ⏸ Not started | Same pattern as 4.7 for the composer. Composer is the next-biggest LLM cost (~$0.04/turn) and second-longest stage (~12-14s). |
+| Phase 5 — Composer engine | ✅ **SHIPPED** (PRs #158-#163) | 6 sub-PRs (5a-5f): semantic spec, loader+evaluator, engine, router+flag, quality+shadow, dashboards+runbook. 154 tests added. Engine dormant behind `AURA_COMPOSER_ENGINE_ENABLED`; flag-on validation gated on Phase 4.6 eval set + 4.2 stylist review. |
 | Phase 6 — Streaming delivery | ⏸ Not started | ~2-3 weeks. Cards visible <3s on cache hit, <8s on miss. UX win independent of cache hit rate. |
 | Phase 7 — Distillation | ⏸ Months 4+, gated on 10K+ traces | distillation_traces table live since May 2026, accumulating data. |
 
@@ -395,18 +395,22 @@ Bundled bug fix: engine's `seasonal_color_group` lookup now tries both `palette.
 | 5 | **`bridal_specific.triggers_on: [occasion keys]`** new YAML field | Engine matches `formality_hint == 'ceremonial' AND occasion_signal in triggers_on`. Stylist-editable, no hardcoded occasion names in Python. |
 | 6 | **Keep LLM `OutfitComposer` as permanent fallback** | Engine target hit rate ≥70%, not 100%. Same as architect pattern. Distillation (Phase 7) replaces the LLM later, not Phase 5. |
 
-### Sub-PR decomposition (mirrors Phase 4.7's a-f shape)
+### Sub-PR decomposition — ALL SHIPPED (2026-05-07)
 
-| PR | Lands | Days | Depends |
-|---|---|---|---|
-| **5a** | `docs/composer_semantics.md` — relational reduction spec, hard/soft per category, statement-piece algo, bridal exception, confidence formula, fall-through criteria, pre-engine eligibility gates, worked examples | 2-3 | — |
-| **5b** | `composition/pairing_loader.py` + `composition/pairing.py` — extends `StyleGraph` with parsed `pairing_rules`; `score_tuple()`, `is_statement()`, `evaluate_constraint()`. Pure functions, fully unit-tested. Adds `bridal_specific.triggers_on` to YAML. | 4-5 | 5a |
-| **5c** | `composition/composer_engine.py` — `compose_outfits(plan, retrieved_sets, ctx, graph) -> ComposerResult`. Tuple enumeration, scoring, drop, top-K + diversity penalty. Confidence + YAML-gap surfacing. Pure function. | 5-7 | 5b |
-| **5d** | `composition/composer_router.py` + orchestrator wiring + `AURA_COMPOSER_ENGINE_ENABLED` env var. `aura_composer_router_decision_total{used_engine,fallback_reason}` counter, `aura_turn_duration_seconds{stage="composer_engine"}` histogram. `model_call_logs.model="composer_engine"` origin stamping (PR #153 pattern). Engine plans don't write to composer cache during flag-on testing. | 2-3 | 5c (may run parallel) |
-| **5e** | Quality validator extension in `composition/quality.py` — `compare_composer_outputs(engine, llm) -> ComposerComparison`. New `ops/scripts/composer_quality_eval.py`. Shadow-mode hook (`AURA_COMPOSER_SHADOW=1`) writes `composer_shadow_decision` tool_traces. Real eval-set run gated on Phase 4.6. | 2-3 | 5c, 5d |
-| **5f** | Worked-example tests + 4 dashboard panels (25-28: plan-source distribution, rule-violation distribution, per-tuple score histogram, single-turn diagnostic) + `OPERATIONS.md` "A5: Composer engine flag-on regressions" runbook. **Bundles the long-queued `maxItems: 10` schema cap on the LLM composer** — touched files overlap. | 2-3 | 5c |
+| PR | Lands | Status |
+|---|---|---|
+| **5a** | `docs/composer_semantics.md` spec | ✅ #158 |
+| **5b** | `composition/pairing_loader.py` + `pairing.py`; `bridal_specific.triggers_on` YAML field; 69 unit tests | ✅ #159 |
+| **5c** | `composition/composer_engine.py` — `compose_outfits()`; tuple enumeration + scoring + diversity top-K + confidence; 49 tests | ✅ #160 |
+| **5d** | `composition/composer_router.py` + `AURA_COMPOSER_ENGINE_ENABLED` flag + orchestrator wiring + `aura_composer_router_decision_total` counter; 17 tests | ✅ #161 |
+| **5e** | Quality validator extension (`compare_composer_outputs`) + `ops/scripts/composer_quality_eval.py` + shadow-mode hook on router; 15 tests | ✅ #162 |
+| **5f** | Panels 25-28 in OPERATIONS.md + auto-extracted SQL files + A5 runbook + `maxItems: 10` LLM schema cap + spec §9 worked-example tests | ✅ #163 |
 
-Order: 5a → 5b → (5c‖5d) → (5e‖5f). All independently mergeable behind default-false flag.
+Total: 154 new tests across the 6 PRs, 902/902 passing post-5f. Engine is dormant (default-false flag); ready for operational rollout once Phase 4.2 stylist YAML review + Phase 4.6 eval-set ground truth land.
+
+**Composer-side `model_call_logs.model="composer_engine"` origin stamping** is the one piece deferred from 5d's scope; engine path currently writes no row, mirroring today's cache-hit behavior. Standalone follow-up PR.
+
+**Orchestrator-level shadow-mode wiring** (`AURA_COMPOSER_SHADOW=1` env var driving `composer_shadow_decision` tool_trace writes) is also a follow-up — the router supports it (PR 5e), orchestrator opt-in is incremental.
 
 ### Phase 5 test gate
 
