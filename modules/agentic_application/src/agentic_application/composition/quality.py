@@ -249,3 +249,173 @@ def aggregate_eval(comparisons: Sequence[PlanComparison]) -> EvalSummary:
         ),
         direction_type_match_rate=type_match,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Composer comparators (Phase 5e)
+# ─────────────────────────────────────────────────────────────────────────
+#
+# Engine output is ``ComposerResult`` (List[ComposedOutfit] + assessment +
+# pool_unsuitable). The comparison axes:
+#
+# - ``item_ids`` Jaccard per direction — set intersection over union of
+#   item_ids picked. Higher = engine + LLM picked overlapping items.
+# - ``direction_type`` match per direction — binary.
+# - ``overall_assessment`` match — binary.
+# - ``outfit_count`` per direction — match rate.
+#
+# Outfits are paired by ``direction_id`` first (A/B/C); within a
+# direction, item_ids are compared as flat sets across all outfits in
+# that direction (the LLM might emit 2 outfits for direction A and the
+# engine 3 — meaningful overlap is at the item-ID set level, not at the
+# composer_id level which is engine/LLM-derived and unstable).
+
+
+from ..schemas import ComposedOutfit, ComposerResult
+
+
+@dataclass(frozen=True)
+class ComposerDirectionComparison:
+    """Per-direction match between engine + LLM outfits."""
+
+    direction_id: str
+    direction_type_match: bool
+    item_ids_jaccard: float
+    engine_outfit_count: int
+    llm_outfit_count: int
+
+
+@dataclass(frozen=True)
+class ComposerComparison:
+    """Per-turn match between engine + LLM ComposerResults."""
+
+    coverage: float                                   # fraction of LLM direction_ids the engine also covered
+    direction_type_match_rate: float                  # mean across paired directions
+    aggregate_item_ids_jaccard: float                 # macro-mean across paired directions
+    overall_assessment_match: bool
+    pool_unsuitable_match: bool
+    engine_outfit_count_total: int
+    llm_outfit_count_total: int
+    directions: tuple[ComposerDirectionComparison, ...]
+    unmatched_direction_ids: tuple[str, ...]          # in LLM but not engine
+
+
+def _outfits_by_direction(outfits: Iterable[ComposedOutfit]) -> dict[str, list[ComposedOutfit]]:
+    by_dir: dict[str, list[ComposedOutfit]] = {}
+    for o in outfits:
+        by_dir.setdefault(o.direction_id, []).append(o)
+    return by_dir
+
+
+def _flatten_item_ids(outfits: Iterable[ComposedOutfit]) -> set[str]:
+    out: set[str] = set()
+    for o in outfits:
+        for item_id in (o.item_ids or ()):
+            if item_id:
+                out.add(str(item_id))
+    return out
+
+
+def _direction_type_of(outfits: Sequence[ComposedOutfit]) -> str:
+    """Direction_type is per-direction-not-per-outfit. Use the first
+    outfit in the direction; engine + LLM both populate this consistently
+    so any outfit in the bucket reports the same value."""
+    if not outfits:
+        return ""
+    return outfits[0].direction_type or ""
+
+
+def compare_composer_outputs(
+    engine: ComposerResult, llm: ComposerResult
+) -> ComposerComparison:
+    """Pair outfits by direction_id, aggregate per-direction metrics
+    into one envelope per turn.
+
+    ``coverage`` is the count of LLM direction_ids the engine also
+    emitted, over the LLM's total. Engine-only direction_ids (rare —
+    the engine never invents directions; it only picks within them)
+    don't penalize coverage and aren't surfaced separately.
+    """
+    engine_by_dir = _outfits_by_direction(engine.outfits or [])
+    llm_by_dir = _outfits_by_direction(llm.outfits or [])
+    common_ids = sorted(set(engine_by_dir) & set(llm_by_dir))
+
+    direction_comparisons: list[ComposerDirectionComparison] = []
+    item_jaccards: list[float] = []
+    type_matches = 0
+    for did in common_ids:
+        engine_outfits = engine_by_dir[did]
+        llm_outfits = llm_by_dir[did]
+        ej = _jaccard(_flatten_item_ids(engine_outfits), _flatten_item_ids(llm_outfits))
+        type_match = _direction_type_of(engine_outfits) == _direction_type_of(llm_outfits)
+        if type_match:
+            type_matches += 1
+        item_jaccards.append(ej)
+        direction_comparisons.append(
+            ComposerDirectionComparison(
+                direction_id=did,
+                direction_type_match=type_match,
+                item_ids_jaccard=ej,
+                engine_outfit_count=len(engine_outfits),
+                llm_outfit_count=len(llm_outfits),
+            )
+        )
+
+    coverage = (
+        len(common_ids) / len(llm_by_dir) if llm_by_dir else 0.0
+    )
+    type_match_rate = (
+        type_matches / len(common_ids) if common_ids else 0.0
+    )
+    item_jaccard_mean = (
+        sum(item_jaccards) / len(item_jaccards) if item_jaccards else 0.0
+    )
+    unmatched = tuple(sorted(set(llm_by_dir) - set(engine_by_dir)))
+
+    return ComposerComparison(
+        coverage=coverage,
+        direction_type_match_rate=type_match_rate,
+        aggregate_item_ids_jaccard=item_jaccard_mean,
+        overall_assessment_match=engine.overall_assessment == llm.overall_assessment,
+        pool_unsuitable_match=engine.pool_unsuitable == llm.pool_unsuitable,
+        engine_outfit_count_total=len(engine.outfits or []),
+        llm_outfit_count_total=len(llm.outfits or []),
+        directions=tuple(direction_comparisons),
+        unmatched_direction_ids=unmatched,
+    )
+
+
+@dataclass(frozen=True)
+class ComposerEvalSummary:
+    """Aggregate composer comparison stats across N eval cells."""
+
+    cell_count: int
+    median_item_ids_jaccard: float
+    direction_type_match_rate: float
+    overall_assessment_match_rate: float
+
+
+def aggregate_composer_eval(
+    comparisons: Sequence[ComposerComparison],
+) -> ComposerEvalSummary:
+    """Reduce N composer comparisons to one summary row. Same median +
+    binary-rate model as ``aggregate_eval`` for the architect."""
+    if not comparisons:
+        return ComposerEvalSummary(
+            cell_count=0,
+            median_item_ids_jaccard=0.0,
+            direction_type_match_rate=0.0,
+            overall_assessment_match_rate=0.0,
+        )
+    return ComposerEvalSummary(
+        cell_count=len(comparisons),
+        median_item_ids_jaccard=statistics.median(
+            c.aggregate_item_ids_jaccard for c in comparisons
+        ),
+        direction_type_match_rate=sum(
+            c.direction_type_match_rate for c in comparisons
+        ) / len(comparisons),
+        overall_assessment_match_rate=sum(
+            1 for c in comparisons if c.overall_assessment_match
+        ) / len(comparisons),
+    )
