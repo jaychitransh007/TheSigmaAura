@@ -168,6 +168,17 @@ class QuerySpec(BaseModel):
     # (multi-value — the SQL function matches ANY value in the array).
     hard_filters: Dict[str, Any] = Field(default_factory=dict)
     query_document: str
+    # Weighted retrieval (May 7 2026): per-attribute allowed-value lists
+    # the architect engine resolved via HARD-tier sources (per
+    # composition_semantics.md §3.3 — body_shape, frame_structure,
+    # seasonal_color_group, weather-fabric, formality+occasion). The
+    # SQL ORDER BY adds a per-violation penalty; items that violate
+    # rank lower but aren't excluded. Empty dict (default) means
+    # "no engine-resolved constraints" — pure cosine retrieval.
+    # Only the engine path populates this; the LLM architect's
+    # JSON-schema doesn't reference it, so LLM-emitted plans always
+    # leave it empty.
+    hard_attrs: Dict[str, List[str]] = Field(default_factory=dict)
 
 
 class DirectionSpec(BaseModel):

@@ -302,6 +302,24 @@ The threshold is now the single fall-through gate; the explicit `if has_yaml_gap
 
 **🎨 STYLIST SIGN-OFF NEEDED** on the per-gap penalty + final threshold once eval data lands.
 
+## 8.5 Weighted retrieval (May 7 2026)
+
+The engine resolves per-attribute "flatters" lists (e.g., `SleeveLength: [three_quarter, full]` when weather is `high_altitude_cool`). Pre-fix, those constraints flowed only into the `query_document` text, where pgvector cosine similarity is fuzzy enough that violating items still showed up. Composer doesn't re-check (its rules are inter-slot pairing, not per-item attribute validation). Result: short-sleeve shirt could surface for "Manali trip."
+
+Fix: `QuerySpec.hard_attrs` carries the engine-resolved allowed-value lists for HARD-tier sources (see §3.3). The pgvector RPC adds a per-violation penalty (default `0.30`) to each candidate item's cosine distance:
+
+```sql
+order by
+  (cie.embedding <=> query_embedding)
+  + 0.30 * count(violations against hard_attrs in cie.metadata_json)
+```
+
+Items violating one hard constraint drop ~0.30 in the ordering; two violations drop ~0.60. They aren't excluded — if the catalog is sparse for the user's combination, partial-match items still come back as the best available. **No risk of pool collapse, no per-axis rule code at the application layer.** Soft-tier attrs (archetype, risk_tolerance, time_of_day, weather color) stay in `query_document` text only — cosine handles them.
+
+The mechanism is uniform across every axis the engine reduces. Weather, body_shape, palette, formality+occasion all get the same treatment — whatever the engine resolved with at least one hard contributor becomes a `hard_attrs` entry.
+
+Implementation: `composition/engine.py:_build_hard_attrs()` walks the provenance trail, classifies each attribute by `_classify_attr_tier()` (any contributor in `_HARD_SOURCE_KINDS` → hard). Hard ones with non-empty `final_flatters` go into `hard_attrs` on each emitted `QuerySpec`. The catalog search agent forwards through to `vector_store.similarity_search(hard_attrs=...)` which forwards to the SQL RPC. Backward-compatible: when `hard_attrs={}` (LLM architect path, or engine never resolved any hard attrs), the SQL penalty term evaluates to 0 and behavior is identical to today.
+
 ## 9. Fall-through criteria summary
 
 The hot-path router falls through to the LLM architect when ANY of:

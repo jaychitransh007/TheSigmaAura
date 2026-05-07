@@ -467,17 +467,74 @@ def _resolve_query_structure(
     return fallback_map.get("default")
 
 
+# Source-kind prefixes whose contributions are HARD-tier per
+# composition_semantics.md §3.3. The remainder (archetype,
+# risk_tolerance, time_of_day, weather_color) are soft and contribute
+# only via query_document text — they don't get the retrieval-time
+# penalty. ``weather_fabric`` is the hard subset of weather (fabric +
+# structure attributes); ``weather_color`` is soft.
+_HARD_SOURCE_KINDS: frozenset[str] = frozenset({
+    "body_shape",
+    "frame_structure",
+    "seasonal",            # palette / SubSeason / SeasonalColorGroup
+    "seasonal_color_group",
+    "occasion",
+    "occasion_signal",
+    "formality_hint",
+    "weather_fabric",
+})
+
+
+def _classify_attr_tier(contributing_sources: tuple[str, ...]) -> str | None:
+    """Per composition_semantics.md §3.3, an attribute is hard-tier if
+    ANY of its contributors came from a hard source. Soft if all
+    contributors are soft. None if no contributors at all (rare —
+    means the attribute appeared only via avoid)."""
+    if not contributing_sources:
+        return None
+    for src in contributing_sources:
+        kind = src.split(":", 1)[0]
+        if kind in _HARD_SOURCE_KINDS:
+            return "hard"
+    return "soft"
+
+
+def _build_hard_attrs(
+    provenance: Sequence[ProvenanceEntry],
+) -> dict[str, list[str]]:
+    """Extract per-attribute allowed-value lists from provenance entries
+    whose contributing sources are hard-tier. Used by the retrieval
+    layer to penalize (not exclude) catalog items that violate the
+    engine's resolved constraints — see the SQL migration
+    20260507150000_match_embeddings_weighted_attrs.sql.
+
+    Soft-tier attrs are NOT included; they stay in query_document text
+    only. Empty final_flatters mean "no concrete preference," skip."""
+    out: dict[str, list[str]] = {}
+    for entry in provenance:
+        if not entry.final_flatters:
+            continue
+        if _classify_attr_tier(entry.contributing_sources) == "hard":
+            out[entry.attribute] = list(entry.final_flatters)
+    return out
+
+
 def _build_query_specs(
     direction_type: str,
     direction_id: str,
     composed_attributes: Mapping[str, tuple[str, ...]],
+    provenance: Sequence[ProvenanceEntry],
     user: UserContext,
 ) -> list[QuerySpec]:
     """Emit one QuerySpec per role for the resolved direction type, with
     ``query_document`` rendered from the engine's per-attribute output
     (4.7e). ``hard_filters`` carries the always-applied global filters
-    (gender_expression at minimum)."""
+    (gender_expression at minimum). ``hard_attrs`` carries the
+    engine-resolved per-attribute allowed-value lists for HARD-tier
+    sources — retrieval applies them as a soft penalty, not an
+    exclusion (graceful degradation when the catalog is sparse)."""
     base_filters = build_global_hard_filters(user)
+    hard_attrs = _build_hard_attrs(provenance)
     if direction_type == "complete":
         roles = ("complete",)
     elif direction_type == "three_piece":
@@ -489,6 +546,7 @@ def _build_query_specs(
             query_id=f"{direction_id}{i + 1}",
             role=role,
             hard_filters=dict(base_filters),
+            hard_attrs=dict(hard_attrs),
             query_document=render_query_document(
                 composed_attributes=composed_attributes,
                 role=role,
@@ -593,7 +651,7 @@ def compose_direction(
         if p.final_flatters
     }
     queries = _build_query_specs(
-        direction_type, inputs.direction_id, composed_attributes, user
+        direction_type, inputs.direction_id, composed_attributes, provenance, user
     )
     label = inputs.direction_label or _default_label(inputs)
 
