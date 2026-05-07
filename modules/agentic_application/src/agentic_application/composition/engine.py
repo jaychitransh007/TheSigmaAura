@@ -533,6 +533,27 @@ def _build_hard_attrs(
     return out
 
 
+def _weather_demands_topwear(provenance: Sequence[ProvenanceEntry]) -> bool:
+    """True iff the weather source contributed ``needs_topwear`` to the
+    StylingCompleteness reduction. Occasion-contributed needs_topwear
+    (office blazer preference) doesn't count — that's a default_structure
+    consideration the query_structure.yaml already reflects.
+
+    Used by ``compose_direction`` to upgrade paired direction_type to
+    three_piece when cool/cold weather demands an outerwear layer.
+    """
+    for entry in provenance:
+        if entry.attribute != "StylingCompleteness":
+            continue
+        if "needs_topwear" not in entry.final_flatters:
+            continue
+        for src in entry.contributing_sources:
+            kind = src.split(":", 1)[0]
+            if kind in {"weather_fabric", "weather_color"}:
+                return True
+    return False
+
+
 def _build_query_specs(
     direction_type: str,
     direction_id: str,
@@ -664,6 +685,22 @@ def compose_direction(
         for p in provenance
         if p.final_flatters
     }
+
+    # When WEATHER specifically contributes `needs_topwear` to the
+    # StylingCompleteness reduction (i.e., cold/cool weather demands a
+    # layer), upgrade `paired` direction_type to `three_piece` so an
+    # outerwear role gets retrieved. Otherwise Manali-class queries
+    # return top+bottom only with no jacket.
+    #
+    # Only WEATHER's contribution counts — occasion-contributed
+    # needs_topwear (e.g., daily_office_mnc lists needs_topwear because
+    # office blazers are common but optional in mild weather) is a
+    # preference, not a demand. The query_structure default_structure
+    # already reflects the occasion's preference; we override only when
+    # weather makes outerwear a practical necessity.
+    if direction_type == "paired" and _weather_demands_topwear(provenance):
+        direction_type = "three_piece"
+
     queries = _build_query_specs(
         direction_type, inputs.direction_id, composed_attributes, provenance, user
     )

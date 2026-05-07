@@ -432,6 +432,45 @@ class HardAttrTierTests(unittest.TestCase):
                     f"SleeveLength flatters leaked disallowed values: {q.hard_attrs['SleeveLength']}",
                 )
 
+    def test_paired_upgraded_to_three_piece_when_needs_topwear_resolved(self):
+        # query_structure.yaml's everyday_casual entry has
+        # default_structure=paired. But when intersected with weather
+        # high_altitude_cool's flatters (StylingCompleteness:
+        # [needs_topwear]), the resolved StylingCompleteness includes
+        # needs_topwear → user genuinely needs an outerwear layer. The
+        # engine should upgrade direction_type to three_piece so the
+        # outerwear role gets retrieved. Pre-fix: paired stayed paired,
+        # Manali outfits came back without jackets.
+        graph = load_style_graph()
+        result = compose_direction(
+            inputs=_baseline_inputs(
+                occasion_signal="everyday_casual",
+                weather_context="high_altitude_cool",
+                formality_hint="casual",
+            ),
+            graph=graph,
+            user=_user(),
+        )
+        self.assertEqual(result.direction.direction_type, "three_piece")
+        roles = {q.role for q in result.direction.queries}
+        self.assertIn("outerwear", roles, "expected outerwear query when needs_topwear is in resolved flatters")
+
+    def test_paired_stays_paired_without_needs_topwear(self):
+        # warm_temperate doesn't add needs_topwear; everyday_casual stays paired.
+        graph = load_style_graph()
+        result = compose_direction(
+            inputs=_baseline_inputs(
+                occasion_signal="everyday_casual",
+                weather_context="warm_temperate",
+                formality_hint="casual",
+            ),
+            graph=graph,
+            user=_user(),
+        )
+        self.assertEqual(result.direction.direction_type, "paired")
+        roles = {q.role for q in result.direction.queries}
+        self.assertNotIn("outerwear", roles)
+
     def test_weather_fabric_contribution_is_hard_tier_in_provenance(self):
         # REGRESSION (turn 575e2fe0): the source label stored in
         # AttributeContribution carried the caller's prefix ("weather:")
