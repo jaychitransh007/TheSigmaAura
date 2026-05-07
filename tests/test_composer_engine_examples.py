@@ -12,24 +12,9 @@ Mirrors ``tests/test_composition_engine_examples.py`` for the architect.
 """
 from __future__ import annotations
 
-import sys
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-for p in (
-    ROOT,
-    ROOT / "modules" / "agentic_application" / "src",
-    ROOT / "modules" / "catalog" / "src",
-    ROOT / "modules" / "platform_core" / "src",
-    ROOT / "modules" / "style_engine" / "src",
-    ROOT / "modules" / "user" / "src",
-    ROOT / "modules" / "user_profiler" / "src",
-):
-    sp = str(p)
-    if sp not in sys.path:
-        sys.path.insert(0, sp)
-
+# sys.path is set up in tests/conftest.py — no per-file boilerplate.
 from agentic_application.composition.composer_engine import compose_outfits
 from agentic_application.composition.pairing import TupleContext
 from agentic_application.composition.yaml_loader import load_style_graph

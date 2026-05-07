@@ -21,7 +21,7 @@ WITH scores AS (
 SELECT
     width_bucket(base_score, 0.0, 1.0, 10) AS score_bucket,
     COUNT(*)                                AS tuples,
-    SUM(CASE WHEN picked THEN 1 ELSE 0 END) AS picked,
+    COUNT(*) FILTER (WHERE picked)          AS picked,
     AVG(diversity_multiplier)               AS avg_diversity_multiplier
 FROM scores
 GROUP BY score_bucket
