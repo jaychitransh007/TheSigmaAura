@@ -87,13 +87,7 @@ Two ways to clean up:
 
 ## Hard cap on composer outfit count at the schema level
 
-**Status:** queued · **Cost:** trivial (~5-line schema change + 1 test) · **Risk:** none
-
-The composer's "up to 10 outfits" is enforced **conventionally** via the prompt (`prompt/outfit_composer.md:3, 20`); the JSON schema does not carry `maxItems: 10` on the `outfits` array. Production usually sees 6–8 outfits per turn (T13: 6) so the cap is honoured today, but a future prompt tweak that drops the "up to 10" copy would silently lift the ceiling and the parser would happily accept N outfits.
-
-Two-line fix: add `"maxItems": 10` to the `outfits` array property in `_build_composer_json_schema` (LLM physically can't emit an 11th under strict structured output), plus a parser-level `kept[:10]` belt against future schema-rule changes.
-
-**Trigger:** any prompt edit to `outfit_composer.md` that touches the "up to 10 outfits" line, OR a single production turn observed with >10 outfits in `tool_traces.composer_decision`.
+**Status:** bundled into Phase 5f (composer engine observability + tests PR) — same files touched, free fix. Tracked there, not as a standalone task. Remove this stub once 5f ships.
 
 ---
 
@@ -388,27 +382,31 @@ Bundled bug fix: engine's `seasonal_color_group` lookup now tries both `palette.
 
 ## Phase 5 — Composition engine for composer (P1, Weeks 8-10)
 
-**Goal:** replace composer with `pairing_rules.yaml` + constrained graph search.
+**Goal:** replace `OutfitComposer.compose()` (gpt-5.2, ~12-14s, $0.036/turn — second-largest LLM line post-4.7) with deterministic tuple scoring against `pairing_rules.yaml`. Engine emits up to 6 outfits in the existing `ComposerResult` shape; rater contract unchanged. Spec mirrors Phase 4.7's pattern (composition_semantics.md → composer_semantics.md, pure-function engine, hot-path router with eligibility + acceptance gates, `AURA_COMPOSER_ENGINE_ENABLED` boolean flag, LLM kept as permanent fallback).
 
-### 5.1 Pairing rules engine spec (3-5 days)
+### Locked decisions (2026-05-07)
 
-formality_alignment matrix application; color_story enforcement (5 harmony types); pattern_mixing logic (single, dual with constraints); scale_balance (statement-piece-per-outfit rule); bridal exception logic; anchor-driven rules for `pairing_request` intent.
+| # | Decision | Rationale |
+|---|---|---|
+| 1 | **All-or-nothing per turn**, not per-outfit hybrid | Single `ComposerResult.overall_assessment`; hybrid doubles debugging surface. Mirror of architect router. |
+| 2 | **Hard violation drops tuple; soft violation = -0.1 score penalty per violation; base score 1.0** | Clean binary; matches architect spec's hard/soft model. If <3 tuples survive across all directions → low-confidence fall-through. No precedence ordering among hard categories needed. |
+| 3 | **Hardcode `pairing.py:is_statement()`**, docstring references `scale_balance.statement_definition` as source of truth | Same call architect made on its precedence matrix. Statement definition is a 4-clause OR; rare stylist edits. |
+| 4 | **Defer anchor turns** to a follow-up | Pre-engine eligibility gate declines `anchor_present`/`followup_request`/`has_previous_recommendations`/`pool_too_sparse`. Mirror of architect router. Anchor support added post-validation. |
+| 5 | **`bridal_specific.triggers_on: [occasion keys]`** new YAML field | Engine matches `formality_hint == 'ceremonial' AND occasion_signal in triggers_on`. Stylist-editable, no hardcoded occasion names in Python. |
+| 6 | **Keep LLM `OutfitComposer` as permanent fallback** | Engine target hit rate ≥70%, not 100%. Same as architect pattern. Distillation (Phase 7) replaces the LLM later, not Phase 5. |
 
-### 5.2 Compatibility scoring against catalog (1 week)
+### Sub-PR decomposition (mirrors Phase 4.7's a-f shape)
 
-Score `(top × bottom × outerwear)` tuples in the retrieved pool against `pairing_rules.yaml` constraints. Use enrichment attributes (formality, color, pattern, scale) as scoring inputs.
+| PR | Lands | Days | Depends |
+|---|---|---|---|
+| **5a** | `docs/composer_semantics.md` — relational reduction spec, hard/soft per category, statement-piece algo, bridal exception, confidence formula, fall-through criteria, pre-engine eligibility gates, worked examples | 2-3 | — |
+| **5b** | `composition/pairing_loader.py` + `composition/pairing.py` — extends `StyleGraph` with parsed `pairing_rules`; `score_tuple()`, `is_statement()`, `evaluate_constraint()`. Pure functions, fully unit-tested. Adds `bridal_specific.triggers_on` to YAML. | 4-5 | 5a |
+| **5c** | `composition/composer_engine.py` — `compose_outfits(plan, retrieved_sets, ctx, graph) -> ComposerResult`. Tuple enumeration, scoring, drop, top-K + diversity penalty. Confidence + YAML-gap surfacing. Pure function. | 5-7 | 5b |
+| **5d** | `composition/composer_router.py` + orchestrator wiring + `AURA_COMPOSER_ENGINE_ENABLED` env var. `aura_composer_router_decision_total{used_engine,fallback_reason}` counter, `aura_turn_duration_seconds{stage="composer_engine"}` histogram. `model_call_logs.model="composer_engine"` origin stamping (PR #153 pattern). Engine plans don't write to composer cache during flag-on testing. | 2-3 | 5c (may run parallel) |
+| **5e** | Quality validator extension in `composition/quality.py` — `compare_composer_outputs(engine, llm) -> ComposerComparison`. New `ops/scripts/composer_quality_eval.py`. Shadow-mode hook (`AURA_COMPOSER_SHADOW=1`) writes `composer_shadow_decision` tool_traces. Real eval-set run gated on Phase 4.6. | 2-3 | 5c, 5d |
+| **5f** | Worked-example tests + 4 dashboard panels (25-28: plan-source distribution, rule-violation distribution, per-tuple score histogram, single-turn diagnostic) + `OPERATIONS.md` "A5: Composer engine flag-on regressions" runbook. **Bundles the long-queued `maxItems: 10` schema cap on the LLM composer** — touched files overlap. | 2-3 | 5c |
 
-### 5.3 Diverse outfit assembly (3-5 days)
-
-Top-K with diversity constraints: max 1 outfit per direction, palette spread, role coverage. Output 6 candidates for the rater (matching current contract).
-
-### 5.4 A/B test against LLM composer (parallel)
-
-Run both on eval set; rate outputs. Identify specific failure modes of the engine for stylist review.
-
-### 5.5 Production rollout (1 week)
-
-Feature flag rollout: 10% → 50% → 100%.
+Order: 5a → 5b → (5c‖5d) → (5e‖5f). All independently mergeable behind default-false flag.
 
 ### Phase 5 test gate
 
