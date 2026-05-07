@@ -5603,11 +5603,76 @@ class AgenticOrchestrator:
                     total_tokens=_embed_usage.get("total_tokens"),
                 ))
             total_products = sum(len(rs.products) for rs in retrieved_sets)
+
+            # May 8 2026 — empty-retrieval auto-relaxation. When all
+            # queries return zero products, the original failure path
+            # was: confidence-gate-blocked → "I couldn't find a strong
+            # match" message. That treats the user's request as
+            # under-specified when the catalog gap is the actual
+            # problem (e.g., turn 9abaf4d4 — masculine catalog has no
+            # tshirts/hoodies for a "loungewear" ask). Relaxation
+            # drops the most restrictive filters one at a time and
+            # retries until products surface or the relaxation
+            # sequence is exhausted. Each retry is one catalog round
+            # trip (~500ms), bounded by RELAXATION_SEQUENCE length.
+            #
+            # Filters relaxed in order of decreasing specificity:
+            # garment_subtype (single subtype) → formality_level
+            # (one of 5) → occasion_fit (broad use-case bucket).
+            # gender_expression is identity-bound and NEVER relaxed.
+            relaxation_applied: List[str] = []
+            if total_products == 0:
+                _RELAXATION_SEQUENCE = (
+                    "garment_subtype",
+                    "formality_level",
+                    "occasion_fit",
+                )
+                for _key_to_drop in _RELAXATION_SEQUENCE:
+                    relaxation_applied.append(_key_to_drop)
+                    _log.info(
+                        "auto-relax: dropping %s (%d/%d levels)",
+                        _key_to_drop,
+                        len(relaxation_applied),
+                        len(_RELAXATION_SEQUENCE),
+                    )
+                    retrieved_sets = self.catalog_search_agent.search(
+                        plan, combined_context,
+                        relaxed_filter_keys=tuple(relaxation_applied),
+                    )
+                    total_products = sum(len(rs.products) for rs in retrieved_sets)
+                    if total_products > 0:
+                        _log.info(
+                            "auto-relax: succeeded with %d products after dropping %s",
+                            total_products, relaxation_applied,
+                        )
+                        break
+                else:
+                    _log.info(
+                        "auto-relax: exhausted; %d levels dropped, still 0 products",
+                        len(relaxation_applied),
+                    )
+                # Refresh the trace's full_output snapshot so the
+                # post-relaxation retrieved_sets land in distillation
+                # — without this, the trace would carry the empty
+                # initial result and downstream review wouldn't see
+                # which relaxation level actually filled the pool.
+                _trace_ctx.full_output = {
+                    "retrieved_sets": to_jsonable(retrieved_sets),
+                    "relaxation_applied": list(relaxation_applied),
+                }
+
             emit("catalog_search", "completed", ctx={
                 "product_count": total_products,
                 "set_count": len(retrieved_sets),
+                "relaxation_applied": relaxation_applied or None,
             })
-            trace_end("catalog_search", output_summary=f"{len(retrieved_sets)} sets, {total_products} products, {search_ms}ms")
+            trace_end(
+                "catalog_search",
+                output_summary=(
+                    f"{len(retrieved_sets)} sets, {total_products} products, {search_ms}ms"
+                    + (f" (relaxed: {','.join(relaxation_applied)})" if relaxation_applied else "")
+                ),
+            )
 
             # Inject anchor as the sole item for its role.
             # Phase 12D: mark with is_anchor=True so the assembler's
