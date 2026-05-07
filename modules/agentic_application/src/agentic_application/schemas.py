@@ -229,6 +229,17 @@ class RetrievedSet(BaseModel):
     role: str  # complete | top | bottom
     products: List[RetrievedProduct] = Field(default_factory=list)
     applied_filters: Dict[str, Any] = Field(default_factory=dict)
+    # Phase 5x.4 follow-up (May 8 2026): per-attribute breakdown of
+    # which hard_attrs drove retrieval-stage penalties on this set.
+    # Shape: {attr_name: {"items_with_attr": N, "violations": M}}
+    # — N items in the rerank pool carried that attribute (had a
+    # non-empty enriched_data value), M of them violated the
+    # architect's resolved allowed-value list. Empty when the LLM
+    # path runs (no hard_attrs) or when no attrs survived the
+    # cleanup. Persists via to_jsonable(retrieved_sets) into the
+    # catalog_search distillation trace; a SQL panel reads it back
+    # to show per-axis demotion rates over time.
+    attr_violation_summary: Dict[str, Dict[str, int]] = Field(default_factory=dict)
 
 
 # --- Outfit candidate (after Composer + Rater, May 3 2026) ---

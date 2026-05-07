@@ -230,6 +230,20 @@ aura_user_preference_override_total = Counter(
     labelnames=("attribute",),
 )
 
+# Phase 5x.4 follow-up — per-attribute retrieval-stage violation
+# counter. Ticks once per (item, attribute) that violated the
+# architect's resolved allowed-value list during rerank. Lets us
+# answer "which axis is doing all the work?" — high count for one
+# attribute means it's driving most of the demotion; if its count
+# is near-zero, the axis is dead weight and can be dropped from the
+# whitelist without behavior change. Cardinality is bounded by the
+# ~20 PascalCase keys in HARD_ATTR_TO_ITEM_FIELD.
+aura_retrieval_attr_violation_total = Counter(
+    "aura_retrieval_attr_violation_total",
+    "Retrieval-stage hard_attr violations counted per attribute.",
+    labelnames=("attribute",),
+)
+
 
 # ── Convenience helpers ───────────────────────────────────────────────
 
@@ -411,6 +425,22 @@ def observe_user_preference_override(attribute: str) -> None:
         aura_user_preference_override_total.labels(
             attribute=attribute or "unknown",
         ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_retrieval_attr_violation(attribute: str, count: int = 1) -> None:
+    """Tick the per-attribute retrieval violation counter.
+    ``count`` lets callers batch-emit (e.g. "12 items in this
+    RetrievedSet violated SleeveLength") with a single metric call
+    rather than 12 individual ticks. Default 1 keeps single-event
+    callers ergonomic. Negative or zero counts are skipped."""
+    if count <= 0:
+        return
+    try:
+        aura_retrieval_attr_violation_total.labels(
+            attribute=attribute or "unknown",
+        ).inc(count)
     except Exception:  # noqa: BLE001
         pass
 
