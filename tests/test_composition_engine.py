@@ -34,6 +34,8 @@ from agentic_application.composition.engine import (
     CompositionInputs,
     CompositionResult,
     ProvenanceEntry,
+    _build_hard_attrs,
+    _classify_attr_tier,
     _compute_confidence,
     _detect_peer_conflict,
     _resolve_body_frame_yaml,
@@ -332,6 +334,103 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(_time_of_day_to_garment_value("night"), "evening")
         # Unknown values map to None (no contribution).
         self.assertIsNone(_time_of_day_to_garment_value("blizzard"))
+
+
+class HardAttrTierTests(unittest.TestCase):
+    """Verify the §3.3 tier classification and hard_attrs extraction.
+    Used by _build_query_specs to populate QuerySpec.hard_attrs which
+    flows into the SQL ORDER-BY penalty term."""
+
+    def _entry(self, attr: str, flatters: tuple[str, ...], sources: tuple[str, ...]) -> ProvenanceEntry:
+        return ProvenanceEntry(
+            attribute=attr,
+            final_flatters=flatters,
+            contributing_sources=sources,
+            status="clean",
+            dropped_softs=(),
+            widened_hards=(),
+        )
+
+    def test_classify_hard_when_any_contributor_is_hard(self):
+        # Mixed contributors — body_shape (hard) + archetype (soft) → hard wins.
+        tier = _classify_attr_tier(("archetype:modern_professional", "body_shape:Hourglass"))
+        self.assertEqual(tier, "hard")
+
+    def test_classify_soft_when_all_contributors_are_soft(self):
+        tier = _classify_attr_tier(("archetype:glamorous", "risk_tolerance:expressive", "time_of_day:evening"))
+        self.assertEqual(tier, "soft")
+
+    def test_classify_none_when_no_contributors(self):
+        self.assertIsNone(_classify_attr_tier(()))
+
+    def test_weather_fabric_is_hard(self):
+        # The fabric-related weather subset is hard per §3.3.
+        tier = _classify_attr_tier(("weather_fabric:high_altitude_cool",))
+        self.assertEqual(tier, "hard")
+
+    def test_seasonal_color_is_hard(self):
+        tier = _classify_attr_tier(("seasonal:Soft Autumn",))
+        self.assertEqual(tier, "hard")
+
+    def test_formality_hint_is_hard(self):
+        tier = _classify_attr_tier(("formality_hint:smart_casual",))
+        self.assertEqual(tier, "hard")
+
+    def test_build_hard_attrs_includes_only_hard_tier(self):
+        # SleeveLength comes from weather (hard) → included.
+        # FabricTexture comes only from archetype (soft) → excluded.
+        # FormalityLevel comes from formality_hint (hard) → included.
+        provenance = (
+            self._entry(
+                "SleeveLength", ("three_quarter", "full"),
+                ("weather_fabric:high_altitude_cool",),
+            ),
+            self._entry(
+                "FabricTexture", ("smooth",),
+                ("archetype:modern_professional",),
+            ),
+            self._entry(
+                "FormalityLevel", ("smart_casual",),
+                ("formality_hint:smart_casual",),
+            ),
+        )
+        out = _build_hard_attrs(provenance)
+        self.assertEqual(out, {
+            "SleeveLength": ["three_quarter", "full"],
+            "FormalityLevel": ["smart_casual"],
+        })
+        self.assertNotIn("FabricTexture", out)
+
+    def test_build_hard_attrs_skips_empty_flatters(self):
+        # An attribute that ended up with no flatters (omitted) shouldn't
+        # appear — empty allowed-list would penalize EVERY item.
+        provenance = (
+            self._entry("EmbellishmentLevel", (), ("body_shape:Hourglass",)),
+        )
+        self.assertEqual(_build_hard_attrs(provenance), {})
+
+    def test_compose_direction_emits_hard_attrs_on_query_spec(self):
+        # End-to-end: compose_direction populates query_specs[*].hard_attrs
+        # with HARD-tier reduced flatters from real YAML inputs.
+        graph = load_style_graph()
+        result = compose_direction(
+            inputs=_baseline_inputs(weather_context="high_altitude_cool"),
+            graph=graph,
+            user=_user(),
+        )
+        self.assertIsNotNone(result.direction)
+        # At least one query carries hard_attrs.
+        any_hard_attrs = any(q.hard_attrs for q in result.direction.queries)
+        self.assertTrue(any_hard_attrs, "expected hard_attrs to be populated from hard-tier sources")
+        # SleeveLength from high_altitude_cool weather should be present.
+        for q in result.direction.queries:
+            if "SleeveLength" in q.hard_attrs:
+                # Engine reduced sleeve length; should NOT include sleeveless / cap / short.
+                disallowed = {"sleeveless", "cap", "short"}
+                self.assertFalse(
+                    disallowed & set(q.hard_attrs["SleeveLength"]),
+                    f"SleeveLength flatters leaked disallowed values: {q.hard_attrs['SleeveLength']}",
+                )
 
 
 if __name__ == "__main__":

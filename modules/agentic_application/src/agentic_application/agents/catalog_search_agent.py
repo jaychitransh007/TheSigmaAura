@@ -155,6 +155,7 @@ class CatalogSearchAgent:
                         query_embedding=embedding,
                         match_count=plan.retrieval_count,
                         filters=filters,
+                        hard_attrs=query.hard_attrs or None,
                     ) or []
                     break
                 except Exception as exc:

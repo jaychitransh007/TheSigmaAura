@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
 
 from platform_core.supabase_rest import SupabaseRestClient
 
@@ -285,12 +285,30 @@ class SupabaseVectorStore:
             limit=limit,
         )
 
-    def similarity_search(self, *, query_embedding: List[float], match_count: int, filters: Dict[str, Any]) -> Any:
-        return self._client.rpc(
-            "match_catalog_item_embeddings",
-            {
-                "query_embedding": _vector_literal(query_embedding),
-                "match_count": match_count,
-                "filter": filters,
-            },
-        )
+    def similarity_search(
+        self,
+        *,
+        query_embedding: List[float],
+        match_count: int,
+        filters: Dict[str, Any],
+        hard_attrs: Optional[Dict[str, List[str]]] = None,
+    ) -> Any:
+        """Execute the pgvector similarity-search RPC.
+
+        ``hard_attrs`` (May 7 2026) carries the engine-resolved per-
+        attribute allowed-value lists from HARD-tier sources. The SQL
+        function adds a 0.30 per-violation penalty to the cosine
+        distance ORDER BY, so items violating rank lower but aren't
+        excluded — graceful degradation when the catalog is sparse.
+        Defaults to ``None``/``{}`` for backward compatibility with
+        callers that haven't been updated; the SQL function's default
+        ``'{}'::jsonb`` parameter then leaves cosine the only signal.
+        """
+        payload: Dict[str, Any] = {
+            "query_embedding": _vector_literal(query_embedding),
+            "match_count": match_count,
+            "filter": filters,
+        }
+        if hard_attrs:
+            payload["hard_attrs"] = hard_attrs
+        return self._client.rpc("match_catalog_item_embeddings", payload)
