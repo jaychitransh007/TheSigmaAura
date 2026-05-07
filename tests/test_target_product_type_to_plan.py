@@ -30,7 +30,32 @@ from agentic_application.schemas import (
 )
 
 
-def _plan(*, hard_filters: dict | None = None) -> RecommendationPlan:
+def _browse_plan(*, hard_filters: dict | None = None) -> RecommendationPlan:
+    """Single-direction-single-query plan — the shape the architect
+    emits for a browse-by-garment request like 'show me shirts'."""
+    return RecommendationPlan(
+        retrieval_count=5,
+        directions=[
+            DirectionSpec(
+                direction_id="A",
+                direction_type="complete",
+                label="L",
+                queries=[
+                    QuerySpec(
+                        query_id="A1", role="top",
+                        hard_filters=dict(hard_filters or {}),
+                        query_document="t",
+                    ),
+                ],
+            ),
+        ],
+    )
+
+
+def _paired_plan(*, hard_filters: dict | None = None) -> RecommendationPlan:
+    """Multi-item plan — the architect chose a paired outfit instead
+    of a single-garment browse. PR #186 review: target_product_type
+    must NOT be bound here (would zero-out the bottom role)."""
     return RecommendationPlan(
         retrieval_count=5,
         directions=[
@@ -58,54 +83,64 @@ def _plan(*, hard_filters: dict | None = None) -> RecommendationPlan:
 class ApplyTargetProductTypeToPlanTests(unittest.TestCase):
 
     def test_noop_on_empty_target(self):
-        plan = _plan(hard_filters={"gender_expression": "feminine"})
+        plan = _browse_plan(hard_filters={"gender_expression": "feminine"})
         _apply_target_product_type_to_plan(plan, "")
         for q in plan.directions[0].queries:
             self.assertNotIn("garment_subtype", q.hard_filters)
 
     def test_noop_on_whitespace_target(self):
-        plan = _plan()
+        plan = _browse_plan()
         _apply_target_product_type_to_plan(plan, "   ")
         for q in plan.directions[0].queries:
             self.assertNotIn("garment_subtype", q.hard_filters)
 
-    def test_binds_lowercased_subtype_to_every_query(self):
-        plan = _plan(hard_filters={"gender_expression": "feminine"})
+    def test_binds_lowercased_subtype_on_browse_plan(self):
+        # Single-direction-single-query plan: architect interpreted as
+        # browse-by-garment → bind the target_product_type.
+        plan = _browse_plan(hard_filters={"gender_expression": "feminine"})
         _apply_target_product_type_to_plan(plan, "Shirt")
-        for q in plan.directions[0].queries:
-            self.assertEqual(q.hard_filters["garment_subtype"], "shirt")
-            # Existing filters preserved.
-            self.assertEqual(q.hard_filters["gender_expression"], "feminine")
+        q = plan.directions[0].queries[0]
+        self.assertEqual(q.hard_filters["garment_subtype"], "shirt")
+        self.assertEqual(q.hard_filters["gender_expression"], "feminine")
 
     def test_does_not_override_existing_subtype_filter(self):
-        # Architect-emitted subtype filter is more specific; preserve it.
-        plan = _plan(hard_filters={"garment_subtype": "blazer"})
+        plan = _browse_plan(hard_filters={"garment_subtype": "blazer"})
+        _apply_target_product_type_to_plan(plan, "shirt")
+        self.assertEqual(
+            plan.directions[0].queries[0].hard_filters["garment_subtype"],
+            "blazer",
+        )
+
+    def test_skips_paired_plan_to_avoid_zero_product_bottom(self):
+        # PR #186 review: don't bind the subtype on multi-item plans.
+        # If we bound garment_subtype=shirt on the bottom role of a
+        # paired plan, retrieval would return 0 products for the
+        # bottom and drop the entire outfit.
+        plan = _paired_plan(hard_filters={"gender_expression": "feminine"})
         _apply_target_product_type_to_plan(plan, "shirt")
         for q in plan.directions[0].queries:
-            self.assertEqual(q.hard_filters["garment_subtype"], "blazer")
+            self.assertNotIn("garment_subtype", q.hard_filters)
 
-    def test_applies_across_multiple_directions(self):
+    def test_skips_multi_direction_plan(self):
+        # Three-piece or multi-direction plans are also skipped — the
+        # architect interpreted the request as more than browse-by-type.
         plan = RecommendationPlan(
             retrieval_count=5,
             directions=[
                 DirectionSpec(
-                    direction_id="A", direction_type="paired", label="A",
-                    queries=[
-                        QuerySpec(query_id="A1", role="top", hard_filters={}, query_document="t"),
-                    ],
+                    direction_id="A", direction_type="complete", label="A",
+                    queries=[QuerySpec(query_id="A1", role="top", hard_filters={}, query_document="t")],
                 ),
                 DirectionSpec(
-                    direction_id="B", direction_type="paired", label="B",
-                    queries=[
-                        QuerySpec(query_id="B1", role="top", hard_filters={}, query_document="t"),
-                    ],
+                    direction_id="B", direction_type="complete", label="B",
+                    queries=[QuerySpec(query_id="B1", role="top", hard_filters={}, query_document="t")],
                 ),
             ],
         )
         _apply_target_product_type_to_plan(plan, "dress")
         for d in plan.directions:
             for q in d.queries:
-                self.assertEqual(q.hard_filters["garment_subtype"], "dress")
+                self.assertNotIn("garment_subtype", q.hard_filters)
 
 
 if __name__ == "__main__":

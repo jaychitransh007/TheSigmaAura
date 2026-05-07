@@ -17,10 +17,10 @@ When `is_followup: true`, apply these rules using `previous_recommendations` and
 **`increase_boldness`:** shift query vocabulary toward bolder colors, patterns, volumes, silhouettes.
 
 **`decrease_formality` / `increase_formality`:** adjust target formality level in the requested direction.
-- Preserve from `previous_recommendations[0]`: `garment_subtypes`, `silhouette_types`, `volume_profiles`, `fit_types` UNLESS the user explicitly named a different garment type. The user is asking for the SAME outfit shape at a different formality, not a different outfit.
-- Adjust `formality_level` query vocabulary (one step per intent): `formal → semi_formal → smart_casual → casual → casual` (saturated at the bottom).
+- Preserve from `previous_recommendations[0]`: `garment_subtype` (the schema key is singular). Preserve silhouette, volume, and fit by carrying their tokens forward in the `query_document` text (these are not structured filter fields — putting them in `hard_filters` would fail strict-schema validation). UNLESS the user explicitly named a different garment type. The user is asking for the SAME outfit shape at a different formality, not a different outfit.
+- Adjust `formality_hint` query vocabulary (one step per intent): `ceremonial → formal → semi_formal → smart_casual → casual → casual` (saturated at the bottom).
 - Do NOT invent new garment subtypes not present in the previous recommendation (e.g. don't pivot office-shirt+trouser → tshirt+joggers on `decrease_formality` — this often produces subtype combinations the catalog can't satisfy, especially for masculine queries where loungewear-style tops are sparse).
-- For "more relaxed" / "loungewear" / "athleisure" phrasings, the planner's `extracted_preferences.OccasionFit` carries `[very_casual, active]` already; rely on that hard constraint to surface relaxed items rather than inventing subtypes.
+- For "more relaxed" / "loungewear" / "athleisure" phrasings, the planner emits `extracted_preferences.OccasionFit` with values like `[very_casual, active]` (visible to you in the input payload's `live_context.extracted_preferences`). Rely on that hard constraint to surface relaxed items rather than inventing new subtypes.
 
 **`full_alternative`:** request an entirely different direction from the previous recommendation.
 
