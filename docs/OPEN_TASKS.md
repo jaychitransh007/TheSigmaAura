@@ -171,7 +171,7 @@ Build `ops/scripts/architect_replay_eval.py` that:
 |---|---|---|
 | Phase 1 — Operational quick wins | ✅ **SHIPPED + verified** | Rater parallelization, retrieval RPC fix, planner shadow infra (dormant), gpt-5.4 → gpt-5.2 architect/composer swap. ~6s saved per turn. |
 | Phase 2 — Caching layer | ✅ **SHIPPED + applied to staging** | All 4 migrations live on Aura-Staging. Hit rate jumped from ~0% (non-deterministic planner output) toward the design target as Phase 4.7+4.11 made engine inputs canonical. |
-| Phase 3 — Prompt compression | ⏸ Not started | ~1.5 weeks. Realistic ~10s win on architect, ~7s on composer. **Mostly moot for engine-accepted turns** (engine path has no architect LLM call); still relevant for the LLM-fallback path. |
+| Phase 3 — Prompt compression (3.0+3.1+3.2+3.4) | 🟢 **In flight (May 8 2026)** — ship-now bundle | Easy cuts (delete MIGRATED sections, cap recent_user_actions / conversation_history, structured output verify). ~5-6K token reduction targeted. Aggressive 14K→5K via YAML-row injection deferred to 3.3/3.5 post-4.6. |
 | Phase 4 prep (4.1, 4.4, 4.5) | ✅ **SHIPPED** | Composition semantics spec, bootstrap grid YAML loader, MIGRATED prompt markers. |
 | Phase 4.7 — Engine implementation | ✅ **SHIPPED** (PR #149) | 6 sub-PRs (4.7a-f) bundled: yaml_loader, reduction, relaxation, engine, render, worked-example tests. Architect stage drops 19s → ~0ms on engine-accepted turns. Verified end-to-end with confidence=1.0 on a real staging query. |
 | Phase 4.8 — Quality validator | ✅ **Framework SHIPPED** (PR #149) | `composition/quality.py` + `ops/scripts/composition_quality_eval.py` ready to consume Phase 4.6 eval set. Real comparison run gated on 4.6. |
@@ -278,25 +278,43 @@ Monitor hit rate by cluster. Surface low-hit clusters as "needs more traffic" or
 
 ---
 
-## Phase 3 — Prompt compression (P1, Weeks 3-4, parallel with Phase 2)
+## Phase 3 — Prompt compression (P1)
 
-**Goal:** shrink architect + composer prompts; further reduce cold-path latency on cache miss.
+**Goal:** shrink architect + composer prompts; reduce cold-path latency on the LLM-fallback path.
 
-### 3.1 Audit architect 14K input (1 day)
+**Important context (May 8 2026):** with the architect engine accepting ~70-80% of turns and 7-of-7 follow-up intents engine-friendly, the architect LLM is now a **fallback** path (<30% of turns), not the common path. Compression saves real time on the cases that fall through, but the headline win has shifted from "every turn" to "the hard edge cases."
 
-Categorize tokens by source: static fashion knowledge (~3-4K, replaceable with YAML row injection), catalog summary (~2-3K, per-request keep), user profile (~1-2K, per-request keep), output format spec (~1-2K, replaceable with structured output / constrained JSON), few-shot examples (~3-4K, filter to only relevant archetype/occasion examples per request).
+Phase re-scoped May 8 2026 into a ship-now bundle and a post-4.6 follow-up tier:
 
-### 3.2 Compress architect prompt (3-4 days)
+### 🟢 Ship-now bundle (3.0 + 3.1 + 3.2 + 3.4)
 
-Inject relevant YAML rows for *this user* (palette for their sub-season, body_frame for their shape, archetype for their style) instead of generic prose. Use OpenAI `response_format` or Anthropic tool-calling for structured output, removing in-prompt format examples. Target: 14K → 4-5K input tokens, same model from Phase 1.4.
+Low-risk cuts that don't depend on Phase 4.6 ground truth:
 
-### 3.3 Compress composer prompt (2-3 days)
+#### 3.0 Audit (1 day)
+Add token-counting telemetry; one-time measure on 50 production turns; produce per-section breakdown so subsequent cuts target real heavy-hitters, not assumed ones.
 
-Same approach: identify static fashion knowledge in prompt, replace with `pairing_rules.yaml` injection. Filter few-shot examples to relevant ones for the architect direction.
+#### 3.1 Easy cuts in architect prompt (1-2 days)
+Delete the `<!-- MIGRATED -->` sections from `prompt/outfit_architect.md` (Occasion Calibration, BodyShape Visual Direction, Pattern Calibration — all already encoded in YAML and consumed by the engine). Trim translation examples to 2 per category. Cap `recent_user_actions` at 20 (was 30). Cap `conversation_history` to last 2 turns (was 4). Estimated savings: ~3-4K tokens.
 
-### 3.4 Cap `_RECENT_USER_ACTIONS_MAX` 30 → 20 (hours)
+#### 3.2 Verify structured output (hours)
+Confirm architect's `_PLAN_JSON_SCHEMA` is in use via OpenAI `response_format=json_schema` (already in place per `outfit_architect.py:_PLAN_JSON_SCHEMA`). Trim any redundant in-prompt schema description. Estimated savings: ~500-800 tokens.
 
-Saves ~2K input tokens. Trigger if Panel 17 p95 stays >14K input tokens. (Cross-references the per-turn cost re-baseline task above.)
+#### 3.4 Composer trim (1 day)
+Apply the same pattern to `prompt/outfit_composer.md`: drop redundant prose, prune examples. Estimated savings: ~500 tokens.
+
+**Combined target:** architect ~14K → ~9-10K, composer ~3-5K → ~2.5-4K. Aggressive 14K → 5K target deferred to 3.3 + 3.5 (next).
+
+### 🔒 Post-4.6 follow-up tier (3.3 + 3.5)
+
+Gated on Phase 4.6 eval set landing — cannot validate quality regression without ground truth.
+
+#### 3.3 Conditional prompt injection (3-4 days, post-4.6)
+
+Load `outfit_architect_followup.md` ONLY when `is_followup=true`. Same idea for occasion-specific rules — only inject the active occasion's calibration. Saves ~500-1,000 tokens per applicable turn but requires routing logic in the architect agent + per-occasion eval coverage.
+
+#### 3.5 YAML row injection (5-7 days, post-4.6)
+
+Replace the deleted MIGRATED prose with structured per-user YAML row injection (palette for their sub-season, body_frame for their shape, archetype for their style). Adds a per-turn YAML rendering pipeline plus an ongoing YAML↔prompt sync burden. Biggest single token win (~1-2K) but the highest engineering cost AND the highest quality risk on the LLM-fallback path. Worth doing only if (a) 3.0+3.1 prove out the easy cuts hold quality on the eval set and (b) the LLM-fallback rate doesn't drop further (if engine acceptance keeps climbing, the LLM path becomes too rare to justify the YAML-injection investment).
 
 ### Phase 3 test gate
 
