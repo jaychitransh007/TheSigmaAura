@@ -283,25 +283,35 @@ confidence = 1.0
            - 0.10 * count(soft_sources_dropped)
            - 0.20 * count(hard_sources_widened)
            - 0.30 * count(attributes_omitted)
-           - 0.45 * (any genuine YAML gap)
+           - 0.20 * count(yaml_gaps)              # Layer 1: per-gap, was binary 0.45
 clamped to [0.0, 1.0]
 ```
 
-Threshold for engine acceptance: **confidence ≥ 0.50** (current runtime value; spec originally specified 0.60 — see calibration note below). YAML gaps always trigger fallback regardless of threshold via the explicit `has_yaml_gap` branch in `compose_direction()` — they're a genuine "engine doesn't know" signal handled outside the formula.
+Threshold for engine acceptance: **confidence ≥ 0.50**.
 
-**Calibration note (May 2026):** the runtime threshold was lowered from the spec's original 0.60 to 0.50 because (a) downstream composer + rater rerank by score, so an engine plan that's "merely passable" still surfaces good outfits, and (b) at 0.60 the engine almost always falls through on real Indian inputs (4-5 of ~35 attributes typically need relaxation, accumulating penalties below the threshold). The 0.45 YAML-gap penalty + the formula coefficients themselves are still calibration guesses to be tightened against eval-set ground truth (Phase 4.6).
+**Layer 1 calibration (May 7 2026):** the YAML-gap penalty was binary 0.45 with an explicit `has_yaml_gap` short-circuit before this. Any single-axis gap (e.g., a quirky `weather_context` value the canonicalize layer couldn't bridge) auto-disqualified the engine — too aggressive given that the other 9 input axes typically carry clean signal. New behavior:
 
-**🎨 STYLIST SIGN-OFF NEEDED** on the final threshold value once eval data lands.
+- 1 gap → confidence 0.80 → engine accepts (gap source's contribution is dropped from the per-attribute reduction; downstream attributes are wider or relaxed)
+- 2 gaps → confidence 0.60 → engine accepts
+- 3 gaps → confidence 0.40 → engine falls through cleanly via the threshold gate
+- 4+ gaps → confidence drops further; same outcome
+
+The threshold is now the single fall-through gate; the explicit `if has_yaml_gap` short-circuit in `compose_direction()` is removed. When confidence drops below threshold AND any gaps were present, `fallback_reason="yaml_gap"` (preserved label so Panel 21 still slices gap-driven misses); otherwise `fallback_reason="low_confidence"`.
+
+**Calibration note:** original spec coefficients are still calibration guesses to be tightened against eval-set ground truth (Phase 4.6). The threshold (0.50) was lowered from the spec's original 0.60 because (a) downstream composer + rater rerank by score, and (b) at 0.60 the engine almost always falls through on real Indian inputs.
+
+**🎨 STYLIST SIGN-OFF NEEDED** on the per-gap penalty + final threshold once eval data lands.
 
 ## 9. Fall-through criteria summary
 
 The hot-path router falls through to the LLM architect when ANY of:
 
-1. Engine returns `confidence < 0.50` (current runtime threshold; see §8 calibration note)
+1. Engine returns `confidence < 0.50` (single gate post-Layer-1)
 2. Engine returns no `DirectionSpec` (full failure)
-3. Genuine YAML gap (input value not in any YAML — e.g., a new occasion not yet added)
-4. Provenance shows ≥2 hard-source widenings on a single attribute (semantic drift risk)
-5. Engine emits `needs_disambiguation` (§7) — peer-pair conflict the engine can't resolve
+3. Provenance shows ≥2 hard-source widenings on a single attribute (semantic drift risk)
+4. Engine emits `needs_disambiguation` (§7) — peer-pair conflict the engine can't resolve
+
+YAML gaps are no longer their own fall-through criterion — they affect confidence and the threshold gate handles them uniformly with other low-confidence causes.
 
 Plus the router's pre-engine eligibility gates: anchor-garment turns, follow-up turns, and `previous_recommendations`-bearing turns all skip the engine and go straight to the LLM. The engine doesn't yet handle those flows.
 

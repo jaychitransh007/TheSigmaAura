@@ -52,7 +52,18 @@ from .yaml_loader import (
 SOFT_DROP_PENALTY = 0.10
 HARD_WIDEN_PENALTY = 0.20
 ATTR_OMIT_PENALTY = 0.30
-YAML_GAP_PENALTY = 0.45
+
+# Layer 1 (May 7 2026): per-gap penalty. Was a binary 0.45 — any single
+# YAML gap auto-fell-through, even when the other 9 input axes carried
+# clean signal. That made every novel weather/occasion variant ("beach
+# walk", "manali_summer") force the slow LLM path. New semantics:
+# each gapped axis subtracts 0.20 from confidence. One gap leaves the
+# engine at 0.80 (well above threshold → accepts). Three gaps drop it
+# to 0.40 (below threshold → cleanly falls through). The engine drops
+# the gapped axis's contribution and proceeds with reduced-but-usable
+# signal — equivalent to §3.2 relaxation handling missing attributes,
+# now extended to missing axes.
+YAML_GAP_PENALTY = 0.20
 
 # §8 acceptance threshold. Calibration knob — spec §10 acknowledges
 # the value is preliminary until eval-set data lands. Currently 0.50
@@ -60,9 +71,9 @@ YAML_GAP_PENALTY = 0.45
 # rerank by score, so an engine plan that's "merely passable" still
 # surfaces good outfits, and (b) at 0.60 the engine almost always
 # falls through on real Indian inputs (4-5 of ~35 attributes typically
-# need relaxation, accumulating penalties below 0.60). YAML gaps
-# always trigger fallback regardless of threshold via the explicit
-# ``has_yaml_gap`` branch in compose_direction.
+# need relaxation, accumulating penalties below 0.60). Post-Layer-1,
+# YAML gaps no longer trigger an explicit fallback branch — they only
+# affect the confidence score, so the threshold is the single gate.
 CONFIDENCE_THRESHOLD = 0.50
 
 
@@ -495,8 +506,14 @@ def _build_query_specs(
 
 def _compute_confidence(
     provenance: Sequence[ProvenanceEntry],
-    yaml_gap: bool,
+    yaml_gap_count: int,
 ) -> float:
+    """Compute the §8 confidence. ``yaml_gap_count`` is the number of
+    input axes whose value wasn't found in any YAML — each one
+    subtracts ``YAML_GAP_PENALTY`` (0.20). Single-axis gaps no longer
+    auto-disqualify the engine; multi-axis gaps drop confidence below
+    the 0.50 threshold and fall through cleanly via the threshold
+    check, not via a separate short-circuit branch."""
     softs = sum(len(p.dropped_softs) for p in provenance)
     hards = sum(len(p.widened_hards) for p in provenance)
     omitted = sum(1 for p in provenance if p.status == "omitted")
@@ -505,7 +522,7 @@ def _compute_confidence(
         - SOFT_DROP_PENALTY * softs
         - HARD_WIDEN_PENALTY * hards
         - ATTR_OMIT_PENALTY * omitted
-        - (YAML_GAP_PENALTY if yaml_gap else 0.0)
+        - YAML_GAP_PENALTY * max(0, yaml_gap_count)
     )
     return max(0.0, min(1.0, score))
 
@@ -567,8 +584,8 @@ def compose_direction(
     else:
         direction_type = qs_entry.default_structure or "paired"
 
-    has_yaml_gap = bool(gaps)
-    confidence = _compute_confidence(provenance, has_yaml_gap)
+    yaml_gap_count = len(gaps)
+    confidence = _compute_confidence(provenance, yaml_gap_count)
 
     composed_attributes: dict[str, tuple[str, ...]] = {
         p.attribute: p.final_flatters
@@ -587,11 +604,17 @@ def compose_direction(
         queries=queries,
     )
 
+    # Layer 1: confidence is the only fall-through gate. The previous
+    # ``if has_yaml_gap`` short-circuit auto-disqualified single-axis
+    # gaps even when 9 of 10 inputs were clean — too aggressive.
+    # YAML gaps still affect confidence (-0.20 each); a single gap on
+    # its own keeps confidence at ~0.80 and the engine accepts. Three
+    # gaps push to ~0.40 and the threshold gate kicks in. The
+    # fallback_reason label distinguishes gap-driven misses from
+    # other low-confidence causes for ops dashboards (Panel 21).
     fallback_reason: str | None = None
-    if has_yaml_gap:
-        fallback_reason = "yaml_gap"
-    elif confidence < CONFIDENCE_THRESHOLD:
-        fallback_reason = "low_confidence"
+    if confidence < CONFIDENCE_THRESHOLD:
+        fallback_reason = "yaml_gap" if yaml_gap_count > 0 else "low_confidence"
 
     return CompositionResult(
         direction=direction,

@@ -190,16 +190,19 @@ class YamlGapTests(unittest.TestCase):
     def setUpClass(cls):
         cls.graph = load_style_graph()
 
-    def test_unknown_body_shape_marks_yaml_gap(self):
+    def test_unknown_body_shape_records_gap(self):
         result = compose_direction(
             inputs=_baseline_inputs(body_shape="NotARealShape"),
             graph=self.graph,
             user=_user(),
         )
-        self.assertIn(
-            "body_shape:NotARealShape", result.yaml_gaps,
-        )
-        self.assertEqual(result.fallback_reason, "yaml_gap")
+        self.assertIn("body_shape:NotARealShape", result.yaml_gaps)
+        # body_shape is load-bearing across many attributes; losing it
+        # cascades into omits/relaxes that drop confidence below the
+        # threshold even with the per-gap-only penalty. The fallback
+        # reason should still tag the original gap-driven cause.
+        if result.fallback_reason is not None:
+            self.assertEqual(result.fallback_reason, "yaml_gap")
 
     def test_unknown_occasion_marks_yaml_gap_and_falls_back_direction_type(self):
         result = compose_direction(
@@ -213,12 +216,34 @@ class YamlGapTests(unittest.TestCase):
         # the "fallback.default" entry, which is "paired".
         self.assertEqual(result.direction.direction_type, "paired")
 
-    def test_yaml_gap_drops_confidence_below_threshold(self):
+    def test_single_seasonal_gap_no_longer_auto_falls_through(self):
+        # Layer 1: a single-axis gap (here seasonal_color_group)
+        # subtracts 0.20 from confidence (was: binary 0.45 + immediate
+        # fall-through). 1.0 - 0.20 = 0.80 ≥ threshold 0.50, so the
+        # engine should KEEP the direction — no auto-fall-through.
         result = compose_direction(
             inputs=_baseline_inputs(seasonal_color_group="not_a_subseason"),
             graph=self.graph,
             user=_user(),
         )
+        self.assertIn("seasonal_color_group:not_a_subseason", result.yaml_gaps)
+        self.assertGreaterEqual(result.confidence, CONFIDENCE_THRESHOLD)
+        self.assertIsNone(result.fallback_reason)
+        self.assertIsNotNone(result.direction)
+
+    def test_multiple_axis_gaps_still_fall_through(self):
+        # 3 simultaneous gaps: 1.0 - 3*0.20 = 0.40, below threshold.
+        # Multi-gap turns still get the LLM, just not on a single gap.
+        result = compose_direction(
+            inputs=_baseline_inputs(
+                seasonal_color_group="not_a_subseason",
+                weather_context="not_a_weather",
+                occasion_signal="not_in_yaml",
+            ),
+            graph=self.graph,
+            user=_user(),
+        )
+        self.assertGreaterEqual(len(result.yaml_gaps), 3)
         self.assertLess(result.confidence, CONFIDENCE_THRESHOLD)
         self.assertEqual(result.fallback_reason, "yaml_gap")
 
@@ -239,42 +264,50 @@ class ConfidenceFormulaTests(unittest.TestCase):
 
     def test_clean_no_gap_is_one(self):
         score = _compute_confidence(
-            [self._entry("clean")], yaml_gap=False
+            [self._entry("clean")], yaml_gap_count=0
         )
         self.assertEqual(score, 1.0)
 
     def test_per_soft_drop_subtracts_0_10(self):
         score = _compute_confidence(
-            [self._entry("soft_relaxed", softs=1)], yaml_gap=False
+            [self._entry("soft_relaxed", softs=1)], yaml_gap_count=0
         )
         self.assertAlmostEqual(score, 1.0 - SOFT_DROP_PENALTY)
 
     def test_per_hard_widen_subtracts_0_20(self):
         score = _compute_confidence(
-            [self._entry("hard_widened", hards=1)], yaml_gap=False
+            [self._entry("hard_widened", hards=1)], yaml_gap_count=0
         )
         self.assertAlmostEqual(score, 1.0 - HARD_WIDEN_PENALTY)
 
     def test_per_omitted_subtracts_0_30(self):
         score = _compute_confidence(
-            [self._entry("omitted")], yaml_gap=False
+            [self._entry("omitted")], yaml_gap_count=0
         )
         self.assertAlmostEqual(score, 1.0 - ATTR_OMIT_PENALTY)
 
-    def test_yaml_gap_subtracts_0_45(self):
+    def test_one_yaml_gap_subtracts_0_20(self):
+        # Layer 1: per-gap penalty replaces the binary 0.45 penalty.
         score = _compute_confidence(
-            [self._entry("clean")], yaml_gap=True
+            [self._entry("clean")], yaml_gap_count=1
         )
         self.assertAlmostEqual(score, 1.0 - YAML_GAP_PENALTY)
 
+    def test_three_yaml_gaps_drop_below_threshold(self):
+        score = _compute_confidence(
+            [self._entry("clean")], yaml_gap_count=3
+        )
+        self.assertAlmostEqual(score, 1.0 - 3 * YAML_GAP_PENALTY)
+        self.assertLess(score, 0.50)  # below CONFIDENCE_THRESHOLD
+
     def test_clamped_to_floor_zero(self):
         score = _compute_confidence(
-            [self._entry("hard_widened", hards=10)], yaml_gap=True
+            [self._entry("hard_widened", hards=10)], yaml_gap_count=2
         )
         self.assertEqual(score, 0.0)
 
     def test_clamped_to_ceiling_one(self):
-        score = _compute_confidence([], yaml_gap=False)
+        score = _compute_confidence([], yaml_gap_count=0)
         self.assertEqual(score, 1.0)
 
 
