@@ -439,6 +439,121 @@ def _apply_change_color_avoidance(
             # else: keep original to avoid empty-flatters → penalize-everything
 
 
+# Direction-type rotation map for full_alternative follow-ups.
+# Goal: when the user asks for "something completely different,"
+# change the outfit shape vs the prior turn (paired → three_piece,
+# three_piece → paired, complete → paired). Same profile, palette,
+# and occasion stay; just the structure changes.
+_FULL_ALTERNATIVE_DIRECTION_ROTATION: dict[str, str] = {
+    "paired": "three_piece",
+    "three_piece": "paired",
+    "complete": "paired",
+}
+
+
+def _apply_full_alternative_rotation(
+    plan: Any,
+    followup_intent: str,
+) -> None:
+    """When the follow-up intent is ``full_alternative``, rotate
+    every direction's direction_type one step so the outfit shape
+    changes vs the prior turn.
+
+    Engine produced a clean plan based on current-turn signals
+    (which mirror the prior turn's profile + occasion). Without
+    a transform, the engine would produce the SAME shape. This
+    helper rotates direction_type to force a structural change
+    while leaving palette / formality / hard_attrs untouched.
+
+    No-op when the intent is anything other than
+    ``full_alternative``. The QuerySpec roles are NOT updated to
+    match the new direction_type — engine-emitted queries still
+    target their original roles. The retrieval layer reads
+    QuerySpec.role; the rotated direction_type only affects how
+    downstream stages (composer, formatter) interpret the plan
+    structure. This is a deliberate trade-off for simplicity vs
+    a full re-emission of queries; if it produces visibly wrong
+    outfits in production, the orchestrator can re-emit query
+    roles to match the rotated direction_type.
+    """
+    if (followup_intent or "").strip() != "full_alternative":
+        return
+    for direction in getattr(plan, "directions", []) or []:
+        cur = str(getattr(direction, "direction_type", "") or "")
+        new = _FULL_ALTERNATIVE_DIRECTION_ROTATION.get(cur)
+        if new and new != cur:
+            direction.direction_type = new
+
+
+# One-notch-up shifts for increase_boldness. ContrastLevel and
+# ColorSaturation share the same shape but different bottom rungs:
+# ContrastLevel = very_low/low/medium/high/very_high; ColorSaturation
+# = muted/low/medium/high/very_high (per the planner glossary in
+# copilot_planner.md). EmbellishmentLevel uses 5 levels too but the
+# boldness shift enforces the upper half rather than a notch shift.
+_BOLDNESS_CONTRAST_SHIFT: dict[str, str] = {
+    "very_low": "low",
+    "low": "medium",
+    "medium": "high",
+    "high": "very_high",
+    "very_high": "very_high",  # saturated at top
+}
+_BOLDNESS_SATURATION_SHIFT: dict[str, str] = {
+    "muted": "low",
+    "low": "medium",
+    "medium": "high",
+    "high": "very_high",
+    "very_high": "very_high",  # saturated at top
+}
+
+
+def _apply_increase_boldness(
+    plan: Any,
+    followup_intent: str,
+) -> None:
+    """When the follow-up intent is ``increase_boldness``, bump
+    ContrastLevel and ColorSaturation in every QuerySpec's
+    hard_attrs up one notch, and add EmbellishmentLevel preference
+    for moderate-or-higher.
+
+    Engine produces a plan with hard_attrs derived from the user's
+    profile and the resolved attribute graph. For ContrastLevel,
+    that's typically driven by SkinHairContrast — a "moderate"
+    user gets [medium] or [low, medium]. The boldness shift takes
+    those allowed values and replaces each with its one-step-up
+    equivalent (low→medium, medium→high, etc.). Saturated at
+    very_high — once you're at the top, you stay.
+
+    For EmbellishmentLevel: the engine doesn't always emit it
+    (depends on occasion), so the helper adds it as a hard_attr
+    if absent, preferring [moderate, heavy, statement]. If the
+    engine already emitted EmbellishmentLevel, leave it (engine
+    knows the occasion-appropriate level).
+
+    No-op when the intent is anything other than
+    ``increase_boldness``.
+    """
+    if (followup_intent or "").strip() != "increase_boldness":
+        return
+    for direction in getattr(plan, "directions", []) or []:
+        for query in getattr(direction, "queries", []) or []:
+            ha = dict(getattr(query, "hard_attrs", None) or {})
+            # ContrastLevel bump
+            if "ContrastLevel" in ha:
+                ha["ContrastLevel"] = [
+                    _BOLDNESS_CONTRAST_SHIFT.get(v, v) for v in ha["ContrastLevel"]
+                ]
+            # ColorSaturation bump
+            if "ColorSaturation" in ha:
+                ha["ColorSaturation"] = [
+                    _BOLDNESS_SATURATION_SHIFT.get(v, v) for v in ha["ColorSaturation"]
+                ]
+            # EmbellishmentLevel — add if absent, preferring upper half
+            if "EmbellishmentLevel" not in ha:
+                ha["EmbellishmentLevel"] = ["moderate", "heavy", "statement"]
+            query.hard_attrs = ha
+
+
 def _apply_target_product_type_to_plan(
     plan: Any,
     target_product_type: str,
@@ -5512,11 +5627,18 @@ class AgenticOrchestrator:
         # prior recommendation's primary_colors from the engine's
         # resolved PrimaryColor hard_attr so retrieval surfaces
         # different colors. No-op for other intents.
+        _followup_intent = str(getattr(initial_live_context, "followup_intent", "") or "")
         _apply_change_color_avoidance(
             plan,
             list(previous_context.get("last_recommendations") or []),
-            str(getattr(initial_live_context, "followup_intent", "") or ""),
+            _followup_intent,
         )
+        # full_alternative: rotate direction_type so the outfit shape
+        # differs from the prior turn (palette/formality unchanged).
+        _apply_full_alternative_rotation(plan, _followup_intent)
+        # increase_boldness: bump ContrastLevel/ColorSaturation up one
+        # notch and prefer EmbellishmentLevel ≥ moderate.
+        _apply_increase_boldness(plan, _followup_intent)
 
         resolved = plan.resolved_context
         if resolved:

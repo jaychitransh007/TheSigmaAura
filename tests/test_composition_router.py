@@ -190,14 +190,25 @@ class EligibilityGateTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIsNone(reason)
 
-    def test_followup_with_full_alternative_still_blocks(self):
-        # full_alternative is the remaining intent that still requires
-        # the LLM (engine has no signal for "completely different").
+    def test_followup_with_full_alternative_eligible(self):
+        # May 8 2026: full_alternative is engine-friendly. Engine
+        # produces a clean plan; orchestrator's
+        # _apply_full_alternative_rotation rotates direction_type
+        # post-architect to force a structural change.
         ok, reason = is_engine_eligible(
             _ctx(is_followup=True, followup_intent="full_alternative")
         )
-        self.assertFalse(ok)
-        self.assertEqual(reason, "followup_request")
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
+    def test_followup_with_increase_boldness_eligible(self):
+        # increase_boldness — engine plan + post-hoc one-notch bump
+        # on ContrastLevel / ColorSaturation / EmbellishmentLevel.
+        ok, reason = is_engine_eligible(
+            _ctx(is_followup=True, followup_intent="increase_boldness")
+        )
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
 
     def test_followup_with_more_options_is_eligible(self):
         # May 8 2026: more_options is an engine-friendly intent.
