@@ -191,6 +191,20 @@ aura_composition_attribute_status_total = Counter(
     labelnames=("status",),
 )
 
+# Phase 5d — composer router decision counter. Same shape and rationale
+# as aura_composition_router_decision_total; sliced by engine-acceptance
+# and fallback_reason. fallback_reason cardinality is bounded by the
+# composer router's enum (engine_disabled | anchor_present |
+# followup_request | has_previous_recommendations |
+# architect_plan_from_cache | engine_error | yaml_gap | low_picks |
+# pool_too_sparse | low_confidence | engine_declined) so this label is
+# safe.
+aura_composer_router_decision_total = Counter(
+    "aura_composer_router_decision_total",
+    "Composer router decisions, sliced by engine usage + fallback reason.",
+    labelnames=("used_engine", "fallback_reason"),
+)
+
 
 # ── Convenience helpers ───────────────────────────────────────────────
 
@@ -271,6 +285,23 @@ def observe_composition_router_decision(
     cardinality stays low."""
     try:
         aura_composition_router_decision_total.labels(
+            used_engine="true" if used_engine else "false",
+            fallback_reason=fallback_reason or "none",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_composer_router_decision(
+    *, used_engine: bool, fallback_reason: Optional[str]
+) -> None:
+    """Increment the composer router decision counter.
+
+    ``fallback_reason`` is None on the engine-accepted path; coerced to
+    ``"none"`` so the label set is never empty. Mirrors
+    ``observe_composition_router_decision`` for symmetry."""
+    try:
+        aura_composer_router_decision_total.labels(
             used_engine="true" if used_engine else "false",
             fallback_reason=fallback_reason or "none",
         ).inc()

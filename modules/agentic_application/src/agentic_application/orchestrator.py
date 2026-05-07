@@ -384,6 +384,12 @@ class AgenticOrchestrator:
         self._composition_engine_enabled: bool = self._bool_from_config(
             config, "composition_engine_enabled", False
         )
+        # Phase 5d — composer engine flag. Independent of the architect
+        # engine flag (composer engine accepts the architect's output
+        # regardless of source). Same default-false rollout pattern.
+        self._composer_engine_enabled: bool = self._bool_from_config(
+            config, "composer_engine_enabled", False
+        )
         self._composition_graph = None
         # Phase 4.11 — input canonicalization: lazy-loaded embedding
         # bank (one-time disk read) + lazy-init OpenAI embed client
@@ -5387,6 +5393,12 @@ class AgenticOrchestrator:
             _comp_cached = self._composer_cache.get(
                 tenant_id="default", cache_key=_comp_cache_key,
             )
+            # Phase 5d — composer router. On flag-on + eligibility pass,
+            # tries the composer engine; engine-decline falls through to
+            # the LLM thunk transparently. Engine plans intentionally
+            # skip the composer cache write (engine vs LLM cache key
+            # space stays clean — see composer_semantics.md §7.3).
+            _composer_router_decision = None
             with record_stage_trace(
                 repo=self.repo,
                 turn_id=turn_id,
@@ -5404,23 +5416,66 @@ class AgenticOrchestrator:
                         tenant_id="default", cache_key=_comp_cache_key,
                     )
                 else:
-                    composer_result = self.outfit_composer.compose(
-                        combined_context, retrieved_sets, on_attempt=_record_attempt,
+                    def _llm_compose() -> "ComposerResult":
+                        return self.outfit_composer.compose(
+                            combined_context, retrieved_sets,
+                            on_attempt=_record_attempt,
+                        )
+                    from .composition.composer_router import route_composer_plan
+                    _composer_router_decision = route_composer_plan(
+                        plan=plan,
+                        retrieved_sets=retrieved_sets,
+                        combined_context=combined_context,
+                        composer_callable=_llm_compose,
+                        enabled=self._composer_engine_enabled,
+                        graph=self._composition_graph,
                     )
-                    self._composer_cache.put(
-                        tenant_id="default",
-                        cache_key=_comp_cache_key,
-                        result=composer_result,
-                        denormalised=composer_denormalised_key_fields(
+                    composer_result = _composer_router_decision.composer_result
+                    if not _composer_router_decision.used_engine:
+                        self._composer_cache.put(
                             tenant_id="default",
-                            architect_direction_id_value=_comp_arch_id,
-                            retrieval_fingerprint_value=_comp_retrieval_fp,
-                            cluster=_comp_cache_cluster,
-                            composer_prompt_version=COMPOSER_PROMPT_VERSION,
-                            composer_model=self.outfit_composer._model,
-                        ),
-                    )
+                            cache_key=_comp_cache_key,
+                            result=composer_result,
+                            denormalised=composer_denormalised_key_fields(
+                                tenant_id="default",
+                                architect_direction_id_value=_comp_arch_id,
+                                retrieval_fingerprint_value=_comp_retrieval_fp,
+                                cluster=_comp_cache_cluster,
+                                composer_prompt_version=COMPOSER_PROMPT_VERSION,
+                                composer_model=self.outfit_composer._model,
+                            ),
+                        )
                 _trace_ctx.full_output = to_jsonable(composer_result)
+            # Composer router observability — same pattern as the
+            # architect router (PR #150). Counter slices by used_engine +
+            # fallback_reason; engine_ms (when set) feeds the per-stage
+            # latency histogram.
+            if _composer_router_decision is not None:
+                try:
+                    from platform_core.metrics import (
+                        observe_composer_router_decision,
+                        observe_turn_stage,
+                    )
+                    observe_composer_router_decision(
+                        used_engine=_composer_router_decision.used_engine,
+                        fallback_reason=_composer_router_decision.fallback_reason,
+                    )
+                    if _composer_router_decision.engine_ms is not None:
+                        observe_turn_stage(
+                            "composer_engine", _composer_router_decision.engine_ms
+                        )
+                except Exception:  # noqa: BLE001 — metrics never break the pipeline
+                    pass
+                _log.info(
+                    "composer_router_decision used_engine=%s "
+                    "fallback_reason=%s engine_confidence=%s "
+                    "yaml_gaps=%d engine_ms=%s",
+                    _composer_router_decision.used_engine,
+                    _composer_router_decision.fallback_reason,
+                    _composer_router_decision.engine_confidence,
+                    len(_composer_router_decision.yaml_gaps),
+                    _composer_router_decision.engine_ms,
+                )
             compose_ms = int((time.monotonic() - t_compose) * 1000)
             emit(
                 "outfit_composer", "completed",

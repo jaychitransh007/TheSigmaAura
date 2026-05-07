@@ -48,6 +48,15 @@ class AuraRuntimeConfig:
     # later, once eval data calibrates the §8 threshold.
     composition_engine_enabled: bool = False
 
+    # Phase 5d — composer engine feature flag. Independent of the
+    # architect engine flag (composer engine accepts the architect's
+    # output regardless of source — LLM or engine). False (default)
+    # routes every turn through the LLM OutfitComposer; True tries
+    # the composer engine first. Per-turn fall-through still applies
+    # via composer_semantics.md §7.2. The env var is
+    # AURA_COMPOSER_ENGINE_ENABLED.
+    composer_engine_enabled: bool = False
+
 
 def _resolve_env_file(explicit_path: str | None = None) -> str:
     if explicit_path:
@@ -149,6 +158,10 @@ def load_config() -> AuraRuntimeConfig:
     flag_raw = os.getenv("AURA_COMPOSITION_ENGINE_ENABLED", "").strip().lower()
     composition_engine_enabled = flag_raw in {"1", "true", "yes", "on"}
 
+    # Phase 5d — composer engine flag. Same parsing rules.
+    composer_flag_raw = os.getenv("AURA_COMPOSER_ENGINE_ENABLED", "").strip().lower()
+    composer_engine_enabled = composer_flag_raw in {"1", "true", "yes", "on"}
+
     return AuraRuntimeConfig(
         supabase_rest_url=_ensure_rest_url(supabase_url),
         supabase_service_role_key=service_key,
@@ -160,4 +173,5 @@ def load_config() -> AuraRuntimeConfig:
         rater_model=rater_model,
         style_advisor_model=style_advisor_model,
         composition_engine_enabled=composition_engine_enabled,
+        composer_engine_enabled=composer_engine_enabled,
     )
