@@ -533,11 +533,16 @@ def _build_hard_attrs(
     return out
 
 
+_TOPWEAR_DEMAND_VALUES: frozenset[str] = frozenset({"needs_topwear", "dual_dependency"})
+
+
 def _weather_demands_topwear(provenance: Sequence[ProvenanceEntry]) -> bool:
-    """True iff the weather source contributed ``needs_topwear`` to the
-    StylingCompleteness reduction. Occasion-contributed needs_topwear
-    (office blazer preference) doesn't count — that's a default_structure
-    consideration the query_structure.yaml already reflects.
+    """True iff the weather source contributed an outerwear-demanding
+    signal (``needs_topwear`` for cool weather, ``dual_dependency`` for
+    extreme cold) to the StylingCompleteness reduction. Occasion-
+    contributed signals (office blazer preference) don't count —
+    that's a default_structure consideration the query_structure.yaml
+    already reflects.
 
     Used by ``compose_direction`` to upgrade paired direction_type to
     three_piece when cool/cold weather demands an outerwear layer.
@@ -545,7 +550,7 @@ def _weather_demands_topwear(provenance: Sequence[ProvenanceEntry]) -> bool:
     for entry in provenance:
         if entry.attribute != "StylingCompleteness":
             continue
-        if "needs_topwear" not in entry.final_flatters:
+        if not (_TOPWEAR_DEMAND_VALUES & set(entry.final_flatters)):
             continue
         for src in entry.contributing_sources:
             kind = src.split(":", 1)[0]
@@ -603,10 +608,10 @@ def _compute_confidence(
 ) -> float:
     """Compute the §8 confidence. ``yaml_gap_count`` is the number of
     input axes whose value wasn't found in any YAML — each one
-    subtracts ``YAML_GAP_PENALTY`` (0.20). Single-axis gaps no longer
-    auto-disqualify the engine; multi-axis gaps drop confidence below
-    the 0.50 threshold and fall through cleanly via the threshold
-    check, not via a separate short-circuit branch."""
+    subtracts ``YAML_GAP_PENALTY``. Single-axis gaps no longer
+    auto-disqualify the engine; three or more gaps drop confidence
+    below the 0.50 threshold and fall through cleanly via the
+    threshold check, not via a separate short-circuit branch."""
     softs = sum(len(p.dropped_softs) for p in provenance)
     hards = sum(len(p.widened_hards) for p in provenance)
     omitted = sum(1 for p in provenance if p.status == "omitted")
@@ -615,7 +620,7 @@ def _compute_confidence(
         - SOFT_DROP_PENALTY * softs
         - HARD_WIDEN_PENALTY * hards
         - ATTR_OMIT_PENALTY * omitted
-        - YAML_GAP_PENALTY * max(0, yaml_gap_count)
+        - YAML_GAP_PENALTY * yaml_gap_count
     )
     return max(0.0, min(1.0, score))
 

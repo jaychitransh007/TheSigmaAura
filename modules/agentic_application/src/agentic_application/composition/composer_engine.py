@@ -158,6 +158,8 @@ def _project_item(product: RetrievedProduct, slot: str) -> Item:
         item_id=product.product_id,
         slot=slot,
         formality=get_str("FormalityLevel"),
+        occasion_fit=get_str("OccasionFit"),
+        skin_exposure_level=get_str("SkinExposureLevel"),
         dominant_color=get_str("PrimaryColor"),
         contrast_level=get_str("ContrastLevel"),
         pattern_type=get_str("PatternType"),
@@ -548,12 +550,15 @@ def compose_outfits(
     # value works as the direction-level constraint set used for tuple
     # scoring. Empty dict for LLM-architect-path plans (they don't
     # populate hard_attrs); score_tuple's tuple-level penalty no-ops.
-    direction_hard_attrs: dict[str, Mapping[str, tuple[str, ...]]] = {}
+    # Pre-build frozensets here so the inner tuple-scoring loop does
+    # O(1) membership lookups instead of re-materializing a set per
+    # item per attribute.
+    direction_hard_attrs: dict[str, Mapping[str, frozenset[str]]] = {}
     for d in plan.directions:
         if d.queries:
             ha = d.queries[0].hard_attrs or {}
             direction_hard_attrs[d.direction_id] = {
-                k: tuple(v) for k, v in ha.items()
+                k: frozenset(v) for k, v in ha.items()
             }
 
     # Enumerate + score across eligible directions. Each direction's

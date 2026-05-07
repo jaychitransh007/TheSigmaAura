@@ -73,21 +73,34 @@ def _apply_hard_attr_penalty(
     receive any user-explicit preferences from the planner either."""
     if not hard_attrs:
         return products[:retrieval_count]
+    # Pre-build allowed-value sets once; per-item membership is now O(1)
+    # instead of an O(N) scan against the original list each iteration.
+    allowed_sets: Dict[str, set] = {
+        attr: set(values) for attr, values in hard_attrs.items() if values
+    }
+    if not allowed_sets:
+        return products[:retrieval_count]
     for p in products:
         ed = getattr(p, "enriched_data", None) or {}
         violations = 0
-        for attr_name, allowed in hard_attrs.items():
+        for attr_name, allowed_set in allowed_sets.items():
             val = ed.get(attr_name)
             if val is None or val == "":
                 continue  # no opinion, no penalty
-            if str(val) not in allowed:
+            if str(val) not in allowed_set:
                 violations += 1
         if violations:
             penalty = min(_HARD_ATTR_PENALTY * violations, _HARD_ATTR_PENALTY_CAP)
             try:
                 p.similarity = float(getattr(p, "similarity", 0.0)) - penalty
-            except Exception:  # noqa: BLE001 — Pydantic immutability or odd shape
-                pass
+            except (AttributeError, TypeError) as exc:
+                # Pydantic immutability or odd shape — surface but don't
+                # break retrieval. The item keeps its un-penalized
+                # similarity and may rank higher than it should.
+                _log.warning(
+                    "hard_attr_penalty: could not update similarity on %s: %s",
+                    getattr(p, "product_id", "<unknown>"), exc,
+                )
     products.sort(key=lambda x: -float(getattr(x, "similarity", 0.0)))
     return products[:retrieval_count]
 

@@ -74,6 +74,8 @@ class Item:
     item_id: str
     slot: str  # "top" | "bottom" | "outerwear" | "complete"
     formality: str = ""
+    occasion_fit: str = ""
+    skin_exposure_level: str = ""
     dominant_color: str = ""
     contrast_level: str = ""
     pattern_type: str = ""
@@ -103,6 +105,8 @@ class Item:
 # text rather than as a hard penalty.
 HARD_ATTR_TO_ITEM_FIELD: dict[str, str] = {
     "FormalityLevel": "formality",
+    "OccasionFit": "occasion_fit",
+    "SkinExposureLevel": "skin_exposure_level",
     "FabricDrape": "fabric_drape",
     "FabricWeight": "fabric_weight",
     "FabricTexture": "fabric_texture",
@@ -158,7 +162,13 @@ class TupleContext:
     palette_anchors: tuple[str, ...] = ()
     body_shape: str = ""
     intent: str = "recommendation_request"
-    hard_attrs: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    # Allowed-value sets keyed by PascalCase attribute name. Composer
+    # engine pre-builds frozensets per direction so this is O(1)
+    # membership inside the hot tuple-scoring loop. Mapping to a
+    # Sequence is still accepted by _count_tuple_hard_attr_violations
+    # (it materializes a set defensively), but engine-built contexts
+    # use frozensets directly.
+    hard_attrs: Mapping[str, frozenset[str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -268,7 +278,8 @@ def evaluate_constraint(
 
 
 def _count_tuple_hard_attr_violations(
-    items: Sequence[Item], hard_attrs: Mapping[str, Sequence[str]]
+    items: Sequence[Item],
+    hard_attrs: Mapping[str, frozenset[str] | set[str] | Sequence[str]],
 ) -> int:
     """Sum hard_attrs violations across the tuple. Each item's enriched
     field (mapped via HARD_ATTR_TO_ITEM_FIELD) is checked against the
@@ -276,7 +287,10 @@ def _count_tuple_hard_attr_violations(
     count as a violation. Empty fields (``""``) and unmapped attribute
     names count as no opinion → no violation. Same loop shape applies
     to paired (2 items) and three_piece (3 items) tuples; complete
-    direction iterates the single item."""
+    direction iterates the single item.
+
+    ``hard_attrs`` values may be frozensets (engine-built — fast path)
+    or arbitrary sequences (test callers — defensive set conversion)."""
     if not hard_attrs:
         return 0
     count = 0
@@ -284,9 +298,13 @@ def _count_tuple_hard_attr_violations(
         field_name = HARD_ATTR_TO_ITEM_FIELD.get(attr_name)
         if field_name is None:
             continue  # attr not on Item; skip (e.g., SilhouetteType)
-        allowed_set = set(allowed) if allowed else set()
-        if not allowed_set:
+        if not allowed:
             continue
+        # Frozensets / sets pass through; sequences materialize once
+        # rather than re-walking the list per item below.
+        allowed_set = (
+            allowed if isinstance(allowed, (frozenset, set)) else set(allowed)
+        )
         for item in items:
             val = getattr(item, field_name, "") or ""
             if val and val not in allowed_set:

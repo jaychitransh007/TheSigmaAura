@@ -7150,11 +7150,22 @@ class AgenticOrchestrator:
                 "resolved_hard_attrs": ha,
             }
 
-        def _flat(payload: Any, key: str) -> str:
+        def _flat(payload: Any, key: str) -> Any:
+            """Unwrap profile fields stored as either a bare value or a
+            ``{"value": ...}`` dict. Returns the unwrapped raw value;
+            callers wrap with str() / list() to coerce to display
+            shape. Used for both scalar fields (BodyShape) and list-
+            valued fields (PaletteAnchors) — the previous inline
+            access patterns stringified wrapped dicts to literal
+            "{'value': 'Hourglass'}", and for lists returned a literal
+            ['value'] when the stored shape was {"value": [...]}."""
             raw = (payload or {}).get(key) if isinstance(payload, dict) else None
             if isinstance(raw, dict):
-                return str(raw.get("value") or "").strip()
-            return str(raw or "").strip()
+                return raw.get("value")
+            return raw
+
+        analysis = getattr(user_context, "analysis_attributes", {}) or {}
+        derived = getattr(user_context, "derived_interpretations", {}) or {}
 
         return {
             "by_direction": by_direction,
@@ -7162,16 +7173,10 @@ class AgenticOrchestrator:
             "occasion_signal": getattr(live_context, "occasion_signal", "") or "",
             "formality_hint": getattr(live_context, "formality_hint", "") or "",
             "time_of_day": getattr(live_context, "time_of_day", "") or "",
-            "user_body_shape": _flat(getattr(user_context, "analysis_attributes", {}), "BodyShape"),
-            "user_frame_structure": str(
-                (getattr(user_context, "derived_interpretations", {}) or {}).get("FrameStructure") or ""
-            ).strip(),
-            "user_seasonal_color_group": str(
-                (getattr(user_context, "derived_interpretations", {}) or {}).get("SeasonalColorGroup") or ""
-            ).strip(),
-            "user_palette_anchors": list(
-                (getattr(user_context, "derived_interpretations", {}) or {}).get("PaletteAnchors") or []
-            ),
+            "user_body_shape": str(_flat(analysis, "BodyShape") or "").strip(),
+            "user_frame_structure": str(_flat(derived, "FrameStructure") or "").strip(),
+            "user_seasonal_color_group": str(_flat(derived, "SeasonalColorGroup") or "").strip(),
+            "user_palette_anchors": list(_flat(derived, "PaletteAnchors") or []),
             "architect_used_engine": bool(getattr(router_decision, "used_engine", False)) if router_decision else False,
             "architect_fallback_reason": getattr(router_decision, "fallback_reason", None) if router_decision else None,
             "composer_used_engine": bool(getattr(composer_router_decision, "used_engine", False)) if composer_router_decision else False,
