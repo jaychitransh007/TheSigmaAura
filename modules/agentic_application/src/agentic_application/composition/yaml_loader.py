@@ -188,13 +188,16 @@ class PairingRuleGroup:
     PairingRule), some additionally carry a group-level ``description``
     (anchor_constraints) or ``statement_definition`` (scale_balance);
     color_story carries ``color_harmony_types``; cultural_coherence carries
-    ``fusion_rules`` instead of ``rules``. Empty defaults keep call sites
-    free of conditional shape checks."""
+    ``fusion_rules`` instead of ``rules``. ``triggers_on`` is populated
+    only on ``bridal_specific`` — the composer engine uses it to decide
+    when the bridal exception applies (see composer_semantics.md §6).
+    Empty defaults keep call sites free of conditional shape checks."""
 
     name: str
     rule_type: str
     description: str
     statement_definition: str
+    triggers_on: tuple[str, ...]
     rules: Mapping[str, PairingRule]
     color_harmony_types: Mapping[str, ColorHarmonyType]
     fusion_rules: Mapping[str, FusionRule]
@@ -601,6 +604,12 @@ def _load_pairing_rules(
                 str(fr_name), fr_body, label, unknown_sink, known
             )
 
+        triggers_raw = body.get("triggers_on") or ()
+        if not isinstance(triggers_raw, (list, tuple)):
+            raise StyleGraphValidationError(
+                f"pairing_rules.{group_name}.triggers_on: expected list"
+            )
+
         out[str(group_name)] = PairingRuleGroup(
             name=str(group_name),
             rule_type=str(body.get("rule_type", "")),
@@ -608,6 +617,7 @@ def _load_pairing_rules(
             statement_definition=str(
                 body.get("statement_definition") or ""
             ).strip(),
+            triggers_on=tuple(str(t) for t in triggers_raw),
             rules=MappingProxyType(rules),
             color_harmony_types=MappingProxyType(harmonies),
             fusion_rules=MappingProxyType(fusions),
