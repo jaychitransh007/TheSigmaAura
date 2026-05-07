@@ -120,12 +120,13 @@ def is_engine_eligible(
     if getattr(live, "anchor_garment", None):
         return False, "anchor_present"
     if getattr(live, "is_followup", False):
-        # May 8 2026: formality follow-ups carry an adjusted
-        # formality_hint that's a clean engine input. Mirrors the
-        # architect router's relaxation.
+        # Engine-friendly follow-ups bypass both the followup_request
+        # gate and the has_previous_recommendations gate below.
+        # Mirrors the architect router (PR #186 + this PR).
         followup_intent = str(getattr(live, "followup_intent", "") or "").strip()
-        if followup_intent not in ENGINE_FRIENDLY_FOLLOWUP_INTENTS:
-            return False, "followup_request"
+        if followup_intent in ENGINE_FRIENDLY_FOLLOWUP_INTENTS:
+            return True, None
+        return False, "followup_request"
     if combined_context.previous_recommendations:
         return False, "has_previous_recommendations"
     return True, None

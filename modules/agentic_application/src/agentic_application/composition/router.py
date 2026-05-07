@@ -138,15 +138,19 @@ def is_engine_eligible(combined_context: CombinedContext) -> tuple[bool, str | N
     if getattr(live, "anchor_garment", None):
         return False, "anchor_present"
     if getattr(live, "is_followup", False):
-        # May 8 2026: formality follow-ups are an exception. The
-        # planner sets is_followup=true for "more relaxed" /
-        # "dressier" phrasings AND emits a normalized formality_hint.
-        # That's exactly the engine's input shape — no prior-turn
-        # context needed. Forcing these to the LLM produced 35s + 0
-        # products on turn 9abaf4d4 (May 8 review).
+        # May 8 2026: engine-friendly follow-ups (formality changes,
+        # more_options) get served by the engine. The planner emits an
+        # adjusted formality_hint or signals "show me more in the same
+        # space" — both are clean engine inputs. The orchestrator's
+        # catalog_search already excludes previously-shown items via
+        # prev_rec_ids, so engine-friendly follow-ups also skip the
+        # has_previous_recommendations check below (otherwise they'd
+        # be blocked there since follow-ups always have prior recs in
+        # context).
         followup_intent = str(getattr(live, "followup_intent", "") or "").strip()
-        if followup_intent not in ENGINE_FRIENDLY_FOLLOWUP_INTENTS:
-            return False, "followup_request"
+        if followup_intent in ENGINE_FRIENDLY_FOLLOWUP_INTENTS:
+            return True, None
+        return False, "followup_request"
     if combined_context.previous_recommendations:
         return False, "has_previous_recommendations"
     return True, None
