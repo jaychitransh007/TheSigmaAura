@@ -183,11 +183,13 @@ Populate `resolved_context` for every turn (use empty string / null defaults whe
   - `ColorTemperature`: `["warm", "cool", "neutral"]` — "warm tones" → `["warm"]`.
   - `ColorValue`: `["very_dark", "dark", "medium", "light", "very_light"]` — "dark/moody" → `["dark","very_dark"]`.
   - `GarmentLength`: `["mini", "short", "knee", "midi", "long", "floor"]` — "midi length" → `["midi"]`.
+  - `OccasionFit`: `["very_casual", "casual", "smart_casual", "semi_formal", "formal", "active", "party", "festive", "traditional", "workwear", "travel"]` — "loungewear" / "lounge" / "ultra-relaxed" → `["very_casual","active"]`, "athleisure" / "sporty" → `["active","very_casual"]`, "going-out" / "night out" → `["party"]`, "festive" / "Diwali" / "ethnic event" → `["festive","traditional"]`. Distinct from `formality_hint` — `OccasionFit` is the catalog's *use-case* tag (loungewear vs workwear vs party), `formality_hint` is the formality scale.
 
   Examples (full array):
   - "I want something with more embellishment" → `[{"attribute":"EmbellishmentLevel","values":["heavy","statement"]}]`
   - "Show me low-contrast outfits with flowy fabric" → `[{"attribute":"ContrastLevel","values":["very_low","low"]},{"attribute":"FabricDrape","values":["fluid"]}]`
   - "A v-neck top, fitted but not tight" → `[{"attribute":"NecklineType","values":["v_neck"]},{"attribute":"FitEase","values":["fitted","regular"]}]`
+  - "Show more relaxed/loungewear options" → `[{"attribute":"OccasionFit","values":["very_casual","active"]}]`
   - "Find me outfits for Goa beaches" → `[]` (no explicit attribute preference; weather/occasion go in their own fields).
 
 ## Action Parameters
