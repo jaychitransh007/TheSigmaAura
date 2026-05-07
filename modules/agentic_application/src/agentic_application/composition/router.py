@@ -125,17 +125,10 @@ class RouterDecision:
 # ─────────────────────────────────────────────────────────────────────────
 
 
-# Follow-up intents the engine can serve directly — they map cleanly
-# onto inputs the engine already handles (formality_hint is a hard-tier
-# source per composition_semantics.md §3.3, so adjusting it changes
-# the resolved direction deterministically). Other intents
-# (change_color, similar_to_previous, full_alternative, more_options,
-# increase_boldness) need prior-recommendation context the engine
-# doesn't carry today, so they keep going to the LLM.
-_ENGINE_FRIENDLY_FOLLOWUP_INTENTS: frozenset[str] = frozenset({
-    "decrease_formality",
-    "increase_formality",
-})
+# Single-source-of-truth list of follow-up intents the engine can
+# serve. Lives in intent_registry.py so the composer router shares
+# the same set (PR #186 review).
+from ..intent_registry import ENGINE_FRIENDLY_FOLLOWUP_INTENTS
 
 
 def is_engine_eligible(combined_context: CombinedContext) -> tuple[bool, str | None]:
@@ -152,7 +145,7 @@ def is_engine_eligible(combined_context: CombinedContext) -> tuple[bool, str | N
         # context needed. Forcing these to the LLM produced 35s + 0
         # products on turn 9abaf4d4 (May 8 review).
         followup_intent = str(getattr(live, "followup_intent", "") or "").strip()
-        if followup_intent not in _ENGINE_FRIENDLY_FOLLOWUP_INTENTS:
+        if followup_intent not in ENGINE_FRIENDLY_FOLLOWUP_INTENTS:
             return False, "followup_request"
     if combined_context.previous_recommendations:
         return False, "has_previous_recommendations"

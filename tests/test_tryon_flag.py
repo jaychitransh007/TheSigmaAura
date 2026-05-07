@@ -87,22 +87,42 @@ class AttachTryonImagesGateTests(unittest.TestCase):
         orch.repo = MagicMock()
         return orch
 
-    def test_flag_off_skips_gemini_entirely(self):
-        orch = self._build_orchestrator(tryon_enabled=False)
-        # Even with outfits + a person image present, the method must
-        # short-circuit before hitting tryon_service.
+    def test_flag_off_skips_gemini_call(self):
+        # Flag off + cache miss: Gemini must NOT be called.
+        # PR #185 review: cache lookups still proceed (zero cost) so
+        # previously rendered images can be attached even when
+        # generation is gated.
         from agentic_application.schemas import OutfitCard
-        outfits = [OutfitCard(rank=1, title="t", reasoning="r", items=[])]
+        orch = self._build_orchestrator(tryon_enabled=False)
+        orch.repo.find_tryon_image_by_garments.return_value = None  # cache miss
+        outfits = [OutfitCard(
+            rank=1, title="t", reasoning="r",
+            items=[{"product_id": "p1", "image_url": "http://x/p1.jpg", "role": "top"}],
+        )]
         orch._attach_tryon_images(outfits, "external_user_id")
         orch.tryon_service.generate_tryon_outfit.assert_not_called()
-        orch.repo.find_tryon_image_by_garments.assert_not_called()
+
+    def test_flag_off_still_does_cache_lookup(self):
+        # PR #185 review: cache lookups proceed regardless of flag.
+        # If the cache HAS a hit, the outfit gets the cached image
+        # even with the flag off.
+        from agentic_application.schemas import OutfitCard
+        orch = self._build_orchestrator(tryon_enabled=False)
+        # Set up a cache hit
+        orch.repo.find_tryon_image_by_garments.return_value = None  # tested separately above
+        outfits = [OutfitCard(
+            rank=1, title="t", reasoning="r",
+            items=[{"product_id": "p1", "image_url": "http://x/p1.jpg", "role": "top"}],
+        )]
+        orch._attach_tryon_images(outfits, "external_user_id")
+        # Cache lookup happened (regardless of result).
+        orch.repo.find_tryon_image_by_garments.assert_called()
 
     def test_flag_on_proceeds_to_person_image_lookup(self):
         # With the flag ON we DO get past the gate and hit the person
         # image lookup. The test stops there — we don't want to
         # exercise the full Gemini path in a unit test.
         orch = self._build_orchestrator(tryon_enabled=True)
-        from agentic_application.schemas import OutfitCard
         outfits: list = []  # empty outfit list → loop is no-op past the gate
         orch._attach_tryon_images(outfits, "external_user_id")
         orch.onboarding_gateway.get_person_image_path.assert_called_with("external_user_id")

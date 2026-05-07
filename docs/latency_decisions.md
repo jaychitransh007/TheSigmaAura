@@ -13,7 +13,7 @@ The intent is to short-circuit "should we do X?" conversations a future engineer
 **Considered:** parallel-to-rater speculation. Pick top-3 by composer order, kick off Gemini renders in parallel with the rater LLM call, patch up afterwards if rater veto changes the picks. Would save ~7-11s wall-clock per turn (the longest of the rater + first parallel render, vs sequential addition).
 
 **Why we didn't:**
-- The rater applies a veto + threshold gate (`unsuitable=true` AND `fashion_score >= 50`) BEFORE tryon today, expressly to avoid burning Gemini calls on outfits the gate would drop. Speculative renders would either (a) waste $0.04 per vetoed outfit, or (b) need a synchronization step that adds back most of the latency win.
+- The rater applies a veto + threshold gate (`unsuitable=false` AND `fashion_score >= 50`) BEFORE tryon today — i.e., we keep outfits that are NOT marked unsuitable and clear the threshold; everything else is dropped. The gate exists to avoid burning Gemini calls on outfits that would be dropped. Speculative renders would either (a) waste $0.04 per vetoed outfit, or (b) need a synchronization step that adds back most of the latency win.
 - After PR #185 (`AURA_TRYON_ENABLED` flag, default off), tryon stage cost during dev iteration is already $0.00 / 0s. Production / demos with the flag on still pay ~22s for tryon, but that's now a deliberate UX choice rather than a hidden tax.
 - The 7-11s perceived-latency win is a real user-visible difference on the cards-vs-blank-screen scale, but Phase 6 (streaming delivery) addresses that more cleanly: cards stream as they finish, no need to interleave stages within the request lifetime.
 

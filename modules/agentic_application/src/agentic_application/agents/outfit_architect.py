@@ -223,6 +223,18 @@ def _build_user_payload(ctx: CombinedContext) -> str:
         # style_goal is the per-turn directional cue extracted from chat;
         # replaces the stored archetype dropped May 2026.
         "style_goal": (getattr(ctx.live, "style_goal", "") or None),
+        # Phase 5x.1-3 / PR #187 review: surface the planner's
+        # open-axis preferences (EmbellishmentLevel, ContrastLevel,
+        # OccasionFit, NecklineType, FabricDrape, ...) so the
+        # architect can reference them when composing the
+        # query_document. Orchestrator's
+        # _apply_user_preferences_to_plan still binds them as
+        # hard_attrs after the architect returns, but exposing
+        # them in the prompt input lets the architect describe
+        # the user's ask in the rendered query text too.
+        "extracted_preferences": dict(
+            getattr(ctx.live, "extracted_preferences", None) or {}
+        ),
     }
 
     # risk_tolerance is the only retained per-user style preference;

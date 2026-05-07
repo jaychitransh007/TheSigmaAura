@@ -162,26 +162,22 @@ def compare_extraction(
 
     Status semantics:
     - Both empty → pass.
-    - Actual contains a key not in expected → fail (over-extraction).
-    - Expected has a key missing from actual → partial (under-extraction).
-    - All actual keys are in expected and values are a subset of expected
-      values → pass (when key sets match) or partial (when actual is a
-      strict subset of expected by keys or values).
-    - Actual contains a value not in expected for a shared key → fail
-      (made up a value the prompt said the user didn't ask for).
+    - Any key/value-level over-extraction (actual has axes or values
+      not in expected) → fail.
+    - Otherwise, missing axes or value subsets only → partial.
+    - Otherwise → pass.
+
+    Returns the FULL classification — extra_axes (key-level over),
+    value_fail_axes (value-level over), missing_axes (under),
+    value_partial_axes (value subset) — even when status is fail.
+    The previous implementation short-circuited on extra_axes, which
+    masked value_fail_axes when both kinds of failure were present
+    in the same case (PR #184 review).
     """
     expected_keys = set(expected.keys())
     actual_keys = set(actual.keys())
     extra_axes = sorted(actual_keys - expected_keys)
     missing_axes = sorted(expected_keys - actual_keys)
-
-    if extra_axes:
-        return CaseResult(
-            case_id=case_id, user_message=user_message,
-            expected=dict(expected), actual=dict(actual),
-            status="fail", extra_axes=extra_axes,
-            missing_axes=missing_axes,
-        )
 
     value_partial_axes: List[str] = []
     value_fail_axes: List[str] = []
@@ -193,29 +189,21 @@ def compare_extraction(
         elif a_set != e_set:
             value_partial_axes.append(k)
 
-    if value_fail_axes:
-        return CaseResult(
-            case_id=case_id, user_message=user_message,
-            expected=dict(expected), actual=dict(actual),
-            status="fail", extra_axes=[],
-            missing_axes=missing_axes,
-            value_fail_axes=sorted(value_fail_axes),
-            value_partial_axes=sorted(value_partial_axes),
-        )
-
-    if missing_axes or value_partial_axes:
-        return CaseResult(
-            case_id=case_id, user_message=user_message,
-            expected=dict(expected), actual=dict(actual),
-            status="partial", extra_axes=[],
-            missing_axes=missing_axes,
-            value_partial_axes=sorted(value_partial_axes),
-        )
+    if extra_axes or value_fail_axes:
+        status = "fail"
+    elif missing_axes or value_partial_axes:
+        status = "partial"
+    else:
+        status = "pass"
 
     return CaseResult(
         case_id=case_id, user_message=user_message,
         expected=dict(expected), actual=dict(actual),
-        status="pass",
+        status=status,
+        extra_axes=extra_axes,
+        missing_axes=missing_axes,
+        value_fail_axes=sorted(value_fail_axes),
+        value_partial_axes=sorted(value_partial_axes),
     )
 
 

@@ -82,6 +82,22 @@ class CompareExtractionTests(unittest.TestCase):
         self.assertIn("EmbellishmentLevel", r.value_fail_axes)
         self.assertEqual(r.extra_axes, [])  # not over-extracted at the key level
 
+    def test_both_key_and_value_failures_reported_together(self):
+        # PR #184 review: when a case has BOTH key-level over-extraction
+        # AND value-level over-extraction, both should appear in the
+        # CaseResult — the previous implementation short-circuited on
+        # extra_axes and masked the value-level failure.
+        r = compare_extraction(
+            {"NecklineType": ["v_neck"]},
+            {
+                "NecklineType": ["v_neck", "round"],     # value-level fail
+                "ColorTemperature": ["warm"],            # key-level fail
+            },
+        )
+        self.assertEqual(r.status, "fail")
+        self.assertEqual(r.extra_axes, ["ColorTemperature"])
+        self.assertEqual(r.value_fail_axes, ["NecklineType"])
+
     def test_missing_axis_is_partial(self):
         r = compare_extraction(
             {"NecklineType": ["v_neck"], "FitEase": ["fitted"]},

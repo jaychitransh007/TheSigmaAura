@@ -390,33 +390,43 @@ def _apply_target_product_type_to_plan(
     target_product_type: str,
 ) -> None:
     """When the planner extracted a specific garment subtype
-    (``"shirt"``, ``"dress"``, ``"blazer"``), bind it as a hard
-    ``garment_subtype`` filter on every QuerySpec in the plan.
+    (``"shirt"``, ``"dress"``, ``"blazer"``) AND the architect built
+    a single-garment plan, bind the subtype as a hard
+    ``garment_subtype`` filter on the query.
 
     Today ``target_product_type`` is prompt-level guidance only —
     the architect's prompt tells the LLM "use this to plan a single-
     garment direction", but nothing forces retrieval to honour it.
-    On turn 9abaf4d4 (May 8 review) the planner extracted no garment
-    type for "loungewear" and retrieval over-restricted on the LLM
-    architect's invented filters, returning zero products. Binding
-    ``target_product_type`` as a hard filter here closes the loop:
-    when the planner DOES extract a subtype, retrieval is guaranteed
-    to honour it regardless of architect path.
+    Binding it as a hard filter here closes the loop on browse
+    queries.
 
-    No-op when ``target_product_type`` is empty (occasion-led
-    requests). Adds the filter only when no ``garment_subtype``
-    filter is already present — preserves architect-emitted subtype
-    constraints that may be more specific.
+    Scope (PR #186 review): only applies when the plan is a
+    single-direction-single-query browse plan. For paired or
+    three_piece directions we MUST NOT bind the subtype to every
+    query — the bottom slot of a "shirt" browse plan would get
+    garment_subtype=shirt, which never matches and produces zero
+    products on that role, dropping the entire outfit. If the
+    architect chose a multi-item plan it interpreted the request
+    as more than a browse, so respect that and don't second-guess.
+
+    No-op when ``target_product_type`` is empty. Preserves an
+    architect-emitted subtype filter (more specific) by only
+    adding when none is present.
     """
     target = (target_product_type or "").strip().lower()
     if not target:
         return
-    for direction in getattr(plan, "directions", []) or []:
-        for query in getattr(direction, "queries", []) or []:
-            existing = dict(getattr(query, "hard_filters", None) or {})
-            if "garment_subtype" not in existing:
-                existing["garment_subtype"] = target
-                query.hard_filters = existing
+    directions = getattr(plan, "directions", []) or []
+    if len(directions) != 1:
+        return
+    queries = getattr(directions[0], "queries", []) or []
+    if len(queries) != 1:
+        return
+    query = queries[0]
+    existing = dict(getattr(query, "hard_filters", None) or {})
+    if "garment_subtype" not in existing:
+        existing["garment_subtype"] = target
+        query.hard_filters = existing
 
 
 class AgenticOrchestrator:
@@ -2100,15 +2110,12 @@ class AgenticOrchestrator:
         from datetime import datetime, timezone
         from pathlib import Path
 
-        # Tryon flag (May 8 2026): when AURA_TRYON_ENABLED is off, the
-        # earlier tryon_render stage was skipped — but this method has
-        # its own cache-miss → generate fallback that would otherwise
-        # call Gemini. Short-circuit here too so the flag actually
-        # zeroes Gemini cost. Cards keep whatever tryon_image was set
-        # at format time (cache hit) or stay empty (cache miss).
-        if not self._tryon_enabled:
-            return
-
+        # Tryon flag (May 8 2026): when AURA_TRYON_ENABLED is off,
+        # the earlier tryon_render stage was skipped — and the
+        # generation path inside _generate_for_outfit below is gated
+        # too so it doesn't burn Gemini calls. But we DO still let
+        # cache lookups proceed: previously rendered images are zero
+        # cost and zero latency to attach (PR #185 review).
         person_path = self.onboarding_gateway.get_person_image_path(external_user_id)
         if not person_path:
             return
@@ -2138,7 +2145,12 @@ class AgenticOrchestrator:
                         _log.info("Try-on cache hit for outfit #%s", outfit.rank)
                         return outfit, self._tryon_image_url(str(cached_path))
 
-            # Generate
+            # Generate. Flag-gated (May 8 2026, PR #185 review): cache
+            # lookups above are free and proceed regardless, but the
+            # Gemini call itself only fires when AURA_TRYON_ENABLED is
+            # true. Flag-off cache miss → outfit ships without an image.
+            if not self._tryon_enabled:
+                return outfit, ""
             try:
                 result = self.tryon_service.generate_tryon_outfit(
                     person_image_path=person_path,

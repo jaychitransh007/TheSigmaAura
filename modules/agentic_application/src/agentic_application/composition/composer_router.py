@@ -100,15 +100,9 @@ class ComposerRouterDecision:
 # ─────────────────────────────────────────────────────────────────────────
 
 
-# Follow-up intents the engine can serve directly — mirrors the
-# architect router's _ENGINE_FRIENDLY_FOLLOWUP_INTENTS so the two
-# engines stay consistent on which follow-up shapes they accept.
-# Formality intents adjust formality_hint cleanly (a pairing-rule
-# input the composer engine already handles).
-_ENGINE_FRIENDLY_FOLLOWUP_INTENTS: frozenset[str] = frozenset({
-    "decrease_formality",
-    "increase_formality",
-})
+# Single-source-of-truth shared with the architect router (PR #186
+# review). Keep in sync by importing rather than duplicating.
+from ..intent_registry import ENGINE_FRIENDLY_FOLLOWUP_INTENTS
 
 
 def is_engine_eligible(
@@ -130,7 +124,7 @@ def is_engine_eligible(
         # formality_hint that's a clean engine input. Mirrors the
         # architect router's relaxation.
         followup_intent = str(getattr(live, "followup_intent", "") or "").strip()
-        if followup_intent not in _ENGINE_FRIENDLY_FOLLOWUP_INTENTS:
+        if followup_intent not in ENGINE_FRIENDLY_FOLLOWUP_INTENTS:
             return False, "followup_request"
     if combined_context.previous_recommendations:
         return False, "has_previous_recommendations"

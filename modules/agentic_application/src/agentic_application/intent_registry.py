@@ -78,6 +78,24 @@ class FollowUpIntent(StrEnum):
     SIMILAR_TO_PREVIOUS = "similar_to_previous"
 
 
+# Subset of FollowUpIntent values the composition engines (architect
+# + composer) can serve directly. These map cleanly onto inputs the
+# engine already handles — formality_hint is a hard-tier source per
+# composition_semantics.md §3.3, so adjusting it deterministically
+# changes the resolved direction. Other intents (change_color,
+# similar_to_previous, full_alternative, more_options,
+# increase_boldness) need prior-recommendation context the engine
+# doesn't carry today.
+#
+# Single source of truth — both architect router (composition/router.py)
+# and composer router (composition/composer_router.py) read this
+# constant. Adding an intent here enables it on both engines at once.
+ENGINE_FRIENDLY_FOLLOWUP_INTENTS: frozenset[str] = frozenset({
+    FollowUpIntent.DECREASE_FORMALITY.value,
+    FollowUpIntent.INCREASE_FORMALITY.value,
+})
+
+
 # ── Metadata ─────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
