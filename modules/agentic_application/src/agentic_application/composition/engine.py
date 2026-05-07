@@ -200,7 +200,21 @@ def _add_mapping(
     When ``color_attrs_split`` is True, color attributes from this
     mapping are tagged with ``weather_color`` + soft tier; fabric /
     structure attributes keep ``weather_fabric`` + hard. Caller passes
-    the already-resolved ``source_kind``+``tier`` as the fabric default."""
+    the already-resolved ``source_kind``+``tier`` as the fabric default.
+
+    Note on source labels: the per-contribution ``source`` string is
+    rewritten to use the per-attribute ``kind`` rather than the caller-
+    supplied prefix. Otherwise weather contributions ALL carry source
+    label ``weather:...`` regardless of fabric/color subset, and
+    downstream tier-classification (``_classify_attr_tier``) can't tell
+    which subset to use — that's the bug that hid SleeveLength from
+    ``hard_attrs`` and let short-sleeve items survive the high-altitude
+    weighted-retrieval penalty (turn 575e2fe0)."""
+    _, _, source_value = source.partition(":")
+
+    def _attr_source(kind: str) -> str:
+        return f"{kind}:{source_value}" if source_value else source
+
     seen_attrs: set[str] = set()
     for attr, vals in mapping.flatters.items():
         seen_attrs.add(attr)
@@ -211,7 +225,7 @@ def _add_mapping(
         by_attr.setdefault(attr, []).append(
             ClassifiedContribution(
                 contribution=AttributeContribution(
-                    source=source,
+                    source=_attr_source(kind),
                     flatters=tuple(vals),
                     avoid=tuple(mapping.avoid.get(attr, ())),
                 ),
@@ -231,7 +245,7 @@ def _add_mapping(
         by_attr.setdefault(attr, []).append(
             ClassifiedContribution(
                 contribution=AttributeContribution(
-                    source=source, flatters=(), avoid=tuple(vals),
+                    source=_attr_source(kind), flatters=(), avoid=tuple(vals),
                 ),
                 source_kind=kind,
                 tier=t,

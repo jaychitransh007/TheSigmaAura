@@ -432,6 +432,42 @@ class HardAttrTierTests(unittest.TestCase):
                     f"SleeveLength flatters leaked disallowed values: {q.hard_attrs['SleeveLength']}",
                 )
 
+    def test_weather_fabric_contribution_is_hard_tier_in_provenance(self):
+        # REGRESSION (turn 575e2fe0): the source label stored in
+        # AttributeContribution carried the caller's prefix ("weather:")
+        # rather than the per-attribute kind ("weather_fabric"), so
+        # _classify_attr_tier saw "weather" — not in _HARD_SOURCE_KINDS —
+        # and mis-classified attributes ONLY contributed by weather as
+        # soft. SleeveLength fell out of hard_attrs entirely; short-sleeve
+        # shirts surfaced for "Manali trip." This test pins the per-
+        # attribute source-label rewrite in _add_mapping.
+        graph = load_style_graph()
+        result = compose_direction(
+            inputs=_baseline_inputs(weather_context="high_altitude_cool"),
+            graph=graph,
+            user=_user(),
+        )
+        # SleeveLength in this scenario is contributed only by weather.
+        # If hard_attrs picks it up, the tier classifier saw a hard
+        # source label.
+        sleeve_in_hard = any(
+            "SleeveLength" in q.hard_attrs for q in result.direction.queries
+        )
+        self.assertTrue(
+            sleeve_in_hard,
+            "SleeveLength must appear in hard_attrs when weather is the "
+            "sole opinionated source (weather_fabric tier-aware label).",
+        )
+        # And the values must be what high_altitude_cool's weather YAML
+        # specifies — three_quarter / full only, none of sleeveless / cap / short.
+        for q in result.direction.queries:
+            if "SleeveLength" in q.hard_attrs:
+                self.assertEqual(
+                    set(q.hard_attrs["SleeveLength"]) & {"three_quarter", "full"},
+                    set(q.hard_attrs["SleeveLength"]),
+                    "SleeveLength flatters should be exactly the high_altitude_cool values",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
