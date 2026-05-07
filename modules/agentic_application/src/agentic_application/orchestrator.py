@@ -283,6 +283,38 @@ def _resolve_architect_origin_model(
     return llm_model
 
 
+# Phase 5x.4a — composer-side origin sentinels, mirroring the architect.
+COMPOSER_MODEL_CACHE = "cache"
+COMPOSER_MODEL_ENGINE = "composer_engine"
+
+
+def _resolve_composer_origin_model(
+    *,
+    cache_hit: bool,
+    router_decision,
+    llm_model: str,
+) -> str:
+    """Mirror of ``_resolve_architect_origin_model`` for the composer
+    stage. Returns the ``model`` value to stamp on the composer's
+    ``model_call_logs`` row:
+
+    - ``cache_hit=True``                              → "cache"
+    - ``router_decision.used_engine=True``            → "composer_engine"
+    - otherwise (LLM composer ran)                    → ``llm_model``
+
+    Without this, composer model_call_logs rows on engine / cache
+    paths inherited the LLM model id, making per-model cost rollups
+    misleading (a phantom 0-token gpt-5.2 row per engine turn). The
+    LLM path is unchanged — `_record_attempt` still writes per-attempt
+    rows with the real LLM model id.
+    """
+    if cache_hit:
+        return COMPOSER_MODEL_CACHE
+    if router_decision is not None and getattr(router_decision, "used_engine", False):
+        return COMPOSER_MODEL_ENGINE
+    return llm_model
+
+
 def extract_urls(message: str) -> List[str]:
     """URL detection helper inlined from the (now-deleted) shopping_decision_agent.
 
@@ -325,6 +357,22 @@ def _apply_user_preferences_to_plan(
     }
     if not cleaned:
         return
+    # Tick override counter once per (attribute, plan) when the user's
+    # explicit value REPLACES an architect-derived value. Guarded on
+    # the first direction's first query — the architect emits identical
+    # hard_attrs across every QuerySpec in a direction, so a single
+    # observation per attribute per plan is the right unit (avoids
+    # double-counting across directions × roles).
+    try:
+        from platform_core.metrics import observe_user_preference_override
+        first_dir = (getattr(plan, "directions", []) or [None])[0]
+        first_query = (getattr(first_dir, "queries", []) or [None])[0] if first_dir else None
+        baseline_keys = set((getattr(first_query, "hard_attrs", None) or {}).keys()) if first_query else set()
+        for attr in cleaned:
+            if attr in baseline_keys:
+                observe_user_preference_override(attr)
+    except Exception:  # noqa: BLE001 — telemetry never breaks the pipeline
+        pass
     for direction in getattr(plan, "directions", []) or []:
         for query in getattr(direction, "queries", []) or []:
             existing = dict(getattr(query, "hard_attrs", None) or {})
@@ -1715,6 +1763,13 @@ class AgenticOrchestrator:
                 "target_product_type": str(getattr(rc, "target_product_type", "") or ""),
                 "followup_intent": rc.followup_intent,
                 "is_followup": rc.is_followup,
+                # Phase 5x.4a (May 8 2026): planner-extracted explicit
+                # user preferences along catalog attribute axes
+                # (EmbellishmentLevel, ContrastLevel, NecklineType,
+                # FabricDrape, ...). Persisted so eval / dashboards can
+                # measure planner extraction rate per axis without
+                # reparsing the raw planner JSON.
+                "extracted_preferences": dict(getattr(rc, "extracted_preferences", None) or {}),
             },
         )
 
@@ -1790,7 +1845,10 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
-
+                emit=emit,
+                trace_start=trace_start,
+                trace_end=trace_end,
+                trace=trace,
             )
         elif plan_result.action == Action.ASK_CLARIFICATION:
             handler_result = self._handle_clarification(
@@ -1867,7 +1925,10 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
-
+                emit=emit,
+                trace_start=trace_start,
+                trace_end=trace_end,
+                trace=trace,
             )
 
         # ── Store last_attached_item so the NEXT turn can carry it ────
@@ -3973,7 +4034,14 @@ class AgenticOrchestrator:
         message: str,
         previous_context: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-
+        # Phase 5x.4a — optional per-turn trace closures, forwarded to
+        # the explanation handler so it can emit a `style_advisor`
+        # step. None defaults keep test callsites that don't plumb
+        # tracing happy.
+        emit: Any = None,
+        trace_start: Any = None,
+        trace_end: Any = None,
+        trace: Any = None,
     ) -> Dict[str, Any]:
         if intent.primary_intent == Intent.STYLE_DISCOVERY:
             return self._handle_style_discovery(
@@ -3999,7 +4067,10 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
-
+                emit=emit,
+                trace_start=trace_start,
+                trace_end=trace_end,
+                trace=trace,
             )
         metadata = self._build_response_metadata(
             channel=channel,
@@ -4421,8 +4492,20 @@ class AgenticOrchestrator:
         message: str,
         previous_context: Dict[str, Any],
         profile_confidence: ProfileConfidence,
-
+        # Phase 5x.4a — optional per-turn trace closures from
+        # process_turn. None defaults keep test callsites that don't
+        # plumb tracing happy (no-op step emission).
+        emit: Any = None,
+        trace_start: Any = None,
+        trace_end: Any = None,
+        trace: Any = None,
     ) -> Dict[str, Any]:
+        if emit is None:
+            emit = lambda *a, **kw: None
+        if trace_start is None:
+            trace_start = lambda *a, **kw: None
+        if trace_end is None:
+            trace_end = lambda *a, **kw: None
         # Cross-conversation fallback: if the user asks "why did you
         # recommend that?" in a FRESH conversation (frontend may open a
         # new conversation thread for follow-ups), the current
@@ -4511,6 +4594,20 @@ class AgenticOrchestrator:
         advisor_payload: Dict[str, Any] | None = None
         assistant_message = deterministic_message
         if previous_recommendations:
+            # Phase 5x.4a — explicit `style_advisor` step. Before this,
+            # the advisor LLM call (~14s on the May 8 review turn
+            # b9647136) ran inside this method without emitting a step,
+            # so turn_traces.steps showed only 4 stages summing to ~9s
+            # while total_latency_ms was 22s. The step is emitted iff
+            # the advisor actually runs (i.e. previous_recommendations
+            # is non-empty after the cross-conversation fallback).
+            _advisor_t0 = time.monotonic()
+            _advisor_model = getattr(self.style_advisor, "_model", "") or "style_advisor"
+            emit("style_advisor", "started")
+            trace_start(
+                "style_advisor", model=_advisor_model,
+                input_summary=f"explanation, prior_recs={len(previous_recommendations)}",
+            )
             try:
                 analysis_status = self.onboarding_gateway.get_analysis_status(external_user_id) or {}
                 profile = dict(analysis_status.get("profile") or {})
@@ -4593,6 +4690,30 @@ class AgenticOrchestrator:
                     exc,
                     exc_info=True,
                 )
+                emit("style_advisor", "error")
+                trace_end(
+                    "style_advisor", status="error", error=str(exc)[:200],
+                )
+            else:
+                advisor_ms = int((time.monotonic() - _advisor_t0) * 1000)
+                emit(
+                    "style_advisor", "completed",
+                    ctx={"advisor_used": advisor_used},
+                )
+                trace_end(
+                    "style_advisor",
+                    output_summary=(
+                        f"used={advisor_used}, "
+                        f"chars={len(assistant_message or '')}"
+                    ),
+                )
+                # Per-stage metric so the histogram tracks advisor latency
+                # alongside the other LLM stages.
+                try:
+                    from platform_core.metrics import observe_turn_stage
+                    observe_turn_stage("style_advisor", advisor_ms)
+                except Exception:  # noqa: BLE001 — metrics never break pipeline
+                    pass
 
         if not assistant_message:
             assistant_message = (
@@ -5608,6 +5729,50 @@ class AgenticOrchestrator:
                     _composer_router_decision.engine_ms,
                 )
             compose_ms = int((time.monotonic() - t_compose) * 1000)
+            # Phase 5x.4a — composer-side origin stamping. _record_attempt
+            # writes per-attempt rows on LLM paths; engine and cache paths
+            # would otherwise leave model_call_logs blank for the composer
+            # stage entirely. Write a synthetic row stamped with the right
+            # origin so per-model cost / latency rollups don't pretend the
+            # composer never ran. Mirrors the architect's pattern at the
+            # parallel _resolve_architect_origin_model call site.
+            _composer_origin_model = _resolve_composer_origin_model(
+                cache_hit=_comp_cached is not None,
+                router_decision=_composer_router_decision,
+                llm_model=self.outfit_composer._model,
+            )
+            if _composer_origin_model in (COMPOSER_MODEL_CACHE, COMPOSER_MODEL_ENGINE):
+                try:
+                    trace.add_model_cost_from_row(self.repo.log_model_call(
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        service="agentic_application",
+                        call_type="outfit_composer",
+                        model=_composer_origin_model,
+                        request_json={
+                            "pool_size": total_products,
+                            "directions": len({rs.direction_id for rs in retrieved_sets}),
+                            "origin": _composer_origin_model,
+                        },
+                        response_json={
+                            "outfit_count": len(composer_result.outfits),
+                            "engine_ms": (
+                                _composer_router_decision.engine_ms
+                                if _composer_router_decision is not None
+                                else None
+                            ),
+                        },
+                        reasoning_notes=[],
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                        total_tokens=0,
+                        latency_ms=compose_ms,
+                    ))
+                except Exception:  # noqa: BLE001 — telemetry never breaks pipeline
+                    _log.exception(
+                        "composer synthetic log failed (origin=%s); ignoring",
+                        _composer_origin_model,
+                    )
             emit(
                 "outfit_composer", "completed",
                 ctx={
@@ -7181,6 +7346,13 @@ class AgenticOrchestrator:
             "user_frame_structure": str(_flat(derived, "FrameStructure") or "").strip(),
             "user_seasonal_color_group": str(_flat(derived, "SeasonalColorGroup") or "").strip(),
             "user_palette_anchors": list(_flat(derived, "PaletteAnchors") or []),
+            # Phase 5x.4a: surface the user's own explicit attribute
+            # preferences (planner extracted_preferences) so the style
+            # advisor can cite them in explanations ("you asked for
+            # a v-neck and fitted, that's why these tops").
+            "user_extracted_preferences": dict(
+                getattr(live_context, "extracted_preferences", None) or {}
+            ),
             "architect_used_engine": bool(getattr(router_decision, "used_engine", False)) if router_decision else False,
             "architect_fallback_reason": getattr(router_decision, "fallback_reason", None) if router_decision else None,
             "composer_used_engine": bool(getattr(composer_router_decision, "used_engine", False)) if composer_router_decision else False,

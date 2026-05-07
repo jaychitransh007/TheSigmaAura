@@ -361,10 +361,14 @@ def score_tuple(
         soft_violations.extend(evaluate_constraint(cat, items_t, ctx, graph))
 
     hard_attr_violations = _count_tuple_hard_attr_violations(items_t, ctx.hard_attrs)
-    hard_attr_penalty = min(
-        HARD_ATTR_TUPLE_PENALTY * hard_attr_violations,
-        HARD_ATTR_TUPLE_PENALTY_CAP,
-    )
+    raw_hard_attr_penalty = HARD_ATTR_TUPLE_PENALTY * hard_attr_violations
+    hard_attr_penalty = min(raw_hard_attr_penalty, HARD_ATTR_TUPLE_PENALTY_CAP)
+    if raw_hard_attr_penalty > HARD_ATTR_TUPLE_PENALTY_CAP:
+        try:
+            from platform_core.metrics import observe_hard_attr_penalty_cap_hit
+            observe_hard_attr_penalty_cap_hit("tuple")
+        except Exception:  # noqa: BLE001 — telemetry never breaks scoring
+            pass
 
     score = (
         BASE_SCORE
