@@ -385,6 +385,40 @@ def _apply_user_preferences_to_plan(
             query.hard_attrs = existing
 
 
+def _apply_target_product_type_to_plan(
+    plan: Any,
+    target_product_type: str,
+) -> None:
+    """When the planner extracted a specific garment subtype
+    (``"shirt"``, ``"dress"``, ``"blazer"``), bind it as a hard
+    ``garment_subtype`` filter on every QuerySpec in the plan.
+
+    Today ``target_product_type`` is prompt-level guidance only —
+    the architect's prompt tells the LLM "use this to plan a single-
+    garment direction", but nothing forces retrieval to honour it.
+    On turn 9abaf4d4 (May 8 review) the planner extracted no garment
+    type for "loungewear" and retrieval over-restricted on the LLM
+    architect's invented filters, returning zero products. Binding
+    ``target_product_type`` as a hard filter here closes the loop:
+    when the planner DOES extract a subtype, retrieval is guaranteed
+    to honour it regardless of architect path.
+
+    No-op when ``target_product_type`` is empty (occasion-led
+    requests). Adds the filter only when no ``garment_subtype``
+    filter is already present — preserves architect-emitted subtype
+    constraints that may be more specific.
+    """
+    target = (target_product_type or "").strip().lower()
+    if not target:
+        return
+    for direction in getattr(plan, "directions", []) or []:
+        for query in getattr(direction, "queries", []) or []:
+            existing = dict(getattr(query, "hard_filters", None) or {})
+            if "garment_subtype" not in existing:
+                existing["garment_subtype"] = target
+                query.hard_filters = existing
+
+
 class AgenticOrchestrator:
     """Application-layer orchestrator implementing the 7-component pipeline."""
 
@@ -5400,6 +5434,15 @@ class AgenticOrchestrator:
         # explicit attribute axes mentioned) is a no-op.
         _apply_user_preferences_to_plan(
             plan, initial_live_context.extracted_preferences,
+        )
+
+        # May 8 2026 — bind target_product_type as a hard
+        # garment_subtype filter on every QuerySpec. Closes the
+        # planner→retrieval loop on browse-by-garment-type queries
+        # ("show me shirts") so retrieval is forced to honour the
+        # user's specific-garment ask regardless of architect path.
+        _apply_target_product_type_to_plan(
+            plan, initial_live_context.target_product_type,
         )
 
         resolved = plan.resolved_context

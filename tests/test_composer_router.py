@@ -177,6 +177,25 @@ class IsEngineEligibleTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(reason, "followup_request")
 
+    def test_followup_with_decrease_formality_eligible(self):
+        # Mirrors the architect router relaxation. Composer engine
+        # accepts formality follow-ups so it can score against the
+        # adjusted formality_hint.
+        live = _live()
+        live.is_followup = True  # pyright: ignore
+        live.followup_intent = "decrease_formality"  # pyright: ignore
+        ok, reason = is_engine_eligible(_ctx(live=live), _plan())
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
+    def test_followup_with_change_color_still_ineligible(self):
+        live = _live()
+        live.is_followup = True  # pyright: ignore
+        live.followup_intent = "change_color"  # pyright: ignore
+        ok, reason = is_engine_eligible(_ctx(live=live), _plan())
+        self.assertFalse(ok)
+        self.assertEqual(reason, "followup_request")
+
     def test_previous_recommendations_ineligible(self):
         ok, reason = is_engine_eligible(
             _ctx(previous_recommendations=[{"composer_id": "X1"}]), _plan()
