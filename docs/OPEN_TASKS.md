@@ -201,7 +201,7 @@ Further planner / architect / composer model-swap work is no longer on the plan.
 
 What stays shipped and in production:
 - Planner shadow infrastructure (`AURA_PLANNER_SHADOW_MODEL`, `aura.planner.shadow` logger). Dormant unless the env var is set; not being actively iterated on.
-- `gpt-5.4 → gpt-5.2` architect + composer swap (Phase 1.4, May 13 2026).
+- The `gpt-5.4 → gpt-5.2` architect + composer swap (shipped May 13 2026).
 - Env-configurable model strings (`PLANNER_MODEL`, `ARCHITECT_MODEL`, `COMPOSER_MODEL`, `RATER_MODEL`, `STYLE_ADVISOR_MODEL`).
 
 The previously planned next steps — promoting a non-reasoning planner and A/B-ing claude-sonnet-4-7 / gemini-2.5-pro for architect+composer — are not being pursued. The architect path is mostly moot post-engine (Phase 4.7 ships engine-accepted turns at ~0ms architect), and the planner promotion didn't justify the calibration work given the engine's larger end-to-end win. Composer-side latency is now better attacked by Phase 5 (composer engine) than by a model swap.

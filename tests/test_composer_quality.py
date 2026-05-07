@@ -325,6 +325,23 @@ class ShadowModeTests(unittest.TestCase):
         self.assertIn("comparison", decision.shadow_comparison)
         llm.assert_called_once()
 
+    def test_shadow_comparison_is_json_serializable(self):
+        # The shadow_comparison payload is intended for tool_trace
+        # persistence, so the comparison field must be a dict (not a
+        # frozen dataclass). Round-trip through json.dumps as a guard.
+        import json as _json
+        llm = _llm_callable_with_outfits()
+        decision = route_composer_plan(
+            plan=_plan(), retrieved_sets=_varied_sets(), combined_context=_ctx(),
+            composer_callable=llm, enabled=False, shadow=True,
+            graph=load_style_graph(),
+        )
+        self.assertIsNotNone(decision.shadow_comparison)
+        # `comparison` must be a dict (asdict-flattened), not a dataclass.
+        self.assertIsInstance(decision.shadow_comparison["comparison"], dict)
+        # Whole envelope must JSON-serialise without a custom encoder.
+        _json.dumps(decision.shadow_comparison)
+
     def test_enabled_wins_over_shadow(self):
         # When both enabled and shadow=True, enabled wins (production path).
         llm = _llm_callable_with_outfits()

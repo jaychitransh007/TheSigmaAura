@@ -92,6 +92,8 @@ diversity_multiplier(candidate, already_picked) =
 effective_score = base_score * diversity_multiplier
 ```
 
+**Multipliers stack.** A candidate that triggers multiple penalties pays the product, not the smallest. So a tuple that's same direction AND same dominant color as an already-picked outfit gets `0.6 × 0.7 = 0.42` (below `MIN_OUTFIT_SCORE` 0.50 → not picked). The implementation computes a per-already-picked multiplier and takes the worst across already-picked outfits, so the candidate is constrained by its closest neighbor in the picked set — not by an aggregate similarity.
+
 Greedy selection: pick the highest `effective_score` tuple, append to picks, recompute multipliers for the rest, repeat. Stop when 6 picks are made or no candidate has `effective_score >= MIN_OUTFIT_SCORE` (default 0.5). Direction coverage is encouraged by the 0.6 same-direction multiplier but not strictly enforced; if Direction A produced the cleanest tuples, picking 4 from A and 2 from B is preferable to forcing one weak C.
 
 **🎨 STYLIST SIGN-OFF NEEDED** on the three diversity multipliers (0.6 / 0.7 / 0.8) and the `MIN_OUTFIT_SCORE` floor — these are calibration guesses to be tightened against the Phase 4.6 eval set.
@@ -200,10 +202,12 @@ def is_statement(item: Item, rules: PairingRules) -> bool:
     if item.color_saturation == "very_high":
         return True
     if (item.pattern_type in {"animal", "ethnic", "abstract"}
-            and item.pattern_scale in {"medium", "large", "oversized"}):
+            and item.pattern_scale == "medium"):
         return True
     return False
 ```
+
+The fourth clause only adds `medium` scale because `large` and `oversized` are already handled by the second clause — `pattern_type ∈ {animal, ethnic, abstract}` only adds something on top when the scale is the borderline `medium` value.
 
 The function takes `rules` as a parameter for forward compatibility (in case a future stylist edit shifts the definition into runtime configuration), but v1 ignores it and uses the hardcoded thresholds.
 
@@ -282,7 +286,7 @@ The composer router falls through to the LLM `OutfitComposer` when ANY of:
 3. Genuine YAML gap (input value not in any YAML — e.g., a new occasion not yet added to `triggers_on`)
 4. Engine returns fewer than 3 picks across all directions (`pool_too_sparse` or aggregate hard-violation rate too high)
 
-Plus the pre-engine eligibility gates (§11): anchor-bearing turns, follow-up turns, turns with `previous_recommendations`, and turns where the architect plan itself came from cache (rare in cache-miss flow but possible) all skip the engine.
+Plus the pre-engine eligibility gates (§10): anchor-bearing turns, follow-up turns, and turns with `previous_recommendations` all skip the engine. **Cache-served architect plans do NOT skip the composer engine** — the architect cache stores `RecommendationPlan` objects, which are valid composer inputs regardless of how they were produced. Skipping the composer engine on architect cache hits would force the slow LLM composer on every cache-served turn and defeat the latency win.
 
 ### 7.3 What the engine does NOT do
 
@@ -370,7 +374,7 @@ Engine moves to next candidate. If no tuple in Direction B survives all hard che
 
 **Inputs:** 1 direction, `three_piece` direction_type, pools: top=[T1, T2], bottom=[B1, B2], outerwear=[OW1] (only 1 item).
 
-**Pre-enumeration check:** outerwear pool has <2 items → direction skipped. Total directions=1, skipped=1 → `confidence = 1.0 - 0.20*(1/1) - 0.30*(1) = 0.50 - 0.30 = 0.20`. Below 0.50 threshold → `fallback_reason="pool_too_sparse"`, router falls through to LLM composer. (LLM composer has historically tolerated single-item outerwear pools by emitting paired outfits and skipping the third slot, so the LLM path handles this case differently.)
+**Pre-enumeration check:** outerwear pool has <2 items → direction skipped. Total directions=1, skipped=1, picks=0 → `confidence = 1.0 − 0.20·(1/1) − 0.30·(1 − 0/1) − 0.10·(6/6) = 1.0 − 0.20 − 0.30 − 0.10 = 0.40`. Below 0.50 threshold → `fallback_reason="pool_too_sparse"`, router falls through to LLM composer. (LLM composer has historically tolerated single-item outerwear pools by emitting paired outfits and skipping the third slot, so the LLM path handles this case differently.)
 
 ## 10. Pre-engine eligibility gates
 
@@ -381,9 +385,10 @@ Before the engine is even invoked, the router checks these gates. Any TRUE → f
 | `anchor_present` | `combined_context.anchor_garment is not None` | Engine doesn't handle anchor turns in v1 (see §4.9). |
 | `followup_request` | `combined_context.intent_classification.is_followup` | Follow-up turns reference prior outfits; engine has no episodic context. |
 | `has_previous_recommendations` | `combined_context.previous_recommendations` non-empty | Same as above — engine doesn't reason about prior turns. |
-| `architect_plan_from_cache` | `plan.plan_source == "cache"` | Architect cache hits are handled by the existing cache layer; running engine on top is double-work. (Engine is called only on architect cache miss → engine cache miss flow.) |
 
-Mirrors the architect router's pre-engine gates exactly, plus the `architect_plan_from_cache` gate which is composer-specific.
+**No `architect_plan_from_cache` gate.** Earlier drafts of this spec proposed skipping the engine when the architect plan came from cache; that was a copy-paste error from the architect router. The composer engine consumes a `RecommendationPlan` regardless of whether the LLM, the architect engine, or the architect cache produced it — they're all valid inputs of the same shape. Skipping the composer engine on architect-cache turns would force the slow LLM composer to run on every cache-served turn, eliminating the latency win we paid for.
+
+Mirrors the architect router's pre-engine gates exactly.
 
 ## 11. Out of scope (Phase 5 v1)
 

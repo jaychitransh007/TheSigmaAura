@@ -162,9 +162,12 @@ def is_statement(item: Item, _rules_unused: object | None = None) -> bool:
         return True
     if item.color_saturation == "very_high":
         return True
+    # Fourth clause adds the borderline `medium` scale for the three
+    # high-impact pattern types — `large`/`oversized` are already
+    # caught by the second clause regardless of pattern_type.
     if (
         item.pattern_type in {"animal", "ethnic", "abstract"}
-        and item.pattern_scale in {"medium", "large", "oversized"}
+        and item.pattern_scale == "medium"
     ):
         return True
     return False
@@ -313,21 +316,24 @@ def _evaluate_color_story(
         )
 
     # palette_anchor_required: at least one slot in user's palette anchors.
-    # Skip when caller didn't provide anchors (test setups, profile gaps);
-    # treat as a missing-input scenario, not a violation.
+    # Skip when caller didn't provide anchors (test setups, profile gaps).
+    # Also skip when ANY item is missing dominant_color — under the
+    # "skip if empty" policy we can't confirm the rule is violated when
+    # an unknown-color item might itself be an anchor color. Only
+    # report a violation when every item has color data and none of
+    # them match an anchor.
     if ctx.palette_anchors:
-        anchored = any(
-            it.dominant_color in ctx.palette_anchors for it in items if it.dominant_color
-        )
-        if not anchored:
-            violations.append(
-                Violation(
-                    category="color_story",
-                    rule="palette_anchor_required",
-                    detail="no slot uses a color from user's SubSeason palette anchors",
-                    is_hard=True,
+        colors = [it.dominant_color for it in items if it.dominant_color]
+        if len(colors) == len(items):  # every item has a color
+            if not any(c in ctx.palette_anchors for c in colors):
+                violations.append(
+                    Violation(
+                        category="color_story",
+                        rule="palette_anchor_required",
+                        detail="no slot uses a color from user's SubSeason palette anchors",
+                        is_hard=True,
+                    )
                 )
-            )
 
     # contrast_alignment: ordered-pair compatibility.
     contrast_rule = group.rules.get("contrast_alignment")
@@ -397,8 +403,16 @@ def _evaluate_pattern_mixing(
                 ),
             )
 
-    same_color = bool(a.dominant_color) and a.dominant_color == b.dominant_color
-    same_contrast = bool(a.contrast_level) and a.contrast_level == b.contrast_level
+    # two_patterns_color_family: skip-if-empty — only fire when BOTH
+    # color and contrast are evaluable on both items. With a missing
+    # field we can't confirm there's no link, so abstain rather than
+    # report a violation against possibly-compatible inputs.
+    color_evaluable = bool(a.dominant_color and b.dominant_color)
+    contrast_evaluable = bool(a.contrast_level and b.contrast_level)
+    if not (color_evaluable and contrast_evaluable):
+        return ()
+    same_color = a.dominant_color == b.dominant_color
+    same_contrast = a.contrast_level == b.contrast_level
     if not (same_color or same_contrast):
         return (
             Violation(
@@ -557,7 +571,14 @@ def _evaluate_cultural_coherence(
     has_fusion = "indo_western" in registers
     violations: list[Violation] = []
 
-    if has_traditional and has_western and not has_fusion:
+    # indo_western_fusion: skip-if-empty — only report when every item's
+    # cultural_register is known. An unknown-register item could itself
+    # be the indo_western bridge that satisfies the rule, so we can't
+    # confirm a violation without complete data.
+    if (
+        has_traditional and has_western and not has_fusion
+        and len(registers) == len(items)
+    ):
         violations.append(
             Violation(
                 category="cultural_coherence",

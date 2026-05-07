@@ -7,12 +7,17 @@ the engine (~target ≤300ms) or the LLM ``OutfitComposer`` (~12-14s).
 Pre-engine eligibility gates (composer_semantics.md §10):
 
   a. ``anchor_present`` — pairing_request turns; engine doesn't yet
-     handle anchored requests (composer_semantics.md §11 future work).
+     handle anchored requests.
   b. ``followup_request`` — engine has no episodic context.
   c. ``has_previous_recommendations`` — same.
-  d. ``architect_plan_from_cache`` — composer-specific gate. Architect
-     cache hits go straight through (running the engine on top is
-     double-work; the cached plan was produced under different inputs).
+
+Earlier drafts had an ``architect_plan_from_cache`` gate; that was a
+copy-paste from the architect router and was wrong here. The composer
+engine consumes a ``RecommendationPlan`` regardless of whether it came
+from the LLM, the architect engine, or the architect cache — they're
+all valid inputs of the same shape. Skipping the composer engine when
+the upstream plan was cached would force the slow LLM composer on
+every cache-served turn, defeating the latency win.
 
 Engine acceptance criteria (composer_semantics.md §7.2):
 
@@ -30,7 +35,7 @@ call, and stamp ``model_call_logs.model`` correctly.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Iterable, Mapping
 
 from ..schemas import (
@@ -87,7 +92,7 @@ class ComposerRouterDecision:
     yaml_gaps: tuple[str, ...] = field(default_factory=tuple)
     engine_ms: int | None = None
     provenance_summary: Mapping[str, Any] = field(default_factory=dict)
-    shadow_comparison: Any = None
+    shadow_comparison: dict[str, Any] | None = None
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -100,11 +105,11 @@ def is_engine_eligible(
 ) -> tuple[bool, str | None]:
     """Pre-engine gate. Returns ``(eligible, fallback_reason)``.
 
-    Mirrors the architect router's eligibility gate plus a composer-
-    specific check on ``plan.plan_source``: when the architect plan
-    came from cache, the composer engine doesn't run on top of it —
-    the cached plan was scored against a different snapshot of the
-    composer engine's behavior, and re-scoring would risk drift.
+    Mirrors the architect router's eligibility gate. Note: ``plan`` is
+    still in the signature so the orchestrator can pass it without
+    adapter code, but no plan-level checks fire today — the composer
+    engine accepts plans from any source (LLM / architect engine /
+    architect cache).
     """
     live = combined_context.live
     if getattr(live, "anchor_garment", None):
@@ -113,8 +118,6 @@ def is_engine_eligible(
         return False, "followup_request"
     if combined_context.previous_recommendations:
         return False, "has_previous_recommendations"
-    if plan.plan_source == "cache":
-        return False, "architect_plan_from_cache"
     return True, None
 
 
@@ -390,8 +393,11 @@ def _route_shadow(
 
     # Build comparison only when engine produced output. Engine misses
     # surface as shadow_comparison=None; ops dashboards distinguish
-    # via fallback_reason.
-    shadow_comparison: Any = None
+    # via fallback_reason. ``compare_composer_outputs`` returns a
+    # frozen dataclass; ``asdict`` flattens it so the orchestrator can
+    # JSON-serialise into a composer_shadow_decision tool_trace
+    # without a custom encoder.
+    shadow_comparison: dict[str, Any] | None = None
     if engine.composer_result is not None:
         from .quality import compare_composer_outputs
 
@@ -400,8 +406,8 @@ def _route_shadow(
             "engine_yaml_gaps": list(engine.yaml_gaps),
             "engine_outfit_count": len(engine.composer_result.outfits),
             "llm_outfit_count": len(llm_result.outfits),
-            "comparison": compare_composer_outputs(
-                engine.composer_result, llm_result
+            "comparison": asdict(
+                compare_composer_outputs(engine.composer_result, llm_result)
             ),
         }
 
