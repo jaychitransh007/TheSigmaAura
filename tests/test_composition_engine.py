@@ -308,6 +308,54 @@ class ConfidenceFormulaTests(unittest.TestCase):
         )
         self.assertEqual(score, 0.0)
 
+    def test_accepts_gap_list_and_applies_default_weight_1(self):
+        # New API: pass a list of gap strings instead of a count.
+        # Default weight per axis is 1.0, so behavior matches the
+        # legacy int-count path.
+        score_list = _compute_confidence(
+            [self._entry("clean")],
+            yaml_gap_count=["body_shape:NotARealShape", "seasonal_color_group:foo"],
+        )
+        score_int = _compute_confidence(
+            [self._entry("clean")], yaml_gap_count=2
+        )
+        self.assertAlmostEqual(score_list, score_int)
+
+    def test_per_axis_weight_amplifies_or_dampens(self):
+        # Override the axis weight map: body_shape gap weighted 2.0,
+        # seasonal weighted 0.5. Two gaps would have been penalty
+        # 2 * YAML_GAP_PENALTY = 0.40 with default weights; with
+        # 2.0 + 0.5 = 2.5 weights, it's 2.5 * YAML_GAP_PENALTY = 0.50.
+        from unittest.mock import patch
+        with patch.dict(
+            "agentic_application.composition.engine._YAML_GAP_AXIS_WEIGHTS",
+            {"body_shape": 2.0, "seasonal_color_group": 0.5},
+            clear=True,
+        ):
+            score = _compute_confidence(
+                [self._entry("clean")],
+                yaml_gap_count=[
+                    "body_shape:NotARealShape",
+                    "seasonal_color_group:foo",
+                ],
+            )
+        self.assertAlmostEqual(score, 1.0 - 2.5 * YAML_GAP_PENALTY)
+
+    def test_unknown_axis_uses_default_weight(self):
+        # Axis not in the weights map → weight 1.0.
+        from unittest.mock import patch
+        with patch.dict(
+            "agentic_application.composition.engine._YAML_GAP_AXIS_WEIGHTS",
+            {"body_shape": 3.0},
+            clear=True,
+        ):
+            score = _compute_confidence(
+                [self._entry("clean")],
+                yaml_gap_count=["query_structure:foo.bar"],
+            )
+        # query_structure has no override → weight 1.0.
+        self.assertAlmostEqual(score, 1.0 - 1.0 * YAML_GAP_PENALTY)
+
     def test_clamped_to_ceiling_one(self):
         score = _compute_confidence([], yaml_gap_count=0)
         self.assertEqual(score, 1.0)

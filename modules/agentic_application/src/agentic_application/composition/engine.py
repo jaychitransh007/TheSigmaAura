@@ -602,25 +602,65 @@ def _build_query_specs(
 # ─────────────────────────────────────────────────────────────────────────
 
 
+# Per-axis weights on YAML gaps. Default 1.0 = today's behavior;
+# entries here multiply the per-gap penalty for the named axis.
+# Increasing an axis weight makes that gap more catastrophic
+# (lowers confidence faster, more aggressive LLM fall-through).
+# Decreasing makes it more recoverable (engine keeps the plan).
+#
+# Axis names match the prefix of the gap string emitted by
+# _collect_contributions (e.g., "body_shape" from
+# "body_shape:NotARealShape", "seasonal_color_group" from
+# "seasonal_color_group:not_a_subseason", "query_structure" from
+# "query_structure:occasion_recommendation.not_in_yaml").
+#
+# Calibration is data-driven: after Phase 4.6 eval set lands
+# AND a few hundred post-flag-on engine turns accumulate, tune
+# values from telemetry (panels 22 + 23). Today's empty dict
+# (== all 1.0) preserves current behavior. The infrastructure
+# is here so tuning is a config change, not a code change.
+_YAML_GAP_AXIS_WEIGHTS: dict[str, float] = {}
+
+
+def _yaml_gap_weighted_count(gaps: Sequence[str]) -> float:
+    """Sum per-axis-weighted gap penalties. Each gap is a string
+    of shape "axis:value"; the axis prefix selects a weight from
+    ``_YAML_GAP_AXIS_WEIGHTS`` (default 1.0). Returns the weighted
+    count (a float because weights can be non-integer); callers
+    multiply by ``YAML_GAP_PENALTY`` to get the final deduction."""
+    if not gaps:
+        return 0.0
+    total = 0.0
+    for gap in gaps:
+        axis = gap.split(":", 1)[0]
+        total += _YAML_GAP_AXIS_WEIGHTS.get(axis, 1.0)
+    return total
+
+
 def _compute_confidence(
     provenance: Sequence[ProvenanceEntry],
-    yaml_gap_count: int,
+    yaml_gap_count: int | Sequence[str] = 0,
 ) -> float:
-    """Compute the §8 confidence. ``yaml_gap_count`` is the number of
-    input axes whose value wasn't found in any YAML — each one
-    subtracts ``YAML_GAP_PENALTY``. Single-axis gaps no longer
-    auto-disqualify the engine; three or more gaps drop confidence
-    below the 0.50 threshold and fall through cleanly via the
-    threshold check, not via a separate short-circuit branch."""
+    """Compute the §8 confidence. ``yaml_gap_count`` is either an
+    integer count (legacy, treated as already-weighted) or a list of
+    gap strings (production path — applies per-axis weights via
+    ``_YAML_GAP_AXIS_WEIGHTS``). Single-axis gaps no longer
+    auto-disqualify the engine; multiple gaps drop confidence below
+    the 0.50 threshold and fall through cleanly via the threshold
+    check, not via a separate short-circuit branch."""
     softs = sum(len(p.dropped_softs) for p in provenance)
     hards = sum(len(p.widened_hards) for p in provenance)
     omitted = sum(1 for p in provenance if p.status == "omitted")
+    if isinstance(yaml_gap_count, int):
+        weighted_gap_count: float = float(yaml_gap_count)
+    else:
+        weighted_gap_count = _yaml_gap_weighted_count(yaml_gap_count)
     score = (
         1.0
         - SOFT_DROP_PENALTY * softs
         - HARD_WIDEN_PENALTY * hards
         - ATTR_OMIT_PENALTY * omitted
-        - YAML_GAP_PENALTY * yaml_gap_count
+        - YAML_GAP_PENALTY * weighted_gap_count
     )
     return max(0.0, min(1.0, score))
 
@@ -682,8 +722,12 @@ def compose_direction(
     else:
         direction_type = qs_entry.default_structure or "paired"
 
+    # Pass the gap list directly so _compute_confidence can apply
+    # per-axis weights from _YAML_GAP_AXIS_WEIGHTS. Today's empty
+    # weights map = same as len(gaps), but this hooks tuning in
+    # without further code changes.
     yaml_gap_count = len(gaps)
-    confidence = _compute_confidence(provenance, yaml_gap_count)
+    confidence = _compute_confidence(provenance, gaps)
 
     composed_attributes: dict[str, tuple[str, ...]] = {
         p.attribute: p.final_flatters
