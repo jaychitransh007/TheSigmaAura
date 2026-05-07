@@ -36,8 +36,14 @@ class _FakeClient:
         out = list(self._rows)
         if filters:
             for k, v in filters.items():
-                want = v.split("eq.", 1)[1] if v.startswith("eq.") else v
-                out = [r for r in out if str(r.get(k)) == want]
+                if v.startswith("eq."):
+                    want = v.split("eq.", 1)[1]
+                    out = [r for r in out if str(r.get(k)) == want]
+                elif v.startswith("neq."):
+                    want = v.split("neq.", 1)[1]
+                    out = [r for r in out if str(r.get(k)) != want]
+                else:
+                    out = [r for r in out if str(r.get(k)) == v]
         if order and order.endswith(".desc"):
             key = order.split(".")[0]
             out.sort(key=lambda r: r.get(key) or "", reverse=True)

@@ -74,39 +74,57 @@ class Item:
     item_id: str
     slot: str  # "top" | "bottom" | "outerwear" | "complete"
     formality: str = ""
+    occasion_fit: str = ""
+    skin_exposure_level: str = ""
     dominant_color: str = ""
     contrast_level: str = ""
     pattern_type: str = ""
     pattern_scale: str = ""
     embellishment_level: str = ""
     color_saturation: str = ""
+    color_temperature: str = ""
+    color_value: str = ""
     fit_type: str = ""
+    fit_ease: str = ""
+    silhouette_contour: str = ""
     fabric_drape: str = ""
     fabric_texture: str = ""
     fabric_weight: str = ""
     sleeve_length: str = ""
+    neckline_type: str = ""
+    neckline_depth: str = ""
+    garment_length: str = ""
     cultural_register: str = ""  # "indian_traditional" | "indo_western" | "western"
     subtype: str = ""  # e.g. "bandhgala", "lehenga", "saree" — for bridal_specific
 
 
 # Maps architect hard_attrs key (PascalCase, catalog-side) → Item field
 # (lowercase snake_case, engine-side). Attributes that aren't on Item
-# (SilhouetteType, VolumeProfile, ShoulderStructure, etc.) get skipped
-# at tuple-level scoring — they're either body-shape preferences that
-# stay in query_document text, or attrs we don't track in the engine.
+# (VolumeProfile, ShoulderStructure, etc.) get skipped at tuple-level
+# scoring — they're body-shape preferences that stay in query_document
+# text rather than as a hard penalty.
 HARD_ATTR_TO_ITEM_FIELD: dict[str, str] = {
     "FormalityLevel": "formality",
+    "OccasionFit": "occasion_fit",
+    "SkinExposureLevel": "skin_exposure_level",
     "FabricDrape": "fabric_drape",
     "FabricWeight": "fabric_weight",
     "FabricTexture": "fabric_texture",
     "SleeveLength": "sleeve_length",
     "FitType": "fit_type",
+    "FitEase": "fit_ease",
+    "SilhouetteContour": "silhouette_contour",
     "PatternType": "pattern_type",
     "PatternScale": "pattern_scale",
     "EmbellishmentLevel": "embellishment_level",
     "ColorSaturation": "color_saturation",
+    "ColorTemperature": "color_temperature",
+    "ColorValue": "color_value",
     "PrimaryColor": "dominant_color",
     "ContrastLevel": "contrast_level",
+    "NecklineType": "neckline_type",
+    "NecklineDepth": "neckline_depth",
+    "GarmentLength": "garment_length",
 }
 
 
@@ -116,6 +134,14 @@ HARD_ATTR_TO_ITEM_FIELD: dict[str, str] = {
 # violation so neither dominates. Uniform across paired (2 items) and
 # three_piece (3 items) tuples — the loop just iterates items.
 HARD_ATTR_TUPLE_PENALTY: float = 0.10
+
+# Phase 5x: per-tuple ceiling on cumulative hard-attr penalty. With
+# the wider mapping (~19 attrs) and the orchestrator folding in
+# user-explicit preferences, an item violating many axes could
+# accumulate >1.0 penalty and dominate scoring. Cap at 0.40 per tuple
+# so violations demote-but-don't-kill, and pairing-rule violations
+# (formality, color_story, scale_balance) stay the dominant signal.
+HARD_ATTR_TUPLE_PENALTY_CAP: float = 0.40
 
 
 @dataclass(frozen=True)
@@ -136,7 +162,13 @@ class TupleContext:
     palette_anchors: tuple[str, ...] = ()
     body_shape: str = ""
     intent: str = "recommendation_request"
-    hard_attrs: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    # Allowed-value sets keyed by PascalCase attribute name. Composer
+    # engine pre-builds frozensets per direction so this is O(1)
+    # membership inside the hot tuple-scoring loop. Mapping to a
+    # Sequence is still accepted by _count_tuple_hard_attr_violations
+    # (it materializes a set defensively), but engine-built contexts
+    # use frozensets directly.
+    hard_attrs: Mapping[str, frozenset[str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -246,7 +278,8 @@ def evaluate_constraint(
 
 
 def _count_tuple_hard_attr_violations(
-    items: Sequence[Item], hard_attrs: Mapping[str, Sequence[str]]
+    items: Sequence[Item],
+    hard_attrs: Mapping[str, frozenset[str] | set[str] | Sequence[str]],
 ) -> int:
     """Sum hard_attrs violations across the tuple. Each item's enriched
     field (mapped via HARD_ATTR_TO_ITEM_FIELD) is checked against the
@@ -254,7 +287,10 @@ def _count_tuple_hard_attr_violations(
     count as a violation. Empty fields (``""``) and unmapped attribute
     names count as no opinion → no violation. Same loop shape applies
     to paired (2 items) and three_piece (3 items) tuples; complete
-    direction iterates the single item."""
+    direction iterates the single item.
+
+    ``hard_attrs`` values may be frozensets (engine-built — fast path)
+    or arbitrary sequences (test callers — defensive set conversion)."""
     if not hard_attrs:
         return 0
     count = 0
@@ -262,9 +298,13 @@ def _count_tuple_hard_attr_violations(
         field_name = HARD_ATTR_TO_ITEM_FIELD.get(attr_name)
         if field_name is None:
             continue  # attr not on Item; skip (e.g., SilhouetteType)
-        allowed_set = set(allowed) if allowed else set()
-        if not allowed_set:
+        if not allowed:
             continue
+        # Frozensets / sets pass through; sequences materialize once
+        # rather than re-walking the list per item below.
+        allowed_set = (
+            allowed if isinstance(allowed, (frozenset, set)) else set(allowed)
+        )
         for item in items:
             val = getattr(item, field_name, "") or ""
             if val and val not in allowed_set:
@@ -321,11 +361,15 @@ def score_tuple(
         soft_violations.extend(evaluate_constraint(cat, items_t, ctx, graph))
 
     hard_attr_violations = _count_tuple_hard_attr_violations(items_t, ctx.hard_attrs)
+    hard_attr_penalty = min(
+        HARD_ATTR_TUPLE_PENALTY * hard_attr_violations,
+        HARD_ATTR_TUPLE_PENALTY_CAP,
+    )
 
     score = (
         BASE_SCORE
         - SOFT_PENALTY * len(soft_violations)
-        - HARD_ATTR_TUPLE_PENALTY * hard_attr_violations
+        - hard_attr_penalty
     )
     return TupleScore(
         base_score=score,

@@ -24,11 +24,15 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Dynamically discover module src/ directories so a new modules/<name>/
 # pulled into the monorepo doesn't need a manual conftest update.
-# `sorted()` keeps the order deterministic so test-collection order is
-# stable across machines.
+# `sorted(..., reverse=True)` so that after the loop below uses
+# insert(0, ...) to push each path to the front of sys.path, the final
+# order is alphabetical (the LAST inserted ends up FIRST). Without
+# reverse, the alphabetically-last module would end up earliest in
+# sys.path — counter-intuitive, and risks unexpected import precedence
+# if two modules ever share a top-level package name.
 _MODULE_SRC_DIRS = (
     _REPO_ROOT,
-    *sorted((_REPO_ROOT / "modules").glob("*/src")),
+    *sorted((_REPO_ROOT / "modules").glob("*/src"), reverse=True),
 )
 
 # Move-to-front (rather than insert-only-if-absent) so the local source

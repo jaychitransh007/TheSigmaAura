@@ -158,17 +158,26 @@ def _project_item(product: RetrievedProduct, slot: str) -> Item:
         item_id=product.product_id,
         slot=slot,
         formality=get_str("FormalityLevel"),
+        occasion_fit=get_str("OccasionFit"),
+        skin_exposure_level=get_str("SkinExposureLevel"),
         dominant_color=get_str("PrimaryColor"),
         contrast_level=get_str("ContrastLevel"),
         pattern_type=get_str("PatternType"),
         pattern_scale=get_str("PatternScale"),
         embellishment_level=get_str("EmbellishmentLevel"),
         color_saturation=get_str("ColorSaturation"),
+        color_temperature=get_str("ColorTemperature"),
+        color_value=get_str("ColorValue"),
         fit_type=get_str("FitType"),
+        fit_ease=get_str("FitEase"),
+        silhouette_contour=get_str("SilhouetteContour"),
         fabric_drape=get_str("FabricDrape"),
         fabric_texture=get_str("FabricTexture"),
         fabric_weight=get_str("FabricWeight"),
         sleeve_length=get_str("SleeveLength"),
+        neckline_type=get_str("NecklineType"),
+        neckline_depth=get_str("NecklineDepth"),
+        garment_length=get_str("GarmentLength"),
         cultural_register=_infer_cultural_register(subtype),
         subtype=subtype,
     )
@@ -541,12 +550,15 @@ def compose_outfits(
     # value works as the direction-level constraint set used for tuple
     # scoring. Empty dict for LLM-architect-path plans (they don't
     # populate hard_attrs); score_tuple's tuple-level penalty no-ops.
-    direction_hard_attrs: dict[str, Mapping[str, tuple[str, ...]]] = {}
+    # Pre-build frozensets here so the inner tuple-scoring loop does
+    # O(1) membership lookups instead of re-materializing a set per
+    # item per attribute.
+    direction_hard_attrs: dict[str, Mapping[str, frozenset[str]]] = {}
     for d in plan.directions:
         if d.queries:
             ha = d.queries[0].hard_attrs or {}
             direction_hard_attrs[d.direction_id] = {
-                k: tuple(v) for k, v in ha.items()
+                k: frozenset(v) for k, v in ha.items()
             }
 
     # Enumerate + score across eligible directions. Each direction's

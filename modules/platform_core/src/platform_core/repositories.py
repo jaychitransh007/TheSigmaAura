@@ -136,16 +136,21 @@ class ConversationRepository:
         — if none of those have recommendations, we give up rather
         than walking arbitrarily far back.
         """
+        # Apply the exclude at the DB level rather than client-side so
+        # the scan_limit budget is fully spent on candidate rows. The
+        # previous client-side skip wasted one of the scan_limit slots
+        # whenever the excluded conversation was among the most recent.
+        filters: Dict[str, str] = {"user_id": f"eq.{user_id}"}
+        if exclude_conversation_id:
+            filters["id"] = f"neq.{exclude_conversation_id}"
         rows = self.client.select_many(
             "conversations",
             columns="id,session_context_json,updated_at",
-            filters={"user_id": f"eq.{user_id}"},
+            filters=filters,
             order="updated_at.desc",
             limit=scan_limit,
         )
         for row in rows:
-            if exclude_conversation_id and str(row.get("id") or "") == exclude_conversation_id:
-                continue
             ctx = row.get("session_context_json") or {}
             if ctx.get("last_recommendations"):
                 return row

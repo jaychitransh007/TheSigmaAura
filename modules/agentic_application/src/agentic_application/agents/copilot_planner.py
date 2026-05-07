@@ -85,6 +85,7 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     "target_product_type",
                     "weather_context",
                     "time_of_day",
+                    "extracted_preferences",
                 ],
                 "properties": {
                     "occasion_signal": {"type": ["string", "null"]},
@@ -104,6 +105,27 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     "target_product_type": {"type": "string"},
                     "weather_context": {"type": "string"},
                     "time_of_day": {"type": "string"},
+                    # Phase 5x: explicit user preferences along open
+                    # catalog-attribute axes. Strict-mode JSON schema
+                    # forbids arbitrary-key objects, so this is an array
+                    # of {attribute, values} pairs the parser folds into
+                    # a dict. Empty array means "user said nothing
+                    # specific about catalog attributes."
+                    "extracted_preferences": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["attribute", "values"],
+                            "properties": {
+                                "attribute": {"type": "string"},
+                                "values": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                            },
+                        },
+                    },
                 },
             },
             "action_parameters": {
@@ -471,6 +493,21 @@ class CopilotPlanner:
 
     def _parse_result(self, raw: Dict[str, Any]) -> CopilotPlanResult:
         resolved_raw = raw.get("resolved_context") or {}
+        # Fold array-of-pairs into dict (strict-mode JSON schema can't
+        # express arbitrary-key objects). Drop entries with empty
+        # attribute names or empty value lists.
+        prefs_array = resolved_raw.get("extracted_preferences") or []
+        extracted_preferences: Dict[str, List[str]] = {}
+        for entry in prefs_array:
+            if not isinstance(entry, dict):
+                continue
+            attr = str(entry.get("attribute") or "").strip()
+            values = entry.get("values") or []
+            if not attr or not isinstance(values, list):
+                continue
+            cleaned = [s for v in values if (s := str(v).strip())]
+            if cleaned:
+                extracted_preferences[attr] = cleaned
         resolved = CopilotResolvedContext(
             occasion_signal=resolved_raw.get("occasion_signal"),
             formality_hint=resolved_raw.get("formality_hint"),
@@ -483,6 +520,7 @@ class CopilotPlanner:
             target_product_type=str(resolved_raw.get("target_product_type") or ""),
             weather_context=str(resolved_raw.get("weather_context") or ""),
             time_of_day=str(resolved_raw.get("time_of_day") or ""),
+            extracted_preferences=extracted_preferences,
         )
 
         params_raw = raw.get("action_parameters") or {}

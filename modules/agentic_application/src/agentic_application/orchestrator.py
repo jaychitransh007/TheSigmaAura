@@ -293,6 +293,45 @@ def extract_urls(message: str) -> List[str]:
     return [match.rstrip(").,!?") for match in _URL_RE.findall(str(message or ""))]
 
 
+def _apply_user_preferences_to_plan(
+    plan: Any,
+    extracted_preferences: Dict[str, List[str]],
+) -> None:
+    """Phase 5x — fold the planner's open-axis user preferences into
+    ``plan.directions[*].queries[*].hard_attrs`` in place.
+
+    User-explicit values OVERRIDE any architect-derived values for the
+    same attribute. Applies uniformly to engine plans (which already
+    populate hard_attrs) and LLM plans (which leave hard_attrs empty).
+    Empty ``extracted_preferences`` is a no-op.
+
+    Validation is light: empty attribute names and empty value lists
+    are dropped. Unknown attribute names (not in catalog_enriched) are
+    accepted — the retrieval and tuple-scoring layers degrade
+    gracefully when an attribute can't be resolved against any item
+    (no violations, no penalty).
+    """
+    if not extracted_preferences:
+        return
+    # Short-circuit chain: empty key → drop; non-list value → drop;
+    # all values strip-empty → drop. Each str().strip() is computed
+    # exactly once via walrus.
+    cleaned = {
+        k_str: v_list
+        for k, v in extracted_preferences.items()
+        if (k_str := str(k).strip())
+        and isinstance(v, list)
+        and (v_list := [s for val in v if (s := str(val).strip())])
+    }
+    if not cleaned:
+        return
+    for direction in getattr(plan, "directions", []) or []:
+        for query in getattr(direction, "queries", []) or []:
+            existing = dict(getattr(query, "hard_attrs", None) or {})
+            existing.update(cleaned)
+            query.hard_attrs = existing
+
+
 class AgenticOrchestrator:
     """Application-layer orchestrator implementing the 7-component pipeline."""
 
@@ -885,6 +924,7 @@ class AgenticOrchestrator:
                 time_of_day=str(getattr(resolved_context, "time_of_day", "") or ""),
                 target_product_type=str(getattr(resolved_context, "target_product_type", "") or ""),
                 style_goal=str(getattr(resolved_context, "style_goal", "") or ""),
+                extracted_preferences=dict(getattr(resolved_context, "extracted_preferences", None) or {}),
             )
 
         last_live_context = dict(previous_context.get("last_live_context") or {})
@@ -913,6 +953,10 @@ class AgenticOrchestrator:
             time_of_day=str(getattr(resolved_context, "time_of_day", "") or last_live_context.get("time_of_day") or ""),
             target_product_type=str(getattr(resolved_context, "target_product_type", "") or last_live_context.get("target_product_type") or ""),
             style_goal=str(getattr(resolved_context, "style_goal", "") or last_live_context.get("style_goal") or ""),
+            extracted_preferences=(
+                dict(getattr(resolved_context, "extracted_preferences", None) or {})
+                or dict(last_live_context.get("extracted_preferences") or {})
+            ),
         )
 
     def create_conversation(
@@ -5202,6 +5246,18 @@ class AgenticOrchestrator:
             }
         architect_ms = int((time.monotonic() - t0) * 1000)
 
+        # Phase 5x — fold the planner's open-axis user preferences into
+        # the architect's QuerySpec.hard_attrs. Applies uniformly across
+        # both architect paths (engine + LLM) and across all directions/
+        # queries in the plan. User-explicit values OVERRIDE any
+        # YAML-derived hard_attrs the engine produced for the same
+        # attribute (the user's "I want high embellishment" wins over
+        # the occasion default). Empty extracted_preferences (no
+        # explicit attribute axes mentioned) is a no-op.
+        _apply_user_preferences_to_plan(
+            plan, initial_live_context.extracted_preferences,
+        )
+
         resolved = plan.resolved_context
         if resolved:
             effective_live_context = LiveContext(
@@ -5216,6 +5272,7 @@ class AgenticOrchestrator:
                 weather_context=initial_live_context.weather_context,
                 time_of_day=initial_live_context.time_of_day,
                 target_product_type=initial_live_context.target_product_type,
+                extracted_preferences=dict(initial_live_context.extracted_preferences),
             )
         else:
             effective_live_context = initial_live_context
@@ -7097,11 +7154,22 @@ class AgenticOrchestrator:
                 "resolved_hard_attrs": ha,
             }
 
-        def _flat(payload: Any, key: str) -> str:
+        def _flat(payload: Any, key: str) -> Any:
+            """Unwrap profile fields stored as either a bare value or a
+            ``{"value": ...}`` dict. Returns the unwrapped raw value;
+            callers wrap with str() / list() to coerce to display
+            shape. Used for both scalar fields (BodyShape) and list-
+            valued fields (PaletteAnchors) — the previous inline
+            access patterns stringified wrapped dicts to literal
+            "{'value': 'Hourglass'}", and for lists returned a literal
+            ['value'] when the stored shape was {"value": [...]}."""
             raw = (payload or {}).get(key) if isinstance(payload, dict) else None
             if isinstance(raw, dict):
-                return str(raw.get("value") or "").strip()
-            return str(raw or "").strip()
+                return raw.get("value")
+            return raw
+
+        analysis = getattr(user_context, "analysis_attributes", {}) or {}
+        derived = getattr(user_context, "derived_interpretations", {}) or {}
 
         return {
             "by_direction": by_direction,
@@ -7109,16 +7177,10 @@ class AgenticOrchestrator:
             "occasion_signal": getattr(live_context, "occasion_signal", "") or "",
             "formality_hint": getattr(live_context, "formality_hint", "") or "",
             "time_of_day": getattr(live_context, "time_of_day", "") or "",
-            "user_body_shape": _flat(getattr(user_context, "analysis_attributes", {}), "BodyShape"),
-            "user_frame_structure": str(
-                (getattr(user_context, "derived_interpretations", {}) or {}).get("FrameStructure") or ""
-            ).strip(),
-            "user_seasonal_color_group": str(
-                (getattr(user_context, "derived_interpretations", {}) or {}).get("SeasonalColorGroup") or ""
-            ).strip(),
-            "user_palette_anchors": list(
-                (getattr(user_context, "derived_interpretations", {}) or {}).get("PaletteAnchors") or []
-            ),
+            "user_body_shape": str(_flat(analysis, "BodyShape") or "").strip(),
+            "user_frame_structure": str(_flat(derived, "FrameStructure") or "").strip(),
+            "user_seasonal_color_group": str(_flat(derived, "SeasonalColorGroup") or "").strip(),
+            "user_palette_anchors": list(_flat(derived, "PaletteAnchors") or []),
             "architect_used_engine": bool(getattr(router_decision, "used_engine", False)) if router_decision else False,
             "architect_fallback_reason": getattr(router_decision, "fallback_reason", None) if router_decision else None,
             "composer_used_engine": bool(getattr(composer_router_decision, "used_engine", False)) if composer_router_decision else False,

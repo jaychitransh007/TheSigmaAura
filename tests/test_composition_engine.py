@@ -201,10 +201,10 @@ class YamlGapTests(unittest.TestCase):
         self.assertIn("body_shape:NotARealShape", result.yaml_gaps)
         # body_shape is load-bearing across many attributes; losing it
         # cascades into omits/relaxes that drop confidence below the
-        # threshold even with the per-gap-only penalty. The fallback
-        # reason should still tag the original gap-driven cause.
-        if result.fallback_reason is not None:
-            self.assertEqual(result.fallback_reason, "yaml_gap")
+        # threshold even with the per-gap-only penalty. Strict assertion
+        # — a regression that loses the yaml_gap fallback should fail
+        # this test, not silently skip.
+        self.assertEqual(result.fallback_reason, "yaml_gap")
 
     def test_unknown_occasion_marks_yaml_gap_and_falls_back_direction_type(self):
         result = compose_direction(
@@ -422,15 +422,21 @@ class HardAttrTierTests(unittest.TestCase):
         # At least one query carries hard_attrs.
         any_hard_attrs = any(q.hard_attrs for q in result.direction.queries)
         self.assertTrue(any_hard_attrs, "expected hard_attrs to be populated from hard-tier sources")
-        # SleeveLength from high_altitude_cool weather should be present.
+        # SleeveLength from high_altitude_cool weather must be on every
+        # query — the engine emits identical hard_attrs across queries
+        # in a direction. Strict assertion: a regression that loses
+        # SleeveLength from the resolved set (the original "Manali"
+        # failure class) must fail this test, not skip past it.
         for q in result.direction.queries:
-            if "SleeveLength" in q.hard_attrs:
-                # Engine reduced sleeve length; should NOT include sleeveless / cap / short.
-                disallowed = {"sleeveless", "cap", "short"}
-                self.assertFalse(
-                    disallowed & set(q.hard_attrs["SleeveLength"]),
-                    f"SleeveLength flatters leaked disallowed values: {q.hard_attrs['SleeveLength']}",
-                )
+            self.assertIn(
+                "SleeveLength", q.hard_attrs,
+                f"SleeveLength missing from hard_attrs in query {q.query_id}",
+            )
+            disallowed = {"sleeveless", "cap", "short"}
+            self.assertFalse(
+                disallowed & set(q.hard_attrs["SleeveLength"]),
+                f"SleeveLength flatters leaked disallowed values: {q.hard_attrs['SleeveLength']}",
+            )
 
     def test_paired_upgraded_to_three_piece_when_needs_topwear_resolved(self):
         # query_structure.yaml's everyday_casual entry has
@@ -470,6 +476,26 @@ class HardAttrTierTests(unittest.TestCase):
         self.assertEqual(result.direction.direction_type, "paired")
         roles = {q.role for q in result.direction.queries}
         self.assertNotIn("outerwear", roles)
+
+    def test_paired_upgraded_to_three_piece_in_extreme_cold(self):
+        # Extreme-cold weather buckets (cold_dry, high_altitude_cold)
+        # use ``dual_dependency`` instead of ``needs_topwear`` to
+        # signal that an outerwear layer is required. The upgrade
+        # logic must handle both signals or winter scenarios silently
+        # ship without coats.
+        graph = load_style_graph()
+        result = compose_direction(
+            inputs=_baseline_inputs(
+                occasion_signal="everyday_casual",
+                weather_context="cold_dry",
+                formality_hint="casual",
+            ),
+            graph=graph,
+            user=_user(),
+        )
+        self.assertEqual(result.direction.direction_type, "three_piece")
+        roles = {q.role for q in result.direction.queries}
+        self.assertIn("outerwear", roles)
 
     def test_weather_fabric_contribution_is_hard_tier_in_provenance(self):
         # REGRESSION (turn 575e2fe0): the source label stored in
