@@ -22,17 +22,22 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
+# Dynamically discover module src/ directories so a new modules/<name>/
+# pulled into the monorepo doesn't need a manual conftest update.
+# `sorted()` keeps the order deterministic so test-collection order is
+# stable across machines.
 _MODULE_SRC_DIRS = (
     _REPO_ROOT,
-    _REPO_ROOT / "modules" / "agentic_application" / "src",
-    _REPO_ROOT / "modules" / "catalog" / "src",
-    _REPO_ROOT / "modules" / "platform_core" / "src",
-    _REPO_ROOT / "modules" / "style_engine" / "src",
-    _REPO_ROOT / "modules" / "user" / "src",
-    _REPO_ROOT / "modules" / "user_profiler" / "src",
+    *sorted((_REPO_ROOT / "modules").glob("*/src")),
 )
 
+# Move-to-front (rather than insert-only-if-absent) so the local source
+# always wins over a stale PYTHONPATH entry or an installed package
+# with the same module name. Without this, an env that exported the
+# same path further back in sys.path would silently let pytest import
+# from there.
 for _path in _MODULE_SRC_DIRS:
     _str = str(_path)
-    if _str not in sys.path:
-        sys.path.insert(0, _str)
+    if _str in sys.path:
+        sys.path.remove(_str)
+    sys.path.insert(0, _str)
