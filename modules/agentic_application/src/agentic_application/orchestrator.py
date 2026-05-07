@@ -4379,7 +4379,44 @@ class AgenticOrchestrator:
         profile_confidence: ProfileConfidence,
 
     ) -> Dict[str, Any]:
+        # Cross-conversation fallback: if the user asks "why did you
+        # recommend that?" in a FRESH conversation (frontend may open a
+        # new conversation thread for follow-ups), the current
+        # conversation's session_context has no last_recommendations.
+        # Fall back to the user's most recently-updated conversation
+        # that DOES carry recommendations. Ops note: this is bounded
+        # to top-10 recent conversations — if none of those have a
+        # recommendation, the deterministic fallback message fires as
+        # before.
         previous_recommendations = list(previous_context.get("last_recommendations") or [])
+        cross_conv_fallback_used = False
+        if not previous_recommendations:
+            try:
+                user_row = self.repo.get_user_by_external_user_id(external_user_id) or {}
+                user_id = str(user_row.get("id") or "").strip()
+                if user_id:
+                    fallback_row = self.repo.get_latest_conversation_with_recommendations(
+                        user_id,
+                        exclude_conversation_id=conversation_id,
+                    )
+                    if fallback_row:
+                        fb_ctx = fallback_row.get("session_context_json") or {}
+                        previous_recommendations = list(fb_ctx.get("last_recommendations") or [])
+                        if previous_recommendations:
+                            previous_context = {**previous_context, **fb_ctx}
+                            cross_conv_fallback_used = True
+                            _log.info(
+                                "explanation_request: cross-conversation fallback "
+                                "loaded %d prior recs from conversation %s",
+                                len(previous_recommendations),
+                                str(fallback_row.get("id") or "")[:8],
+                            )
+            except Exception:  # noqa: BLE001 — fallback never breaks the turn
+                _log.warning(
+                    "explanation_request: cross-conversation fallback failed; "
+                    "continuing with empty previous_recommendations",
+                    exc_info=True,
+                )
         response_metadata = dict(previous_context.get("last_response_metadata") or {})
         target = dict(previous_recommendations[0] if previous_recommendations else {})
         title = str(target.get("title") or "that recommendation").strip()
@@ -4536,6 +4573,7 @@ class AgenticOrchestrator:
                     "recommendation_confidence_band": confidence_band,
                     "advisor_used": advisor_used,
                     "advisor_payload": advisor_payload,
+                    "cross_conversation_fallback_used": cross_conv_fallback_used,
                 },
             },
         )

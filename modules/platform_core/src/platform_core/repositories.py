@@ -117,6 +117,40 @@ class ConversationRepository:
             patch={"session_context_json": session_context, "updated_at": _now_iso()},
         )
 
+    def get_latest_conversation_with_recommendations(
+        self,
+        user_id: str,
+        *,
+        exclude_conversation_id: Optional[str] = None,
+        scan_limit: int = 10,
+    ) -> Optional[Dict[str, Any]]:
+        """Return the user's most-recently-updated conversation whose
+        ``session_context_json.last_recommendations`` is non-empty, or
+        ``None`` if no such conversation exists.
+
+        Used by the explanation handler to recover when the user asks
+        "why did you recommend that?" inside a fresh conversation
+        thread that doesn't carry the prior recommendation summary
+        (frontend opened a new chat between the recommendation and the
+        question). We scan the top ``scan_limit`` recent conversations
+        — if none of those have recommendations, we give up rather
+        than walking arbitrarily far back.
+        """
+        rows = self.client.select_many(
+            "conversations",
+            columns="id,session_context_json,updated_at",
+            filters={"user_id": f"eq.{user_id}"},
+            order="updated_at.desc",
+            limit=scan_limit,
+        )
+        for row in rows:
+            if exclude_conversation_id and str(row.get("id") or "") == exclude_conversation_id:
+                continue
+            ctx = row.get("session_context_json") or {}
+            if ctx.get("last_recommendations"):
+                return row
+        return None
+
     def update_user_profile(self, user_id: str, profile_json: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return self.client.update_one(
             "users",
