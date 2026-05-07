@@ -205,6 +205,31 @@ aura_composer_router_decision_total = Counter(
     labelnames=("used_engine", "fallback_reason"),
 )
 
+# Phase 5x.4a — open-axis user preferences observability.
+# Cap-hit fires when a single item / tuple's cumulative hard_attr penalty
+# would exceed _HARD_ATTR_PENALTY_CAP (currently 0.40) and gets clipped.
+# Watching this tells us whether the cap is the right magnitude:
+# - Frequent hits → cap is too tight, demoting items the user wanted
+# - Never hits   → cap is unreachable, can be tightened or removed
+# `stage` is "retrieval" (catalog_search_agent) or "tuple" (composer).
+aura_hard_attr_penalty_cap_hit_total = Counter(
+    "aura_hard_attr_penalty_cap_hit_total",
+    "Hard-attr penalty cap clip events, sliced by stage.",
+    labelnames=("stage",),
+)
+
+# Override fires when _apply_user_preferences_to_plan replaces a value
+# the architect engine had derived from a YAML source (occasion default,
+# weather rule, etc.) with the user's explicit preference. High override
+# rate means user prefs are dominating; low rate means they're marginal.
+# `attribute` is the PascalCase catalog attr (EmbellishmentLevel, etc.).
+# Cardinality is bounded by the planner-prompt glossary (~15 attrs).
+aura_user_preference_override_total = Counter(
+    "aura_user_preference_override_total",
+    "User-explicit preferences overriding architect-derived hard_attrs.",
+    labelnames=("attribute",),
+)
+
 
 # ── Convenience helpers ───────────────────────────────────────────────
 
@@ -356,6 +381,35 @@ def observe_tool_traces_insert_failure(tool_name: str) -> None:
     try:
         aura_tool_traces_insert_failure_total.labels(
             tool_name=tool_name or "unknown",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_hard_attr_penalty_cap_hit(stage: str) -> None:
+    """Tick the hard-attr penalty-cap clip counter. ``stage`` is
+    "retrieval" (catalog rerank) or "tuple" (composer scoring).
+    Watch the rate to tune ``_HARD_ATTR_PENALTY_CAP`` — frequent hits
+    suggest the cap is too tight, never hits suggest it's unreachable
+    and can be removed."""
+    try:
+        aura_hard_attr_penalty_cap_hit_total.labels(
+            stage=stage or "unknown",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_user_preference_override(attribute: str) -> None:
+    """Tick the user-preference-override counter, sliced by the
+    PascalCase catalog attribute (EmbellishmentLevel, ContrastLevel,
+    NecklineType, ...). Fires from
+    ``_apply_user_preferences_to_plan`` whenever the planner's
+    extracted_preferences value replaces an architect-derived
+    hard_attrs value for the same attribute."""
+    try:
+        aura_user_preference_override_total.labels(
+            attribute=attribute or "unknown",
         ).inc()
     except Exception:  # noqa: BLE001
         pass

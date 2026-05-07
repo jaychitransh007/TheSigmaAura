@@ -90,7 +90,14 @@ def _apply_hard_attr_penalty(
             if str(val) not in allowed_set:
                 violations += 1
         if violations:
-            penalty = min(_HARD_ATTR_PENALTY * violations, _HARD_ATTR_PENALTY_CAP)
+            raw_penalty = _HARD_ATTR_PENALTY * violations
+            penalty = min(raw_penalty, _HARD_ATTR_PENALTY_CAP)
+            if raw_penalty > _HARD_ATTR_PENALTY_CAP:
+                try:
+                    from platform_core.metrics import observe_hard_attr_penalty_cap_hit
+                    observe_hard_attr_penalty_cap_hit("retrieval")
+                except Exception:  # noqa: BLE001 — telemetry never breaks pipeline
+                    pass
             try:
                 p.similarity = float(getattr(p, "similarity", 0.0)) - penalty
             except (AttributeError, TypeError) as exc:
