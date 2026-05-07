@@ -313,12 +313,16 @@ def _apply_user_preferences_to_plan(
     """
     if not extracted_preferences:
         return
+    # Short-circuit chain: empty key → drop; non-list value → drop;
+    # all values strip-empty → drop. Each str().strip() is computed
+    # exactly once via walrus.
     cleaned = {
-        str(k).strip(): [str(v).strip() for v in vals if str(v).strip()]
-        for k, vals in extracted_preferences.items()
-        if str(k).strip() and vals
+        k_str: v_list
+        for k, v in extracted_preferences.items()
+        if (k_str := str(k).strip())
+        and isinstance(v, list)
+        and (v_list := [s for val in v if (s := str(val).strip())])
     }
-    cleaned = {k: vs for k, vs in cleaned.items() if vs}
     if not cleaned:
         return
     for direction in getattr(plan, "directions", []) or []:

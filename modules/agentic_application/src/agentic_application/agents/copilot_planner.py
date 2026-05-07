@@ -505,7 +505,7 @@ class CopilotPlanner:
             values = entry.get("values") or []
             if not attr or not isinstance(values, list):
                 continue
-            cleaned = [str(v).strip() for v in values if str(v).strip()]
+            cleaned = [s for v in values if (s := str(v).strip())]
             if cleaned:
                 extracted_preferences[attr] = cleaned
         resolved = CopilotResolvedContext(
