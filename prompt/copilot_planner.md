@@ -167,6 +167,28 @@ Populate `resolved_context` for every turn (use empty string / null defaults whe
 - `target_product_type`: When the user is browsing for a specific garment type without an occasion ("show me shirts", "find me blue dresses"), set this to the canonical garment subtype (e.g. `"shirt"`, `"dress"`, `"blazer"`). Leave as empty string for occasion-led requests and pairing requests. The architect uses this to plan a single-garment direction instead of a complete outfit.
 - `weather_context`: Free-form weather context if the user mentions it ("rainy", "humid", "cold", "summer day", "snowy"). Leave empty if not mentioned. The architect uses this as one of the styling directions.
 - `time_of_day`: Free-form time-of-day if the user mentions it ("morning", "afternoon", "evening", "late night"). Distinct from the legacy `time_hint` enum. Leave empty if not mentioned.
+- `extracted_preferences`: Open-axis user preferences along catalog attribute dimensions. Use ONLY when the user explicitly states a preference along one of the axes below. Do NOT infer; if the user didn't say it, leave the entry out. Emit an array of `{attribute, values}` objects. Each `attribute` must be one of the names below; each `values` must be a non-empty subset of that attribute's allowed values.
+  - `EmbellishmentLevel`: `["minimal", "subtle", "moderate", "heavy", "statement"]` — "more sparkle" → `["heavy","statement"]`, "minimal/clean" → `["minimal","subtle"]`.
+  - `ContrastLevel`: `["very_low", "low", "medium", "high", "very_high"]` — "high contrast" → `["high","very_high"]`.
+  - `PatternType`: `["solid", "geometric", "floral", "abstract", "stripe", "check", "animal", "ethnic", "novelty"]` — "florals" → `["floral"]`.
+  - `PatternScale`: `["micro", "small", "medium", "large", "oversized"]` — "small print" → `["micro","small"]`.
+  - `NecklineType`: `["round", "v_neck", "square", "boat", "halter", "off_shoulder", "high_neck", "collared", "scoop", "sweetheart"]` — "v-neck" → `["v_neck"]`.
+  - `NecklineDepth`: `["shallow", "moderate", "deep"]` — "deep neckline" → `["deep"]`.
+  - `FabricDrape`: `["fluid", "soft_structured", "structured", "stiff"]` — "flowy" → `["fluid"]`.
+  - `FabricWeight`: `["very_light", "light", "medium", "heavy", "very_heavy"]` — "lightweight" → `["very_light","light"]`.
+  - `FabricTexture`: `["smooth", "matte", "shiny", "shimmery", "rough", "fuzzy", "ribbed"]` — "shimmery" → `["shimmery","shiny"]`.
+  - `SilhouetteContour`: `["fitted", "straight", "tapered", "flared", "boxy", "draped"]` — "fitted" → `["fitted"]`, "flowy/loose" → `["flared","draped","boxy"]`.
+  - `FitEase`: `["close_fitting", "fitted", "regular", "relaxed", "oversized"]` — "fitted but not tight" → `["fitted","regular"]`.
+  - `ColorSaturation`: `["muted", "low", "medium", "high", "very_high"]` — "saturated/jewel tones" → `["high","very_high"]`, "dusty/muted" → `["muted","low"]`.
+  - `ColorTemperature`: `["warm", "cool", "neutral"]` — "warm tones" → `["warm"]`.
+  - `ColorValue`: `["very_dark", "dark", "medium", "light", "very_light"]` — "dark/moody" → `["dark","very_dark"]`.
+  - `GarmentLength`: `["mini", "short", "knee", "midi", "long", "floor"]` — "midi length" → `["midi"]`.
+
+  Examples (full array):
+  - "I want something with more embellishment" → `[{"attribute":"EmbellishmentLevel","values":["heavy","statement"]}]`
+  - "Show me low-contrast outfits with flowy fabric" → `[{"attribute":"ContrastLevel","values":["very_low","low"]},{"attribute":"FabricDrape","values":["fluid"]}]`
+  - "A v-neck top, fitted but not tight" → `[{"attribute":"NecklineType","values":["v_neck"]},{"attribute":"FitEase","values":["fitted","regular"]}]`
+  - "Find me outfits for Goa beaches" → `[]` (no explicit attribute preference; weather/occasion go in their own fields).
 
 ## Action Parameters
 

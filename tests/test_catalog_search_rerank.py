@@ -5,10 +5,13 @@ Engine-resolved hard_attrs map to attributes living in catalog_enriched
 metadata_json. So the penalty is applied in Python AFTER hydrate, not
 in SQL. These tests pin the re-rank semantics:
 
-- Items violating hard_attrs drop in similarity by 0.30 per violation
+- Items violating hard_attrs drop in similarity by 0.10 per violation
+- Total penalty per item caps at _HARD_ATTR_PENALTY_CAP (Phase 5x)
 - Items missing the attribute (no opinion) are unchanged
 - Final list truncates to retrieval_count
 - No-op when hard_attrs is empty/None (LLM-architect-path compat)
+- Phase 5x removes the previous 6-attr retrieval whitelist; every
+  hard_attrs key is applied so user-explicit preferences land
 """
 from __future__ import annotations
 
@@ -19,6 +22,7 @@ from typing import Any, Dict
 # sys.path setup is centralised in tests/conftest.py.
 from agentic_application.agents.catalog_search_agent import (
     _HARD_ATTR_PENALTY,
+    _HARD_ATTR_PENALTY_CAP,
     _apply_hard_attr_penalty,
 )
 
@@ -125,24 +129,58 @@ class ApplyHardAttrPenaltyTests(unittest.TestCase):
         self.assertEqual([p.product_id for p in out], ["p_good", "p_bad"])
         self.assertAlmostEqual(out[1].similarity, 0.35, places=5)
 
-    def test_only_retrieval_narrow_keys_apply_penalty(self):
-        # SilhouetteType is in the engine's hard_attrs but NOT in the
-        # retrieval-narrow set. It should be filtered out before applying
-        # penalty (it's a body-shape preference, not a hard contextual
-        # constraint). Body/palette stuff stays in query_document text.
+    def test_user_explicit_preference_applies_penalty(self):
+        # Phase 5x: previously the 6-key retrieval whitelist filtered
+        # out attrs like EmbellishmentLevel. Now planner-supplied user
+        # preferences ("I want more embellishment") flow through the
+        # architect into hard_attrs and apply a real retrieval penalty.
         products = [
-            _Product("p_offshape", 0.75, {"SilhouetteType": "boxy"}),
-            _Product("p_onshape", 0.70, {"SilhouetteType": "fitted"}),
+            _Product("p_minimal", 0.75, {"EmbellishmentLevel": "minimal"}),
+            _Product("p_heavy",   0.70, {"EmbellishmentLevel": "heavy"}),
         ]
         out = _apply_hard_attr_penalty(
             products,
-            {"SilhouetteType": ["fitted", "tapered"]},
+            {"EmbellishmentLevel": ["heavy", "statement"]},
             retrieval_count=10,
         )
-        # No penalty applied (SilhouetteType isn't in retrieval-narrow).
-        # Order unchanged.
-        self.assertEqual([p.product_id for p in out], ["p_offshape", "p_onshape"])
-        self.assertAlmostEqual(out[0].similarity, 0.75)
+        # p_minimal: 0.75 - 0.10 = 0.65 → drops below p_heavy at 0.70.
+        self.assertEqual([p.product_id for p in out], ["p_heavy", "p_minimal"])
+        self.assertAlmostEqual(out[1].similarity, 0.65, places=5)
+
+    def test_penalty_caps_at_hard_attr_penalty_cap(self):
+        # Phase 5x: with the whitelist removed, an item could violate
+        # 8+ attrs simultaneously. Cap prevents cumulative penalty from
+        # crushing cosine sim. p_bad violates 6 attrs but should only
+        # lose _HARD_ATTR_PENALTY_CAP, not 6 * 0.10.
+        products = [
+            _Product(
+                "p_bad", 0.90,
+                {
+                    "SleeveLength": "short",
+                    "FabricWeight": "very_heavy",
+                    "EmbellishmentLevel": "minimal",
+                    "ContrastLevel": "very_high",
+                    "PatternType": "abstract",
+                    "FitEase": "oversized",
+                },
+            ),
+        ]
+        out = _apply_hard_attr_penalty(
+            products,
+            {
+                "SleeveLength": ["full"],
+                "FabricWeight": ["light"],
+                "EmbellishmentLevel": ["heavy"],
+                "ContrastLevel": ["low"],
+                "PatternType": ["solid"],
+                "FitEase": ["fitted"],
+            },
+            retrieval_count=10,
+        )
+        # 6 violations × 0.10 = 0.60 raw, capped at _HARD_ATTR_PENALTY_CAP.
+        self.assertAlmostEqual(
+            out[0].similarity, 0.90 - _HARD_ATTR_PENALTY_CAP, places=5,
+        )
 
     def test_truncates_to_retrieval_count(self):
         products = [

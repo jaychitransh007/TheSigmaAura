@@ -293,6 +293,41 @@ def extract_urls(message: str) -> List[str]:
     return [match.rstrip(").,!?") for match in _URL_RE.findall(str(message or ""))]
 
 
+def _apply_user_preferences_to_plan(
+    plan: Any,
+    extracted_preferences: Dict[str, List[str]],
+) -> None:
+    """Phase 5x — fold the planner's open-axis user preferences into
+    ``plan.directions[*].queries[*].hard_attrs`` in place.
+
+    User-explicit values OVERRIDE any architect-derived values for the
+    same attribute. Applies uniformly to engine plans (which already
+    populate hard_attrs) and LLM plans (which leave hard_attrs empty).
+    Empty ``extracted_preferences`` is a no-op.
+
+    Validation is light: empty attribute names and empty value lists
+    are dropped. Unknown attribute names (not in catalog_enriched) are
+    accepted — the retrieval and tuple-scoring layers degrade
+    gracefully when an attribute can't be resolved against any item
+    (no violations, no penalty).
+    """
+    if not extracted_preferences:
+        return
+    cleaned = {
+        str(k).strip(): [str(v).strip() for v in vals if str(v).strip()]
+        for k, vals in extracted_preferences.items()
+        if str(k).strip() and vals
+    }
+    cleaned = {k: vs for k, vs in cleaned.items() if vs}
+    if not cleaned:
+        return
+    for direction in getattr(plan, "directions", []) or []:
+        for query in getattr(direction, "queries", []) or []:
+            existing = dict(getattr(query, "hard_attrs", None) or {})
+            existing.update(cleaned)
+            query.hard_attrs = existing
+
+
 class AgenticOrchestrator:
     """Application-layer orchestrator implementing the 7-component pipeline."""
 
@@ -885,6 +920,7 @@ class AgenticOrchestrator:
                 time_of_day=str(getattr(resolved_context, "time_of_day", "") or ""),
                 target_product_type=str(getattr(resolved_context, "target_product_type", "") or ""),
                 style_goal=str(getattr(resolved_context, "style_goal", "") or ""),
+                extracted_preferences=dict(getattr(resolved_context, "extracted_preferences", None) or {}),
             )
 
         last_live_context = dict(previous_context.get("last_live_context") or {})
@@ -913,6 +949,10 @@ class AgenticOrchestrator:
             time_of_day=str(getattr(resolved_context, "time_of_day", "") or last_live_context.get("time_of_day") or ""),
             target_product_type=str(getattr(resolved_context, "target_product_type", "") or last_live_context.get("target_product_type") or ""),
             style_goal=str(getattr(resolved_context, "style_goal", "") or last_live_context.get("style_goal") or ""),
+            extracted_preferences=(
+                dict(getattr(resolved_context, "extracted_preferences", None) or {})
+                or dict(last_live_context.get("extracted_preferences") or {})
+            ),
         )
 
     def create_conversation(
@@ -5202,6 +5242,18 @@ class AgenticOrchestrator:
             }
         architect_ms = int((time.monotonic() - t0) * 1000)
 
+        # Phase 5x — fold the planner's open-axis user preferences into
+        # the architect's QuerySpec.hard_attrs. Applies uniformly across
+        # both architect paths (engine + LLM) and across all directions/
+        # queries in the plan. User-explicit values OVERRIDE any
+        # YAML-derived hard_attrs the engine produced for the same
+        # attribute (the user's "I want high embellishment" wins over
+        # the occasion default). Empty extracted_preferences (no
+        # explicit attribute axes mentioned) is a no-op.
+        _apply_user_preferences_to_plan(
+            plan, initial_live_context.extracted_preferences,
+        )
+
         resolved = plan.resolved_context
         if resolved:
             effective_live_context = LiveContext(
@@ -5216,6 +5268,7 @@ class AgenticOrchestrator:
                 weather_context=initial_live_context.weather_context,
                 time_of_day=initial_live_context.time_of_day,
                 target_product_type=initial_live_context.target_product_type,
+                extracted_preferences=dict(initial_live_context.extracted_preferences),
             )
         else:
             effective_live_context = initial_live_context

@@ -80,20 +80,27 @@ class Item:
     pattern_scale: str = ""
     embellishment_level: str = ""
     color_saturation: str = ""
+    color_temperature: str = ""
+    color_value: str = ""
     fit_type: str = ""
+    fit_ease: str = ""
+    silhouette_contour: str = ""
     fabric_drape: str = ""
     fabric_texture: str = ""
     fabric_weight: str = ""
     sleeve_length: str = ""
+    neckline_type: str = ""
+    neckline_depth: str = ""
+    garment_length: str = ""
     cultural_register: str = ""  # "indian_traditional" | "indo_western" | "western"
     subtype: str = ""  # e.g. "bandhgala", "lehenga", "saree" — for bridal_specific
 
 
 # Maps architect hard_attrs key (PascalCase, catalog-side) → Item field
 # (lowercase snake_case, engine-side). Attributes that aren't on Item
-# (SilhouetteType, VolumeProfile, ShoulderStructure, etc.) get skipped
-# at tuple-level scoring — they're either body-shape preferences that
-# stay in query_document text, or attrs we don't track in the engine.
+# (VolumeProfile, ShoulderStructure, etc.) get skipped at tuple-level
+# scoring — they're body-shape preferences that stay in query_document
+# text rather than as a hard penalty.
 HARD_ATTR_TO_ITEM_FIELD: dict[str, str] = {
     "FormalityLevel": "formality",
     "FabricDrape": "fabric_drape",
@@ -101,12 +108,19 @@ HARD_ATTR_TO_ITEM_FIELD: dict[str, str] = {
     "FabricTexture": "fabric_texture",
     "SleeveLength": "sleeve_length",
     "FitType": "fit_type",
+    "FitEase": "fit_ease",
+    "SilhouetteContour": "silhouette_contour",
     "PatternType": "pattern_type",
     "PatternScale": "pattern_scale",
     "EmbellishmentLevel": "embellishment_level",
     "ColorSaturation": "color_saturation",
+    "ColorTemperature": "color_temperature",
+    "ColorValue": "color_value",
     "PrimaryColor": "dominant_color",
     "ContrastLevel": "contrast_level",
+    "NecklineType": "neckline_type",
+    "NecklineDepth": "neckline_depth",
+    "GarmentLength": "garment_length",
 }
 
 
@@ -116,6 +130,14 @@ HARD_ATTR_TO_ITEM_FIELD: dict[str, str] = {
 # violation so neither dominates. Uniform across paired (2 items) and
 # three_piece (3 items) tuples — the loop just iterates items.
 HARD_ATTR_TUPLE_PENALTY: float = 0.10
+
+# Phase 5x: per-tuple ceiling on cumulative hard-attr penalty. With
+# the wider mapping (~19 attrs) and the orchestrator folding in
+# user-explicit preferences, an item violating many axes could
+# accumulate >1.0 penalty and dominate scoring. Cap at 0.40 per tuple
+# so violations demote-but-don't-kill, and pairing-rule violations
+# (formality, color_story, scale_balance) stay the dominant signal.
+HARD_ATTR_TUPLE_PENALTY_CAP: float = 0.40
 
 
 @dataclass(frozen=True)
@@ -321,11 +343,15 @@ def score_tuple(
         soft_violations.extend(evaluate_constraint(cat, items_t, ctx, graph))
 
     hard_attr_violations = _count_tuple_hard_attr_violations(items_t, ctx.hard_attrs)
+    hard_attr_penalty = min(
+        HARD_ATTR_TUPLE_PENALTY * hard_attr_violations,
+        HARD_ATTR_TUPLE_PENALTY_CAP,
+    )
 
     score = (
         BASE_SCORE
         - SOFT_PENALTY * len(soft_violations)
-        - HARD_ATTR_TUPLE_PENALTY * hard_attr_violations
+        - hard_attr_penalty
     )
     return TupleScore(
         base_score=score,

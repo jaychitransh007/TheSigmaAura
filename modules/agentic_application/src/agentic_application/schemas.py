@@ -107,6 +107,15 @@ class LiveContext(BaseModel):
     # (e.g. "edgy", "old-money classic", "minimalist"). Replaces the
     # per-user stored archetype in driving directional vocabulary.
     style_goal: str = ""
+    # Phase 5x (May 8 2026): explicit user preferences along open
+    # catalog-attribute axes ("more embellishment", "lower contrast",
+    # "fitted but not tight"). Keys are PascalCase catalog_enriched
+    # column names (EmbellishmentLevel, ContrastLevel, NecklineType,
+    # ...), values are allowed-value lists. Populated by the planner;
+    # the orchestrator merges them into each QuerySpec.hard_attrs after
+    # the architect plans (overrides YAML-derived values). Empty dict
+    # means "no explicit attribute preferences."
+    extracted_preferences: Dict[str, List[str]] = Field(default_factory=dict)
 
 
 # --- Conversation Memory ---
@@ -436,6 +445,11 @@ class CopilotResolvedContext(BaseModel):
     is_followup: bool = False
     followup_intent: Optional[str] = None
     style_goal: str = ""
+    # Phase 5x (May 8 2026): explicit user preferences along open
+    # catalog-attribute axes (EmbellishmentLevel, ContrastLevel,
+    # NecklineType, ...). See LiveContext.extracted_preferences for
+    # the full contract.
+    extracted_preferences: Dict[str, List[str]] = Field(default_factory=dict)
     # "auto" (default), "wardrobe" (user wants only wardrobe items),
     # or "catalog" (user wants only catalog items). Extracted by the planner
     # from phrases like "from my wardrobe" or "from the catalog".
