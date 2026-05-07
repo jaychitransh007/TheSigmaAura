@@ -124,11 +124,21 @@ def _build_corpus() -> Dict[str, List[Tuple[str, str]]]:
         text = f"{name}: {_truncate(occ.mapping.notes, 600)}".strip(": ").strip()
         out["occasion"].append((name, text))
 
-    # Weather — description + notes
+    # Weather — description + indian_regions + notes. Including the
+    # region list is the load-bearing change here: the YAML keys are
+    # named after Indian climate descriptors (hot_humid, monsoon_warm)
+    # but planner outputs often use English-coastal vocabulary
+    # ("windy_coastal_possible", "beach", "seaside"). The region names
+    # (Mumbai, Chennai, Goa, Kerala) are exactly what the embedding
+    # needs to bridge those planner-side terms to the right bucket.
+    # Without them, a coastal-Indian-weather query lands closer to
+    # high_altitude_cool (whose description happens to contain "wind")
+    # than to hot_humid (which IS the Bombay/Goa coast bucket).
     for name, w in graph.weather.items():
         desc = (w.description or "").strip()
+        regions = ", ".join(w.indian_regions)
         notes = _truncate(w.mapping.notes, 600)
-        text = f"{name}: {desc}. {notes}".strip()
+        text = f"{name}: {desc}. Regions: {regions}. {notes}".strip()
         out["weather"].append((name, text))
 
     # Archetype — truncate long notes to keep signal on the core identity
