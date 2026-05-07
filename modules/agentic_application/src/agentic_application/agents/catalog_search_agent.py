@@ -34,6 +34,50 @@ _MAX_SEARCH_WORKERS = 2
 _SEARCH_MAX_RETRIES = 1
 _SEARCH_RETRY_DELAY_S = 0.5
 
+# Hard-attr re-rank (May 7 2026 — turn 8316c476). When the architect
+# engine resolved hard_attrs (SleeveLength, FabricWeight, etc.), the
+# rich attribute data lives in catalog_enriched, which we hydrate
+# AFTER cosine retrieval. So we over-fetch from cosine and re-rank
+# in Python by adding a per-violation penalty (matches the SQL function's
+# hard_penalty constant). Items violating drop in rank; items missing
+# the attribute (no opinion) are unchanged. Final list is truncated
+# back to retrieval_count.
+_RERANK_OVER_FETCH_FACTOR = 4
+_HARD_ATTR_PENALTY = 0.30
+
+
+def _apply_hard_attr_penalty(
+    products: List[Any],
+    hard_attrs: Optional[Dict[str, List[str]]],
+    retrieval_count: int,
+) -> List[Any]:
+    """Re-rank ``products`` by adding ``_HARD_ATTR_PENALTY`` per violation
+    of ``hard_attrs`` against each product's ``enriched_data``. Items
+    that lack the attribute (no opinion) carry no penalty. Returns the
+    top ``retrieval_count`` items by adjusted similarity.
+
+    No-op (just truncates to retrieval_count) when ``hard_attrs`` is
+    falsy — preserves backward compatibility with the LLM-architect path
+    which doesn't populate hard_attrs."""
+    if not hard_attrs:
+        return products[:retrieval_count]
+    for p in products:
+        ed = getattr(p, "enriched_data", None) or {}
+        violations = 0
+        for attr_name, allowed in hard_attrs.items():
+            val = ed.get(attr_name)
+            if val is None or val == "":
+                continue  # no opinion, no penalty
+            if str(val) not in allowed:
+                violations += 1
+        if violations:
+            try:
+                p.similarity = float(getattr(p, "similarity", 0.0)) - _HARD_ATTR_PENALTY * violations
+            except Exception:  # noqa: BLE001 — Pydantic immutability or odd shape
+                pass
+    products.sort(key=lambda x: -float(getattr(x, "similarity", 0.0)))
+    return products[:retrieval_count]
+
 
 class CatalogSearchAgent:
     def __init__(
@@ -146,14 +190,33 @@ class CatalogSearchAgent:
                 direction_id, query.query_id, query.role, filters,
             )
 
-            # Similarity search with retry on timeout
+            # Similarity search with retry on timeout. When the architect
+            # engine resolved hard_attrs, over-fetch from cosine so the
+            # post-hydrate Python re-rank has room to push violators
+            # below clean items. Without over-fetch, if every cosine
+            # top-K item violates, re-ranking can't recover.
+            #
+            # Why not enforce hard_attrs in SQL: catalog_item_embeddings.
+            # metadata_json only carries the typed-column subset
+            # (FormalityLevel, GarmentSubtype, etc.) — the rich
+            # attributes (SleeveLength, FabricWeight, ...) live in the
+            # separate catalog_enriched table that we hydrate AFTER
+            # retrieval. The SQL function's hard_attrs param sees keys
+            # that don't exist in metadata_json and counts 0
+            # violations. Re-rank in Python where we already have the
+            # rich enriched_data attached.
             t0 = time.monotonic()
             matches: list = []
+            search_count = (
+                plan.retrieval_count * _RERANK_OVER_FETCH_FACTOR
+                if query.hard_attrs
+                else plan.retrieval_count
+            )
             for attempt in range(_SEARCH_MAX_RETRIES + 1):
                 try:
                     matches = self._retrieval_gateway.similarity_search(
                         query_embedding=embedding,
-                        match_count=plan.retrieval_count,
+                        match_count=search_count,
                         filters=filters,
                         hard_attrs=query.hard_attrs or None,
                     ) or []
@@ -189,10 +252,21 @@ class CatalogSearchAgent:
             if exclude_ids:
                 products = [p for p in products if str(p.product_id or "") not in exclude_ids]
             excluded_count = pre_exclude - len(products)
+
+            # Engine-resolved hard-attr re-rank: penalize products whose
+            # enriched_data violates the architect's resolved per-attr
+            # allowed lists. Truncates to retrieval_count.
+            pre_rerank = len(products)
+            products = _apply_hard_attr_penalty(
+                products, query.hard_attrs or None, plan.retrieval_count,
+            )
             _log.info(
-                "CatalogSearch: [%s/%s] hydrated %d→%d in %dms (excluded %d)",
+                "CatalogSearch: [%s/%s] hydrated %d→%d in %dms "
+                "(excluded %d, rerank %d→%d, hard_attrs=%d)",
                 direction_id, query.query_id,
-                len(matches), len(products), hydrate_ms, excluded_count,
+                len(matches), pre_rerank, hydrate_ms, excluded_count,
+                pre_rerank, len(products),
+                len(query.hard_attrs or {}),
             )
 
             return idx, RetrievedSet(
