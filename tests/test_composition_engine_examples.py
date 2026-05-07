@@ -161,7 +161,7 @@ class WorkedExampleTests(unittest.TestCase):
 
     # §6.4 ---------------------------------------------------------------
 
-    def test_section_6_4_yaml_gap_triggers_low_confidence_fallback(self):
+    def test_section_6_4_single_yaml_gap_does_not_fall_through_after_layer_1(self):
         """A YAML gap (input value not in the relevant dimension)
         deducts 0.45 from confidence and lands below the 0.60 threshold,
         per the spec §8 calibration. Engine still returns a
@@ -184,11 +184,16 @@ class WorkedExampleTests(unittest.TestCase):
             user=self.user_female,
         )
         self.assertIsNotNone(result.direction, "engine should still return a DirectionSpec")
-        self.assertEqual(result.fallback_reason, "yaml_gap")
-        self.assertLess(result.confidence, CONFIDENCE_THRESHOLD)
+        # Layer 1 (May 7 2026): a single-axis gap is no longer a
+        # fall-through trigger. -0.20 confidence penalty leaves us at
+        # ~0.80 (well above threshold 0.50). Engine accepts; the gap
+        # is recorded in yaml_gaps for ops audit but doesn't kill the
+        # turn. Pre-Layer-1 this test asserted fallback_reason="yaml_gap".
+        self.assertGreaterEqual(result.confidence, CONFIDENCE_THRESHOLD)
+        self.assertIsNone(result.fallback_reason)
         self.assertTrue(
             any("seasonal_color_group" in g for g in result.yaml_gaps),
-            f"expected seasonal_color_group gap; got {result.yaml_gaps}",
+            f"expected seasonal_color_group gap recorded; got {result.yaml_gaps}",
         )
 
 
