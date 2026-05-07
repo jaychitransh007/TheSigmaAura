@@ -4440,6 +4440,27 @@ class AgenticOrchestrator:
                     style_preference=dict(profile.get("style_preference") or {}),
                     analysis_attributes=dict(analysis_status.get("attributes") or {}),
                 )
+                # Pull the prior turn's engine reasoning trail. When
+                # populated (recommendation_pipeline turns set it via
+                # _build_engine_reasoning_payload), the advisor gets
+                # the actual resolved hard_attrs, weather/occasion
+                # signals, and user-profile anchors that drove the
+                # outfits — instead of confabulating from outfit metadata.
+                engine_reasoning = dict(
+                    previous_context.get("last_engine_reasoning") or {}
+                )
+                # Slice the per-direction reasoning for THIS outfit's
+                # direction (the focus target). Falls back to empty if
+                # the direction_id isn't tracked (older session, or
+                # LLM-architect-path where hard_attrs is empty).
+                target_direction_id = str(target.get("direction_id") or "").strip()
+                direction_reasoning = (
+                    (engine_reasoning.get("by_direction") or {}).get(
+                        target_direction_id, {}
+                    )
+                    if target_direction_id
+                    else {}
+                )
                 style_advice = self.style_advisor.advise(
                     mode="explanation",
                     query=message,
@@ -4462,6 +4483,21 @@ class AgenticOrchestrator:
                         "archetype_scores": archetype_scores,
                         "rater_rationale": rater_rationale,
                         "composer_rationale": composer_rationale,
+                        # Engine reasoning trail (May 7 2026): the
+                        # actual signals that drove retrieval +
+                        # composition, surfaced so the advisor can
+                        # ground its answer in real reasoning.
+                        # ``direction_specific`` pulls just this
+                        # outfit's direction; ``turn_level`` covers
+                        # the user/planner signals that applied to
+                        # the whole turn.
+                        "engine_reasoning": {
+                            "direction_specific": direction_reasoning,
+                            "turn_level": {
+                                k: v for k, v in engine_reasoning.items()
+                                if k != "by_direction"
+                            },
+                        },
                     },
                     profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
                 )
@@ -6038,6 +6074,21 @@ class AgenticOrchestrator:
         )
 
         rec_summary = self._build_recommendation_summaries(evaluated, candidates)
+        # Capture the engine's reasoning trail for explanation_request
+        # turns. The architect router emitted resolved hard_attrs
+        # (per-attribute allowed value lists from weather + body +
+        # palette + occasion), the planner emitted occasion + weather +
+        # formality + time-of-day, the user profile carries body_shape +
+        # frame_structure + seasonal_color_group. Stashing it here lets
+        # _handle_explanation_request later pass real reasoning data to
+        # the style advisor instead of just outfit-summary metadata.
+        last_engine_reasoning = self._build_engine_reasoning_payload(
+            plan=plan,
+            router_decision=_router_decision,
+            composer_router_decision=_composer_router_decision,
+            live_context=effective_live_context,
+            user_context=user_context,
+        )
         self.repo.update_conversation_context(
             conversation_id=conversation_id,
             session_context={
@@ -6045,6 +6096,7 @@ class AgenticOrchestrator:
                 "memory": conversation_memory.model_dump(),
                 "last_direction_types": sorted({d.direction_type for d in plan.directions}),
                 "last_recommendations": rec_summary,
+                "last_engine_reasoning": last_engine_reasoning,
                 "last_occasion": effective_live_context.occasion_signal or "",
                 "last_live_context": effective_live_context.model_dump(),
                 "last_response_metadata": response.metadata,
@@ -6970,6 +7022,69 @@ class AgenticOrchestrator:
             "outfits": [],
             "follow_up_suggestions": plan_result.follow_up_suggestions[:5],
             "metadata": metadata,
+        }
+
+    @staticmethod
+    def _build_engine_reasoning_payload(
+        *,
+        plan: Any,
+        router_decision: Any,
+        composer_router_decision: Any,
+        live_context: Any,
+        user_context: Any,
+    ) -> Dict[str, Any]:
+        """Snapshot of the engine's reasoning trail for explanation_request
+        turns. Captures (1) the resolved per-direction hard_attrs the
+        architect engine emitted (e.g., SleeveLength: [three_quarter, full]
+        for cool weather), (2) the planner's resolved occasion + weather +
+        formality + time signals, (3) the user's body / palette / frame
+        anchors that drove personalization, and (4) which engines accepted
+        vs fell through.
+
+        Persisted on ``previous_context.last_engine_reasoning`` so that
+        ``_handle_explanation_request`` can pass it to the style advisor
+        verbatim. The advisor grounds its explanation in this real
+        reasoning rather than fabricating something from outfit metadata.
+        """
+        # Per-direction hard_attrs (architect emits identical hard_attrs
+        # across every QuerySpec in a direction — pick first).
+        by_direction: Dict[str, Dict[str, Any]] = {}
+        for d in plan.directions:
+            ha: Dict[str, Any] = {}
+            if d.queries:
+                ha = dict(d.queries[0].hard_attrs or {})
+            by_direction[d.direction_id] = {
+                "direction_label": d.label,
+                "direction_type": d.direction_type,
+                "resolved_hard_attrs": ha,
+            }
+
+        def _flat(payload: Any, key: str) -> str:
+            raw = (payload or {}).get(key) if isinstance(payload, dict) else None
+            if isinstance(raw, dict):
+                return str(raw.get("value") or "").strip()
+            return str(raw or "").strip()
+
+        return {
+            "by_direction": by_direction,
+            "weather_context": getattr(live_context, "weather_context", "") or "",
+            "occasion_signal": getattr(live_context, "occasion_signal", "") or "",
+            "formality_hint": getattr(live_context, "formality_hint", "") or "",
+            "time_of_day": getattr(live_context, "time_of_day", "") or "",
+            "user_body_shape": _flat(getattr(user_context, "analysis_attributes", {}), "BodyShape"),
+            "user_frame_structure": str(
+                (getattr(user_context, "derived_interpretations", {}) or {}).get("FrameStructure") or ""
+            ).strip(),
+            "user_seasonal_color_group": str(
+                (getattr(user_context, "derived_interpretations", {}) or {}).get("SeasonalColorGroup") or ""
+            ).strip(),
+            "user_palette_anchors": list(
+                (getattr(user_context, "derived_interpretations", {}) or {}).get("PaletteAnchors") or []
+            ),
+            "architect_used_engine": bool(getattr(router_decision, "used_engine", False)) if router_decision else False,
+            "architect_fallback_reason": getattr(router_decision, "fallback_reason", None) if router_decision else None,
+            "composer_used_engine": bool(getattr(composer_router_decision, "used_engine", False)) if composer_router_decision else False,
+            "composer_fallback_reason": getattr(composer_router_decision, "fallback_reason", None) if composer_router_decision else None,
         }
 
     @staticmethod
