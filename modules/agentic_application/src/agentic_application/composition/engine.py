@@ -602,24 +602,78 @@ def _build_query_specs(
 # ─────────────────────────────────────────────────────────────────────────
 
 
-# Per-axis weights on YAML gaps. Default 1.0 = today's behavior;
-# entries here multiply the per-gap penalty for the named axis.
-# Increasing an axis weight makes that gap more catastrophic
-# (lowers confidence faster, more aggressive LLM fall-through).
-# Decreasing makes it more recoverable (engine keeps the plan).
+# Per-axis weights on YAML gaps. Default 1.0 (axes not in this map
+# get the default); entries here multiply the per-gap penalty for
+# the named axis. Higher = more catastrophic (lowers confidence
+# faster, more aggressive LLM fall-through). Lower = more
+# recoverable (engine keeps the plan despite the gap).
 #
 # Axis names match the prefix of the gap string emitted by
-# _collect_contributions (e.g., "body_shape" from
-# "body_shape:NotARealShape", "seasonal_color_group" from
-# "seasonal_color_group:not_a_subseason", "query_structure" from
-# "query_structure:occasion_recommendation.not_in_yaml").
+# _collect_contributions (line ~309 onwards). E.g., a body_shape
+# value missing from the YAML produces "body_shape:NotARealShape";
+# the prefix "body_shape" selects the weight.
 #
-# Calibration is data-driven: after Phase 4.6 eval set lands
-# AND a few hundred post-flag-on engine turns accumulate, tune
-# values from telemetry (panels 22 + 23). Today's empty dict
-# (== all 1.0) preserves current behavior. The infrastructure
-# is here so tuning is a config change, not a code change.
-_YAML_GAP_AXIS_WEIGHTS: dict[str, float] = {}
+# Values reasoned May 8 2026 from cascade analysis — how many
+# attributes downstream of each gap depend on the missing axis.
+# These are reasoned defaults, not telemetry-tuned. Tune from
+# panels 22+23 once Phase 4.6 eval data lands.
+#
+#   1.5 (catastrophic) — gap cascades into ~10 attrs:
+#     - body_shape: drives FitType, SilhouetteContour,
+#       NecklineType, PatternScale, VolumeProfile, ShoulderStructure,
+#       WaistDefinition, HipDefinition, BodyFocusZone. Without it
+#       the engine resolves nothing structural correctly.
+#     - query_structure: without it the engine can't decide
+#       direction_type (paired vs three_piece vs complete). Falls
+#       back to "paired" but loses the signal entirely.
+#
+#   1.3 (significant) — gap cascades into ~5 attrs:
+#     - frame_structure: drives PatternType, PatternScale,
+#       LineDirection. Significant for visual outcome.
+#
+#   1.2 (notable) — gap affects 3-4 attrs:
+#     - occasion_signal: drives StylingCompleteness, FormalityLevel,
+#       EmbellishmentLevel default. Engine still resolves a plan
+#       but the resolution is occasion-blind.
+#
+#   1.0 (default — applies to axes not in this map):
+#     - any axis not enumerated above
+#
+#   0.8 (moderately recoverable) — gap affects narrow set:
+#     - weather_context: contributes to FabricWeight,
+#       SleeveLength, fabric drape preferences. Engine resolves a
+#       plan that's weather-blind but otherwise complete.
+#
+#   0.7 (recoverable) — gap affects color attrs only:
+#     - seasonal_color_group: drives PrimaryColor, ContrastLevel,
+#       ColorTemperature, ColorSaturation, ColorValue. Engine
+#       still resolves clean structural attrs; only the color
+#       direction is impaired (and the rater downstream will
+#       reweight on color anyway).
+#
+#   0.5 (very recoverable) — gap is a soft preference:
+#     - formality_hint: derived field with planner-level
+#       fallback (occasion_signal often implies formality).
+#     - archetype: deprecated May 2026 with style_preference
+#       drop; rare in practice.
+#     - risk_tolerance: soft preference, doesn't break structure.
+_YAML_GAP_AXIS_WEIGHTS: dict[str, float] = {
+    # catastrophic
+    "body_shape": 1.5,
+    "query_structure": 1.5,
+    # significant
+    "frame_structure": 1.3,
+    # notable
+    "occasion_signal": 1.2,
+    # moderately recoverable
+    "weather_context": 0.8,
+    # recoverable
+    "seasonal_color_group": 0.7,
+    # very recoverable
+    "formality_hint": 0.5,
+    "archetype": 0.5,
+    "risk_tolerance": 0.5,
+}
 
 
 def _yaml_gap_weighted_count(gaps: Sequence[str]) -> float:

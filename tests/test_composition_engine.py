@@ -310,16 +310,37 @@ class ConfidenceFormulaTests(unittest.TestCase):
 
     def test_accepts_gap_list_and_applies_default_weight_1(self):
         # New API: pass a list of gap strings instead of a count.
-        # Default weight per axis is 1.0, so behavior matches the
-        # legacy int-count path.
+        # Use axis names NOT in the production weights map so the
+        # default weight 1.0 applies — matches the legacy int-count
+        # path. (Real production weights for body_shape /
+        # seasonal_color_group / etc. are tested below.)
         score_list = _compute_confidence(
             [self._entry("clean")],
-            yaml_gap_count=["body_shape:NotARealShape", "seasonal_color_group:foo"],
+            yaml_gap_count=["unknown_axis:foo", "another_unknown:bar"],
         )
         score_int = _compute_confidence(
             [self._entry("clean")], yaml_gap_count=2
         )
         self.assertAlmostEqual(score_list, score_int)
+
+    def test_production_weights_amplify_catastrophic_axes(self):
+        # body_shape and query_structure are weighted 1.5 (catastrophic
+        # cascade). A single body_shape gap should produce more penalty
+        # than a single seasonal_color_group gap (weighted 0.7).
+        bs_score = _compute_confidence(
+            [self._entry("clean")],
+            yaml_gap_count=["body_shape:NotARealShape"],
+        )
+        scg_score = _compute_confidence(
+            [self._entry("clean")],
+            yaml_gap_count=["seasonal_color_group:foo"],
+        )
+        # body_shape gap should hurt MORE than seasonal gap.
+        self.assertLess(bs_score, scg_score)
+        # Check the actual numbers: body_shape=1.5*0.20=0.30, so 1.0-0.30=0.70
+        self.assertAlmostEqual(bs_score, 1.0 - 1.5 * YAML_GAP_PENALTY)
+        # seasonal=0.7*0.20=0.14, so 1.0-0.14=0.86
+        self.assertAlmostEqual(scg_score, 1.0 - 0.7 * YAML_GAP_PENALTY)
 
     def test_per_axis_weight_amplifies_or_dampens(self):
         # Override the axis weight map: body_shape gap weighted 2.0,
