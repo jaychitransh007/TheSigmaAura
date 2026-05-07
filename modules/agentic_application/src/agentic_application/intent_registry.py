@@ -114,6 +114,21 @@ ENGINE_FRIENDLY_FOLLOWUP_INTENTS: frozenset[str] = frozenset({
     # engine-friendly because the engine still produces a clean
     # plan; the avoidance is layered on after.
     FollowUpIntent.CHANGE_COLOR.value,
+    # full_alternative ("something completely different") — engine
+    # produces a clean plan, the orchestrator's
+    # _apply_full_alternative_rotation rotates the direction_type
+    # one step (paired ↔ three_piece, or paired → complete) so the
+    # outfit SHAPE changes vs the prior turn. Same profile/palette
+    # — different structure.
+    FollowUpIntent.FULL_ALTERNATIVE.value,
+    # increase_boldness ("bolder/louder/more daring") — engine
+    # produces a clean plan, the orchestrator's
+    # _apply_increase_boldness bumps ContrastLevel and
+    # ColorSaturation hard_attrs up one notch and prefers
+    # EmbellishmentLevel ≥ moderate. Catalog axes the engine
+    # already populates; the transform is a notch-shift on the
+    # resolved values.
+    FollowUpIntent.INCREASE_BOLDNESS.value,
 })
 
 

@@ -188,14 +188,23 @@ class IsEngineEligibleTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIsNone(reason)
 
-    def test_followup_with_full_alternative_still_ineligible(self):
-        # full_alternative is the only intent that still requires LLM.
+    def test_followup_with_full_alternative_eligible(self):
+        # May 8 2026: full_alternative is now engine-friendly via
+        # post-architect direction_type rotation in the orchestrator.
         live = _live()
         live.is_followup = True  # pyright: ignore
         live.followup_intent = "full_alternative"  # pyright: ignore
         ok, reason = is_engine_eligible(_ctx(live=live), _plan())
-        self.assertFalse(ok)
-        self.assertEqual(reason, "followup_request")
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
+
+    def test_followup_with_increase_boldness_eligible(self):
+        live = _live()
+        live.is_followup = True  # pyright: ignore
+        live.followup_intent = "increase_boldness"  # pyright: ignore
+        ok, reason = is_engine_eligible(_ctx(live=live), _plan())
+        self.assertTrue(ok)
+        self.assertIsNone(reason)
 
     def test_followup_with_change_color_eligible(self):
         live = _live()
