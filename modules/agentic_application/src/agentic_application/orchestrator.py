@@ -482,6 +482,15 @@ class AgenticOrchestrator:
         self._composer_engine_enabled: bool = self._bool_from_config(
             config, "composer_engine_enabled", False
         )
+        # Try-on render flag (May 8 2026). Default OFF so dev loops
+        # don't burn ~$0.12/turn on Gemini renders nobody is looking
+        # at. When False the tryon_render stage is skipped entirely;
+        # outfit cards ship without a rendered preview. Set
+        # AURA_TRYON_ENABLED=true for demos / production / any
+        # iteration where the rendered image actually matters.
+        self._tryon_enabled: bool = self._bool_from_config(
+            config, "tryon_enabled", False
+        )
         self._composition_graph = None
         # Phase 4.11 — input canonicalization: lazy-loaded embedding
         # bank (one-time disk read) + lazy-init OpenAI embed client
@@ -2056,6 +2065,15 @@ class AgenticOrchestrator:
         import hashlib
         from datetime import datetime, timezone
         from pathlib import Path
+
+        # Tryon flag (May 8 2026): when AURA_TRYON_ENABLED is off, the
+        # earlier tryon_render stage was skipped — but this method has
+        # its own cache-miss → generate fallback that would otherwise
+        # call Gemini. Short-circuit here too so the flag actually
+        # zeroes Gemini cost. Cards keep whatever tryon_image was set
+        # at format time (cache hit) or stay empty (cache miss).
+        if not self._tryon_enabled:
+            return
 
         person_path = self.onboarding_gateway.get_person_image_path(external_user_id)
         if not person_path:
@@ -6032,9 +6050,24 @@ class AgenticOrchestrator:
             # outfits/{rank}/visual-eval. We still render top-N via Gemini
             # so every shipped card has a try-on image and the user can
             # scrutinise any one of them with a click.
-            if person_image_path and ranked_pool:
+            #
+            # May 8 2026: try-on is now flag-gated. When AURA_TRYON_ENABLED
+            # is unset / false, skip the entire stage — recommendations
+            # ship without rendered previews. Saves $0.12/turn during
+            # dev loops where the developer ignores the image anyway.
+            rendered: List[tuple[OutfitCandidate, str]] = []
+            if not self._tryon_enabled:
+                emit(
+                    "tryon_render", "skipped",
+                    ctx={"reason": "flag_off", "pool_size": len(ranked_pool)},
+                )
+                _log.info(
+                    "tryon_render skipped: AURA_TRYON_ENABLED is off; "
+                    "shipping %d outfit(s) without rendered previews",
+                    min(len(ranked_pool), self.recommendation_final_top_n),
+                )
+            elif person_image_path and ranked_pool:
                 visual_path_attempted = True
-                rendered: List[tuple[OutfitCandidate, str]] = []
                 try:
                     emit("tryon_render", "started", ctx={"target_count": self.recommendation_final_top_n})
                     trace_start(

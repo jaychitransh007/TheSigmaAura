@@ -1,0 +1,112 @@
+"""Tests for the AURA_TRYON_ENABLED flag (May 8 2026).
+
+Tryon is the single biggest cost line ($0.117/turn) and biggest
+latency line (~22s). The flag gates the entire render stage so dev
+loops don't burn cost on renders nobody is looking at. Covered here:
+
+- ``AuraRuntimeConfig.tryon_enabled`` defaults False
+- ``load_config()`` parses ``AURA_TRYON_ENABLED`` from env (truthy
+  and falsy values)
+- ``_attach_tryon_images`` short-circuits when the flag is off
+  (no Gemini call even on cache miss)
+
+The flag-on tryon_render-stage path is already exercised by the
+existing rendering tests; we don't reproduce them here.
+"""
+from __future__ import annotations
+
+import os
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+# CI runs `python -m unittest discover` (not pytest); inline the
+# sys.path bootstrap so this file works under both runners.
+_ROOT = Path(__file__).resolve().parents[1]
+for _p in (
+    _ROOT,
+    _ROOT / "modules" / "user" / "src",
+    _ROOT / "modules" / "agentic_application" / "src",
+    _ROOT / "modules" / "catalog" / "src",
+    _ROOT / "modules" / "platform_core" / "src",
+    _ROOT / "modules" / "user_profiler" / "src",
+):
+    _sp = str(_p)
+    if _sp not in sys.path:
+        sys.path.insert(0, _sp)
+
+from platform_core.config import AuraRuntimeConfig, load_config
+
+
+class TryonConfigParsingTests(unittest.TestCase):
+
+    def test_default_is_false(self):
+        # Dataclass-level default — touched only when load_config isn't.
+        self.assertFalse(AuraRuntimeConfig(
+            supabase_rest_url="x", supabase_service_role_key="y",
+        ).tryon_enabled)
+
+    def _load_with_env(self, raw_value: str) -> bool:
+        # Hard-set the env, then load. Need to also satisfy load_config's
+        # other required env vars; the test seeds the bare minimum.
+        with patch.dict(os.environ, {
+            "AURA_TRYON_ENABLED": raw_value,
+            "SUPABASE_URL": "http://x.example",
+            "SUPABASE_SERVICE_ROLE_KEY": "test-key",
+            "ENV_FILE": "/dev/null",  # avoid loading any real .env
+        }, clear=False):
+            cfg = load_config()
+        return cfg.tryon_enabled
+
+    def test_env_truthy_strings_enable(self):
+        for v in ("1", "true", "TRUE", "Yes", "on", "ON"):
+            self.assertTrue(self._load_with_env(v), f"value {v!r} should be truthy")
+
+    def test_env_falsy_strings_disable(self):
+        for v in ("", "0", "false", "no", "off", "garbage", "tru"):
+            self.assertFalse(self._load_with_env(v), f"value {v!r} should be falsy")
+
+
+class AttachTryonImagesGateTests(unittest.TestCase):
+    """Confirms _attach_tryon_images short-circuits when the flag is
+    off, so the cache-miss → Gemini fallback inside that method
+    doesn't defeat the flag."""
+
+    def _build_orchestrator(self, *, tryon_enabled: bool):
+        # Build a minimal stub orchestrator without touching __init__'s
+        # full wiring. We just need _attach_tryon_images bound to self
+        # plus the _tryon_enabled and tryon_service attributes.
+        from agentic_application.orchestrator import AgenticOrchestrator
+        orch = AgenticOrchestrator.__new__(AgenticOrchestrator)
+        orch._tryon_enabled = tryon_enabled
+        orch.tryon_service = MagicMock()
+        orch.tryon_quality_gate = MagicMock()
+        orch.onboarding_gateway = MagicMock()
+        orch.onboarding_gateway.get_person_image_path.return_value = "/tmp/person.jpg"
+        orch.repo = MagicMock()
+        return orch
+
+    def test_flag_off_skips_gemini_entirely(self):
+        orch = self._build_orchestrator(tryon_enabled=False)
+        # Even with outfits + a person image present, the method must
+        # short-circuit before hitting tryon_service.
+        from agentic_application.schemas import OutfitCard
+        outfits = [OutfitCard(rank=1, title="t", reasoning="r", items=[])]
+        orch._attach_tryon_images(outfits, "external_user_id")
+        orch.tryon_service.generate_tryon_outfit.assert_not_called()
+        orch.repo.find_tryon_image_by_garments.assert_not_called()
+
+    def test_flag_on_proceeds_to_person_image_lookup(self):
+        # With the flag ON we DO get past the gate and hit the person
+        # image lookup. The test stops there — we don't want to
+        # exercise the full Gemini path in a unit test.
+        orch = self._build_orchestrator(tryon_enabled=True)
+        from agentic_application.schemas import OutfitCard
+        outfits: list = []  # empty outfit list → loop is no-op past the gate
+        orch._attach_tryon_images(outfits, "external_user_id")
+        orch.onboarding_gateway.get_person_image_path.assert_called_with("external_user_id")
+
+
+if __name__ == "__main__":
+    unittest.main()

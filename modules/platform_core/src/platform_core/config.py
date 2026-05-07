@@ -57,6 +57,16 @@ class AuraRuntimeConfig:
     # AURA_COMPOSER_ENGINE_ENABLED.
     composer_engine_enabled: bool = False
 
+    # Try-on render feature flag. Try-on is the single biggest cost
+    # line ($0.117/turn for 3× Gemini renders) and the biggest latency
+    # line (~22s on the May 8 turn review, ~35-40% of total). False
+    # (default) means: skip the entire render stage, ship the outfit
+    # cards without try-on images. Recommendations + ratings still
+    # work; cards just lack the rendered preview. True flips the
+    # stage on for production / demos.
+    # Env var: AURA_TRYON_ENABLED.
+    tryon_enabled: bool = False
+
 
 def _resolve_env_file(explicit_path: str | None = None) -> str:
     if explicit_path:
@@ -162,6 +172,13 @@ def load_config() -> AuraRuntimeConfig:
     composer_flag_raw = os.getenv("AURA_COMPOSER_ENGINE_ENABLED", "").strip().lower()
     composer_engine_enabled = composer_flag_raw in {"1", "true", "yes", "on"}
 
+    # Try-on render flag. Same parsing rules. Default OFF so dev /
+    # iteration loops don't burn $0.12/turn on Gemini renders the
+    # developer is going to ignore anyway. Flip to true (in
+    # .env.staging or per-process) for demos / production traffic.
+    tryon_flag_raw = os.getenv("AURA_TRYON_ENABLED", "").strip().lower()
+    tryon_enabled = tryon_flag_raw in {"1", "true", "yes", "on"}
+
     return AuraRuntimeConfig(
         supabase_rest_url=_ensure_rest_url(supabase_url),
         supabase_service_role_key=service_key,
@@ -174,4 +191,5 @@ def load_config() -> AuraRuntimeConfig:
         style_advisor_model=style_advisor_model,
         composition_engine_enabled=composition_engine_enabled,
         composer_engine_enabled=composer_engine_enabled,
+        tryon_enabled=tryon_enabled,
     )
