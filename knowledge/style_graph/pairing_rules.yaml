@@ -424,6 +424,20 @@ pairing_rules:
   bridal_specific:
     rule_type: hard_constraint
 
+    # Bridal exception trigger list — composer engine consults this to
+    # decide whether to suspend the one-statement-per-outfit cap and apply
+    # the bridal-specific pairing rules below. Engine matches when
+    # `formality_hint == "ceremonial" AND occasion_signal in triggers_on`.
+    # Stylist-editable: add a new bridal occasion key (also present in
+    # occasion.yaml) to extend bridal-context detection without code change.
+    triggers_on:
+      - wedding_ceremony
+      - sangeet
+      - mehendi
+      - haldi
+      - reception
+      - engagement
+
     rules:
       bridal_lehenga_pairing:
         description: |
