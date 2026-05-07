@@ -201,17 +201,16 @@ Replace the single 6-outfit `outfit_rater.rate()` call with `asyncio.gather` ove
 
 Profile the current 2.9s pgvector query — likely missing HNSW index, doing pre-filtering wrong, or re-running embedding model on query without caching. Add HNSW index if absent: `CREATE INDEX ON catalog_item_embeddings USING hnsw (embedding vector_cosine_ops)`. Cache the query embedding model in memory; don't reload per request. Move metadata filters (size, gender, in-stock) to indexed columns; apply at SQL level not Python loop. Expected: retrieval drops from 2.9s to <100ms.
 
-### 1.3 Switch planner to fast non-reasoning model (1-2 days)
+### 1.3 / 1.4 — DROPPED (2026-05-07)
 
-Pick provider: `claude-haiku-4-5` (recommended for conversational handling) or `gpt-4.1-nano` (cheapest). Build shadow mode: keep `gpt-5-mini` as production planner; call new model in parallel; log both. Run shadow for 2-3 days on real traffic. Manually review 50-100 disagreements; identify systematic errors. Calibrate confidence threshold based on actual error rates. Add hard-rule fallback triggers: schema validation failures, incoherent intent/action combos, multi-clause conditional messages, follow-up patterns ("more X", "different from"). Promote new model to production with fallback to `gpt-5-mini` reasoning for low-confidence. Expected: 7.1s → <500ms.
+Further planner / architect / composer model-swap work is no longer on the plan.
 
-**Status (May 13 2026):** shadow infrastructure shipped. Set `AURA_PLANNER_SHADOW_MODEL=gpt-4.1-nano` (or any OpenAI model id) in the deploy env to enable. Production response is unaffected; shadow runs in a daemon thread after the production response returns and writes a structured log line via the `aura.planner.shadow` logger (`shadow_compare` event with `intent_match`, `action_match`, latency comparison, both confidences, and the user message snippet). Add `claude-haiku-4-5` shadow vendor adapter when ready to evaluate that path. Promotion to production (with low-confidence fallback to `gpt-5-mini`) blocked on 2-3 days of accumulated traffic + manual review of 50-100 disagreements.
+What stays shipped and in production:
+- Planner shadow infrastructure (`AURA_PLANNER_SHADOW_MODEL`, `aura.planner.shadow` logger). Dormant unless the env var is set; not being actively iterated on.
+- `gpt-5.4 → gpt-5.2` architect + composer swap (Phase 1.4, May 13 2026).
+- Env-configurable model strings (`PLANNER_MODEL`, `ARCHITECT_MODEL`, `COMPOSER_MODEL`, `RATER_MODEL`, `STYLE_ADVISOR_MODEL`).
 
-### 1.4 Switch architect + composer to faster reasoning model (2-3 days)
-
-A/B test `claude-sonnet-4-7` and `gemini-2.5-pro` against `gpt-5.4` on the eval set (Phase 4.6). Score outputs against held-out cases and against the existing rater's judgment as proxy. Pick winner; ship config change. Expected: architect 27.6s → ~12-15s; composer 13.3s → ~6-8s.
-
-**Status (May 13 2026):** blocked on Phase 4.6 eval set (100-500 hand-curated representative queries). Without the eval, we'd be A/B-ing against the existing rater's judgment of itself, which closes the loop. Once Phase 4.6 lands, this task is a config-flip + comparison run. Carry into Phase 4 sequencing if Phase 4.6 ships before the rest of Phase 1 lands; otherwise gate this on eval completion.
+The previously planned next steps — promoting a non-reasoning planner and A/B-ing claude-sonnet-4-7 / gemini-2.5-pro for architect+composer — are not being pursued. The architect path is mostly moot post-engine (Phase 4.7 ships engine-accepted turns at ~0ms architect), and the planner promotion didn't justify the calibration work given the engine's larger end-to-end win. Composer-side latency is now better attacked by Phase 5 (composer engine) than by a model swap.
 
 ### Phase 1 test gate
 
@@ -281,7 +280,7 @@ Saves ~2K input tokens. Trigger if Panel 17 p95 stays >14K input tokens. (Cross-
 
 - Architect input tokens: ≤5K
 - Composer input tokens: ≤4K
-- Cold-path architect latency: ~8-10s (with Phase 1.4 model swap stacked)
+- Cold-path architect latency: ~8-10s (with the shipped gpt-5.2 swap stacked)
 - Quality regression on eval set: <2%
 - Cache hits (~60-70%): <100ms
 - Cache misses: ~25-30s p95 (down from ~50s)
