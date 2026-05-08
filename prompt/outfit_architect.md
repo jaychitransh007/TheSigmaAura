@@ -249,9 +249,9 @@ PATTERN_AND_COLOR:
 - ❌ **`USER_NEED:`** section — this is the user's request stated in their language. Catalog has no counterpart. Do not include.
 - ❌ **`PROFILE_AND_STYLE:`** section — these are user properties (seasonal group, body frame, height, waist, archetype). Catalog has no counterpart.
 - ❌ The literal strings `Autumn` / `Winter` / `Spring` / `Summer` / sub-season names. **Translate** the user's seasonal group INTO `ColorTemperature`, `ColorValue`, `ColorSaturation`, and explicit `PrimaryColor` / `SecondaryColor` palette entries.
-- ❌ Body-frame strings like `Light and Narrow`, `Solid and Broad`, `Medium and Balanced`. **Translate** INTO `VerticalWeightBias` per the FrameStructure rows of the Visual Direction table below.
-- ❌ Height strings like `Short`, `Tall`, `Average`. **Translate** INTO `LineDirection` per the HeightCategory rows of the Visual Direction table below.
-- ❌ Body-shape strings like `Pear`, `Hourglass`, `Apple`, `Inverted Triangle`, `Rectangle`, `Diamond`, `Trapezoid`. **Translate** INTO `StructuralFocus`, `WaistDefinition`, `VolumeProfile`, `BodyFocusZone`, `ShoulderStructure`, `FitType` per the BodyShape table below.
+- ❌ Body-frame strings like `Light and Narrow`, `Solid and Broad`, `Medium and Balanced`. **Translate** INTO `VerticalWeightBias` per the FrameStructure rules in **Visual Direction** below.
+- ❌ Height strings like `Short`, `Tall`, `Average`. **Translate** INTO `LineDirection` per the HeightCategory rules in **Visual Direction** below.
+- ❌ Body-shape strings like `Pear`, `Hourglass`, `Apple`, `Inverted Triangle`, `Rectangle`, `Diamond`, `Trapezoid`. **Translate** INTO `StructuralFocus`, `WaistDefinition`, `VolumeProfile`, `BodyFocusZone`, `ShoulderStructure`, `FitType` per the BodyShape rules in **Visual Direction** below.
 - ❌ Style archetype strings like `Creative`, `Romantic`, `Minimalist`. **Translate** INTO `SilhouetteContour`, `EdgeSharpness`, `EmbellishmentLevel`, `PatternType`.
 - ❌ `OccasionFit`, `OccasionSignal`, `FormalitySignalStrength` — catalog stopped carrying these on the embedding side. Use `FormalityLevel` + `TimeOfDay` only.
 - ❌ Free-form occasion phrases like `daily office complete outfit`, `wedding ceremony attire`, `date night look`. **Translate** the occasion's expectations INTO formality, fabric, embellishment, and color values.
@@ -416,7 +416,7 @@ There is no stored "style archetype" — direction comes from three sources, in 
 
 1. **`live_context.style_goal`** — what the user said in this turn ("something edgy", "old-money classic", "minimalist office", "preppy"). When present, this drives the directional vocabulary (silhouette, fabric texture, embellishment, palette pulls). Example: user says "edgy date night" → SilhouetteContour: structured/sharp, EdgeSharpness: sharp, ColorValue: deep, EmbellishmentLevel: minimal.
 2. **`risk_tolerance`** — modulates how far the stretch direction (and any "bolder" interpretation) pushes from the safe baseline. Conservative = stay close to neutral; balanced = one notch of statement; expressive = clear statement.
-3. **`live_context.formality_hint` + `occasion_signal`** — drives FormalityLevel + fabric + embellishment per the Occasion Calibration table.
+3. **`live_context.formality_hint` + `occasion_signal`** — drives FormalityLevel + fabric + embellishment per **Occasion Calibration** below.
 
 When the user says nothing directional ("show me an office outfit") and no `style_goal` is set, default to a clean, occasion-appropriate interpretation calibrated by body + palette + occasion + risk_tolerance. There is no "user's archetype" to fall back on.
 

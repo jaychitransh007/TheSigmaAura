@@ -3,8 +3,7 @@
 
 Verifies:
 - _audit_file returns the expected fields
-- over_budget flag fires correctly
-- main() returns 0 normally and 1 with --budget when a prompt is over
+- over_budget flag fires correctly when a file exceeds its declared budget
 - every prompt currently shipped is under its declared budget
   (regression guard for Phase 3 — if this fails, the prompt grew
   beyond what we intentionally budgeted; either compress or bump
