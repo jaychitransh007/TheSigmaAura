@@ -490,6 +490,91 @@ class OutfitComposerRetryTests(unittest.TestCase):
         self.assertEqual(2, result.attempt_count)
 
 
+class OutfitComposerDirectionTypeContractTests(unittest.TestCase):
+    """May 8 follow-up RCA: when ``plan_directions`` is supplied, the
+    validator cross-checks each emitted outfit's ``direction_type``
+    against the architect's plan for the same ``direction_id``. The
+    composer is no longer free to relabel a ``paired`` direction as
+    ``complete`` and emit a 1-item outfit — that's how the navy-blazer
+    anchor leaked back as the recommended outfit on production turn
+    14f4f89d. The new contract is enforced as belt-and-suspenders to
+    the strengthened best-effort retry prompt."""
+
+    def test_validator_drops_outfit_when_direction_type_mismatches_plan(self) -> None:
+        from agentic_application.schemas import DirectionSpec, QuerySpec
+        # Architect declares direction A as `paired`; composer emits an
+        # outfit claiming direction_id="A" but direction_type="complete"
+        # with one item. Pre-fix the validator only checked item count
+        # against direction_type — both passed (complete=1 item, 1 item
+        # provided) — so the outfit slipped through. With the
+        # direction_types_by_id cross-check the validator drops it.
+        plan_directions = [
+            DirectionSpec(
+                direction_id="A", direction_type="paired", label="Paired",
+                queries=[
+                    QuerySpec(query_id="A1", role="top", hard_filters={}, query_document="x"),
+                    QuerySpec(query_id="A2", role="bottom", hard_filters={}, query_document="x"),
+                ],
+            ),
+        ]
+        cheating_payload = {
+            "outfits": [
+                {
+                    "composer_id": "C1", "direction_id": "A",
+                    "direction_type": "complete",  # cheats — architect said paired
+                    "item_ids": ["a1_set1"],
+                    "rationale": "Best-effort: just the anchor.",
+                }
+            ],
+            "overall_assessment": "approximate",
+            "pool_unsuitable": False,
+        }
+        with patch("agentic_application.agents.outfit_composer.get_api_key", return_value="x"), _patch_composer() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(cheating_payload)
+            result = OutfitComposer().compose(
+                _ctx(), _pool(),
+                retry_on_hallucination=False,
+                plan_directions=plan_directions,
+            )
+        # Validator dropped the cheating outfit → empty result.
+        self.assertEqual(0, len(result.outfits))
+
+    def test_validator_passes_outfit_when_direction_type_matches_plan(self) -> None:
+        from agentic_application.schemas import DirectionSpec, QuerySpec
+        # Sanity: when direction_type matches the architect's plan, the
+        # outfit passes through unchanged.
+        plan_directions = [
+            DirectionSpec(
+                direction_id="B", direction_type="paired", label="Paired",
+                queries=[
+                    QuerySpec(query_id="B1", role="top", hard_filters={}, query_document="x"),
+                    QuerySpec(query_id="B2", role="bottom", hard_filters={}, query_document="x"),
+                ],
+            ),
+        ]
+        clean_payload = {
+            "outfits": [
+                {
+                    "composer_id": "C1", "direction_id": "B",
+                    "direction_type": "paired",
+                    "item_ids": ["b_t1", "b_b1"],
+                    "rationale": "Clean paired outfit.",
+                }
+            ],
+            "overall_assessment": "moderate",
+            "pool_unsuitable": False,
+        }
+        with patch("agentic_application.agents.outfit_composer.get_api_key", return_value="x"), _patch_composer() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(clean_payload)
+            result = OutfitComposer().compose(
+                _ctx(), _pool(),
+                retry_on_hallucination=False,
+                plan_directions=plan_directions,
+            )
+        self.assertEqual(1, len(result.outfits))
+        self.assertEqual("paired", result.outfits[0].direction_type)
+
+
 class OutfitComposerEdgeCaseTests(unittest.TestCase):
     def test_composer_handles_empty_pool(self) -> None:
         """Empty retrieved sets — short-circuit before the LLM call."""

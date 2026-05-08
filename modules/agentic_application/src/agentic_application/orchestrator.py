@@ -6103,19 +6103,72 @@ class AgenticOrchestrator:
             "conversation_memory": conversation_memory,
         })
 
-        # When anchor garment exists, strip queries for the anchor's role from the plan
-        # BEFORE search — don't waste embedding calls on a role the user already fills.
-        # Then inject the anchor as the sole item for that role after search.
+        # Anchor handling for pairing requests has two distinct concerns:
+        #
+        # (A) Pool injection — only for top/bottom anchors. The architect's
+        #     anchor rule strips the anchor's role from its queries
+        #     (e.g. anchor=top → architect emits bottom + outerwear queries
+        #     only); the orchestrator then injects the anchor as the SOLE
+        #     candidate for that stripped role so the composer pairs against
+        #     the user's specific item. This works because the catalog
+        #     wouldn't have the user's exact piece anyway.
+        #
+        # (B) Render-time prepend — for outerwear and other anchors that the
+        #     architect plans AROUND (not THROUGH). For outerwear specifically
+        #     the architect's anchor rule §3 says "build a complete look
+        #     UNDER the anchor layer" — i.e. top + bottom queries stay, the
+        #     outerwear anchor is NOT in the composer's pool. The response
+        #     formatter then prepends the anchor as the outerwear-role item
+        #     of each outfit card so the user sees their blazer + composed
+        #     top + composed bottom.
+        #
+        # Pre-fix this code mapped any non-top/non-bottom category to
+        # role="complete" and injected it into the pool, which let the LLM
+        # composer (especially under the May 8 best-effort retry) emit the
+        # anchor itself as a 1-item complete outfit. The May 8 RCA on turn
+        # 14f4f89d caught it: a navy blazer pairing query came back with
+        # "your navy blazer" as the recommended outfit. Splitting the two
+        # concerns below.
         anchor = combined_context.live.anchor_garment
-        anchor_role = ""
+        anchor_role_in_pool = ""    # truthy only for top/bottom (concern A)
+        anchor_render_role = ""     # set whenever the anchor will appear in
+                                    # the response (concern B); the formatter
+                                    # decides the actual role label per outfit.
         has_paired = any(d.direction_type in ("paired", "three_piece") for d in plan.directions)
         if anchor and has_paired:
             anchor_category = str(anchor.get("garment_category") or "").lower()
-            anchor_role = "top" if anchor_category in ("top", "shirt", "blouse") else "bottom" if anchor_category in ("bottom", "trouser", "pant") else "complete"
-            for direction in plan.directions:
-                direction.queries = [q for q in direction.queries if q.role != anchor_role]
-            plan.directions = [d for d in plan.directions if d.queries]
-            _log.info("Stripped %s queries from plan — anchor fills this role", anchor_role)
+            if anchor_category in ("top", "shirt", "blouse"):
+                anchor_role_in_pool = "top"
+                anchor_render_role = "top"
+            elif anchor_category in ("bottom", "trouser", "pant", "jeans", "skirt"):
+                anchor_role_in_pool = "bottom"
+                anchor_render_role = "bottom"
+            elif anchor_category in ("outerwear", "blazer", "jacket", "coat"):
+                # No pool injection — render-time prepend only.
+                anchor_render_role = "outerwear"
+            else:
+                # Unknown category (dress, shoe, accessory, etc.). Don't
+                # inject — let architect's plan stand and surface the
+                # anchor at render time under whatever the category says
+                # (the UI can decide how to slot it). Avoids the May 8
+                # regression where unknown categories collapsed to
+                # role="complete" and the composer picked the anchor as
+                # the entire outfit.
+                anchor_render_role = anchor_category or "anchor"
+            if anchor_role_in_pool:
+                for direction in plan.directions:
+                    direction.queries = [q for q in direction.queries if q.role != anchor_role_in_pool]
+                plan.directions = [d for d in plan.directions if d.queries]
+                _log.info(
+                    "Stripped %s queries from plan — anchor fills this role",
+                    anchor_role_in_pool,
+                )
+            else:
+                _log.info(
+                    "Anchor (category=%s) will not be injected into pool; "
+                    "render-time prepend under role=%s",
+                    anchor_category, anchor_render_role,
+                )
 
         # Stages 4-8: Search → Assemble → Evaluate → Format → TryOn
         # Wrap the entire mid-pipeline in a guard so any unhandled failure
@@ -6266,12 +6319,16 @@ class AgenticOrchestrator:
                 ),
             )
 
-            # Inject anchor as the sole item for its role.
+            # Inject anchor as the sole item for its role — ONLY for
+            # top/bottom anchors (concern A above). Outerwear and other
+            # categories handled via render-time prepend (concern B), not
+            # pool injection.
+            #
             # Phase 12D: mark with is_anchor=True so the assembler's
             # cross-outfit diversity pass exempts this product from the
             # "no repeats" rule. Pairing requests intentionally include
             # the anchor in every candidate by definition.
-            if anchor and anchor_role:
+            if anchor and anchor_role_in_pool:
                 anchor_with_flag = dict(anchor)
                 anchor_with_flag["is_anchor"] = True
                 anchor_product = RetrievedProduct(
@@ -6284,13 +6341,14 @@ class AgenticOrchestrator:
                     RetrievedSet(
                         direction_id=plan.directions[0].direction_id if plan.directions else "anchor",
                         query_id="anchor",
-                        role=anchor_role,
+                        role=anchor_role_in_pool,
                         products=[anchor_product],
                         applied_filters={"source": "wardrobe_anchor"},
                     )
                 )
                 _log.info("Injected anchor as sole %s — assembler will pair with %d complementary items",
-                           anchor_role, sum(len(rs.products) for rs in retrieved_sets if rs.role != anchor_role))
+                           anchor_role_in_pool,
+                           sum(len(rs.products) for rs in retrieved_sets if rs.role != anchor_role_in_pool))
 
             # === LLM ranker (Composer + Rater) — May 3 2026 ===========
             # Replaces the deterministic OutfitAssembler + Reranker pair.
@@ -6404,9 +6462,16 @@ class AgenticOrchestrator:
                     )
                 else:
                     def _llm_compose() -> "ComposerResult":
+                        # Pass plan.directions through so the composer's
+                        # validator can cross-check each emitted outfit's
+                        # direction_type against the architect's plan
+                        # (May 8 follow-up RCA — prevents the
+                        # paired→complete relabel that returned the
+                        # navy-blazer anchor as a 1-item outfit).
                         return self.outfit_composer.compose(
                             combined_context, retrieved_sets,
                             on_attempt=_record_attempt,
+                            plan_directions=plan.directions,
                         )
                     from .composition.composer_router import route_composer_plan
                     _composer_router_decision = route_composer_plan(
@@ -6929,6 +6994,17 @@ class AgenticOrchestrator:
 
             emit("response_formatting", "started")
             trace_start("response_formatting", input_summary=f"{len(evaluated)} evaluated")
+            # Render-time anchor prepend (concern B above): when the
+            # architect planned AROUND the anchor (e.g. outerwear anchor —
+            # plan emits top + bottom queries, anchor stays out of the
+            # composer's pool), the formatter prepends the anchor to each
+            # outfit card so the user sees their own piece + composed
+            # complementary items. anchor_to_prepend is None for top/bottom
+            # anchors (already in the composed items via pool injection)
+            # and for non-pairing turns.
+            anchor_to_prepend = (
+                anchor if (anchor and anchor_render_role and not anchor_role_in_pool) else None
+            )
             response = self.response_formatter.format(
                 evaluated,
                 combined_context,
@@ -6936,6 +7012,8 @@ class AgenticOrchestrator:
                 candidates,
                 planner_message=plan_result.assistant_message or None,
                 planner_suggestions=plan_result.follow_up_suggestions[:5] if plan_result.follow_up_suggestions else None,
+                anchor_to_prepend=anchor_to_prepend,
+                anchor_render_role=anchor_render_role,
             )
 
             restricted_item_exclusion_count = int(response.metadata.get("restricted_item_exclusion_count") or 0)

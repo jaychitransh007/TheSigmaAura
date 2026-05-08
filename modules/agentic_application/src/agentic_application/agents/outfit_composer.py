@@ -60,6 +60,7 @@ from ..schemas import (
     CombinedContext,
     ComposedOutfit,
     ComposerResult,
+    DirectionSpec,
     RetrievedProduct,
     RetrievedSet,
 )
@@ -386,16 +387,31 @@ def _build_user_payload(ctx: CombinedContext, retrieved_sets: Sequence[Retrieved
 
 
 def _validate_outfit(
-    outfit: ComposedOutfit, pool_ids_by_direction: Dict[str, set]
+    outfit: ComposedOutfit,
+    pool_ids_by_direction: Dict[str, set],
+    direction_types_by_id: Optional[Dict[str, str]] = None,
 ) -> Optional[str]:
     """Return None if valid, else a string describing the violation.
 
     The validator is strict on the structural rules the prompt promises:
     item count matches direction_type, every item_id exists in the
-    direction's pool. We do NOT validate the kurta-pairing rule here —
-    that's the architect's job upstream. The Composer is told never to
-    produce a kurta-paired outfit; if it does, the visual evaluator
-    downstream will catch obvious failures.
+    direction's pool, and (May 8 follow-up RCA) the emitted
+    ``direction_type`` matches the architect's plan for the same
+    ``direction_id``. The cross-check on direction_type catches the
+    composer trying to escape a tight ``paired`` constraint by
+    relabelling the direction as ``complete`` and emitting one item —
+    which was how the navy-blazer-as-1-item-outfit regression slipped
+    through under the May 8 best-effort retry.
+
+    ``direction_types_by_id`` is optional (None preserves the pre-RCA
+    behaviour for callers that haven't been updated). When provided,
+    it maps each architect-emitted direction_id to its declared
+    direction_type; the validator then enforces consistency.
+
+    We do NOT validate the kurta-pairing rule here — that's the
+    architect's job upstream. The Composer is told never to produce a
+    kurta-paired outfit; if it does, the visual evaluator downstream
+    will catch obvious failures.
     """
     expected_count = _EXPECTED_ITEM_COUNT.get(outfit.direction_type)
     if expected_count is None:
@@ -414,6 +430,18 @@ def _validate_outfit(
             f"unknown direction_id {outfit.direction_id!r} — must be one of "
             f"{sorted(pool_ids_by_direction.keys())}"
         )
+    # May 8 follow-up: cross-check direction_type against the architect
+    # plan. The composer must not relabel a direction (e.g. paired →
+    # complete) to fit fewer items.
+    if direction_types_by_id is not None:
+        architect_dt = direction_types_by_id.get(outfit.direction_id)
+        if architect_dt and outfit.direction_type != architect_dt:
+            return (
+                f"direction_type={outfit.direction_type!r} does not match the "
+                f"architect's plan for direction_id={outfit.direction_id!r} "
+                f"(plan said {architect_dt!r}). The composer may not relabel "
+                f"a direction to escape its item-count contract."
+            )
     direction_pool = pool_ids_by_direction.get(outfit.direction_id, set())
     bad_ids = [iid for iid in outfit.item_ids if iid not in direction_pool]
     if bad_ids:
@@ -473,6 +501,7 @@ class OutfitComposer:
         *,
         retry_on_hallucination: bool = True,
         on_attempt: Optional[Callable[[Dict[str, Any]], None]] = None,
+        plan_directions: Optional[Sequence[DirectionSpec]] = None,
     ) -> ComposerResult:
         """Build outfits from the retrieved pool. One LLM call (plus an
         optional retry on full-pool hallucination).
@@ -488,6 +517,14 @@ class OutfitComposer:
         row that sums the retry, which masks which attempt did what
         (PR #80, May 5 2026 RCA — T6 turn appeared to have a 24K-token
         prompt because it was actually two 12K calls summed).
+
+        ``plan_directions`` is the architect's emitted ``DirectionSpec``
+        list. When provided, the validator cross-checks each emitted
+        outfit's ``direction_type`` against the architect's plan for
+        the same ``direction_id`` — preventing the composer from
+        relabelling a ``paired`` direction as ``complete`` to escape
+        the item-count contract (May 8 follow-up RCA). None preserves
+        legacy behaviour for callers that haven't been updated.
         """
         self.last_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
@@ -508,6 +545,17 @@ class OutfitComposer:
                 p.product_id for p in rs.products
             )
 
+        # May 8 follow-up: cross-check direction_type against the architect's
+        # plan in the validator. Build the direction_id → direction_type map
+        # once here; it's threaded through to ``_invoke`` and on to
+        # ``_validate_outfit``. The composer used to be free to relabel a
+        # ``paired`` direction as ``complete`` and emit one item — that's
+        # how the navy-blazer-as-1-item-outfit slipped past the May 8
+        # best-effort retry. Architect's plan is the source of truth.
+        direction_types_by_id: Dict[str, str] = {
+            d.direction_id: d.direction_type for d in plan_directions
+        } if plan_directions else {}
+
         # Build the per-turn JSON schema with a closed enum on direction_id.
         # The architect's emitted letters are the only valid values; this
         # makes the structured-output API reject bad direction_id at the
@@ -522,6 +570,7 @@ class OutfitComposer:
         result, drop_reasons = self._invoke(
             user_payload, pool_ids_by_direction, schema, accumulated,
             attempt_no=attempt_no, on_attempt=on_attempt,
+            direction_types_by_id=direction_types_by_id,
         )
 
         if not result.outfits and retry_on_hallucination and not result.pool_unsuitable:
@@ -557,6 +606,7 @@ class OutfitComposer:
             result, _drop_reasons2 = self._invoke(
                 stricter, pool_ids_by_direction, schema, accumulated,
                 attempt_no=attempt_no, on_attempt=on_attempt,
+                direction_types_by_id=direction_types_by_id,
             )
 
         # Best-effort retry on pool_unsuitable=true with a viable pool.
@@ -580,6 +630,22 @@ class OutfitComposer:
                 "retrying for best-effort outfits.",
                 total_pool_size,
             )
+            # Direction-type contract reminder (May 8 follow-up RCA): the
+            # original best-effort prompt let the LLM relabel a `paired`
+            # direction as `complete` and emit a 1-item outfit (the navy
+            # blazer anchor itself was returned as a "complete" outfit on
+            # turn 14f4f89d). The retry prompt now explicitly lists the
+            # architect's direction_id → direction_type mapping and forbids
+            # relabelling. The validator catches violations as
+            # belt-and-suspenders, but giving the LLM the contract upfront
+            # produces cleaner retries and saves a round-trip.
+            _dt_lines: List[str] = []
+            for did in sorted(direction_types_by_id):
+                _dt = direction_types_by_id[did]
+                _expected = _EXPECTED_ITEM_COUNT.get(_dt, "?")
+                _dt_lines.append(
+                    f"  • direction_id={did}: direction_type={_dt} → {_expected} item(s)"
+                )
             best_effort_suffix = (
                 "\n\nIMPORTANT — your previous response marked the pool unsuitable "
                 "and emitted no outfits. Reconsider: the user is waiting for an "
@@ -591,12 +657,21 @@ class OutfitComposer:
                 "ask (e.g., user wants a top, pool contains only shoes). For "
                 "stylistic mismatches (palette, formality, body-fit) emit the "
                 "best approximations rather than refusing."
+                "\n\nDirection-type contract — the architect's plan is the "
+                "source of truth. Each emitted outfit's `direction_type` MUST "
+                "match its `direction_id` per the architect:\n"
+                + ("\n".join(_dt_lines) if _dt_lines else "  (no architect plan supplied — use any valid direction_type)")
+                + "\n\nDO NOT relabel a direction (e.g. paired → complete) to "
+                "fit fewer items. If the pool genuinely cannot satisfy a paired "
+                "direction's 2-item count, pick 2 imperfect items rather than "
+                "collapsing to 1."
             )
             attempt_no += 1
             result, _drop_reasons3 = self._invoke(
                 user_payload + best_effort_suffix,
                 pool_ids_by_direction, schema, accumulated,
                 attempt_no=attempt_no, on_attempt=on_attempt,
+                direction_types_by_id=direction_types_by_id,
             )
 
         result.usage = dict(accumulated)
@@ -616,6 +691,7 @@ class OutfitComposer:
         *,
         attempt_no: int = 1,
         on_attempt: Optional[Callable[[Dict[str, Any]], None]] = None,
+        direction_types_by_id: Optional[Dict[str, str]] = None,
     ) -> tuple["ComposerResult", List[str]]:
         """Single LLM round-trip + post-processing. Internal.
 
@@ -700,7 +776,7 @@ class OutfitComposer:
                 _log.warning("OutfitComposer: malformed outfit payload (%s); skipping", exc)
                 drop_reasons.append(f"malformed_payload: {exc}")
                 continue
-            err = _validate_outfit(outfit, pool_ids_by_direction)
+            err = _validate_outfit(outfit, pool_ids_by_direction, direction_types_by_id)
             if err:
                 _log.warning(
                     "OutfitComposer: dropping outfit %s (direction=%s) — %s",
