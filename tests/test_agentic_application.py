@@ -3551,11 +3551,23 @@ class CopilotPlannerTests(unittest.TestCase):
 
         self.assertEqual(Intent.PAIRING_REQUEST, result["metadata"]["primary_intent"])
         gw.save_uploaded_chat_wardrobe_item.assert_called_once()
+        # May 8 follow-up P1.2: enrichment now runs in a background thread
+        # in parallel with the planner so the 14-17s LLM enrichment isn't
+        # blocking the planner's 3-7s LLM call. The planner therefore sees
+        # the RAW user message — no "Attached garment context:" prefix —
+        # and classifies intent based on phrasing + ``has_attached_image``
+        # alone. ``attached_item`` still gets resolved post-planner and
+        # drives anchor handling for the architect (see
+        # _apply_planner_overrides + _handle_planner_pipeline). The
+        # planner's intent classification does NOT depend on the enriched
+        # garment attributes — it's phrasing-driven — so this is a
+        # latency win without a quality regression for known intent
+        # buckets.
         planner_message = planner_mock.plan.call_args.args[0]["user_message"]
-        self.assertIn("Attached garment context:", planner_message)
-        self.assertIn("Navy Shirt", planner_message)
-        self.assertIn("shirt", planner_message.lower())
-        self.assertIn("Image anchor source: wardrobe image.", planner_message)
+        self.assertEqual("What goes with this?", planner_message)
+        # ``has_attached_image`` was True on the planner input; the
+        # planner needed THIS signal, not the enriched attributes.
+        self.assertTrue(planner_mock.plan.call_args.args[0].get("has_attached_image"))
 
     def test_attached_garment_pairing_request_runs_full_pipeline(self):
         """Pairing requests always run the full pipeline (architect → search → evaluate → tryon)."""
