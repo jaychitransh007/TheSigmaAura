@@ -494,7 +494,14 @@ class ConversationRepository:
     # raw timeline can grow large for power users; trim to the most recent
     # N events (across all event_types interleaved) so prompt size stays
     # bounded and recency dominates.
-    _RECENT_USER_ACTIONS_MAX = 30
+    #
+    # 30 → 20 (Phase 3.1 May 8 2026). Each event ~100 tokens after JSON
+    # serialization; 30 entries was ~3K tokens for power users — the
+    # single largest line in the architect's per-turn payload after
+    # Phase 1 / 2. Tightened to 20 (~2K tokens) saving ~1K per power-user
+    # turn. Recency still dominates; long-tail events that rarely change
+    # query bias get pruned first.
+    _RECENT_USER_ACTIONS_MAX = 20
 
     # The catalog attribute mapping for this method is `_CATALOG_ATTR_MAP`
     # at the top of the class (PR #93, consolidating with the archetypal

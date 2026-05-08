@@ -8,24 +8,17 @@ Color rules (hard): use `BaseColors` for anchor pieces (bottoms, outerwear), `Ac
 
 ## Recent user actions (episodic memory)
 
-`recent_user_actions` is a chronological list (newest first) of the user's like/dislike events from the last 30 days. Each row carries:
+`recent_user_actions` is a chronological list (newest first) of the user's like/dislike events from the last 30 days. Each row carries `event_type` (`"like"` / `"dislike"`), `created_at`, `user_query` (the chat message that produced the outfit), and `item` (garment attributes: title, primary_color, garment_subtype, color_temperature, pattern_type, fit_type, silhouette_type, embellishment_level, formality_level, occasion_fit).
 
-- `event_type`: `"like"` or `"dislike"`
-- `created_at`: ISO timestamp
-- `user_query`: the chat message that produced the outfit (e.g., "what should I wear to the office")
-- `item`: garment attributes — `title`, `primary_color`, `garment_subtype`, `color_temperature`, `pattern_type`, `fit_type`, `silhouette_type`, `embellishment_level`, `formality_level`, `occasion_fit`
+**Pattern evidence, not rules.** Read context-dependently — the same attribute can be wrong for one query and right for another. Examples:
 
-**Use it as pattern evidence, not as rules.** Read the timeline like a stylist reviewing a client's recent reactions. Look for context-dependent signals — the same attribute can be wrong for one query and right for another:
+- Disliked solid navy at office last week + liked solid navy at date_night → navy fine for date night, less so for office.
+- 4 likes on warm earth tones across casual queries → lean warm earth tones when `user_message` is casual.
+- 2 dislikes on chunky knit silhouettes → bias `query_document` away from chunky/oversized silhouettes.
 
-- *"User disliked solid navy at the office last week (`user_query: "office outfit"`, `event_type: dislike`, `item.color: navy`, `pattern: solid`) but liked solid navy for date night two weeks ago (`user_query: "date night"`, `event_type: like`, `item.color: navy`, `pattern: solid`) — solid navy is fine for date night today, less ideal for office."*
-- *"User has 4 likes on warm earth tones across casual/weekend queries — when `user_message` is casual, lean into warm earth tones in the `query_document` even if it's not the dominant catalog answer."*
-- *"User has 2 dislikes on chunky knit silhouettes — bias `query_document` away from chunky/oversized silhouettes."*
+Bias `query_document` (and where appropriate `hard_filters`) toward attributes liked in **similar contexts** to today's `user_message`, away from attributes disliked in similar contexts. **No blanket exclusions** — require clusters (≥2 events on the same attribute in the same context) before treating it as a real pattern.
 
-Bias your `query_document` text and (where appropriate) `hard_filters` toward attributes the user has liked in **similar contexts** to today's `user_message`, and away from attributes they've disliked in **similar contexts**. **Do NOT apply blanket exclusions** — a single dislike of "neutral color_temperature" doesn't mean every neutral outfit is bad. Look for clusters (≥2 events on the same attribute in the same context) before treating something as a real pattern.
-
-If `recent_user_actions` is empty (cold-start user) or all events are from very different occasions than the current query, the timeline gives no signal — proceed on profile + occasion alone.
-
-Do NOT echo the timeline back in your response or list it in `resolved_context`. It's input for your reasoning only.
+Empty timeline or all events from unrelated occasions → no signal; proceed on profile + occasion alone. Do NOT echo the timeline back in your response or in `resolved_context` — it's reasoning input only.
 
 ## Output
 
@@ -256,27 +249,20 @@ PATTERN_AND_COLOR:
 - ❌ **`USER_NEED:`** section — this is the user's request stated in their language. Catalog has no counterpart. Do not include.
 - ❌ **`PROFILE_AND_STYLE:`** section — these are user properties (seasonal group, body frame, height, waist, archetype). Catalog has no counterpart.
 - ❌ The literal strings `Autumn` / `Winter` / `Spring` / `Summer` / sub-season names. **Translate** the user's seasonal group INTO `ColorTemperature`, `ColorValue`, `ColorSaturation`, and explicit `PrimaryColor` / `SecondaryColor` palette entries.
-- ❌ Body-frame strings like `Light and Narrow`, `Solid and Broad`, `Medium and Balanced`. **Translate** INTO `VerticalWeightBias` per the FrameStructure rows of the Visual Direction table below.
-- ❌ Height strings like `Short`, `Tall`, `Average`. **Translate** INTO `LineDirection` per the HeightCategory rows of the Visual Direction table below.
-- ❌ Body-shape strings like `Pear`, `Hourglass`, `Apple`, `Inverted Triangle`, `Rectangle`, `Diamond`, `Trapezoid`. **Translate** INTO `StructuralFocus`, `WaistDefinition`, `VolumeProfile`, `BodyFocusZone`, `ShoulderStructure`, `FitType` per the BodyShape table below.
+- ❌ Body-frame strings like `Light and Narrow`, `Solid and Broad`, `Medium and Balanced`. **Translate** INTO `VerticalWeightBias` per the FrameStructure rules in **Visual Direction** below.
+- ❌ Height strings like `Short`, `Tall`, `Average`. **Translate** INTO `LineDirection` per the HeightCategory rules in **Visual Direction** below.
+- ❌ Body-shape strings like `Pear`, `Hourglass`, `Apple`, `Inverted Triangle`, `Rectangle`, `Diamond`, `Trapezoid`. **Translate** INTO `StructuralFocus`, `WaistDefinition`, `VolumeProfile`, `BodyFocusZone`, `ShoulderStructure`, `FitType` per the BodyShape rules in **Visual Direction** below.
 - ❌ Style archetype strings like `Creative`, `Romantic`, `Minimalist`. **Translate** INTO `SilhouetteContour`, `EdgeSharpness`, `EmbellishmentLevel`, `PatternType`.
 - ❌ `OccasionFit`, `OccasionSignal`, `FormalitySignalStrength` — catalog stopped carrying these on the embedding side. Use `FormalityLevel` + `TimeOfDay` only.
 - ❌ Free-form occasion phrases like `daily office complete outfit`, `wedding ceremony attire`, `date night look`. **Translate** the occasion's expectations INTO formality, fabric, embellishment, and color values.
 
-### Translation examples (this is the work the architect MUST do):
+### Translation example
 
-**User: Autumn palette + Light and Narrow frame + Creative archetype + occasion=daily_office**
+**User: Autumn palette + Light-and-Narrow frame + Creative archetype + occasion=daily_office**
 
-❌ WRONG (carries user-side strings):
-```
-USER_NEED:
-- daily office complete outfit
+❌ WRONG — `USER_NEED: daily office complete outfit` / `PROFILE_AND_STYLE: Autumn, creative, Light and Narrow frame` (user-side strings; catalog has no counterpart).
 
-PROFILE_AND_STYLE:
-- Autumn, creative, Light and Narrow frame
-```
-
-✅ RIGHT (translated to garment terms only — note that EVERY emitted line is a clean attribute, no commentary, no source-tracking annotations; PRIMARY_BRIEF leads with the high-signal axes once, detailed sections carry only the secondary axes):
+✅ RIGHT — translated to garment terms only:
 ```
 PRIMARY_BRIEF:
 - GarmentCategory: top
@@ -299,10 +285,6 @@ GARMENT_REQUIREMENTS:
 - VolumeProfile: regular
 - ShoulderStructure: lightly structured
 
-EMBELLISHMENT:
-- EmbellishmentType: subtle texture
-- EmbellishmentZone: allover
-
 VISUAL_DIRECTION:
 - VerticalWeightBias: upper_biased
 - LineDirection: vertical
@@ -316,9 +298,7 @@ PATTERN_AND_COLOR:
 - SecondaryColor: camel, warm taupe
 ```
 
-(Where each value above came from — Light and Narrow frame → upper_biased, Autumn → warm + medium_to_deep, etc. — is your reasoning. Keep that reasoning **in your head**, not in the emitted document. NEVER write parenthetical notes, source attributions, or arrows like `(from Autumn)` in the query_document. Every character you emit ends up in the embedding; only attribute values belong there.)
-
-The reranker and visual evaluator do the final occasion-fit + profile-fit reasoning over the retrieved items. Your job is to produce a clean garment-attribute query that retrieves the *right pool* of candidates.
+Reasoning (Light-and-Narrow → upper_biased, Autumn → warm + medium_to_deep, etc.) stays **in your head**, never in the emitted document. NEVER write parenthetical notes or source attributions like `(from Autumn)`. Every emitted character lands in the embedding — only attribute values belong there.
 
 **Allowed `FormalityLevel` values** (catalog vocabulary — these are the only values that match catalog rows):
 
@@ -338,107 +318,71 @@ casual | smart_casual | semi_formal | formal | ceremonial
 
 ## Occasion Calibration — Formality, Fabric, Embellishment
 
-<!-- MIGRATED: knowledge/style_graph/occasion.yaml — each occasion entry
-     carries archetype, formality, time, seasons, plus flatters/avoid
-     with FabricTexture, FabricWeight, FabricDrape, EmbellishmentLevel,
-     EmbellishmentType, EmbellishmentZone. Phase 4.7 composition engine
-     reads this YAML; this section is kept here only until 4.10 cutover
-     completes. New occasion rules go to the YAML directly. -->
+<!-- MIGRATED: knowledge/style_graph/occasion.yaml is the source of truth
+     for the engine path. This compressed reference is for the LLM-
+     fallback path only. Engine reads YAML directly; this prose stays
+     terse to keep prompt tokens down. -->
 
-Calibrate to the SPECIFIC sub-occasion, not parent category:
+Calibrate to the specific sub-occasion (engagement ≠ ceremony ≠ reception):
 
-| Sub-occasion | Formality | Fabric | Embellishment | Avoid |
-|---|---|---|---|---|
-| Wedding ceremony | ceremonial | silk, brocade, heavy jacquard, sherwani fabric | moderate–heavy / embroidery, sequins, beading / allover or neckline | casual cotton, plain textures |
-| Wedding engagement | semi_formal | silk, structured wool, velvet, satin | subtle–moderate / embroidery, sequins / neckline or hem | heavy embroidery, sherwanis, brocade |
-| Wedding reception | semi_formal–formal | silk, satin, velvet | moderate / embroidery, sequins / neckline | overly casual or overly bridal |
-| Sangeet / mehndi | smart_casual–semi_formal | silk, cotton-silk blend, printed | subtle–moderate / print, mixed / allover or neckline | somber colors, stiff formal suiting |
-| Cocktail party | semi_formal | suiting wool, silk, structured | minimal–subtle / print, mixed / neckline | embroidery, traditional motifs |
-| Date night | smart_casual | fine cotton, silk blend, knit | none–subtle / print / neckline | heavy embellishment, ceremony fabrics |
-| Formal office / business meeting | smart_casual–semi_formal | cotton, wool blend, fine suiting | none–minimal / print (subtle) | embellishment, festive fabrics |
-| Daily office | smart_casual–casual | cotton, linen, jersey, light knit | none | heavy fabrics, anything that reads "event" |
-| Casual outing | casual | cotton, linen, jersey, denim | none | anything that reads "event" |
+- **Wedding ceremony** — ceremonial; silk/brocade/heavy jacquard; moderate–heavy embroidery/sequins.
+- **Wedding engagement** — semi_formal; silk/structured wool/velvet/satin; subtle–moderate at neckline/hem; NOT heavy sherwanis/brocade.
+- **Wedding reception** — semi_formal–formal; silk/satin/velvet; moderate.
+- **Sangeet / mehndi** — smart_casual–semi_formal; silk or cotton-silk; subtle–moderate prints.
+- **Cocktail party** — semi_formal; suiting wool/structured silk; minimal–subtle; NOT embroidery/traditional motifs.
+- **Date night** — smart_casual; fine cotton/silk blend/knit; none–subtle.
+- **Formal office / business meeting** — smart_casual–semi_formal; cotton/wool blend/fine suiting; none–minimal.
+- **Daily office** — smart_casual–casual; cotton/linen/jersey/light knit; none.
+- **Casual outing** — casual; cotton/linen/jersey/denim; none.
 
 Core rules:
-1. **Occasion overrides style preference for fabric.** Minimalist at engagement → silk/structured wool; minimalism shows in silhouette + color, not fabric downgrade.
-2. **Never put casual fabrics in ceremonial queries.** No cotton/linen/jersey/denim in `FabricTexture`/`FabricWeight`/`FabricDrape` for festive/semi-formal/formal occasions.
-3. **Embellishment differentiates "too much" from "not festive enough."** Engagement query with `EmbellishmentLevel: subtle to moderate, EmbellishmentZone: neckline` ranks tastefully festive above plain AND above heavy ceremony pieces.
-4. **Weather overrides occasion for fabric weight.** Hot/humid wedding → silk, crepe, fine cotton-silk blend, organza (NOT velvet, heavy wool, brocade). Cold formal → velvet, structured wool, heavy silk. Occasion still governs formality + embellishment; weather governs weight + breathability + layering.
-5. "Engagement" → polished clean-lined pieces in premium fabrics with subtle texture. NOT heavy sherwanis or brocade. "Western" + festive → structured blazers in rich colors, textured silk/fine wool shirts, suiting trousers — NOT casual cotton or chinos.
+1. **Occasion overrides style preference for fabric.** Minimalist at engagement → still silk/structured wool; minimalism shows in silhouette + color, not fabric.
+2. **Never casual fabrics in ceremonial queries.** No cotton/linen/jersey/denim for festive/semi-formal/formal.
+3. **Embellishment level differentiates "too much" from "not festive enough."** Subtle–moderate at neckline beats plain AND beats heavy.
+4. **Weather overrides occasion for fabric weight.** Hot wedding → silk/crepe/organza, NOT velvet/heavy wool. Occasion still governs formality + embellishment.
+5. **Engagement / Western festive** → polished premium pieces with subtle texture. NOT sherwanis/brocade for engagement; NOT casual cotton/chinos for Western festive.
 
 ## Visual Direction (Body Calibration)
 
-<!-- MIGRATED: knowledge/style_graph/body_frame/{female,male}.yaml —
-     each FrameStructure value (Light and Narrow / Light and Broad /
-     Medium and Balanced / Solid and Narrow / Solid and Balanced /
-     Solid and Broad) maps to flatters/avoid lists for VerticalWeightBias,
-     LineDirection, SilhouetteType, VolumeProfile, StructuralFocus,
-     PatternScale. New frame-driven rules go to body_frame YAMLs. -->
+<!-- MIGRATED: knowledge/style_graph/body_frame/{female,male}.yaml is the
+     source of truth for the engine path. Compressed reference below for
+     the LLM-fallback path only. -->
 
-| Attribute | Setting |
-|---|---|
-| FrameStructure: Light and Narrow | VerticalWeightBias: upper_biased |
-| FrameStructure: Solid and Broad | balanced or lower_biased |
-| FrameStructure: Medium/Solid Balanced, Light and Broad | balanced |
-| FrameStructure: Solid and Narrow | upper_biased |
-| HeightCategory: Short / Below Average | LineDirection: vertical |
-| HeightCategory: Tall / Above Average | horizontal or mixed |
-| HeightCategory: Average | minimal or vertical |
+**FrameStructure → VerticalWeightBias:** Light-and-Narrow / Solid-and-Narrow → `upper_biased`; Solid-and-Broad → `balanced` or `lower_biased`; Medium/Solid-Balanced / Light-and-Broad → `balanced`.
 
-### BodyShape → Silhouette + Volume + StructuralFocus
+**HeightCategory → LineDirection:** Short / Below Average → `vertical`; Tall / Above Average → `horizontal` or `mixed`; Average → `minimal` or `vertical`.
 
-<!-- MIGRATED: knowledge/style_graph/body_frame/{female,male}.yaml —
-     each BodyShape (pear/hourglass/apple/inverted_triangle/rectangle/
-     diamond/trapezoid) carries flatters/avoid for SilhouetteType,
-     VolumeProfile, StructuralFocus, BodyFocusZone. Per architect line
-     380 + composition_semantics.md §4.1: BodyShape > FrameStructure
-     on width-signal conflicts. -->
+**BodyShape → Silhouette + Volume + StructuralFocus:**
 
-| BodyShape | Silhouette | Volume | StructuralFocus |
-|---|---|---|---|
-| Pear | A-line / straight (no hip cling), structured shoulders | Top ≥ bottom (relaxed/structured top, slim-straight or flared bottom) | shoulder |
-| Inverted Triangle | Soft shoulders (raglan, drop-shoulder); detail/color on bottom | Bottom ≥ top (fitted top, relaxed/wide-leg bottom) | hip |
-| Hourglass | Defined waist, fitted/belted, no boxy cuts | Balanced | waist |
-| Rectangle | Layering, belts, asymmetric hemlines for curves | Balanced or slight contrast | waist |
-| Apple | Empire / high-waisted, vertical midsection details, dark midtones torso | Structured top, relaxed bottom; focus face/shoulders | face_neck |
-| Diamond | V-necks, vertical center lines, fitted shoulders + hips | Top + bottom structured, midsection draped | distributed |
-| Trapezoid | Straight or tapered, minimal correction | Balanced | distributed |
+- **Pear** — A-line / straight (no hip cling), structured shoulders; top ≥ bottom volume; focus `shoulder`.
+- **Inverted Triangle** — soft shoulders (raglan, drop-shoulder), detail on bottom; bottom ≥ top volume; focus `hip`.
+- **Hourglass** — defined waist, fitted/belted, no boxy cuts; balanced volume; focus `waist`.
+- **Rectangle** — layering, belts, asymmetric hems for curves; balanced or slight contrast; focus `waist`.
+- **Apple** — empire / high-waisted, vertical midsection, dark midtones torso; structured top + relaxed bottom; focus `face_neck`.
+- **Diamond** — V-necks, vertical center lines, fitted shoulders + hips, draped midsection; structured top + bottom; focus `distributed`.
+- **Trapezoid** — straight or tapered, minimal correction; balanced; focus `distributed`.
 
-When BodyShape and FrameStructure conflict on width signals, **BodyShape priority** (it captures the full-body proportion that drives fit).
+On width-signal conflicts, **BodyShape > FrameStructure** (full-body proportion drives fit).
 
 ## Pattern Calibration (Scale + Contrast)
 
-<!-- MIGRATED: PatternScale rules → knowledge/style_graph/body_frame/
-     {female,male}.yaml (each FrameStructure has a PatternScale flatters
-     list). ContrastLevel rules → knowledge/style_graph/palette.yaml
-     (each sub-season carries ContrastLevel: low/medium/high/very_high).
-     Phase 4.7 engine composes both. -->
+<!-- MIGRATED: PatternScale → knowledge/style_graph/body_frame/{female,male}.yaml.
+     ContrastLevel → knowledge/style_graph/palette.yaml. Engine composes both.
+     LLM-fallback reference only. -->
 
-Pattern is *derived from the user's body and coloring*, not a stored preference. Two independent rules govern pattern emission in `PATTERN_AND_COLOR` sections of the query_document:
+Emit `PatternScale` + `ContrastLevel` in `PATTERN_AND_COLOR` for patterned pieces (omit for solids). Pattern is derived from body + coloring, not a stored preference.
 
-### Pattern scale → from `FrameStructure`
+**PatternScale ← FrameStructure** (small-on-broad reads neutral; large-on-narrow always reads wrong — when in doubt, scale down):
 
-Pattern scale must harmonize with the wearer's frame. A large pattern on a small frame reads as the pattern wearing the person, not the other way around. The pattern repeat should be small enough that multiple repeats are visible across a single garment piece — not one giant motif spanning the torso.
+- Light-and-Narrow / Solid-and-Narrow → `small` / `fine` / `micro` (ditsy florals, fine pinstripes, micro-checks)
+- Medium / Solid-Balanced / Light-and-Broad → `medium` (classic stripes, mid-scale checks)
+- Solid-and-Broad → `medium` to `large` (bold stripes, larger checks)
 
-| FrameStructure | PatternScale | Examples |
-|---|---|---|
-| Light and Narrow, Solid and Narrow | small / fine / micro | small florals, fine pinstripes, micro-checks, ditsy prints |
-| Medium / Solid Balanced, Light and Broad | medium | medium florals, classic stripes, mid-scale checks |
-| Solid and Broad | medium to large | medium-large florals, bold stripes, larger checks |
+**ContrastLevel ← SkinHairContrast** (must match natural contrast — high-natural overpowers low patterns; low-natural is overwhelmed by high):
 
-When in doubt, scale down — small-on-broad reads neutral, large-on-narrow always reads wrong.
-
-### Pattern contrast → from `SkinHairContrast`
-
-Pattern contrast must match the wearer's natural coloring contrast. High-natural-contrast people (dark hair, fair or deep skin, clear eyes) compete with low-contrast patterns and win — the pattern looks washed out. Low-natural-contrast people are overwhelmed by high-contrast patterns.
-
-| SkinHairContrast | ContrastLevel | Examples |
-|---|---|---|
-| High | high | black-and-white graphics, bold color blocking, sharp contrast florals |
-| Medium | medium | tonal-but-defined patterns, two-tone stripes, mid-contrast prints |
-| Low | low / tonal | tone-on-tone, soft tonal florals, blended prints |
-
-These rules emit `PatternScale` and `ContrastLevel` lines in `PATTERN_AND_COLOR` whenever the direction calls for a patterned piece. Solid pieces omit them.
+- High → `high` (black-and-white graphics, bold color blocking)
+- Medium → `medium` (two-tone stripes, mid-contrast prints)
+- Low → `low` / `tonal` (tone-on-tone, soft tonal florals)
 
 ## Concept-First Planning
 
@@ -472,7 +416,7 @@ There is no stored "style archetype" — direction comes from three sources, in 
 
 1. **`live_context.style_goal`** — what the user said in this turn ("something edgy", "old-money classic", "minimalist office", "preppy"). When present, this drives the directional vocabulary (silhouette, fabric texture, embellishment, palette pulls). Example: user says "edgy date night" → SilhouetteContour: structured/sharp, EdgeSharpness: sharp, ColorValue: deep, EmbellishmentLevel: minimal.
 2. **`risk_tolerance`** — modulates how far the stretch direction (and any "bolder" interpretation) pushes from the safe baseline. Conservative = stay close to neutral; balanced = one notch of statement; expressive = clear statement.
-3. **`live_context.formality_hint` + `occasion_signal`** — drives FormalityLevel + fabric + embellishment per the Occasion Calibration table.
+3. **`live_context.formality_hint` + `occasion_signal`** — drives FormalityLevel + fabric + embellishment per **Occasion Calibration** below.
 
 When the user says nothing directional ("show me an office outfit") and no `style_goal` is set, default to a clean, occasion-appropriate interpretation calibrated by body + palette + occasion + risk_tolerance. There is no "user's archetype" to fall back on.
 

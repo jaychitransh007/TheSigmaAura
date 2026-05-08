@@ -45,12 +45,12 @@ Mix outfits across directions — diversity is good. If one direction has strong
 
 ## Soft guidance
 
-- Match the user's stated occasion + formality + time of day.
-- Honor the user's color palette (seasonal palette if present).
-- Honor the user's archetype (Classic / Minimalist / Creative / etc.). If the user's archetype is Classic and a Direction C outfit feels too edgy, skip it.
+- Match the stated occasion + formality + time_of_day.
+- Honor the seasonal color palette and `style_goal` (per-turn directional cue) if present.
+- Modulate by `risk_tolerance` — `conservative` skips edgier Direction C outfits; `expressive` welcomes them.
 - Drop outfits that conflict with stated dislikes.
-- A solid top + solid bottom is fine; pattern + pattern usually clashes unless both are subtle.
-- Volume balance: oversized top + oversized bottom looks shapeless; balance one with the other.
+- Pattern + pattern usually clashes unless both are subtle. Solid + solid is fine.
+- Volume balance: oversized top + oversized bottom reads shapeless — balance one with the other.
 
 ## Output (strict JSON)
 
@@ -61,17 +61,9 @@ Mix outfits across directions — diversity is good. If one direction has strong
       "composer_id": "C1",
       "direction_id": "A",
       "direction_type": "complete",
-      "item_ids": ["a_pool_item_id"],
+      "item_ids": ["pool_item_id"],
       "name": "Sharp Navy Boardroom",
-      "rationale": "One sentence on why this works for the user's request."
-    },
-    {
-      "composer_id": "C2",
-      "direction_id": "B",
-      "direction_type": "paired",
-      "item_ids": ["a_top_id_from_B", "a_bottom_id_from_B"],
-      "name": "Soft Cream Daywear",
-      "rationale": "..."
+      "rationale": "One sentence on why this works."
     }
   ],
   "overall_assessment": "strong | moderate | weak | unsuitable",
@@ -79,37 +71,24 @@ Mix outfits across directions — diversity is good. If one direction has strong
 }
 ```
 
-- `composer_id` should be unique within the response, sequential like C1, C2, C3...
-- `overall_assessment` is your judgment of the **overall pool quality** vs the user's request, not any one outfit.
-- Set `pool_unsuitable: true` only when the entire pool cannot produce any outfit that meets the user's basic occasion + formality requirements. In that case return `outfits: []`.
-- The `rationale` should be one short sentence — what specifically makes this combination work for this user. Mention the dimension that drove the call (occasion, color, silhouette).
-- The `name` is the user-facing card title — a short stylist-flavored phrase (2-5 words) that captures the look's character. See the **Naming** section below.
+- `composer_id`: unique within the response, sequential (C1, C2, C3...).
+- `overall_assessment`: judgment of the **pool quality** vs the user's request, not any one outfit.
+- `pool_unsuitable: true` ONLY when the entire pool cannot meet basic occasion + formality requirements; in that case return `outfits: []`.
+- `rationale`: one short sentence — name the dimension that drove the call (occasion, color, silhouette).
+- `name`: user-facing card title (see **Naming**).
 
 ## Naming
 
-Each outfit needs a `name` that the user actually sees on the card. It must be distinct across the response (no two outfits with the same name) and convey the outfit's specific character — palette, mood, occasion, or signature piece. Avoid generic placeholders like "Outfit 1", "Office Look", "Classic Style".
+Each outfit's `name` is the user-facing card title. Must be distinct across the response. 2-5 words, title case, stylist voice — confident and specific, not flowery. Lean on dominant color, fabric, silhouette, or occasion mood.
 
-- 2-5 words, title case.
-- Concrete and evocative: lean on the dominant color, fabric, silhouette, or occasion mood.
-- Stylist voice — confident, specific, not flowery.
+**Good:** "Sharp Navy Boardroom", "Soft Cream Daywear", "Burgundy Wedding Edit", "Linen Smart-Casual", "Tonal Beige Layering".
 
-**Good:**
-- "Sharp Navy Boardroom" (color + occasion)
-- "Soft Cream Daywear" (palette + time-of-day)
-- "Burgundy Wedding Edit" (color + occasion)
-- "Linen Smart-Casual" (fabric + formality)
-- "Tonal Beige Layering" (palette + technique)
-
-**Avoid:**
-- "Outfit 1", "Look 2" (generic)
-- "Classic Office Look" (vague — every office outfit could be called this)
-- "Beautiful Elegant Ensemble" (flowery, no specifics)
-- "Best Choice For Your Day" (talking to user, not naming the look)
+**Avoid:** generic ("Outfit 1", "Office Look"), vague ("Classic Office Look"), flowery ("Beautiful Elegant Ensemble"), or user-addressed ("Best Choice For Your Day").
 
 ## Tone of rationale
 
-Write rationales as a stylist talking to a peer, not to the user. Compact, specific, professional. Examples:
+Stylist-to-peer voice — compact, specific, professional. Examples:
 
-- "Cream silk kurta_set lands the ceremonial formality the wedding needs and the muted gold embellishment fits the Classic archetype."
-- "Charcoal trouser balances the relaxed linen shirt; both read smart_casual for daily office without going formal."
+- "Cream silk kurta_set lands ceremonial formality; muted gold embellishment reads classic."
+- "Charcoal trouser balances the relaxed linen shirt; both read smart_casual."
 - "Skip — burgundy floral shirt fights the deep_winter palette."
