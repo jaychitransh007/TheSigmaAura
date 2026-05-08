@@ -170,6 +170,8 @@ class CanonicalizeEmbeddingTests(unittest.TestCase):
     def test_above_threshold_replaces_raw_with_canonical_key(self):
         # Build a tiny bank where "everyday_casual" is a strong match
         # for the query. Mock the embed client to return aligned vectors.
+        # Use "birthday" (NOT in _OCCASION_ALIASES) so the test exercises
+        # the embedding-fallback path, not the alias-table short-circuit.
         embeddings = CanonicalEmbeddings(
             occasion={
                 "everyday_casual": _unit(1.0, 0.0, 0.0),
@@ -180,12 +182,12 @@ class CanonicalizeEmbeddingTests(unittest.TestCase):
 
         def stub_embed(texts):
             assert len(texts) == 1, texts
-            assert texts[0] == "casual"
+            assert texts[0] == "birthday"
             # Aligned with everyday_casual → cosine 1.0
             return [list(_unit(1.0, 0.0, 0.0))]
 
         out, result = canonicalize_inputs(
-            _baseline_inputs(occasion_signal="casual"),
+            _baseline_inputs(occasion_signal="birthday"),
             graph=self.graph,
             embeddings=embeddings,
             embed_client=stub_embed,
@@ -220,7 +222,9 @@ class CanonicalizeEmbeddingTests(unittest.TestCase):
 
     def test_batched_embed_call_for_multiple_axes(self):
         # Two non-canonical axes should produce ONE embed call with
-        # both texts in input order.
+        # both texts in input order. Use words NOT in the alias tables
+        # so the test exercises the embedding-fallback path
+        # ("birthday" not aliased; "balmy" not aliased).
         embeddings = CanonicalEmbeddings(
             occasion={"everyday_casual": _unit(1.0, 0.0)},
             weather={"warm_temperate": _unit(0.0, 1.0)},
@@ -228,17 +232,17 @@ class CanonicalizeEmbeddingTests(unittest.TestCase):
         )
 
         embed = Mock(return_value=[
-            list(_unit(1.0, 0.0)),  # for "casual"
+            list(_unit(1.0, 0.0)),  # for "birthday"
             list(_unit(0.0, 1.0)),  # for "balmy"
         ])
 
         out, result = canonicalize_inputs(
-            _baseline_inputs(occasion_signal="casual", weather_context="balmy"),
+            _baseline_inputs(occasion_signal="birthday", weather_context="balmy"),
             graph=self.graph,
             embeddings=embeddings,
             embed_client=embed,
         )
-        embed.assert_called_once_with(["casual", "balmy"])
+        embed.assert_called_once_with(["birthday", "balmy"])
         self.assertEqual(result.embed_calls, 1)
         self.assertEqual(out.occasion_signal, "everyday_casual")
         self.assertEqual(out.weather_context, "warm_temperate")
@@ -252,14 +256,17 @@ class CanonicalizeEmbeddingTests(unittest.TestCase):
         def stub_embed(texts):
             raise RuntimeError("OpenAI 502")
 
+        # Use "birthday" (NOT in _OCCASION_ALIASES) so the test
+        # exercises the embedding-fallback failure path, not the
+        # alias short-circuit.
         out, result = canonicalize_inputs(
-            _baseline_inputs(occasion_signal="casual"),
+            _baseline_inputs(occasion_signal="birthday"),
             graph=self.graph,
             embeddings=embeddings,
             embed_client=stub_embed,
         )
         # Raw value survives; engine flags as gap.
-        self.assertEqual(out.occasion_signal, "casual")
+        self.assertEqual(out.occasion_signal, "birthday")
         # Embed call was attempted but didn't yield matches.
         self.assertEqual(result.embed_calls, 1)
         self.assertNotIn("occasion", result.matches)
@@ -276,6 +283,103 @@ class CanonicalizeEmbeddingTests(unittest.TestCase):
         )
         self.assertEqual(out.occasion_signal, "hangout")
         self.assertEqual(result.embed_calls, 0)
+
+
+class CanonicalAliasTests(unittest.TestCase):
+    """Alias table short-circuits common informal phrasings to the
+    correct YAML keys before the embedding fallback runs (May 8 2026
+    RCA — ``wedding`` → ``sagai_engagement`` via cosine similarity was
+    semantically wrong; the alias table sends ``wedding`` to
+    ``wedding_ceremony`` directly, no API call needed)."""
+
+    def setUp(self):
+        self.graph = load_style_graph()
+
+    def test_wedding_alias_resolves_to_wedding_ceremony(self):
+        # No embed_client passed — proves alias short-circuits the
+        # embed pass entirely. Bank is empty for the same reason.
+        out, result = canonicalize_inputs(
+            _baseline_inputs(occasion_signal="wedding"),
+            graph=self.graph,
+            embeddings=CanonicalEmbeddings(
+                occasion={}, weather={}, archetype={}, risk_tolerance={}, seasonal={},
+            ),
+            embed_client=None,
+        )
+        self.assertEqual(out.occasion_signal, "wedding_ceremony")
+        self.assertEqual(result.embed_calls, 0)
+
+    def test_office_alias_resolves_to_daily_office_mnc(self):
+        out, _ = canonicalize_inputs(
+            _baseline_inputs(occasion_signal="office"),
+            graph=self.graph,
+            embeddings=CanonicalEmbeddings(
+                occasion={}, weather={}, archetype={}, risk_tolerance={}, seasonal={},
+            ),
+            embed_client=None,
+        )
+        self.assertEqual(out.occasion_signal, "daily_office_mnc")
+
+    def test_casual_alias_resolves_to_everyday_casual(self):
+        out, _ = canonicalize_inputs(
+            _baseline_inputs(occasion_signal="casual"),
+            graph=self.graph,
+            embeddings=CanonicalEmbeddings(
+                occasion={}, weather={}, archetype={}, risk_tolerance={}, seasonal={},
+            ),
+            embed_client=None,
+        )
+        self.assertEqual(out.occasion_signal, "everyday_casual")
+
+    def test_alias_lookup_is_case_insensitive(self):
+        out, _ = canonicalize_inputs(
+            _baseline_inputs(occasion_signal="Wedding"),
+            graph=self.graph,
+            embeddings=CanonicalEmbeddings(
+                occasion={}, weather={}, archetype={}, risk_tolerance={}, seasonal={},
+            ),
+            embed_client=None,
+        )
+        self.assertEqual(out.occasion_signal, "wedding_ceremony")
+
+    def test_weather_alias_resolves_humid_to_hot_humid(self):
+        out, _ = canonicalize_inputs(
+            _baseline_inputs(weather_context="humid"),
+            graph=self.graph,
+            embeddings=CanonicalEmbeddings(
+                occasion={}, weather={}, archetype={}, risk_tolerance={}, seasonal={},
+            ),
+            embed_client=None,
+        )
+        self.assertEqual(out.weather_context, "hot_humid")
+
+    def test_yaml_exact_match_takes_precedence_over_alias(self):
+        # ``daily_office_mnc`` exact-matches the YAML — alias table
+        # would only kick in if YAML didn't already cover it.
+        out, _ = canonicalize_inputs(
+            _baseline_inputs(occasion_signal="daily_office_mnc"),
+            graph=self.graph,
+            embeddings=CanonicalEmbeddings(
+                occasion={}, weather={}, archetype={}, risk_tolerance={}, seasonal={},
+            ),
+            embed_client=None,
+        )
+        self.assertEqual(out.occasion_signal, "daily_office_mnc")
+
+    def test_unaliased_value_still_falls_through_to_embed(self):
+        # "birthday" is NOT in the alias table, so embed is consulted.
+        embed = Mock(return_value=[list(_unit(1.0, 0.0))])
+        out, result = canonicalize_inputs(
+            _baseline_inputs(occasion_signal="birthday"),
+            graph=self.graph,
+            embeddings=CanonicalEmbeddings(
+                occasion={"everyday_casual": _unit(1.0, 0.0)},
+                weather={}, archetype={}, risk_tolerance={}, seasonal={},
+            ),
+            embed_client=embed,
+        )
+        embed.assert_called_once_with(["birthday"])
+        self.assertEqual(out.occasion_signal, "everyday_casual")
 
 
 class LoadCanonicalEmbeddingsTests(unittest.TestCase):

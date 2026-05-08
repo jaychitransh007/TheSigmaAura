@@ -15,12 +15,17 @@ handler picks between them:
   backed, regression-tested in Phase 11).
 - Everything else (open-ended discovery, explanation) → this agent.
 
-Two modes:
+Three modes:
 
 - ``discovery``  — open-ended style questions like "what defines my
                    style?" or "what should I prioritize when shopping?"
 - ``explanation`` — "why did you recommend that?" against a prior turn's
                     recommendation summary.
+- ``shopping_decision`` — "should I buy this?" against a single product.
+                    Produces a yes/no/maybe verdict + rationale grounded
+                    in the user's profile (palette, body, archetype) and
+                    the product's attributes. Distinct from pairing —
+                    the answer is a verdict, not an outfit.
 """
 
 from __future__ import annotations
@@ -210,17 +215,23 @@ class StyleAdvisorAgent:
         conversation_memory: Optional[Dict[str, Any]] = None,
         previous_recommendation_focus: Optional[Dict[str, Any]] = None,
         profile_confidence_pct: int = 0,
+        product_under_consideration: Optional[Dict[str, Any]] = None,
     ) -> StyleAdvice:
         """Generate a structured advisory response.
 
-        ``mode`` must be ``"discovery"`` or ``"explanation"``. The
-        orchestrator routes the call based on which intent it is
-        dispatching. ``previous_recommendation_focus`` is required for
-        explanation mode (the agent answers "why did you recommend X?"
-        against this payload).
+        ``mode`` must be ``"discovery"``, ``"explanation"``, or
+        ``"shopping_decision"``. The orchestrator routes the call based
+        on which intent it is dispatching. ``previous_recommendation_focus``
+        is required for explanation mode (the agent answers "why did you
+        recommend X?" against this payload). ``product_under_consideration``
+        is required for shopping_decision mode (the product the user is
+        asking a buy/skip verdict on, with its enriched attributes).
         """
-        if mode not in ("discovery", "explanation"):
-            raise ValueError(f"StyleAdvisorAgent mode must be 'discovery' or 'explanation', got {mode!r}")
+        if mode not in ("discovery", "explanation", "shopping_decision"):
+            raise ValueError(
+                f"StyleAdvisorAgent mode must be 'discovery', 'explanation', "
+                f"or 'shopping_decision'; got {mode!r}"
+            )
 
         payload = {
             "mode": mode,
@@ -229,6 +240,7 @@ class StyleAdvisorAgent:
             "planner_entities": _planner_entities_payload(plan_resolved_context, plan_action_parameters),
             "conversation_memory": conversation_memory or {},
             "previous_recommendation_focus": previous_recommendation_focus,
+            "product_under_consideration": product_under_consideration,
             "profile_confidence_pct": int(profile_confidence_pct or 0),
         }
 
