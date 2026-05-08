@@ -1,6 +1,6 @@
 # Composer Engine — Semantic Spec
 
-**Status:** v1 spec, 2026-05-07. Implementation pending — PR 5a (this doc), then 5b (loader + scorer), 5c (engine), 5d (router + flag), 5e (validator + shadow), 5f (tests + dashboards). Sections marked **🎨 STYLIST SIGN-OFF NEEDED** are gated on the Phase 4.2 paid-stylist YAML review.
+**Status:** v1 spec, 2026-05-07. **Implementation SHIPPED behind flag** (Phase 5, PRs #158–#163, May 2026). Engine code lives in `modules/agentic_application/src/agentic_application/composition/` (composer module); router gate in `composer_router.py`. Behind `AURA_COMPOSER_ENGINE_ENABLED` env flag (default false). Flag-on validation gated on Phase 4.6 eval-set curation + Phase 4.2 paid-stylist YAML review (both blocked on human work). Sections marked **🎨 STYLIST SIGN-OFF NEEDED** below indicate semantics that will be confirmed by 4.2.
 
 This spec defines how the composer engine consumes the architect's `RecommendationPlan` plus the retrieved garment pools and emits up to 6 `ComposedOutfit`s by scoring slot tuples against `pairing_rules.yaml`. Goal: replace `OutfitComposer.compose()` (gpt-5.2, ~12-14s, $0.036/turn) with deterministic tuple scoring (~300ms p95) on the common path, falling back to the LLM only on low confidence, sparse pools, or pre-engine eligibility misses.
 

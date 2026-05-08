@@ -22,18 +22,14 @@ The pipeline must produce a usable answer for every primary intent without
 manual intervention.
 
 - [ ] All tests across `tests/` pass against the current branch
-      (verified May 3, 2026 post-PR-#32: **434 L0 tests, 1 skipped, 0 failures**).
-      Cumulative scope: Phase 13/13B regression tests (live_context
-      payload, three_piece direction, anchor payload); May-1 confidence
-      threshold tests (`ConfidenceThresholdGateTests` × 6) verifying
-      outfits below the threshold never reach the user; May-3 perf-series
-      tests (`TryonParallelRenderTests` × 3, `ArchitectPromptAssemblyTests`
-      × 3); May-3 LLM ranker tests (`test_outfit_composer.py` × 11,
-      `test_outfit_rater.py` × 8). Prior baseline: three outfit structures +
-      all 46 attributes in query docs + parallel retrieval ~4× speedup +
-      occasion-fabric coupling + time-of-day inference + role-category
-      validation + outerwear recategorization + catalog 14,296 garment
-      items.
+      (verified May 8, 2026: **1015 L0 tests, 1 skipped, 0 failures**).
+      Cumulative scope spans the composition + composer engines (Phase
+      4.7–5), per-axis YAML gap weighting + tuning harness (PR #200),
+      empty-retrieval auto-relaxation (PR #192), engine-eligibility for
+      all 7 follow-up intents (PRs #190/#191/#198/#199), Phase 3 prompt
+      compression + audit harness (PR #202), the 4 must-fix observability
+      counters (PR #204), and the cleanup pass that retired dead-code
+      stubs and PR-review comment debt (PR #205).
 - [ ] `ops/scripts/validate_dependency_report.py` runs to completion with
       zero failed assertions.
 - [ ] `ops/scripts/smoke_test_full_flow.sh` runs to completion against a
@@ -78,12 +74,15 @@ The environment we ship to must have the data the pipeline depends on.
 
 You cannot ship what you cannot watch.
 
-- [ ] All 16 dashboard panels in `docs/OPERATIONS.md` exist in the chosen
+- [ ] All **32 dashboard panels** in `docs/OPERATIONS.md` exist in the chosen
       dashboard tool (Supabase Studio / Metabase / Grafana) and refresh on
-      the cadence specified there. Panel 16 — Low-Confidence Catalog
-      Responses (May 2026) tracks the rate at which the 0.75 threshold
-      gate forces a no-confident-match response; healthy steady state
-      is < 5%.
+      the cadence specified there. Panels 21-24 cover the composition
+      engine flag-on cohort; 25-28 cover the composer engine; 29-32 cover
+      the May-8 must-fix gaps (try-on flag state, empty-retrieval
+      relaxation outcome, follow-up intent routing, per-axis YAML gap
+      impact). Panel 16 — Low-Confidence Catalog Responses tracks the
+      rate at which the threshold gate forces a no-confident-match
+      response; healthy steady state is < 5%.
 - [ ] **Pipeline Health** panel shows zero empty responses and a defined
       error rate over the last 24h.
 - [ ] **Catalog-unavailable guardrail** panel shows zero hits in production
@@ -93,13 +92,16 @@ You cannot ship what you cannot watch.
       more than 3 distinct users, the catalog row is audited and either
       fixed or hidden.
 - [ ] An on-call rotation exists with documented escalation steps for:
-  - empty responses spike
-  - catalog/embeddings missing
-  - feedback dislikes spike on a single product
-  - try-on render slowness (visual_evaluation step > 70s sustained — see
-    Operations runbook section E)
+  - empty responses spike (Runbook A)
+  - catalog/embeddings missing (Runbook B)
+  - feedback dislikes spike on a single product (Runbook C)
   - dependency report shows acquisition_source = unknown for >50% of
-    new users (instrumentation regressed)
+    new users (Runbook D)
+  - composition engine flag-on regressions (Runbook A4)
+  - composer engine flag-on regressions (Runbook A5)
+  - try-on flag accidentally off in production (Runbook A6)
+  - empty-retrieval relaxation firing on >2% of turns (Runbook A7)
+  - per-axis YAML-gap impact concentration on a single axis (Runbook A8)
 - [ ] Logs from `_log.error` / `_log.warning` in `orchestrator.py`,
       `catalog_search_agent.py`, `outfit_composer.py`, and
       `outfit_rater.py` are captured somewhere queryable (cloud
