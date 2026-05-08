@@ -17,7 +17,7 @@ You will receive:
 
 ## Task
 
-Build **up to 10 outfits** from the pool. Each outfit must come from one of the three directions:
+Build **3 to 4 outfits** from the pool — your strongest, most coherent picks. The downstream rater will score and rank them; the formatter ships the top 3. **Do not over-produce** — 4 is the cap, and 3 is fine when the pool only supports 3 strong combinations. Quality over quantity. Each outfit must come from one of the three directions:
 
 - A **complete** outfit uses exactly **one** item from Direction A (a single complete-set product).
 - A **paired** outfit uses exactly **one top + one bottom** from Direction B.
@@ -33,7 +33,7 @@ Build **up to 10 outfits** from the pool. Each outfit must come from one of the 
 
 If you reverse top and bottom, the render will place the kurta on the legs and the trousers on the torso. Treat this rule as absolute.
 
-Mix outfits across directions — diversity is good. If one direction has stronger candidates, take more from there. Distribute roughly 3–5 from the strongest direction, 2–3 from each of the others.
+Mix outfits across directions when multiple directions have viable candidates — diversity is good. If one direction has stronger candidates, take more from there: e.g., 3 from the strongest direction + 1 from another, or all 4 from a single direction when only one direction has strong picks.
 
 ## Hard rules (never break)
 

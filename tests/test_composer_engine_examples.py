@@ -219,15 +219,17 @@ class WorkedExample94Tests(unittest.TestCase):
 
 class MaxItemsSchemaCapTests(unittest.TestCase):
     """Spec §7.4 + Phase 5f schema cap: LLM JSON schema enforces
-    maxItems=10 on the outfits array. The engine targets MAX_OUTFITS=6
-    via its own logic; this test guards the LLM-side bound."""
+    maxItems=4 on the outfits array (3 ship + 1 validator buffer; was
+    10, slashed May 8 follow-up to cut composer + rater latency on
+    pairing turns). The engine targets MAX_OUTFITS=6 via its own
+    logic; this test guards the LLM-side bound."""
 
-    def test_llm_schema_caps_outfits_at_10(self):
+    def test_llm_schema_caps_outfits_at_4(self):
         from agentic_application.agents.outfit_composer import _build_composer_json_schema
 
         schema = _build_composer_json_schema(["A", "B", "C"])
         outfits_schema = schema["schema"]["properties"]["outfits"]
-        self.assertEqual(outfits_schema.get("maxItems"), 10)
+        self.assertEqual(outfits_schema.get("maxItems"), 4)
 
 
 if __name__ == "__main__":
