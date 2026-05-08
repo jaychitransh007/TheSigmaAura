@@ -1,8 +1,8 @@
 # Intent-Driven Fashion Copilot Architecture
 
-Last updated: May 3, 2026
+Last updated: May 8, 2026 (header bullets only — body text below is still the older target-state aspiration)
 
-> **⚠️ Target-state document — substantially superseded by Phase 12 + Phase 13.** This
+> **⚠️ Target-state document — substantially superseded by Phase 12 + Phase 13 + Phase 4 + Phase 5.** This
 > file describes the *aspirational* architecture (web + WhatsApp,
 > cross-channel identity, the original 12-intent taxonomy). Several large
 > chunks below are now historically inaccurate:
@@ -36,16 +36,16 @@ Last updated: May 3, 2026
 >    `not_applicable`), color synonym expansion, semantic fabric clusters,
 >    follow-up intent tiebreaker, and consolidated occasion calibration.
 >    See `docs/WORKFLOW_REFERENCE.md` § Phase History (Phase 13/13B) for the full change list.
-> 6. **Model assignment** (last updated May 5, 2026 — third swap, latency-fix
->    pass). `gpt-5.5`: User Analysis only (one-shot onboarding call kept on the
->    bigger model with reasoning_effort=high). `gpt-5.4` + `reasoning_effort=low`:
->    Outfit Architect, Style Advisor (both stepped to "low" to cut chain-of-thought
->    latency on structured-output tasks; Style Advisor moved off gpt-5.5 with the
->    voice-quality risk noted). `gpt-5-mini` + `reasoning_effort=minimal` everywhere
->    it's called: Copilot Planner, Visual Evaluator, Image Moderation, Outfit
->    Decomposition, Wardrobe Enrichment, Composer, Rater. "minimal" is the floor
->    on gpt-5-mini ("none" only works on gpt-5.1+). Try-on still on
->    `gemini-3.1-flash-image-preview`.
+> 6. **Model assignment** (current as of May 8, 2026). `gpt-5.5`: User
+>    Analysis only (one-shot onboarding call). `gpt-5.4`: Style Advisor
+>    only. **`gpt-5.2`: Outfit Architect + Outfit Composer** (was gpt-5.4
+>    pre-Phase-1; the swap dropped per-turn cost ~28% and tail latency).
+>    `gpt-5-mini` + `reasoning_effort=minimal`: Copilot Planner, Visual
+>    Evaluator, Image Moderation, Outfit Decomposition, Wardrobe
+>    Enrichment, Outfit Rater. All five env-configurable via
+>    `PLANNER_MODEL`, `ARCHITECT_MODEL`, `COMPOSER_MODEL`, `RATER_MODEL`,
+>    `STYLE_ADVISOR_MODEL`. Try-on on `gemini-3.1-flash-image-preview`,
+>    flag-gated via `AURA_TRYON_ENABLED`.
 > 7. **Confidence threshold gates every outfit** (May 1, 2026; rebased to
 >    `fashion_score` on May 3, 2026). Catalog-pipeline outfits with
 >    `fashion_score < 75` (LLM Rater 0–100 scale) are dropped before
@@ -80,10 +80,25 @@ Last updated: May 3, 2026
 >    Input canonicalization (`composition/canonicalize.py`) bridges
 >    free-text planner output to YAML-canonical keys via batched
 >    `text-embedding-3-small`. Engine-served turns skip the LLM architect
->    entirely; fall-through still runs the LLM as documented. See
->    `docs/composition_semantics.md` for the algorithm and the full
->    PR list (#149 engine + 4.8 framework + 4.9 router + 4.10 flag,
->    #151 canonicalize, #150/152/153/154 observability + operability hardening).
+>    entirely; fall-through still runs the LLM as documented. Per-axis
+>    YAML-gap weighting (PRs #194/#197) and per-axis confidence-loss
+>    telemetry (PR #204) drive tuning via `ops/scripts/tune_yaml_gap_weights.py`.
+>    Engine-friendly follow-up intents (decrease_formality, increase_formality,
+>    more_options, similar_to_previous, change_color, full_alternative,
+>    increase_boldness — PRs #190/#191/#198/#199) all route to engine.
+>    Empty-retrieval auto-relaxation (PR #192) drops filters in sequence
+>    when retrieval returns 0 products. See `docs/composition_semantics.md`.
+> 11. **Composer path also has a deterministic engine** (Phase 5, PRs #158-#163,
+>    behind `AURA_COMPOSER_ENGINE_ENABLED` flag). Replaces the LLM
+>    `OutfitComposer` with deterministic tuple scoring + greedy top-K.
+>    Flag-on validation gated on Phase 4.6 eval-set + 4.2 stylist YAML
+>    review (both blocked on human work). See `docs/composer_semantics.md`.
+> 12. **Phase 3 prompt compression shipped May 8, 2026** (PR #202). Architect
+>    prompt 8343 → 7412 tokens, composer 1715 → 1441; `_RECENT_USER_ACTIONS_MAX`
+>    capped at 20 (was 30); structured output verified via `response_format=
+>    json_schema`. New `ops/scripts/audit_prompt_tokens.py` regression guard.
+>    Aggressive 14K → 5K via YAML-row injection (3.3/3.5) deferred until
+>    after Phase 4.6 eval set.
 >
 > For the authoritative "what is running right now" view, always defer to
 > `docs/APPLICATION_SPECS.md` § Live System Reference. When this

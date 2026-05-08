@@ -1,10 +1,10 @@
 # Application Layer — Implementation Specification
 
-Last updated: May 3, 2026 (Model migration to gpt-5.5/gpt-5-mini; architect prompt modular assembly; confidence threshold 0.75; parallel try-on renders; Lever 3 split-architect deprecated and removed)
+Last updated: May 8, 2026. Recent shipping covered in § Live System Reference (bottom): composition engine (Phase 4.7), composer engine (Phase 5, behind flag), Phase 3 prompt compression, must-fix observability counters (panels 29-32), `_RECENT_USER_ACTIONS_MAX` cap 30→20, dead-code stub + comment-debt cleanup.
 
 > **⚠️ Header sections are partially deprecated; § Live System Reference (bottom) is authoritative.** The opening "Implementation Spec" sections of this document still describe the *legacy* routing layer (`intent_router.py`, `intent_handlers.py`, `context_gate.py`, `context/occasion_resolver.py`) which has been **deleted** from the codebase and replaced by the LLM copilot planner inlined into `process_turn`.
 >
-> **The authoritative "what is running right now" view lives at the bottom of this file in § Live System Reference (May 3, 2026)** — migrated from the now-deleted `CURRENT_STATE.md`. When the legacy header sections disagree with § Live System Reference, the latter wins.
+> **The authoritative "what is running right now" view lives at the bottom of this file in § Live System Reference (May 8, 2026)** — migrated from the now-deleted `CURRENT_STATE.md`. When the legacy header sections disagree with § Live System Reference, the latter wins.
 >
 > Other docs that delegate to this one:
 > - `docs/PRODUCT.md` — product framing, personas, gap-versus-target
@@ -2012,9 +2012,9 @@ All features complete — no outstanding blockers.
 
 ---
 
-# Live System Reference (May 6, 2026)
+# Live System Reference (May 8, 2026)
 
-_Migrated from `CURRENT_STATE.md` on May 3, 2026. Refreshed May 6, 2026 to reflect the post-PR-#101 system (6-dim 1/2/3 rater, episodic memory at the architect, source_preference→catalog default, composer-emitted card names). This is the authoritative "what is running right now" view that other docs delegate to. The historical decision-log (Phase 9–15) lives at the bottom of `docs/WORKFLOW_REFERENCE.md`._
+_Migrated from `CURRENT_STATE.md` on May 3, 2026. Refreshed May 8, 2026 to cover the May-6 → May-8 shipping wave: composition engine (Phase 4.7), composer engine (Phase 5, behind flag), per-axis YAML-gap weighting + tuning harness, empty-retrieval auto-relaxation, engine eligibility for all 7 follow-up intents, Phase 3 prompt compression + audit harness, must-fix observability counters (panels 29-32 + runbooks A6-A8), and dead-code/comment-debt cleanup. Models on production: architect + composer on `gpt-5.2` (was gpt-5.4); planner + rater on `gpt-5-mini`; style advisor on `gpt-5.4`. Active env flags: `AURA_COMPOSITION_ENGINE_ENABLED`, `AURA_COMPOSER_ENGINE_ENABLED`, `AURA_TRYON_ENABLED`. This is the authoritative "what is running right now" view that other docs delegate to. The historical decision-log (Phase 9–15) lives at the bottom of `docs/WORKFLOW_REFERENCE.md`._
 
 ## Active Runtime
 

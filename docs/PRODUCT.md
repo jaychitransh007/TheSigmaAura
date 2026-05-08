@@ -388,13 +388,18 @@ Strategy: **stylist for retention, shopping for revenue.** The product should fe
 
 ## Executive Status
 
-Project status:
+Project status (as of 2026-05-08):
 - user layer: implemented and usable
-- catalog layer: implemented and usable
-- application layer: active, usable end-to-end recommendation pipeline with copilot planner, wardrobe ingestion, image moderation, and confidence engines
+- catalog layer: implemented and usable (14,296 garment-only items, all enriched/embedded)
+- application layer: end-to-end recommendation pipeline with copilot planner, wardrobe ingestion, image moderation, and confidence engines
+- **composition engine SHIPPED (Phase 4.7, behind `AURA_COMPOSITION_ENGINE_ENABLED` flag).** YAML-driven deterministic outfit-direction planning replaces the architect LLM on engine-accepted turns. Architect stage 19s → ~0ms; engine-friendly follow-up intents (decrease_formality, increase_formality, more_options, similar_to_previous, change_color, full_alternative, increase_boldness) all route to engine. Per-axis YAML-gap weights with confidence threshold 0.50. LLM falls back on confidence misses, anchor turns, or YAML gaps.
+- **composer engine SHIPPED behind flag (Phase 5, `AURA_COMPOSER_ENGINE_ENABLED`).** Deterministic tuple scoring replaces LLM composer. Flag-on validation gated on Phase 4.6 eval-set + 4.2 stylist YAML review (both blocked on human work).
+- **cache layer SHIPPED (Phase 2).** Architect + composer cache, profile-cluster keying. Hit rate started ticking up once Phase 4.7 + canonicalization (4.11) made engine inputs deterministic.
+- **prompt compression SHIPPED (Phase 3, May 8 2026).** Architect 8343 → 7412 tokens, composer 1715 → 1441; episodic memory cap 30 → 20; new `ops/scripts/audit_prompt_tokens.py` regression guard.
+- **rater parallelization SHIPPED (Phase 1).** Per-outfit fan-out via ThreadPoolExecutor (was a single batched call); rater stage 13.4s → ~2-3s.
 - wardrobe: ingestion, enrichment, retrieval, wardrobe-first occasion response, full CRUD UI (add/edit/delete), enhanced filters (search, category, color), and completeness scoring implemented
 - WhatsApp: removed from current codebase (previously had formatting and deep linking; runtime was never built)
-- safety: dual-layer image moderation (heuristic + vision), restricted category exclusion, try-on quality gate implemented
+- safety: dual-layer image moderation (heuristic + vision), restricted category exclusion, try-on quality gate implemented; try-on rendering itself flag-gated via `AURA_TRYON_ENABLED` (default false to save cost in dev loops)
 - web UI: Confident Luxe design system (Phase 14) + intent-organized discovery surface (Phase 15 — complete) — ivory/oxblood/champagne palette, Fraunces + Inter + JetBrains Mono, hairline borders, full dark mode; 5-tab nav (Home / Outfits / Checks / Wardrobe / Saved) with 56px header. Home = discovery input + PDP carousel with CSS slide transitions, swipe/keyboard nav, iteration stacking. Outfits = intent-grouped history with per-section carousels and staggered entrance. Checks = outfit check cards. All legacy surfaces removed: no chat bubbles, no conversation sidebar, no Trial Room tab, no Looks page. Feedback redesigned as contextual strip (heart + "What would you change?" inline expansion).
 - profile: style dossier with display-xl name hero, italic adjective list, champagne signal rule on palette card, theme toggle, underline-only edit inputs
 - wardrobe: borderless 5-column closet grid with right-edge Add Item drawer — photo-only upload with auto-enrichment (46 attributes via vision API); edit modal with underline inputs; hover-reveal edit/delete text buttons
@@ -409,7 +414,7 @@ Project status:
 - retrieval performance: **batched embeddings** (single OpenAI call for all query documents) + **parallel search+hydrate** (ThreadPoolExecutor, 4 workers) — ~4x speedup vs sequential
 - query document coverage: **all 46 enrichment attributes** in architect query template including EMBELLISHMENT (EmbellishmentLevel/Type/Zone) and VISUAL_DIRECTION (VerticalWeightBias, VisualWeightPlacement, StructuralFocus, BodyFocusZone, LineDirection)
 
-The system is a working recommendation engine with supporting infrastructure. The next phase is evolving it from a shopping-first tool into a lifestyle stylist — wardrobe-first across all intents, dedicated handlers for non-recommendation intents (outfit check, shopping decision, pairing, capsule planning), and WhatsApp as a live retention surface.
+The system is a working recommendation engine with supporting infrastructure, now with deterministic engine paths replacing LLM hops on the common case (composition + composer). Wardrobe-first is live across the recommendation flow. Open work tracked in `docs/OPEN_TASKS.md`: Phase 6 streaming delivery (perceived-latency UX win), Phase 4.6 eval-set curation (gates several follow-on validations), Phase 4.2 stylist YAML review (paid consultant pass), and Phase 7 distillation (gated on 10K+ traces).
 
 
 ## Strategic Product Direction
