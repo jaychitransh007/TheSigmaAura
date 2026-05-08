@@ -1311,6 +1311,99 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("catalog", response.outfits[0].items[0]["source"])
         self.assertEqual("catalog", response.metadata["answer_components"]["primary_source"])
 
+    def test_response_formatter_prepends_outerwear_anchor_to_each_outfit(self) -> None:
+        """May 8 follow-up RCA: outerwear-anchor pairing turns now skip
+        pool injection — the architect plans top + bottom queries
+        AROUND the anchor, the composer picks complementary items, and
+        the formatter prepends the user's outerwear anchor to each
+        outfit card. End-to-end the user sees [their blazer] + [composed
+        top] + [composed bottom] instead of getting their blazer back as
+        a 1-item outfit."""
+        formatter = ResponseFormatter()
+        evaluated = [
+            EvaluatedRecommendation(
+                candidate_id="cand-1", rank=1, match_score=0.9,
+                title="Smart-casual pairing", reasoning="Pairs well under the blazer.",
+                item_ids=["sku-top-1", "sku-bot-1"],
+            )
+        ]
+        candidates = [
+            OutfitCandidate(
+                candidate_id="cand-1", direction_id="A", candidate_type="paired",
+                items=[
+                    {"product_id": "sku-top-1", "title": "Cream Silk Shell", "garment_category": "top"},
+                    {"product_id": "sku-bot-1", "title": "Black Tailored Trousers", "garment_category": "bottom"},
+                ],
+                fashion_score=82,
+            )
+        ]
+        context = CombinedContext(
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="What goes with this?"),
+            hard_filters={"gender_expression": "feminine"},
+        )
+        plan = RecommendationPlan(retrieval_count=8, directions=[])
+        anchor = {
+            "id": "wardrobe-blazer-uuid",
+            "title": "Navy Blazer",
+            "image_path": "data/onboarding/images/wardrobe/navy_blazer.webp",
+            "garment_category": "outerwear",
+            "garment_subtype": "blazer",
+            "primary_color": "navy",
+        }
+
+        response = formatter.format(
+            evaluated, context, plan, candidates,
+            anchor_to_prepend=anchor, anchor_render_role="outerwear",
+        )
+
+        self.assertEqual(1, len(response.outfits))
+        items = response.outfits[0].items
+        # Anchor is the first item, the two composed items follow.
+        self.assertEqual(3, len(items))
+        self.assertEqual("Navy Blazer", items[0]["title"])
+        self.assertEqual("outerwear", items[0]["role"])
+        self.assertEqual("wardrobe", items[0]["source"])
+        self.assertTrue(items[0]["is_anchor"])
+        # Composed items preserve their order.
+        self.assertEqual("Cream Silk Shell", items[1]["title"])
+        self.assertEqual("Black Tailored Trousers", items[2]["title"])
+
+    def test_response_formatter_no_anchor_prepend_when_anchor_to_prepend_is_none(self) -> None:
+        """Regression guard: when anchor_to_prepend is not supplied (the
+        default), the formatter behaves exactly as before — no extra
+        items, no is_anchor flags. Covers top/bottom anchors (anchor
+        already in the composed pool via injection) and non-pairing
+        turns (no anchor at all)."""
+        formatter = ResponseFormatter()
+        evaluated = [
+            EvaluatedRecommendation(
+                candidate_id="cand-1", rank=1, match_score=0.9,
+                title="A", reasoning="r", item_ids=["sku-1", "sku-2"],
+            )
+        ]
+        candidates = [
+            OutfitCandidate(
+                candidate_id="cand-1", direction_id="A", candidate_type="paired",
+                items=[
+                    {"product_id": "sku-1", "title": "Top"},
+                    {"product_id": "sku-2", "title": "Bottom"},
+                ],
+                fashion_score=80,
+            )
+        ]
+        context = CombinedContext(
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="x"),
+        )
+        plan = RecommendationPlan(retrieval_count=8, directions=[])
+
+        response = formatter.format(evaluated, context, plan, candidates)
+
+        self.assertEqual(2, len(response.outfits[0].items))
+        for item in response.outfits[0].items:
+            self.assertNotIn("is_anchor", item)
+
     def test_response_formatter_caps_output_to_top_five_outfits(self) -> None:
         formatter = ResponseFormatter()
         evaluated = [

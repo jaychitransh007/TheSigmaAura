@@ -85,6 +85,35 @@ def _build_item_card(item: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _build_anchor_card(anchor: Dict[str, Any], render_role: str) -> Dict[str, Any]:
+    """Build the item card for a render-time-prepended anchor.
+
+    Anchors come from the wardrobe-enrichment payload (wardrobe item or
+    chat upload), so the field names follow that shape. Force
+    ``source="wardrobe"`` and ``is_anchor=True`` so the frontend can
+    badge the card distinctly from composed catalog picks. Used by the
+    May 8 follow-up RCA fix — outerwear-style anchors that the architect
+    plans AROUND (not THROUGH) get injected here at render time instead
+    of into the composer's pool."""
+    card = _build_item_card({
+        "product_id": str(anchor.get("id") or anchor.get("product_id") or "anchor_wardrobe"),
+        "title": anchor.get("title", ""),
+        "image_url": anchor.get("image_url") or anchor.get("image_path") or "",
+        "price": "",
+        "product_url": "",
+        "garment_category": anchor.get("garment_category", ""),
+        "garment_subtype": anchor.get("garment_subtype", ""),
+        "primary_color": anchor.get("primary_color", ""),
+        "formality_level": anchor.get("formality_level", ""),
+        "occasion_fit": anchor.get("occasion_fit", ""),
+        "pattern_type": anchor.get("pattern_type", ""),
+        "source": "wardrobe",
+    })
+    card["role"] = str(render_role or anchor.get("garment_category") or "anchor")
+    card["is_anchor"] = True
+    return card
+
+
 def _filter_allowed_items(items: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], List[str]]:
     allowed: List[Dict[str, Any]] = []
     blocked_terms: List[str] = []
@@ -218,6 +247,14 @@ class ResponseFormatter:
         *,
         planner_message: str | None = None,
         planner_suggestions: list[str] | None = None,
+        # May 8 follow-up RCA: outerwear (and any non-top/non-bottom)
+        # anchor on a pairing turn now skips pool injection — the architect
+        # plans top + bottom queries AROUND the anchor, the composer picks
+        # complementary items from those, and the formatter prepends the
+        # anchor at render time. None for top/bottom anchors (already in
+        # the composed pool) and for non-pairing turns.
+        anchor_to_prepend: Dict[str, Any] | None = None,
+        anchor_render_role: str = "",
     ) -> RecommendationResponse:
         if not evaluated:
             fallback_message, fallback_suggestions = _build_zero_result_fallback(combined_context)
@@ -238,12 +275,33 @@ class ResponseFormatter:
         outfits: List[OutfitCard] = []
         blocked_item_count = 0
 
+        # Pre-build the anchor card once (every outfit gets the same
+        # prepended item). None when the architect-planned-AROUND mode
+        # doesn't apply for this turn (top/bottom anchor or non-pairing).
+        anchor_card = (
+            _build_anchor_card(anchor_to_prepend, anchor_render_role)
+            if anchor_to_prepend
+            else None
+        )
+
         for rec in sorted(evaluated, key=lambda r: r.rank)[:MAX_FORMATTED_OUTFITS]:
             raw_items = items_lookup.get(rec.candidate_id, [])
             items, blocked_terms = _filter_allowed_items(raw_items)
             blocked_item_count += len(blocked_terms)
             if not items:
                 continue
+            item_cards = [_build_item_card(item) for item in items]
+            if anchor_card is not None:
+                # Prepend anchor so the user sees [anchor] + [composed items].
+                # Defensive: only prepend if it's not already present (the
+                # legacy wardrobe-anchor pool-injection path may have
+                # already included it for top/bottom anchors).
+                anchor_pid = anchor_card.get("product_id", "")
+                already_present = any(
+                    str(c.get("product_id", "")) == anchor_pid for c in item_cards
+                )
+                if not already_present:
+                    item_cards = [anchor_card, *item_cards]
             outfits.append(
                 OutfitCard(
                     rank=len(outfits) + 1,
@@ -261,7 +319,7 @@ class ResponseFormatter:
                     formality_pct=rec.formality_pct,
                     statement_pct=rec.statement_pct,
                     fashion_score_pct=rec.fashion_score_pct,
-                    items=[_build_item_card(item) for item in items],
+                    items=item_cards,
                 )
             )
 
