@@ -264,24 +264,23 @@ def _shared_openai_client() -> OpenAI:
     Mirrors the embedder's ``_shared_openai_client`` pattern
     (`catalog/retrieval/embedder.py:_shared_openai_client`).
     ``functools.lru_cache`` provides thread-safe single-instance
-    construction; a previous ``cached_property``-based approach had a
-    race when two request threads triggered first-access concurrently
-    on a shared CopilotPlanner (review of PR #125). Tests that need an
-    isolated client can call ``_shared_openai_client.cache_clear()``.
+    construction; ``cached_property`` would race when two request threads
+    triggered first-access concurrently on a shared CopilotPlanner.
+    Tests that need an isolated client can call
+    ``_shared_openai_client.cache_clear()``.
     """
     return OpenAI(api_key=get_api_key(), timeout=_PLANNER_TIMEOUT_SECONDS)
 
-# Phase 1.3 review (May 13 2026): pool sized for one shadow call per
-# concurrent in-flight turn. 5 is an order-of-magnitude over Aura's
-# current alpha turn rate (a handful per minute) and well below
-# OpenAI's per-account RPM ceiling. Pool is created once per process,
-# shared across all CopilotPlanner instances. Shadow mode is opt-in
-# via AURA_PLANNER_SHADOW_MODEL; when no shadow is configured anywhere
-# in the process, no threads ever get spun up.
+# Pool sized for one shadow call per concurrent in-flight turn. 5 is
+# an order-of-magnitude over Aura's current alpha turn rate (a handful
+# per minute) and well below OpenAI's per-account RPM ceiling. Pool is
+# created once per process, shared across all CopilotPlanner instances.
+# Shadow mode is opt-in via AURA_PLANNER_SHADOW_MODEL; when no shadow
+# is configured anywhere in the process, no threads ever get spun up.
 _SHADOW_EXECUTOR: Optional[ThreadPoolExecutor] = None
 # Module-level lock — created at import time so the lock itself is not
-# subject to a creation race. (Review of PR #125: the previous lazy
-# lock-init had a TOCTOU hole where two threads could both observe
+# subject to a creation race. (A lazy lock-init has a TOCTOU hole where
+# two threads could both observe
 # None and create separate locks, defeating the purpose.)
 _SHADOW_EXECUTOR_LOCK = threading.Lock()
 
@@ -400,9 +399,9 @@ class CopilotPlanner:
     ) -> None:
         """Fire-and-forget shadow call; never blocks the caller.
 
-        Submits to the process-wide ThreadPoolExecutor (review of PR #124)
-        so we don't pay thread-creation overhead per turn or risk runaway
-        thread counts under load.
+        Submits to the process-wide ThreadPoolExecutor so we don't pay
+        thread-creation overhead per turn or risk runaway thread counts
+        under load.
         """
         _get_shadow_executor().submit(
             self._run_shadow,

@@ -92,7 +92,7 @@ class ArchitectCacheRepository:
         the row dict. ``hit_count`` is intentionally NOT in the
         payload so that on conflict the existing row's hit_count
         survives — only direction_json + denormalised key fields
-        get refreshed (review of PR #134).
+        get refreshed.
         """
         row = {
             **denormalised,

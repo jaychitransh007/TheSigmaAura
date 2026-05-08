@@ -14,13 +14,10 @@ re-ranks accordingly. The 1/2/3 scale was deliberately chosen — LLMs
 cluster ~70–90 on a 0–100 scale with no real discrimination; a discrete
 3-point scale forces honest choices ("clear win" vs "works" vs "miss").
 
-History:
-- R6 (PR #79, May 5 2026): dropped ``archetype_match``.
-- R7 (this change, May 5 2026): added ``formality`` and ``statement`` as
-  their own axes (previously double-counted inside ``occasion_fit`` and
-  ``inter_item_coherence``); switched scale 0–100 → 1/2/3; renamed
-  ``inter_item_coherence`` → ``pairing`` (now scoped to fit + fabric
-  only — formality + detail rhythm moved to the new axes).
+The current axis set splits ``formality`` and ``statement`` from
+``occasion_fit`` and ``pairing`` so the rater has to score them
+explicitly rather than burying them in coarser buckets. ``pairing``
+covers fit + fabric only.
 
 Audit:
 - model_call_logs gets the full raw request + response, plus the
@@ -102,11 +99,10 @@ _RATER_JSON_SCHEMA: Dict[str, Any] = {
                         # For complete (single-item) outfits the LLM emits 3;
                         # the orchestrator drops the dim from the blend.
                         "pairing",
-                        # R7: formality is its own axis now (previously
-                        # double-counted inside occasion_fit and
-                        # inter_item_coherence).
+                        # Formality scored on its own axis (not folded
+                        # into occasion_fit or pairing).
                         "formality",
-                        # R7: pattern density + embellishment intensity.
+                        # Pattern density + embellishment intensity.
                         "statement",
                         "rationale",
                         "unsuitable",
@@ -238,12 +234,10 @@ _BOLD_KEYWORDS = ("bold", "statement", "colorful", "colourful", "stand out", "ma
 _SLIMMING_KEYWORDS = ("slimmer", "slimming", "taller", "look thin", "look slim")
 _COMFORTABLE_KEYWORDS = ("comfortable", "comfort", "relaxed")
 
-# Phase 1.1 latency push (May 13 2026): the rater previously made ONE
-# LLM call covering all composed outfits in one prompt — measured 13.4s
-# p50 because the model serialises across the array. Splitting into
-# per-outfit calls and fanning out via ThreadPoolExecutor drops latency
-# to the slowest single call (~2-3s) at the cost of one extra prompt
-# preamble per outfit. See PR for the latency breakdown.
+# Per-outfit fan-out via ThreadPoolExecutor: a single batched call
+# serialises across the outfit array (measured 13.4s p50); per-outfit
+# calls drop latency to the slowest single call (~2-3s) at the cost of
+# one extra prompt preamble per outfit.
 #
 # Cap workers at 6: composer ships up to 6 outfits per turn (3 directions
 # × ~2 outfits) and OpenAI's per-account RPM ceiling is generous enough
@@ -326,8 +320,7 @@ def compute_fashion_score(
         denom = sum(kept.values())
         weights = {k: v / denom for k, v in kept.items()} if denom > 0 else kept
 
-    # Single sum-shape for both branches (PR #106 review of #101 — drop
-    # the duplicated raw = ... blocks). Iterating `weights.keys()` is
+    # Single sum-shape for both branches. Iterating `weights.keys()` is
     # safe: when pairing is dropped the key isn't in `weights`, so
     # `scores["pairing"]` (which may be None) is never read.
     scores = {
@@ -395,11 +388,10 @@ def _shared_openai_client() -> OpenAI:
     Mirrors the embedder's ``_shared_openai_client`` pattern
     (`catalog/retrieval/embedder.py:_shared_openai_client`).
     ``functools.lru_cache`` provides thread-safe single-instance
-    construction; replaces the previous ``cached_property``-based client
-    which had a race when the rater's ThreadPoolExecutor workers AND
-    concurrent ``rate()`` callers both triggered first-access on a
-    shared OutfitRater (review of PR #125). Tests that need an isolated
-    client can call ``_shared_openai_client.cache_clear()``.
+    construction. ``cached_property`` would race when the rater's
+    ThreadPoolExecutor workers AND concurrent ``rate()`` callers both
+    triggered first-access on a shared OutfitRater. Tests that need an
+    isolated client can call ``_shared_openai_client.cache_clear()``.
     """
     return OpenAI(api_key=get_api_key(), timeout=_RATER_TIMEOUT_SECONDS)
 

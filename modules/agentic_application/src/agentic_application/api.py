@@ -1243,8 +1243,6 @@ def create_app() -> FastAPI:
                 # archetype tier pcts, deeper notes) that the post-V2
                 # frontend can't render cleanly. Skipping is safer than
                 # rendering them as half-baked recommendation cards.
-                # PR #71 review fix: previous comment said this was
-                # already happening but the code didn't actually skip.
                 if raw_intent in ("outfit_check", "garment_evaluation"):
                     continue
                 intent = raw_intent

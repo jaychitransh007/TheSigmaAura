@@ -15,11 +15,9 @@ EMBED_BATCH_SIZE = 50
 
 # 10s per request, 2 retries (default) → fail-fast tail of ~30s
 # instead of the SDK default 60s × 3 = 3min on stuck connections.
-# May-5 2026: previously the retrieval gateway built a fresh
-# CatalogEmbedder per orchestrator → fresh OpenAI() → cold TLS/DNS
-# on the first embed of every turn, which we measured at 4.5–6.6s
-# for a single short query. Sharing the client across all gateway
-# instances re-uses the underlying httpx connection pool.
+# Sharing the client across gateway instances re-uses the underlying
+# httpx connection pool — without it, each turn pays cold TLS/DNS
+# (measured 4.5–6.6s for a single short embed call).
 _EMBEDDING_TIMEOUT_SECONDS = 10.0
 
 

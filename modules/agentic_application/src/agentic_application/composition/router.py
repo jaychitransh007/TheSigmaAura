@@ -134,7 +134,7 @@ class RouterDecision:
 
 # Single-source-of-truth list of follow-up intents the engine can
 # serve. Lives in intent_registry.py so the composer router shares
-# the same set (PR #186 review).
+# the same set.
 from ..intent_registry import ENGINE_FRIENDLY_FOLLOWUP_INTENTS
 
 

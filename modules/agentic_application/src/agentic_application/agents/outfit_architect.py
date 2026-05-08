@@ -223,8 +223,8 @@ def _build_user_payload(ctx: CombinedContext) -> str:
         # style_goal is the per-turn directional cue extracted from chat;
         # replaces the stored archetype dropped May 2026.
         "style_goal": (getattr(ctx.live, "style_goal", "") or None),
-        # Phase 5x.1-3 / PR #187 review: surface the planner's
-        # open-axis preferences (EmbellishmentLevel, ContrastLevel,
+        # Surface the planner's open-axis preferences
+        # (EmbellishmentLevel, ContrastLevel,
         # OccasionFit, NecklineType, FabricDrape, ...) so the
         # architect can reference them when composing the
         # query_document. Orchestrator's
@@ -296,8 +296,8 @@ class OutfitArchitect:
         #
         # Lazy OpenAI client (see CopilotPlanner for the pattern).
         #
-        # Validate reasoning_effort here (PR #45 review) so direct
-        # instantiations — tests, future services — get a loud failure
+        # Validate reasoning_effort here so direct instantiations —
+        # tests, future services — get a loud failure
         # at construction rather than an opaque OpenAI 400 at request
         # time. The env-loader in platform_core.config already does a
         # silent coerce-to-medium on bad ARCHITECT_REASONING_EFFORT

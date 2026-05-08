@@ -250,10 +250,9 @@ def _coerce_tryon_trace_db_status(path_status: str) -> str:
 
 
 # Sentinel model names stamped on architect ``model_call_logs`` rows
-# when no LLM call actually happened. Cache hits and engine-served
-# plans previously inherited the LLM model id, which made per-model
-# cost / latency rollups misleading (a phantom 0-token gpt-5.2 row
-# per cache or engine turn).
+# when no LLM call actually happened. Distinguishes cache hits and
+# engine-served plans from real LLM calls so per-model cost / latency
+# rollups stay honest (no phantom 0-token gpt-5.2 row per cache hit).
 ARCHITECT_MODEL_CACHE = "cache"
 ARCHITECT_MODEL_ENGINE = "composition_engine"
 
@@ -360,12 +359,12 @@ def _apply_user_preferences_to_plan(
     # Tick override counter once per (attribute, plan) when the user's
     # explicit value REPLACES an architect-derived value. The baseline
     # is the UNION of hard_attrs keys across all directions × queries
-    # — different directions can in principle resolve different attrs
-    # (PR #180 review), so checking only the first direction's first
-    # query would miss legitimate overrides emitted on other direction
-    # branches. Single observation per attribute per plan is still the
-    # right unit (don't double-count across directions × roles); the
-    # set semantics of `baseline_keys` enforce that.
+    # — different directions can in principle resolve different attrs,
+    # so checking only the first direction's first query would miss
+    # legitimate overrides emitted on other direction branches. Single
+    # observation per attribute per plan is still the right unit (don't
+    # double-count across directions × roles); the set semantics of
+    # ``baseline_keys`` enforce that.
     try:
         from platform_core.metrics import observe_user_preference_override
         baseline_keys: set[str] = set()
@@ -569,7 +568,7 @@ def _apply_target_product_type_to_plan(
     Binding it as a hard filter here closes the loop on browse
     queries.
 
-    Scope (PR #186 review): only applies when the plan is a
+    Scope: only applies when the plan is a
     single-direction-single-query browse plan. For paired or
     three_piece directions we MUST NOT bind the subtype to every
     query — the bottom slot of a "shirt" browse plan would get
@@ -624,7 +623,7 @@ class AgenticOrchestrator:
 
         ``fallback`` overrides the default; when omitted, the dataclass
         attribute on ``AuraRuntimeConfig`` is used so a single edit to
-        the class default propagates everywhere (review of PR #128).
+        the class default propagates everywhere.
         """
         default = fallback if fallback is not None else getattr(AuraRuntimeConfig, attr)
         raw = getattr(config, attr, default)
@@ -1793,7 +1792,7 @@ class AgenticOrchestrator:
         # gpt-5.5 → gpt-5-mini swap exposed how easy that drift is).
         # Direct attribute access (not getattr-with-default) so a future
         # rename of _model fails loud here instead of silently falling
-        # back to a stale literal — see PR #44 review feedback.
+        # back to a stale literal.
         _planner_model = self._copilot_planner._model
         emit("copilot_planner", "started")
         trace_start("copilot_planner", model=_planner_model, input_summary=f"message={message[:80]}, has_image={bool(image_data)}")
@@ -1835,7 +1834,6 @@ class AgenticOrchestrator:
             )
             # Persist the trace before this early return so the planner
             # failure shows up in turn_traces with stage_failed=copilot_planner.
-            # (May 1, 2026 fix — was previously a coverage hole.)
             trace.set_intent(primary_intent="", action="error")
             trace.set_evaluation({"response_type": "error", "stage_failed": "copilot_planner", "error": str(exc)[:200]})
             self._persist_trace(trace)
@@ -2279,11 +2277,11 @@ class AgenticOrchestrator:
         from datetime import datetime, timezone
         from pathlib import Path
 
-        # PR #190 review: defer get_person_image_path until generation
-        # is actually about to fire. Cache lookups don't need the
-        # person path (cached images were rendered against whatever
-        # person photo was current at the time), so on flag-off / cache-hit
-        # turns we save a DB call. Captured lazily via a [None] cell so
+        # Defer get_person_image_path until generation is actually
+        # about to fire. Cache lookups don't need the person path
+        # (cached images were rendered against whatever person photo
+        # was current at the time), so on flag-off / cache-hit turns
+        # we save a DB call. Captured lazily via a [None] cell so
         # closures can populate it on first generation attempt.
         _person_path_cell: list[str | None] = [None]
         _person_path_loaded = [False]
@@ -3928,11 +3926,10 @@ class AgenticOrchestrator:
         on formality is correctly surfaced as borderline rather than
         averaging up to "looks good".
 
-        Why drop the empty-occasion_fit reward: previously, items with no
-        ``occasion_fit`` tag scored +1 (read: "not disqualified"). That
-        let untagged or differently-tagged items (e.g., festive ethnic
-        wear with empty/festive tag) win for unrelated occasions like
-        ``date_night``. Empty now scores 0 — the gate must be earned.
+        Items with no ``occasion_fit`` tag score 0, not +1 — the
+        occasion gate must be earned. Otherwise untagged or differently-
+        tagged items (festive ethnic wear with empty/festive tag) would
+        win for unrelated occasions like ``date_night``.
         """
         def role_of(item: Dict[str, Any]) -> str:
             category = str(item.get("garment_category") or item.get("garment_subtype") or "").strip().lower()
@@ -4798,17 +4795,16 @@ class AgenticOrchestrator:
         colors = [str(v).strip() for v in list(target.get("primary_colors") or []) if str(v).strip()]
         categories = [str(v).strip() for v in list(target.get("garment_categories") or []) if str(v).strip()]
         occasion_fits = [str(v).strip().replace("_", " ") for v in list(target.get("occasion_fits") or []) if str(v).strip()]
-        # R2 (PR #65): the rater_rationale and composer_rationale are now
-        # persisted on each rec summary by _build_recommendation_summaries.
-        # If they're missing (older session pre-R2), fall back to empty —
-        # the advisor then leans on the legacy attribute fields.
+        # rater_rationale and composer_rationale are persisted on each
+        # rec summary by _build_recommendation_summaries. Fall back to
+        # empty on older sessions; the advisor then leans on the legacy
+        # attribute fields.
         rater_rationale = str(target.get("rater_rationale") or "").strip()
         composer_rationale = str(target.get("composer_rationale") or "").strip()
-        # PR #71 review feedback: pass the four-dim archetype_scores
-        # through so the advisor can ground explanations in the actual
-        # numbers ("body harmony scored 88, color was the weak axis at
-        # 64"). Defaults to {} on pre-R2 sessions; the advisor handles
-        # an empty dict gracefully.
+        # Pass the four-dim archetype_scores through so the advisor can
+        # ground explanations in the actual numbers ("body harmony scored
+        # 88, color was the weak axis at 64"). Defaults to {} on older
+        # sessions; the advisor handles an empty dict gracefully.
         archetype_scores = target.get("archetype_scores") or {}
         confidence_payload = dict(response_metadata.get("recommendation_confidence") or {})
         confidence_explanation = [str(v).strip() for v in list(confidence_payload.get("explanation") or []) if str(v).strip()]
@@ -4901,10 +4897,9 @@ class AgenticOrchestrator:
                         "occasion_fits": occasion_fits,
                         "recommendation_confidence_band": confidence_band,
                         "recommendation_confidence_explanation": confidence_explanation,
-                        # R2 (PR #65): real stylist rationales — when
-                        # populated, the advisor should quote / paraphrase
-                        # rather than fabricate. archetype_scores added
-                        # in PR #71 review feedback so the advisor can
+                        # Real stylist rationales — when populated, the
+                        # advisor should quote / paraphrase rather than
+                        # fabricate. archetype_scores lets the advisor
                         # cite specific dimension numbers.
                         "archetype_scores": archetype_scores,
                         "rater_rationale": rater_rationale,
@@ -7813,17 +7808,15 @@ class AgenticOrchestrator:
                     "silhouette_types": _dedupe_values(
                         str(item.get("silhouette_type") or "").strip() for item in items
                     ),
-                    # R2 (PR #65, May 5 2026): persist the Rater +
-                    # Composer rationales so the explanation_request
-                    # handler can quote the actual stylist-to-stylist
-                    # reasoning instead of regenerating it from raw
-                    # attributes. PR #71 review feedback: also persist
-                    # the Rater dimension scores so the advisor has
-                    # the quantitative evidence behind the rank.
-                    # R7 (May 5 2026): scores are now 1/2/3 — rescale
-                    # to 0/50/100 to keep the ``_pct`` keys honest.
-                    # Pairing, formality, statement added; pairing is
-                    # None for complete (single-item) outfits.
+                    # Persist the Rater + Composer rationales so the
+                    # explanation_request handler can quote the actual
+                    # stylist-to-stylist reasoning instead of regenerating
+                    # it from raw attributes, plus the Rater dimension
+                    # scores so the advisor has the quantitative evidence
+                    # behind the rank. Scores are 1/2/3 — rescaled to
+                    # 0/50/100 to keep the ``_pct`` keys honest. Pairing,
+                    # formality, statement included; pairing is None for
+                    # complete (single-item) outfits.
                     "archetype_scores": {
                         "occasion_pct": _r7_pct(getattr(candidate, "occasion_fit", None)),
                         "body_harmony_pct": _r7_pct(getattr(candidate, "body_harmony", None)),

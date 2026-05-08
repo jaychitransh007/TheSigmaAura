@@ -11,7 +11,6 @@ from platform_core.supabase_rest import SupabaseRestClient
 from ..filters import (
     build_directional_filters,
     drop_filter_keys,
-    extract_query_document_filters,
     merge_filters,
 )
 from ..schemas import (
@@ -188,7 +187,6 @@ class CatalogSearchAgent:
                 filters = merge_filters(
                     combined_context.hard_filters,
                     build_directional_filters(direction.direction_type, query.role),
-                    extract_query_document_filters(query.query_document),
                     query.hard_filters,
                 )
                 filters = drop_filter_keys(filters, relaxed_keys)

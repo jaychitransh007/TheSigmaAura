@@ -14,10 +14,9 @@ Usage:
     from platform_core.logging_config import configure_logging
     configure_logging()  # call once at process start, before logging.getLogger
 
-This satisfies Gate 3 of `docs/RELEASE_READINESS.md` — runtime logs that
-were previously stdout-only are now sink-ready. The JSON shape is stable
-across releases (additive only) so dashboards and alerts can pin to
-field names.
+This satisfies Gate 3 of `docs/RELEASE_READINESS.md` — runtime logs are
+sink-ready as JSON. The JSON shape is stable across releases (additive
+only) so dashboards and alerts can pin to field names.
 """
 
 from __future__ import annotations
