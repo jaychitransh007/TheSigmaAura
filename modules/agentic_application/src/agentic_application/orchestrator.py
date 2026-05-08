@@ -5481,12 +5481,25 @@ class AgenticOrchestrator:
                         from platform_core.metrics import (
                             observe_composition_attribute_status,
                             observe_composition_router_decision,
+                            observe_composition_yaml_gap_impact,
+                            observe_followup_intent_routing,
                             observe_turn_stage,
                         )
                         observe_composition_router_decision(
                             used_engine=_router_decision.used_engine,
                             fallback_reason=_router_decision.fallback_reason,
                         )
+                        # Per-intent routing counter — only on follow-up
+                        # turns. Non-followup turns are already covered
+                        # by the existing router decision counter.
+                        _live = combined_context.live
+                        if getattr(_live, "is_followup", False):
+                            observe_followup_intent_routing(
+                                followup_intent=getattr(
+                                    _live, "followup_intent", None
+                                ),
+                                used_engine=_router_decision.used_engine,
+                            )
                         if _router_decision.engine_ms is not None:
                             observe_turn_stage(
                                 "composition_engine",
@@ -5501,6 +5514,17 @@ class AgenticOrchestrator:
                         ).items():
                             for _ in attrs:
                                 observe_composition_attribute_status(status)
+                        # Per-axis YAML-gap impact counters. The router
+                        # populates ``per_axis_gap_impact`` from the
+                        # engine's gap list × _YAML_GAP_AXIS_WEIGHTS;
+                        # empty dict (engine didn't run, no gaps) ticks
+                        # nothing. See engine.py:_yaml_gap_per_axis_impact.
+                        for _axis, _impact in (
+                            getattr(_router_decision, "per_axis_gap_impact", {}) or {}
+                        ).items():
+                            observe_composition_yaml_gap_impact(
+                                axis=_axis, impact=_impact,
+                            )
                     except Exception:  # noqa: BLE001 — metrics never break the pipeline
                         pass
                     # Cache miss: write through, but ONLY for LLM-derived
@@ -5550,6 +5574,20 @@ class AgenticOrchestrator:
                                 status: list(attrs)
                                 for status, attrs in (
                                     _router_decision.provenance_summary or {}
+                                ).items()
+                            },
+                            # Per-axis confidence-loss breakdown for the
+                            # gaps that fired (axis → weight × YAML_GAP_
+                            # PENALTY × occurrences). Empty dict when the
+                            # engine accepted clean or didn't run. Powers
+                            # OPERATIONS.md Panel 32 — pairs with the
+                            # per-axis frequency view in Panel 22
+                            # (frequency answers "how often this axis",
+                            # impact answers "how much it cost us").
+                            "per_axis_gap_impact": {
+                                axis: float(impact)
+                                for axis, impact in (
+                                    _router_decision.per_axis_gap_impact or {}
                                 ).items()
                             },
                         },
@@ -5804,6 +5842,7 @@ class AgenticOrchestrator:
             # (one of 5) → occasion_fit (broad use-case bucket).
             # gender_expression is identity-bound and NEVER relaxed.
             relaxation_applied: List[str] = []
+            relaxation_outcome = "not_needed"
             if total_products == 0:
                 _RELAXATION_SEQUENCE = (
                     "garment_subtype",
@@ -5824,12 +5863,16 @@ class AgenticOrchestrator:
                     )
                     total_products = sum(len(rs.products) for rs in retrieved_sets)
                     if total_products > 0:
+                        relaxation_outcome = (
+                            f"succeeded_level_{len(relaxation_applied)}"
+                        )
                         _log.info(
                             "auto-relax: succeeded with %d products after dropping %s",
                             total_products, relaxation_applied,
                         )
                         break
                 else:
+                    relaxation_outcome = "exhausted"
                     _log.info(
                         "auto-relax: exhausted; %d levels dropped, still 0 products",
                         len(relaxation_applied),
@@ -5843,6 +5886,11 @@ class AgenticOrchestrator:
                     "retrieved_sets": to_jsonable(retrieved_sets),
                     "relaxation_applied": list(relaxation_applied),
                 }
+            try:
+                from platform_core.metrics import observe_retrieval_relaxation
+                observe_retrieval_relaxation(outcome=relaxation_outcome)
+            except Exception:  # noqa: BLE001 — metrics never break the pipeline
+                pass
 
             emit("catalog_search", "completed", ctx={
                 "product_count": total_products,
@@ -6359,6 +6407,11 @@ class AgenticOrchestrator:
             # ship without rendered previews. Saves $0.12/turn during
             # dev loops where the developer ignores the image anyway.
             rendered: List[tuple[OutfitCandidate, str]] = []
+            try:
+                from platform_core.metrics import observe_tryon_flag_state
+                observe_tryon_flag_state(enabled=self._tryon_enabled)
+            except Exception:  # noqa: BLE001 — metrics never break the pipeline
+                pass
             if not self._tryon_enabled:
                 emit(
                     "tryon_render", "skipped",
