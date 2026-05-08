@@ -165,13 +165,13 @@ Build `ops/scripts/architect_replay_eval.py` that:
 
 **The anchor document for the latency-reduction work.** Replaces the prior pre-launch / launch / post-launch framing with a 7-phase execution plan, each with explicit test gates. We test query response after every phase before progressing.
 
-## Status as of 2026-05-07
+## Status as of 2026-05-08
 
 | Phase | Status | Notes |
 |---|---|---|
 | Phase 1 — Operational quick wins | ✅ **SHIPPED + verified** | Rater parallelization, retrieval RPC fix, planner shadow infra (dormant), gpt-5.4 → gpt-5.2 architect/composer swap. ~6s saved per turn. |
 | Phase 2 — Caching layer | ✅ **SHIPPED + applied to staging** | All 4 migrations live on Aura-Staging. Hit rate jumped from ~0% (non-deterministic planner output) toward the design target as Phase 4.7+4.11 made engine inputs canonical. |
-| Phase 3 — Prompt compression (3.0+3.1+3.2+3.4) | 🟢 **In flight (May 8 2026)** — ship-now bundle | Easy cuts (delete MIGRATED sections, cap recent_user_actions / conversation_history, structured output verify). ~5-6K token reduction targeted. Aggressive 14K→5K via YAML-row injection deferred to 3.3/3.5 post-4.6. |
+| Phase 3 — Prompt compression (3.0+3.1+3.2+3.4) | ✅ **SHIPPED** (PR #202, May 8 2026) | MIGRATED sections compressed in architect + composer prompts, `_RECENT_USER_ACTIONS_MAX` 30→20, structured output verified, audit harness (`ops/scripts/audit_prompt_tokens.py`) + budget regression guard. ~2K input tokens off the LLM-fallback path per turn. Aggressive 14K→5K via YAML-row injection (3.3/3.5) deferred to post-4.6. |
 | Phase 4 prep (4.1, 4.4, 4.5) | ✅ **SHIPPED** | Composition semantics spec, bootstrap grid YAML loader, MIGRATED prompt markers. |
 | Phase 4.7 — Engine implementation | ✅ **SHIPPED** (PR #149) | 6 sub-PRs (4.7a-f) bundled: yaml_loader, reduction, relaxation, engine, render, worked-example tests. Architect stage drops 19s → ~0ms on engine-accepted turns. Verified end-to-end with confidence=1.0 on a real staging query. |
 | Phase 4.8 — Quality validator | ✅ **Framework SHIPPED** (PR #149) | `composition/quality.py` + `ops/scripts/composition_quality_eval.py` ready to consume Phase 4.6 eval set. Real comparison run gated on 4.6. |
