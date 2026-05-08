@@ -186,6 +186,29 @@ class EligibilityGateTests(unittest.TestCase):
             self.assertTrue(ok, f"category={category!r} should be eligible")
             self.assertIsNone(reason)
 
+    def test_pool_injected_anchor_eligible_when_flag_on(self):
+        """T3 (May 8 follow-up): when ``allow_pool_anchor=True``
+        (env-mapped to ``AURA_ENGINE_ALLOW_POOL_ANCHOR``), top/bottom
+        anchors become eligible. The engine's tuple iterator handles
+        the 1-item-per-role pool naturally — the user's anchor occupies
+        its role's only slot, complementary candidates fill the other
+        role. Flag default False keeps the legacy behavior."""
+        for category in ("top", "shirt", "blouse", "bottom", "trouser", "pant", "jeans", "skirt"):
+            # Default: still ineligible
+            ok, reason = is_engine_eligible(
+                _ctx(anchor_garment={"product_id": "p1", "garment_category": category}),
+            )
+            self.assertFalse(ok, f"category={category!r} should be ineligible by default")
+            self.assertEqual(reason, "anchor_pool_injected")
+
+            # Flag on: eligible
+            ok, reason = is_engine_eligible(
+                _ctx(anchor_garment={"product_id": "p1", "garment_category": category}),
+                allow_pool_anchor=True,
+            )
+            self.assertTrue(ok, f"category={category!r} should be eligible with flag on")
+            self.assertIsNone(reason)
+
     def test_followup_blocks(self):
         ok, reason = is_engine_eligible(_ctx(is_followup=True))
         self.assertFalse(ok)

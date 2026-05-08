@@ -107,7 +107,10 @@ from .router import classify_anchor_role
 
 
 def is_engine_eligible(
-    combined_context: CombinedContext, plan: RecommendationPlan
+    combined_context: CombinedContext,
+    plan: RecommendationPlan,
+    *,
+    allow_pool_anchor: bool = False,
 ) -> tuple[bool, str | None]:
     """Pre-engine gate. Returns ``(eligible, fallback_reason)``.
 
@@ -117,20 +120,25 @@ def is_engine_eligible(
     engine accepts plans from any source (LLM / architect engine /
     architect cache).
 
-    May 8 follow-up T2: anchor turns are eligible IFF the anchor would
-    NOT be pool-injected (outerwear / dress / co_ord / shoe / accessory).
-    For these the engine sees a top+bottom pool with no fixed slot —
-    same shape as an occasion turn — and tuple scoring works cleanly.
-    Pool-injected anchors (top/bottom) still fall to the LLM until T3
-    ships engine-side fixed-slot scoring.
+    May 8 follow-up T2: render-prepended anchors (outerwear / dress /
+    co_ord / shoe / accessory) are eligible. The engine sees a
+    top+bottom pool with no fixed slot — same shape as an occasion
+    turn — and tuple scoring works cleanly.
+
+    May 8 follow-up T3: pool-injected (top / bottom) anchors become
+    eligible WHEN ``allow_pool_anchor=True``. The engine's tuple
+    iterator handles 1-item-per-role pools naturally; the user's
+    anchor occupies its role's only slot, complementary candidates
+    fill the other role. Default-off because we haven't measured the
+    cascade-to-LLM-fallback rate on real traffic.
     """
     live = combined_context.live
     anchor = getattr(live, "anchor_garment", None)
     if anchor:
         role_in_pool, _render_role = classify_anchor_role(anchor)
-        if role_in_pool:
+        if role_in_pool and not allow_pool_anchor:
             return False, "anchor_pool_injected"
-        # else: outerwear-style anchor — engine eligible
+        # else: render-prepended (T2) or pool-injected with flag on (T3)
     if getattr(live, "is_followup", False):
         # Engine-friendly follow-ups bypass both the followup_request
         # gate and the has_previous_recommendations gate below.
@@ -234,6 +242,7 @@ def route_composer_plan(
     enabled: bool = False,
     graph: StyleGraph | None = None,
     shadow: bool = False,
+    allow_pool_anchor: bool = False,
 ) -> ComposerRouterDecision:
     """Decide whether the composer engine or the LLM ``OutfitComposer``
     handles this turn.
@@ -273,6 +282,7 @@ def route_composer_plan(
             combined_context=combined_context,
             composer_callable=composer_callable,
             graph=graph,
+            allow_pool_anchor=allow_pool_anchor,
         )
 
     # Shadow mode: run both, return LLM, surface comparison for ops.
@@ -283,6 +293,7 @@ def route_composer_plan(
             combined_context=combined_context,
             composer_callable=composer_callable,
             graph=graph,
+            allow_pool_anchor=allow_pool_anchor,
         )
 
     # Default disabled-and-not-shadow path: LLM only.
@@ -302,9 +313,12 @@ def _route_engine_first(
     combined_context: CombinedContext,
     composer_callable: Callable[[], ComposerResult],
     graph: StyleGraph | None,
+    allow_pool_anchor: bool = False,
 ) -> ComposerRouterDecision:
     """Engine-first path. Eligibility → engine → fall-through to LLM."""
-    eligible, reason = is_engine_eligible(combined_context, plan)
+    eligible, reason = is_engine_eligible(
+        combined_context, plan, allow_pool_anchor=allow_pool_anchor,
+    )
     if not eligible:
         return ComposerRouterDecision(
             composer_result=composer_callable(),
@@ -367,6 +381,7 @@ def _route_shadow(
     combined_context: CombinedContext,
     composer_callable: Callable[[], ComposerResult],
     graph: StyleGraph | None,
+    allow_pool_anchor: bool = False,
 ) -> ComposerRouterDecision:
     """Shadow path: LLM is authoritative; engine runs for comparison.
 
@@ -381,7 +396,9 @@ def _route_shadow(
 
     # Engine eligibility — if ineligible, we still ran the LLM (which
     # is the correct production behavior); just no comparison row.
-    eligible, reason = is_engine_eligible(combined_context, plan)
+    eligible, reason = is_engine_eligible(
+        combined_context, plan, allow_pool_anchor=allow_pool_anchor,
+    )
     if not eligible:
         return ComposerRouterDecision(
             composer_result=llm_result,
