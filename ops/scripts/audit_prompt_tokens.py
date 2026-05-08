@@ -32,23 +32,26 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PROMPT_DIR = _REPO_ROOT / "prompt"
 
-# Per-prompt token budgets (cl100k_base estimate). Set to ~5% above
-# the post-Phase-3 actual so the script flags regressions without
-# false-positive on every minor edit. If a prompt creeps over its
-# budget, the right move is usually to compress (not bump the number).
+# Per-prompt token budgets. Sized to be safe under both estimation
+# methods: tiktoken's cl100k_base BPE (more accurate, ~10-15% lower)
+# and the chars/4 fallback (deterministic, used when tiktoken isn't
+# installed — e.g., CI). Set ~5% above the chars/4 reading of the
+# post-Phase-3 prompt so a real regression flags reliably across
+# environments. If a prompt creeps over its budget, the right move
+# is usually to compress (not bump the number).
 _BUDGETS: dict[str, int] = {
-    "outfit_architect.md": 7800,
+    "outfit_architect.md": 8300,
     "outfit_architect_anchor.md": 500,
-    "outfit_architect_followup.md": 800,
+    "outfit_architect_followup.md": 850,
     "outfit_composer.md": 1600,
-    "outfit_rater.md": 2500,
+    "outfit_rater.md": 2600,
     "outfit_decomposition.md": 800,
-    "copilot_planner.md": 5200,
-    "style_advisor.md": 2500,
-    "virtual_tryon.md": 350,
-    "body_type_analysis.md": 2700,
-    "color_analysis_headshot.md": 1500,
-    "other_details_analysis.md": 1400,
+    "copilot_planner.md": 5400,
+    "style_advisor.md": 2800,
+    "virtual_tryon.md": 400,
+    "body_type_analysis.md": 3000,
+    "color_analysis_headshot.md": 1600,
+    "other_details_analysis.md": 1550,
 }
 
 
