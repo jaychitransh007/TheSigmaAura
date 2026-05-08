@@ -4078,6 +4078,109 @@ class CopilotPlannerTests(unittest.TestCase):
         architect_cls.return_value.plan.assert_called_once()
         self.assertEqual(Intent.PAIRING_REQUEST, result["metadata"]["primary_intent"])
 
+    def test_pairing_with_wardrobe_selection_does_not_trip_image_clarification_gate(self):
+        """Regression for May 8 2026 turn ac182071: a pairing query with
+        demonstrative phrasing ("with this") + a wardrobe item selected
+        from the chat composer's "Pick from my wardrobe" path was
+        triggering the clarification gate ("Could you attach a photo of
+        the garment?") instead of running the recommendation pipeline.
+
+        The orchestrator's ``wardrobe_selection`` step had correctly
+        loaded the user's saved Navy Blazer into ``attached_item``, but
+        the gate at orchestrator.py:_apply_planner_overrides only
+        consulted ``image_data`` (the raw uploaded bytes). Wardrobe
+        selections produce no ``image_data`` — so the gate forced a
+        clarification even though the anchor was already resolved.
+
+        This test pins the contract: a demonstrative-pairing message
+        plus a wardrobe item selection must reach the recommendation
+        pipeline (architect.plan() called), NOT the clarification path.
+        """
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+            RecommendationPlan, DirectionSpec, QuerySpec, ResolvedContextBlock,
+            OutfitCard, RecommendationResponse,
+        )
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        gw.get_wardrobe_items.return_value = [
+            {
+                "id": "w1",
+                "title": "Navy Blazer",
+                "garment_category": "outerwear",
+                "garment_subtype": "blazer",
+                "primary_color": "navy",
+                "occasion_fit": "office",
+                "formality_level": "smart_casual",
+                "image_path": "data/onboarding/images/wardrobe/navy_blazer.webp",
+            },
+        ]
+        planner_mock = Mock()
+        # Planner correctly classifies pairing_request — same as live
+        # turn ac182071. The bug surfaces *after* the planner: the
+        # post-planner gate overrides this to ASK_CLARIFICATION on the
+        # buggy code path.
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent=Intent.PAIRING_REQUEST,
+            intent_confidence=0.96,
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
+            context_sufficient=True,
+            assistant_message="Let me build pairings around your blazer.",
+            follow_up_suggestions=[],
+            resolved_context=CopilotResolvedContext(
+                occasion_signal="office",
+                formality_hint="smart_casual",
+                style_goal=Intent.PAIRING_REQUEST,
+            ),
+            action_parameters=CopilotActionParameters(target_piece="navy blazer"),
+        )
+        fake_plan = RecommendationPlan(
+            retrieval_count=12,
+            directions=[DirectionSpec(
+                direction_id="A", direction_type="paired", label="Pairing",
+                queries=[
+                    QuerySpec(query_id="A1", role="top", hard_filters={}, query_document="x"),
+                    QuerySpec(query_id="A2", role="bottom", hard_filters={}, query_document="x"),
+                ],
+            )],
+            resolved_context=ResolvedContextBlock(
+                occasion_signal="office", formality_hint="smart_casual",
+            ),
+        )
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway") as _gw_cls, \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            architect_cls.return_value.plan.return_value = fake_plan
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            orchestrator.catalog_search_agent.search = Mock(return_value=[])
+            _mock_llm_ranker(orchestrator, [])
+            orchestrator.response_formatter.format = Mock(
+                return_value=RecommendationResponse(
+                    message="Here are pairings around your blazer.",
+                    outfits=[OutfitCard(rank=1, title="Pairing", items=[])],
+                    follow_up_suggestions=[],
+                    metadata={"answer_source": "catalog_pipeline", "primary_intent": Intent.PAIRING_REQUEST},
+                )
+            )
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="What goes with this for an office meeting?",
+                wardrobe_item_id="w1",
+            )
+
+        # Architect MUST be called — pipeline ran end-to-end.
+        architect_cls.return_value.plan.assert_called_once()
+        self.assertEqual(Intent.PAIRING_REQUEST, result["metadata"]["primary_intent"])
+        # Pre-fix the assistant_message would be the
+        # "Could you attach a photo" clarification copy. Lock that in
+        # as a regression guard — the gate must NOT fire on a
+        # wardrobe-selection-only turn.
+        self.assertNotIn(
+            "could you attach a photo",
+            (result.get("assistant_message") or "").lower(),
+        )
+
     def test_planner_error_fallback(self):
         repo = self._standard_repo()
         gw = self._standard_onboarding_gateway()

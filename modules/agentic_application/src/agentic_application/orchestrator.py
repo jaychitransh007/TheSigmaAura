@@ -955,9 +955,21 @@ class AgenticOrchestrator:
             return True
         return False
 
-    def _message_needs_image_for_pairing(self, *, message: str, has_attached_image: bool) -> bool:
-        """Returns True if the message references a specific piece ('this shirt') but no image is attached."""
-        if has_attached_image:
+    def _message_needs_image_for_pairing(self, *, message: str, has_anchor: bool) -> bool:
+        """Returns True if the message references a specific piece ('this shirt')
+        but no anchor is available to build outfits around.
+
+        ``has_anchor`` is True when EITHER an image is freshly uploaded OR a
+        wardrobe item was selected by id — both of those resolve to a
+        usable anchor in the orchestrator's ``attached_item``. Pre-fix the
+        param was named ``has_attached_image`` and the call site only
+        passed ``bool(image_data)``, which made wardrobe selections trip
+        the clarification gate ("Could you attach a photo of the
+        garment?"). The gate's intent has always been "do we know what
+        to pair with?", not specifically "did the user upload a file" —
+        ``has_anchor`` makes that explicit.
+        """
+        if has_anchor:
             return False
         normalized = self._normalize_text_token(message)
         demonstrative_refs = (
@@ -1883,13 +1895,26 @@ class AgenticOrchestrator:
             has_attached_image=bool(image_data),
         )
 
-        # Check: pairing references a specific piece but no image attached — ask for it
+        # Check: pairing references a specific piece but no anchor is
+        # available — ask for it. ``has_anchor`` is True when EITHER an
+        # image was freshly uploaded OR a wardrobe item was selected by
+        # id. Both produce a usable ``attached_item``; treat them
+        # equivalently. Pre-fix this gate only checked ``image_data``,
+        # which made wardrobe selections incorrectly trip the
+        # clarification path ("Could you attach a photo?") even though
+        # the orchestrator's ``wardrobe_selection`` step had already
+        # loaded the user's piece. Surfaced May 8 2026 on turn ac182071
+        # ("What goes with this for an office meeting?" + Navy Blazer
+        # picked from wardrobe).
         # Skip if previous context already has an attached garment (follow-up turn)
         has_previous_anchor = bool(
             str((previous_context.get("last_live_context") or {}).get("user_need") or "").find("Attached garment context:") != -1
             or str(previous_context.get("last_user_message") or "").find("Attached garment context:") != -1
         )
-        if not has_previous_anchor and self._message_needs_image_for_pairing(message=effective_message, has_attached_image=bool(image_data)):
+        if not has_previous_anchor and self._message_needs_image_for_pairing(
+            message=effective_message,
+            has_anchor=bool(image_data) or bool(attached_item),
+        ):
             plan_result.action = Action.ASK_CLARIFICATION
             plan_result.assistant_message = (
                 "I'd love to help you pair that piece! Could you attach a photo of the garment "
