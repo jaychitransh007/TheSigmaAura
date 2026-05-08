@@ -2284,28 +2284,26 @@ class AgenticOrchestrator:
     def _extract_garment_ids(outfit: OutfitCard) -> list[str]:
         """Stable cache key for the try-on render of this outfit.
 
-        Items flagged ``is_anchor=True`` are EXCLUDED from the key.
-        Anchors are surfaced into the response card by the response
-        formatter's render-time prepend (PR #208) but were not part of
-        the candidate fed to the earlier ``tryon_render`` stage. So
-        including them in the key here would cause every post-format
-        cache lookup to miss (the cache row was written without the
-        anchor) and trigger a regeneration whose ``image_url`` is the
-        anchor's browser-safe wrap, which the try-on service cannot
-        load. May 8 2026 RCA on turn c33b105a:
-            FileNotFoundError: Person image not found:
-              /v1/onboarding/images/local?path=...wardrobe/...
+        Includes EVERY item with a non-empty ``product_id``, anchors
+        included. As of the May 8 follow-up that added the anchor to
+        the actual Gemini render call (so the user sees themselves
+        wearing all pieces of the outfit), the cache row's image
+        contains the anchor — so the cache key must include it too.
+        Otherwise different anchors with the same composed top+bottom
+        would collide on cache key and reuse the wrong rendered image.
 
-        Stripping ``is_anchor`` items here makes the post-format
-        ``_attach_tryon_images`` lookup hit the cache row that
-        ``tryon_render`` wrote, and prevents the broken regeneration
-        path from ever firing for anchor-prepended outfits.
+        History: PR #210 stripped ``is_anchor`` items here as a
+        workaround for a different bug (post-format prepend caused a
+        cache miss + a broken regeneration that tried to load the
+        anchor's browser-safe-wrapped URL as a filesystem path). That
+        bug is gone now: the earlier ``tryon_render`` stage now
+        includes the anchor with its raw filesystem path, so write +
+        read keys match naturally.
         """
         return sorted(
             str(item.get("product_id") or "").strip()
             for item in outfit.items
             if str(item.get("product_id") or "").strip()
-            and not item.get("is_anchor")
         )
 
     @staticmethod
@@ -6923,6 +6921,14 @@ class AgenticOrchestrator:
                         turn_id=turn_id,
                         target_count=self.recommendation_final_top_n,
                         trace=trace,
+                        # May 8 follow-up: include the render-prepended
+                        # anchor (outerwear / dress / co_ord) in the
+                        # try-on so the rendered image contains the
+                        # user's own piece + the composed pairings.
+                        # Pool-injected anchors (top/bottom) are
+                        # already inside candidate.items via injection;
+                        # the helper detects and skips those.
+                        anchor_garment=getattr(combined_context.live, "anchor_garment", None),
                     )
                     emit("tryon_render", "completed", ctx={
                         "rendered_count": sum(1 for _, p in rendered if p),
@@ -7313,6 +7319,7 @@ class AgenticOrchestrator:
         turn_id: str,
         target_count: int,
         trace: Optional[TurnTraceBuilder] = None,
+        anchor_garment: Optional[Dict[str, Any]] = None,
     ) -> tuple[List[tuple[OutfitCandidate, str]], Dict[str, int]]:
         """Render try-on for the top candidates with quality-gate over-generation.
 
@@ -7448,6 +7455,39 @@ class AgenticOrchestrator:
                 for item in (candidate.items or [])
                 if str(item.get("product_id", "")).strip()
             )
+
+            # May 8 follow-up: include the render-prepended anchor in
+            # the Gemini try-on so the user sees themselves wearing
+            # ALL pieces of the outfit (anchor + composed top + bottom),
+            # not just the catalog items composed by the LLM. Anchor's
+            # raw filesystem path is on ``anchor_garment.image_path``;
+            # the response formatter's browser-safe wrap (used for the
+            # frontend card) is unsuitable for the try-on service which
+            # expects either http(s):// or a real path. Pool-injected
+            # anchors (top/bottom) are NOT prepended here — they're
+            # already part of ``candidate.items`` from the orchestrator's
+            # pool-injection step, so adding them again would duplicate.
+            if anchor_garment:
+                # Lazy import to keep router→orchestrator import direction clean
+                from .composition.router import classify_anchor_role
+                _anchor_role_in_pool, _anchor_render_role = classify_anchor_role(anchor_garment)
+                _anchor_path = str(anchor_garment.get("image_path") or "").strip()
+                _anchor_pid = str(
+                    anchor_garment.get("id") or anchor_garment.get("product_id") or ""
+                ).strip()
+                if (
+                    not _anchor_role_in_pool   # render-prepended only
+                    and _anchor_path           # raw filesystem path available
+                    and _anchor_pid            # id needed for cache key
+                ):
+                    # Prepend the anchor as the first garment so the role
+                    # ordering reads outerwear → top → bottom in the
+                    # rendered image. tryon_service uses the three_piece
+                    # prompt automatically when garment_urls has 3 items.
+                    garment_urls = [(_anchor_render_role or "outerwear", _anchor_path), *garment_urls]
+                    if _anchor_pid not in garment_ids:
+                        garment_ids = sorted([*garment_ids, _anchor_pid])
+
             if not garment_urls:
                 _candidate_status = "skipped_no_urls"
                 _log_candidate_trace(garment_ids)
