@@ -5760,19 +5760,161 @@ class TryonParallelRenderTests(unittest.TestCase):
         self.assertEqual(cache_hit_call.kwargs.get("model"), "gemini-3.1-flash-image-preview")
         self.assertEqual(cache_hit_call.kwargs.get("estimated_cost_usd"), 0.0)
 
+    def test_outerwear_anchor_is_passed_to_tryon_service_as_third_garment(self) -> None:
+        """May 8 follow-up: render-prepended anchor (outerwear /
+        dress / co_ord) is now included in the actual Gemini try-on
+        call so the rendered image contains the user's own piece +
+        composed pairings. Anchor is passed as the FIRST garment_url
+        tuple (so role ordering reads outerwear → top → bottom in the
+        generated image) using the anchor's RAW filesystem path
+        (``image_path``), not the response-formatter's browser-safe
+        wrap which the try-on service can't load."""
+        import base64
+        small_png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 100).decode()
+        captured_calls: list[dict] = []
+
+        def capture(person_image_path, garment_urls):
+            captured_calls.append({
+                "person_image_path": person_image_path,
+                "garment_urls": list(garment_urls),
+            })
+            return {"success": True, "image_base64": small_png, "mime_type": "image/png"}
+
+        orch = self._make_orchestrator(capture, quality_passed=True)
+        candidate = OutfitCandidate(
+            candidate_id="c1",
+            direction_id="A", candidate_type="paired",
+            items=[
+                {"product_id": "catalog-top-1", "title": "Cream Shell",
+                 "image_url": "https://catalog.example/cream-shell.jpg", "role": "top"},
+                {"product_id": "catalog-bot-1", "title": "Black Trousers",
+                 "image_url": "https://catalog.example/black-trousers.jpg", "role": "bottom"},
+            ],
+            fashion_score=85,
+        )
+        # Anchor's image_path is the RAW filesystem path (the wardrobe
+        # row's stored path; not the browser-safe wrap).
+        anchor = {
+            "id": "wardrobe-blazer-uuid",
+            "title": "Navy Blazer",
+            "garment_category": "outerwear",
+            "image_path": "data/onboarding/images/wardrobe/navy_blazer.webp",
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            import os
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                rendered, _ = orch._render_candidates_for_visual_eval(
+                    candidates=[candidate],
+                    person_image_path="/tmp/person.png",
+                    external_user_id="u1",
+                    conversation_id="c1",
+                    turn_id="t1",
+                    target_count=1,
+                    anchor_garment=anchor,
+                )
+            finally:
+                os.chdir(cwd)
+
+        self.assertEqual(1, len(captured_calls))
+        garment_urls = captured_calls[0]["garment_urls"]
+        # Three garments now (anchor + top + bottom).
+        self.assertEqual(3, len(garment_urls))
+        # Anchor first, with its raw filesystem path (NOT the
+        # browser-safe wrap) and "outerwear" role.
+        anchor_role, anchor_url = garment_urls[0]
+        self.assertEqual("outerwear", anchor_role)
+        self.assertEqual("data/onboarding/images/wardrobe/navy_blazer.webp", anchor_url)
+        self.assertNotIn("/v1/onboarding/images/local", anchor_url)
+        # Composed catalog items follow.
+        self.assertEqual(("top", "https://catalog.example/cream-shell.jpg"), garment_urls[1])
+        self.assertEqual(("bottom", "https://catalog.example/black-trousers.jpg"), garment_urls[2])
+
+    def test_pool_injected_anchor_not_double_added(self) -> None:
+        """Pool-injected (top/bottom) anchors are already in
+        ``candidate.items`` from the orchestrator's pool-injection
+        step. The render path's anchor-injection helper detects this
+        via ``classify_anchor_role`` returning a non-empty
+        ``role_in_pool`` and skips the prepend — otherwise the anchor
+        would appear twice in ``garment_urls``."""
+        import base64
+        small_png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 100).decode()
+        captured_calls: list[dict] = []
+
+        def capture(person_image_path, garment_urls):
+            captured_calls.append({"garment_urls": list(garment_urls)})
+            return {"success": True, "image_base64": small_png, "mime_type": "image/png"}
+
+        orch = self._make_orchestrator(capture, quality_passed=True)
+        # Top anchor — orchestrator pool-injects, so it's already in
+        # candidate.items. Render shouldn't prepend it again.
+        candidate = OutfitCandidate(
+            candidate_id="c1",
+            direction_id="A", candidate_type="paired",
+            items=[
+                {"product_id": "wardrobe-top-uuid", "title": "White Shirt",
+                 "image_url": "data/onboarding/images/wardrobe/white-shirt.webp",
+                 "role": "top", "is_anchor": True},
+                {"product_id": "catalog-bot-1", "title": "Black Trousers",
+                 "image_url": "https://catalog.example/black-trousers.jpg", "role": "bottom"},
+            ],
+            fashion_score=85,
+        )
+        anchor = {
+            "id": "wardrobe-top-uuid",
+            "garment_category": "top",
+            "image_path": "data/onboarding/images/wardrobe/white-shirt.webp",
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            import os
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                orch._render_candidates_for_visual_eval(
+                    candidates=[candidate],
+                    person_image_path="/tmp/person.png",
+                    external_user_id="u1",
+                    conversation_id="c1",
+                    turn_id="t1",
+                    target_count=1,
+                    anchor_garment=anchor,
+                )
+            finally:
+                os.chdir(cwd)
+
+        self.assertEqual(1, len(captured_calls))
+        garment_urls = captured_calls[0]["garment_urls"]
+        # Two garments — anchor was NOT double-added (pool-injection
+        # path puts it in candidate.items already).
+        self.assertEqual(2, len(garment_urls))
+        # Anchor's path appears once, from candidate.items.
+        anchor_count = sum(
+            1 for _role, url in garment_urls
+            if "white-shirt" in url
+        )
+        self.assertEqual(1, anchor_count)
+
 
 class ExtractGarmentIdsAnchorFilterTests(unittest.TestCase):
-    """May 8 2026 follow-up RCA on turn c33b105a: render-time-prepended
-    anchors (PR #208) leaked into the post-format try-on cache key,
-    causing a miss against the earlier ``tryon_render`` row (which was
-    cached without the anchor) and triggering a regeneration whose
-    ``image_url`` is the anchor's browser-safe wrap that the try-on
-    service can't load — surfaced as ``FileNotFoundError: Person image
-    not found: /v1/onboarding/images/local?path=...``. Fix: strip
-    ``is_anchor=True`` items from the cache key.
+    """Cache-key contract for try-on renders.
+
+    May 8 follow-up: the earlier ``tryon_render`` stage now includes
+    the render-prepended anchor in the actual Gemini call so the user
+    sees themselves wearing the anchor + composed pieces. Cache keys
+    on both write and read sides therefore include the anchor's
+    product_id — anything else would let two anchors with the same
+    composed top+bottom collide on the same cached render image.
+
+    Pre-this-fix history: PR #210 stripped ``is_anchor=True`` items
+    from the key as a workaround for a render that DIDN'T include the
+    anchor; that workaround is no longer needed and was reverted in
+    the same change that added the anchor to the render.
     """
 
-    def test_extract_garment_ids_excludes_render_time_anchor(self) -> None:
+    def test_extract_garment_ids_includes_render_time_anchor(self) -> None:
         from agentic_application.orchestrator import AgenticOrchestrator
         from agentic_application.schemas import OutfitCard
         outfit = OutfitCard(
@@ -5785,9 +5927,11 @@ class ExtractGarmentIdsAnchorFilterTests(unittest.TestCase):
             ],
         )
         ids = AgenticOrchestrator._extract_garment_ids(outfit)
-        # Anchor excluded — key matches the earlier tryon_render's key
-        # (which didn't have the anchor in the candidate).
-        self.assertEqual(["catalog-bot-1", "catalog-top-1"], ids)
+        # Anchor INCLUDED — render now contains it, key must too.
+        self.assertEqual(
+            ["catalog-bot-1", "catalog-top-1", "wardrobe-blazer-uuid"],
+            ids,
+        )
 
     def test_extract_garment_ids_keeps_non_anchor_items(self) -> None:
         """Sanity: a plain catalog outfit (no anchor at all) is unchanged."""
@@ -5805,8 +5949,8 @@ class ExtractGarmentIdsAnchorFilterTests(unittest.TestCase):
 
     def test_extract_garment_ids_skips_blank_product_ids(self) -> None:
         """Pre-existing contract: items without a product_id are ignored.
-        Locked in here so the new ``is_anchor`` filter doesn't accidentally
-        regress this."""
+        Locked in here so future filter changes don't accidentally
+        regress empty-id handling."""
         from agentic_application.orchestrator import AgenticOrchestrator
         from agentic_application.schemas import OutfitCard
         outfit = OutfitCard(
