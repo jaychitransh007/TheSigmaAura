@@ -6190,25 +6190,14 @@ class AgenticOrchestrator:
                                     # decides the actual role label per outfit.
         has_paired = any(d.direction_type in ("paired", "three_piece") for d in plan.directions)
         if anchor and has_paired:
+            # Single source of truth: classify_anchor_role lives in
+            # composition/router.py because the engine eligibility
+            # gates need the same mapping. Adding a category here
+            # without updating that helper would silently break the
+            # architect+composer engine eligibility logic.
+            from .composition.router import classify_anchor_role
+            anchor_role_in_pool, anchor_render_role = classify_anchor_role(anchor)
             anchor_category = str(anchor.get("garment_category") or "").lower()
-            if anchor_category in ("top", "shirt", "blouse"):
-                anchor_role_in_pool = "top"
-                anchor_render_role = "top"
-            elif anchor_category in ("bottom", "trouser", "pant", "jeans", "skirt"):
-                anchor_role_in_pool = "bottom"
-                anchor_render_role = "bottom"
-            elif anchor_category in ("outerwear", "blazer", "jacket", "coat"):
-                # No pool injection — render-time prepend only.
-                anchor_render_role = "outerwear"
-            else:
-                # Unknown category (dress, shoe, accessory, etc.). Don't
-                # inject — let architect's plan stand and surface the
-                # anchor at render time under whatever the category says
-                # (the UI can decide how to slot it). Avoids the May 8
-                # regression where unknown categories collapsed to
-                # role="complete" and the composer picked the anchor as
-                # the entire outfit.
-                anchor_render_role = anchor_category or "anchor"
             if anchor_role_in_pool:
                 for direction in plan.directions:
                     direction.queries = [q for q in direction.queries if q.role != anchor_role_in_pool]

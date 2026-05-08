@@ -163,12 +163,27 @@ class IsEngineEligibleTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIsNone(reason)
 
-    def test_anchor_garment_ineligible(self):
+    def test_pool_injected_anchor_ineligible(self):
+        """T2 (May 8 follow-up): top/bottom anchors enter the composer
+        pool via orchestrator injection — engine can't yet score
+        fixed-slot tuples. Outerwear-style anchors are eligible
+        (separate test below)."""
         live = _live()
-        live.anchor_garment = {"id": "A1", "subtype": "saree"}  # pyright: ignore
+        live.anchor_garment = {"id": "A1", "garment_category": "top"}  # pyright: ignore
         ok, reason = is_engine_eligible(_ctx(live=live), _plan())
         self.assertFalse(ok)
-        self.assertEqual(reason, "anchor_present")
+        self.assertEqual(reason, "anchor_pool_injected")
+
+    def test_render_prepended_anchor_eligible(self):
+        """T2: outerwear / dress / co_ord anchors stay out of the pool —
+        composer engine sees a top+bottom-only pool, identical in shape
+        to an occasion turn — eligible."""
+        for category in ("outerwear", "blazer", "jacket", "coat", "dress"):
+            live = _live()
+            live.anchor_garment = {"id": "A1", "garment_category": category}  # pyright: ignore
+            ok, reason = is_engine_eligible(_ctx(live=live), _plan())
+            self.assertTrue(ok, f"category={category!r} should be eligible")
+            self.assertIsNone(reason)
 
     def test_followup_request_ineligible(self):
         live = _live()
@@ -315,10 +330,10 @@ class RouteFlagAndEligibilityTests(unittest.TestCase):
         llm.assert_called_once()
 
     def test_eligibility_failure_short_circuits_to_llm(self):
-        # Use anchor_present (the most stable ineligibility cause)
-        # since architect_plan_from_cache is no longer a gate.
+        # Use pool-injected anchor (top/bottom) — still ineligible
+        # post-T2, the most stable ineligibility cause.
         live = _live()
-        live.anchor_garment = {"id": "A1"}  # pyright: ignore
+        live.anchor_garment = {"id": "A1", "garment_category": "top"}  # pyright: ignore
         llm = _llm_callable()
         decision = route_composer_plan(
             plan=_plan(),
@@ -328,13 +343,13 @@ class RouteFlagAndEligibilityTests(unittest.TestCase):
             enabled=True,
         )
         self.assertFalse(decision.used_engine)
-        self.assertEqual(decision.fallback_reason, "anchor_present")
+        self.assertEqual(decision.fallback_reason, "anchor_pool_injected")
         self.assertIsNone(decision.engine_confidence)
         llm.assert_called_once()
 
-    def test_eligibility_anchor_present(self):
+    def test_eligibility_pool_injected_anchor(self):
         live = _live()
-        live.anchor_garment = {"id": "A1"}  # pyright: ignore
+        live.anchor_garment = {"id": "A1", "garment_category": "bottom"}  # pyright: ignore
         llm = _llm_callable()
         decision = route_composer_plan(
             plan=_plan(),
@@ -344,7 +359,7 @@ class RouteFlagAndEligibilityTests(unittest.TestCase):
             enabled=True,
         )
         self.assertFalse(decision.used_engine)
-        self.assertEqual(decision.fallback_reason, "anchor_present")
+        self.assertEqual(decision.fallback_reason, "anchor_pool_injected")
         llm.assert_called_once()
 
 
