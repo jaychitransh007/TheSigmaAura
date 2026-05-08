@@ -1217,6 +1217,151 @@ required) or `ops/scripts/turn_forensics.py`.
 
 ---
 
+## Panel 29 — Try-on Flag State Distribution
+
+**Question:** is `AURA_TRYON_ENABLED` actually on, and what fraction of
+turns hit the rendered path vs the flag-off skip path? Without this
+panel, "tryon stage slow" can't be told apart from "tryon stage skipped"
+because both produce zero latency observations.
+
+```promql
+# Flag-on rate over the last hour (1.0 = flag on every turn that
+# reached the gate, 0.0 = always off, in-between = mixed deployment).
+sum(rate(aura_tryon_flag_total{enabled="true"}[1h]))
+  / sum(rate(aura_tryon_flag_total[1h]))
+```
+
+```promql
+# Per-turn skip rate. Spikes here = a deploy unintentionally flipped
+# the flag off. Compare against the deploy timeline.
+sum(rate(aura_tryon_flag_total{enabled="false"}[5m])) by (enabled)
+```
+
+Cross-reference: `aura_turn_duration_seconds{stage="tryon_render"}`
+should be empty/sparse when `aura_tryon_flag_total{enabled="false"}`
+dominates. Mismatch = bug somewhere in the gate.
+
+---
+
+## Panel 30 — Empty-Retrieval Relaxation Outcome
+
+**Question:** how often is auto-relaxation firing, how deep does it
+have to go, and how often does it exhaust without finding anything?
+Sustained `exhausted` rate is a catalog content gap signal — the
+ask hits a hole that no filter relaxation can paper over.
+
+```promql
+# Distribution over the last hour.
+sum(rate(aura_retrieval_relaxation_total[1h])) by (outcome)
+```
+
+```promql
+# Exhaustion rate (catalog gap signal). Alert if >2% sustained.
+sum(rate(aura_retrieval_relaxation_total{outcome="exhausted"}[1h]))
+  / sum(rate(aura_retrieval_relaxation_total[1h]))
+```
+
+```promql
+# Relaxation-needed rate. High and rising = either the architect is
+# over-constraining (re-tune planner) or the catalog is shrinking
+# (ingest regression). Cross-reference with Panel 16 (low-confidence
+# rate) — the two surface different stages of the same underlying
+# coverage problem.
+1 - (
+  sum(rate(aura_retrieval_relaxation_total{outcome="not_needed"}[1h]))
+  / sum(rate(aura_retrieval_relaxation_total[1h]))
+)
+```
+
+Outcomes: `not_needed` (first pass returned products), `succeeded_level_1`
+(only `garment_subtype` dropped), `succeeded_level_2` (`+ formality_level`),
+`succeeded_level_3` (`+ occasion_fit` — full sequence), `exhausted`
+(all three dropped, still 0 products).
+
+---
+
+## Panel 31 — Follow-up Intent Routing Mix
+
+**Question:** for each follow-up intent, what fraction of turns are
+served by the engine vs falling through to the LLM? When PR #186 /
+#190 / #191 / #198 / #199 added engine eligibility for the seven
+follow-up intents, the existing router-decision counter (Panel 21)
+doesn't surface per-intent breakdown — high-volume intents can mask
+per-intent regressions.
+
+```promql
+# Per-intent engine acceptance rate over the last hour.
+sum(rate(aura_followup_intent_routing_total{used_engine="true"}[1h]))
+  by (followup_intent)
+/ ignoring(used_engine) group_left()
+sum(rate(aura_followup_intent_routing_total[1h]))
+  by (followup_intent)
+```
+
+```promql
+# Per-intent volume breakdown — answers "which follow-ups are users
+# actually using" so we know which intents to optimize.
+sum(rate(aura_followup_intent_routing_total[1h])) by (followup_intent)
+```
+
+Expected baseline (May 2026 post-shipping): all 7 engine-friendly
+intents land at >80% engine. Drift below 50% on any intent points to
+an eligibility gate regression — see Runbook entry A6.
+
+Intents covered: `decrease_formality`, `increase_formality`,
+`more_options`, `similar_to_previous`, `change_color`,
+`full_alternative`, `increase_boldness`. Anything else (legacy or
+unrecognized) shows up under `none` and routes through the LLM.
+
+---
+
+## Panel 32 — Composition Per-Axis Gap Impact
+
+**Question:** for each YAML-gap axis, how much confidence loss did
+gaps on that axis actually cost us? Pairs with Panel 22 (gap
+*frequency*) — frequency × weight = impact, and impact is what should
+drive `_YAML_GAP_AXIS_WEIGHTS` tuning. Without this, the tuning
+harness in `ops/scripts/tune_yaml_gap_weights.py` has only frequency
+data and can't tell rare-but-catastrophic axes (e.g., `body_shape` at
+weight 1.5) apart from common-but-recoverable axes (e.g.,
+`formality_hint` at weight 0.5).
+
+```promql
+# Total confidence loss attributable to each axis over the last hour
+# (weighted by _YAML_GAP_AXIS_WEIGHTS × YAML_GAP_PENALTY).
+sum(rate(aura_composition_yaml_gap_impact_total[1h])) by (axis)
+```
+
+```sql
+-- Per-axis impact from distillation_traces, last 7 days. Uses the
+-- per_axis_gap_impact JSON populated by router.py:RouterDecision.
+-- Dollars-and-cents view: how much confidence each axis cost the
+-- engine across the cohort.
+SELECT
+    axis,
+    COUNT(*)         AS turns_with_gap,
+    AVG(impact)      AS avg_impact_per_turn,
+    SUM(impact)      AS total_impact_7d
+FROM distillation_traces,
+     LATERAL jsonb_each_text(
+       full_output -> 'router_decision' -> 'per_axis_gap_impact'
+     ) AS gap(axis, impact_str)
+CROSS JOIN LATERAL (SELECT impact_str::float AS impact) AS i
+WHERE stage = 'outfit_architect'
+  AND created_at >= NOW() - INTERVAL '7 days'
+  AND full_output -> 'router_decision' -> 'per_axis_gap_impact' IS NOT NULL
+GROUP BY axis
+ORDER BY total_impact_7d DESC;
+```
+
+Tuning workflow: when this panel shows `axis X` accounting for >40%
+of total impact AND `tune_yaml_gap_weights.py` reports correlation
+< 0.30 for that axis, the weight is too aggressive — drop it one
+step (0.2). When impact is concentrated on a high-correlation axis,
+the weight is doing its job; leave alone.
+
+---
+
 ## How to refresh
 
 1. Open Supabase Studio (or your preferred SQL client) connected to staging.
@@ -1376,6 +1521,33 @@ The composer engine (PR 5c, wired in PR 5d) replaces the LLM `OutfitComposer` wi
   1. Run Panel 26 (rule-violation distribution) — heavy soft-violation accumulation correlates with rater rejection.
   2. Run Panel 27 (per-tuple score histogram) — if picks are bunching at base_score < 0.7, the engine isn't filtering hard enough; calibrate `MIN_OUTFIT_SCORE`.
   3. Capture 50 unsuitable-rated engine outfits via Panel 28 + `ops/scripts/turn_forensics.py`; spot-check what the engine missed that the rater caught — this is the YAML-tuning backlog.
+
+### A6: Try-on flag accidentally off in production
+
+**Signal:** Panel 29 shows `aura_tryon_flag_total{enabled="false"}` rate climbing or sustained at >50% during business hours, OR users report "no images on cards."
+**Cause:** `AURA_TRYON_ENABLED` env var unset / set to a falsy value on the production orchestrator. The flag was added in PR #185 with `default=False` so an unset var silently disables try-on rendering.
+**First three actions:**
+1. Confirm production env: `kubectl exec <pod> -- env | grep AURA_TRYON_ENABLED` (or equivalent for your deploy). Empty / falsy → flag is off.
+2. If unintentional: set `AURA_TRYON_ENABLED=true` in the deploy manifest and restart pods.
+3. If intentional (cost-saving during a degraded mode): check that user-facing copy reflects "previews unavailable" rather than rendering empty cards. Update `qna_messages.py` if the message is missing.
+
+### A7: Empty-retrieval relaxation firing on >2% of turns
+
+**Signal:** Panel 30 shows `outcome="exhausted"` rate >2% sustained, OR `not_needed` share dropping below 90%.
+**Cause:** the catalog has shrunk OR the architect is over-constraining. PR #192 added the relaxation as a safety net for legitimate catalog gaps (e.g., turn `9abaf4d4` — masculine catalog had no tshirts/hoodies for "loungewear"). High exhaustion rate means the safety net is bottoming out, which is a content gap signal rather than a software bug.
+**First three actions:**
+1. Run the SQL drilldown on `distillation_traces.full_output.relaxation_applied` for the last 24h, grouped by `(planner.target_product_type, gender_expression)` — surface which (subtype, gender) cells dominate the exhausted bucket.
+2. If a specific cell dominates: it's a catalog content gap. File against the catalog ingestion backlog with the exact subtype × gender × occasion that exhausted.
+3. If exhaustion is spread across many cells: the architect is likely emitting over-constrained `hard_filters`. Cross-check Panel 16 (low_confidence_catalog_responses) — both panels move together when the architect is the cause. Recalibrate the planner's hard-filter binding (`_apply_target_product_type_to_plan` in orchestrator.py).
+
+### A8: Per-axis YAML-gap impact concentrated on one axis
+
+**Signal:** Panel 32 shows one axis accounting for >40% of total impact across the cohort, AND `ops/scripts/tune_yaml_gap_weights.py` reports correlation < 0.30 for that axis.
+**Cause:** `_YAML_GAP_AXIS_WEIGHTS[axis]` is too aggressive — gaps on this axis are dragging confidence below the 0.50 threshold even when the gap turns out to be benign (engine-served turns rate fine). High impact + low fallback correlation = wasted fall-throughs.
+**First three actions:**
+1. Run `python ops/scripts/tune_yaml_gap_weights.py --limit 1000` on the staging trace pool. If the axis is in the "weight down" suggestion list, the analysis confirms the panel's read.
+2. Drop the axis weight one step (0.2) in `composition/engine.py:_YAML_GAP_AXIS_WEIGHTS`. Open a config-only PR — same flow as PR #197.
+3. After merge: re-baseline against Panel 32 in 7 days to confirm impact dropped without a regression in Panel 21 (engine acceptance rate).
 
 ### Escalation timeline
 

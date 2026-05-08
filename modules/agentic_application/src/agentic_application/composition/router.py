@@ -107,7 +107,13 @@ class RouterDecision:
     keys: ``omitted`` (final_flatters empty), ``hard_widened``
     (≥1 hard source widened), ``soft_relaxed`` (≥1 soft dropped).
     Each maps to a tuple of attribute names. Empty when the engine
-    didn't run (flag off / eligibility fail)."""
+    didn't run (flag off / eligibility fail).
+
+    ``per_axis_gap_impact`` mirrors ``CompositionResult.per_axis_gap_impact``:
+    ``{axis: confidence_loss}`` for the gaps that fired on this turn.
+    Empty when the engine didn't run or accepted clean. Surfaced both
+    in the per-axis Prometheus impact counter and in distillation_traces
+    so tuning ``_YAML_GAP_AXIS_WEIGHTS`` can be driven by actual impact."""
 
     plan: RecommendationPlan
     used_engine: bool
@@ -118,6 +124,7 @@ class RouterDecision:
     provenance_summary: Mapping[str, tuple[str, ...]] = field(
         default_factory=dict
     )
+    per_axis_gap_impact: Mapping[str, float] = field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -402,6 +409,7 @@ def route_recommendation_plan(
             yaml_gaps=result.yaml_gaps,
             engine_ms=engine_ms,
             provenance_summary=provenance_summary,
+            per_axis_gap_impact=dict(result.per_axis_gap_impact),
         )
 
     # Engine accepted.
@@ -413,4 +421,5 @@ def route_recommendation_plan(
         yaml_gaps=result.yaml_gaps,
         engine_ms=engine_ms,
         provenance_summary=provenance_summary,
+        per_axis_gap_impact=dict(result.per_axis_gap_impact),
     )

@@ -40,6 +40,7 @@ from agentic_application.composition.engine import (
     _detect_peer_conflict,
     _resolve_body_frame_yaml,
     _time_of_day_to_garment_value,
+    _yaml_gap_per_axis_impact,
     compose_direction,
 )
 from agentic_application.composition.reduction import AttributeContribution
@@ -380,6 +381,58 @@ class ConfidenceFormulaTests(unittest.TestCase):
     def test_clamped_to_ceiling_one(self):
         score = _compute_confidence([], yaml_gap_count=0)
         self.assertEqual(score, 1.0)
+
+
+class PerAxisGapImpactTests(unittest.TestCase):
+    """``_yaml_gap_per_axis_impact`` returns the per-axis confidence
+    delta for the given gap list. Pairs with the per-axis frequency
+    surfaced in distillation_traces — frequency × weight = impact, and
+    impact is what should drive ``_YAML_GAP_AXIS_WEIGHTS`` tuning.
+    Without these tests, a regression that changed the impact formula
+    would silently distort Panel 32 readings."""
+
+    def test_empty_gaps_returns_empty_dict(self):
+        self.assertEqual(_yaml_gap_per_axis_impact([]), {})
+
+    def test_single_gap_returns_axis_impact_pair(self):
+        # body_shape weight is 1.5 in production; impact = 1.5 × 0.20.
+        impact = _yaml_gap_per_axis_impact(["body_shape:Pear"])
+        self.assertEqual(set(impact), {"body_shape"})
+        self.assertAlmostEqual(impact["body_shape"], 1.5 * YAML_GAP_PENALTY)
+
+    def test_multiple_gaps_same_axis_sum(self):
+        impact = _yaml_gap_per_axis_impact([
+            "body_shape:Pear",
+            "body_shape:Apple",
+        ])
+        self.assertAlmostEqual(impact["body_shape"], 2 * 1.5 * YAML_GAP_PENALTY)
+
+    def test_unknown_axis_uses_default_weight_one(self):
+        impact = _yaml_gap_per_axis_impact(["mystery_axis:value"])
+        self.assertAlmostEqual(impact["mystery_axis"], 1.0 * YAML_GAP_PENALTY)
+
+    def test_mix_of_axes_each_get_own_entry(self):
+        # body_shape (1.5) + formality_hint (0.5) — each impact is
+        # weight × YAML_GAP_PENALTY, no cross-axis contamination.
+        impact = _yaml_gap_per_axis_impact([
+            "body_shape:Pear",
+            "formality_hint:office",
+        ])
+        self.assertAlmostEqual(impact["body_shape"], 1.5 * YAML_GAP_PENALTY)
+        self.assertAlmostEqual(impact["formality_hint"], 0.5 * YAML_GAP_PENALTY)
+
+    def test_compose_direction_attaches_per_axis_impact(self):
+        # End-to-end: a contrived input that produces at least one
+        # body_shape gap surfaces the impact field on CompositionResult.
+        graph = load_style_graph()
+        inputs = _baseline_inputs(body_shape="UnknownShape")
+        result = compose_direction(
+            inputs=inputs, graph=graph, user=_user("female"),
+        )
+        # body_shape is the gap-emitter; verify it shows up in impact
+        # with a positive value (regardless of the exact engine path).
+        self.assertIn("body_shape", result.per_axis_gap_impact)
+        self.assertGreater(result.per_axis_gap_impact["body_shape"], 0)
 
 
 class HelperTests(unittest.TestCase):

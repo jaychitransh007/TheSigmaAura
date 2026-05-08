@@ -171,7 +171,15 @@ class ProvenanceEntry:
 
 @dataclass(frozen=True)
 class CompositionResult:
-    """The engine's output envelope. Mirrors spec §7."""
+    """The engine's output envelope. Mirrors spec §7.
+
+    ``per_axis_gap_impact`` is the per-axis confidence-loss breakdown
+    for ``yaml_gaps`` — ``{axis: weight × YAML_GAP_PENALTY × occurrences}``.
+    Empty when the engine accepted clean (no gaps) or didn't run.
+    Callers expose it to ops dashboards (Prometheus per-axis impact
+    counter + Panel 28 / distillation_traces drilldown) so tuning
+    decisions on ``_YAML_GAP_AXIS_WEIGHTS`` are based on actual
+    confidence impact, not raw gap frequency."""
 
     direction: DirectionSpec | None
     confidence: float
@@ -179,6 +187,7 @@ class CompositionResult:
     provenance: tuple[ProvenanceEntry, ...]
     fallback_reason: str | None
     yaml_gaps: tuple[str, ...] = field(default_factory=tuple)
+    per_axis_gap_impact: Mapping[str, float] = field(default_factory=dict)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -691,6 +700,24 @@ def _yaml_gap_weighted_count(gaps: Sequence[str]) -> float:
     return total
 
 
+def _yaml_gap_per_axis_impact(gaps: Sequence[str]) -> dict[str, float]:
+    """Return ``{axis: cumulative_confidence_loss}`` for the given
+    gap list. ``cumulative_confidence_loss`` is the actual delta the
+    axis's gaps subtracted from confidence on this turn:
+    ``weight × YAML_GAP_PENALTY × (gaps on that axis)``. Multiple gaps
+    on the same axis sum into one entry. Pairs with the per-axis gap
+    *frequency* surfaced via distillation_traces — frequency answers
+    "how often", impact answers "how much"."""
+    if not gaps:
+        return {}
+    impact: dict[str, float] = {}
+    for gap in gaps:
+        axis = gap.split(":", 1)[0]
+        weight = _YAML_GAP_AXIS_WEIGHTS.get(axis, 1.0)
+        impact[axis] = impact.get(axis, 0.0) + weight * YAML_GAP_PENALTY
+    return impact
+
+
 def _compute_confidence(
     provenance: Sequence[ProvenanceEntry],
     yaml_gap_count: int | Sequence[str] = 0,
@@ -835,6 +862,7 @@ def compose_direction(
         provenance=tuple(provenance),
         fallback_reason=fallback_reason,
         yaml_gaps=tuple(gaps),
+        per_axis_gap_impact=_yaml_gap_per_axis_impact(gaps),
     )
 
 

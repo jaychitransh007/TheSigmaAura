@@ -245,6 +245,71 @@ aura_retrieval_attr_violation_total = Counter(
 )
 
 
+# May 8 2026 — try-on flag state counter (PR #185 observability gap).
+# Ticks once per turn that reaches the try-on gate, labelled by whether
+# the AURA_TRYON_ENABLED flag was on. Without this, "tryon stage slow"
+# in production can't be distinguished from "tryon stage skipped" — the
+# absence of latency observations is identical in both cases. Cardinality:
+# 2 series (enabled=true|false). Bounded.
+aura_tryon_flag_total = Counter(
+    "aura_tryon_flag_total",
+    "Try-on flag-gate decisions per turn (enabled=true means the stage ran).",
+    labelnames=("enabled",),
+)
+
+
+# May 8 2026 — empty-retrieval relaxation outcome counter (PR #192
+# observability gap). Ticks once per architect plan, labelled by the
+# relaxation outcome: not_needed (first pass returned products),
+# succeeded_level_N (N filters dropped before products surfaced),
+# exhausted (all 3 levels dropped, still empty). Lets ops answer "is
+# relaxation firing too often" (catalog content gap signal) and "is
+# the sequence ordered right" (if level_3 dominates, earlier levels
+# are pulling weight that the sequence should reflect). Cardinality:
+# 5 series (not_needed | succeeded_level_1 | succeeded_level_2 |
+# succeeded_level_3 | exhausted).
+aura_retrieval_relaxation_total = Counter(
+    "aura_retrieval_relaxation_total",
+    "Empty-retrieval auto-relaxation outcomes per architect plan.",
+    labelnames=("outcome",),
+)
+
+
+# May 8 2026 — follow-up intent routing counter (PR #186/#190/#191/
+# #198/#199 observability gap). Ticks once per follow-up turn at the
+# composition router, labelled by intent + engine acceptance. The
+# existing aura_composition_router_decision_total has used_engine and
+# fallback_reason but no intent label, so per-intent acceptance rate
+# (e.g., "is more_options actually 90% engine, or did the gate
+# regress?") can't be answered from Prometheus today. This counter
+# only ticks on follow-up turns; non-followup routing is already
+# fully observable via the existing counter. Cardinality: 8 intents ×
+# 2 (used_engine) = 16 series. Bounded by the ENGINE_FRIENDLY_FOLLOWUP_
+# INTENTS set + the literal "none" sentinel for unrecognized intents.
+aura_followup_intent_routing_total = Counter(
+    "aura_followup_intent_routing_total",
+    "Follow-up turn router decisions, sliced by intent and engine acceptance.",
+    labelnames=("followup_intent", "used_engine"),
+)
+
+
+# May 8 2026 — per-axis YAML-gap confidence-loss counter (PRs #194/#197
+# observability gap). For each YAML gap on each engine turn, ticks the
+# counter for the gap's axis by the confidence delta the gap added
+# (weight × YAML_GAP_PENALTY). Read with rate() to compute "average
+# confidence loss attributable to body_shape gaps in the last hour"
+# without joining gap-frequency to gap-impact. Pairs with the existing
+# per-axis gap-frequency surfaced in distillation_traces (Panel 22) —
+# this counter answers the impact question, that one answers the
+# frequency question. Cardinality: 9 series (the keys of
+# _YAML_GAP_AXIS_WEIGHTS) plus an "unknown" sentinel.
+aura_composition_yaml_gap_impact_total = Counter(
+    "aura_composition_yaml_gap_impact_total",
+    "Cumulative YAML-gap confidence-loss per axis (sum of weight × YAML_GAP_PENALTY).",
+    labelnames=("axis",),
+)
+
+
 # ── Convenience helpers ───────────────────────────────────────────────
 
 
@@ -454,5 +519,65 @@ def observe_composition_attribute_status(status: str) -> None:
         aura_composition_attribute_status_total.labels(
             status=status or "unknown",
         ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_tryon_flag_state(*, enabled: bool) -> None:
+    """Tick the try-on flag state counter once per turn that reaches
+    the try-on gate. ``enabled`` is the runtime value of
+    AURA_TRYON_ENABLED for the orchestrator handling this turn."""
+    try:
+        aura_tryon_flag_total.labels(
+            enabled="true" if enabled else "false",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_retrieval_relaxation(*, outcome: str) -> None:
+    """Tick the relaxation outcome counter. ``outcome`` is one of:
+    ``"not_needed"`` | ``"succeeded_level_1"`` | ``"succeeded_level_2"``
+    | ``"succeeded_level_3"`` | ``"exhausted"``. Unknown outcomes are
+    still recorded under their literal label so a future relaxation-
+    sequence change doesn't silently drop on the floor."""
+    try:
+        aura_retrieval_relaxation_total.labels(
+            outcome=outcome or "unknown",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_followup_intent_routing(
+    *, followup_intent: Optional[str], used_engine: bool
+) -> None:
+    """Tick the per-intent follow-up routing counter. Call ONLY on
+    follow-up turns (``is_followup=true``); non-followup turns are
+    already covered by ``observe_composition_router_decision``.
+    ``followup_intent`` may be None or empty when the planner failed
+    to identify an intent — coerced to ``"none"`` so the label set
+    stays well-formed."""
+    try:
+        aura_followup_intent_routing_total.labels(
+            followup_intent=(followup_intent or "").strip() or "none",
+            used_engine="true" if used_engine else "false",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_composition_yaml_gap_impact(*, axis: str, impact: float) -> None:
+    """Increment the per-axis confidence-loss counter by ``impact``
+    (the value the gap subtracted from confidence — i.e. axis weight ×
+    YAML_GAP_PENALTY). One call per gap per engine turn. Negative or
+    zero impacts are skipped — confidence loss is a strictly positive
+    delta in the engine's accounting."""
+    if impact <= 0:
+        return
+    try:
+        aura_composition_yaml_gap_impact_total.labels(
+            axis=axis or "unknown",
+        ).inc(float(impact))
     except Exception:  # noqa: BLE001
         pass
