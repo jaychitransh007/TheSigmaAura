@@ -1562,69 +1562,42 @@ class AgenticOrchestrator:
                 trace_end("wishlist_selection", output_summary="load failed", status="error")
                 _log.warning("Failed to load wishlist product %s", wishlist_product_id, exc_info=True)
 
+        # Wardrobe enrichment runs in a background thread so the planner
+        # can run concurrently with it. The planner's intent
+        # classification is phrasing-driven and doesn't strictly need
+        # the enriched 46 attributes — it has ``has_attached_image``
+        # and the user's raw message. The enrichment result is awaited
+        # just before ``_apply_planner_overrides``, where ``attached_item``
+        # is first read for anchor handling.
+        #
+        # Empirical: wardrobe enrichment ~14-17s per turn (vision call
+        # extracting 46 attrs); planner ~3-7s. With overlap, planner
+        # masks 3-7s of enrichment latency on every image-attached
+        # pairing turn. May 8 2026 P1.2 from the original RCA.
+        _enrichment_future: Optional[Any] = None
+        _enrichment_t0: Optional[float] = None
+        _attachment_source_pending: Optional[str] = None
         if image_data:
             trace_start("wardrobe_enrichment", model="gpt-5-mini", input_summary=f"image_upload, message={message[:80]}")
-            try:
-                # Phase 12D follow-up (April 9 2026): enrich the uploaded
-                # garment but do NOT persist it to user_wardrobe_items yet.
-                # The planner needs the 46 attributes in its prompt context
-                # to classify intent, but persistence should only happen
-                # for intents that legitimately mean "save this to my
-                # wardrobe" — pairing_request and outfit_check. For
-                # garment_evaluation ("should I buy this?") and
-                # style_discovery turns, the user is asking about a piece
-                # they don't own, so we keep the enriched dict in memory
-                # for the response and discard it after the turn.
-                attached_item = self.onboarding_gateway.save_uploaded_chat_wardrobe_item(
-                    user_id=external_user_id,
-                    image_data=image_data,
-                    description=message.strip(),
-                    notes="Captured from chat image attachment.",
-                    persist=False,
-                )
-                _log.info("Attached item enriched (pending persist): %s", {k: str(v)[:50] for k, v in (attached_item or {}).items()} if attached_item else None)
-            except Exception:
-                _log.exception("Failed to save attached item — attached_item will be None")
-                attached_item = None
-            attachment_source = self._uploaded_image_anchor_source(message=message)
-            if attached_item is not None:
-                attached_item = dict(attached_item)
-                attached_item["attachment_source"] = attachment_source
-                # Phase 12D: detect the failed-enrichment case from the
-                # service layer's top-level enrichment_status marker. Also
-                # treat all-empty critical fields as a failed enrichment
-                # for backwards compatibility with rows saved before the
-                # service layer started returning the marker.
-                enrichment_status = str(attached_item.get("enrichment_status") or "").strip().lower()
-                critical_fields_empty = (
-                    not str(attached_item.get("garment_category") or "").strip()
-                    and not str(attached_item.get("garment_subtype") or "").strip()
-                    and not str(attached_item.get("title") or "").strip()
-                )
-                if enrichment_status == "failed" or critical_fields_empty:
-                    attached_item["enrichment_failed"] = True
-                    _log.warning(
-                        "Wardrobe enrichment returned empty/failed for upload %s — flagging on attached_item",
-                        attached_item.get("id"),
-                    )
-            attached_context = self._attached_item_context(attached_item)
-            if attached_context:
-                effective_message = f"{message.strip()} {attached_context}".strip()
-            if attached_item is not None:
-                effective_message = f"{effective_message} Image anchor source: {attachment_source.replace('_', ' ')}.".strip()
-            # Close the wardrobe_enrichment trace step
-            enriched_cat = str((attached_item or {}).get("garment_category") or "")
-            enriched_color = str((attached_item or {}).get("primary_color") or "")
-            is_garm = (attached_item or {}).get("is_garment_photo")
-            trace_end(
-                "wardrobe_enrichment",
-                output_summary=f"is_garment={is_garm}, category={enriched_cat}, color={enriched_color}",
-                status="ok" if attached_item else "error",
+            _enrichment_t0 = time.monotonic()
+            # Per-turn executor — submitted task captures all args by
+            # value, so the executor can be shut down right after
+            # submit without affecting the running task. shutdown(wait=False)
+            # lets the thread continue without the parent holding the
+            # executor's lifetime.
+            _enrichment_executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="wardrobe_enrich"
             )
-            trace.set_image_classification(
-                is_garment_photo=is_garm if is_garm is not None else None,
-                garment_present_confidence=float((attached_item or {}).get("garment_present_confidence") or 1.0),
+            _enrichment_future = _enrichment_executor.submit(
+                self.onboarding_gateway.save_uploaded_chat_wardrobe_item,
+                user_id=external_user_id,
+                image_data=image_data,
+                description=message.strip(),
+                notes="Captured from chat image attachment.",
+                persist=False,
             )
+            _enrichment_executor.shutdown(wait=False)
+            _attachment_source_pending = self._uploaded_image_anchor_source(message=message)
 
         # ── Carry forward the previous turn's attached item ──────────
         # When the user didn't upload a new image and didn't select from
@@ -1635,7 +1608,14 @@ class AgenticOrchestrator:
         # anchor. Without this, follow-up pairing requests lose the
         # garment context and the architect searches catalog for BOTH
         # roles instead of anchoring the user's piece.
-        if not attached_item:
+        #
+        # Note: when ``image_data`` is set, an enrichment future is
+        # pending and ``attached_item`` is intentionally None at this
+        # point. Skip carry-forward in that case — the fresh upload
+        # will populate ``attached_item`` once the future resolves
+        # (right before _apply_planner_overrides). Carrying forward
+        # would shadow the user's just-uploaded piece.
+        if not attached_item and _enrichment_future is None:
             prev_attached = previous_context.get("last_attached_item")
             if prev_attached and isinstance(prev_attached, dict) and prev_attached.get("id"):
                 attached_item = dict(prev_attached)
@@ -1899,6 +1879,70 @@ class AgenticOrchestrator:
             "action": plan_result.action,
         })
         trace_end("copilot_planner", output_summary=f"intent={plan_result.intent}, action={plan_result.action}")
+
+        # ── Await wardrobe enrichment (kicked off when image_data was
+        # received above, ran in parallel with onboarding_gate +
+        # user_context + planner). Resolved here so ``attached_item``
+        # is populated before _apply_planner_overrides + downstream
+        # anchor handling. Empirical: planner takes 3-7s, enrichment
+        # 14-17s — overlap saves 3-7s per image-attached turn.
+        if _enrichment_future is not None:
+            try:
+                _maybe_attached = _enrichment_future.result(timeout=45)
+            except Exception:
+                _log.exception("Wardrobe enrichment thread failed")
+                _maybe_attached = None
+            _enrichment_ms = int((time.monotonic() - _enrichment_t0) * 1000)
+            if _maybe_attached is not None:
+                attached_item = dict(_maybe_attached)
+                attached_item["attachment_source"] = _attachment_source_pending
+                # Detect failed-enrichment via the service-layer marker
+                # OR all-empty critical fields (back-compat with rows
+                # saved before the marker landed). Phase 12D logic
+                # preserved verbatim — just running here instead of
+                # before the planner.
+                _enrichment_status = str(attached_item.get("enrichment_status") or "").strip().lower()
+                _critical_fields_empty = (
+                    not str(attached_item.get("garment_category") or "").strip()
+                    and not str(attached_item.get("garment_subtype") or "").strip()
+                    and not str(attached_item.get("title") or "").strip()
+                )
+                if _enrichment_status == "failed" or _critical_fields_empty:
+                    attached_item["enrichment_failed"] = True
+                    _log.warning(
+                        "Wardrobe enrichment returned empty/failed for upload %s — flagging on attached_item",
+                        attached_item.get("id"),
+                    )
+                # Append attached_context to effective_message so
+                # downstream consumers (architect input, model_call_logs
+                # rows) see the enriched garment context.
+                _attached_context = self._attached_item_context(attached_item)
+                if _attached_context:
+                    effective_message = f"{message.strip()} {_attached_context}".strip()
+                if _attachment_source_pending:
+                    effective_message = (
+                        f"{effective_message} Image anchor source: "
+                        f"{_attachment_source_pending.replace('_', ' ')}."
+                    ).strip()
+                _enriched_cat = str(attached_item.get("garment_category") or "")
+                _enriched_color = str(attached_item.get("primary_color") or "")
+                _is_garm = attached_item.get("is_garment_photo")
+                trace_end(
+                    "wardrobe_enrichment",
+                    output_summary=f"is_garment={_is_garm}, category={_enriched_cat}, color={_enriched_color}",
+                    status="ok",
+                )
+                trace.set_image_classification(
+                    is_garment_photo=_is_garm if _is_garm is not None else None,
+                    garment_present_confidence=float(attached_item.get("garment_present_confidence") or 1.0),
+                )
+            else:
+                attached_item = None
+                trace_end(
+                    "wardrobe_enrichment",
+                    output_summary="failed",
+                    status="error",
+                )
 
         plan_result, override_reasons, force_catalog_followup, source_preference = self._apply_planner_overrides(
             plan_result=plan_result,
