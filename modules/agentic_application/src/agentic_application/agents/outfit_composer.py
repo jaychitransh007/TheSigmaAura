@@ -559,6 +559,46 @@ class OutfitComposer:
                 attempt_no=attempt_no, on_attempt=on_attempt,
             )
 
+        # Best-effort retry on pool_unsuitable=true with a viable pool.
+        # The LLM occasionally over-rejects ("none of these are a perfect
+        # match for the navy blazer") and ships a flat refusal back to
+        # the user. With ≥ MIN_POOL_FOR_BEST_EFFORT items in the pool,
+        # the closest-available outfits are nearly always better UX than
+        # the generic "couldn't find a strong match" fallback. Retry once
+        # with permissive instructions; the LLM keeps the right to mark
+        # pool_unsuitable on the second pass if the pool truly is the
+        # wrong category (e.g. user asked for shoes, pool is dresses).
+        MIN_POOL_FOR_BEST_EFFORT = 6
+        total_pool_size = sum(len(ids) for ids in pool_ids_by_direction.values())
+        if (
+            not result.outfits
+            and result.pool_unsuitable
+            and total_pool_size >= MIN_POOL_FOR_BEST_EFFORT
+        ):
+            _log.warning(
+                "OutfitComposer: pool_unsuitable on first pass with %d items; "
+                "retrying for best-effort outfits.",
+                total_pool_size,
+            )
+            best_effort_suffix = (
+                "\n\nIMPORTANT — your previous response marked the pool unsuitable "
+                "and emitted no outfits. Reconsider: the user is waiting for an "
+                "answer, not a refusal. From the SAME pool above, return 1-3 "
+                "closest-available outfits as best-effort approximations. "
+                "Set `overall_assessment` to \"approximate\" so the user knows "
+                "these aren't ideal matches. Only keep `pool_unsuitable=true` if "
+                "the pool is fundamentally the wrong garment category for the "
+                "ask (e.g., user wants a top, pool contains only shoes). For "
+                "stylistic mismatches (palette, formality, body-fit) emit the "
+                "best approximations rather than refusing."
+            )
+            attempt_no += 1
+            result, _drop_reasons3 = self._invoke(
+                user_payload + best_effort_suffix,
+                pool_ids_by_direction, schema, accumulated,
+                attempt_no=attempt_no, on_attempt=on_attempt,
+            )
+
         result.usage = dict(accumulated)
         result.attempt_count = attempt_no
         # Mirror to the legacy instance attribute. Concurrent turns

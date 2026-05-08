@@ -275,6 +275,21 @@ aura_retrieval_relaxation_total = Counter(
 )
 
 
+# May 8 2026 — catalog-search worker failure counter. Ticks once per
+# query whose worker thread bubbled an exception past the inner
+# similarity_search retry. Pre-fix the orchestrator just persisted
+# "worker_failed" with no exception type; production turns
+# c801683a / 3c85f046 / c688ebf7 all hit this path silently and the
+# user got "couldn't find a strong match" with zero ops signal.
+# Cardinality: bounded by exception-class names hit at runtime
+# (typically <10 in practice). Truncated/sanitised at the call site.
+aura_retrieval_worker_failure_total = Counter(
+    "aura_retrieval_worker_failure_total",
+    "Catalog-search worker thread failures per query, labelled by exception type.",
+    labelnames=("error_type",),
+)
+
+
 # May 8 2026 — follow-up intent routing counter (PR #186/#190/#191/
 # #198/#199 observability gap). Ticks once per follow-up turn at the
 # composition router, labelled by intent + engine acceptance. The
@@ -544,6 +559,19 @@ def observe_retrieval_relaxation(*, outcome: str) -> None:
     try:
         aura_retrieval_relaxation_total.labels(
             outcome=outcome or "unknown",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_retrieval_worker_failure(error_type: str) -> None:
+    """Tick the catalog-search worker-failure counter, labelled by
+    exception type (e.g. ``KeyError``, ``ValidationError``, ``TypeError``).
+    Empty / non-string types coerce to ``"unknown"`` so the label set
+    stays well-formed."""
+    try:
+        aura_retrieval_worker_failure_total.labels(
+            error_type=str(error_type or "").strip() or "unknown",
         ).inc()
     except Exception:  # noqa: BLE001
         pass

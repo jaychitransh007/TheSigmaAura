@@ -65,7 +65,7 @@ Do NOT inflate beyond these — they're already calibrated for the Composer's pr
 
 ### `resolved_context` rules
 
-- `occasion_signal`: snake_case occasion. Office sub-occasions: "daily" / "everyday" / "regular" / "routine" → `daily_office`; meetings / presentations / interviews → `office`. Default generic office → `daily_office`.
+- `occasion_signal`: snake_case occasion **only when the user names or clearly references one**. Office sub-occasions: "daily" / "everyday" / "regular" / "routine" → `daily_office`; meetings / presentations / interviews → `office`. Default generic office → `daily_office`. **Return `null` when the user message contains no occasion language** — do NOT infer one from garment vocabulary alone (e.g., "what goes with my blazer?" → `null`, NOT `office`; "pair this dress" → `null`, NOT `party`). Only infer when the user supplies setting, event, time, or activity context.
 - `formality_hint`: infer from explicit + implicit cues. Allowed values are the catalog vocabulary: `casual | smart_casual | semi_formal | formal | ceremonial`. Map office/business-meeting intent → `smart_casual`; map wedding-ceremony / black-tie intent → `ceremonial`. Never emit `business_casual` or `ultra_formal` — those don't exist in catalog rows and dilute downstream matching.
 - `time_hint`: see Time-of-Day Inference below.
 - `specific_needs`: body/styling needs (elongation, slimming, broadening, comfort_priority, authority, approachability, polish).

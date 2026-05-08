@@ -303,32 +303,61 @@ class CatalogSearchAgent:
                 direction_id, query.query_id, len(matches), search_ms,
             )
 
-            # Hydrate
-            t1 = time.monotonic()
-            products = self._hydrate_matches(matches)
-            hydrate_ms = int((time.monotonic() - t1) * 1000)
-            pre_exclude = len(products)
-            if exclude_ids:
-                products = [p for p in products if str(p.product_id or "") not in exclude_ids]
-            excluded_count = pre_exclude - len(products)
-
-            # Engine-resolved hard-attr re-rank: penalize products whose
-            # enriched_data violates the architect's resolved per-attr
-            # allowed lists. Truncates to retrieval_count. The returned
-            # summary breaks the penalty down by attribute so dashboards
-            # can answer "which axis is doing all the work?".
-            pre_rerank = len(products)
-            products, attr_summary = _apply_hard_attr_penalty(
-                products, query.hard_attrs or None, plan.retrieval_count,
-            )
-            _log.info(
-                "CatalogSearch: [%s/%s] hydrated %d→%d in %dms "
-                "(excluded %d, rerank %d→%d, hard_attrs=%d)",
-                direction_id, query.query_id,
-                len(matches), pre_rerank, hydrate_ms, excluded_count,
-                pre_rerank, len(products),
-                len(query.hard_attrs or {}),
-            )
+            # Hydrate + post-process. Wrap so a hydrate / rerank crash
+            # preserves whatever similarity_search produced instead of
+            # nuking the whole worker (the May 8 RCA pattern: a silent
+            # exception in this section dropped 40 valid matches into
+            # the void with no diagnostic). We still capture the
+            # exception so the trace shows which post-search step broke.
+            attr_summary: Dict[str, Dict[str, int]] = {}
+            try:
+                t1 = time.monotonic()
+                products = self._hydrate_matches(matches)
+                hydrate_ms = int((time.monotonic() - t1) * 1000)
+                pre_exclude = len(products)
+                if exclude_ids:
+                    products = [p for p in products if str(p.product_id or "") not in exclude_ids]
+                excluded_count = pre_exclude - len(products)
+                pre_rerank = len(products)
+                products, attr_summary = _apply_hard_attr_penalty(
+                    products, query.hard_attrs or None, plan.retrieval_count,
+                )
+                _log.info(
+                    "CatalogSearch: [%s/%s] hydrated %d→%d in %dms "
+                    "(excluded %d, rerank %d→%d, hard_attrs=%d)",
+                    direction_id, query.query_id,
+                    len(matches), pre_rerank, hydrate_ms, excluded_count,
+                    pre_rerank, len(products),
+                    len(query.hard_attrs or {}),
+                )
+            except Exception as exc:  # noqa: BLE001 — never break the turn on post-search ops
+                _log.exception(
+                    "CatalogSearch: post-search step failed for query %s — preserving %d raw matches",
+                    query.query_id, len(matches),
+                )
+                # Synthesize minimal RetrievedProducts from raw matches so the
+                # composer downstream still has something to work with.
+                products = []
+                for m in matches[:plan.retrieval_count]:
+                    try:
+                        meta = dict(m.get("metadata_json") or {})
+                        pid = str(m.get("product_id") or meta.get("id") or "")
+                        if not pid:
+                            continue
+                        products.append(RetrievedProduct(
+                            product_id=pid,
+                            similarity=float(m.get("similarity") or 0.0),
+                            metadata=meta,
+                            enriched_data={},
+                        ))
+                    except Exception:  # noqa: BLE001 — skip malformed rows individually
+                        continue
+                applied_filters_meta = {
+                    **applied_filters_meta,
+                    "post_search_error": "true",
+                    "post_search_error_type": type(exc).__name__,
+                    "post_search_error_message": (str(exc).splitlines()[0][:200] if str(exc) else ""),
+                }
 
             return idx, RetrievedSet(
                 direction_id=direction_id,
@@ -346,17 +375,39 @@ class CatalogSearchAgent:
                 try:
                     idx, retrieved_set = future.result()
                     results[idx] = retrieved_set
-                except Exception:
+                except Exception as exc:  # noqa: BLE001 — never break the turn
                     i = futures[future]
                     task = tasks[i]
-                    _log.exception("CatalogSearch: worker failed for query %s", task["query"].query_id)
+                    # Capture the exception type + first line of its message
+                    # so tool_traces / dashboards can answer "what actually
+                    # broke?" without spelunking server logs. Pre-fix this
+                    # path landed in tool_traces as the bare string
+                    # "worker_failed" with no further detail (May 8 RCA on
+                    # turns c801683a / 3c85f046 / c688ebf7) — every retry
+                    # hit the same silent exception, and the user got the
+                    # generic low-confidence message with zero ops signal.
+                    _err_type = type(exc).__name__
+                    _err_msg = str(exc).splitlines()[0][:200] if str(exc) else ""
+                    _log.exception(
+                        "CatalogSearch: worker failed for query %s (%s: %s)",
+                        task["query"].query_id, _err_type, _err_msg,
+                    )
                     results[i] = RetrievedSet(
                         direction_id=task["direction_id"],
                         query_id=task["query"].query_id,
                         role=task["query"].role,
                         products=[],
-                        applied_filters={"error": "worker_failed"},
+                        applied_filters={
+                            "error": "worker_failed",
+                            "error_type": _err_type,
+                            "error_message": _err_msg,
+                        },
                     )
+                    try:
+                        from platform_core.metrics import observe_retrieval_worker_failure
+                        observe_retrieval_worker_failure(_err_type)
+                    except Exception:  # noqa: BLE001 — telemetry never breaks pipeline
+                        pass
 
         search_total_ms = int((time.monotonic() - t_search) * 1000)
         final = [rs for rs in results if rs is not None]

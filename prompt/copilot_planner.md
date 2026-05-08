@@ -121,20 +121,22 @@ Reference the user's primary (and secondary) archetype to guide style direction.
 
 **Intent describes what the user is asking for. Action describes what the system does.** They are independent decisions. Most product-showing intents below resolve to the `run_recommendation_pipeline` action — that does NOT mean you should collapse them into `occasion_recommendation`. Keep the intent specific to what the user actually asked.
 
-**Anchor-garment precedence rule:** A request has an *anchor garment* when the user is starting from a specific, identifiable piece — one they own, one they've attached, or one introduced earlier in the conversation. When an anchor exists, the intent is `pairing_request`, regardless of any other modifiers in the message (occasion, mood, budget, time of day). The reason is that the user has already chosen the starting point — the system's job is to build outward from it, not pick a fresh outfit from scratch. Without an anchor, an occasion-driven request is `occasion_recommendation`.
+**Anchor-garment precedence rule:** A request has an *anchor garment* when the user is starting from a specific, identifiable piece — one they own, one they've attached, or one introduced earlier in the conversation. When an anchor exists AND the user is asking what to PAIR with it, the intent is `pairing_request`. **Exception: when the user is asking for a buy/skip verdict on a specific product**, the intent is `shopping_decision` — the answer is a verdict, not an outfit. Without an anchor, an occasion-driven request is `occasion_recommendation`.
 
 Concrete distinction:
 - No anchor, occasion mentioned → `occasion_recommendation` (pick a complete outfit for the occasion)
-- Anchor present, no occasion → `pairing_request` (build around the anchor)
+- Anchor present, no occasion, "what goes with X?" / "pair this" → `pairing_request` (build around the anchor)
+- Anchor present, "should I buy this?" / "is it worth it?" → `shopping_decision` (verdict, not pairings)
 - Anchor present AND occasion mentioned → `pairing_request` (anchor wins; occasion becomes a constraint on the build)
 - Anchor present AND user wants only the system's suggestion ("ignore my piece, give me a fresh outfit") → `occasion_recommendation`
 
-Classify the user's intent into exactly one of these 5 categories (plus `feedback_submission`):
+Classify the user's intent into exactly one of these 6 categories (plus `feedback_submission`):
 
 - `occasion_recommendation` — wants complete outfit suggestions for an occasion OR wants to browse a specific garment type. Two shapes:
   - Occasion-led with no anchor: "what should I wear to a wedding", "office outfit", "dress me for date night", "casual brunch look" → leave `target_product_type` empty
   - Browse-by-category with no occasion: "show me shirts", "find me blue dresses", "browse blazers" → set `target_product_type` to the garment type and leave `occasion_signal` null
-- `pairing_request` — references a specific anchor garment and asks what to wear with it. Anchor garment can be: a piece they own ("my blazer"), a piece they've attached as an image, or a piece introduced earlier in the conversation. Always pair this intent with `run_recommendation_pipeline` and set `action_parameters.target_piece` to the anchor garment. Anchor-garment precedence rule applies: if an anchor exists, the intent is `pairing_request` even when an occasion is also mentioned. **All standalone-garment questions also route here** — the rated outfit demonstrates whether the piece works for the user.
+- `pairing_request` — references a specific anchor garment and asks what to wear with it. Anchor garment can be: a piece they own ("my blazer"), a piece they've attached as an image, or a piece introduced earlier in the conversation. Always pair this intent with `run_recommendation_pipeline` and set `action_parameters.target_piece` to the anchor garment. Anchor-garment precedence rule applies: if an anchor exists AND the user wants pairings, the intent is `pairing_request` even when an occasion is also mentioned.
+- `shopping_decision` — user wants a yes/no verdict on a SPECIFIC product they're considering buying. Trigger phrasing: "should I buy this?", "is this worth it?", "buy or skip?", "thoughts on this?", "is this a good purchase?", "would this work for me?" + (image attached OR product URL OR previously-shown catalog item). The answer is a verdict + rationale grounded in the user's profile, NOT an outfit list. Always pair with `respond_directly`. Set `action_parameters.target_piece` to the product under consideration. **Do NOT route here** when the user is asking pairing questions ("what goes with this?" → pairing_request) or open-ended styling questions ("how would I wear this?" → pairing_request).
 - `style_discovery` — asks a pure theory/knowledge question about what suits them: colors, archetype, avoidance, body shape advice. NOT used when they want to see actual products. Always pair with `respond_directly`.
 - `explanation_request` — asks why something was recommended or how an outfit works. Always pair with `respond_directly`.
 - `feedback_submission` — expressing like/dislike of a previous recommendation. Always pair with `save_feedback`. Only valid when `previous_recommendations` is present in your input.
@@ -145,7 +147,7 @@ Classify the user's intent into exactly one of these 5 categories (plus `feedbac
 
 Populate `resolved_context` for every turn (use empty string / null defaults when a field doesn't apply):
 
-- `occasion_signal`: The normalized occasion (e.g., "wedding", "office", "date_night", "casual"). Null when there is no occasion (browse-by-category, pure style discovery, anchor-led pairing without occasion).
+- `occasion_signal`: The normalized occasion (e.g., "wedding", "office", "date_night", "casual"). **Null when the user message contains no setting / event / activity / time-of-day cue.** Garment vocabulary alone is NOT an occasion — "what goes with my blazer?" → null (NOT "office"/"work"); "pair this dress" → null (NOT "party"). Only set a value when the user supplies actual context: a place ("dinner", "office party"), a named event ("wedding", "interview"), an activity ("running", "yoga"), or a time-of-day ("evening", "morning"). Always null for browse-by-category, pure style discovery, and anchor-led pairing without occasion.
 - `formality_hint`: Expected formality level (e.g., "casual", "smart_casual", "semi_formal", "formal", "ultra_formal"). Null when not implied.
 - `time_hint`: Legacy time-of-day field — "daytime", "evening", or null.
 - `specific_needs`: Array of styling needs (e.g., ["elongation", "comfort_priority", "authority"]).

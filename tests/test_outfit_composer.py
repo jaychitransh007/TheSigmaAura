@@ -408,9 +408,73 @@ class OutfitComposerRetryTests(unittest.TestCase):
             self.assertIsInstance(payload["latency_ms"], int)
             self.assertGreaterEqual(payload["latency_ms"], 0)
 
-    def test_composer_no_retry_when_pool_unsuitable(self) -> None:
-        """When the Composer self-reports pool_unsuitable, we trust it
-        and don't burn another LLM call. Empty result, no retry."""
+    def test_composer_no_retry_when_pool_unsuitable_and_pool_small(self) -> None:
+        """Tiny pools (< 6 items) → trust the model's pool_unsuitable
+        verdict and don't burn another LLM call. Best-effort retry only
+        kicks in when the pool is large enough that the closest-available
+        outfits are likely better UX than a flat refusal."""
+        small_pool = [
+            RetrievedSet(direction_id="A", query_id="A1", role="complete", products=[
+                _product("a1_set1"),
+                _product("a1_set2"),
+            ]),
+        ]
+        payload = {
+            "outfits": [],
+            "overall_assessment": "unsuitable",
+            "pool_unsuitable": True,
+        }
+        with patch("agentic_application.agents.outfit_composer.get_api_key", return_value="x"), _patch_composer() as oc:
+            oc.return_value.responses.create.return_value = _mock_response(payload)
+            result = OutfitComposer().compose(_ctx(), small_pool)
+
+        self.assertEqual(1, oc.return_value.responses.create.call_count)
+        self.assertEqual(0, len(result.outfits))
+        self.assertTrue(result.pool_unsuitable)
+
+    def test_composer_best_effort_retry_when_pool_unsuitable_with_viable_pool(self) -> None:
+        """User-RCA fix (May 8 2026): when the LLM marks the pool
+        unsuitable on the first pass but ≥ 6 items were retrieved, the
+        composer retries once with permissive instructions to surface
+        closest-available outfits as ``approximate``. Refusing on a viable
+        pool was sending users a generic "couldn't find a strong match"
+        message instead of a real (if imperfect) recommendation."""
+        first_pass_unsuitable = {
+            "outfits": [],
+            "overall_assessment": "unsuitable",
+            "pool_unsuitable": True,
+        }
+        second_pass_best_effort = {
+            "outfits": [
+                {"composer_id": "C1", "direction_id": "B", "direction_type": "paired",
+                 "item_ids": ["b_t1", "b_b1"], "rationale": "Closest available."},
+            ],
+            "overall_assessment": "approximate",
+            "pool_unsuitable": False,
+        }
+        with patch("agentic_application.agents.outfit_composer.get_api_key", return_value="x"), _patch_composer() as oc:
+            oc.return_value.responses.create.side_effect = [
+                _mock_response(first_pass_unsuitable),
+                _mock_response(second_pass_best_effort),
+            ]
+            # _pool() has 9 items spread across A/B/C — comfortably ≥ 6.
+            result = OutfitComposer().compose(_ctx(), _pool())
+
+        self.assertEqual(2, oc.return_value.responses.create.call_count)
+        self.assertEqual(1, len(result.outfits))
+        self.assertFalse(result.pool_unsuitable)
+        self.assertEqual("approximate", result.overall_assessment)
+        self.assertEqual(2, result.attempt_count)
+        # Retry payload should include the best-effort instruction.
+        retry_payload = oc.return_value.responses.create.call_args_list[1].kwargs["input"][1]["content"][0]["text"]
+        self.assertIn("best-effort", retry_payload)
+        self.assertIn("approximate", retry_payload)
+
+    def test_composer_best_effort_retry_accepts_second_unsuitable_verdict(self) -> None:
+        """If the best-effort retry STILL marks the pool unsuitable, we
+        accept it. The LLM had its second chance — at that point the
+        pool is genuinely the wrong category for the ask, and forcing
+        a third pass would just spend tokens for the same answer."""
         payload = {
             "outfits": [],
             "overall_assessment": "unsuitable",
@@ -420,9 +484,10 @@ class OutfitComposerRetryTests(unittest.TestCase):
             oc.return_value.responses.create.return_value = _mock_response(payload)
             result = OutfitComposer().compose(_ctx(), _pool())
 
-        self.assertEqual(1, oc.return_value.responses.create.call_count)
+        self.assertEqual(2, oc.return_value.responses.create.call_count)
         self.assertEqual(0, len(result.outfits))
         self.assertTrue(result.pool_unsuitable)
+        self.assertEqual(2, result.attempt_count)
 
 
 class OutfitComposerEdgeCaseTests(unittest.TestCase):

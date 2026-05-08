@@ -47,6 +47,7 @@ from typing import List
 class Intent(StrEnum):
     OCCASION_RECOMMENDATION = "occasion_recommendation"
     PAIRING_REQUEST = "pairing_request"
+    SHOPPING_DECISION = "shopping_decision"
     STYLE_DISCOVERY = "style_discovery"
     EXPLANATION_REQUEST = "explanation_request"
     FEEDBACK_SUBMISSION = "feedback_submission"
@@ -167,6 +168,19 @@ INTENT_REGISTRY: dict[Intent, IntentMeta] = {
         description="User asks what goes with a specific anchor garment",
         default_action=Action.RUN_RECOMMENDATION_PIPELINE,
         handler="pairing_request",
+    ),
+    Intent.SHOPPING_DECISION: IntentMeta(
+        name=Intent.SHOPPING_DECISION,
+        label="Buy or Skip",
+        description=(
+            "User asks for a yes/no verdict on a specific product they're "
+            "considering buying — phrasing like 'should I buy this?', "
+            "'is it worth it?', 'buy or skip', 'thoughts on this?'. "
+            "Distinct from pairing_request: the answer is a verdict + "
+            "rationale grounded in the user's profile, not an outfit."
+        ),
+        default_action=Action.RESPOND_DIRECTLY,
+        handler="shopping_decision",
     ),
     Intent.STYLE_DISCOVERY: IntentMeta(
         name=Intent.STYLE_DISCOVERY,

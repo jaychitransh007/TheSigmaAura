@@ -2070,6 +2070,7 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
+                attached_item=attached_item,
                 emit=emit,
                 trace_start=trace_start,
                 trace_end=trace_end,
@@ -2150,6 +2151,7 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
+                attached_item=attached_item,
                 emit=emit,
                 trace_start=trace_start,
                 trace_end=trace_end,
@@ -4279,6 +4281,11 @@ class AgenticOrchestrator:
         message: str,
         previous_context: Dict[str, Any],
         profile_confidence: ProfileConfidence,
+        # shopping_decision needs the attached / wishlist / wardrobe item
+        # the user is asking a buy/skip verdict on. Optional for the
+        # other respond_directly intents (discovery / explanation), which
+        # ignore it.
+        attached_item: Dict[str, Any] | None = None,
         # Phase 5x.4a — optional per-turn trace closures, forwarded to
         # the explanation handler so it can emit a `style_advisor`
         # step. None defaults keep test callsites that don't plumb
@@ -4312,6 +4319,23 @@ class AgenticOrchestrator:
                 message=message,
                 previous_context=previous_context,
                 profile_confidence=profile_confidence,
+                emit=emit,
+                trace_start=trace_start,
+                trace_end=trace_end,
+                trace=trace,
+            )
+        if intent.primary_intent == Intent.SHOPPING_DECISION:
+            return self._handle_shopping_decision(
+                plan_result=plan_result,
+                intent=intent,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                channel=channel,
+                external_user_id=external_user_id,
+                message=message,
+                previous_context=previous_context,
+                profile_confidence=profile_confidence,
+                attached_item=attached_item,
                 emit=emit,
                 trace_start=trace_start,
                 trace_end=trace_end,
@@ -5034,6 +5058,279 @@ class AgenticOrchestrator:
             "metadata": metadata,
         }
 
+    def _handle_shopping_decision(
+        self,
+        *,
+        plan_result: CopilotPlanResult,
+        intent: IntentClassification,
+        conversation_id: str,
+        turn_id: str,
+        channel: str,
+        external_user_id: str,
+        message: str,
+        previous_context: Dict[str, Any],
+        profile_confidence: ProfileConfidence,
+        attached_item: Dict[str, Any] | None,
+        emit: Any = None,
+        trace_start: Any = None,
+        trace_end: Any = None,
+        trace: Any = None,
+    ) -> Dict[str, Any]:
+        """Buy/skip verdict on a single product. Decoupled from
+        pairing_request: the answer is a verdict + rationale, not an
+        outfit list. Routes through StyleAdvisorAgent with mode
+        ``shopping_decision`` and a ``product_under_consideration``
+        payload built from the attached item, the wishlist hydrate, or
+        the most recently shown catalog product."""
+        if emit is None:
+            emit = lambda *a, **kw: None
+        if trace_start is None:
+            trace_start = lambda *a, **kw: None
+        if trace_end is None:
+            trace_end = lambda *a, **kw: None
+
+        # Resolve the product the user is asking about. Priority:
+        # 1. attached_item (image upload, URL, wardrobe selection, wishlist)
+        # 2. last_attached_item from previous turn (carried forward)
+        # 3. last_recommendations[0] (the item they were just shown)
+        product: Dict[str, Any] | None = None
+        product_source = ""
+        if attached_item:
+            product = dict(attached_item)
+            product_source = str(product.get("source") or product.get("attachment_source") or "image")
+        if product is None:
+            last_attached = dict(previous_context.get("last_attached_item") or {})
+            if last_attached:
+                product = last_attached
+                product_source = "carried_anchor"
+        if product is None:
+            prior_recs = list(previous_context.get("last_recommendations") or [])
+            if prior_recs:
+                first = dict(prior_recs[0])
+                product = {
+                    "title": first.get("title"),
+                    "primary_color": (first.get("primary_colors") or [None])[0],
+                    "garment_category": (first.get("garment_categories") or [None])[0],
+                }
+                product_source = "catalog_history"
+
+        if product is None:
+            # No product to decide on — degrade gracefully with a clarifying
+            # message rather than running the advisor on empty input.
+            assistant_message = (
+                "I'd love to give you a buy / skip verdict — share the product "
+                "you're considering (image, link, or pick from items I've shown "
+                "you), and I'll weigh it against your profile."
+            )
+            metadata = self._build_response_metadata(
+                channel=channel,
+                intent=intent,
+                profile_confidence=profile_confidence,
+                extra={
+                    "answer_source": "shopping_decision_handler",
+                    "shopping_decision": {"resolved_product": False},
+                },
+            )
+            self.repo.finalize_turn(
+                turn_id=turn_id,
+                assistant_message=assistant_message,
+                resolved_context={
+                    "request_summary": message.strip(),
+                    "intent_classification": intent.model_dump(),
+                    "profile_confidence": profile_confidence.model_dump(),
+                    "response_metadata": metadata,
+                    "handler": Intent.SHOPPING_DECISION,
+                    "channel": channel,
+                },
+            )
+            self.repo.update_conversation_context(
+                conversation_id=conversation_id,
+                session_context={
+                    **previous_context,
+                    "last_user_message": message,
+                    "last_assistant_message": assistant_message,
+                    "last_channel": channel,
+                    "last_intent": plan_result.intent,
+                    "last_response_metadata": metadata,
+                },
+            )
+            return {
+                "conversation_id": conversation_id,
+                "turn_id": turn_id,
+                "assistant_message": assistant_message,
+                "response_type": "recommendation",
+                "resolved_context": {
+                    "request_summary": message.strip(),
+                    "occasion": "",
+                    "style_goal": "shopping_decision",
+                },
+                "filters_applied": {},
+                "outfits": [],
+                "follow_up_suggestions": plan_result.follow_up_suggestions[:5],
+                "metadata": metadata,
+            }
+
+        # Build product_under_consideration payload for the advisor.
+        # Enrichment attributes live under metadata_json.catalog_attributes
+        # for wardrobe items; for catalog products they're in enriched_data
+        # / catalog_enriched columns. We surface whatever we can find.
+        enriched_attrs: Dict[str, Any] = {}
+        meta_json = product.get("metadata_json") or {}
+        if isinstance(meta_json, dict):
+            enriched_attrs.update(meta_json.get("catalog_attributes") or {})
+        if product.get("enriched_data"):
+            enriched_attrs.update(product["enriched_data"])
+        # Promote flat top-level attribute fields the planner / wardrobe
+        # ingestion already populates, so the advisor sees them even
+        # without the nested catalog_attributes block.
+        for k in (
+            "primary_color", "secondary_color", "garment_category",
+            "garment_subtype", "formality_level", "occasion_fit",
+            "pattern_type",
+        ):
+            v = product.get(k)
+            if v and k not in enriched_attrs:
+                enriched_attrs[k] = v
+
+        product_payload = {
+            "title": str(product.get("title") or "this piece"),
+            "brand": str(product.get("brand") or ""),
+            "price": product.get("price"),
+            "image_url": str(product.get("image_url") or ""),
+            "enriched_attributes": enriched_attrs,
+            "source": product_source or "unknown",
+        }
+
+        _advisor_t0 = time.monotonic()
+        _advisor_model = getattr(self.style_advisor, "_model", "") or "style_advisor"
+        emit("style_advisor", "started")
+        trace_start(
+            "style_advisor", model=_advisor_model,
+            input_summary=f"shopping_decision, product={product_payload['title']!r}",
+        )
+        advisor_used = False
+        advisor_payload: Dict[str, Any] | None = None
+        assistant_message = ""
+        try:
+            analysis_status = self.onboarding_gateway.get_analysis_status(external_user_id) or {}
+            profile = dict(analysis_status.get("profile") or {})
+            from types import SimpleNamespace
+            advisor_ctx = SimpleNamespace(
+                gender=str(profile.get("gender") or ""),
+                derived_interpretations=dict(analysis_status.get("derived_interpretations") or {}),
+                style_preference=dict(profile.get("style_preference") or {}),
+                analysis_attributes=dict(analysis_status.get("attributes") or {}),
+            )
+            style_advice = self.style_advisor.advise(
+                mode="shopping_decision",
+                query=message,
+                user_context=advisor_ctx,
+                plan_resolved_context=plan_result.resolved_context,
+                plan_action_parameters=plan_result.action_parameters,
+                conversation_memory=dict(previous_context.get("memory") or {}),
+                product_under_consideration=product_payload,
+                profile_confidence_pct=int(profile_confidence.analysis_confidence_pct),
+            )
+            rendered = style_advice.render_assistant_message()
+            if rendered:
+                assistant_message = rendered
+                advisor_used = True
+                advisor_payload = style_advice.to_dict()
+        except Exception as exc:
+            _log.warning(
+                "StyleAdvisorAgent failed for shopping_decision: %s",
+                exc, exc_info=True,
+            )
+            emit("style_advisor", "error")
+            trace_end("style_advisor", status="error", error=str(exc)[:200])
+        else:
+            advisor_ms = int((time.monotonic() - _advisor_t0) * 1000)
+            emit("style_advisor", "completed", ctx={"advisor_used": advisor_used})
+            trace_end(
+                "style_advisor",
+                output_summary=f"used={advisor_used}, chars={len(assistant_message or '')}",
+            )
+            try:
+                from platform_core.metrics import observe_turn_stage
+                observe_turn_stage("style_advisor", advisor_ms)
+            except Exception:  # noqa: BLE001
+                pass
+
+        if not assistant_message:
+            # Deterministic fallback if the advisor errored. Honest
+            # acknowledgement beats fabricating a verdict.
+            title = product_payload["title"]
+            assistant_message = (
+                f"I want to give you a clear verdict on {title}, but I'm having "
+                "trouble forming one right now. Try sharing the product again, "
+                "or ask me to compare it against your wardrobe."
+            )
+
+        metadata = self._build_response_metadata(
+            channel=channel,
+            intent=intent,
+            profile_confidence=profile_confidence,
+            extra={
+                "answer_source": (
+                    "style_advisor_agent" if advisor_used else "shopping_decision_handler"
+                ),
+                "shopping_decision": {
+                    "resolved_product": True,
+                    "product_title": product_payload["title"],
+                    "product_source": product_payload["source"],
+                    "advisor_used": advisor_used,
+                    "advisor_payload": advisor_payload,
+                },
+            },
+        )
+        self.repo.finalize_turn(
+            turn_id=turn_id,
+            assistant_message=assistant_message,
+            resolved_context={
+                "request_summary": message.strip(),
+                "intent_classification": intent.model_dump(),
+                "profile_confidence": profile_confidence.model_dump(),
+                "response_metadata": metadata,
+                "handler": Intent.SHOPPING_DECISION,
+                "channel": channel,
+            },
+        )
+        self.repo.update_conversation_context(
+            conversation_id=conversation_id,
+            session_context={
+                **previous_context,
+                "last_user_message": message,
+                "last_assistant_message": assistant_message,
+                "last_channel": channel,
+                "last_intent": plan_result.intent,
+                "last_response_metadata": metadata,
+            },
+        )
+        self._persist_dependency_turn_event(
+            external_user_id=external_user_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            channel=channel,
+            primary_intent=plan_result.intent,
+            response_type="recommendation",
+            metadata_json={"answer_source": "shopping_decision_handler"},
+        )
+        return {
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "assistant_message": assistant_message,
+            "response_type": "recommendation",
+            "resolved_context": {
+                "request_summary": message.strip(),
+                "occasion": "",
+                "style_goal": "shopping_decision",
+            },
+            "filters_applied": {},
+            "outfits": [],
+            "follow_up_suggestions": plan_result.follow_up_suggestions[:5],
+            "metadata": metadata,
+        }
+
     def _handle_clarification(
         self,
         *,
@@ -5149,7 +5446,7 @@ class AgenticOrchestrator:
         # Pass all available attributes (enrichment fields, colors, formality, etc.) so the
         # architect can plan complementary pieces with full context.
         _log.info("Anchor check: intent=%s attached_item=%s", intent.primary_intent, bool(attached_item))
-        if intent.primary_intent == Intent.PAIRING_REQUEST and attached_item:
+        if intent.primary_intent in (Intent.PAIRING_REQUEST, Intent.SHOPPING_DECISION) and attached_item:
             anchor = {k: v for k, v in dict(attached_item).items() if v and str(v).strip()}
             anchor["source"] = anchor.get("source") or "wardrobe"
             initial_live_context.anchor_garment = anchor
@@ -5522,6 +5819,52 @@ class AgenticOrchestrator:
                             )
                     except Exception:  # noqa: BLE001 — metrics never break the pipeline
                         pass
+
+                    # Persist the router decision to tool_traces so RCA
+                    # can answer "why did engine reject this turn?"
+                    # without spelunking server logs or running a local
+                    # repro. Pre-fix the decision lived only in
+                    # _log.info + Prometheus counters (no per-turn
+                    # detail). May 8 2026 RCA on T2/T3 (beach wedding /
+                    # friend's wedding) needed a manual local repro to
+                    # pin "wedding → sagai_engagement" canonicalize bug
+                    # + weather/occasion peer-disagreement penalty
+                    # stacking. With this row, the same investigation
+                    # is one Postgres query.
+                    try:
+                        self.repo.log_tool_trace(
+                            conversation_id=conversation_id,
+                            turn_id=turn_id,
+                            tool_name="composition_router_decision",
+                            input_json={
+                                "is_followup": bool(getattr(combined_context.live, "is_followup", False)),
+                                "followup_intent": getattr(combined_context.live, "followup_intent", None),
+                                "occasion_signal": getattr(combined_context.live, "occasion_signal", None),
+                                "formality_hint": getattr(combined_context.live, "formality_hint", None),
+                                "weather_context": getattr(combined_context.live, "weather_context", "") or None,
+                                "time_of_day": getattr(combined_context.live, "time_of_day", "") or None,
+                            },
+                            output_json={
+                                "used_engine": _router_decision.used_engine,
+                                "fallback_reason": _router_decision.fallback_reason,
+                                "engine_confidence": _router_decision.engine_confidence,
+                                "yaml_gaps": list(_router_decision.yaml_gaps or []),
+                                "per_axis_gap_impact": dict(_router_decision.per_axis_gap_impact or {}),
+                                "provenance_summary": {
+                                    k: list(v) for k, v in (_router_decision.provenance_summary or {}).items()
+                                },
+                                "engine_ms": _router_decision.engine_ms,
+                            },
+                            latency_ms=_router_decision.engine_ms,
+                            status="ok" if _router_decision.used_engine else "fallback",
+                            error_message=_router_decision.fallback_reason or "",
+                        )
+                    except Exception:  # noqa: BLE001 — trace persistence never breaks the turn
+                        _log.warning(
+                            "Failed to persist composition_router_decision tool_trace",
+                            exc_info=True,
+                        )
+
                     # Cache miss: write through, but ONLY for LLM-derived
                     # plans. The architect cache key is profile/cluster-
                     # scoped, not user-scoped, so caching engine plans
@@ -5675,9 +6018,16 @@ class AgenticOrchestrator:
 
         resolved = plan.resolved_context
         if resolved:
+            # The architect LLM may invent an occasion from garment vocabulary
+            # ("blazer" → "office") even when the user didn't name one. Don't
+            # let that surface back to the user — preserve the planner's
+            # "user said nothing about occasion" signal so downstream copy
+            # (low-confidence fallback, theming, response formatter) doesn't
+            # pretend the user asked for an occasion they never mentioned.
+            _planner_said_occasion = bool(getattr(initial_live_context, "occasion_signal", None))
             effective_live_context = LiveContext(
                 user_need=message.strip(),
-                occasion_signal=resolved.occasion_signal,
+                occasion_signal=resolved.occasion_signal if _planner_said_occasion else None,
                 formality_hint=resolved.formality_hint,
                 time_hint=resolved.time_hint,
                 specific_needs=resolved.specific_needs,
@@ -5789,6 +6139,20 @@ class AgenticOrchestrator:
                 _trace_ctx.full_output = {"retrieved_sets": to_jsonable(retrieved_sets)}
             search_ms = int((time.monotonic() - t0) * 1000)
             for rs in retrieved_sets:
+                # When the worker captured an exception, surface it on
+                # the tool_traces row so dashboards / RCA can find it
+                # without spelunking server logs. status="error" makes
+                # these rows visible to status-based filters even though
+                # the orchestrator continued through the relaxation
+                # chain (the worker's failure is an operational
+                # incident, not a routing branch).
+                _err_keys = {"error", "error_type", "error_message", "post_search_error"}
+                _has_worker_error = bool(_err_keys & set(rs.applied_filters or {}))
+                _err_msg = ""
+                if _has_worker_error:
+                    et = rs.applied_filters.get("error_type") or rs.applied_filters.get("post_search_error_type") or ""
+                    em = rs.applied_filters.get("error_message") or rs.applied_filters.get("post_search_error_message") or rs.applied_filters.get("error") or ""
+                    _err_msg = f"{et}: {em}".strip(": ").strip()
                 self.repo.log_tool_trace(
                     conversation_id=conversation_id,
                     turn_id=turn_id,
@@ -5796,6 +6160,8 @@ class AgenticOrchestrator:
                     input_json={"direction_id": rs.direction_id, "query_id": rs.query_id, "role": rs.role, "applied_filters": rs.applied_filters},
                     output_json={"result_count": len(rs.products)},
                     latency_ms=search_ms,
+                    status="error" if _has_worker_error else "ok",
+                    error_message=_err_msg,
                 )
             # Capture the embedding API cost for the per-turn rollup.
             # The retrieval gateway exposes `last_usage` after the
