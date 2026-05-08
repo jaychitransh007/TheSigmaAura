@@ -103,6 +103,7 @@ class ComposerRouterDecision:
 # Single-source-of-truth shared with the architect router (PR #186
 # review). Keep in sync by importing rather than duplicating.
 from ..intent_registry import ENGINE_FRIENDLY_FOLLOWUP_INTENTS
+from .router import classify_anchor_role
 
 
 def is_engine_eligible(
@@ -115,10 +116,21 @@ def is_engine_eligible(
     adapter code, but no plan-level checks fire today — the composer
     engine accepts plans from any source (LLM / architect engine /
     architect cache).
+
+    May 8 follow-up T2: anchor turns are eligible IFF the anchor would
+    NOT be pool-injected (outerwear / dress / co_ord / shoe / accessory).
+    For these the engine sees a top+bottom pool with no fixed slot —
+    same shape as an occasion turn — and tuple scoring works cleanly.
+    Pool-injected anchors (top/bottom) still fall to the LLM until T3
+    ships engine-side fixed-slot scoring.
     """
     live = combined_context.live
-    if getattr(live, "anchor_garment", None):
-        return False, "anchor_present"
+    anchor = getattr(live, "anchor_garment", None)
+    if anchor:
+        role_in_pool, _render_role = classify_anchor_role(anchor)
+        if role_in_pool:
+            return False, "anchor_pool_injected"
+        # else: outerwear-style anchor — engine eligible
     if getattr(live, "is_followup", False):
         # Engine-friendly follow-ups bypass both the followup_request
         # gate and the has_previous_recommendations gate below.

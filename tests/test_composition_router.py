@@ -162,12 +162,29 @@ class EligibilityGateTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIsNone(reason)
 
-    def test_anchor_garment_blocks(self):
+    def test_pool_injected_anchor_blocks(self):
+        """T2 (May 8 follow-up): top/bottom anchors are pool-injected by
+        the orchestrator and the engine can't yet handle the resulting
+        fixed-slot pool — engine ineligible. Outerwear-style anchors
+        (separately tested) ARE eligible because they don't enter the
+        pool."""
         ok, reason = is_engine_eligible(
-            _ctx(anchor_garment={"product_id": "p1"})
+            _ctx(anchor_garment={"product_id": "p1", "garment_category": "top"})
         )
         self.assertFalse(ok)
-        self.assertEqual(reason, "anchor_present")
+        self.assertEqual(reason, "anchor_pool_injected")
+
+    def test_render_prepended_anchor_is_eligible(self):
+        """T2 (May 8 follow-up): outerwear / dress / co_ord anchors stay
+        OUT of the composer's pool (PR #208) — the architect's plan
+        produces top + bottom queries UNDER the anchor layer, identical
+        in shape to an occasion turn. Engine handles them cleanly."""
+        for category in ("outerwear", "blazer", "jacket", "coat", "dress"):
+            ok, reason = is_engine_eligible(
+                _ctx(anchor_garment={"product_id": "p1", "garment_category": category})
+            )
+            self.assertTrue(ok, f"category={category!r} should be eligible")
+            self.assertIsNone(reason)
 
     def test_followup_blocks(self):
         ok, reason = is_engine_eligible(_ctx(is_followup=True))
@@ -449,16 +466,19 @@ class RouteHappyPathTests(unittest.TestCase):
         self.assertEqual(decision.plan.plan_source, "llm")
         llm.assert_called_once()
 
-    def test_anchor_falls_back_to_llm_without_running_engine(self):
+    def test_pool_injected_anchor_falls_back_to_llm_without_running_engine(self):
+        """T2 (May 8 follow-up): top/bottom anchors are pool-injected,
+        engine still ineligible. Outerwear-style anchors (separately
+        tested) take the engine path."""
         llm = Mock(return_value=_llm_plan())
         decision = route_recommendation_plan(
-            combined_context=_ctx(anchor_garment={"product_id": "x"}),
+            combined_context=_ctx(anchor_garment={"product_id": "x", "garment_category": "top"}),
             architect_plan_callable=llm,
             enabled=True,
             graph=self.graph,
         )
         self.assertFalse(decision.used_engine)
-        self.assertEqual(decision.fallback_reason, "anchor_present")
+        self.assertEqual(decision.fallback_reason, "anchor_pool_injected")
         self.assertIsNone(decision.engine_confidence)
         llm.assert_called_once()
 
@@ -713,10 +733,11 @@ class EngineLatencyTimingTests(unittest.TestCase):
         self.assertIsNone(decision.engine_ms)
 
     def test_engine_ms_is_none_when_eligibility_blocks(self):
-        # Anchor garment skips the engine entirely — no compose call,
-        # no timing.
+        # Top/bottom anchor is pool-injected → engine ineligible →
+        # no compose call, no timing. Outerwear-style anchors DO run
+        # the engine post-T2; covered in EligibilityGateTests.
         decision = route_recommendation_plan(
-            combined_context=_ctx(anchor_garment={"product_id": "x"}),
+            combined_context=_ctx(anchor_garment={"product_id": "x", "garment_category": "bottom"}),
             architect_plan_callable=Mock(return_value=_llm_plan()),
             enabled=True,
             graph=self.graph,

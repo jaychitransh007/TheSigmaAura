@@ -138,12 +138,69 @@ class RouterDecision:
 from ..intent_registry import ENGINE_FRIENDLY_FOLLOWUP_INTENTS
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Anchor classification — shared between orchestrator + engine eligibility
+# ─────────────────────────────────────────────────────────────────────────
+
+
+# Categories whose anchor occupies a top/bottom role in the final outfit.
+# These trigger the orchestrator's pool-injection path (anchor's role
+# stripped from queries, anchor injected as the sole item for that role).
+# The composition engine cannot handle these today — the engine's tuple
+# scorer doesn't differentiate "fixed slot" anchor items from candidates
+# (T3 territory). Engine eligibility rejects these.
+_TOP_ANCHOR_CATEGORIES = frozenset({"top", "shirt", "blouse"})
+_BOTTOM_ANCHOR_CATEGORIES = frozenset({"bottom", "trouser", "pant", "jeans", "skirt"})
+
+
+def classify_anchor_role(anchor: Mapping[str, Any] | None) -> tuple[str, str]:
+    """Map an anchor garment to ``(role_in_pool, render_role)``.
+
+    ``role_in_pool`` is non-empty only when the anchor occupies a
+    top/bottom slot in the final outfit — those anchors get injected
+    into the composer's pool by the orchestrator. Outerwear, dresses,
+    co_ords, shoes, accessories and unknown categories return
+    ``role_in_pool=""`` — those get prepended to the response card at
+    render time (PR #208) without entering the pool.
+
+    Single source of truth for the orchestrator's anchor-handling
+    block (``orchestrator.py:_handle_planner_pipeline``) AND the
+    engine eligibility gates here + in ``composer_router.py``. Adding
+    a category in one place must take effect in all three; the helper
+    keeps them in sync."""
+    if not anchor:
+        return "", ""
+    category = str(anchor.get("garment_category") or "").lower().strip()
+    if category in _TOP_ANCHOR_CATEGORIES:
+        return "top", "top"
+    if category in _BOTTOM_ANCHOR_CATEGORIES:
+        return "bottom", "bottom"
+    if category in ("outerwear", "blazer", "jacket", "coat"):
+        return "", "outerwear"
+    # Unknown category (dress, one_piece, co_ord_set, shoe, accessory,
+    # ...) — render-time prepend only, surface the raw category as the
+    # role label so the UI can slot it sensibly.
+    return "", category or "anchor"
+
+
 def is_engine_eligible(combined_context: CombinedContext) -> tuple[bool, str | None]:
     """Pre-engine gate. Skip the engine entirely for input shapes it
-    can't handle today; the LLM keeps these turns."""
+    can't handle today; the LLM keeps these turns.
+
+    May 8 follow-up T2: anchor turns are eligible IFF the anchor would
+    NOT be pool-injected (outerwear / dress / co_ord / shoe / accessory).
+    For those cases the architect's plan is shape-identical to an
+    occasion turn (top + bottom queries built UNDER the anchor layer
+    per the architect anchor-prompt §3), so the engine handles them
+    cleanly. Pool-injected anchors (top / bottom) still fall to the
+    LLM until T3 ships engine-side fixed-slot scoring."""
     live = combined_context.live
-    if getattr(live, "anchor_garment", None):
-        return False, "anchor_present"
+    anchor = getattr(live, "anchor_garment", None)
+    if anchor:
+        role_in_pool, _render_role = classify_anchor_role(anchor)
+        if role_in_pool:
+            return False, "anchor_pool_injected"
+        # else: outerwear-style anchor — no pool injection, engine eligible
     if getattr(live, "is_followup", False):
         # May 8 2026: engine-friendly follow-ups (formality changes,
         # more_options) get served by the engine. The planner emits an
