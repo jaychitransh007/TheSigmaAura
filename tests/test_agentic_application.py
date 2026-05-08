@@ -5761,5 +5761,64 @@ class TryonParallelRenderTests(unittest.TestCase):
         self.assertEqual(cache_hit_call.kwargs.get("estimated_cost_usd"), 0.0)
 
 
+class ExtractGarmentIdsAnchorFilterTests(unittest.TestCase):
+    """May 8 2026 follow-up RCA on turn c33b105a: render-time-prepended
+    anchors (PR #208) leaked into the post-format try-on cache key,
+    causing a miss against the earlier ``tryon_render`` row (which was
+    cached without the anchor) and triggering a regeneration whose
+    ``image_url`` is the anchor's browser-safe wrap that the try-on
+    service can't load — surfaced as ``FileNotFoundError: Person image
+    not found: /v1/onboarding/images/local?path=...``. Fix: strip
+    ``is_anchor=True`` items from the cache key.
+    """
+
+    def test_extract_garment_ids_excludes_render_time_anchor(self) -> None:
+        from agentic_application.orchestrator import AgenticOrchestrator
+        from agentic_application.schemas import OutfitCard
+        outfit = OutfitCard(
+            rank=1, title="t", reasoning="r",
+            items=[
+                # PR #208 prepends the anchor as item[0] with is_anchor=True
+                {"product_id": "wardrobe-blazer-uuid", "title": "Navy Blazer", "is_anchor": True, "source": "wardrobe"},
+                {"product_id": "catalog-top-1", "title": "Cream Shell", "source": "catalog"},
+                {"product_id": "catalog-bot-1", "title": "Black Trousers", "source": "catalog"},
+            ],
+        )
+        ids = AgenticOrchestrator._extract_garment_ids(outfit)
+        # Anchor excluded — key matches the earlier tryon_render's key
+        # (which didn't have the anchor in the candidate).
+        self.assertEqual(["catalog-bot-1", "catalog-top-1"], ids)
+
+    def test_extract_garment_ids_keeps_non_anchor_items(self) -> None:
+        """Sanity: a plain catalog outfit (no anchor at all) is unchanged."""
+        from agentic_application.orchestrator import AgenticOrchestrator
+        from agentic_application.schemas import OutfitCard
+        outfit = OutfitCard(
+            rank=1, title="t", reasoning="r",
+            items=[
+                {"product_id": "sku-1", "title": "Top", "source": "catalog"},
+                {"product_id": "sku-2", "title": "Bottom", "source": "catalog"},
+            ],
+        )
+        ids = AgenticOrchestrator._extract_garment_ids(outfit)
+        self.assertEqual(["sku-1", "sku-2"], ids)
+
+    def test_extract_garment_ids_skips_blank_product_ids(self) -> None:
+        """Pre-existing contract: items without a product_id are ignored.
+        Locked in here so the new ``is_anchor`` filter doesn't accidentally
+        regress this."""
+        from agentic_application.orchestrator import AgenticOrchestrator
+        from agentic_application.schemas import OutfitCard
+        outfit = OutfitCard(
+            rank=1, title="t", reasoning="r",
+            items=[
+                {"product_id": "", "title": "Empty"},
+                {"product_id": "  ", "title": "Whitespace"},
+                {"product_id": "sku-1", "title": "Real"},
+            ],
+        )
+        self.assertEqual(["sku-1"], AgenticOrchestrator._extract_garment_ids(outfit))
+
+
 if __name__ == "__main__":
     unittest.main()

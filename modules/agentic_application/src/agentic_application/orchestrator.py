@@ -2269,10 +2269,30 @@ class AgenticOrchestrator:
 
     @staticmethod
     def _extract_garment_ids(outfit: OutfitCard) -> list[str]:
+        """Stable cache key for the try-on render of this outfit.
+
+        Items flagged ``is_anchor=True`` are EXCLUDED from the key.
+        Anchors are surfaced into the response card by the response
+        formatter's render-time prepend (PR #208) but were not part of
+        the candidate fed to the earlier ``tryon_render`` stage. So
+        including them in the key here would cause every post-format
+        cache lookup to miss (the cache row was written without the
+        anchor) and trigger a regeneration whose ``image_url`` is the
+        anchor's browser-safe wrap, which the try-on service cannot
+        load. May 8 2026 RCA on turn c33b105a:
+            FileNotFoundError: Person image not found:
+              /v1/onboarding/images/local?path=...wardrobe/...
+
+        Stripping ``is_anchor`` items here makes the post-format
+        ``_attach_tryon_images`` lookup hit the cache row that
+        ``tryon_render`` wrote, and prevents the broken regeneration
+        path from ever firing for anchor-prepended outfits.
+        """
         return sorted(
             str(item.get("product_id") or "").strip()
             for item in outfit.items
             if str(item.get("product_id") or "").strip()
+            and not item.get("is_anchor")
         )
 
     @staticmethod
@@ -2325,6 +2345,15 @@ class AgenticOrchestrator:
         def _generate_for_outfit(outfit: OutfitCard) -> tuple[OutfitCard, str]:
             garment_urls: list[tuple[str, str]] = []
             for item in outfit.items:
+                # Skip render-time-prepended anchors: their image_url is
+                # the browser-safe wrap (``/v1/onboarding/images/local?path=…``)
+                # which the try-on service can't load (it expects either an
+                # http(s):// URL or a real filesystem path). The earlier
+                # ``tryon_render`` stage cached against the catalog-only
+                # candidate items, so consistency with that key is what we
+                # want anyway.
+                if item.get("is_anchor"):
+                    continue
                 url = str(item.get("image_url") or "").strip()
                 if not url:
                     continue
