@@ -6,12 +6,6 @@ from typing import Any, Dict, Iterable
 from .schemas import UserContext
 
 
-_QUERY_FILTER_MAPPING: Dict[str, str] = {
-    # All garment attributes in query documents are soft signals for embedding
-    # similarity only.  The architect sets hard_filters explicitly when needed.
-}
-
-
 def normalize_filter_value(value: str) -> str:
     """Normalize a raw filter value to a lowered snake_case token."""
     raw = str(value or "").strip()
@@ -57,23 +51,6 @@ def merge_filters(*filter_dicts: Dict[str, Any]) -> Dict[str, Any]:
                 if normalized:
                     merged[key] = normalized
     return merged
-
-
-def extract_query_document_filters(document: str) -> Dict[str, str]:
-    """Extract hard-filter candidates from structured query documents."""
-    filters: Dict[str, str] = {}
-    for line in document.splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("- ") or ":" not in stripped:
-            continue
-        label, raw_value = stripped[2:].split(":", 1)
-        key = _QUERY_FILTER_MAPPING.get(label.strip())
-        if not key:
-            continue
-        normalized = normalize_filter_value(raw_value)
-        if normalized:
-            filters[key] = normalized
-    return filters
 
 
 def build_directional_filters(direction_type: str, role: str) -> Dict[str, Any]:

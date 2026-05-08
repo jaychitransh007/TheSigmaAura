@@ -85,7 +85,7 @@ class ComposerCacheRepository:
         # overall_assessment + pool_unsuitable. Skip raw_response /
         # usage / attempt_count (those are per-call artefacts).
         # hit_count intentionally absent so upsert-on-conflict
-        # preserves the existing row's count (review of PR #134).
+        # preserves the existing row's count.
         outfits_payload = {
             "outfits": [o.model_dump(mode="json") for o in result.outfits],
             "overall_assessment": result.overall_assessment,
@@ -111,7 +111,7 @@ class ComposerCacheRepository:
 
         Calls the ``composer_cache_touch`` RPC (added in
         20260514020000_cache_touch_rpcs.sql) — single server-side
-        UPDATE, no race on concurrent hits (review of PR #134).
+        UPDATE, no race on concurrent hits.
         """
         try:
             self._client.rpc(

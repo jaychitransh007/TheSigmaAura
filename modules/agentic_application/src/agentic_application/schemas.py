@@ -458,11 +458,9 @@ class CopilotResolvedContext(BaseModel):
     # or "catalog" (user wants only catalog items). Extracted by the planner
     # from phrases like "from my wardrobe" or "from the catalog".
     source_preference: str = "auto"
-    # Phase 12A additions:
     # When the user asks for a specific garment type without an occasion
-    # ("show me shirts"), `occasion_recommendation` absorbs what used to be
-    # a `product_browse` intent. The architect uses target_product_type to
-    # narrow the catalog search.
+    # ("show me shirts"), `occasion_recommendation` carries the intent
+    # and the architect uses target_product_type to narrow catalog search.
     target_product_type: str = ""
     # Free-form weather context extracted from the message ("rainy",
     # "humid", "cold", "summer day", etc.). Phase 12C wires this into the

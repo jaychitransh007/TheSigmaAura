@@ -180,12 +180,6 @@ class OnboardingRepository:
         self.insert_onboarding_profile_snapshot(user_id, snapshot_reason="onboarding_completed")
         return result
 
-    # May 2026: mark_style_preference_complete deleted. The column it
-    # used to update (style_preference_complete) was dropped in the same
-    # migration; the only caller now inlines insert_onboarding_profile_snapshot
-    # directly with snapshot_reason="state_change". Removed instead of
-    # left as a shim so the API surface doesn't drift (PR #47 review).
-
     def insert_onboarding_profile_snapshot(self, user_id: str, *, snapshot_reason: str) -> Optional[Dict[str, Any]]:
         profile = self.get_profile_by_user_id(user_id)
         if not profile:

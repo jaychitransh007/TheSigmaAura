@@ -78,9 +78,8 @@ def get_api_key() -> str:
     design) able to construct agents and orchestrators that get mocked
     upstream without tripping at import time.
 
-    May 1, 2026 (CI fix): was previously a hard raise. Production
-    callers that need a real key should set `APP_ENV=staging` (or
-    `ENV_FILE=…`); the env-file resolver still raises if the named
+    Production callers that need a real key should set `APP_ENV=staging`
+    (or `ENV_FILE=…`); the env-file resolver still raises if the named
     file is missing in those cases.
     """
     _load_dotenv()

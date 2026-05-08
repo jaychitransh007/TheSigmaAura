@@ -2930,14 +2930,11 @@ def get_web_ui_html(
         profileWrap.appendChild(ration);
       }}
 
-      // PR V1 (May 5 2026): pentagon radar populated directly from the
-      // Rater's 5 sub-scores. For `complete` (single-item) outfits we
-      // R7 (May 5 2026): six rater dims — added Formality and Statement
-      // (previously double-counted inside Occasion / Pairing); renamed
-      // inter_item_coherence_pct → pairing_pct (now scoped to fit +
-      // fabric only). For complete (single-item) outfits Pairing is
-      // null and the axis drops → 5-axis pentagon. The values are 0/50/
-      // 100 (rescaled from the rater's 1/2/3 sub-scores).
+      // Six rater dims feed the radar: Occasion, Body, Color, Pairing,
+      // Formality, Statement (Pairing scoped to fit + fabric only).
+      // For `complete` (single-item) outfits Pairing is null and the
+      // axis drops → 5-axis pentagon. Values are 0/50/100 (rescaled
+      // from the rater's 1/2/3 sub-scores).
       var allAxes = [
         {{ key: "occasion_pct",          label: "Occasion" }},
         {{ key: "body_harmony_pct",      label: "Body" }},

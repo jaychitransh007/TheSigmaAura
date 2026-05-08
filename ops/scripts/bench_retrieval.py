@@ -11,9 +11,8 @@ Usage:
 
 The script generates a 1536-dim query embedding once (deterministic
 random), then issues N RPC calls in series with realistic filter mixes
-sampled from the live filter dispatch in build_directional_filters /
-extract_query_document_filters. Output: count, p50, p95, max per filter
-profile and overall.
+sampled from the live filter dispatch in build_directional_filters.
+Output: count, p50, p95, max per filter profile and overall.
 """
 from __future__ import annotations
 

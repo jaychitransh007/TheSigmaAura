@@ -181,8 +181,7 @@ class StyleAdvisorAgent:
         # History: gpt-5.4 → gpt-5.5 (May 1, 2026) → gpt-5.4 + low (May 5).
         #
         # Validation matches OutfitArchitect — fail loud at construction
-        # for direct instantiations rather than at OpenAI request time
-        # (PR #53 review feedback).
+        # for direct instantiations rather than at OpenAI request time.
         #
         # Lazy OpenAI client (see CopilotPlanner for the pattern).
         if reasoning_effort not in self._ALLOWED_EFFORTS:

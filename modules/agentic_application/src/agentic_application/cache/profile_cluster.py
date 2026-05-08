@@ -10,13 +10,11 @@ Cluster shape: ``gender × season_group_broad × body_shape`` = 3 × 4 × 8 = 96
 See ``docs/phase_2_cache_design.md`` for the rationale and the
 "why these three (and not others)" decisions.
 
-History: the initial design (PR #131) used ``frame_class`` (3 buckets)
-giving 36 total. PR #131 review correctly pointed out that BodyShape
-is a primary driver of architect output (per outfit_architect.md
-lines 368-380, "BodyShape priority" over FrameStructure when they
-conflict on width signals). Replaced frame_class with body_shape
-to fix the cache-pollution risk where Pear and Inverted Triangle
-users would share cached outputs.
+``body_shape`` is the primary driver of architect output (per
+outfit_architect.md "BodyShape priority" over FrameStructure when they
+conflict on width signals). Bucketing on body_shape avoids the cache-
+pollution risk where Pear and Inverted Triangle users would share
+cached outputs.
 """
 from __future__ import annotations
 

@@ -1081,9 +1081,8 @@ class OnboardingService:
             "riskTolerance": risk_tolerance,
         }
         self._repo.insert_style_preference_snapshot(user_id=user_id, style_preference=style_preference)
-        # Profile snapshot refresh — PR #47 review removed the
-        # mark_style_preference_complete shim; inline the snapshot
-        # call so the audit trail still gets a state_change row.
+        # Profile snapshot refresh — inline the snapshot call so the
+        # audit trail gets a state_change row.
         self._repo.insert_onboarding_profile_snapshot(user_id, snapshot_reason="state_change")
         self._check_and_mark_complete(user_id)
         return {"risk_tolerance": risk_tolerance}

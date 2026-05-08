@@ -39,8 +39,7 @@ def architect_direction_id(plan: RecommendationPlan) -> str:
     ``QuerySpec.hard_filters`` — those follow insertion order, which
     varies based on how the architect constructed them. Sorted-keys
     JSON is the only way to guarantee a stable hash for plans that are
-    semantically identical but were assembled in different dict orders
-    (review of PR #136).
+    semantically identical but were assembled in different dict orders.
 
     Used both as the composer cache key component AND as a pointer the
     orchestrator can log on cache hits.
@@ -58,7 +57,7 @@ def retrieval_fingerprint(retrieved_sets: Iterable[RetrievedSet]) -> str:
     produces a distinct fingerprint. Without role-awareness the cache
     would collide when retrieval swaps products between roles for the
     same plan — serving an outfit composed against a different
-    role-assignment than the current turn (review of PR #136).
+    role-assignment than the current turn.
 
     Catalog drift (new product added, old product disabled) → different
     SKU list → different fingerprint → no stale catalog references in
