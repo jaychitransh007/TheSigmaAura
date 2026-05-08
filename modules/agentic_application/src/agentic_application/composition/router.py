@@ -183,24 +183,36 @@ def classify_anchor_role(anchor: Mapping[str, Any] | None) -> tuple[str, str]:
     return "", category or "anchor"
 
 
-def is_engine_eligible(combined_context: CombinedContext) -> tuple[bool, str | None]:
+def is_engine_eligible(
+    combined_context: CombinedContext,
+    *,
+    allow_pool_anchor: bool = False,
+) -> tuple[bool, str | None]:
     """Pre-engine gate. Skip the engine entirely for input shapes it
     can't handle today; the LLM keeps these turns.
 
-    May 8 follow-up T2: anchor turns are eligible IFF the anchor would
-    NOT be pool-injected (outerwear / dress / co_ord / shoe / accessory).
-    For those cases the architect's plan is shape-identical to an
-    occasion turn (top + bottom queries built UNDER the anchor layer
-    per the architect anchor-prompt §3), so the engine handles them
-    cleanly. Pool-injected anchors (top / bottom) still fall to the
-    LLM until T3 ships engine-side fixed-slot scoring."""
+    May 8 follow-up T2: render-prepended anchors (outerwear / dress /
+    co_ord / shoe / accessory) are eligible — the architect's plan is
+    shape-identical to an occasion turn (top + bottom queries built
+    UNDER the anchor layer per the architect anchor-prompt §3), so the
+    engine handles them cleanly.
+
+    May 8 follow-up T3: pool-injected anchors (top / bottom) become
+    eligible WHEN ``allow_pool_anchor=True`` (env-flagged via
+    ``AURA_ENGINE_ALLOW_POOL_ANCHOR``). Default-off because the
+    engine's tuple scorer evaluates every item including the user's
+    own anchor against profile constraints, and we haven't measured
+    the cascade-to-fallback rate on real traffic. Flip the flag to
+    let the engine try; ``tool_traces.composition_router_decision``
+    (PR #207) records every decision so the cascade rate is visible
+    in dashboards."""
     live = combined_context.live
     anchor = getattr(live, "anchor_garment", None)
     if anchor:
         role_in_pool, _render_role = classify_anchor_role(anchor)
-        if role_in_pool:
+        if role_in_pool and not allow_pool_anchor:
             return False, "anchor_pool_injected"
-        # else: outerwear-style anchor — no pool injection, engine eligible
+        # else: render-prepended (T2) or pool-injected with flag on (T3)
     if getattr(live, "is_followup", False):
         # May 8 2026: engine-friendly follow-ups (formality changes,
         # more_options) get served by the engine. The planner emits an
@@ -370,6 +382,7 @@ def route_recommendation_plan(
     graph: StyleGraph | None = None,
     canonical_embeddings: CanonicalEmbeddings | None = None,
     embed_client: EmbedClient | None = None,
+    allow_pool_anchor: bool = False,
 ) -> RouterDecision:
     """Decide whether to use the engine or the LLM architect for this turn.
 
@@ -389,6 +402,11 @@ def route_recommendation_plan(
     callers that want the optimization pass them in. With both None,
     the engine sees raw planner output and gaps on any non-canonical
     value (the pre-canonicalize behavior).
+
+    ``allow_pool_anchor`` (T3, May 8 follow-up) lets the engine accept
+    pool-injected (top/bottom) anchor turns. Default False keeps those
+    on the LLM path. Env-mapped to ``AURA_ENGINE_ALLOW_POOL_ANCHOR``
+    via ``AuraRuntimeConfig.engine_allow_pool_anchor``.
     """
     # Phase 4.10 flag — stop here on disabled, before any work.
     if not enabled:
@@ -401,7 +419,9 @@ def route_recommendation_plan(
         )
 
     # Pre-engine eligibility gate.
-    eligible, reason = is_engine_eligible(combined_context)
+    eligible, reason = is_engine_eligible(
+        combined_context, allow_pool_anchor=allow_pool_anchor,
+    )
     if not eligible:
         return RouterDecision(
             plan=architect_plan_callable(combined_context),

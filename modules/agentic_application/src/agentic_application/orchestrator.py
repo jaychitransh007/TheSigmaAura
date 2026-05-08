@@ -703,6 +703,19 @@ class AgenticOrchestrator:
         self._tryon_enabled: bool = self._bool_from_config(
             config, "tryon_enabled", False
         )
+        # T3 (May 8 follow-up) — engine eligibility for pool-injected
+        # (top/bottom) anchor turns. Default OFF; flip to true via
+        # AURA_ENGINE_ALLOW_POOL_ANCHOR=1 to route the user's recurring
+        # top/bottom-anchor pairing turns through the engine path
+        # (saves ~17s architect + ~25s composer when the engines
+        # accept). The engine's tuple scorer evaluates every item
+        # against user profile, including the user's own anchor —
+        # we don't know the cascade-to-fallback rate without traffic,
+        # hence the flag. tool_traces.composition_router_decision
+        # (PR #207) captures every decision for analysis.
+        self._engine_allow_pool_anchor: bool = self._bool_from_config(
+            config, "engine_allow_pool_anchor", False
+        )
         self._composition_graph = None
         # Phase 4.11 — input canonicalization: lazy-loaded embedding
         # bank (one-time disk read) + lazy-init OpenAI embed client
@@ -5802,6 +5815,7 @@ class AgenticOrchestrator:
                         graph=self._composition_graph,
                         canonical_embeddings=self._composition_canonical_embeddings,
                         embed_client=self._composition_embed_client,
+                        allow_pool_anchor=self._engine_allow_pool_anchor,
                     )
                     plan = _router_decision.plan
                     # Structured router decision log: human-readable
@@ -6524,6 +6538,7 @@ class AgenticOrchestrator:
                         composer_callable=_llm_compose,
                         enabled=self._composer_engine_enabled,
                         graph=self._composition_graph,
+                        allow_pool_anchor=self._engine_allow_pool_anchor,
                     )
                     composer_result = _composer_router_decision.composer_result
                     if not _composer_router_decision.used_engine:

@@ -185,6 +185,24 @@ class IsEngineEligibleTests(unittest.TestCase):
             self.assertTrue(ok, f"category={category!r} should be eligible")
             self.assertIsNone(reason)
 
+    def test_pool_injected_anchor_eligible_when_flag_on(self):
+        """T3: top/bottom anchors become eligible when
+        ``allow_pool_anchor=True`` (default False keeps the legacy
+        ineligibility). Pairs the architect-router test of the same
+        contract."""
+        for category in ("top", "shirt", "bottom", "trouser", "skirt"):
+            live = _live()
+            live.anchor_garment = {"id": "A1", "garment_category": category}  # pyright: ignore
+            ok, reason = is_engine_eligible(_ctx(live=live), _plan())
+            self.assertFalse(ok, f"category={category!r} should be ineligible by default")
+            self.assertEqual(reason, "anchor_pool_injected")
+
+            ok, reason = is_engine_eligible(
+                _ctx(live=live), _plan(), allow_pool_anchor=True,
+            )
+            self.assertTrue(ok, f"category={category!r} should be eligible with flag on")
+            self.assertIsNone(reason)
+
     def test_followup_request_ineligible(self):
         live = _live()
         live.is_followup = True  # pyright: ignore

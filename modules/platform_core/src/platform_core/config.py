@@ -67,6 +67,30 @@ class AuraRuntimeConfig:
     # Env var: AURA_TRYON_ENABLED.
     tryon_enabled: bool = False
 
+    # T3 (May 8 follow-up) — engine eligibility for pool-injected
+    # anchor turns (top/bottom anchors that the orchestrator injects
+    # as the sole item for that role). False (default) keeps these
+    # on the LLM path; True allows both the architect and composer
+    # engines to handle them.
+    #
+    # The architect engine plans top+bottom queries based on profile +
+    # occasion; the orchestrator's existing post-architect strip+inject
+    # logic handles the anchor's role. The composer engine then iterates
+    # tuples = (anchor × complementary candidates) — the anchor's
+    # 1-item pool collapses one cross-product axis, leaving small
+    # combinatorics that the existing tuple scorer handles correctly.
+    #
+    # Why flag-gated: the engine's tuple scorer evaluates every item
+    # against user profile (palette, formality). The anchor is the
+    # USER'S OWN PIECE; if its color doesn't match the user's palette,
+    # the engine may legitimately drop tuples that include it,
+    # cascading to confidence-based fallback to the LLM. We don't
+    # know the cascade rate without traffic. Flag default-off lets us
+    # roll out gradually + collect router-decision telemetry from
+    # ``tool_traces.composition_router_decision`` (PR #207).
+    # Env var: AURA_ENGINE_ALLOW_POOL_ANCHOR.
+    engine_allow_pool_anchor: bool = False
+
 
 def _resolve_env_file(explicit_path: str | None = None) -> str:
     if explicit_path:
@@ -179,6 +203,12 @@ def load_config() -> AuraRuntimeConfig:
     tryon_flag_raw = os.getenv("AURA_TRYON_ENABLED", "").strip().lower()
     tryon_enabled = tryon_flag_raw in {"1", "true", "yes", "on"}
 
+    # T3 — pool-injected anchor engine eligibility (May 8 follow-up).
+    # Default OFF; flip to true to let the engine handle top/bottom
+    # anchored pairings. See AuraRuntimeConfig docstring for risk notes.
+    pool_anchor_flag_raw = os.getenv("AURA_ENGINE_ALLOW_POOL_ANCHOR", "").strip().lower()
+    engine_allow_pool_anchor = pool_anchor_flag_raw in {"1", "true", "yes", "on"}
+
     return AuraRuntimeConfig(
         supabase_rest_url=_ensure_rest_url(supabase_url),
         supabase_service_role_key=service_key,
@@ -192,4 +222,5 @@ def load_config() -> AuraRuntimeConfig:
         composition_engine_enabled=composition_engine_enabled,
         composer_engine_enabled=composer_engine_enabled,
         tryon_enabled=tryon_enabled,
+        engine_allow_pool_anchor=engine_allow_pool_anchor,
     )
