@@ -76,29 +76,6 @@ What's left: the rare values with ≤5 rows each — `poncho` (5), `leggings` (4
 
 ---
 
-## Per-turn cost re-baseline (May 6, 2026)
-
-**Status:** queued · **Cost:** dev time only · **Risk:** low
-
-Pre-PR-#81 baseline was $0.029/turn (gpt-5-mini composer + gpt-5.5 planner). Post-sweep (PR #81 → #101) T13 came in at **$0.208/turn** when 3 outfits ship — driven by:
-
-| Call | Cost | % of turn | Notes |
-|---|---|---|---|
-| virtual_tryon × 3 (Gemini) | $0.117 | 56% | Single biggest line; sequential renders. |
-| outfit_architect (gpt-5.4) | $0.053 | 25% | +56% vs pre-#90 ($0.034) due to ~6K extra input tokens from episodic memory. |
-| outfit_composer (gpt-5.4) | $0.036 | 17% | New since #81 — was ~$0.0015 on gpt-5-mini. |
-| outfit_rater (gpt-5-mini) | $0.001 | 1% | Smallest line; 6 dims on 1/2/3 keeps tokens tight. |
-| copilot_planner (gpt-5-mini) | $0.001 | 1% | |
-
-One angle to attack if the cost panel says we need to:
-- **Architect prompt size.** Episodic memory adds ~3K tokens per power user (Panel 17). Tighten `_RECENT_USER_ACTIONS_MAX` from 30 → 20 if Panel 17 p95 stays >14K. (This is now also Phase 3.4 of the latency push below.)
-
-Try-on render count was previously listed as the second cost lever — dropped May 8 2026. Now mooted by `AURA_TRYON_ENABLED=false` (PR #185), which zeroes Gemini cost during dev / testing entirely. When the flag is flipped on for production / demos, paying the full 3-render cost is the deliberate UX choice; reducing render count would compromise the deeper-read offering with no clean alternative since the V2 CTA was removed.
-
-**Trigger to act:** the LLM-cost-budget alert fires (currently $500/day — see PR #94), OR Panel 17 p95 stabilises above 14K input tokens.
-
----
-
 ## Phase out `archetypal_preferences` from the composer
 
 **Status:** queued · **Cost:** small · **Risk:** low
@@ -110,53 +87,6 @@ Two ways to clean up:
 2. **Switch the composer to also read `recent_user_actions`** (the raw 30-day timeline, not the aggregate). Symmetric with the architect; lets the composer reason on context-dependent patterns the same way.
 
 **Trigger to act:** if (a) Panel 18 (rater unsuitable rate) holds <5% over a stable post-#101 week — meaning episodic memory at the architect is producing acceptable retrieval + composer item selection without needing the aggregate signal — or (b) the `aggregate_archetypal_feedback` repo method becomes a maintenance burden (it has its own catalog_enriched hydration that overlaps with `list_recent_user_actions`).
-
----
-
-## Hard cap on composer outfit count at the schema level
-
-**Status:** bundled into Phase 5f (composer engine observability + tests PR) — same files touched, free fix. Tracked there, not as a standalone task. Remove this stub once 5f ships.
-
----
-
-## R7 calibration replay — once 7 days of post-#101 traffic accumulate
-
-**Status:** queued · **Cost:** ~½ dev day · **Risk:** none (offline replay)
-
-PR #101 shifted the rater from 4 dims on 0–100 to 6 dims on 1/2/3. Threshold moved 60 → 50 to land on "every dim is at least neutral". The new bands need empirical validation:
-
-1. **Panel 18 baseline.** Pull 7 days of `tool_traces.rater_decision` post-#101 and compute the steady-state `unsuitable=True` rate. Healthy band per OPERATIONS.md is 0–5%; needs real numbers to confirm.
-2. **Panel 16 baseline shift.** PR #89 + #101 should have lowered `catalog_low_confidence` rate vs the pre-#89 baseline (when the rater veto was driving outfits below threshold). Compare 7-day rolling rates pre + post.
-3. **Score distribution check.** Are sub-scores actually using all three values {1, 2, 3}? If 95% of outputs are 2s, the prompt's calibration anchors aren't biting and the scale collapsed back to a binary. Histogram the sub-score values per dim to confirm.
-4. **Spot-check 50 turns by hand.** Read each outfit's six sub-scores + rationale and check they add up to a coherent stylist judgment. Catches drift the per-dim aggregates miss.
-
-**Trigger:** ~7 days post-#101 (around 2026-05-12).
-
-**Acceptance:** `unsuitable_pct` <5% sustained, `catalog_low_confidence_pct` no worse than pre-#89, sub-score distributions show meaningful spread across {1, 2, 3} on every dim.
-
----
-
-## Architect quality replay — style-preference removal validation (May 2026)
-
-**Status:** queued · **Cost:** ~1 dev day + ~$1 in OpenAI calls · **Risk:** none (offline replay)
-
-The May 2026 style-preference removal stopped feeding `primaryArchetype` / `secondaryArchetype` / `formalityLean` / `patternType` to the architect, replacing the archetype-based "third direction stretch" logic with a `risk_tolerance`-driven scale and adding new pattern-scale + pattern-contrast rules grounded in `FrameStructure` + `SkinHairContrast`. The plan called for a PR-0 empirical replay against historical production turns to validate that quality holds — this was deferred at merge because staging only had 2 `composer_decision` rows in 30 days (insufficient sample).
-
-**To do once production traffic accumulates:**
-
-Build `ops/scripts/architect_replay_eval.py` that:
-1. Pulls ~100 historical recommendation turns from `tool_traces.composer_decision` joined to the architect input from `model_call_logs.request_json`.
-2. Re-runs `OutfitArchitect.plan(...)` with the OLD payload (carrying the now-deleted `style_preference` block) vs the NEW payload (carrying only `risk_tolerance` + `recent_user_actions`).
-3. Diffs the two architect outputs per turn:
-   - `directions[]` count + `direction_type` distribution
-   - `query_document` text similarity (jaccard or embedding cosine)
-   - `hard_filters` set differences
-   - `retrieval_count`
-4. Emits a markdown report sliced by intent (occasion_recommendation / pairing_request) and by whether the user had high vs low style-preference completeness in the OLD model.
-
-**Trigger to act:** when production has 100+ recommendation turns post-rollout, OR if the `catalog_low_confidence` rate spikes meaningfully — that would be a signal the new architect output is producing weaker queries.
-
-**Acceptance criteria for "quality holds":** median turn produces ≥0.85 cosine similarity on query_document text, AND identical hard_filter set on ≥80% of turns. If those hold, the removal is validated.
 
 ---
 ---
@@ -407,13 +337,6 @@ Bundled bug fix: engine's `seasonal_color_group` lookup now tries both `palette.
 - **PR #153** — `model_call_logs.model` origin stamping: `_resolve_architect_origin_model()` picks `cache` / `composition_engine` / LLM model id; non-LLM paths force token columns to 0 (prevents stale `last_usage` bleed from prior turns).
 - **PR #154** — comprehensive follow-up: 4 new metrics (`aura_composition_canonicalize_result_total`, `aura_composition_canonicalize_duration_seconds`, `aura_tool_traces_insert_failure_total`, `aura_composition_attribute_status_total`); 4 new dashboard panels (21 plan-source distribution, 22 yaml-gap distribution, 23 per-attribute status, 24 single-turn diagnostic); panel_17 patched to exclude sentinel rows; `RouterDecision.provenance_summary` plumbed into traces; OPERATIONS.md "A4: Composition engine flag-on regressions" runbook (env-var-didn't-export, yaml_gap dominance, YAML-load failure); `ops/scripts/turn_forensics.py` codifies the per-turn comparison report.
 
-### Phase 4 follow-ups (not yet shipped, post-flag-on)
-
-- **Confidence threshold + per-axis canonicalize threshold tuning.** 0.50 floor was a calibration guess; expected to tighten/loosen per axis once Phase 4.6 ground truth + a few hundred engine-accepted turns of telemetry land. Panels 22 + 23 are the read-out.
-- **Run `composition_quality_eval.py` against the 4.6 eval set** when the eval JSONL exists — produces the engine-vs-LLM divergence report (markdown). Validates whether engine plans hold quality vs LLM on representative traffic.
-- **Architect `model_call_logs.request_json` cleanup on engine path.** Cosmetic: engine-path rows still emit a `reasoning_effort` field that's irrelevant when no LLM call ran. Filter or rename for clarity.
-- **Bucketed rollout machinery** restoration after flag-on validation. The SHA-256 mod-100 bucket function lives in git history and can be restored when Phase 4.6 + a stylist-vetted threshold give us the data to ramp.
-
 ### Phase 4 test gate
 
 | Criterion | Target | Status |
@@ -525,26 +448,6 @@ Distilled models become the LLM-fallback path. gpt-5-class models reserved for v
 - Distilled rater p95: <600ms; ≥90% agreement with gpt-5-mini
 - Cold-path total p95: <5s
 - All paths sub-3s p95 across alpha traffic
-
----
-
-## Launch readiness (P0, after Phase 4 + 6)
-
-Items needed before opening the first alpha cohort. Slot in alongside Phase 4/5/6 work — small, independent.
-
-### LR.1 — DROPPED (May 8 2026)
-
-Per-stage budget caps + cold-path safety net is no longer planned. The latency push removed the cold path's worst tail risks via the architect engine (~19s → ~0ms on accepted turns), composer engine, and rater parallelization (13.4s → 6.5s). The remaining LLM-fallback cases are bounded by per-call SDK timeouts (e.g., `_PLANNER_TIMEOUT_SECONDS=30`); a separate per-stage budget framework would duplicate that with a deterministic-fallback layer we don't have a tested replacement for. If P95 tail returns as a problem in production, revisit; until then the existing timeouts are the safety net.
-
-### LR.2 Out-of-scope graceful refusal UI (3 days)
-
-For requests outside cached scope where composition engine has low confidence AND cold-path quality gate fails: "Aura is still learning [X] occasions — try [Y] instead" with quick-reply chips for in-scope alternatives. Telemetry: refusal events logged with intent + occasion so post-launch grid expansion targets actual misses.
-
-### LR.3 Closed alpha onboarding + dashboard (1 week)
-
-Define alpha scope: cells from Phase 4 quality gate that pass. Onboarding: existing flow + a "what Aura covers" page setting expectations on supported intents/occasions. Internal dashboard: cache hit rate, cold-path rate, refusal rate, p95 pre-tryon latency, user feedback per cell. Manual user review cadence: weekly review of refusals + low-rated outputs to drive grid expansion.
-
-**Acceptance:** 5–15 alpha users onboarded; production traces accumulating; dashboard live; cache hit rate ≥60% on alpha traffic by week 2.
 
 ---
 
