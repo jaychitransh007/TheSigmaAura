@@ -89,6 +89,93 @@ Two ways to clean up:
 **Trigger to act:** if (a) Panel 18 (rater unsuitable rate) holds <5% over a stable post-#101 week — meaning episodic memory at the architect is producing acceptable retrieval + composer item selection without needing the aggregate signal — or (b) the `aggregate_archetypal_feedback` repo method becomes a maintenance burden (it has its own catalog_enriched hydration that overlaps with `list_recent_user_actions`).
 
 ---
+
+## Stylist YAML review — aggregated downstream work
+
+**Status:** in progress · **Process:** stylist completes review of all 8 files first; we accumulate downstream work here; batch-execute once all files are received.
+
+**Why batched not incremental:** each stylist file introduces vocabulary the catalog can't yet produce. Re-enriching after every file is expensive (~$300-700 per run × 14,296 rows × ~10-15 hours compute) and disruptive. One batched re-enrichment after all 8 files is reviewed amortises the cost and avoids retagging the same row repeatedly.
+
+**Working agreement (2026-05-09):**
+- Stylist reviews each file → posts findings to `knowledge/knowledge_v2/`.
+- We pin every source review file there for audit.
+- We apply YAML edits that don't depend on schema or catalog changes (notes, vocabulary already in canonical, reordering).
+- Items needing new code or new catalog enrichment accumulate in this section, marked by dependency.
+- Once all 8 stylist files received: batch-execute the engineering + enrichment in one coordinated effort; then apply pending YAML patches.
+
+### Per-file status
+
+| Stylist file | Source pinned | YAML applied | Pending downstream work |
+|---|---|---|---|
+| [archetype_yaml_stylist_pass_v_2.md](../knowledge/knowledge_v2/archetype_yaml_stylist_pass_v_2.md) | ✅ | ✅ ([PR #226](https://github.com/jaychitransh007/TheSigmaAura/pull/226)) | New vocabulary not yet in catalog (queued below) |
+| [bodyframe_stylist_revision_patchset_v_1.md](../knowledge/knowledge_v2/bodyframe_stylist_revision_patchset_v_1.md) | ✅ | ⏳ HOLD — pending engine extension + catalog re-enrichment | See dependency lists below |
+| `palette_*` (next) | — | — | — |
+| `occasion_*` | — | — | — |
+| `weather_*` | — | — | — |
+| `pairing_rules_*` | — | — | — |
+| `query_structure_*` | — | — | — |
+
+### Catalog enrichment queue (Type A — vision-extractable garment properties)
+
+These are visible from product images. Need: (1) vision-enrichment prompt updated to ask for them, (2) re-run on the 14,296 catalog rows, (3) backfill `catalog_enriched`, (4) regenerate embeddings.
+
+**From `archetype.yaml` (PR #226 — applied to canonical schema, not yet in catalog):**
+- `SilhouetteType`: relaxed_tailored, layered, sculptural
+- `FabricTexture`: low_luster, sheer, slub, performance, handloom
+- `ConstructionDetail`: deconstructed, utility, experimental
+- `EmbellishmentType`: tonal_embroidery, self_texture, chikankari, kantha
+
+**From `bodyframe_stylist_revision_patchset_v_1.md` (received 2026-05-09, not yet applied to canonical):**
+- `ShoulderStructure`: lightly_padded
+- `ConstructionDetail`: angled_seam, vertical_panel, center_gathering, textured_yoke, epaulettes
+- `SilhouetteContour`: wrap_with_hard_cinching
+- `WaistDefinition`: soft_defined, strategic_defined, hard_cinched
+- `FabricDrape`: rigid_tight
+- `EmbellishmentLevel`: distributed_heavy
+
+**New top-level canonical axes** (need schema work in addition to enrichment):
+- `ShoulderExposure`: Closed, CapExposed, OffShoulder, OneShoulder, Strapless, ColdShoulder
+- `SleeveVolume`: Slim, Moderate, Puff, Bishop, Dramatic
+- `BlouseLength`: Cropped, Standard, Longline
+
+(More from upcoming stylist files will append here.)
+
+### Engine extension queue (Type B — composition-time concepts, NOT catalog)
+
+These are decisions the engine makes at composition time. They don't go on individual garment rows. Each needs new code in the composition engine + reduction logic.
+
+**From `bodyframe_stylist_revision_patchset_v_1.md`:**
+- `DupattaDrape` (VerticalFall, SingleShoulder, OpenUDrape, SideFall) — how the user drapes the dupatta when wearing the outfit. Composition emits this per outfit, not per garment.
+- `LayeringStructure` (OpenFront, CapeOverlay, LonglineJacket, SoftOvershirt) — pairing decision (e.g., "include a longline jacket"), not a property of any single garment.
+- `SupportRequirement` (Low, Medium, High) — depends on garment fit + occasion combination.
+- `MovementSecurity` (Secure, Moderate, Delicate) — same.
+
+(More from upcoming stylist files will append here.)
+
+### Hard / soft rule key support — Phase 4.3 (engineering, gates body_frame application)
+
+Stylist's body_frame patch uses `hard_flatters` / `hard_avoid` / `soft_flatters` / `soft_avoid` keys throughout. Current yaml_loader only recognizes `flatters` / `avoid` ([yaml_loader.py:271-276](../modules/agentic_application/src/agentic_application/composition/yaml_loader.py:271-276)) — `hard_*` / `soft_*` keys would be silently ignored.
+
+Required code work:
+1. yaml_loader extended to read both naming styles (back-compat) and surface hard/soft separately.
+2. Reduction logic in `composition.engine` updated to enforce hard rules unconditionally and treat soft rules as scoring penalties (matches the `PENALTY_*` pattern in composer_engine).
+3. Validators updated to permit the new keys.
+4. Tests covering hard violation = drop, soft violation = score penalty.
+
+Estimated ~3 days of engineering. Independent of catalog re-enrichment; can ship in parallel.
+
+### Plan once all 8 stylist files received
+
+1. Consolidate full vocabulary additions in this section.
+2. Ship Phase 4.3 hard/soft yaml_loader + engine extensions (~3 days).
+3. Ship new canonical axes for Type B concepts (~3-5 days, depends on count).
+4. Update vision-enrichment prompt with all Type A additions (~1 day).
+5. Run vision enrichment on 14,296 catalog rows (~10-15 hours compute, ~$300-700).
+6. Backfill database; regenerate `catalog_item_embeddings` (~3-5 days end-to-end including QA).
+7. Apply pending YAML patches (body_frame + later files) in one coordinated PR per file.
+8. Validate via Phase 4.6 eval set (gated on its own delivery).
+
+---
 ---
 
 # Sub-3s latency push — phased execution plan
@@ -141,10 +228,11 @@ The composition engine (Phase 4) is the architectural endpoint that makes the YA
 
 **Critical-path priority (2026-05-09):**
 
-1. 🔒 **Phase 4.2 + 4.6 unblock** — paid stylist YAML review + 100-500-query eval set with hand-rated outputs. **Why this matters most:** every downstream item (composer engine flag-on, Phase 6 library quality validation, Phase 7 learned model held-out evaluation, threshold calibration on both routers) gates on having ground truth. Building further without these means flying blind.
-2. ⏳ **EAR-1 data accumulation** (~2-3 days from 2026-05-09) — composer router decisions persisting since [PR #222](https://github.com/jaychitransh007/TheSigmaAura/pull/222). **Why this matters:** the composer engine's actual ~4% acceptance driver (`MIN_PICKS` / `pool_too_sparse` / pre-engine eligibility / `low_confidence`) is currently invisible. The next composer-side fix can't be picked correctly until this data shows the breakdown.
-3. 📋 **Phase 6 — Outfit Library** (post-4.6, ~3-4 weeks). **Why this matters:** the engines are ~done; the question is whether they run on the hot path (current design, ~25s floor) or offline (library design, sub-500ms hits). Phase 6 is the architectural shift that finishes the sub-3s anchor target.
-4. 📋 **Phase 7 — Layer C** (post-Phase-6 + ~50 feedback events/user). **Why this matters:** at sufficient volume, a learned model on real feedback should outperform zero-shot Rater calibration AND drop the 4s Rater stage to <50ms inference. But it has to come after the library because the library is where every recommendation naturally carries its sub-score vector for training; retrofitting feedback enrichment without it is harder.
+1. 🔒 **Phase 4.2 stylist YAML review (in progress, file 1 of 8 done)** — paid consultant pass on the 8 style-graph YAMLs. Status table + downstream-work queue tracked under "Stylist YAML review — aggregated downstream work" above. **Why this matters most:** the stylist's reviews drive both Phase 4.6 ground-truth and the catalog re-enrichment scope. The downstream work (engine extensions, Type B axes, hard/soft yaml_loader, vision-enrichment prompt update, batched re-enrichment) gates on completing all 8 file reviews so the work can be batched.
+2. 🔒 **Phase 4.6 eval set curation** — 100-500 hand-curated queries with hand-rated outputs. **Why this matters:** every downstream item (composer engine flag-on, Phase 6 library quality validation, Phase 7 learned model held-out evaluation, threshold calibration on both routers) gates on having ground truth.
+3. ⏳ **EAR-1 data accumulation** (~2-3 days from 2026-05-09) — composer router decisions persisting since [PR #222](https://github.com/jaychitransh007/TheSigmaAura/pull/222). **Why this matters:** the composer engine's actual ~4% acceptance driver (`MIN_PICKS` / `pool_too_sparse` / pre-engine eligibility / `low_confidence`) is currently invisible. The next composer-side fix can't be picked correctly until this data shows the breakdown.
+4. 📋 **Phase 6 — Outfit Library** (post-4.6 + post-stylist-and-enrichment, ~3-4 weeks). **Why this matters:** the engines are ~done; the question is whether they run on the hot path (current design, ~25s floor) or offline (library design, sub-500ms hits). Phase 6 is the architectural shift that finishes the sub-3s anchor target. Also gated on the catalog re-enrichment landing (otherwise the library would be built against stale vocabulary).
+5. 📋 **Phase 7 — Layer C** (post-Phase-6 + ~50 feedback events/user). **Why this matters:** at sufficient volume, a learned model on real feedback should outperform zero-shot Rater calibration AND drop the 4s Rater stage to <50ms inference. But it has to come after the library because the library is where every recommendation naturally carries its sub-score vector for training; retrofitting feedback enrichment without it is harder.
 
 Items NOT on the critical path right now (deferred — see Phase headers for trigger conditions): planner model swaps (Phase 1.3/1.4 dropped), composer model swaps (Phase 1.4 dropped), prompt-compression aggressive tier (Phase 3.3/3.5 gated on 4.6), bucketed engine rollout machinery (waits for 4.6).
 
