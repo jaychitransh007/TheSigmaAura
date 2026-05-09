@@ -214,16 +214,40 @@ Required code work:
 
 Estimated ~3 days of engineering. Independent of catalog re-enrichment; can ship in parallel.
 
-### Plan once all 8 stylist files received
+### Canonical execution sequence (locked 2026-05-09)
 
-1. Consolidate full vocabulary additions in this section.
-2. Ship Phase 4.3 hard/soft yaml_loader + engine extensions (~3 days).
-3. Ship new canonical axes for Type B concepts (~3-5 days, depends on count).
-4. Update vision-enrichment prompt with all Type A additions (~1 day).
-5. Run vision enrichment on 14,296 catalog rows (~10-15 hours compute, ~$300-700).
-6. Backfill database; regenerate `catalog_item_embeddings` (~3-5 days end-to-end including QA).
-7. Apply pending YAML patches (body_frame + later files) in one coordinated PR per file.
-8. Validate via Phase 4.6 eval set (gated on its own delivery).
+All 8 stylist files reviewed. Queue is finalized. The agreed execution order is below.
+
+**Step 1 — Ship engineering items independent of catalog (~1.5-2 weeks).** 8 items, packaged as 3 small PRs:
+
+- **PR A:** `DupattaDrape` derivation + `LayeringStructure` recommendation (composition-time decisions; emit styling outputs based on body shape + occasion).
+- **PR B:** `MovementSecurity` / `SupportRequirement` derivation + `bridal_priority` role-aware schema (bride / groom / guest sub-roles within wedding occasions).
+- **PR C:** Vocabulary alignments (`HemLength` → `GarmentLength`, `MovementEase` ↔ `MovementSecurity`, `SkinExposureLevel` label aliasing) + canonical enum registry audit + yearly Navratri color-sequence config.
+
+These have real effect on real traffic without any catalog or schema dependency.
+
+**Step 2 — Catalog re-enrichment** (the single most-leveraged action; ~5-7 days end-to-end).
+
+- **2a:** Add new canonical axes to `garment_attributes.json` (`ShoulderExposure`, `SleeveVolume`, `BlouseLength`, `BorderContrast`, `FabricTransparency`, `SurfaceFinish`, `LayeringVisibility`, plus the 5 weather performance axes `BreathabilityLevel` / `DryTime` / `WaterResistance` / `ThermalInsulation` / `WrinkleResistance`). Migrate `catalog_enriched` table schema to store them. Update vision-enrichment prompt to ask for them. ~1-2 days.
+- **2b:** Run vision enrichment on 14,296 catalog rows (~10-15 hours compute, ~$300-700). Backfill DB. Regenerate `catalog_item_embeddings`. ~3-5 days end-to-end including QA.
+
+**Step 3 — Build Phase 4.3 hard/soft yaml_loader + engine reduction** (~3 days). yaml_loader extended to recognize `hard_flatters` / `hard_avoid` / `soft_flatters` / `soft_avoid` keys; reduction logic enforces hard rules unconditionally and treats soft rules as scoring penalties; validators updated; tests covering hard violation = drop, soft violation = penalty. **Inert until Step 4 lands** (no rule in production YAMLs uses the new keys yet).
+
+**Step 4 — Apply held YAML patches** (3 patches, in one coordinated PR per file).
+
+- bodyframe (in-place edits using new axes + hard/soft).
+- occasion (hard/soft-keyed edits).
+- pairing_rules engine matchers (wire the prose-keyword matchers for `indian_weave_compatibility`, `metallic_neutral_exception`, etc.).
+
+**Step 5 — Quality validation via Phase 4.6 eval set.** Gated on Phase 4.6's own delivery (still 🔒 Blocked on human). Runs `composition_quality_eval.py` end-to-end against the eval set with the new attributes flowing.
+
+### Sequencing notes
+
+- **Step 1 items are all independent** of each other AND of Step 2. Calendar pressure can overlap them.
+- **Step 2a is a strict prerequisite for Step 2b** — re-enrichment can't run until the schema knows the new axes/values.
+- **Step 3 can run in parallel with Step 2** (they don't share files), but it's invisible in production until Step 4 wires it up.
+- **Step 4 needs Steps 2 + 3 to land first**; the patches reference both new axes (from Step 2) and hard/soft keys (from Step 3).
+- **Step 5 can begin as soon as Phase 4.6 eval set + Steps 2 + 3 + 4 land.**
 
 ---
 ---
