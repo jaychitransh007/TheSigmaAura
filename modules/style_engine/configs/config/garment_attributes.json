@@ -409,6 +409,75 @@
       "needs_bottomwear",
       "needs_innerwear",
       "dual_dependency"
+    ],
+    "ShoulderExposure": [
+      "closed",
+      "cap_exposed",
+      "off_shoulder",
+      "one_shoulder",
+      "strapless",
+      "cold_shoulder"
+    ],
+    "SleeveVolume": [
+      "slim",
+      "moderate",
+      "puff",
+      "bishop",
+      "dramatic"
+    ],
+    "BlouseLength": [
+      "cropped",
+      "standard",
+      "longline"
+    ],
+    "BorderContrast": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "FabricTransparency": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "SurfaceFinish": [
+      "matte",
+      "low_luster",
+      "sheen",
+      "brushed_metallic",
+      "antique_metallic",
+      "high_shine_metallic"
+    ],
+    "LayeringVisibility": [
+      "hidden",
+      "integrated",
+      "statement"
+    ],
+    "BreathabilityLevel": [
+      "low",
+      "moderate",
+      "high"
+    ],
+    "DryTime": [
+      "slow",
+      "moderate",
+      "fast"
+    ],
+    "WaterResistance": [
+      "none",
+      "low",
+      "medium",
+      "high"
+    ],
+    "ThermalInsulation": [
+      "low",
+      "moderate",
+      "high"
+    ],
+    "WrinkleResistance": [
+      "low",
+      "moderate",
+      "high"
     ]
   },
   "text_attributes": [

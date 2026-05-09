@@ -115,7 +115,11 @@ Two ways to clean up:
 | [updated_query_structure_review_and_style_notes.md](../knowledge/knowledge_v2/updated_query_structure_review_and_style_notes.md) | ✅ | ✅ fully applied — 10 occasion mappings updated to allow modern Indo-Western `complete` retrieval; Navratri gets `cultural_variants` (traditional/fusion); `anchor_complete` now layerable | Future schema metadata (`style_energy`, `mobility_requirement`, `climate_sensitivity`) noted only — not urgent |
 | [updated_review_style_notes_pairing.md](../knowledge/knowledge_v2/updated_review_style_notes_pairing.md) | ✅ | ✅ substantially applied — 14 new exception rules across all 9 sections + the long-awaited `indian_weave_compatibility` (fabric-pairing intelligence) under `fabric_compatibility`; `jewel_plus_metallic` harmony type; `elevated_fusion_exception`; `modern_bridal_restraint` + `guest_vs_bridal_separation`; `anchor_visual_hierarchy` + `anchor_exact_match_avoidance` | Most rules carry only `description` + `notes` and are documentation today — they become load-bearing once the engine adds matchers for them. Connects to `bridal_priority` engine work already queued (occasion review). |
 
-**🟢 ALL 8 STYLIST FILES REVIEWED.** Queue is finalized — batch-execute can begin.
+**🟢 ALL 8 STYLIST FILES REVIEWED.** Queue is finalized — batch-execute in progress.
+
+**Step 1 — ✅ shipped** ([PR #234](https://github.com/jaychitransh007/TheSigmaAura/pull/234), [PR #235](https://github.com/jaychitransh007/TheSigmaAura/pull/235), [PR #236](https://github.com/jaychitransh007/TheSigmaAura/pull/236)). 8 catalog-independent engineering items live: `DupattaDrape` + `LayeringStructure` derivation; `MovementSecurity` + `SupportRequirement`; `bridal_priority` lookup; vocabulary registry; canonical enum audit; yearly Navratri config.
+
+**Step 2a — 🟡 in progress.** Schema additions for catalog re-enrichment: 12 new axes added to `garment_attributes.json`, database migration shipping, vision-enrichment prompt updated with new attribute descriptions. Ready to fire Step 2b once the migration runs in staging.
 
 ### Catalog enrichment queue (Type A — vision-extractable garment properties)
 

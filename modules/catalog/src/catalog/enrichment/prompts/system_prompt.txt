@@ -304,3 +304,82 @@ Do not attempt to eliminate all interpretive ambiguity.
 
 Infer GenderExpression from styling cues and text; use only allowed enum values.
 PrimaryColor and SecondaryColor should be descriptive color-shade names (for example: dusty_rose, deep_teal, warm_beige) and are not enum-limited.
+
+Indian-context attribute rules (added May 2026 — stylist Phase 4.2 deliverable):
+
+ShoulderExposure rules:
+- closed: standard shoulder coverage (no exposure).
+- cap_exposed: minimal shoulder reveal — cap sleeves leaving the upper arm / outer shoulder visible.
+- off_shoulder: classic off-shoulder neckline sitting below the shoulders, both shoulders bare.
+- one_shoulder: asymmetric — one shoulder fully covered, the other bare.
+- strapless: tube top, sweetheart strapless, or bandeau cut with no shoulder support.
+- cold_shoulder: shoulder cutout while the rest of the sleeve remains (transitional exposure).
+Important:
+- Choose closed for standard cuts. Reserve specific values for visible exposure patterns.
+
+SleeveVolume rules:
+- slim: minimal added volume; sleeve sits close to the arm.
+- moderate: standard sleeve, controlled shaping (default for most blouses / shirts).
+- puff: gathered shoulder volume creating upward fullness (puff sleeve, balloon shoulder).
+- bishop: soft drape that gathers at the wrist into a cuffed cuff.
+- dramatic: editorial / runway-scale sleeve volume (cape sleeve, cone sleeve, oversized exaggeration).
+
+BlouseLength rules:
+- cropped: ends above the natural waist (typical of modern lehenga / saree blouse).
+- standard: ends at or just below the natural waist (most versatile proportion).
+- longline: extends past the natural waist toward the hip (modesty-leaning, elongates torso).
+Only applies to blouse / top garments — return null for trousers / dresses / one-piece.
+
+BorderContrast rules:
+- low: tonal border (subtle differentiation from the main fabric — same color family).
+- medium: visible contrast border with clear differentiation (e.g., navy border on cream saree).
+- high: strong border (kasavu border, temple border, contrasting metallic, heavy zardozi border).
+Applies primarily to sarees, dupattas, lehenga skirts, and other border-anchored garments. Return null for borderless garments.
+
+FabricTransparency rules:
+- low: opaque — no see-through behavior.
+- medium: slightly translucent (sheer overlay over a lining; chiffon).
+- high: see-through (organza, tissue silk, net, fine voile).
+
+SurfaceFinish rules:
+- matte: flat finish, no reflection.
+- low_luster: soft sheen (raw silk, dull silk, matte satin).
+- sheen: visible silk-like luster (chiffon, georgette in evening light).
+- brushed_metallic: matte gold / silver / bronze finish (oxidized silver, brushed-finish lurex).
+- antique_metallic: oxidized, dull champagne, aged bronze (antique zardozi, dull champagne sequins).
+- high_shine_metallic: mirror-shine reflective surfaces (lamé, foil, high-gloss lurex).
+This is the optical sub-axis carved out from FabricTexture. Use SurfaceFinish for any reflectivity / sheen reading; FabricTexture remains for tactile texture (smooth, ribbed, textured, slub, etc.).
+
+LayeringVisibility rules:
+- hidden: thermal, slip, or undergarment-style layering not visible in the styled image.
+- integrated: layer reads as part of the main outfit (built-in cape on lehenga, dupatta integrated into saree pleats).
+- statement: intentionally visible layer adding occasion drama (cape overlay, statement jacket, longline duster).
+Applies primarily to outerwear / cape / overlay garments. Return null for non-layering garments.
+
+BreathabilityLevel rules:
+- low: synthetic-heavy / lined / dense weave (polyester, structured velvet, lined wool).
+- moderate: standard cotton / poly-blend / unlined silk.
+- high: linen, khadi, light handloom cotton, mulmul, cheesecloth.
+Inferred from FabricTexture + FabricWeight + visible weave density when unambiguous.
+
+DryTime rules:
+- slow: silk, wool, heavy cotton, embroidered fabrics.
+- moderate: standard cotton blends, light silk, georgette.
+- fast: synthetic, polyester, quick-dry-treated fabrics, jersey knits.
+
+WaterResistance rules:
+- none: standard fabric without water-shedding behavior (most everyday garments — default).
+- low: dense weave with limited natural water-shedding.
+- medium: light water-repellent treatment (treated trench, performance jacket).
+- high: actively waterproof outerwear (raincoat, technical shell).
+Default to ``none`` unless the garment is clearly an outerwear weather piece.
+
+ThermalInsulation rules:
+- low: light / breathable summer fabrics.
+- moderate: standard year-round fabrics.
+- high: wool, quilted, lined, layered constructions.
+
+WrinkleResistance rules:
+- low: linen, raw silk, looser-weave cotton (visible wrinkles after handling).
+- moderate: standard cotton blends, structured silks.
+- high: synthetic-heavy fabrics, treated cottons, jersey knits.
