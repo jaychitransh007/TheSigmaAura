@@ -6628,6 +6628,46 @@ class AgenticOrchestrator:
                     len(_composer_router_decision.yaml_gaps),
                     _composer_router_decision.engine_ms,
                 )
+
+                # Persist the composer router decision to tool_traces.
+                # Mirrors the architect router's persistence at the
+                # ``composition_router_decision`` site (orchestrator.py
+                # ~5944). Pre-EAR-1 the composer fall-through reason
+                # lived only in _log.info + Prometheus counters, so May
+                # 9 RCA could see "composer engine ~4%" but couldn't
+                # see WHY (yaml_gap vs low_picks vs pool_too_sparse vs
+                # eligibility). With this row, the breakdown is one
+                # query.
+                try:
+                    self.repo.log_tool_trace(
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        tool_name="composer_router_decision",
+                        input_json={
+                            "is_followup": bool(getattr(combined_context.live, "is_followup", False)),
+                            "followup_intent": getattr(combined_context.live, "followup_intent", None),
+                            "occasion_signal": getattr(combined_context.live, "occasion_signal", None),
+                            "formality_hint": getattr(combined_context.live, "formality_hint", None),
+                            "weather_context": getattr(combined_context.live, "weather_context", "") or None,
+                            "time_of_day": getattr(combined_context.live, "time_of_day", "") or None,
+                        },
+                        output_json={
+                            "used_engine": _composer_router_decision.used_engine,
+                            "fallback_reason": _composer_router_decision.fallback_reason,
+                            "engine_confidence": _composer_router_decision.engine_confidence,
+                            "yaml_gaps": list(_composer_router_decision.yaml_gaps or []),
+                            "provenance_summary": dict(_composer_router_decision.provenance_summary or {}),
+                            "engine_ms": _composer_router_decision.engine_ms,
+                        },
+                        latency_ms=_composer_router_decision.engine_ms,
+                        status="ok" if _composer_router_decision.used_engine else "fallback",
+                        error_message=_composer_router_decision.fallback_reason or "",
+                    )
+                except Exception:  # noqa: BLE001 — trace persistence never breaks the turn
+                    _log.warning(
+                        "Failed to persist composer_router_decision tool_trace",
+                        exc_info=True,
+                    )
             compose_ms = int((time.monotonic() - t_compose) * 1000)
             # Phase 5x.4a — composer-side origin stamping. _record_attempt
             # writes per-attempt rows on LLM paths; engine and cache paths
