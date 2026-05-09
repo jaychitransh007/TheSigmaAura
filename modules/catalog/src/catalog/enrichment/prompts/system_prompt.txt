@@ -22,7 +22,7 @@ Tie-breaks:
 Indian-context rules:
 - Many garments in this catalog are Indian (saree, kurta, anarkali, lehenga, sherwani, salwar suit, dupatta). Apply the Indian-context attribute rules below for axes that have them (ShoulderExposure, SleeveVolume, BlouseLength, BorderContrast, FabricTransparency, SurfaceFinish, LayeringVisibility, VolumePlacement, AsymmetryType, AttachmentStructure, MotionBehavior).
 - Heritage weaves (Banarasi, Kanjeevaram, Chanderi, Patola, Ajrakh, chikankari, kantha) are common — use the relevant FabricTexture / EmbellishmentType values rather than forcing them into Western categories.
-- The model serving this prompt is gemini-2.5-flash. Be concise and direct in the JSON output; do not add explanatory text outside the JSON envelope.
+- Be concise and direct in the JSON output; do not add explanatory text outside the JSON envelope.
 
 Drift-priority extraction rules:
 

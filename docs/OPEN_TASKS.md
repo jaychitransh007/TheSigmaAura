@@ -121,7 +121,7 @@ Two ways to clean up:
 
 **Step 2a — ✅ shipped + Path B applied** ([PR #237](https://github.com/jaychitransh007/TheSigmaAura/pull/237) added 12 axes; [PR #239](https://github.com/jaychitransh007/TheSigmaAura/pull/239) Path B removed 5 + added 4 = net 55 enum + 2 text canonical attributes). Schema is post-rationalization, ready for Step 2b.
 
-**Step 2b — 🟡 next** (gated on Gemini-2.5-Flash migration). Vision re-enrichment on 14,296 catalog rows. **Sequencing locked:** Path B (done) → Gemini migration → Step 2b. See "Gemini-2.5-Flash migration spec" below.
+**Step 2b — 🟡 next.** Vision re-enrichment on 14,296 catalog rows via OpenAI's Batch API on `gpt-5-mini` (provider decision recorded below — Gemini migration was scoped, implemented, and reverted after numerical comparison).
 
 **Phase 2 ontology surgery — 🔒 deferred** to post-Step-2b. Larger schema rationalization that needs production data + Phase 4.6 eval set before destabilizing rules already in use:
 - Remove `OccasionFit` / `OccasionSignal` (subjective; derive downstream from embellishment + silhouette + exposure + fabric + formality + archetype).
@@ -265,97 +265,40 @@ These have real effect on real traffic without any catalog or schema dependency.
 - **Step 4 needs Steps 2 + 3 to land first**; the patches reference both new axes (from Step 2) and hard/soft keys (from Step 3).
 - **Step 5 can begin as soon as Phase 4.6 eval set + Steps 2 + 3 + 4 land.**
 
-### Gemini-2.5-Flash migration spec (between Step 2a and Step 2b)
+### Catalog enrichment provider decision (2026-05-09)
 
-**Status:** queued · **Cost:** ~3 days engineering + ~1 day QA · **Sequencing:** runs after Path B (PR #239), before Step 2b re-enrichment.
+**Decision:** stay on **`gpt-5-mini` via OpenAI Batch API**. Gemini-2.5-Flash was scoped, implemented (PR #241), and reverted after numerical comparison.
 
-**Decision (2026-05-09):** swap catalog enrichment from `gpt-5-mini` (current — `modules/catalog/src/catalog/enrichment/config.py:10`) to **`gemini-2.5-flash`**. Reasoning: meaningful quality jump on asymmetry, Indian ethnicwear, layered garments, attachment structures, nuanced silhouettes, and visual hierarchy — exactly the surfaces the post-Path-B schema relies on. Cost delta is small relative to the operational cost of bad enrichment. Aura is a long-lived fashion intelligence layer, not a cheap classifier.
+| | GPT-5 mini batch | Gemini 2.5 Flash batch |
+|---|---:|---:|
+| Input price | $0.125 / 1M | $0.150 / 1M |
+| Output price | $1.000 / 1M | $1.250 / 1M |
+| Per-row cost (~3.5K input / ~1K output) | ~$0.0014 | ~$0.0018 |
+| **14,296-row total** | **~$20** | ~$26 |
+| MMMU vision benchmark | 79.7% | 79.7% |
 
-**Why between Step 2a and Step 2b** (not bundled either side): failure isolation. Schema rationalization, model swap, prompt redesign, and concurrency redesign all happening together makes debugging miserable and loses attribution clarity. Path B stabilizes the schema; Gemini migration stabilizes the model + prompt structure; Step 2b runs on the finalized stack.
+GPT-5 mini batch is **~30% cheaper for our exact token mix** and ties on MMMU. Gemini's domain-specific quality on Indian fashion was unverified (no public benchmark covers it); the cost difference was small but we pay it deterministically, the quality upside was speculative, and OpenAI's batch tooling is already integrated + production-validated. Keep gpt-5-mini.
 
-#### Architecture — staged extraction (3 passes)
+**What we kept from the Gemini exploration:**
+- The expanded prompt header (confidence-band rules, image-evidence rules, tie-break rules, Indian-context note) — useful regardless of provider. Lives in `modules/catalog/src/catalog/enrichment/prompts/system_prompt.txt`.
+- Token-aware batch chunking (added 2026-05-09 — see below). Originally a Gemini concern, but it benefits the OpenAI Batch API path too — proactively splits large catalog runs to stay under the org's enqueued-tokens-per-minute ceiling instead of relying on reactive retry.
 
-Do NOT try to replicate OpenAI's structured-output behavior of "one massive schema-enforced JSON response." Gemini quality degrades when given too many enums, too many nullable fields, too much ontology context, and too many simultaneous decisions in a single call. Instead:
+### Token-aware batch chunking (2026-05-09)
 
-**Pass 1 — Structural** (always runs, cheap, high-signal):
-- `GarmentCategory`, `GarmentSubtype`, `GarmentLength`, `LayeringVisibility`
-- Plus a future `OutfitStructure` field (filed under Phase 2 ontology — for now, packed inside `GarmentSubtype`).
+OpenAI's Batch API has two sets of caps that can reject a submitted batch:
 
-**Pass 2 — Observable** (always runs, larger schema):
-- Fit + silhouette: `FitType`, `SilhouetteType`, `ShoulderStructure`, `WaistDefinition`, `BlouseLength`, `SleeveLength`, `ShoulderExposure`.
-- Neckline + exposure: `NecklineType`, `NecklineDepth`, `SkinExposureLevel`.
-- Fabric: `FabricDrape`, `FabricWeight`, `FabricTexture`, `SurfaceFinish`, `FabricTransparency`.
-- Embellishment + pattern: `EmbellishmentLevel`, `EmbellishmentType`, `EmbellishmentZone`, `BorderContrast`, `PatternType`, `PatternScale`, `PatternOrientation`.
-- Color: `PrimaryColor`, `SecondaryColor`, `ColorCount`. (Other color axes — `ContrastLevel` / `ColorTemperature` / `ColorSaturation` / `ColorValue` — will be derived algorithmically post-extraction in Phase 2; for now still vision-predicted.)
-- Context: `FormalityLevel`, `FormalitySignalStrength`, `OccasionFit`, `OccasionSignal`, `TimeOfDay`, `GenderExpression`, `StylingCompleteness`.
-- `ConstructionDetail`, `EdgeSharpness`, `LineDirection`, `BodyFocusZone`, `StructuralFocus`, `VerticalWeightBias`, `VisualWeightPlacement`.
+1. **File-level:** ≤ 200 MB upload size, ≤ 50,000 requests per file. Existing `_split_rows_for_max_batch_bytes` in `modules/catalog/src/catalog/enrichment/main.py` handles the byte cap (default 180 MB).
+2. **Org-level:** enqueued tokens per minute (TPM), tier-dependent. A batch that fits under 200 MB can still get rejected with `enqueued_token_limit_reached` if its combined input tokens exceed the org's TPM ceiling.
 
-**Pass 3 — Advanced architecture** (conditional — only when Pass 2 surfaces signals that warrant it):
-- `VolumePlacement`, `AsymmetryType`, `AttachmentStructure`, `MotionBehavior`, `SleeveVolume`.
-- Applicability gating: skip Pass 3 entirely when Pass 2 returns simple solid garments with no attached structure / asymmetry / volume / motion signals — saves ~30% of inference calls on plain catalog items.
+The existing code reactively retries via `_split_chunk_for_retry` when this happens, but proactive splitting is cheaper. `_split_rows_for_max_batch_bytes` now also enforces a `max_batch_input_tokens` cap (default `1.5M` from `PipelineConfig`):
 
-#### Applicability separation
+- Per-row token estimate: cached system-prompt tokens + per-row text tokens + ~300 tokens per attached image.
+- A row exceeding the cap on its own raises (catches misconfiguration before submission).
+- Chunks break on whichever cap (bytes or tokens) is hit first.
 
-Replace `"not_applicable"` enum values with a structured applicability field. Example:
+CLI flag: `--max-batch-input-tokens N` (default = `PipelineConfig.max_batch_input_tokens`, currently 1.5M; pass `0` to disable the token cap and rely only on `--max-batch-bytes`).
 
-```json
-"BlouseLength": {
-  "applicable": false
-}
-```
-
-instead of:
-
-```json
-"BlouseLength": "not_applicable"
-```
-
-Why: applicability and value are semantically different concepts. Cleaner downstream for analytics / embeddings / filtering / model retraining / QA tooling. Matters disproportionately at scale.
-
-#### Hybrid confidence scoring
-
-Don't trust prompted confidence scores blindly. Combine:
-
-1. **Model-prompted confidence** — Gemini emits per-attribute `{value, confidence}` shape.
-2. **Heuristic confidence overlay** — computed from image count, image visibility, crop quality, cross-image disagreement, attribute applicability. Adjusts the prompted confidence downward when conditions warrant it.
-
-#### Aggressive deduplication
-
-Fashion catalogs have 15-30% redundancy: same SKU multiple colors, same silhouette repeated, same product family, near-identical co-ords. Hash on **image embeddings + merchant title** before invoking the vision model — copy enrichment results across hash hits instead of re-paying for inference.
-
-At 14,296 rows × ~$0.001-0.005 per row (Gemini 2.5 Flash pricing), that's $5-20 saved per re-enrichment cycle. Compounds massively over re-runs.
-
-#### Concurrency design
-
-Gemini doesn't have an OpenAI-style batch API with overnight discounting. Migration switches from batch (24h completion window) to streamed sync calls, which means real-time pricing over hours. Need to design rate-limiting + concurrency for 14,296 rows:
-- Target ~5-10 concurrent requests (tune to Gemini's RPM tier limits).
-- Exponential backoff on transient errors.
-- Resumable checkpointing — if a run interrupts at row 9,000, restart from row 9,001 not row 1.
-- Per-row hash dedup short-circuits before any API call.
-
-#### Code changes summary
-
-| File | Change |
-|---|---|
-| `modules/catalog/src/catalog/enrichment/config.py` | `model: str = "gemini-2.5-flash"`; new `gemini_endpoint` field; remove OpenAI batch settings. |
-| `modules/catalog/src/catalog/enrichment/batch_runner.py` | Replace OpenAI batch client with `google-genai`-based concurrent runner. Resumable checkpointing. |
-| `modules/catalog/src/catalog/enrichment/schema_builder.py` | Translate JSON schema → Gemini's `responseSchema` shape. Generate per-pass schemas (Pass 1 / 2 / 3). |
-| `modules/catalog/src/catalog/enrichment/prompts/system_prompt.txt` | Split into per-pass prompts. Drop `not_applicable` values; emit `{applicable: false}` shape. |
-| `modules/catalog/src/catalog/enrichment/response_parser.py` | Parse Gemini's response format; extract per-attribute `{value, confidence, applicable}`. |
-| `modules/catalog/src/catalog/enrichment/dedup.py` (new) | Image-hash + title-hash dedup before any inference call. |
-| `modules/catalog/src/catalog/enrichment/heuristic_confidence.py` (new) | Heuristic confidence overlay. |
-| `.env.staging` / `.env` | `GEMINI_API_KEY` (or reuse the existing `GOOGLE_API_KEY` from try-on if same key works). |
-| Tests | Stub `google-genai` client for unit tests; smoke run on a 50-row sample. |
-
-#### Test gate
-
-Before firing Step 2b on the full 14,296 rows:
-
-- 50-row sample run completes successfully end-to-end.
-- Spot-check 20 of those: vision output looks correct on each new axis (`VolumePlacement`, `AsymmetryType`, `AttachmentStructure`, `MotionBehavior`).
-- Cost per row matches projection (~$0.001-0.005).
-- Hash dedup hit rate measured on the sample (expect 15-30% across the full catalog).
-- Resumable checkpointing verified on a forced interrupt + restart.
+For Step 2b on the 14,296-row catalog: total estimated input ~50M tokens. Default 1.5M-token cap → ~33 batch chunks, each well under both file and TPM ceilings. Tune `max_batch_input_tokens` upward if the org's TPM tier permits.
 
 ---
 ---
