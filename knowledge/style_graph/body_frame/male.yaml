@@ -45,7 +45,7 @@ BodyShape:
     avoid:
       ShoulderStructure:   [extended, padded, sculpted]    # exaggerates shoulder breadth
       FitType:             [slim]                          # at bottom — emphasises shoulder
-      VolumeProfile:       [exaggerated]                   # at top
+      VolumeProfile:       [exaggerated, sculpted]         # at top — sculpted shoulder/yoke detail overloads an already-broad shoulder line
     notes: >
       Strong shoulder, narrow waist and hip. Avoid heavy structured
       shoulders on bandhgala/sherwani (already broad). Wear straight-fit
@@ -60,7 +60,7 @@ BodyShape:
       FitType:             [tailored, slim, regular]
       WaistDefinition:     [natural]
       ShoulderStructure:   [sculpted, padded]              # mild structure adds shape
-      VolumeProfile:       [flat, moderate]
+      VolumeProfile:       [flat, moderate, sculpted]      # sculpted yoke/shoulder structure adds visual shape to a straight column frame
       ConstructionDetail:  [pleated]
     avoid:
       SilhouetteType:      [oversized, boxy]
@@ -76,7 +76,7 @@ BodyShape:
     flatters:
       SilhouetteType:      [straight, relaxed]
       ShoulderStructure:   [extended, padded, sculpted]
-      VolumeProfile:       [moderate]                      # at top
+      VolumeProfile:       [moderate, sculpted]            # at top — sculpted yoke / structured shoulder broadens shoulder line to balance wider lower body
       EmbellishmentZone:   [shoulder, neckline]
       VerticalWeightBias:  [upper]
     avoid:
@@ -120,6 +120,7 @@ BodyShape:
       FabricDrape:         [soft_structured, crisp]
       LineDirection:       [vertical]
       WaistDefinition:     [undefined, empire]
+      VolumeProfile:       [sculpted]                      # at top — sculpted yoke / shoulder broadens narrower shoulder line; never at midsection (already full)
     avoid:
       SilhouetteContour:   [fitted]                        # at midsection
       WaistDefinition:     [defined]
