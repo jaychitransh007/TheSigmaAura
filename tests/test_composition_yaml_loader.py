@@ -230,6 +230,37 @@ class StyleGraphLoadTests(unittest.TestCase):
         graph = load_style_graph()
         self.assertEqual(graph.known_attributes, frozenset(expected))
 
+    def test_sculpted_volume_profile_is_routed_in_each_yaml(self):
+        """`sculpted` (added 2026-05-09) must remain referenced under
+        VolumeProfile in body_frame/female.yaml, body_frame/male.yaml, and
+        archetype.yaml — otherwise the deterministic engine has nowhere to
+        route catalog items tagged with the new value."""
+        graph = load_style_graph()
+
+        def _has_sculpted_under_volume_profile(scope) -> bool:
+            for values_by_name in scope.values():
+                for mapping in values_by_name.values():
+                    for attr, vals in mapping.flatters.items():
+                        if attr == "VolumeProfile" and "sculpted" in vals:
+                            return True
+                    for attr, vals in mapping.avoid.items():
+                        if attr == "VolumeProfile" and "sculpted" in vals:
+                            return True
+            return False
+
+        self.assertTrue(
+            _has_sculpted_under_volume_profile(graph.body_frame_female),
+            "body_frame/female.yaml has no VolumeProfile=sculpted reference",
+        )
+        self.assertTrue(
+            _has_sculpted_under_volume_profile(graph.body_frame_male),
+            "body_frame/male.yaml has no VolumeProfile=sculpted reference",
+        )
+        self.assertTrue(
+            _has_sculpted_under_volume_profile(graph.archetype),
+            "archetype.yaml has no VolumeProfile=sculpted reference",
+        )
+
     def test_every_referenced_attribute_is_known(self):
         """Round-trip: walk every flatters/avoid block and confirm each
         attribute name is in graph.known_attributes."""

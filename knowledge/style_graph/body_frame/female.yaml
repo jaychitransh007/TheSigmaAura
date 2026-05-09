@@ -53,7 +53,7 @@ BodyShape:
       StructuralFocus:     [shoulder, neckline]
       BodyFocusZone:       [shoulders, bust, face_neck]
       VerticalWeightBias:  [upper]
-      VolumeProfile:       [moderate]                     # bottom can carry more
+      VolumeProfile:       [moderate, sculpted]           # bottom can carry more; sculpted at top (puff sleeve, peplum bodice) balances wider hips — never at bottom
       EmbellishmentZone:   [shoulder, neckline]
       PatternScale:        [medium, large]                # for top
     avoid:
@@ -75,7 +75,7 @@ BodyShape:
     flatters:
       SilhouetteContour:   [a_line, flared, empire, asymmetrical]
       SilhouetteType:      [a_line, flared, empire, relaxed]
-      VolumeProfile:       [voluminous]                   # at bottom slot only — top stays moderate (see notes)
+      VolumeProfile:       [voluminous, sculpted]         # at bottom slot only — top stays moderate (see notes); sculpted at bottom (peplum, balloon hem) softens broad shoulder, never at top (puff sleeve overloads shoulder line)
       WaistDefinition:     [empire, natural, undefined]
       HipDefinition:       [flared, shaped]
       NecklineType:        [v_neck, scoop, sweetheart]    # softens shoulder
@@ -105,7 +105,7 @@ BodyShape:
       HipDefinition:       [shaped, flared]
       ConstructionDetail:  [ruched, gathered, draped]
       ShoulderStructure:   [natural, sculpted]
-      VolumeProfile:       [moderate]                     # mid-section adds curve
+      VolumeProfile:       [moderate, sculpted]           # mid-section adds curve; sculpted at either slot (puff sleeve, peplum hem) creates curve illusion on a straight frame
       StructuralFocus:     [waist]
       BodyFocusZone:       [waist, hips]
       EmbellishmentZone:   [waist, neckline]
@@ -142,7 +142,7 @@ BodyShape:
       WaistDefinition:     [defined, cinched, belted]
       NecklineType:        [crew, high_neck]              # makes torso look shorter
       FabricDrape:         [rigid, sculpted]              # unforgiving at midsection
-      VolumeProfile:       [flat]                         # too body-skimming
+      VolumeProfile:       [flat, sculpted]               # flat is too body-skimming; sculpted (peplum, puff sleeve) draws eye to midsection — sleeves only OK if visually distant from torso (handled in notes)
       ConstructionDetail:  [ruched]                       # at waist — emphasises fullness
     notes: >
       Empire-waist anarkali is the perfect Apple silhouette — it skims
@@ -161,7 +161,7 @@ BodyShape:
       NecklineDepth:       [moderate, deep]
       ShoulderStructure:   [extended, sculpted]           # broaden shoulder line for balance
       FabricDrape:         [fluid, soft_structured]
-      VolumeProfile:       [moderate]
+      VolumeProfile:       [moderate, sculpted]           # sculpted at top (puff/sculpted sleeve) broadens shoulder line — at bottom is fine since hips are narrow
       StructuralFocus:     [neckline, shoulder]
       EmbellishmentZone:   [neckline, shoulder]
       LineDirection:       [vertical]
@@ -185,7 +185,7 @@ BodyShape:
       SilhouetteType:      [fitted, a_line, wrap, flared]
       WaistDefinition:     [natural, defined]
       HipDefinition:       [flared, shaped]
-      VolumeProfile:       [moderate]
+      VolumeProfile:       [moderate, sculpted]           # athletic frame carries sculpted accents at either slot — polished without overpowering
       VerticalWeightBias:  [balanced, lower]
       BodyFocusZone:       [waist, hips]
     avoid:
@@ -204,7 +204,7 @@ ShoulderToHipRatio:
     flatters:
       ShoulderStructure:   [natural]
       NecklineType:        [v_neck, scoop, sweetheart]
-      VolumeProfile:       [moderate, voluminous]         # at bottom
+      VolumeProfile:       [moderate, voluminous, sculpted]  # at bottom; sculpted at bottom (peplum, balloon hem) softens broad shoulder by adding weight below
       EmbellishmentZone:   [hem]                          # draws eye to lower body
       LineDirection:       [vertical]
     avoid:
@@ -228,7 +228,7 @@ ShoulderToHipRatio:
     flatters:
       ShoulderStructure:   [natural, sculpted]
       NecklineType:        [crew, v_neck, scoop, collared, square, boat]
-      VolumeProfile:       [flat, moderate]
+      VolumeProfile:       [flat, moderate, sculpted]     # balanced ratio carries sculpted at either slot
     avoid: {}
     notes: Balanced — wear what you like; no compensation needed.
 

@@ -42,6 +42,7 @@ primary_archetype:
       ConstructionDetail:    [asymmetric_hem, smocked]
       SilhouetteType:        [oversized]
       FitType:               [boxy, loose]
+      VolumeProfile:         [sculpted, exaggerated]       # sculpted (puff sleeve, peplum) reads trendy / dramatic — conflicts with classic timelessness
     notes: >
       Western context: tailored sheath dress, cigarette pant + crisp shirt,
       structured blazer. Indian: well-tailored kurta + churidar in muted
@@ -75,6 +76,7 @@ primary_archetype:
       ConstructionDetail:    [ruched, gathered, smocked, asymmetric_hem]
       ColorCount:            [multi_color]
       ColorSaturation:       [high, very_high]
+      VolumeProfile:         [sculpted, voluminous, exaggerated]   # any localized or whole-garment drama violates minimalist's clean-line ethic
     notes: >
       Western: solid colour-blocked shift, plain knit + tailored trouser,
       structured tote. Indian: solid Mysore silk or Chanderi saree with
@@ -131,6 +133,7 @@ primary_archetype:
       ColorSaturation:       [muted, medium]
       ColorTemperature:      [warm, neutral]
       EmbellishmentZone:     [neckline, sleeve, hem]
+      VolumeProfile:         [moderate, sculpted]          # peplum, puff sleeve, balloon hem are signature romantic shapes
     avoid:
       PatternType:           [animal, geometric, abstract]
       EmbellishmentType:     [studs, distressing, mirror_work]
@@ -193,7 +196,7 @@ primary_archetype:
       ColorSaturation:       [high, very_high]
       ContrastLevel:         [high, very_high]
       EmbellishmentZone:     [shoulder, allover]
-      VolumeProfile:         [moderate, voluminous, exaggerated]
+      VolumeProfile:         [moderate, voluminous, exaggerated, sculpted]   # sculpted (architectural sleeve / peplum / structured shoulder) is signature dramatic
     avoid:
       PatternType:           [floral]
       PatternScale:          [micro, small]
@@ -224,6 +227,7 @@ primary_archetype:
       ColorCount:            [two_color, multi_color]
       ColorSaturation:       [medium, high]
       EmbellishmentZone:     [allover, hem, sleeve]
+      VolumeProfile:         [moderate, sculpted]          # sculpted sleeves / peplum read as artisanal craft on creative palette
     avoid:
       PatternType:           [solid]
       EmbellishmentLevel:    [none, minimal]
