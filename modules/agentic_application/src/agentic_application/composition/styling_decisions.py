@@ -1,29 +1,130 @@
 """Composition-time styling decisions.
 
 These functions emit *styling recommendations* (dupatta drape, layering
-structure) derived from body shape + gender. They are NOT garment
-attributes — the catalog never carries a ``DupattaDrape`` column.
-Rather, the engine emits these as part of its outfit metadata so the
-front-end can surface "drape this dupatta with a single-shoulder fall"
-or "wear this with an open-front longline jacket" alongside the
+structure, movement security, support requirement, bridal-role rules,
+yearly Navratri colors) derived from user-side inputs (body shape,
+gender, occasion, calendar year). They are NOT garment attributes —
+the catalog never carries a ``DupattaDrape`` column. Rather, the
+engine emits these as part of its outfit metadata so the front-end
+can surface "drape this dupatta with a single-shoulder fall" or
+"wear this with an open-front longline jacket" alongside the
 selected garments.
 
-Source: ``knowledge/knowledge_v2/bodyframe_stylist_revision_patchset_v_1.md``
-(stylist's body_frame review — Phase 4.2 deliverable, May 2026).
+Source: ``knowledge/knowledge_v2/`` stylist reviews (Phase 4.2
+deliverables, May 2026) — bodyframe + occasion patches.
 
 Cross-references in ``knowledge/STYLIST_NOTES.md``:
 - Cross-cutting decision #2 (Dupatta drape as silhouette engineering).
 - Cross-cutting decision #25 (Modern styling layers over complete anchors).
+- Cross-cutting engineering flag (yearly Navratri color-sequence config).
 
-Today these functions return recommendations as ordered tuples (first
-entry = strongest match). Wiring into the composer's per-outfit
-metadata is a separate change — keeping the derivation library
-focused makes the unit tests trivial and the engine-integration
-review small.
+Today these functions return recommendations as plain values / tuples;
+wiring into the composer's per-outfit metadata is a separate change —
+keeping the derivation library focused makes the unit tests trivial
+and the engine-integration review small.
 """
 from __future__ import annotations
 
-from typing import Mapping
+import logging
+from pathlib import Path
+from typing import Mapping, Sequence
+
+
+_log = logging.getLogger(__name__)
+
+
+# Path to the Navratri color-sequence runtime config. Resolved relative
+# to this file (which lives at
+# ``modules/agentic_application/src/agentic_application/composition/``,
+# 5 parents up = repo root).
+_NAVRATRI_COLORS_PATH = (
+    Path(__file__).resolve().parents[5]
+    / "knowledge"
+    / "runtime_config"
+    / "navratri_colors.yaml"
+)
+
+
+# Module-cached parse of the Navratri colors file. ``None`` until the
+# first ``get_navratri_color`` call, then a dict ``{year: [day_1, ..., day_9]}``.
+_navratri_colors_cache: Mapping[int, Sequence[str]] | None = None
+
+
+def _load_navratri_colors() -> Mapping[int, Sequence[str]]:
+    """Load and cache the Navratri color-sequence YAML."""
+    global _navratri_colors_cache
+    if _navratri_colors_cache is not None:
+        return _navratri_colors_cache
+    if not _NAVRATRI_COLORS_PATH.exists():
+        _log.warning(
+            "navratri_colors.yaml missing at %s — get_navratri_color "
+            "will return None for every query",
+            _NAVRATRI_COLORS_PATH,
+        )
+        _navratri_colors_cache = {}
+        return _navratri_colors_cache
+    try:
+        import yaml
+        with open(_NAVRATRI_COLORS_PATH, "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+    except Exception as exc:  # noqa: BLE001 — never break the pipeline on a config read
+        _log.warning(
+            "Failed to load navratri_colors.yaml: %s — get_navratri_color "
+            "will return None for every query",
+            exc,
+        )
+        _navratri_colors_cache = {}
+        return _navratri_colors_cache
+    out: dict[int, Sequence[str]] = {}
+    for year_key, sequence in raw.items():
+        try:
+            year_int = int(year_key)
+        except (TypeError, ValueError):
+            _log.warning(
+                "navratri_colors.yaml: skipping non-integer year key %r",
+                year_key,
+            )
+            continue
+        if not isinstance(sequence, list):
+            _log.warning(
+                "navratri_colors.yaml: year %d: expected list of 9 colors, "
+                "got %s — skipping",
+                year_int, type(sequence).__name__,
+            )
+            continue
+        out[year_int] = tuple(str(c) for c in sequence)
+    _navratri_colors_cache = out
+    return out
+
+
+def _reset_navratri_colors_cache() -> None:
+    """Clear the module cache. Test-only helper."""
+    global _navratri_colors_cache
+    _navratri_colors_cache = None
+
+
+def get_navratri_color(year: int, day_index: int) -> str | None:
+    """Return the designated Navratri color for ``(year, day_index)``.
+
+    ``day_index`` is 1-based (Day 1 through Day 9). Returns ``None``
+    when:
+    - The year isn't configured in ``knowledge/runtime_config/navratri_colors.yaml``.
+    - ``day_index`` is out of range (< 1 or > 9, or > the configured length).
+    - The config file is missing or malformed.
+
+    Caller should treat ``None`` as "no specific Navratri color
+    recommendation for this query" and fall back to the user's
+    SubSeason palette anchors.
+    """
+    if day_index < 1 or day_index > 9:
+        return None
+    table = _load_navratri_colors()
+    sequence = table.get(year)
+    if not sequence:
+        return None
+    if day_index > len(sequence):
+        return None
+    return sequence[day_index - 1]
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -354,4 +455,5 @@ __all__ = [
     "derive_support_requirement",
     "is_bridal_role_occasion",
     "lookup_bridal_priority_rules",
+    "get_navratri_color",
 ]

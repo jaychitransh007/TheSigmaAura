@@ -1,0 +1,51 @@
+# Sharadiya Navratri 9-day color sequence by year.
+#
+# Each year, Hindu religious authorities designate 9 colors for the
+# 9 nights of Sharadiya Navratri (Sep / Oct), one per day, corresponding
+# to the 9 forms of Devi. The sequence varies year by year because the
+# dates shift with the lunar calendar (Navratri starts on Pratipada
+# of Shukla Paksha in Ashwin month).
+#
+# Stylist's occasion review (May 2026) flagged this as an explicit
+# engineering need: the engine should NOT hardcode the sequence. It
+# should read this file at runtime so the team can update annually
+# without a code change.
+#
+# Schema:
+#
+#   <year_int>:
+#     - day_1_color
+#     - day_2_color
+#     ...
+#     - day_9_color
+#
+# Color values are free-form strings — they flow through the same
+# free-form PrimaryColor / SecondaryColor field as the rest of the
+# palette system. Spelling should match palette.yaml vocabulary so
+# downstream retrieval can match (e.g., use "royal_blue" not "Royal
+# Blue", "rust" not "Rust").
+#
+# Authoritative sources for each year's designation:
+# - Drik Panchang (drikpanchang.com)
+# - Religious authorities at each major Devi temple
+# - Vedic-astrology almanacs published annually
+
+# ─────────────────────────────────────────────────────────────────────
+# 2026
+# ─────────────────────────────────────────────────────────────────────
+# Sharadiya Navratri 2026 dates: TBD (look up Drik Panchang in 2026 Q3).
+# Sequence below is a placeholder — replace with authoritative data
+# before flag-on production use.
+2026:
+  - yellow         # Day 1 — Pratipada (Shailaputri)
+  - green          # Day 2 — Dwitiya (Brahmacharini)
+  - gray           # Day 3 — Tritiya (Chandraghanta)
+  - orange         # Day 4 — Chaturthi (Kushmanda)
+  - white          # Day 5 — Panchami (Skandamata)
+  - red            # Day 6 — Sashthi (Katyayani)
+  - royal_blue     # Day 7 — Saptami (Kalaratri)
+  - pink           # Day 8 — Ashtami (Mahagauri)
+  - purple         # Day 9 — Navami (Siddhidatri)
+
+# Add future years inline. Old years are kept for retroactive analytics
+# on past Navratri queries — never delete, only append.

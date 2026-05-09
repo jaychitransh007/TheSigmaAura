@@ -137,6 +137,42 @@ The previous "one statement item only" logic was too rigid for Indian occasionwe
 
 ---
 
+## Canonical-name registry (May 2026 — vocabulary alignment)
+
+Cross-stylist-file vocabulary mismatches resolved here. When the held YAML patches (bodyframe + occasion) get applied during the batch-execute, translate stylist-side names → canonical names below.
+
+| Stylist-side name | Canonical name | Where canonical lives |
+|---|---|---|
+| `HemLength` | `GarmentLength` | `garment_attributes.json` enum_attributes |
+| `MovementEase` | `MovementSecurity` | `composition/styling_decisions.py` (composition-time, NOT a garment attribute) |
+| `SkinExposureLevel: [modest, balanced, elevated]` | `SkinExposureLevel: [very_low, low, medium, high, very_high]` | `garment_attributes.json` enum_attributes |
+| `ShoulderExposure` (proposed bodyframe) | (queued — not yet canonical) | future canonical addition |
+
+**Rule of thumb when applying held patches:** the *canonical* name wins. If the canonical doesn't yet have the axis at all (e.g., `ShoulderExposure`), the patch waits for the schema-additions step (Step 2a in OPEN_TASKS).
+
+`SkinExposureLevel` value mapping (when stylist patches surface user-facing labels):
+
+| Stylist label | Canonical bucket |
+|---|---|
+| modest | low |
+| balanced | medium |
+| elevated | high |
+
+The 5-band canonical is preserved (ground truth for the catalog enrichment pass); the stylist's 3-band labels become user-facing aliases that translate at the planner / canonicalize layer when added.
+
+## Canonical enum audit (May 2026)
+
+Stylist's occasion review (engineering flag #4) flagged inconsistencies across YAMLs in how `OccasionFit`, `OccasionSignal`, `EmbellishmentType`, `FabricTexture`, `PrimaryColor` values are used. Audit findings:
+
+- **`OccasionFit` values used inconsistently:** `formal` vs `semi_formal` vs `smart_casual` (some YAMLs use the broader bucket, others use the narrower); `traditional` vs `festive` (sometimes used as synonyms, sometimes distinct); `party` vs `night_out` (overlap); `workwear` vs `office` (overlap). **Resolution path:** decide canonical 1:1 mapping during schema cleanup; the catalog re-enrichment pass should produce values from the canonical set only.
+- **`EmbellishmentType` decomposition:** `tonal_embroidery`, `self_texture`, `chikankari`, `kantha` are now in canonical (PR #226) — these refine the prior `embroidery` blob but inevitably overlap. The vision-enrichment prompt should prefer the most specific value when applicable; degrade to `embroidery` only when the specific subtype isn't visible.
+- **`FabricTexture` overload** — already filed for decomposition into `FabricTexture` (tactile) + `SurfaceFinish` (optical: sheen, metallic, matte) + `ConstructionDetail` (embroidered) per cross-cutting decision #15. Resolves the cross-YAML inconsistencies on this axis as a side-effect.
+- **`PrimaryColor`** is free-form text (no enum) so cross-YAML naming consistency is the only concern. The neutral-luxury vocabulary (espresso, mushroom, greige, cocoa, etc.) added in PR #230 is internally consistent but not yet validated against catalog rows that may use slightly different spellings (`cocoa brown` vs `cocoa-brown` vs `dark cocoa`). Canonicalization at the planner / catalog-enrichment boundary should fold variants together.
+
+**Action:** none required pre-batch-execute. Filed for awareness during Step 2a (schema additions) so the team picks the canonical set then.
+
+---
+
 ## Rare-value category cleanup recommendations
 
 These are catalog / schema decisions that need engineering action — not YAML edits the stylist can make in place.
