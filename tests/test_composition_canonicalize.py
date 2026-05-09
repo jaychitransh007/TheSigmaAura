@@ -381,6 +381,35 @@ class CanonicalAliasTests(unittest.TestCase):
         embed.assert_called_once_with(["birthday"])
         self.assertEqual(out.occasion_signal, "everyday_casual")
 
+    def test_risk_tolerance_expressive_alias_resolves_to_adventurous(self):
+        # The architect prompt declares risk_tolerance values
+        # ``conservative | balanced | expressive``; the YAML uses
+        # ``conservative | moderate | adventurous``. Without the alias
+        # table, ``expressive`` falls through to the unstable embedding
+        # nearest-neighbour path. The alias pins the prompt vocabulary
+        # to the YAML keys with no API call.
+        out, result = canonicalize_inputs(
+            _baseline_inputs(risk_tolerance="expressive"),
+            graph=self.graph,
+            embeddings=CanonicalEmbeddings(
+                occasion={}, weather={}, archetype={}, risk_tolerance={}, seasonal={},
+            ),
+            embed_client=None,
+        )
+        self.assertEqual(out.risk_tolerance, "adventurous")
+        self.assertEqual(result.embed_calls, 0)
+
+    def test_risk_tolerance_balanced_alias_resolves_to_moderate(self):
+        out, _ = canonicalize_inputs(
+            _baseline_inputs(risk_tolerance="balanced"),
+            graph=self.graph,
+            embeddings=CanonicalEmbeddings(
+                occasion={}, weather={}, archetype={}, risk_tolerance={}, seasonal={},
+            ),
+            embed_client=None,
+        )
+        self.assertEqual(out.risk_tolerance, "moderate")
+
 
 class LoadCanonicalEmbeddingsTests(unittest.TestCase):
     def setUp(self):
