@@ -106,6 +106,37 @@ Travel, Holi, coffee meetups, startup officewear, beachwear should prioritize mo
 
 ---
 
+## Cross-cutting styling decisions — `pairing_rules.yaml` (May 2026 — final stylist file)
+
+Source: `knowledge/knowledge_v2/updated_review_style_notes_pairing.md`. Patch was almost entirely additive — new exception rules within existing rule blocks plus the long-awaited fabric-pairing intelligence layer.
+
+### 27. Pairing-rules philosophy shift — coherence with controlled tension.
+The original system optimized around "avoid incoherence." Real Indian urban styling also relies on controlled tension: ceremonial softened with restraint; fusion balanced through hierarchy; metallics behaving as neutrals; coordinated multi-zone embellishment; intentional texture contrast. The revised pairing rules preserve coherence while allowing modern luxury styling behavior. Applied via 11 new exception rules (`ceremonial_softening_exception`, `metallic_neutral_exception`, `festive_warm_cluster`, `jewel_plus_metallic`, `woven_motif_exception`, `oversized_ethnic_control`, `vertical_layering_rule`, `co_ord_balance`, `distributed_statement_exception`, `elevated_fusion_exception`, `modern_bridal_restraint`, `guest_vs_bridal_separation`, `anchor_visual_hierarchy`, `anchor_exact_match_avoidance`).
+
+### 28. Indian weave coherence — the textile-hierarchy layer.
+This was deferred to `pairing_rules.yaml` from earlier reviews (bodyframe, occasion, weather all flagged "fabric pairing intelligence" as a major content gap). Now landed as `indian_weave_compatibility` under `fabric_compatibility`. Captures: Banarasi silk + raw silk blouse compatible; Chanderi + tissue silk compatible; heavy brocade + distressed denim incompatible; multiple competing heritage weaves incompatible. Indian users perceive weave coherence even when they cannot verbally articulate it — composer should treat heritage weaves (Banarasi, Kanjeevaram, Chanderi, Patola, Ajrakh, Phulkari, chikankari) as anchors that drive the rest of the outfit's textile register.
+
+### 29. Metallics function as pseudo-neutrals in Indianwear.
+Gold zari, antique gold embroidery, champagne metallics, oxidized silver, bronze often function as pseudo-neutrals in Indian festivewear. Treating them as dominant competing colors causes false-negative outfit rejection. Captured as `metallic_neutral_exception` under `color_story` + new `jewel_plus_metallic` color harmony type.
+
+### 30. Fusion styling requires hierarchy.
+Indo-Western styling succeeds only when one side acts as anchor and the other acts as restraint. The most common AI-styling failure mode is "double-dominant fusion" where both Indian and Western elements aggressively compete. Captured as `elevated_fusion_exception` under `cultural_coherence`.
+
+### 31. Coord-set balancing — interruption is mandatory.
+Indian urban consumers increasingly wear monochrome or matching coord sets, but successful execution requires interruption: texture variation, layering, contrasting footwear, jewellery hierarchy, makeup/hair contrast, structured bag/shoe anchor. Otherwise coord outfits read sleepwear-like. Captured as `co_ord_balance` under `silhouette_balance`.
+
+### 32. Bridal intensity calibration — both maximal and restrained.
+Modern Indian bridalwear is no longer universally maximalist. Bengaluru / destination / luxury-minimal / daytime weddings increasingly use lighter dupattas, restrained jewellery, monochrome ivory palettes, matte embroidery, cleaner silhouettes. The system must support both maximal ceremonial styling AND restrained luxury bridal styling without forcing either aesthetic universally. Captured as `modern_bridal_restraint` + `guest_vs_bridal_separation` under `bridal_specific`.
+
+### 33. Statement distribution — coordinated medium beats restricted single.
+The previous "one statement item only" logic was too rigid for Indian occasionwear. Coordinated medium-intensity embellishment across blouse / border / dupatta / jewellery can work beautifully if color family is unified, silhouette is controlled, and embellishment density is balanced. The actual issue is uncontrolled competing focal points, not multiple decorative zones themselves. Captured as `distributed_statement_exception` under `scale_balance`.
+
+---
+
+**Stylist review complete.** All 8 style-graph YAML files reviewed across 7 deliverables. The full set of cross-cutting decisions (#1-33) and engineering-flagged items now drives the batch-execute plan in `docs/OPEN_TASKS.md` "Stylist YAML review — aggregated downstream work."
+
+---
+
 ## Rare-value category cleanup recommendations
 
 These are catalog / schema decisions that need engineering action — not YAML edits the stylist can make in place.
