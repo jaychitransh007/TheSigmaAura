@@ -49,8 +49,12 @@ class BatchBuilderTests(unittest.TestCase):
             "images__0__src": "https://cdn.shopify.com/1.jpg?width=100",
             "images__1__src": "https://cdn.shopify.com/2.jpg",
         }
+        # Default model is gemini-2.5-flash post-migration (May 2026).
+        # The legacy OpenAI batch path (this builder) still respects whatever
+        # the config carries, so we verify the wire-up rather than pin a
+        # specific model name. New runs use ``gemini_runner.py``.
         body = build_request_body(row=row, config=PipelineConfig())
-        self.assertEqual("gpt-5-mini", body["model"])
+        self.assertEqual(PipelineConfig().model, body["model"])
         content = body["input"][1]["content"]
         image_urls = [item["image_url"] for item in content if item.get("type") == "input_image"]
         self.assertEqual(2, len(image_urls))
