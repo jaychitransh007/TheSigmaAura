@@ -38,7 +38,7 @@ weather:
       ColorValue:          [light, mid]
     avoid:
       FabricWeight:        [medium, heavy]
-      FabricTexture:       [embroidered, metallic, ribbed]
+      FabricTexture:       [embroidered, metallic, ribbed, sheen]   # sheen performs poorly in sweat-heavy climates
       FabricDrape:         [rigid, sculpted, crisp]
       SkinExposureLevel:   [very_low]
       SleeveLength:        [full]
@@ -180,7 +180,7 @@ weather:
       FabricTexture:       [smooth, matte]                   # water-shedding
       FabricDrape:         [fluid]
       SkinExposureLevel:   [medium, high]
-      SleeveLength:        [sleeveless, cap, short]
+      SleeveLength:        [sleeveless, cap, short, elbow]   # elbow allowed for splash protection / office modesty / AC transition
       ColorValue:          [mid, dark, very_dark]             # water spots invisible
       FitType:             [regular, relaxed]                 # quick-drying preferred
     avoid:
@@ -189,7 +189,7 @@ weather:
       FabricDrape:         [rigid, sculpted, crisp]
       ColorValue:          [very_light]                       # transparent when wet, water marks
       SkinExposureLevel:   [very_low]                          # sticks to skin when wet
-      SleeveLength:        [elbow, three_quarter, full]        # heavy when wet
+      SleeveLength:        [three_quarter, full]               # heavy when wet
       FitType:             [tailored, slim]                    # cling when wet
     notes: >
       Synthetic blends counter-intuitively work well — they shed water
@@ -208,7 +208,7 @@ weather:
       FabricDrape:         [fluid, soft_structured]
       SkinExposureLevel:   [low, medium]
       SleeveLength:        [elbow, three_quarter]
-      FitType:             [regular, slim]
+      FitType:             [regular, slim, relaxed]           # Bangalore/Pune monsoon supports oversized shirts, relaxed kurtis, loose chinos
       ColorValue:          [mid, dark]                       # water-mark hiding
     avoid:
       FabricTexture:       [embroidered, metallic, sheen]
