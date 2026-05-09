@@ -24,6 +24,7 @@ for p in (
     if sp not in sys.path:
         sys.path.insert(0, sp)
 
+from agentic_application.composition import styling_decisions
 from agentic_application.composition.styling_decisions import (
     BRIDAL_ROLE_VALUES,
     DUPATTA_DRAPE_VALUES,
@@ -33,6 +34,7 @@ from agentic_application.composition.styling_decisions import (
     derive_dupatta_drape,
     derive_movement_security,
     derive_support_requirement,
+    get_navratri_color,
     is_bridal_role_occasion,
     lookup_bridal_priority_rules,
     recommend_layering_structures,
@@ -383,6 +385,53 @@ class BridalRoleTests(unittest.TestCase):
             set(BRIDAL_ROLE_VALUES),
             {"bride", "groom", "guest", "attendee"},
         )
+
+
+class NavratriColorTests(unittest.TestCase):
+    def setUp(self):
+        # Reset the module-level cache so each test loads fresh.
+        styling_decisions._reset_navratri_colors_cache()
+
+    def test_day_1_returns_yellow_for_2026(self):
+        # 2026 placeholder sequence in
+        # knowledge/runtime_config/navratri_colors.yaml starts with yellow.
+        # If the team replaces with authoritative data, this test will
+        # need to update — that's intentional, it forces a re-check.
+        self.assertEqual(get_navratri_color(2026, 1), "yellow")
+
+    def test_day_9_returns_purple_for_2026(self):
+        self.assertEqual(get_navratri_color(2026, 9), "purple")
+
+    def test_day_5_returns_white_for_2026(self):
+        self.assertEqual(get_navratri_color(2026, 5), "white")
+
+    def test_day_index_below_1_returns_none(self):
+        self.assertIsNone(get_navratri_color(2026, 0))
+        self.assertIsNone(get_navratri_color(2026, -1))
+
+    def test_day_index_above_9_returns_none(self):
+        self.assertIsNone(get_navratri_color(2026, 10))
+        self.assertIsNone(get_navratri_color(2026, 100))
+
+    def test_unconfigured_year_returns_none(self):
+        # 2030 isn't in the config yet — caller should fall back to
+        # the user's SubSeason palette anchors.
+        self.assertIsNone(get_navratri_color(2030, 1))
+
+    def test_year_returns_consistent_sequence(self):
+        # Pulling the same (year, day) twice returns the same color —
+        # the module-level cache shouldn't mutate the value.
+        first = get_navratri_color(2026, 3)
+        second = get_navratri_color(2026, 3)
+        self.assertEqual(first, second)
+        self.assertEqual(first, "gray")
+
+    def test_all_2026_days_return_strings(self):
+        # Every day 1-9 of 2026 should resolve to a non-empty string.
+        for day in range(1, 10):
+            color = get_navratri_color(2026, day)
+            self.assertIsNotNone(color, f"Day {day} returned None")
+            self.assertTrue(color, f"Day {day} returned empty string")
 
 
 if __name__ == "__main__":
