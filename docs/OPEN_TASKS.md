@@ -347,6 +347,35 @@ Bundled bug fix: engine's `seasonal_color_group` lookup now tries both `palette.
 
 ---
 
+## Engine acceptance recovery (May 9, 2026 RCA)
+
+**Status:** queued · **Cost:** small · **Risk:** low / medium
+
+RCA on May 9, 2026 surfaced that engine acceptance is far below the ≥80% architect / ≥70% composer targets:
+
+| Engine | 14-day rate | 3-day rate |
+|---|---:|---:|
+| Architect | 22 / 97 = 22.7% | 22 / 56 = 39.3% |
+| Composer | 2 / 70 = 2.9% | 2 / 50 = 4.0% |
+
+Cross-tab: on 24 turns where the **architect engine accepted**, the composer engine fired **0 times**. The two routers' gating is misaligned. Three items, in this order:
+
+### EAR-1 Composer router persistence to `tool_traces`
+
+The architect router writes `composition_router_decision` rows ([orchestrator.py:5944-5976](modules/agentic_application/src/agentic_application/orchestrator.py:5944-5976), PR #207). The composer router only emits Prometheus + `_log.info` ([orchestrator.py:6605-6630](modules/agentic_application/src/agentic_application/orchestrator.py:6605-6630)) — no DB row. Result: zero database visibility into composer fall-through reasons (`yaml_gap`, `low_picks`, `pool_too_sparse`, `low_confidence`, eligibility gates). Mirror the architect persistence block for the composer. ~30 LOC, no behavior change. **Unblocks every other composer-engine RCA.**
+
+### EAR-2 Add `risk_tolerance:expressive` to YAML canonical values
+
+Across all yaml_gap fall-throughs, `risk_tolerance` is the leading missing axis (10 of 21 axis-mentions). The specific value that keeps firing is `expressive` — planner emits it; canonicalize doesn't have a key for it. One YAML entry (or alias to an existing key) plus regenerate `composition/canonical_embeddings.json` via `ops/scripts/build_canonical_embeddings.py`. No behavior change beyond closing the gap.
+
+### EAR-3 Soften composer hard `yaml_gap` fall-through to confidence penalty
+
+[composer_engine.py:654-656](modules/agentic_application/src/agentic_application/composition/composer_engine.py:654-656) sets `fallback_reason = "yaml_gap"` unconditionally if any gap exists — short-circuiting the confidence path. The architect router doesn't behave that way (it scores then decides). Lift the hard gate so the existing `PENALTY_YAML_GAP = 0.45` + `CONFIDENCE_THRESHOLD = 0.50` machinery decides. This is the only behavioural change and the real lever for moving composer engine acceptance off 4%. Risk medium — gates that previously short-circuited will now produce engine plans on borderline turns. Validate with a side-by-side staging eval before flipping.
+
+**Trigger:** ship-now. EAR-1 unblocks visibility, EAR-2 is content, EAR-3 is the lever.
+
+---
+
 ## Phase 5 — Composition engine for composer (P1, Weeks 8-10)
 
 **Goal:** replace `OutfitComposer.compose()` (gpt-5.2, ~12-14s, $0.036/turn — second-largest LLM line post-4.7) with deterministic tuple scoring against `pairing_rules.yaml`. Engine emits up to 6 outfits in the existing `ComposerResult` shape; rater contract unchanged. Spec mirrors Phase 4.7's pattern (composition_semantics.md → composer_semantics.md, pure-function engine, hot-path router with eligibility + acceptance gates, `AURA_COMPOSER_ENGINE_ENABLED` boolean flag, LLM kept as permanent fallback).
