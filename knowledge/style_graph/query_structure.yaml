@@ -59,13 +59,17 @@ query_structure:
 
     daily_office_startup:
       default_structure: paired
-      alternative_structures: []
+      alternative_structures: [complete]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear]
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
       avoid:
-        StylingCompleteness: [complete]
-      notes: Casual-paired only. Tee + jeans, kurti + jeans, structured
-        shirt + chino. No kurta_set / saree register here.
+        StylingCompleteness: [dual_dependency]
+      notes: >
+        Startup dressing in urban India is relaxed but increasingly
+        style-aware. Tee + jeans, oversized shirt + trouser, kurti +
+        denim, elevated co-ord sets, jumpsuits, and minimalist dresses
+        all work. Avoid highly formal suiting or ceremonial complete
+        silhouettes.
 
     formal_office:
       default_structure: three_piece
@@ -138,12 +142,15 @@ query_structure:
 
     coffee_meetup:
       default_structure: paired
-      alternative_structures: []
+      alternative_structures: [complete]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear]
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
       avoid:
-        StylingCompleteness: [complete]                 # too formal
-      notes: Most relaxed — paired only.
+        StylingCompleteness: [dual_dependency]
+      notes: >
+        Relaxed urban casual. Denim + shirt, kurti + jeans, casual
+        dress, jumpsuit, or soft co-ord sets work. Avoid heavily
+        ceremonial or sharply formal layering.
 
     everyday_casual:
       default_structure: paired
@@ -155,12 +162,16 @@ query_structure:
 
     travel_day:
       default_structure: paired
-      alternative_structures: []
+      alternative_structures: [complete]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear]
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
       avoid:
-        StylingCompleteness: [complete]                 # saree on a flight is impractical
-      notes: Stretch, comfort, layered. Paired top + bottom.
+        StylingCompleteness: [dual_dependency]
+      notes: >
+        Comfort-first dressing with movement and climate adaptability.
+        Stretch trousers, oversized shirts, knit sets, athleisure
+        co-ords, breathable jumpsuits, and wrinkle-resistant layers
+        work best. Avoid ceremonial or maintenance-heavy garments.
 
 
     # ── Night Out ──────────────────────────────────────────────────────
@@ -177,12 +188,14 @@ query_structure:
 
     rooftop_bar:
       default_structure: paired
-      alternative_structures: [complete]
+      alternative_structures: [complete, three_piece]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete, needs_innerwear]
       avoid: {}
-      notes: Skirt + structured top, fitted dress (complete), tailored
-        jumpsuit (complete).
+      notes: >
+        Fashion-forward evening dressing. Structured separates, dresses,
+        jumpsuits, light layering, statement jackets, and Indo-Western
+        silhouettes all work depending on venue energy.
 
     dinner_party:
       default_structure: paired
@@ -207,14 +220,15 @@ query_structure:
 
     gala_dinner:
       default_structure: complete
-      alternative_structures: [three_piece]
+      alternative_structures: [three_piece, paired]
       flatters:
-        StylingCompleteness: [complete, dual_dependency, needs_innerwear]
-      avoid:
-        StylingCompleteness: [needs_topwear, needs_bottomwear]   # base layers alone insufficient
-      notes: Gown (complete), heavily embellished saree (complete),
-        designer lehenga (complete), full sherwani (complete or
-        three_piece with statement bandi).
+        StylingCompleteness: [complete, dual_dependency, needs_innerwear, needs_topwear, needs_bottomwear]
+      avoid: {}
+      notes: >
+        High-formality statement dressing. Gowns, embellished sarees,
+        couture lehengas, tuxedos, bandhgalas, elevated separates, and
+        fashion-forward Indo-Western layering all work when execution
+        feels intentional and luxurious.
 
     award_ceremony:
       default_structure: complete
@@ -257,14 +271,18 @@ query_structure:
 
     navratri:
       default_structure: complete
-      alternative_structures: []
+      alternative_structures: [three_piece]
+      cultural_variants:
+        indian_traditional: complete
+        indian_fusion: three_piece
       flatters:
-        StylingCompleteness: [complete]
-      avoid:
-        StylingCompleteness: [needs_topwear, needs_bottomwear]
-      notes: Mirror-work chaniya choli (lehenga_set), traditional
-        chiffon saree, full anarkali. Garba dance requires complete-set
-        outfits with movement.
+        StylingCompleteness: [complete, dual_dependency, needs_topwear, needs_bottomwear, needs_innerwear]
+      avoid: {}
+      notes: >
+        Traditional mirror-work lehenga sets remain dominant, but urban
+        fusion dressing now includes jacket lehengas, crop-top + skirt +
+        cape combinations, and Indo-Western layering built for Garba
+        movement.
 
     holi:
       default_structure: paired
@@ -367,14 +385,15 @@ query_structure:
 
     mehndi:
       default_structure: complete
-      alternative_structures: []
+      alternative_structures: [three_piece]
       flatters:
-        StylingCompleteness: [complete]
-      avoid:
-        StylingCompleteness: [needs_topwear, needs_bottomwear]
-      notes: Mirror-work chaniya choli (lehenga_set), embellished
-        sharara, kurta-sharara set, lehenga in mehendi-green or mustard
-        — all complete.
+        StylingCompleteness: [complete, dual_dependency, needs_innerwear]
+      avoid: {}
+      notes: >
+        Mirror-work lehengas, sharara sets, draped skirts, cape sets,
+        jacket layering, and playful Indo-Western festive silhouettes
+        work well. Movement and visual energy matter more than strict
+        traditional purity.
 
     sangeet:
       default_structure: complete
@@ -434,12 +453,16 @@ query_structure:
 
     first_date:
       default_structure: paired
-      alternative_structures: [complete]
+      alternative_structures: [complete, three_piece]
       flatters:
-        StylingCompleteness: [needs_topwear, needs_bottomwear, complete]
-      avoid: {}
-      notes: Smart-casual paired — kurti + jeans, structured shirt +
-        chino. Fitted dress (complete) works too.
+        StylingCompleteness: [needs_topwear, needs_bottomwear, complete, needs_innerwear]
+      avoid:
+        StylingCompleteness: [dual_dependency]
+      notes: >
+        Smart-casual with personality. Structured denim, dresses,
+        lightweight layering, relaxed tailoring, and understated
+        Indo-Western styling all work. Aim for approachable polish
+        rather than over-formality.
 
     date_night:
       default_structure: paired
@@ -484,13 +507,17 @@ query_structure:
 
     in_laws_first_meeting:
       default_structure: complete
-      alternative_structures: [paired]
+      alternative_structures: [paired, three_piece]
       flatters:
-        StylingCompleteness: [complete, needs_topwear, needs_bottomwear]
-      avoid: {}
-      notes: Pastel anarkali (complete), simple silk saree (complete),
-        embroidered kurta + churidar (paired). Conservative — modest
-        coverage, light embroidery.
+        StylingCompleteness: [complete, needs_topwear, needs_bottomwear, needs_innerwear]
+      avoid:
+        StylingCompleteness: [dual_dependency]
+      notes: >
+        Conservative-polished dressing with modest silhouettes. Soft
+        sarees, pastel anarkalis, elegant kurta sets, refined
+        Indo-Western layering, and subtle embroidery work best. Urban
+        families increasingly accept refined Indo-Western layering if
+        styling remains respectful.
 
     kitty_party:
       default_structure: complete
@@ -565,18 +592,21 @@ query_structure:
 
     anchor_complete:
       default_structure: complete
-      alternative_structures: []
-      fills_slots: []                                     # nothing — already complete
+      alternative_structures: [three_piece]
+      fills_slots: [outerwear]
       flatters:
-        StylingCompleteness: [complete]
+        StylingCompleteness: [complete, needs_innerwear]
       avoid:
-        StylingCompleteness: [needs_topwear, needs_bottomwear, needs_innerwear, dual_dependency]
+        StylingCompleteness: [needs_topwear, needs_bottomwear]
       notes: >
         Anchor is itself complete (saree, kurta_set, lehenga_set, dress,
-        gown, jumpsuit, sherwani-as-set, anarkali, salwar_suit). Pairing
-        is accessory-level only — no garment slots to fill. Architect
-        should return accessory recommendations (jewellery, dupatta
-        replacement, footwear) instead of garments.
+        gown, jumpsuit, sherwani-as-set, anarkali, salwar_suit). Complete
+        anchors primarily require styling augmentation rather than
+        reconstruction — optional layering pieces such as jackets,
+        shrugs, capes, belts, or bandhgalas may be added when
+        aesthetically compatible. Architect can still emit accessory
+        recommendations (jewellery, dupatta replacement, footwear)
+        when no compatible outerwear exists.
 
 
   # ─────────────────────────────────────────────────────────────────────

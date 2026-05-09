@@ -112,8 +112,8 @@ Two ways to clean up:
 | [updated_occasion_yaml_review_with_stylist_notes.md](../knowledge/knowledge_v2/updated_occasion_yaml_review_with_stylist_notes.md) | ✅ | ⏳ HOLD — pending hard/soft yaml_loader + new attribute axes + bridal-role engine support | See dependency lists below |
 | [weather_yaml_review_and_updated_occasion_style_notes.md](../knowledge/knowledge_v2/weather_yaml_review_and_updated_occasion_style_notes.md) | ✅ | ✅ partial — 3 weather edits + 3 occasion edits using existing canonical applied | Schema decomposition (FabricTexture / SurfaceFinish / ConstructionDetail) + 5 new performance attribute axes deferred to batch |
 | [palette_yaml_stylist_review_and_style_notes.md](../knowledge/knowledge_v2/palette_yaml_stylist_review_and_style_notes.md) | ✅ | ✅ partial — black-handling cleanup, neutral luxury vocabulary additions, monochrome ColorCount, Deep Winter `stark white` removal, notes refreshes (Clear Spring jewel tones, Clear Winter monochrome, Deep Winter contrast styling) | Metallic decomposition (high_shine vs antique vs brushed) folds into the SurfaceFinish split queued from weather review |
+| [updated_query_structure_review_and_style_notes.md](../knowledge/knowledge_v2/updated_query_structure_review_and_style_notes.md) | ✅ | ✅ fully applied — 10 occasion mappings updated to allow modern Indo-Western `complete` retrieval; Navratri gets `cultural_variants` (traditional/fusion); `anchor_complete` now layerable | Future schema metadata (`style_energy`, `mobility_requirement`, `climate_sensitivity`) noted only — not urgent |
 | `pairing_rules_*` | — | — | — |
-| `query_structure_*` | — | — | — |
 
 ### Catalog enrichment queue (Type A — vision-extractable garment properties)
 

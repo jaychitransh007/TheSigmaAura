@@ -85,6 +85,27 @@ The system over-penalizes metallics for muted palettes. The actual issue is mirr
 
 ---
 
+## Cross-cutting styling decisions — `query_structure.yaml` (May 2026)
+
+Source: `knowledge/knowledge_v2/updated_query_structure_review_and_style_notes.md`. 10 in-place edits applied.
+
+### 22. Avoid over-banning `complete`.
+The previous mappings hard-banned `complete` from many occasions, which suppressed retrieval of dresses, jumpsuits, co-ord sets, shirt dresses, structured kurta sets, minimal sarees, and Indo-Western complete silhouettes — even in contexts where modern Indian users wear these regularly. Updated principle: prefer structures rather than hard-ban alternatives unless the outfit would be culturally or functionally implausible. Applied to daily_office_startup, coffee_meetup, travel_day, gala_dinner.
+
+### 23. Startup + urban casual is more fashion-forward than the prior mapping assumed.
+Bengaluru / Mumbai startup dressing now normalizes elevated casual complete silhouettes (co-ord sets, jumpsuits, minimalist dresses, smart overshirts). The previous `paired-only` framing for daily_office_startup, coffee_meetup, and travel_day under-represented this; updated to allow `complete` as alternative.
+
+### 24. Fusion wear is mainstream in modern festive occasions.
+Urban Indian users increasingly wear saree + blazer, corset + saree, kurta + trousers, draped skirts, jacket lehengas, crop-top + skirt + cape, and Indo-Western festive co-ords. Navratri and Mehndi mappings updated: traditional remains the cultural default register, but fusion is an explicitly accepted alternative structure. Navratri now carries `cultural_variants: indian_traditional → complete, indian_fusion → three_piece`.
+
+### 25. Modern styling layers over complete anchors.
+The `anchor_complete` mapping previously declared "no slots to fill — accessories only" for sarees, dresses, lehengas, jumpsuits. Modern styling regularly layers jackets, shrugs, capes, belts, or bandhgalas over these complete anchors. Updated to fill `outerwear` slot; alternative_structures includes `three_piece` for the layered case.
+
+### 26. Practicality should override tradition in functional contexts.
+Travel, Holi, coffee meetups, startup officewear, beachwear should prioritize movement, climate, comfort, repeat-wear, and maintenance reality — even if that means relaxing strict structure rules. Travel_day notes now call out wrinkle-resistant layers, athleisure co-ords, breathable jumpsuits, knit sets explicitly.
+
+---
+
 ## Rare-value category cleanup recommendations
 
 These are catalog / schema decisions that need engineering action — not YAML edits the stylist can make in place.
