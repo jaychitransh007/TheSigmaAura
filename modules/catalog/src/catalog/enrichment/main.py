@@ -106,14 +106,16 @@ def _estimate_request_input_tokens(row: Dict[str, str]) -> int:
     """Estimate input tokens a single batch-API request will consume.
 
     Includes the cached system-prompt cost, the per-row text blob
-    (description + store + url), and a fixed per-image cost for each
-    of up to 2 product images. We only count IMAGES that would
+    (description only — store and url were dropped 2026-05-09 to
+    reduce marketing-intent bias), and a fixed per-image cost for
+    each of up to 2 product images. We only count IMAGES that would
     actually be sent (i.e., non-empty URL fields).
+
+    Must mirror the text_blob shape in batch_builder.build_request_body
+    or chunking math drifts.
     """
     text_blob = (
         f"Description: {row.get('description', '')}\n"
-        f"Store: {row.get('store', '')}\n"
-        f"Product URL: {row.get('url', '')}\n"
         "You must use both images together when inferring every attribute."
     )
     image_count = 0
