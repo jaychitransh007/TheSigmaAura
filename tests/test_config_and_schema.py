@@ -33,10 +33,25 @@ from catalog.enrichment.schema_builder import build_schema
 class ConfigAndSchemaTests(unittest.TestCase):
     def test_garment_config_counts_match_context_contract(self) -> None:
         enums, texts = load_garment_attributes()
-        self.assertEqual(44, len(enums))
+        # 44 prior enum axes + 12 added in Step 2a (May 2026 stylist
+        # downstream batch): ShoulderExposure, SleeveVolume, BlouseLength,
+        # BorderContrast, FabricTransparency, SurfaceFinish,
+        # LayeringVisibility, BreathabilityLevel, DryTime, WaterResistance,
+        # ThermalInsulation, WrinkleResistance.
+        self.assertEqual(56, len(enums))
         self.assertEqual(2, len(texts))
         self.assertIn("PrimaryColor", texts)
         self.assertIn("SecondaryColor", texts)
+        # Spot-check the Step 2a additions to catch accidental renames
+        # or removals — the migration in 20260515000000_catalog_enriched_v3_axes.sql
+        # ships ALTER TABLE statements that reference these exact names.
+        for new_axis in (
+            "ShoulderExposure", "SleeveVolume", "BlouseLength",
+            "BorderContrast", "FabricTransparency", "SurfaceFinish",
+            "LayeringVisibility", "BreathabilityLevel", "DryTime",
+            "WaterResistance", "ThermalInsulation", "WrinkleResistance",
+        ):
+            self.assertIn(new_axis, enums, f"Step-2a axis {new_axis!r} missing")
 
     def test_attributes_module_is_config_backed(self) -> None:
         enums, texts = load_garment_attributes()
