@@ -300,6 +300,48 @@ CLI flag: `--max-batch-input-tokens N` (default = `PipelineConfig.max_batch_inpu
 
 For Step 2b on the 14,296-row catalog: total estimated input ~50M tokens. Default 1.5M-token cap → ~33 batch chunks, each well under both file and TPM ceilings. Tune `max_batch_input_tokens` upward if the org's TPM tier permits.
 
+### Prompt-engineering pass (2026-05-09 architectural review)
+
+External review surfaced two classes of recommendation:
+
+**Shipped — prompt-only, no architectural cost** (lives in `modules/catalog/src/catalog/enrichment/prompts/system_prompt.txt`):
+- **Independence rule** — each attribute axis is independent unless explicitly linked; resists the model's tendency to produce a globally coherent narrative at the cost of localized accuracy.
+- **Globalized applicability rule** — if an axis isn't visually applicable to the garment category, return null with confidence ≤ 0.2. Replaces per-axis "return null when..." duplication.
+- **Visibility-quality confidence rule** — confidence reflects both certainty AND visibility quality. Plausible inferences from partial views land at 0.4-0.6, not 0.8+.
+- **Ambiguity rule** — when two values are equally plausible and visual evidence is insufficient, return null with low confidence rather than forcing a deterministic choice. Replaces enum-order tie-breaking which biases the catalog distribution systematically.
+- **Semantic-attribute construction-over-marketing rule** — `OccasionFit` / `OccasionSignal` / `FormalityLevel` / `FormalitySignalStrength` / `TimeOfDay` should be inferred from garment construction, not stereotyped categories (sequins ≠ automatically party, kurta ≠ automatically traditional).
+- **MotionBehavior confidence cap** at 0.75 — inferring motion from a static image is one of the least reliable vision tasks. Cap unless construction is unambiguously dance-coded.
+
+**Deferred — staged extraction architecture (Phase 2 ontology surgery item):**
+
+The single highest-ROI improvement per the review is splitting extraction into **4 sequential stages**:
+
+| Stage | Axes | Why |
+|---|---|---|
+| 1 — Structural Identity | GarmentCategory, GarmentSubtype, GarmentLength, StylingCompleteness, GenderExpression | Stabilises ontology routing; cheap |
+| 2 — Shape + Construction | Silhouette*, Fit*, WaistDefinition, HipDefinition, ShoulderStructure, Sleeve*, Neckline*, VolumePlacement, AsymmetryType, AttachmentStructure | Geometry from images |
+| 3 — Surface + Material | Fabric*, Pattern*, Embellishment*, SurfaceFinish, BorderContrast | Material reading |
+| 4 — Styling / Semantic | Occasion*, Formality*, MotionBehavior, VisualWeight*, StructuralFocus | Most interpretive — runs LAST so structural axes are locked first |
+
+Each stage receives ONLY its relevant ontology slice (not the full schema). Attribute axes don't contaminate each other across stages. JSON validity improves at smaller per-call schemas.
+
+**Cost trade-off** at 14,296 rows × OpenAI Batch:
+- Single-pass (current): ~$20.
+- 4-stage extraction: ~$50-55 (~2.5× — each stage has a smaller prompt + fewer axes, so per-call cost is lower than a single-pass call; net ~2.5× rather than 4×).
+
+**Engineering scope** if adopted:
+- 4 per-stage system prompts (or one prompt with stage-conditional sections).
+- 4 per-stage `response_schema` builders (slice the canonical attribute registry by stage).
+- `batch_builder.py` builds 4 batch files per row.
+- `merge_writer.py` merges results per row across the 4 stages.
+- Partial-failure handling (what if stage 2 succeeds but stage 4 fails?).
+- New per-stage CLI mode + tests.
+- Estimated: ~2-3 days engineering + ~1 day QA.
+
+**Trigger for adoption:** Phase 4.6 eval-set delivery + a head-to-head comparison on the eval set (current single-pass vs 4-stage). The cost increase is justified only if the consistency / accuracy improvement is empirically meaningful.
+
+**Until then:** the current single-pass path with the prompt-engineering improvements above is the production configuration for Step 2b.
+
 ---
 ---
 
