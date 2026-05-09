@@ -20,11 +20,13 @@ primary_archetype:
 
   classic:
     flatters:
-      PatternType:           [solid, stripes_vertical, checks, geometric]
+      # Classic Indian dressers regularly wear restrained heritage motifs.
+      PatternType:           [solid, stripes_vertical, checks, geometric, ethnic]
       PatternScale:          [micro, small]
       EmbellishmentLevel:    [none, minimal, subtle]
       EmbellishmentType:     [none, embroidery]
-      FabricTexture:         [smooth, sheen, pleated]
+      # Shift from overt sheen toward restrained silk luster / matte polish.
+      FabricTexture:         [smooth, matte, low_luster, pleated]
       FabricDrape:           [crisp, soft_structured]
       ConstructionDetail:    [pleated, none]
       EdgeSharpness:         [defined, sharp]
@@ -34,7 +36,7 @@ primary_archetype:
       LineDirection:         [vertical, minimal]
       StructuralFocus:       [neckline, waist]
     avoid:
-      PatternType:           [animal, abstract, ethnic]
+      PatternType:           [animal, abstract]
       PatternScale:          [oversized, mixed]
       EmbellishmentLevel:    [statement]
       EmbellishmentType:     [distressing, studs, mirror_work, sequins]
@@ -47,18 +49,21 @@ primary_archetype:
       Western context: tailored sheath dress, cigarette pant + crisp shirt,
       structured blazer. Indian: well-tailored kurta + churidar in muted
       jewel tones, classic banarasi silk saree (for ceremonies), bandhgala
-      with subtle thread embroidery, structured A-line anarkali. The
-      classic archetype favours timelessness over trend — heavy zardozi
-      reserved for bridal contexts only; daily wear leans clean and
-      defined. For male grooms: ivory bandhgala or off-white sherwani
-      with subtle pearl detailing, never sequinned.
+      with subtle thread embroidery, structured A-line anarkali. Restrained
+      ethnic motifs (paisley, buti, woven temple borders, subtle ajrakh)
+      work well when kept refined and low-contrast. The classic archetype
+      favours timelessness over trend — heavy zardozi reserved for bridal
+      contexts only; daily wear leans clean and defined. For male grooms:
+      ivory bandhgala or off-white sherwani with subtle pearl detailing,
+      never sequinned.
 
   minimalist:
     flatters:
       PatternType:           [solid]
       PatternScale:          [micro]
       EmbellishmentLevel:    [none, minimal]
-      EmbellishmentType:     [none]
+      # Indian luxury minimalism often relies on tonal craftsmanship.
+      EmbellishmentType:     [none, tonal_embroidery, self_texture, chikankari, kantha]
       FabricTexture:         [smooth, matte, pleated]
       FabricDrape:           [soft_structured, crisp, fluid]
       ConstructionDetail:    [none, draped, pleated]
@@ -71,7 +76,7 @@ primary_archetype:
     avoid:
       PatternType:           [floral, animal, abstract, ethnic, motif]
       EmbellishmentLevel:    [moderate, heavy, statement]
-      EmbellishmentType:     [print, embroidery, beading, sequins, lace, applique, mirror_work, distressing, mixed]
+      EmbellishmentType:     [print, beading, sequins, lace, applique, mirror_work, distressing, mixed]
       FabricTexture:         [metallic, embroidered, textured]
       ConstructionDetail:    [ruched, gathered, smocked, asymmetric_hem]
       ColorCount:            [multi_color]
@@ -80,12 +85,12 @@ primary_archetype:
     notes: >
       Western: solid colour-blocked shift, plain knit + tailored trouser,
       structured tote. Indian: solid Mysore silk or Chanderi saree with
-      plain blouse, plain handloom kurta with no embroidery, bandhi over
-      solid kurta, plain dupatta. The minimalist archetype is the
+      tonal blouse, plain handloom kurta with tonal threadwork, refined
+      chikankari, self-weave textures, understated kantha edging, bandhi
+      over solid kurta, plain dupatta. The minimalist archetype is the
       hardest to pull off in Indian urban contexts because cultural
       expectations push toward embellishment — minimalists deliberately
-      under-decorate even at festive occasions (a single solid silk
-      kurta at sangeet, no zardozi).
+      under-decorate even at festive occasions.
 
   modern_professional:
     flatters:
@@ -97,8 +102,8 @@ primary_archetype:
       FabricDrape:           [crisp, soft_structured]
       ConstructionDetail:    [pleated, none]
       EdgeSharpness:         [defined, sharp]
-      SilhouetteType:        [fitted, straight]
-      FitType:               [tailored, slim]
+      SilhouetteType:        [fitted, straight, relaxed_tailored]
+      FitType:               [tailored, slim, regular]
       ColorSaturation:       [muted, medium]
       LineDirection:         [vertical, minimal]
       FormalityLevel:        [smart_casual, formal]
@@ -114,9 +119,11 @@ primary_archetype:
       Tightest archetype for the workplace. Western: pencil skirt + shell
       top + structured blazer; well-cut suit. Indian urban: cigarette pant
       + tucked silk shirt + bandi, structured cotton kurta + slim trouser,
-      a saree (in cotton or fine silk) with crisp pleated blouse. Even
-      for client dinners, lean toward tailored bandhgala over sequinned
-      sherwani.
+      a saree (in cotton or fine silk) with crisp pleated blouse. Bengaluru
+      and Hyderabad startup ecosystems increasingly lean toward relaxed-
+      tailored silhouettes, quiet luxury fabrics, softer layering, premium
+      co-ords, and clean oversized outerwear rather than rigid corporate
+      suiting.
 
   romantic:
     flatters:
@@ -124,7 +131,7 @@ primary_archetype:
       PatternScale:          [small, medium]
       EmbellishmentLevel:    [subtle, moderate]
       EmbellishmentType:     [embroidery, lace, applique, beading]
-      FabricTexture:         [smooth, sheen, embroidered]
+      FabricTexture:         [smooth, sheen, embroidered, sheer]
       FabricDrape:           [fluid, soft_structured]
       ConstructionDetail:    [ruched, gathered, draped, pleated]
       EdgeSharpness:         [soft]
@@ -147,8 +154,8 @@ primary_archetype:
       lace cami. Indian urban: chikankari kurti (white/pastel) — the
       definitive romantic Indian piece, gota patti work on dupatta,
       pastel anarkali with delicate floral embroidery, soft Mysore-silk
-      saree with hand-embroidered border. Lucknow chikan, Phulkari soft
-      tones, soft hand-block print Bagh saree.
+      saree with hand-embroidered border, organza layering, tissue-silk
+      softness, translucent sleeves, and net overlays.
 
   glamorous:
     flatters:
@@ -201,7 +208,8 @@ primary_archetype:
       PatternType:           [floral]
       PatternScale:          [micro, small]
       EmbellishmentLevel:    [none, minimal]
-      FabricDrape:           [fluid]
+      # Fluid drapes can work when sculptural or directional.
+      FabricDrape:           []
       EdgeSharpness:         [soft]
       ConstructionDetail:    [ruched, gathered, smocked]
       SilhouetteType:        [relaxed]
@@ -210,8 +218,9 @@ primary_archetype:
       drape gown. Indian urban: sculpted asymmetric drape saree (Tarun
       Tahiliani, Anamika Khanna style), structural lehenga choli with
       cape, bandhgala with sharp shoulder construction. Statement
-      monochrome embroidery (silver on black, gold on burgundy). Avoid
-      anything ruched or gathered — too soft for the dramatic archetype.
+      monochrome embroidery (silver on black, gold on burgundy). Fluid
+      drapes are acceptable when directional, sculptural, or architecturally
+      styled rather than soft and romantic.
 
   creative:
     flatters:
@@ -220,9 +229,9 @@ primary_archetype:
       EmbellishmentLevel:    [moderate, heavy]
       EmbellishmentType:     [applique, embroidery, mirror_work, mixed, print]
       FabricTexture:         [textured, embroidered, knit]
-      ConstructionDetail:    [asymmetric_hem, draped, gathered]
+      ConstructionDetail:    [asymmetric_hem, draped, gathered, deconstructed]
       EdgeSharpness:         [defined, sharp]
-      SilhouetteType:        [relaxed, a_line, oversized]
+      SilhouetteType:        [relaxed, a_line, oversized, layered]
       FitType:               [regular, relaxed]
       ColorCount:            [two_color, multi_color]
       ColorSaturation:       [medium, high]
@@ -235,12 +244,13 @@ primary_archetype:
       FabricTexture:         [smooth, sheen]
     notes: >
       Western: print-mixing midi dress, eclectic statement jewellery,
-      mixed-medium handbag. Indian urban (where creative thrives):
-      handloom Kalamkari saree with block-print blouse, Patola weave,
-      Ikat kurta, kantha-embroidery jacket over plain kurta, fusion
-      pieces (kurta + jeans + jacket), Bandhani saree with mirror-work
-      border. Patchwork lehenga, mismatched dupatta. Loud and confident
-      culturally rooted print-mixing is the signature.
+      mixed-medium handbag, deconstructed tailoring, Japanese-inspired
+      layering, gender-fluid styling, indie monochrome, art-school
+      silhouettes. Indian urban: handloom Kalamkari saree with block-print
+      blouse, Patola weave, Ikat kurta, kantha-embroidery jacket over plain
+      kurta, fusion pieces (kurta + jeans + jacket), layered co-ords,
+      asymmetrical drapes, and experimental tailoring. Creative is broader
+      than craft-maximalism alone.
 
   natural:
     flatters:
@@ -248,7 +258,7 @@ primary_archetype:
       PatternScale:          [micro, small]
       EmbellishmentLevel:    [none, minimal, subtle]
       EmbellishmentType:     [none, embroidery]
-      FabricTexture:         [textured, knit, matte]
+      FabricTexture:         [textured, knit, matte, slub]
       FabricDrape:           [fluid, soft_structured]
       FabricWeight:          [light, medium]
       ConstructionDetail:    [none, draped]
@@ -276,13 +286,13 @@ primary_archetype:
 
   sporty:
     flatters:
-      PatternType:           [solid, abstract]
+      PatternType:           [solid, abstract, ethnic]
       PatternScale:          [micro, small, medium]
       EmbellishmentLevel:    [none, minimal]
       EmbellishmentType:     [none, print]
-      FabricTexture:         [smooth, ribbed, knit, matte]
+      FabricTexture:         [smooth, ribbed, knit, matte, performance]
       FabricDrape:           [soft_structured, crisp]
-      ConstructionDetail:    [none, pleated]
+      ConstructionDetail:    [none, pleated, utility]
       EdgeSharpness:         [soft, defined]
       SilhouetteType:        [relaxed, straight, fitted, a_line]
       FitType:               [regular, slim, relaxed]
@@ -290,7 +300,7 @@ primary_archetype:
       ColorSaturation:       [medium, high]
       ColorCount:            [single, tonal, two_color]
     avoid:
-      PatternType:           [floral, ethnic, motif]
+      PatternType:           [floral]
       EmbellishmentLevel:    [moderate, heavy, statement]
       EmbellishmentType:     [embroidery, beading, sequins, lace, applique, mirror_work]
       FabricTexture:         [metallic, sheen, embroidered]
@@ -298,11 +308,13 @@ primary_archetype:
       SilhouetteType:        [mermaid, peplum]
       ColorSaturation:       [very_high]
     notes: >
-      Western: athleisure, performance knit, structured bomber, clean
-      sneaker. Indian urban: knit-fabric kurta + slim ankle trouser
-      (athleisure-fusion), structured sweatshirt + churidar, sneaker-
-      friendly fits. Sporty archetype rarely chooses traditional silks
-      or zardozi — fusion ethnic is the maximum, not full bridal-style.
+      Western: athleisure, performance knit, tenniscore separates,
+      technical outerwear, clean sneaker culture. Indian urban:
+      knit-fabric kurta + slim ankle trouser, sneaker-friendly ethnic
+      fusion, premium co-ords, airportwear layering, luxury athleisure,
+      monochrome activewear, sporty Indo-western silhouettes. Sporty users
+      may still wear restrained ethnic fusion, but avoid heavily ceremonial
+      styling.
 
   trend_forward:
     flatters:
@@ -311,9 +323,9 @@ primary_archetype:
       EmbellishmentLevel:    [moderate, heavy, statement]
       EmbellishmentType:     [sequins, mirror_work, mixed, applique, studs]
       FabricTexture:         [textured, sheen, metallic, embroidered]
-      ConstructionDetail:    [asymmetric_hem, ruched, draped]
+      ConstructionDetail:    [asymmetric_hem, ruched, draped, experimental]
       EdgeSharpness:         [sharp, defined]
-      SilhouetteType:        [oversized, mermaid, peplum]
+      SilhouetteType:        [oversized, mermaid, peplum, sculptural]
       FitType:               [tailored, slim]
       ColorSaturation:       [high, very_high]
       ColorCount:            [two_color, multi_color]
@@ -328,11 +340,11 @@ primary_archetype:
     notes: >
       Western: current-season designer pieces — whatever is on the
       fashion-week runway right now. Indian urban: experimental drape
-      saree (concept saree, pre-stitched), modern lehenga shapes
-      (Sabyasachi-Sabyasachi cape lehengas), fusion sherwani, designer
-      ethnic. Trend cycles fast — by definition this archetype's
-      specific values shift season to season. The constants: always
-      modern silhouette, always statement-level finish.
+      saree (concept saree, pre-stitched), modern lehenga shapes,
+      directional co-ords, volume experimentation, unusual layering,
+      proportion play, and silhouette novelty. Trend-forward today is
+      driven more by construction and styling experimentation than by
+      embellishment alone.
 
   bohemian:
     flatters:
@@ -363,8 +375,10 @@ primary_archetype:
       leather waist-tie. Indian urban: Bandhani saree with mirror-work
       border, Patola weave, Ikat kurta, kantha-embroidery jacket,
       embroidered Phulkari dupatta, oxidised jewellery, layered drape
-      saree (Bengali style). Bohemian and creative overlap heavily —
-      bohemian leans warmer in palette and softer in edge.
+      saree (Bengali style), Goa-luxury boho linen sets, artisanal resort
+      wear, relaxed crochet textures, and indie urban layering. Bohemian
+      and creative overlap heavily — bohemian leans warmer in palette,
+      softer in edge, and more relaxed in spirit.
 
   edgy:
     flatters:
@@ -384,7 +398,7 @@ primary_archetype:
     avoid:
       PatternType:           [floral]
       EmbellishmentType:     [lace, beading]
-      FabricTexture:         [knit, sheen]
+      FabricTexture:         [knit]
       FabricDrape:           [fluid]
       ConstructionDetail:    [ruched, gathered, smocked]
       EdgeSharpness:         [soft]
@@ -395,8 +409,9 @@ primary_archetype:
       blazer, distressed denim, statement boots. Indian urban:
       structural drape saree paired with leather jacket, oxblood/black
       bandhgala, asymmetric kurta with metal hardware, fusion sherwani
-      in deep charcoal/oxblood. Pulled-back hair, smoky makeup, high-
-      contrast pairing.
+      in deep charcoal/oxblood. Polished sheen from leather, coated
+      fabrics, satin contrast, or latex-inspired finishes works well;
+      avoid ornamental festive shine.
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -458,10 +473,11 @@ risk_tolerance:
       FitType:               [tailored, slim, regular, relaxed]
     avoid:
       EmbellishmentLevel:    [statement]                    # allowed only at ceremonial occasions
-      PatternScale:          [oversized]
     notes: >
       Default risk band. Trusts the archetype's own preferences without
-      strong over- or under-correction.
+      strong over- or under-correction. Oversized silhouettes are now
+      mainstream in Gen Z and urban millennial dressing, especially in
+      Bengaluru, Mumbai, and creator-heavy ecosystems.
 
   adventurous:
     flatters:
@@ -631,7 +647,7 @@ age_band:
       FitType:               [tailored, slim, regular]
       FormalityLevel:        [smart_casual, semi_formal, formal, ceremonial]
     avoid:
-      EmbellishmentType:     [distressing]
+      EmbellishmentType:     []
     notes: Polish increases — distressed denim and very-oversized
       silhouettes start to read juvenile. Tailored cuts dominate.
 
@@ -643,12 +659,14 @@ age_band:
       FabricTexture:         [smooth, sheen, embroidered, pleated]
       EdgeSharpness:         [defined, sharp]
     avoid:
-      EmbellishmentType:     [distressing, studs]
-      FitType:               [boxy]
-      FabricTexture:         [ribbed]
+      EmbellishmentType:     []
+      FitType:               []
+      FabricTexture:         []
     notes: Mature polish. Investment-grade silks, structured cuts,
-      higher embellishment level signals "I have arrived" in Indian
-      urban contexts.
+      intentional styling, and confidence in personal aesthetic become
+      more common — but oversized tailoring, relaxed silhouettes,
+      experimental styling, and streetwear-inspired proportions remain
+      fully viable in Indian urban fashion.
 
 
 profession:
@@ -716,6 +734,62 @@ profession:
     notes: Daily wear at home leans casual-to-smart-casual; festive
       and family events skew strongly ceremonial. Investment in
       banarasi / kanjeevaram silks is common.
+
+  tech_startup:
+    flatters:
+      FormalityLevel:        [casual, smart_casual, semi_formal]
+      FitType:               [regular, relaxed, tailored]
+      SilhouetteType:        [straight, relaxed_tailored, oversized]
+      FabricTexture:         [smooth, matte, knit, textured]
+      EmbellishmentLevel:    [none, minimal, subtle]
+    avoid:
+      FormalityLevel:        [ceremonial]
+    notes: Bengaluru-style startup dressing prioritises clean comfort,
+      premium basics, quiet luxury, technical fabrics, relaxed tailoring,
+      sneaker compatibility, and understated polish.
+
+  luxury_fashion:
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal, formal]
+      EmbellishmentLevel:    [subtle, moderate, statement]
+      ConstructionDetail:    [asymmetric_hem, draped, experimental]
+      SilhouetteType:        [fitted, oversized, sculptural]
+    avoid: {}
+    notes: Fashion, luxury retail, PR, styling, and editorial ecosystems
+      permit directional silhouettes, statement styling, and trend-forward
+      experimentation even during daytime.
+
+  healthcare:
+    flatters:
+      FormalityLevel:        [casual, smart_casual]
+      FitType:               [regular, relaxed]
+      FabricTexture:         [smooth, knit, matte]
+      EmbellishmentLevel:    [none, minimal]
+    avoid:
+      EmbellishmentLevel:    [heavy, statement]
+    notes: Practicality, movement, hygiene, breathable fabrics, and low-
+      maintenance styling dominate. Visual polish should remain understated.
+
+  academia:
+    flatters:
+      FormalityLevel:        [smart_casual, semi_formal]
+      PatternType:           [solid, checks, ethnic, motif]
+      FabricTexture:         [textured, matte, handloom]
+      EmbellishmentLevel:    [none, minimal, subtle]
+    avoid:
+      EmbellishmentLevel:    [heavy, statement]
+    notes: Academic dressing often leans intellectual, artisanal,
+      handloom-friendly, and comfort-oriented rather than trend-driven.
+
+  hospitality_media_influencer:
+    flatters:
+      FormalityLevel:        [casual, smart_casual, semi_formal, formal]
+      ConstructionDetail:    [draped, asymmetric_hem, experimental]
+      EmbellishmentLevel:    [subtle, moderate, statement]
+      ColorSaturation:       [medium, high, very_high]
+    avoid: {}
+    notes: Public-facing industries reward visual identity, trend fluency,
+      photogenic styling, and strong silhouette definition.
 
   other:
     flatters: {}

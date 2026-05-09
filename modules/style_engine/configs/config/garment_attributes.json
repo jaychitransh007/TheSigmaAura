@@ -79,6 +79,7 @@
       "straight",
       "fitted",
       "relaxed",
+      "relaxed_tailored",
       "oversized",
       "flared",
       "a_line",
@@ -87,7 +88,9 @@
       "wrap",
       "peplum",
       "empire",
-      "mermaid"
+      "mermaid",
+      "layered",
+      "sculptural"
     ],
     "VolumeProfile": [
       "flat",
@@ -189,9 +192,14 @@
       "pleated",
       "matte",
       "sheen",
+      "low_luster",
       "textured",
+      "slub",
+      "sheer",
       "metallic",
-      "embroidered"
+      "embroidered",
+      "performance",
+      "handloom"
     ],
     "StretchLevel": [
       "none",
@@ -211,7 +219,10 @@
       "draped",
       "pleated",
       "smocked",
-      "asymmetric_hem"
+      "asymmetric_hem",
+      "deconstructed",
+      "utility",
+      "experimental"
     ],
     "EmbellishmentLevel": [
       "none",
@@ -225,6 +236,10 @@
       "none",
       "print",
       "embroidery",
+      "tonal_embroidery",
+      "self_texture",
+      "chikankari",
+      "kantha",
       "beading",
       "sequins",
       "lace",
