@@ -110,8 +110,8 @@ Two ways to clean up:
 | [archetype_yaml_stylist_pass_v_2.md](../knowledge/knowledge_v2/archetype_yaml_stylist_pass_v_2.md) | ✅ | ✅ ([PR #226](https://github.com/jaychitransh007/TheSigmaAura/pull/226)) | New vocabulary not yet in catalog (queued below) |
 | [bodyframe_stylist_revision_patchset_v_1.md](../knowledge/knowledge_v2/bodyframe_stylist_revision_patchset_v_1.md) | ✅ | ⏳ HOLD — pending engine extension + catalog re-enrichment | See dependency lists below |
 | [updated_occasion_yaml_review_with_stylist_notes.md](../knowledge/knowledge_v2/updated_occasion_yaml_review_with_stylist_notes.md) | ✅ | ⏳ HOLD — pending hard/soft yaml_loader + new attribute axes + bridal-role engine support | See dependency lists below |
+| [weather_yaml_review_and_updated_occasion_style_notes.md](../knowledge/knowledge_v2/weather_yaml_review_and_updated_occasion_style_notes.md) | ✅ | ✅ partial — 3 weather edits + 3 occasion edits using existing canonical applied | Schema decomposition (FabricTexture / SurfaceFinish / ConstructionDetail) + 5 new performance attribute axes deferred to batch |
 | `palette_*` | — | — | — |
-| `weather_*` | — | — | — |
 | `pairing_rules_*` | — | — | — |
 | `query_structure_*` | — | — | — |
 
@@ -137,12 +137,27 @@ These are visible from product images. Need: (1) vision-enrichment prompt update
 - `EmbellishmentType`: kasavu_border, temple_border (region-specific border treatments — Kerala / Tamil Nadu)
 - `GarmentLength`: micro_mini (stylist used `HemLength` — same axis, vocabulary alignment needed; new value)
 
+**From `weather_yaml_review_and_updated_occasion_style_notes.md` (received 2026-05-09 — 6 in-place edits already shipped):**
+- No new vocabulary added. The big finding here is structural: **`FabricTexture` decomposition.** Stylist flagged that today's `FabricTexture` enum mixes tactile texture (smooth, ribbed, textured), optical finish (sheen, metallic, matte), and construction detail (embroidered) — semantically overloaded; creates contradictory weather-reasoning rules. Proposed split:
+  - Keep in `FabricTexture`: smooth, ribbed, textured (tactile only)
+  - Move to new `SurfaceFinish` axis: sheen, metallic, matte
+  - Move to existing `ConstructionDetail`: embroidered
+  - Migration affects: garment_attributes.json schema, all 8 YAMLs, catalog enrichment for the 14,296 rows (re-tagged from old → new axes), embeddings regenerated. Higher cost than a simple value addition because *every* row's FabricTexture cell needs interpretation.
+
 **New top-level canonical axes** (need schema work in addition to enrichment):
 - `ShoulderExposure`: Closed, CapExposed, OffShoulder, OneShoulder, Strapless, ColdShoulder *(from bodyframe)*
 - `SleeveVolume`: Slim, Moderate, Puff, Bishop, Dramatic *(from bodyframe)*
 - `BlouseLength`: Cropped, Standard, Longline *(from bodyframe)*
 - `BorderContrast`: low, medium, high *(from occasion — used on Onam for `kasavu` border emphasis)*
 - `FabricTransparency`: low, medium, high *(from occasion — used on Holi to keep wet color from soaking through)*
+- `SurfaceFinish` *(from weather — see FabricTexture decomposition above)*
+- **5 performance axes** *(from weather — Indian-monsoon-driven; not strictly visible from images, may need garment-spec data or partial vision inference):*
+  - `BreathabilityLevel`: low, moderate, high
+  - `DryTime`: slow, moderate, fast
+  - `WaterResistance`: none, low, medium, high
+  - `ThermalInsulation`: low, moderate, high
+  - `WrinkleResistance`: low, moderate, high
+- `LayeringVisibility`: hidden, integrated, statement *(from weather — North Indian ceremonial layering: shawl over lehenga vs thermal under sherwani)*
 
 (More from upcoming stylist files will append here.)
 

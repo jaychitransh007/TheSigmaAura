@@ -40,6 +40,27 @@ Oversized silhouettes are now mainstream in Gen Z and urban millennial dressing,
 
 ---
 
+## Cross-cutting styling decisions — `weather.yaml` + occasion follow-ups (May 2026)
+
+Source: `knowledge/knowledge_v2/weather_yaml_review_and_updated_occasion_style_notes.md`. 6 in-place edits applied; structural recommendations queued for batch-execute.
+
+### 11. Climate modifies, never replaces, cultural intent.
+Weather adjusts fabric weight, layering, sleeve length, and practicality, but does not override occasion identity. A bridal lehenga in Delhi-cold-dry adds a pashmina shawl; it doesn't become a parka. Monsoon officewear swaps fabric, not occasion formality. Hill-station festivewear layers outerwear over ceremonial silhouettes.
+
+### 12. Indian dry heat does not mean maximum skin exposure.
+In North Indian dry heat, increased coverage with breathable natural fibres performs better than minimal clothing. Loose full-sleeve kurtas, kaftans, and relaxed silhouettes are often more thermally practical than exposed synthetic garments. The current `hot_dry` rule (`SkinExposureLevel: [very_low, low, medium]`) correctly inverts the Western "hot = minimal clothing" assumption — keep as-is.
+
+### 13. Monsoon styling prioritizes drying behavior over pure aesthetics.
+During Indian monsoon: quick-dry synthetics may outperform luxury natural fibres; white fabrics become transparency risks when wet; embroidery and heavy embellishment become maintenance burdens; fitted garments cling uncomfortably in humidity. Synthetic blends are pragmatic, not a downgrade.
+
+### 14. Bangalore climate increases silhouette flexibility.
+Warm-temperate plateau climates support the widest silhouette range in India. Recommendation engines should bias selection more heavily using occasion and archetype because weather contributes less restriction. `warm_temperate` is intentionally permissive; the entropy is real and should be tightened by *occasion* rather than weather.
+
+### 15. `FabricTexture` is semantically overloaded.
+Today's enum mixes tactile texture (smooth, ribbed, textured), optical finish (sheen, metallic, matte), and construction detail (embroidered). Future schema split: `FabricTexture` (tactile) + `SurfaceFinish` (optical) + `ConstructionDetail` (already exists, expand). Filed under the catalog enrichment queue for the batch-execute pass.
+
+---
+
 ## Rare-value category cleanup recommendations
 
 These are catalog / schema decisions that need engineering action — not YAML edits the stylist can make in place.

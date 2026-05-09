@@ -210,8 +210,10 @@ occasion:
     notes: >
       Office Diwali party, Christmas dinner, work anniversary. Slightly
       more festive than daily office, less than wedding. Indian:
-      embroidered kurti, light-zardozi anarkali (NOT bridal-level),
-      cotton-silk saree with mild sequin work, semi-formal sherwani.
+      embroidered kurti, embroidered or lightly embellished anarkali
+      (NOT bridal-level — stays pan-Indian rather than reading
+      North-Indian wedding-coded), cotton-silk saree with mild sequin
+      work, semi-formal sherwani.
 
   business_dinner:
     archetype: work_mode
@@ -391,7 +393,8 @@ occasion:
     notes: >
       Skybar, rooftop lounge, modern urban evening. Skirt + structured
       top, tailored jumpsuit, fitted kurta in deep tones, bandi over
-      shirt. Open at top (not winter — too cold).
+      shirt. In Bangalore/Pune evenings, light layering (cropped jacket,
+      shawl, overshirt) is common even in otherwise warm seasons.
 
   dinner_party:
     archetype: night_out
@@ -931,13 +934,15 @@ occasion:
       EmbellishmentLevel:    [subtle, moderate]
     avoid:
       FormalityLevel:        [casual, ceremonial]
-      OccasionFit:           [festive, traditional]         # too much for first impression
+      OccasionFit:           [festive]                       # festive too much for first impression; traditional kept available for intentional Indo-Western fusion
       EmbellishmentLevel:    [statement]
     notes: >
       Smart casual — too casual reads disinterested, too formal reads
       tense. Indian urban: kurti + jeans + statement earring,
-      structured dress + jacket, slim shirt + chino. Polished but
-      relaxed.
+      structured dress + jacket, slim shirt + chino. Many Gen-Z and
+      millennial users intentionally wear saree, kurta fusion, or
+      Indo-Western styling on first dates — traditional fit allowed
+      via smart-casual fusion. Polished but relaxed.
 
   date_night:
     archetype: dating
