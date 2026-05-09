@@ -275,16 +275,15 @@ confidence = 1.0
 clamped to [0.0, 1.0]
 ```
 
-Threshold for engine acceptance: **confidence ≥ 0.50** (mirrors architect's runtime threshold; rationale identical — downstream rater reranks by score, an engine plan that's "merely passable" still surfaces good outfits). YAML gaps always trigger fallback regardless of threshold via the explicit `has_yaml_gap` branch in the router.
+Threshold for engine acceptance: **confidence ≥ 0.50** (mirrors architect's runtime threshold; rationale identical — downstream rater reranks by score, an engine plan that's "merely passable" still surfaces good outfits). YAML gaps contribute to confidence via the `0.45 * any_yaml_gap` term and fall through only when that penalty (combined with any others) drops confidence below threshold — there is no separate hard-veto branch (EAR-3, May 9 2026 RCA: aligns composer with architect's "score then decide" rule; previously a single gap on any axis triggered fallback regardless of how strong the picks were).
 
 ### 7.2 Fall-through criteria summary
 
 The composer router falls through to the LLM `OutfitComposer` when ANY of:
 
-1. Engine returns `confidence < 0.50`
+1. Engine returns `confidence < 0.50` (yaml_gap-triggered: surfaced as `fallback_reason="yaml_gap"`; otherwise `"low_confidence"`)
 2. Engine returns `composer_result is None` (full failure)
-3. Genuine YAML gap (input value not in any YAML — e.g., a new occasion not yet added to `triggers_on`)
-4. Engine returns fewer than 3 picks across all directions (`pool_too_sparse` or aggregate hard-violation rate too high)
+3. Engine returns fewer than 3 picks across all directions (`pool_too_sparse` or aggregate hard-violation rate too high)
 
 Plus the pre-engine eligibility gates (§10): anchor-bearing turns, follow-up turns, and turns with `previous_recommendations` all skip the engine. **Cache-served architect plans do NOT skip the composer engine** — the architect cache stores `RecommendationPlan` objects, which are valid composer inputs regardless of how they were produced. Skipping the composer engine on architect cache hits would force the slow LLM composer on every cache-served turn and defeat the latency win.
 

@@ -651,13 +651,28 @@ def compose_outfits(
         attempt_count=1,
     )
 
+    # Fall-through gates. Order matters — a turn that fails multiple
+    # gates surfaces the most diagnostic reason first.
+    #
+    # EAR-3 (May 9 2026): yaml_gap was previously a hard short-circuit
+    # that fell through regardless of confidence. May 9 RCA showed
+    # composer engine acceptance at ~4% over 3 days, with one of the
+    # leading causes being yaml_gap on axes the engine could otherwise
+    # have scored cleanly (e.g., a single ``risk_tolerance:expressive``
+    # gap with 6/6 picks across all directions). The architect router
+    # behaves "score then decide" — confidence already discounts
+    # ``PENALTY_YAML_GAP = 0.45`` when a gap exists, so a gap-only
+    # turn lands at confidence 0.55 (above the 0.50 threshold) and
+    # the engine's picks are surfaced. Composer now follows the same
+    # rule: yaml_gap is a confidence input, not a hard veto. When a
+    # gap turn additionally fails the threshold we still surface
+    # ``yaml_gap`` as the diagnostic reason (the gap is what dragged
+    # confidence down) rather than the generic ``low_confidence``.
     fallback_reason: str | None = None
-    if has_yaml_gap:
-        fallback_reason = "yaml_gap"
-    elif len(picks) < MIN_PICKS:
+    if len(picks) < MIN_PICKS:
         fallback_reason = "pool_too_sparse" if directions_skipped > 0 else "low_picks"
     elif confidence < CONFIDENCE_THRESHOLD:
-        fallback_reason = "low_confidence"
+        fallback_reason = "yaml_gap" if has_yaml_gap else "low_confidence"
 
     if fallback_reason is not None:
         return ComposerEngineResult(

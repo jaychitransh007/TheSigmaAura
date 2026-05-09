@@ -454,9 +454,11 @@ class ConfidenceTests(unittest.TestCase):
         self.assertAlmostEqual(c, 1.0 - 0.10 * (2 / 6), places=6)
 
     def test_yaml_gap_subtracts_full_penalty(self):
-        # YAML gap alone: 1.0 - 0.45 = 0.55. Above threshold 0.50 — but
-        # composer_semantics.md §7.2 says YAML gaps trigger fallback
-        # regardless of threshold via the explicit branch in compose_outfits.
+        # YAML gap alone: 1.0 - 0.45 = 0.55. Above threshold 0.50 — and
+        # post-EAR-3 (May 9 2026 RCA), this turn is engine-accepted: the
+        # gap penalty is now the only signal, no separate hard-veto
+        # branch in compose_outfits. Composer matches architect's
+        # "score then decide" rule.
         c = _compute_confidence(
             total_directions=1, directions_skipped=0,
             directions_with_picks=1, pick_count=6, has_yaml_gap=True,
