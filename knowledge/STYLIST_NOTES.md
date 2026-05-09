@@ -1,0 +1,73 @@
+# STYLIST_NOTES
+
+Cross-cutting rationale captured during the senior-stylist review of `style_graph/`. Per-rule rationale lives in YAML inline comments next to each change. This file is the place for cross-cutting decisions that don't belong in any single rule, plus content/catalog recommendations the engineering team needs to act on separately.
+
+Source: `knowledge/knowledge_v2/archetype_yaml_stylist_pass_v_2.md` (May 2026 stylist pass v2). Subsequent file reviews (body_frame, palette, occasion, weather, pairing_rules, query_structure) will append here.
+
+---
+
+## Cross-cutting styling decisions — `archetype.yaml` (May 2026)
+
+### 1. Indian ethnic motifs should not be treated as inherently anti-classic.
+Classic Indian dressing historically includes restrained paisley, buti, woven zari motifs, temple borders, and heritage geometry. The prior `ethnic` avoid rule on the classic archetype over-westernised the system.
+
+### 2. Minimalism in India frequently uses tonal craftsmanship.
+Indian luxury minimalism relies heavily on low-contrast embroidery, self-texture, chikankari, tonal weaving, and subtle handwork rather than true visual absence. The prior schema's blanket `embroidery` avoid was wrong for Indian minimalism.
+
+### 3. Modern professional dressing has geographically shifted.
+Bengaluru and Hyderabad startup ecosystems now favour relaxed tailoring, premium basics, soft structure, and quiet luxury over rigid corporate silhouettes. The archetype's silhouette + fit rules were widened accordingly.
+
+### 4. Trend-forward styling is increasingly silhouette-led.
+Gen Z and luxury urban consumers now express fashion novelty more through construction, layering, proportion play, and silhouette experimentation than through embellishment alone. Embellishment-heavy framing was rebalanced toward construction + silhouette.
+
+### 5. Age should influence calibration, not restrict style categories.
+The prior age-band logic risked feeling outdated and overly prescriptive. Urban Indian consumers in their 30s regularly wear relaxed, oversized, directional, and experimental silhouettes — `25_30` and `30_35` `avoid` lists were cleared accordingly. Age remains a soft modifier on polish + occasion calibration, not a hard restriction on styling categories.
+
+### 6. Sporty fashion in India now includes luxury athleisure.
+The sporty archetype was modernised to include tenniscore, airportwear, clean sneaker culture, premium activewear, and restrained ethnic fusion. Previous "ethnic / motif" blanket avoid was wrong — urban sporty Indians wear sporty kurtas, co-ord ethnic, and sneaker ethnic fusion.
+
+### 7. Creative and bohemian were previously too craft-maximalist.
+Creative has been widened toward deconstructed tailoring, Japanese silhouettes, gender-fluid layering, indie monochrome, and art-school silhouettes. Bohemian has been widened toward Goa-luxury linen sets, indie urban styling, and Ibiza-influenced resort wear. The two archetypes overlap heavily — bohemian leans warmer in palette and softer in edge.
+
+### 8. Sheen needed contextual interpretation.
+The prior schema treated all sheen similarly. The stylistic distinction is between **ornamental festive shine** (avoid for edgy / classic / minimalist) and **polished controlled sheen** like leather, satin contrast, coated fabrics, latex finishes, or silk luster (acceptable for edgy, sometimes for classic). Edits to `classic.flatters.FabricTexture` and `edgy.avoid.FabricTexture` reflect this.
+
+### 9. Risk-tolerance band `moderate` should not block `oversized`.
+Oversized silhouettes are now mainstream in Gen Z and urban millennial dressing, especially in Bengaluru, Mumbai, and creator-heavy ecosystems. The avoid was cleared so the moderate band trusts the archetype's own preferences without strong over-correction.
+
+### 10. Five new professions added.
+`tech_startup`, `luxury_fashion`, `healthcare`, `academia`, `hospitality_media_influencer` — capture the dress-code divergence in urban India that the original four (`corporate`, `creative`, `entrepreneur`, `student`, `homemaker`, `other`) under-served.
+
+---
+
+## Rare-value category cleanup recommendations
+
+These are catalog / schema decisions that need engineering action — not YAML edits the stylist can make in place.
+
+| Subtype | Decision | Rationale |
+|---|---|---|
+| `kaftan` | **KEEP** | Huge in Indian commerce now (resort wear, festive layering, modest summer). |
+| `ethnic_set` | **KEEP** | Co-ord ethnic is a major Gen Z and millennial category. |
+| `dungarees` | **MERGE** → `jumpsuit` (or `casual_onepiece` / `workwear` parent) | Low catalog volume, semantically overlapping. |
+| `poncho` | **MERGE** → `outer_layer_relaxed` (parent category for relaxed outerwear) | Low catalog volume; better captured as a relaxed-outer subset. |
+| `tracksuit` | **DEFER** to product/catalog team | Keep only if sporty / airportwear / Gen Z streetwear matter to business goals. Otherwise low-value to maintain rules for. |
+
+---
+
+## Forward-looking / unresolved
+
+Items the stylist surfaced but that need engineering input before they can be applied:
+
+1. **`hard:` / `soft:` distinction at the rule level.** Currently every entry under `flatters:` / `avoid:` is treated uniformly. Some rules are absolute (Pear should never wear hip-emphasizing patterns); some are preferences (a Modern Professional usually leans clean lines, but exceptions are fine). Filed under Phase 4.3 in `docs/OPEN_TASKS.md`.
+
+2. **`ShoulderExposureLevel` axis.** `[none, partial, visible, full]` — fixes the off-shoulder / cold-shoulder / one-shoulder / spaghetti / strapless gap that today's `covers_shoulders` boolean can't represent. Indian modesty logic is not binary. Filed under Phase 4.3a.
+
+3. **`EmbellishmentVisibility` axis.** `[hidden, subtle, visible, statement]` — captures Indian luxury minimalism's low-contrast craftsmanship that today's `EmbellishmentLevel` flattens. Filed under Phase 4.3b.
+
+4. **`VisualAuthority` axis (deferred — large lift).** `[understated, polished, festive, regal, avant_garde]` — captures Indian textile hierarchy in a way fabric/embellishment alone don't (Kanjeevaram > sequinned georgette by authority, not by embellishment). Filed under Phase 4.3d as a future schema extension.
+
+5. **Vocabulary cleanups (gated on Phase 4.6 eval set).** Three terms doing too much semantic work: `sheen` (luxury silk glow vs metallic shine vs satin gloss), `ethnic` PatternType (woven motifs vs folk prints vs artisanal vs festive), `soft_structured` FabricDrape (semi-fluid tailoring vs controlled drape vs polished ease). Disambiguation needs joint stylist + engineering pass once eval-set ground truth lands.
+
+6. **New archetypes (deferred — trigger-based).** `Quiet Luxury` is currently split awkwardly across minimalist / classic / modern_professional. `Sensual` is split across glamorous / romantic / edgy. Trigger to act: when eval-set cells consistently misroute between the parent archetypes for the same query.
+
+7. **Fabric pairing intelligence (next file: `pairing_rules.yaml`).** Indian styling is textile-driven — raw silk tolerates structure, georgette tolerates drape, organza amplifies volume, brocade increases visual density, handloom softens formality. The pairing engine currently thinks in silhouette + embellishment terms; textile hierarchy is the single most important missing sophistication layer. Will be addressed in the next stylist pass.
