@@ -121,6 +121,8 @@ Two ways to clean up:
 
 **Step 2a — 🟡 in progress.** Schema additions for catalog re-enrichment: 12 new axes added to `garment_attributes.json`, database migration shipping, vision-enrichment prompt updated with new attribute descriptions. Ready to fire Step 2b once the migration runs in staging.
 
+**📥 Stylist follow-up received 2026-05-09: Shape Architecture Layer proposal** ([source pinned](../knowledge/knowledge_v2/shape_architecture_layer_proposal.md)). 8 additional orthogonal axes (`VolumePlacement`, `VolumeIntensity`, `AsymmetryType`, `ProjectionType`, `MotionBehavior`, `EdgeGeometry`, `AttachmentStructure`, `StructuralRhythm`) — captures shape behavior independent of garment category (puff sleeve placement, cape attachment, motion behavior, projection, edge geometry). **Recommendation:** integrate the schema additions into Step 2a *before* Step 2b fires — re-enrichment captures all 20 new axes in one run instead of two, saving ~$300-700 + ~10-15 hours of compute. The corresponding stylist content YAML (`shape_architecture.yaml` with body-shape × ShapeArchitecture rules) lands as a separate stylist pass after engineering ships the canonical layer.
+
 ### Catalog enrichment queue (Type A — vision-extractable garment properties)
 
 These are visible from product images. Need: (1) vision-enrichment prompt updated to ask for them, (2) re-run on the 14,296 catalog rows, (3) backfill `catalog_enriched`, (4) regenerate embeddings.
