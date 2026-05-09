@@ -36,7 +36,7 @@ SubSeason:
       FabricTexture:       [smooth, sheen]
       EmbellishmentType:   [embroidery, beading, sequins]
     avoid:
-      PrimaryColor:        [icy blue, dark navy, charcoal, cool grey, jet black, dusty pink]
+      PrimaryColor:        [icy blue, dark navy, charcoal, cool grey, stark black, dusty pink]
       ColorTemperature:    [cool]
       ColorValue:          [very_dark]
       ColorSaturation:     [muted]
@@ -45,8 +45,9 @@ SubSeason:
       Pure spring — warm + clear + medium-light. Rare in India but appears
       in fairer South / North-East / North-West Indian users. Indian
       embodiment: warm peach saree, golden ivory anarkali, coral dupatta,
-      light gold zardozi. Avoid cool jewel tones (emerald, sapphire,
-      ruby) — they fight the warmth.
+      light gold zardozi. Avoid icy or blue-based jewel tones; prefer
+      warm-clear jewel tones like peacock teal, warm emerald, coral-red,
+      and golden turquoise.
 
   Warm Spring:
     flatters:
@@ -62,7 +63,7 @@ SubSeason:
       FabricTexture:       [smooth, sheen]
       EmbellishmentType:   [embroidery, beading]
     avoid:
-      PrimaryColor:        [icy blue, charcoal, jet black, cool pink, dusty rose]
+      PrimaryColor:        [icy blue, charcoal, stark black, cool pink, dusty rose]
       ColorTemperature:    [cool]
       ColorValue:          [very_dark, very_light]
       FabricTexture:       [matte, metallic]
@@ -70,6 +71,9 @@ SubSeason:
       Warmest of the springs — golden / honey skin tones with warm hair.
       Indian: golden-mango saree, soft coral kurta, warm ivory anarkali,
       delicate gold thread embroidery. Avoid silver — go with gold.
+      Soft black, charcoal-black, washed black, textured black, or
+      black used away from the face can still work in lower-body /
+      layering / accessories.
 
   Light Spring:
     flatters:
@@ -85,7 +89,7 @@ SubSeason:
       FabricTexture:       [smooth, sheen]
       EmbellishmentType:   [embroidery, beading, lace]
     avoid:
-      PrimaryColor:        [black, charcoal, dark brown, deep burgundy, dark navy, oxblood]
+      PrimaryColor:        [stark black, charcoal, dark brown, deep burgundy, dark navy, oxblood]
       ColorTemperature:    [cool]
       ColorValue:          [very_dark, dark]
       ContrastLevel:       [high, very_high]
@@ -94,17 +98,20 @@ SubSeason:
       Lightest of the springs — very fair, light hair, light eyes. Rare
       in India. Indian embodiment: light gold-edged Chanderi saree,
       pastel-peach anarkali, soft cream + light coral combinations,
-      delicate lace work. Heavy black or oxblood reads harsh.
+      delicate lace work. Heavy stark black or oxblood reads harsh near
+      the face; soft / textured black can still work in layering or
+      lower-body.
 
   Soft Summer:
     flatters:
-      PrimaryColor:        [soft white, dove grey, rose taupe, soft navy]
+      # Smoky mauve / mushroom grey are core premium Indian womenswear neutrals.
+      PrimaryColor:        [soft white, dove grey, rose taupe, soft navy, smoky mauve, mushroom grey]
       SecondaryColor:      [dusty pink, soft blue, sage, lavender]
       ColorTemperature:    [cool]
       ColorValue:          [light, mid]
       ColorSaturation:     [muted, medium]
       ContrastLevel:       [low, medium]
-      ColorCount:          [tonal, two_color]
+      ColorCount:          [single, tonal, two_color]
       PatternType:         [floral, stripes_vertical, geometric]
       PatternScale:        [small, medium]
       FabricTexture:       [smooth, matte, pleated]
@@ -124,13 +131,15 @@ SubSeason:
 
   Cool Summer:
     flatters:
-      PrimaryColor:        [cool white, soft grey, blue grey, cool navy]
+      # Soft charcoal / steel blue / smoky navy — modern urban cool tones
+      # frequently worn by cool-toned Indian users in tailoring.
+      PrimaryColor:        [cool white, soft grey, blue grey, cool navy, soft charcoal, steel blue, smoky navy]
       SecondaryColor:      [icy blue, soft mauve, slate, dusty rose]
       ColorTemperature:    [cool]
       ColorValue:          [light, mid]
       ColorSaturation:     [muted, medium]
       ContrastLevel:       [medium]
-      ColorCount:          [tonal, two_color]
+      ColorCount:          [single, tonal, two_color]
       PatternType:         [stripes_vertical, geometric, floral]
       PatternScale:        [small, medium]
       FabricTexture:       [smooth, matte, pleated]
@@ -171,19 +180,21 @@ SubSeason:
 
   Deep Autumn:
     flatters:
-      PrimaryColor:        [warm camel, golden brown, warm bronze, dark honey, deep olive]
+      # Espresso / tobacco / cocoa anchor modern Indian premium menswear
+      # and quiet-luxury womenswear; added alongside traditional warm tones.
+      PrimaryColor:        [warm camel, golden brown, warm bronze, dark honey, deep olive, espresso, tobacco, dark olive, cocoa brown]
       SecondaryColor:      [terracotta, burnt sienna, mustard, warm coral, deep teal]
       ColorTemperature:    [warm]
       ColorValue:          [mid, dark]
       ColorSaturation:     [muted, medium]
       ContrastLevel:       [medium]
-      ColorCount:          [tonal, two_color]
+      ColorCount:          [single, tonal, two_color]
       PatternType:         [floral, motif, ethnic, geometric, animal]
       PatternScale:        [small, medium, large]
       FabricTexture:       [textured, embroidered, matte, sheen]
       EmbellishmentType:   [embroidery, beading, mirror_work, applique]
     avoid:
-      PrimaryColor:        [icy blue, fuchsia, jet black, stark white, cool pink]
+      PrimaryColor:        [icy blue, fuchsia, stark black, stark white, cool pink]
       ColorTemperature:    [cool]
       ColorSaturation:     [very_high]
     notes: >
@@ -191,11 +202,13 @@ SubSeason:
       tones. Indian: warm rust kurta, mustard-and-mehendi-green saree,
       banarasi in deep camel + bronze zardozi, golden-bronze sherwani.
       Antique gold jewellery (not bright gold). Pattern: paisley,
-      block-print, herringbone, organic florals.
+      block-print, herringbone, organic florals. Pure jet-black near
+      the face can overpower; textured black, warm black, washed black,
+      or black balanced with bronze / camel works well.
 
   Warm Autumn:
     flatters:
-      PrimaryColor:        [rust, olive, mustard, camel, deep terracotta, forest green, bronze]
+      PrimaryColor:        [rust, olive, mustard, camel, deep terracotta, forest green, bronze, tobacco, cinnamon, teak brown]
       SecondaryColor:      [oat, soft white, denim indigo, plum, mehendi green]
       ColorTemperature:    [warm]
       ColorValue:          [mid, dark]
@@ -207,7 +220,7 @@ SubSeason:
       FabricTexture:       [textured, embroidered, sheen]
       EmbellishmentType:   [embroidery, mirror_work, applique, beading]
     avoid:
-      PrimaryColor:        [icy blue, jet black, hot pink, lavender, cool grey, fuchsia]
+      PrimaryColor:        [icy blue, stark black, hot pink, lavender, cool grey, fuchsia]
       ColorTemperature:    [cool]
       ColorSaturation:     [very_high]
       FabricTexture:       [metallic]
@@ -215,18 +228,22 @@ SubSeason:
       Warmest of the autumns. THE most common Indian sub-season — rich
       golden-warm skin with warm dark hair. Indian: rust banarasi saree
       with golden zardozi, mustard anarkali, mehendi-green kurta,
-      paisley-print Patola, terracotta lehenga. Antique gold > bright
-      gold > silver (silver fights the warmth).
+      paisley-print Patola, terracotta lehenga, tobacco / cinnamon /
+      teak-brown menswear. Antique gold > bright gold > silver (silver
+      fights the warmth). Soft / textured black works in lower-body
+      and layering despite the warm-palette default.
 
   Soft Autumn:
     flatters:
-      PrimaryColor:        [warm taupe, soft khaki, muted olive, warm grey]
+      # Modern Indian luxury minimalism: mushroom / greige / cocoa / espresso
+      # neutrals are dominant in Bengaluru / Mumbai premium D2C.
+      PrimaryColor:        [warm taupe, mushroom, greige, soft khaki, muted olive, warm grey, cocoa]
       SecondaryColor:      [sage green, muted terracotta, dusty coral, soft rust, warm mauve]
       ColorTemperature:    [warm, neutral]
       ColorValue:          [light, mid]
       ColorSaturation:     [muted]
       ContrastLevel:       [low]
-      ColorCount:          [tonal]
+      ColorCount:          [single, tonal, two_color]
       PatternType:         [floral, motif, ethnic]
       PatternScale:        [small, medium]
       FabricTexture:       [textured, matte, embroidered]
@@ -266,14 +283,17 @@ SubSeason:
       Pure winter — cool + clear + high-contrast. Common in dark-haired
       Indian users with cool undertones. Indian: ruby-red bridal lehenga
       with silver work, royal-blue saree, jet-black kurta with white
-      embroidery, emerald sherwani. Statement contrast (red + white,
-      black + gold) is the signature. Silver jewellery flatters; bright
-      gold can fight cool undertones — antique silver / oxidised
-      silver / platinum work better.
+      embroidery, emerald sherwani. High-contrast combinations like
+      black-and-white, ruby-and-silver, emerald-and-charcoal, or black
+      with restrained antique gold accents work well. Contemporary urban
+      expression also includes monochrome tailoring, sharp Indo-Western
+      separates, and architectural solids — not only bridal/festive.
+      Silver jewellery flatters; bright gold can fight cool undertones —
+      antique silver / oxidised silver / platinum work better.
 
   Cool Winter:
     flatters:
-      PrimaryColor:        [pure white, true black, blue red, deep purple, navy]
+      PrimaryColor:        [pure white, true black, blue red, deep purple, navy, ink navy, charcoal]
       SecondaryColor:      [icy pink, soft fuchsia, slate, sapphire, silver]
       ColorTemperature:    [cool]
       ColorValue:          [very_light, dark, very_dark]
@@ -297,7 +317,7 @@ SubSeason:
   Deep Winter:
     flatters:
       PrimaryColor:        [jet black, true white, deep ruby, deep emerald, deep navy, deep aubergine]
-      SecondaryColor:      [oxblood, deep teal, charcoal, sapphire, deep purple]
+      SecondaryColor:      [oxblood, deep teal, charcoal, sapphire, deep purple, graphite, ink navy]
       ColorTemperature:    [cool, neutral]
       ColorValue:          [dark, very_dark]
       ColorSaturation:     [high, very_high]
@@ -308,7 +328,10 @@ SubSeason:
       FabricTexture:       [smooth, sheen, metallic, embroidered]
       EmbellishmentType:   [sequins, beading, embroidery, mirror_work]
     avoid:
-      PrimaryColor:        [pastel pink, powder blue, light lavender, stark white, icy grey, ivory]
+      # `stark white` removed — Deep Winter users frequently wear crisp
+      # white shirts, ivory-black contrast, white embroidery on black.
+      # Avoid washed-out icy pastels rather than true white.
+      PrimaryColor:        [pastel pink, powder blue, light lavender, icy grey, ivory]
       ColorTemperature:    [warm]
       ColorValue:          [very_light, light]
       ColorSaturation:     [muted]
@@ -316,8 +339,13 @@ SubSeason:
     notes: >
       Deepest of the winters — common in Indian users with dark skin and
       dark hair. Bridal red, deep emerald lehenga, oxblood velvet saree,
-      jet black with statement gold. Both gold and silver work — go for
-      antique gold or oxidised silver, not bright shiny finishes.
+      jet black with statement gold. Crisp white in controlled contrast
+      (white shirt, white embroidery on black, ivory-black contrast)
+      works well. Contemporary urban expression also includes monochrome
+      tailoring, sharp black-and-white separates, satin shirts,
+      structured solids, and minimal contrast dressing — not just
+      bridal styling. Both gold and silver work — go for antique gold
+      or oxidised silver, not bright shiny finishes.
 
 
 SeasonalColorGroup:

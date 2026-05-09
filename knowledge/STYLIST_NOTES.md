@@ -61,6 +61,30 @@ Today's enum mixes tactile texture (smooth, ribbed, textured), optical finish (s
 
 ---
 
+## Cross-cutting styling decisions — `palette.yaml` (May 2026)
+
+Source: `knowledge/knowledge_v2/palette_yaml_stylist_review_and_style_notes.md`. Subset applied in-place; structural recommendations queued.
+
+### 16. Palette flexibility over seasonal-color-analysis orthodoxy.
+Traditional seasonal-color-analysis hard-banned black for warm palettes and metallics for muted palettes. Indian urban reality is more nuanced — soft / textured / washed black works in lower-body, layering, accessories, and Indo-Western styling even for warm palettes. Absolute prohibitions were softened to "pure jet-black near the face overpowers; everywhere else is fine" framing. Specifically applied across Warm Spring, Light Spring, Warm Autumn, Deep Autumn (and similar cleanup for Clear Spring).
+
+### 17. Modern Indian neutral luxury vocabulary.
+Expanded palette vocabulary beyond festive/traditional color theory to include contemporary Indian premium neutrals — espresso, mushroom, greige, cocoa, tobacco, stone, soft charcoal, mocha, sand, dusty cocoa rose. Added across Soft Autumn (mushroom, greige, cocoa), Deep Autumn (espresso, tobacco, dark olive, cocoa brown), Cool Summer (soft charcoal, steel blue, smoky navy), Soft Summer (smoky mauve, mushroom grey), Warm Autumn (tobacco, cinnamon, teak brown), Cool Winter (ink navy, charcoal), Deep Winter (graphite, ink navy in secondary). These are dominant in Bengaluru / Mumbai luxury minimalism, premium D2C fashion, Gen Z monochrome dressing, workwear, and quiet luxury.
+
+### 18. Reduce bridal bias in winter palettes.
+Clear Winter / Cool Winter / Deep Winter notes were over-indexed on bridal lehenga logic. Modern Indian winter dressing also includes monochrome black tailoring, sharp Indo-Western, satin shirts, dark minimalism, architectural solids, and clean contrast dressing. Notes updated for Clear Winter and Deep Winter to call this out alongside the bridal references.
+
+### 19. Monochrome and tonal dressing support.
+Added `single` to ColorCount across Soft Autumn, Deep Autumn, Cool Summer, Soft Summer (where it was missing) so the engine can surface tonal monochrome co-ord sets, tonal sarees, and Indo-Western tailoring more readily. Modern Indian urban styling heavily uses single-color and tonal combinations, especially in premium casual + co-ord categories.
+
+### 20. Crisp white usable in Deep Winter.
+Removed `stark white` from Deep Winter avoid. Deep Winter users frequently wear white shirts, ivory-black contrast, white embroidery on black, monochrome contrast styling — washed-out icy pastels are the real concern, not true white.
+
+### 21. Metallics — distinguish mirror-shine from antique/brushed.
+The system over-penalizes metallics for muted palettes. The actual issue is mirror-shine high-reflective metallic surfaces. Brushed, oxidized, antique, matte, dull champagne, and aged-bronze metallic finishes work well for muted palettes (Soft Summer, Cool Summer, Soft Autumn). Engineering item: future `SurfaceFinish` decomposition (queued via weather review #15) should split `metallic` into `high_shine_metallic` / `antique_metallic` / `brushed_metallic`.
+
+---
+
 ## Rare-value category cleanup recommendations
 
 These are catalog / schema decisions that need engineering action — not YAML edits the stylist can make in place.

@@ -111,7 +111,7 @@ Two ways to clean up:
 | [bodyframe_stylist_revision_patchset_v_1.md](../knowledge/knowledge_v2/bodyframe_stylist_revision_patchset_v_1.md) | ✅ | ⏳ HOLD — pending engine extension + catalog re-enrichment | See dependency lists below |
 | [updated_occasion_yaml_review_with_stylist_notes.md](../knowledge/knowledge_v2/updated_occasion_yaml_review_with_stylist_notes.md) | ✅ | ⏳ HOLD — pending hard/soft yaml_loader + new attribute axes + bridal-role engine support | See dependency lists below |
 | [weather_yaml_review_and_updated_occasion_style_notes.md](../knowledge/knowledge_v2/weather_yaml_review_and_updated_occasion_style_notes.md) | ✅ | ✅ partial — 3 weather edits + 3 occasion edits using existing canonical applied | Schema decomposition (FabricTexture / SurfaceFinish / ConstructionDetail) + 5 new performance attribute axes deferred to batch |
-| `palette_*` | — | — | — |
+| [palette_yaml_stylist_review_and_style_notes.md](../knowledge/knowledge_v2/palette_yaml_stylist_review_and_style_notes.md) | ✅ | ✅ partial — black-handling cleanup, neutral luxury vocabulary additions, monochrome ColorCount, Deep Winter `stark white` removal, notes refreshes (Clear Spring jewel tones, Clear Winter monochrome, Deep Winter contrast styling) | Metallic decomposition (high_shine vs antique vs brushed) folds into the SurfaceFinish split queued from weather review |
 | `pairing_rules_*` | — | — | — |
 | `query_structure_*` | — | — | — |
 
@@ -143,6 +143,14 @@ These are visible from product images. Need: (1) vision-enrichment prompt update
   - Move to new `SurfaceFinish` axis: sheen, metallic, matte
   - Move to existing `ConstructionDetail`: embroidered
   - Migration affects: garment_attributes.json schema, all 8 YAMLs, catalog enrichment for the 14,296 rows (re-tagged from old → new axes), embeddings regenerated. Higher cost than a simple value addition because *every* row's FabricTexture cell needs interpretation.
+
+**From `palette_yaml_stylist_review_and_style_notes.md` (received 2026-05-09 — black handling, neutral luxury, monochrome, Deep Winter cleanup applied in-place):**
+- **Metallic decomposition** — folds into the SurfaceFinish split above. The stylist wants the future `SurfaceFinish` axis to distinguish:
+  - `high_shine_metallic` (mirror-shine; muted palettes typically fail under this)
+  - `antique_metallic` (oxidized, brushed, dull champagne, aged bronze; muted palettes succeed with these)
+  - `brushed_metallic` (matte gold, brushed steel)
+  Today's single `metallic` value forces a binary that over-bans muted-palette users from a category they can absolutely wear. Resolve in the same batch as the FabricTexture decomposition.
+- Vocabulary adds — all PrimaryColor / SecondaryColor (free-form text, no canonical schema impact). Catalog enrichment for these neutral-luxury tones (espresso, mushroom, greige, cocoa, tobacco, etc.) means the vision-enrichment prompt should be updated to recognize them when re-running enrichment. Currently catalog rows skew toward festive vocabulary; neutral-luxury palette rows may be undertagged.
 
 **New top-level canonical axes** (need schema work in addition to enrichment):
 - `ShoulderExposure`: Closed, CapExposed, OffShoulder, OneShoulder, Strapless, ColdShoulder *(from bodyframe)*
