@@ -142,9 +142,216 @@ def recommend_layering_structures(
     return base
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Movement security
+# ─────────────────────────────────────────────────────────────────────────
+
+
+# Canonical movement-security values from the bodyframe stylist patch.
+# - secure:    suitable for dancing and long-duration events
+# - moderate:  some adjustment may be needed during movement
+# - delicate:  editorial / low-movement styling only
+MOVEMENT_SECURITY_VALUES: tuple[str, ...] = ("secure", "moderate", "delicate")
+
+
+# Occasions where a dance-heavy / movement-heavy outfit is the user
+# need. Stylist's occasion review explicitly flagged sangeet + navratri
+# as movement-centric ("rotational movement, heat tolerance, comfort —
+# not just visual glamour").
+_DANCE_HEAVY_OCCASIONS: frozenset[str] = frozenset({
+    "sangeet",
+    "navratri",
+    "mehndi",          # mehndi often runs into impromptu dancing
+    "garba",
+    "dance_event",
+})
+
+
+# Occasions where low-movement / editorial styling is acceptable —
+# the outfit doesn't need to support sustained physical activity.
+_LOW_MOVEMENT_OCCASIONS: frozenset[str] = frozenset({
+    "gala_dinner",
+    "fine_dining",
+    "business_dinner",
+    "anniversary_dinner",
+    "in_laws_first_meeting",
+    "interview",
+    "business_meeting",
+    "kitty_party",
+})
+
+
+def derive_movement_security(occasion_signal: str | None) -> str:
+    """Return the movement-security level the outfit needs to support.
+
+    - ``secure`` for dance-heavy occasions (sangeet, navratri, mehndi).
+    - ``delicate`` for editorial / sit-down formal contexts.
+    - ``moderate`` everywhere else (the safe default).
+
+    The engine should drop / penalise candidates whose construction
+    can't deliver the required level (e.g., strapless cocktail gown
+    for sangeet → support + movement risk).
+    """
+    if not occasion_signal:
+        return "moderate"
+    occ = occasion_signal.strip().lower()
+    if occ in _DANCE_HEAVY_OCCASIONS:
+        return "secure"
+    if occ in _LOW_MOVEMENT_OCCASIONS:
+        return "delicate"
+    return "moderate"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Support requirement
+# ─────────────────────────────────────────────────────────────────────────
+
+
+# Canonical support-requirement values from the bodyframe stylist patch.
+# - low:    minimal internal support needed
+# - medium: requires stable tailoring or blouse engineering
+# - high:   requires corsetry, boning, secure blouse structure
+SUPPORT_REQUIREMENT_VALUES: tuple[str, ...] = ("low", "medium", "high")
+
+
+# Garment subtypes that inherently need high internal support to be
+# wearable. Stylist's bodyframe patch was explicit that strapless +
+# similar exposure-heavy cuts have a non-negotiable support floor.
+_HIGH_SUPPORT_GARMENTS: frozenset[str] = frozenset({
+    "strapless_dress",
+    "strapless_blouse",
+    "off_shoulder_blouse",
+    "off_shoulder_dress",
+    "tube_top",
+    "bustier",
+    "halter_top",
+    "halter_dress",
+    "corset",
+    "corset_blouse",
+})
+
+
+# Occasions where medium support is expected (long ceremonies, dancing,
+# or otherwise extended-wear contexts).
+_MEDIUM_SUPPORT_OCCASIONS: frozenset[str] = frozenset({
+    "sangeet",
+    "navratri",
+    "mehndi",
+    "wedding_ceremony",
+    "reception",
+    "wedding_reception",
+    "gala_dinner",
+    "engagement",
+})
+
+
+def derive_support_requirement(
+    *,
+    occasion_signal: str | None = None,
+    garment_subtype: str | None = None,
+) -> str:
+    """Return the support-engineering level the outfit requires.
+
+    Garment subtype dominates: a strapless dress is ``high`` regardless
+    of occasion. Below that, occasion drives — extended-wear ceremonial
+    contexts default to ``medium``; everything else is ``low``.
+    """
+    sub = (garment_subtype or "").strip().lower()
+    if sub in _HIGH_SUPPORT_GARMENTS:
+        return "high"
+    occ = (occasion_signal or "").strip().lower()
+    if occ in _MEDIUM_SUPPORT_OCCASIONS:
+        return "medium"
+    return "low"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Bridal priority — role-aware dressing schema
+# ─────────────────────────────────────────────────────────────────────────
+
+
+# Canonical bridal-role values. ``attendee`` is the default for
+# unspecified non-special attendees; it falls through to ``guest``
+# rules in any occasion's ``bridal_priority`` block.
+BRIDAL_ROLE_VALUES: tuple[str, ...] = ("bride", "groom", "guest", "attendee")
+
+
+# Occasions where bride / groom / guest distinction matters
+# (per stylist's occasion review — guests should never visually compete
+# with bridal participants, even attending the same wedding).
+_BRIDAL_ROLE_OCCASIONS: frozenset[str] = frozenset({
+    "wedding_ceremony",
+    "wedding_reception",
+    "reception",
+    "sangeet",
+    "mehndi",
+    "haldi",
+    "engagement",
+    "sagai_engagement",
+})
+
+
+def is_bridal_role_occasion(occasion_signal: str | None) -> bool:
+    """Whether the occasion has a bride / groom / guest hierarchy.
+
+    The engine should look up the user's role-in-occasion ONLY for
+    occasions where the distinction is meaningful — for everything
+    else the role is irrelevant and should be ignored.
+    """
+    if not occasion_signal:
+        return False
+    return occasion_signal.strip().lower() in _BRIDAL_ROLE_OCCASIONS
+
+
+def lookup_bridal_priority_rules(
+    role: str | None,
+    occasion_priority_block: dict | None,
+) -> dict | None:
+    """Return role-specific rules from an occasion's ``bridal_priority``
+    block, if present and applicable.
+
+    The occasion.yaml ``bridal_priority`` shape proposed by the
+    stylist (filed in OPEN_TASKS as engine extension):
+
+        bridal_priority:
+          bride:
+            hard_flatters: { ... }
+          groom:
+            hard_flatters: { ... }
+          guest:
+            hard_avoid: { ... }
+
+    ``attendee`` is treated as a synonym for ``guest`` — the role
+    every non-bridal-party attendee falls into by default.
+
+    Returns ``None`` when the role is unknown / unmapped or the
+    occasion has no ``bridal_priority`` block. The caller should
+    interpret that as "no role-specific override; apply the standard
+    occasion rules".
+    """
+    if not role or not occasion_priority_block:
+        return None
+    role_norm = role.strip().lower()
+    if role_norm in occasion_priority_block:
+        return dict(occasion_priority_block[role_norm])
+    # ``attendee`` → ``guest`` fallback. The stylist's schema only
+    # defines bride / groom / guest; attendee is the human-friendly
+    # default we expose to users.
+    if role_norm == "attendee" and "guest" in occasion_priority_block:
+        return dict(occasion_priority_block["guest"])
+    return None
+
+
 __all__ = [
     "DUPATTA_DRAPE_VALUES",
     "LAYERING_STRUCTURE_VALUES",
+    "MOVEMENT_SECURITY_VALUES",
+    "SUPPORT_REQUIREMENT_VALUES",
+    "BRIDAL_ROLE_VALUES",
     "derive_dupatta_drape",
     "recommend_layering_structures",
+    "derive_movement_security",
+    "derive_support_requirement",
+    "is_bridal_role_occasion",
+    "lookup_bridal_priority_rules",
 ]
