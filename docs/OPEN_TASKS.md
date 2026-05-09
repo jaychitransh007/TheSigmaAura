@@ -109,8 +109,8 @@ Two ways to clean up:
 |---|---|---|---|
 | [archetype_yaml_stylist_pass_v_2.md](../knowledge/knowledge_v2/archetype_yaml_stylist_pass_v_2.md) | ✅ | ✅ ([PR #226](https://github.com/jaychitransh007/TheSigmaAura/pull/226)) | New vocabulary not yet in catalog (queued below) |
 | [bodyframe_stylist_revision_patchset_v_1.md](../knowledge/knowledge_v2/bodyframe_stylist_revision_patchset_v_1.md) | ✅ | ⏳ HOLD — pending engine extension + catalog re-enrichment | See dependency lists below |
-| `palette_*` (next) | — | — | — |
-| `occasion_*` | — | — | — |
+| [updated_occasion_yaml_review_with_stylist_notes.md](../knowledge/knowledge_v2/updated_occasion_yaml_review_with_stylist_notes.md) | ✅ | ⏳ HOLD — pending hard/soft yaml_loader + new attribute axes + bridal-role engine support | See dependency lists below |
+| `palette_*` | — | — | — |
 | `weather_*` | — | — | — |
 | `pairing_rules_*` | — | — | — |
 | `query_structure_*` | — | — | — |
@@ -133,10 +133,16 @@ These are visible from product images. Need: (1) vision-enrichment prompt update
 - `FabricDrape`: rigid_tight
 - `EmbellishmentLevel`: distributed_heavy
 
+**From `updated_occasion_yaml_review_with_stylist_notes.md` (received 2026-05-09):**
+- `EmbellishmentType`: kasavu_border, temple_border (region-specific border treatments — Kerala / Tamil Nadu)
+- `GarmentLength`: micro_mini (stylist used `HemLength` — same axis, vocabulary alignment needed; new value)
+
 **New top-level canonical axes** (need schema work in addition to enrichment):
-- `ShoulderExposure`: Closed, CapExposed, OffShoulder, OneShoulder, Strapless, ColdShoulder
-- `SleeveVolume`: Slim, Moderate, Puff, Bishop, Dramatic
-- `BlouseLength`: Cropped, Standard, Longline
+- `ShoulderExposure`: Closed, CapExposed, OffShoulder, OneShoulder, Strapless, ColdShoulder *(from bodyframe)*
+- `SleeveVolume`: Slim, Moderate, Puff, Bishop, Dramatic *(from bodyframe)*
+- `BlouseLength`: Cropped, Standard, Longline *(from bodyframe)*
+- `BorderContrast`: low, medium, high *(from occasion — used on Onam for `kasavu` border emphasis)*
+- `FabricTransparency`: low, medium, high *(from occasion — used on Holi to keep wet color from soaking through)*
 
 (More from upcoming stylist files will append here.)
 
@@ -150,7 +156,26 @@ These are decisions the engine makes at composition time. They don't go on indiv
 - `SupportRequirement` (Low, Medium, High) — depends on garment fit + occasion combination.
 - `MovementSecurity` (Secure, Moderate, Delicate) — same.
 
+**From `updated_occasion_yaml_review_with_stylist_notes.md`:**
+- `MovementEase` (low, moderate, high) — used on Sangeet + Navratri (dance-heavy occasions). **Vocabulary alignment with bodyframe's `MovementSecurity`** — same concept, different name. Pick one canonical name during the batch-execute pass.
+- **`bridal_priority` role-aware dressing** — entirely new structural concept. Wedding occasions need bride / groom / guest sub-roles with different rule sets per role (guests must NEVER receive equivalent embellishment recommendations as bridal participants attending the same wedding). Engine currently treats all attendees uniformly. Needs schema support for "role within occasion" context + role-conditional rule lookup.
+- **External yearly Navratri color-sequence config** — Navratri has a 9-night designated daily color sequence that changes yearly. Should be an external config the engine reads at runtime, not hardcoded in YAML. Stylist flagged this explicitly.
+
+**Vocabulary mismatch with existing canonical** (note for batch-execute):
+- Stylist's `SkinExposureLevel: [modest, balanced, elevated]` — canonical already has `SkinExposureLevel: [very_low, low, medium, high, very_high]`. Resolve during batch-execute (likely keep canonical's 5-band scale, alias stylist's labels in canonicalize).
+- Stylist's `HemLength` — canonical uses `GarmentLength` (with values cropped, waist, hip, mid_thigh, thigh, knee, calf, ankle, floor). Same axis, different name. Add `micro_mini` to GarmentLength.
+
 (More from upcoming stylist files will append here.)
+
+### Engineering flags surfaced by stylist (cross-cutting)
+
+Items the stylist explicitly flagged as engineering work that no single YAML can express:
+
+1. **External yearly Navratri color-sequence config** — see Engine extension queue above.
+2. **Bridal-role engine support** — see Engine extension queue above (`bridal_priority`).
+3. **Exposure / modesty attribute family audit** — `SkinExposureLevel` exists; `ShoulderExposure` is queued. Stylist also wants `NecklineDepth` enforced as hard rules in conservative contexts (in_laws_first_meeting, daily_office_mnc) — already canonical, just needs hard/soft routing.
+4. **Canonical enum registry audit** — stylist flagged inconsistencies across YAMLs in how `OccasionFit`, `OccasionSignal`, `EmbellishmentType`, `FabricTexture`, `PrimaryColor` values are spelled / scoped (e.g., `formal` vs `semi_formal` vs `smart_casual`; `traditional` vs `festive`; `party` vs `night_out`; `workwear` vs `office`). Worth a one-pass canonicalization sweep before batch-applying patches.
+5. **Fabric-pairing compatibility layer** — silk × cotton, brocade × handloom, etc. Stylist already flagged this as the major content gap that the upcoming `pairing_rules.yaml` review will address. Carrying as a forward-looking note here so the engineering work isn't surprise-discovered then.
 
 ### Hard / soft rule key support — Phase 4.3 (engineering, gates body_frame application)
 
