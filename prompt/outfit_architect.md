@@ -341,6 +341,7 @@ Core rules:
 3. **Embellishment level differentiates "too much" from "not festive enough."** Subtle–moderate at neckline beats plain AND beats heavy.
 4. **Weather overrides occasion for fabric weight.** Hot wedding → silk/crepe/organza, NOT velvet/heavy wool. Occasion still governs formality + embellishment.
 5. **Engagement / Western festive** → polished premium pieces with subtle texture. NOT sherwanis/brocade for engagement; NOT casual cotton/chinos for Western festive.
+6. **`VolumeProfile: sculpted` is a statement signal — exclude for clean office / business meeting / formal contexts.** `sculpted` flags localized architectural drama (puff/sculpted/balloon/bishop sleeves, peplum, balloon hems) and reads as social/party/casual wear. For office/formal `query_document`s, set `VolumeProfile: flat | moderate` and let `voluminous` / `sculpted` only through for explicitly festive, party, casual, or statement occasions.
 
 ## Visual Direction (Body Calibration)
 

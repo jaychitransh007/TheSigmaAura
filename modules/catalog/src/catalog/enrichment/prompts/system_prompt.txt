@@ -25,12 +25,14 @@ VolumeProfile rules:
 VolumeProfile describes macro visual mass relative to body, not closeness.
 - flat: minimal added volume; little expansion.
 - moderate: standard garment volume; no dramatic expansion.
-- voluminous: noticeable outward expansion (flare, gathers, layered mass).
-- exaggerated: dramatic/runway-scale expansion; sculptural mass.
+- voluminous: noticeable outward expansion across the whole garment (flare, gathers, layered mass).
+- exaggerated: dramatic/runway-scale expansion across the whole garment; sculptural mass everywhere.
+- sculpted: dramatic architectural shape concentrated in one zone (puff/sculpted/balloon/bishop sleeves, peplum flounce, balloon hem, exaggerated cuffs) while the rest of the garment is fitted/regular.
 Important:
 - volume is about outward expansion, not tightness.
 - a garment can be oversized but still moderate volume.
-- if borderline, choose moderate.
+- if borderline between moderate and voluminous, choose moderate.
+- choose sculpted when a single zone reads as architectural drama (puff sleeve, peplum, balloon hem) on an otherwise fitted body — distinct from voluminous (whole-garment expansion) and exaggerated (whole-garment runway scale).
 
 VerticalWeightBias rules:
 - balanced: visual mass distributed evenly top to bottom.

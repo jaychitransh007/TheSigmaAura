@@ -114,6 +114,20 @@ class ConfigAndSchemaTests(unittest.TestCase):
         self.assertIn("enum_attributes", parsed)
         self.assertIn("text_attributes", parsed)
 
+    def test_volume_profile_enum_includes_sculpted(self) -> None:
+        # `sculpted` (added 2026-05-09) lets the schema represent localized
+        # architectural drama (puff/sculpted/balloon sleeves, peplum, balloon
+        # hems) distinct from `voluminous` (whole-garment expansion) and
+        # `exaggerated` (whole-garment runway scale). Architect prompt and
+        # enrichment system_prompt depend on this value being present.
+        raw = Path("modules/style_engine/configs/config/garment_attributes.json").read_text(encoding="utf-8")
+        parsed = json.loads(raw)
+        values = parsed["enum_attributes"]["VolumeProfile"]
+        self.assertIn("sculpted", values)
+        # The other four canonical values must remain.
+        for v in ("flat", "moderate", "voluminous", "exaggerated"):
+            self.assertIn(v, values)
+
     def test_outfit_assembly_config_exists_and_loads(self) -> None:
         cfg = load_outfit_assembly_rules()
         self.assertIn("default_mode", cfg)
