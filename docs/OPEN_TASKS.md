@@ -93,7 +93,7 @@ Two ways to clean up:
 
 # Sub-3s latency push — phased execution plan
 
-**The anchor document for the latency-reduction work.** Replaces the prior pre-launch / launch / post-launch framing with a 5-phase execution plan, each with explicit test gates. We test query response after every phase before progressing.
+**The anchor document for the latency-reduction work.** Replaces the prior pre-launch / launch / post-launch framing with a 7-phase execution plan, each with explicit test gates. We test query response after every phase before progressing. Phases 6–7 (added 2026-05-09) are the architectural shifts that finish the sub-3s push on the slow side of the cache; Phases 1–5 are runtime wins on the existing hot-path topology.
 
 ## Status as of 2026-05-08
 
@@ -112,6 +112,8 @@ Two ways to clean up:
 | Phase 4.2 — Stylist YAML review | 🔒 Blocked on human | Paid consultant pass. Output: revised YAMLs + canonical-schema fixes. |
 | Phase 4.6 — Eval set curation | 🔒 Blocked on human | 100-500 hand-curated queries with hand-rated outputs. Gates Phase 4.8 actual run, Phase 1.4 model A/B, Phase 4.10 bucketed ramp. |
 | Phase 5 — Composer engine | ✅ **SHIPPED** (PRs #158-#163) | 6 sub-PRs (5a-5f): semantic spec, loader+evaluator, engine, router+flag, quality+shadow, dashboards+runbook. 154 tests added. Engine dormant behind `AURA_COMPOSER_ENGINE_ENABLED`; flag-on validation gated on Phase 4.6 eval set + 4.2 stylist review. |
+| Phase 6 — Pre-composed Outfit Library | 📋 **Planned** (post-4.6) | Move composition entirely offline. Hot path becomes profile-clustered vector retrieval against a pre-rated `outfit_library`. Sub-500ms on library hits; the actual sub-3s lever on the slow side of the cache. ~3-4 weeks of work, gated on Phases 4.2 + 4.6. |
+| Phase 7 — Layer C learned compatibility | 📋 **Planned** (post-Phase-6 + feedback volume) | Replace zero-shot Rater with a small learned model on accepted/rejected feedback events tagged with the sub-score vector at recommendation time. Inference <50ms vs Rater's ~4s. |
 
 **Production model lineup:** architect + composer on **gpt-5.2** (was gpt-5.4); planner + rater on **gpt-5-mini**; style advisor on **gpt-5.4**. All five env-configurable via `PLANNER_MODEL`, `ARCHITECT_MODEL`, `COMPOSER_MODEL`, `RATER_MODEL`, `STYLE_ADVISOR_MODEL`.
 
@@ -135,7 +137,16 @@ A real flag-on staging turn (`b356a1bf`, 2026-05-06) confirmed the win: architec
 These foundations remain available; their consumers (the composition engine in Phase 4, the cache layer in Phase 2) ship below.
 
 **Strategic context:**
-The composition engine (Phase 4) is the architectural endpoint that makes the YAMLs runtime-load-bearing. Phases 1–3 are operational wins that get us most of the way to sub-3s on the common path *before* the engine ships. Phase 5 extends the wins to the composer.
+The composition engine (Phase 4) is the architectural endpoint that makes the YAMLs runtime-load-bearing on the hot path. Phases 1–3 are operational wins. Phase 5 extends the wins to the composer. **Phase 6** moves composition entirely offline — pre-rated outfits indexed in `outfit_library`, retrieved via vector + filter on the hot path — which is the only architectural path to sub-3s on the slow side of the cache, since even at full engine acceptance the cold path stays at ~25-30s (composer LLM ~12s + rater ~4s + retrieval ~3s). **Phase 7** replaces the zero-shot LLM Rater with a learned model on feedback signals; that's a quality + cost refinement on top of Phase 6, not a separate latency lever.
+
+**Critical-path priority (2026-05-09):**
+
+1. 🔒 **Phase 4.2 + 4.6 unblock** — paid stylist YAML review + 100-500-query eval set with hand-rated outputs. **Why this matters most:** every downstream item (composer engine flag-on, Phase 6 library quality validation, Phase 7 learned model held-out evaluation, threshold calibration on both routers) gates on having ground truth. Building further without these means flying blind.
+2. ⏳ **EAR-1 data accumulation** (~2-3 days from 2026-05-09) — composer router decisions persisting since [PR #222](https://github.com/jaychitransh007/TheSigmaAura/pull/222). **Why this matters:** the composer engine's actual ~4% acceptance driver (`MIN_PICKS` / `pool_too_sparse` / pre-engine eligibility / `low_confidence`) is currently invisible. The next composer-side fix can't be picked correctly until this data shows the breakdown.
+3. 📋 **Phase 6 — Outfit Library** (post-4.6, ~3-4 weeks). **Why this matters:** the engines are ~done; the question is whether they run on the hot path (current design, ~25s floor) or offline (library design, sub-500ms hits). Phase 6 is the architectural shift that finishes the sub-3s anchor target.
+4. 📋 **Phase 7 — Layer C** (post-Phase-6 + ~50 feedback events/user). **Why this matters:** at sufficient volume, a learned model on real feedback should outperform zero-shot Rater calibration AND drop the 4s Rater stage to <50ms inference. But it has to come after the library because the library is where every recommendation naturally carries its sub-score vector for training; retrofitting feedback enrichment without it is harder.
+
+Items NOT on the critical path right now (deferred — see Phase headers for trigger conditions): planner model swaps (Phase 1.3/1.4 dropped), composer model swaps (Phase 1.4 dropped), prompt-compression aggressive tier (Phase 3.3/3.5 gated on 4.6), bucketed engine rollout machinery (waits for 4.6).
 
 ---
 
@@ -412,6 +423,96 @@ Total: 154 new tests across the 6 PRs, 902/902 passing post-5f. Engine is dorman
 - Engine latency p95: <300ms
 - Quality on eval set: ≥85% agreement with LLM composer
 - Cold-path composer average: <500ms on engine hit, ~6s on engine miss
+
+---
+
+## Phase 6 — Pre-composed Outfit Library (P0 strategic, post-4.6)
+
+**Goal:** move outfit composition entirely off the hot path. Pre-rate outfits offline against `(profile_cluster × occasion × season × weather × formality)`, index with `mood_embedding` + structured filters, and serve them via vector lookup. Hot path becomes: User State Vector lookup → vector + filter retrieval against `outfit_library` → fast LLM templating → stream. Sub-500ms achievable on library hits; live composition is the fallback (slow path, unchanged from Phases 1-5).
+
+**Why this is on the plan:** the existing composition engines (Phase 4.7 + 5) are deterministic functions that take a profile + intent and return scored outfits. The natural endpoint isn't "engine on hot path" — it's "engine offline populating a library, hot path retrieval-only." Even at full engine acceptance the cold path stays at ~25s (composer LLM ~12s + rater ~4s + retrieval ~3s). Library-based retrieval is the architectural lever that gets us under 3s on the slow-path side of the cache.
+
+**Gated on:**
+- Phase 4.6 (eval set) — need ground truth before bulk-running engines offline against the intent grid; otherwise we're scaling unvalidated quality
+- Phase 4.2 (stylist YAML review) — same rationale, applied to the engine inputs
+- Stable composer engine acceptance (~70% target; currently 4%) — premature if engines reject most inputs
+
+### 6.1 `outfit_library` schema + HNSW index (3-4 days)
+
+`outfit_library` table: `id`, `tenant_id`, `profile_cluster`, `item_ids[]`, `compatibility_score`, `sub_scores jsonb`, `rater_dim_scores jsonb`, `mood_embedding vector(1536)`, `occasion`, `season`, `weather`, `formality`, `engine_version`, `rater_prompt_version`, `freshness_at`, `stale_after`. HNSW on `mood_embedding` (`m=16, ef_construction=64` initial, calibrate against Phase 4.6 set). `gin` index on `sub_scores jsonb` for filterable queries. RLS keyed on `tenant_id`.
+
+### 6.2 Offline Composer worker (4-5 days)
+
+Python worker on the existing `record_stage_trace` pattern, polls a `library_build_jobs` table with `FOR UPDATE SKIP LOCKED`. Iterates the bootstrap intent grid (PR #110, 5,424 cells) × representative profile clusters. Runs the existing `composition.engine.compose_directions` + `composition.composer_engine.compose_outfits` per cell. No time pressure — runs nightly initially, then on-demand for cold-start.
+
+### 6.3 Offline Rater + library indexer (3-4 days)
+
+For each composed outfit, run the existing `OutfitRater` once at compose time, store rater scores + threshold-pass flag. Drop sub-threshold outfits. Generate `mood_embedding` per surviving outfit using `text-embedding-3-small` over a deterministic outfit description. Write to `outfit_library`.
+
+### 6.4 Hot-path retrieval-first router (3-4 days)
+
+New router stage in orchestrator, BEFORE architect: given canonicalized planner output, vector-search `outfit_library` filtered by `profile_cluster + occasion + season + freshness`. If top-K is high-confidence (cosine ≥ threshold + sub-score threshold), skip architect + composer + rater entirely and emit those outfits to the formatter. Templated explanation via fast LLM streaming on the result.
+
+### 6.5 Live-composition fallback path (no new code)
+
+When library miss / low-confidence: fall through to the current `architect → catalog_search → composer → rater` path. Existing slow path is unchanged; the library tries to skip it.
+
+### 6.6 Cold-start library build (2-3 days)
+
+Onboarding completion event triggers a library-build job for the user's specific profile cluster across the 20-30 most-common cells of the intent grid. Builds a starter library before the user's first query, so cold-start latency benefits from the library too.
+
+### 6.7 Library refresh / staleness (2 days)
+
+`stale_after` driven by archetype-preference changes, wardrobe edits, season transitions. Stale entries trigger on-demand recompose for that one query (slow path) AND background refresh job. Library rows tagged with `engine_version + rater_prompt_version`; bumps trigger re-rate.
+
+### Phase 6 test gate
+
+| Criterion | Target |
+|---|---|
+| Library hit rate after 1 week post-launch | ≥50% |
+| Hit-path latency p95 | <500ms |
+| Quality on eval set: library outfit vs equivalent live-composed | ≥95% agreement |
+| Library size per user post-cold-start | 100-300 outfits |
+| Storage cost per active user (scores + embeddings) | <$0.01/user/month |
+
+---
+
+## Phase 7 — Layer C learned compatibility model (P1, post-Phase-6 + feedback volume)
+
+**Goal:** replace the zero-shot LLM Rater (or augment it on a flag) with a small learned model — logistic regression first, 2-layer MLP later — over the sub-score vector that Layer B (`pairing.py` evaluators) already produces. Trained on accepted/rejected feedback events. Per-user personalization activated past ~50 events/user.
+
+**Why this is on the plan:** Rater is currently zero-shot LLM judgment (gpt-5-mini, 6 dims on 1/2/3 — PR #101). A learned model trained on real accept/reject signals should outperform zero-shot calibration once feedback volume is sufficient — particularly on per-user calibration where the LLM has no signal. Drops the ~4s Rater stage to <50ms inference. Per-turn cost falls accordingly.
+
+**Gated on:**
+- Phase 4.6 (eval set) for held-out evaluation ground truth
+- Phase 6 outfit_library landed — natural place where every recommendation carries the sub-score vector at recommendation time, which is the training feature; without library, retrofitting feedback enrichment is harder
+- ~50 feedback events per active user (volume threshold for personalization layer)
+
+### 7.1 Feedback enrichment with sub-score vector (1 day, can ship early)
+
+Extend `feedback_events` rows to also store the Layer-B sub-score vector + Rater dimension scores at recommendation time. Purely additive; ships before the model itself so feedback events accumulate the right features.
+
+### 7.2 Bootstrap Layer C with stylist priors (3-4 days)
+
+Hand-set logistic-regression weights based on stylist intuition (formality variance high penalty, pattern density medium, color harmony high, etc.). Inference path runs alongside the LLM Rater on a feature flag. Quality validated on the Phase 4.6 eval set.
+
+### 7.3 Periodic retraining job (2-3 days)
+
+Nightly batch on accumulated feedback. Stores versioned model artifact + held-out eval metrics. Production loads the latest passing version.
+
+### 7.4 Per-user personalization layer (3-5 days, gated on volume)
+
+Once a user crosses ~50 feedback events, augment Layer C with user-specific weight adjustments (or a user embedding feature). Until then, falls back to global model.
+
+### Phase 7 test gate
+
+| Criterion | Target |
+|---|---|
+| Layer C agreement with stylist eval (Phase 4.6 set), global model | ≥85% |
+| Layer C agreement, with personalization | ≥90% |
+| Inference latency p95 | <50ms |
+| Held-out eval accuracy after 1k feedback events | ≥80% |
+| Replacement of LLM Rater | optional — Layer C augments first, replaces only after sustained ≥85% agreement on eval set |
 
 ---
 
