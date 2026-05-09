@@ -93,7 +93,7 @@ Two ways to clean up:
 
 # Sub-3s latency push — phased execution plan
 
-**The anchor document for the latency-reduction work.** Replaces the prior pre-launch / launch / post-launch framing with a 7-phase execution plan, each with explicit test gates. We test query response after every phase before progressing.
+**The anchor document for the latency-reduction work.** Replaces the prior pre-launch / launch / post-launch framing with a 5-phase execution plan, each with explicit test gates. We test query response after every phase before progressing.
 
 ## Status as of 2026-05-08
 
@@ -112,8 +112,6 @@ Two ways to clean up:
 | Phase 4.2 — Stylist YAML review | 🔒 Blocked on human | Paid consultant pass. Output: revised YAMLs + canonical-schema fixes. |
 | Phase 4.6 — Eval set curation | 🔒 Blocked on human | 100-500 hand-curated queries with hand-rated outputs. Gates Phase 4.8 actual run, Phase 1.4 model A/B, Phase 4.10 bucketed ramp. |
 | Phase 5 — Composer engine | ✅ **SHIPPED** (PRs #158-#163) | 6 sub-PRs (5a-5f): semantic spec, loader+evaluator, engine, router+flag, quality+shadow, dashboards+runbook. 154 tests added. Engine dormant behind `AURA_COMPOSER_ENGINE_ENABLED`; flag-on validation gated on Phase 4.6 eval set + 4.2 stylist review. |
-| Phase 6 — Streaming delivery | ⏸ Not started | ~2-3 weeks. Cards visible <3s on cache hit, <8s on miss. UX win independent of cache hit rate. |
-| Phase 7 — Distillation | ⏸ Months 4+, gated on 10K+ traces | distillation_traces table live since May 2026, accumulating data. |
 
 **Production model lineup:** architect + composer on **gpt-5.2** (was gpt-5.4); planner + rater on **gpt-5-mini**; style advisor on **gpt-5.4**. All five env-configurable via `PLANNER_MODEL`, `ARCHITECT_MODEL`, `COMPOSER_MODEL`, `RATER_MODEL`, `STYLE_ADVISOR_MODEL`.
 
@@ -137,7 +135,7 @@ A real flag-on staging turn (`b356a1bf`, 2026-05-06) confirmed the win: architec
 These foundations remain available; their consumers (the composition engine in Phase 4, the cache layer in Phase 2) ship below.
 
 **Strategic context:**
-The composition engine (Phase 4) is the architectural endpoint that makes the YAMLs runtime-load-bearing. Phases 1–3 are operational wins that get us most of the way to sub-3s on the common path *before* the engine ships. Phases 5–7 extend the wins to the cold path and post-launch optimization.
+The composition engine (Phase 4) is the architectural endpoint that makes the YAMLs runtime-load-bearing. Phases 1–3 are operational wins that get us most of the way to sub-3s on the common path *before* the engine ships. Phase 5 extends the wins to the composer.
 
 ---
 
@@ -170,7 +168,7 @@ The previously planned next steps — promoting a non-reasoning planner and A/B-
 - Quality on eval set: ≥95% agreement with current production (deferred until eval set exists)
 - No regressions on the 50 hand-picked test queries
 
-> **Note:** streaming card delivery (NDJSON/SSE + frontend) was previously listed here as 1.5. Moved to **Phase 6** so the Phase 1 push focuses purely on real-latency wins, not perceived-latency UX. Phase 6 now owns all streaming work (cards + try-on).
+> **Note:** streaming card delivery (NDJSON/SSE + frontend) was previously scoped here as 1.5 and later as Phase 6. Both are dropped from the latency push — perceived-latency UX work is no longer planned under this anchor.
 
 ---
 
@@ -362,7 +360,7 @@ Bundled bug fix: engine's `seasonal_color_group` lookup now tries both `palette.
 | 3 | **Hardcode `pairing.py:is_statement()`**, docstring references `scale_balance.statement_definition` as source of truth | Same call architect made on its precedence matrix. Statement definition is a 4-clause OR; rare stylist edits. |
 | 4 | **Defer anchor turns** to a follow-up | Pre-engine eligibility gate declines `anchor_present`/`followup_request`/`has_previous_recommendations`/`pool_too_sparse`. Mirror of architect router. Anchor support added post-validation. |
 | 5 | **`bridal_specific.triggers_on: [occasion keys]`** new YAML field | Engine matches `formality_hint == 'ceremonial' AND occasion_signal in triggers_on`. Stylist-editable, no hardcoded occasion names in Python. |
-| 6 | **Keep LLM `OutfitComposer` as permanent fallback** | Engine target hit rate ≥70%, not 100%. Same as architect pattern. Distillation (Phase 7) replaces the LLM later, not Phase 5. |
+| 6 | **Keep LLM `OutfitComposer` as permanent fallback** | Engine target hit rate ≥70%, not 100%. Same as architect pattern. The LLM stays as the permanent fallback path. |
 
 ### Sub-PR decomposition — ALL SHIPPED (2026-05-07)
 
@@ -385,69 +383,6 @@ Total: 154 new tests across the 6 PRs, 902/902 passing post-5f. Engine is dorman
 - Engine latency p95: <300ms
 - Quality on eval set: ≥85% agreement with LLM composer
 - Cold-path composer average: <500ms on engine hit, ~6s on engine miss
-
----
-
-## Phase 6 — Streaming delivery: cards + try-on (P1, Weeks 8-10, parallel with Phase 5)
-
-**Goal:** decouple rendering from total-pipeline wall time. Cards visible <3s as the composer/rater finalizes them; try-on streams in 10-30s after. Real latency unchanged from Phase 1-5; perceived latency drops dramatically.
-
-This phase is intentionally last in the active push because perceived-latency wins should layer on top of an already-fast real-latency pipeline — streaming a 60s pipeline into the UI just spreads the wait. After Phases 1-5 land, the cold-path is ~25-30s and the cache-hit path is <500ms; streaming converts those into <3s first-card-visible across the board.
-
-### 6.1 NDJSON/SSE recommendation endpoint (1-2 days)
-
-Refactor the recommendation endpoint to stream NDJSON or SSE. Server-side: emit each composed+rated card as soon as it's ready instead of buffering all 6. Skeleton states render on the frontend within <100ms of request submission. Real latency unchanged; perceived latency drops to first-card-visible (~3s on cache hit, <8s on cache miss after Phase 1-5).
-
-### 6.2 Frontend card streaming consumer (1-2 days)
-
-Update `modules/agentic_application/src/agentic_application/ui.py` to consume the streamed cards as they arrive. Each card renders independently; try-on starts loading on each card the moment it renders, doesn't block visibility of others.
-
-### 6.3 SSE try-on streaming endpoint (3-5 days)
-
-New endpoint `GET /v1/turns/{turn_id}/tryon/stream`. Server-side: as each Gemini render completes, push to the SSE channel. Token-based authentication.
-
-### 6.4 Frontend try-on SSE consumer (2-3 days)
-
-Cards render with try-on placeholders (from 6.2). SSE updates from 6.3 fill in try-on images as they complete.
-
-### 6.5 Pre-warm worker for predicted recipes (1 week)
-
-`ops/scripts/tryon_prewarm.py`. For each active user, predict top-N likely recipe cells based on profile + `recent_user_actions`. Resolve to garment sets via Phase 4 composition engine. Render Gemini try-on; write to existing try-on cache. Per-user pre-warm budget cap (max 10 renders/user/day) to prevent runaway Gemini cost.
-
-**Why not cross-user fan-out.** "Render once per garment set, composite onto each user" is not actionable — `gemini-3.1-flash-image-preview` renders garment-on-body in a single forward pass; can't separate the rendered garment from the body without losing body-conforming drape ([tryon_service.py:18–44](modules/agentic_application/src/agentic_application/services/tryon_service.py#L18-L44)). Doing that properly requires a two-stage diffusion pipeline (research project) or classical CV warping (visible quality regression).
-
-### Phase 6 test gate
-
-- First card visible p95: <3s on cache hit, <8s on cache miss
-- Try-on images stream in 10-30s after card visibility
-- Pre-warm cache hit rate: ≥40% on alpha traffic by week 4
-- No regression in real-latency p95 from Phase 5 baseline
-
----
-
-## Phase 7 — Distillation (P2, Months 4+, gated on data)
-
-**Goal:** distill slow LLM stages on accumulated trace data. Final cold-path optimization.
-
-**Trigger:** ≥10K rater traces accumulated. Synthetic bootstrap counts; real traces preferred for refinement.
-
-### 7.1 Distilled rater (3 weeks + ~$2K compute)
-
-Fine-tune 3-8B model (Qwen2.5-7B / similar) on 6-axis hexagon traces from `distillation_traces`. Single A10/L4 serving via vLLM. Confidence-gated fallback to gpt-5-mini on low-confidence cases. New module `modules/style_engine/distilled/`.
-
-### 7.2 Distilled architect / composer for novel cases (3-4 weeks)
-
-For cases where Phase 4 + 5 composition engines fall through. Fine-tune small model on cache-miss outputs once 10K+ traces exist. Confidence-gated; if low confidence, fall through to current LLM (already faster from Phase 1+3).
-
-### 7.3 Cold-path replacement (2 weeks)
-
-Distilled models become the LLM-fallback path. gpt-5-class models reserved for very-low-confidence cases only.
-
-### Phase 7 test gate
-
-- Distilled rater p95: <600ms; ≥90% agreement with gpt-5-mini
-- Cold-path total p95: <5s
-- All paths sub-3s p95 across alpha traffic
 
 ---
 
@@ -479,7 +414,3 @@ After Phase 5 (estimated Week 10):
 | Cache miss → engine compose | ~25% | <2s |
 | Cache miss → engine miss → LLM fallback | ~5% | ~10s |
 | **Average user experience** | — | **2-3s** |
-
-After Phase 7 (months later):
-- All paths sub-3s p95
-- LLM only for genuine novelty (<2% of traffic)
