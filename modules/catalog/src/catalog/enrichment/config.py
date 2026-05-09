@@ -7,31 +7,34 @@ MANDATORY_COLUMNS = ["description", "images__0__src", "images__1__src"]
 
 @dataclass(frozen=True)
 class PipelineConfig:
-    # Vision model for catalog attribute extraction. Migrated from
-    # ``gpt-5-mini`` (OpenAI batch API) to ``gemini-2.5-flash`` per the
-    # 2026-05-09 stylist + engineering decision (see OPEN_TASKS
-    # "Gemini-2.5-Flash migration spec"). The migration carries
-    # meaningful quality gains on asymmetry, Indian ethnicwear,
-    # layered garments, attachment structures, and visual hierarchy
-    # — exactly the surfaces the post-Path-B (PR #239) schema relies on.
-    model: str = "gemini-2.5-flash"
-
-    # Gemini-specific runner config. Gemini doesn't have an OpenAI-style
-    # batch API with overnight discounting; we make sync calls with
-    # bounded concurrency.
-    request_timeout_seconds: int = 120
-    max_concurrent_requests: int = 3
-    image_download_timeout_seconds: int = 30
-
-    # Legacy OpenAI batch config — preserved for backward compatibility
-    # with the existing CSV-driven main.py pipeline. Will be removed
-    # when that path is fully migrated. The new
-    # ``ops/scripts/run_gemini_enrichment.py`` runner ignores all of these.
+    # Vision model for catalog attribute extraction. Confirmed
+    # 2026-05-09 (after evaluating Gemini 2.5 Flash and reverting):
+    # gpt-5-mini batch is ~30% cheaper for our token mix and ties on
+    # MMMU (79.7% both). We stay on the OpenAI Batch API for the
+    # native 50% discount + integrated batch tooling. See OPEN_TASKS
+    # "Catalog enrichment provider decision" for the full comparison.
+    model: str = "gpt-5-mini"
     endpoint: str = "/v1/responses"
     completion_window: str = "24h"
     poll_interval_seconds: int = 30
     max_wait_minutes: int = 180
     output_dir: str = "out"
+
+    # Token-aware batch chunking caps (added 2026-05-09).
+    #
+    # OpenAI's Batch API limits per file:
+    # - 50,000 requests
+    # - 200 MB upload size
+    # And the org has an enqueued-tokens-per-minute (TPM) ceiling that
+    # can reject a batch with "enqueued_token_limit_reached" if the
+    # combined input tokens across queued batches exceed the tier limit.
+    #
+    # ``max_batch_bytes`` is enforced today by ``_split_rows_for_max_batch_bytes``
+    # in main.py. ``max_batch_input_tokens`` adds a complementary cap so
+    # we don't ship a batch that fits under 200MB but exceeds the org's
+    # TPM and gets rejected (a soft ceiling — we'd rather split
+    # proactively than retry-on-error).
+    max_batch_input_tokens: int = 1_500_000
 
 
 def _load_dotenv(dotenv_path: str = ".env") -> None:
@@ -66,18 +69,8 @@ def _load_dotenv(dotenv_path: str = ".env") -> None:
 
 
 def get_api_key() -> str:
-    """Legacy: returns OpenAI key for the OpenAI batch path."""
     _load_dotenv()
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("Missing OPENAI_API_KEY in environment or .env file.")
-    return api_key
-
-
-def get_gemini_api_key() -> str:
-    """Returns the Gemini API key for the new Gemini-2.5-Flash enrichment path."""
-    _load_dotenv()
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("Missing GEMINI_API_KEY in environment or .env file.")
     return api_key

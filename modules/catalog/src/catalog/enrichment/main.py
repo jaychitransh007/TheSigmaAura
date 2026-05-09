@@ -2,7 +2,7 @@ import argparse
 import csv
 import json
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .audit import run_schema_audit, write_audit_report
 from .batch_builder import build_batch_input_jsonl, build_request_body, build_retry_batch_input_jsonl
@@ -49,6 +49,17 @@ def parse_args() -> argparse.Namespace:
         default=180_000_000,
         help="Max input JSONL size in bytes per batch chunk when --auto-chunk is enabled.",
     )
+    parser.add_argument(
+        "--max-batch-input-tokens",
+        type=int,
+        default=None,
+        help=(
+            "Max estimated input tokens per batch chunk when --auto-chunk "
+            "is enabled. Defaults to PipelineConfig.max_batch_input_tokens "
+            "(currently 1.5M) — set to 0 to disable the token cap and rely "
+            "only on --max-batch-bytes."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -60,6 +71,61 @@ def _request_line_bytes(row: Dict[str, str], idx: int, config: PipelineConfig) -
         "body": build_request_body(row, config),
     }
     return len(json.dumps(req, ensure_ascii=True).encode("utf-8")) + 1
+
+
+# System-prompt token count, computed once. The prompt is ~3K tokens
+# at the time of writing (Path B + ShapeArchitecture additions); we
+# re-estimate at module load so the constant doesn't drift if the
+# prompt file changes.
+def _estimate_text_tokens(text: str) -> int:
+    """~1 token per 4 characters — the standard rough heuristic for
+    English text at the GPT tokenizer level. Good enough for batch
+    chunking decisions; we don't need tiktoken-precision here."""
+    return max(1, len(text) // 4)
+
+
+# Per-image token cost on gpt-5-mini for 768px-normalized images at
+# detail='auto'. Vision tokens scale with image dimensions per OpenAI's
+# tiling rules. 768×768 with auto detail typically lands around 240
+# tokens (1 base + 2-3 tiles); we round up to be conservative.
+_IMAGE_TOKENS_PER_IMAGE = 300
+
+
+_SYSTEM_PROMPT_TOKENS_CACHE: Optional[int] = None
+
+
+def _system_prompt_tokens() -> int:
+    global _SYSTEM_PROMPT_TOKENS_CACHE
+    if _SYSTEM_PROMPT_TOKENS_CACHE is None:
+        from .batch_builder import SYSTEM_PROMPT
+        _SYSTEM_PROMPT_TOKENS_CACHE = _estimate_text_tokens(SYSTEM_PROMPT)
+    return _SYSTEM_PROMPT_TOKENS_CACHE
+
+
+def _estimate_request_input_tokens(row: Dict[str, str]) -> int:
+    """Estimate input tokens a single batch-API request will consume.
+
+    Includes the cached system-prompt cost, the per-row text blob
+    (description + store + url), and a fixed per-image cost for each
+    of up to 2 product images. We only count IMAGES that would
+    actually be sent (i.e., non-empty URL fields).
+    """
+    text_blob = (
+        f"Description: {row.get('description', '')}\n"
+        f"Store: {row.get('store', '')}\n"
+        f"Product URL: {row.get('url', '')}\n"
+        "You must use both images together when inferring every attribute."
+    )
+    image_count = 0
+    if (row.get("images__0__src") or "").strip():
+        image_count += 1
+    if (row.get("images__1__src") or "").strip():
+        image_count += 1
+    return (
+        _system_prompt_tokens()
+        + _estimate_text_tokens(text_blob)
+        + image_count * _IMAGE_TOKENS_PER_IMAGE
+    )
 
 
 def _is_enqueued_token_limit_error(message: str) -> bool:
@@ -222,13 +288,39 @@ def _split_rows_for_max_batch_bytes(
     rows: List[Dict[str, str]],
     config: PipelineConfig,
     max_batch_bytes: int,
+    max_batch_input_tokens: Optional[int] = None,
 ) -> List[List[Dict[str, str]]]:
+    """Split rows into batch chunks honouring two caps:
+
+    1. ``max_batch_bytes`` — hard cap on the JSONL input file size
+       (OpenAI's Batch API rejects files >200MB; default 180MB stays
+       under that with margin).
+    2. ``max_batch_input_tokens`` (optional) — cap on the cumulative
+       estimated input tokens across requests in the chunk. Used to
+       proactively stay under the org's enqueued-tokens-per-minute
+       (TPM) ceiling, which would otherwise reject the batch with
+       ``enqueued_token_limit_reached`` and force a reactive retry
+       split via ``_split_chunk_for_retry``.
+
+    Either cap can trigger a chunk break; whichever is reached first
+    closes the current chunk and starts a new one. Defaults to
+    ``config.max_batch_input_tokens`` when ``max_batch_input_tokens``
+    is None.
+    """
     if max_batch_bytes <= 0:
         raise ValueError("--max-batch-bytes must be greater than 0.")
+    token_cap = (
+        max_batch_input_tokens
+        if max_batch_input_tokens is not None
+        else config.max_batch_input_tokens
+    )
+    if token_cap is not None and token_cap <= 0:
+        raise ValueError("max_batch_input_tokens must be greater than 0 when set.")
 
     chunks: List[List[Dict[str, str]]] = []
     current_rows: List[Dict[str, str]] = []
     current_bytes = 0
+    current_tokens = 0
 
     for row in rows:
         request_bytes = _request_line_bytes(row=row, idx=len(current_rows), config=config)
@@ -238,14 +330,30 @@ def _split_rows_for_max_batch_bytes(
                 "Try using a larger --max-batch-bytes or shorten row content."
             )
 
-        if current_rows and (current_bytes + request_bytes > max_batch_bytes):
+        request_tokens = _estimate_request_input_tokens(row)
+        if token_cap is not None and request_tokens > token_cap:
+            raise RuntimeError(
+                "A single row request exceeds the configured input-token "
+                "cap (max_batch_input_tokens). Tighten the system prompt "
+                "or raise the cap."
+            )
+
+        byte_overflow = current_rows and (current_bytes + request_bytes > max_batch_bytes)
+        token_overflow = (
+            token_cap is not None
+            and current_rows
+            and (current_tokens + request_tokens > token_cap)
+        )
+        if byte_overflow or token_overflow:
             chunks.append(current_rows)
             current_rows = [row]
             current_bytes = request_bytes
+            current_tokens = request_tokens
             continue
 
         current_rows.append(row)
         current_bytes += request_bytes
+        current_tokens += request_tokens
 
     if current_rows:
         chunks.append(current_rows)
@@ -288,10 +396,16 @@ def _run_auto_chunk_pipeline(
         completed_chunks = resumed_completed_chunks
     else:
         merged_all_rows = []
+        # ``--max-batch-input-tokens 0`` disables the token cap; use
+        # None to fall back to ``config.max_batch_input_tokens``.
+        token_cap = args.max_batch_input_tokens
+        if token_cap == 0:
+            token_cap = None
         pending_chunks = _split_rows_for_max_batch_bytes(
             rows=rows,
             config=config,
             max_batch_bytes=args.max_batch_bytes,
+            max_batch_input_tokens=token_cap,
         )
         completed_chunks = 0
 
