@@ -22,10 +22,14 @@ SYSTEM_PROMPT = _load_system_prompt()
 
 
 def build_request_body(row: Dict[str, str], config: PipelineConfig) -> Dict:
+    # Only the description carries useful semantic signal. Store name
+    # and product URL bias the model toward marketing intent
+    # (sequins → "party", luxury-store kurta → "ceremonial") rather
+    # than letting it read the actual garment construction. Stripped
+    # 2026-05-09 per the prompt-engineering review's
+    # construction-over-marketing rule.
     text_blob = (
         f"Description: {row.get('description', '')}\n"
-        f"Store: {row.get('store', '')}\n"
-        f"Product URL: {row.get('url', '')}\n"
         "You must use both images together when inferring every attribute."
     )
     image_0 = _normalize_image_url((row.get("images__0__src", "") or "").strip())
