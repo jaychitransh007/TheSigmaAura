@@ -69,6 +69,20 @@ pairing_rules:
           formality leads (semi_formal bandhgala over smart_casual
           kurta = effective semi_formal outfit).
 
+      # Indian urban users frequently intentionally soften one ceremonial slot.
+      ceremonial_softening_exception:
+        description: |
+          One ceremonial anchor may pair with formal accompaniment when
+          the styling intent is restrained luxury rather than full
+          bridal intensity.
+        allowed_pairs:
+          - "ceremonial saree + formal blouse"
+          - "formal silk kurta + ceremonial dupatta"
+          - "ceremonial lehenga skirt + formal minimal blouse"
+        notes: |
+          Extremely important for modern urban styling in Bengaluru,
+          Mumbai, Hyderabad, and intimate wedding contexts.
+
   # ─────────────────────────────────────────────────────────────────────
   # 2. COLOR STORY
   # ─────────────────────────────────────────────────────────────────────
@@ -103,6 +117,29 @@ pairing_rules:
         flatters:
           ContrastLevel: [low, medium, high, very_high]
         avoid: {}
+
+      # Indian festivewear often uses metallic as a pseudo-neutral.
+      metallic_neutral_exception:
+        description: |
+          Gold, champagne, antique gold, oxidized silver, bronze, and
+          muted metallic embroidery may function as neutral support
+          colors rather than dominant hues, even when a single outfit
+          carries metallic across multiple slots.
+        notes: |
+          Prevents unnecessary rejection of Indian festive and bridal
+          outfits where zari/metallic thread is pervasive across border,
+          blouse, and accessories.
+
+      # Bridal and festive Indianwear often intentionally clusters analogous warm tones.
+      festive_warm_cluster:
+        description: |
+          Warm festive combinations (marigold, rust, sindoor red, haldi
+          yellow, mehendi green, antique gold) are considered culturally
+          coherent even when technically exceeding classic Western
+          color-harmony tension limits.
+        notes: |
+          Indian festive color logic is more culturally associative than
+          purely color-wheel based.
 
     color_harmony_types:
       monochromatic:
@@ -151,6 +188,17 @@ pairing_rules:
           ColorCount: [single, two_color]
         notes: Most flexible — works for office, dinner, dating. Not
           loud enough for festive / wedding.
+
+      # Added because Indian festivewear frequently relies on warm metallic anchoring.
+      jewel_plus_metallic:
+        description: |
+          Jewel-tone anchor with restrained metallic accompaniment.
+        flatters:
+          ColorCount: [two_color, tonal]
+        notes: |
+          Emerald + antique gold, navy + dull gold, wine + bronze,
+          ivory + champagne gold. Extremely common in Indian festivewear
+          and modern luxury bridal styling.
 
   # ─────────────────────────────────────────────────────────────────────
   # 3. PATTERN MIXING
@@ -207,6 +255,29 @@ pairing_rules:
           PatternType: [floral, abstract, geometric, ethnic, motif, animal]   # only solid acceptable for 3rd slot
         notes: Even for bohemian / creative archetype with adventurous
           risk_tolerance — 3 patterns is too much. Drop one to solid.
+
+      # Indian ethnicwear often uses woven motifs that should not count
+      # as full competing patterns.
+      woven_motif_exception:
+        description: |
+          Traditional woven motifs (Banarasi buti, Kanjeevaram zari
+          border, chikankari shadow motifs, ikat texture variation) may
+          coexist with one additional patterned slot.
+        notes: |
+          These read as texture heritage rather than loud pattern
+          collision. A Banarasi buti saree with a small-floral blouse
+          stays coherent; a screen-print floral saree with a small-floral
+          blouse does not.
+
+      # Large ethnic prints require silhouette restraint.
+      oversized_ethnic_control:
+        description: |
+          Oversized ethnic motifs require clean silhouette balancing
+          and low embellishment elsewhere.
+        notes: |
+          Important for contemporary resort ethnicwear, oversized
+          block-print kurtas, and modern co-ord sets where the print
+          itself is the visual anchor.
 
       pattern_scale_with_body_frame:
         description: |
@@ -265,6 +336,29 @@ pairing_rules:
           are all structured. A fluid kimono cardigan over a fitted
           base reads softer and is OK for casual.
 
+      # Layering is one of the strongest balancing tools in Indian urban styling.
+      vertical_layering_rule:
+        description: |
+          Open-front layers, longline jackets, shrugs, bandhgalas, and
+          cape overlays should create vertical continuity rather than
+          width expansion.
+        notes: |
+          Especially important for Apple, Diamond, Petite, and
+          midsection-conscious users. The layer should fall in a clean
+          vertical line rather than balloon at the waist.
+
+      # Modern Indian coord sets require dedicated balancing logic.
+      co_ord_balance:
+        description: |
+          Co-ord sets require at least one balancing element:
+          texture variation, layering, footwear contrast, jewellery
+          interruption, or silhouette contrast.
+        notes: |
+          Prevents coord sets from reading flat or pajama-like. A
+          monochrome ivory co-ord with sneakers or oxidised silver
+          jewellery succeeds; the same co-ord with matching ivory
+          accessories reads sleepwear.
+
   # ─────────────────────────────────────────────────────────────────────
   # 5. SCALE BALANCE (statement piece rule)
   # ─────────────────────────────────────────────────────────────────────
@@ -309,6 +403,20 @@ pairing_rules:
           consume the outfit's one statement slot.
         notes: Statement saree + statement jhumka earrings is fine.
           Statement saree + statement neckpiece could compete (avoid).
+
+      # Indian styling often distributes visual intensity intentionally.
+      distributed_statement_exception:
+        description: |
+          Multiple moderate-intensity zones are acceptable when:
+          - all belong to same color family
+          - embellishment density is controlled (none individually
+            crosses into "heavy" or "statement")
+          - silhouette remains clean
+        notes: |
+          Important for contemporary Indian weddingwear where blouse,
+          dupatta border, and jewellery often all carry coordinated
+          emphasis. The single-statement rule applies to "loud and
+          competing" zones, not to "coordinated and harmonious" ones.
 
   # ─────────────────────────────────────────────────────────────────────
   # 6. FABRIC COMPATIBILITY
@@ -376,6 +484,50 @@ pairing_rules:
           FabricDrape: [fluid, soft_structured, crisp, rigid, sculpted]
         avoid: {}
 
+      # Major missing area in original file — Indian textile-hierarchy
+      # logic deferred from earlier reviews. Indian users perceive weave
+      # and textile-family harmony instinctively even when they cannot
+      # verbally articulate it.
+      indian_weave_compatibility:
+        description: |
+          Traditional Indian weaves and fabric families carry cultural
+          weight, regional identity, perceived formality, and texture
+          expectations that must pair thoughtfully. A heavy heritage
+          weave on one slot reduces the formality budget on every other
+          slot.
+        compatibility_guidelines:
+          compatible:
+            - "Banarasi silk + raw silk blouse"
+            - "Chanderi + tissue silk"
+            - "cotton handloom + matte silver jewellery"
+            - "linen kurta + soft Nehru jacket"
+            - "organza dupatta + structured silk lehenga"
+            - "Ajrakh + solid handloom cotton"
+            - "chikankari + tonal fluid fabrics"
+          avoid:
+            - "heavy brocade + distressed denim"
+            - "raw silk + athletic jersey"
+            - "Banarasi + neon athleisure"
+            - "heavy Kanjeevaram + casual flip-flops"
+            - "multiple competing heritage weaves"
+        notes: |
+          Indian users strongly perceive weave coherence even when they
+          cannot verbally articulate it. Composer should treat heritage
+          weaves (Banarasi, Kanjeevaram, Chanderi, Patola, Ajrakh,
+          Phulkari, chikankari) as anchors that drive the rest of the
+          outfit's textile register.
+
+      # Sheen layering needs more nuance.
+      sheen_hierarchy:
+        description: |
+          Multiple sheen surfaces require hierarchy:
+          one dominant sheen, one supporting matte / soft texture.
+        notes: |
+          Satin top + sequinned skirt + metallic embroidery + glossy
+          heels quickly becomes visually noisy outside bridalwear.
+          Outside ceremonial contexts, cap sheen at one dominant slot
+          and pair the rest with matte / textured / smooth surfaces.
+
   # ─────────────────────────────────────────────────────────────────────
   # 7. CULTURAL COHERENCE
   # ─────────────────────────────────────────────────────────────────────
@@ -416,6 +568,24 @@ pairing_rules:
         notes: A bandhgala is the exception — works with both Indian-
           traditional (over kurta-pyjama) and Western (over shirt +
           trouser).
+
+      # Urban India increasingly accepts softened fusion ceremonialwear.
+      elevated_fusion_exception:
+        description: |
+          Elevated fusion is acceptable when Western elements are
+          tailored, monochrome, minimal, and occasion-aligned.
+        examples_valid:
+          - "ivory lehenga skirt + structured ivory shirt"
+          - "bandhgala + tailored trouser"
+          - "saree + clean full-sleeve bodysuit blouse"
+          - "kurta + wide-leg tailored trouser"
+        examples_invalid:
+          - "bridal lehenga + distressed jeans"
+          - "Kanjeevaram saree + graphic hoodie"
+        notes: |
+          The most common AI-styling failure mode is "double-dominant
+          fusion" — Indian and Western elements both demanding
+          attention. Successful fusion has one anchor and one restraint.
 
   # ─────────────────────────────────────────────────────────────────────
   # 8. BRIDAL / HEAVY-TRADITIONAL SPECIFIC RULES
@@ -506,6 +676,33 @@ pairing_rules:
           OccasionFit: [smart_casual, semi_formal, formal, traditional, festive]
           FormalityLevel: [smart_casual, semi_formal, formal, ceremonial]
 
+      # Modern bridalwear increasingly uses restrained styling.
+      modern_bridal_restraint:
+        description: |
+          Contemporary luxury bridal styling may intentionally reduce
+          dupatta weight, jewellery density, and blouse embellishment
+          while maintaining ceremonial coherence.
+        notes: |
+          Particularly relevant for Bengaluru minimal-luxury weddings,
+          destination weddings, daytime ceremonies, and ivory / pastel
+          colour palettes. The system must support both maximal
+          ceremonial styling AND restrained luxury bridal styling
+          without forcing either aesthetic universally.
+
+      # Important for guests vs bride distinction.
+      guest_vs_bridal_separation:
+        description: |
+          Non-bridal guests should not visually compete with bridal
+          focal intensity, even at the same wedding occasion.
+        notes: |
+          Applies through:
+          - lower embellishment density than bridal participants
+          - reduced veil / dramatic dupatta usage
+          - lower jewellery hierarchy
+          - simpler silhouette engineering
+          Engine-side: see `bridal_priority` role-aware dressing in the
+          downstream-work queue (occasion review).
+
   # ─────────────────────────────────────────────────────────────────────
   # 9. ANCHOR CONSTRAINTS (for pairing_request intent)
   # ─────────────────────────────────────────────────────────────────────
@@ -557,3 +754,27 @@ pairing_rules:
           - Anchor = Western blazer → fillers Western (no kurta under)
           - Anchor = bandhgala → either Indian (kurta + churidar) or
             Western (shirt + trouser); both work
+
+      # Anchor layering logic is crucial in Indian styling systems.
+      anchor_visual_hierarchy:
+        description: |
+          The anchor item must remain the visual focal point. Supporting
+          slots should reinforce rather than compete with the anchor's
+          weight, embellishment, or saturation.
+        notes: |
+          Extremely important for:
+          - saree-first styling (blouse + dupatta support the saree)
+          - statement jacket styling (top + bottom recede under jacket)
+          - bridal dupatta anchoring
+          - luxury handbag or sneaker-led streetwear outfits
+
+      # Prevents overmatching.
+      anchor_exact_match_avoidance:
+        description: |
+          Supporting slots should coordinate with the anchor rather than
+          identically replicate every attribute (color, texture, finish).
+        notes: |
+          Slight variation in texture, value, saturation, or finish
+          creates depth and prevents catalog-mannequin styling. A navy
+          kurta anchor pairs better with charcoal-grey or ivory trouser
+          than with another navy of the same exact shade and texture.

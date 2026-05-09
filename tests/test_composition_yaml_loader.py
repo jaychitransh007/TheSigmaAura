@@ -151,11 +151,21 @@ class StyleGraphLoadTests(unittest.TestCase):
     def test_pairing_rule_group_color_harmony_types_typed(self):
         graph = load_style_graph()
         color_story = graph.pairing_rules["color_story"]
-        # The 5 named harmony types live under color_harmony_types,
-        # not under rules — verify they decode into typed instances.
+        # The named harmony types live under color_harmony_types, not
+        # under rules — verify they decode into typed instances.
+        # ``jewel_plus_metallic`` added in the May 2026 pairing-rules
+        # stylist pass for Indian festivewear (jewel-tone anchor with
+        # restrained antique-metallic accompaniment).
         self.assertEqual(
             set(color_story.color_harmony_types.keys()),
-            {"monochromatic", "analogous", "complementary", "tonal", "neutral_plus_anchor"},
+            {
+                "monochromatic",
+                "analogous",
+                "complementary",
+                "tonal",
+                "neutral_plus_anchor",
+                "jewel_plus_metallic",
+            },
         )
         mono = color_story.color_harmony_types["monochromatic"]
         self.assertIsInstance(mono, ColorHarmonyType)
@@ -164,6 +174,9 @@ class StyleGraphLoadTests(unittest.TestCase):
     def test_pairing_rule_group_fusion_rules_typed(self):
         graph = load_style_graph()
         cultural = graph.pairing_rules["cultural_coherence"]
+        # ``elevated_fusion_exception`` added in the May 2026 pairing-rules
+        # stylist pass — captures softened ceremonial-fusion patterns
+        # (e.g., bandhgala + tailored trouser) that urban India accepts.
         self.assertEqual(
             set(cultural.fusion_rules.keys()),
             {
@@ -171,6 +184,7 @@ class StyleGraphLoadTests(unittest.TestCase):
                 "indo_western_fusion",
                 "western_only",
                 "heavy_traditional_no_western_fusion",
+                "elevated_fusion_exception",
             },
         )
         rule = cultural.fusion_rules["indo_western_fusion"]
