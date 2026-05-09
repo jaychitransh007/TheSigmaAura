@@ -356,30 +356,54 @@ LayeringVisibility rules:
 - statement: intentionally visible layer adding occasion drama (cape overlay, statement jacket, longline duster).
 Applies primarily to outerwear / cape / overlay garments. Return null for non-layering garments.
 
-BreathabilityLevel rules:
-- low: synthetic-heavy / lined / dense weave (polyester, structured velvet, lined wool).
-- moderate: standard cotton / poly-blend / unlined silk.
-- high: linen, khadi, light handloom cotton, mulmul, cheesecloth.
-Inferred from FabricTexture + FabricWeight + visible weave density when unambiguous.
+VolumePlacement rules:
+- none: garment has no localized volume (close-fit shift, slim trouser).
+- shoulder: volume concentrates at the shoulder line (extended shoulder, shoulder pad, dropped-shoulder cocoon).
+- sleeve: volume concentrates in the sleeve (puff, balloon, bishop, exaggerated cuff).
+- bust: volume concentrates around the bust (gathered bust, ruched bodice).
+- waist: volume concentrates at the waist (peplum, gathered tunic, ruched midriff).
+- hip: volume concentrates at the hip (dhoti drape, hip-flounce skirt, peplum at hip).
+- hem: volume concentrates at the hem (mermaid flare, fishtail, gathered hem).
+- asymmetric_side: volume concentrates on one side only (one-sided drape, side bustle).
+- back: volume concentrates at the back (cape gown, back-bow, train).
+- global: volume distributed across the whole garment (kaftan, oversized cocoon coat, voluminous lehenga).
+Important:
+- Choose the strongest single zone. A puff-sleeve top with a flared hem is ``sleeve`` if the puff is the dominant visual zone, ``hem`` if the flare is.
+- A simple slim/regular garment with no localized volume is ``none``.
 
-DryTime rules:
-- slow: silk, wool, heavy cotton, embroidered fabrics.
-- moderate: standard cotton blends, light silk, georgette.
-- fast: synthetic, polyester, quick-dry-treated fabrics, jersey knits.
+AsymmetryType rules:
+- none: garment is symmetric.
+- neckline: asymmetric neckline only (one-shoulder, off-center scoop).
+- hem: asymmetric hem only (high-low, handkerchief, fishtail-on-one-side).
+- drape: asymmetric drape (one-side saree pallu, side-draped lehenga gown, diagonal sash).
+- closure: asymmetric closure (off-center zipper, side-tie wrap, diagonal bandhgala fastening).
+- panel: asymmetric panel construction (color-block panel on one side, contrasting yoke).
+- sleeve: only one sleeve carries asymmetry (one cape sleeve, single fluttery sleeve).
+- shoulder: one shoulder asymmetric (one-shoulder cape, single shoulder drape).
+- layered: asymmetric layering (one-side longer outer layer, asymmetric tiered ruffle).
+Important:
+- ``none`` is the default for symmetric garments. Pick the strongest single asymmetry zone if multiple are present.
 
-WaterResistance rules:
-- none: standard fabric without water-shedding behavior (most everyday garments — default).
-- low: dense weave with limited natural water-shedding.
-- medium: light water-repellent treatment (treated trench, performance jacket).
-- high: actively waterproof outerwear (raincoat, technical shell).
-Default to ``none`` unless the garment is clearly an outerwear weather piece.
+AttachmentStructure rules:
+- none: standalone garment with no attached structural elements.
+- attached_dupatta: dupatta sewn or pre-stitched to the main garment (saree gown with attached pallu, anarkali with sewn-in dupatta).
+- attached_cape: cape sewn to the shoulder / neckline (cape lehenga, cape saree, cape blouse).
+- attached_drape: extra drape panel sewn into the main garment (sari gown trail, attached pre-pleated drape).
+- attached_sash: hanging sash panel attached to the garment (long sash from waist, attached chunni-style strip).
+- attached_panel: structural panel like a half-train, half-cape, or other extension.
+- detachable_layer: removable structural layer (detachable cape, detachable train, detachable sleeves).
+Important:
+- This solves the "some part hanging that isn't a free dupatta" case for couture and Indo-Western. A free-flowing standalone dupatta belongs in GarmentSubtype, not here.
+- Choose the most prominent attachment if multiple are present.
 
-ThermalInsulation rules:
-- low: light / breathable summer fabrics.
-- moderate: standard year-round fabrics.
-- high: wool, quilted, lined, layered constructions.
-
-WrinkleResistance rules:
-- low: linen, raw silk, looser-weave cotton (visible wrinkles after handling).
-- moderate: standard cotton blends, structured silks.
-- high: synthetic-heavy fabrics, treated cottons, jersey knits.
+MotionBehavior rules:
+- static: garment holds its shape and shows minimal movement when worn (structured bandhgala, tailored suit).
+- fluid: gentle flowing movement with body motion (silk shirt, fluid kurta, soft chiffon saree).
+- swish: rhythmic side-to-side movement (sharara flare, A-line skirt, anarkali at speed).
+- flutter: small rapid surface movement (chiffon ruffles, tulle layers, pleated micro-pleats).
+- trail: long element drags or trails behind (long pallu, train, attached_drape with length).
+- bounce: vertical springy movement (peplum, layered ruffles, structured sleeves).
+- dramatic_motion: large theatrical movement (cape gown in motion, layered ruffle saree at sangeet).
+Important:
+- Inferred from the visible drape + length + construction in the static image. A garment can be styled in different ways; predict the dominant motion the construction enables.
+- Critical for sangeet, dance contexts, and reel-friendly styling — these contexts privilege swish / dramatic_motion / trail over static.

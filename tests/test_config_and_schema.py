@@ -33,25 +33,48 @@ from catalog.enrichment.schema_builder import build_schema
 class ConfigAndSchemaTests(unittest.TestCase):
     def test_garment_config_counts_match_context_contract(self) -> None:
         enums, texts = load_garment_attributes()
-        # 44 prior enum axes + 12 added in Step 2a (May 2026 stylist
-        # downstream batch): ShoulderExposure, SleeveVolume, BlouseLength,
-        # BorderContrast, FabricTransparency, SurfaceFinish,
+        # 44 prior enum axes + 7 net additions from Step 2a (PR #237) +
+        # Path B (PR #TBD).
+        #
+        # Step 2a shipped 12 additions: ShoulderExposure, SleeveVolume,
+        # BlouseLength, BorderContrast, FabricTransparency, SurfaceFinish,
         # LayeringVisibility, BreathabilityLevel, DryTime, WaterResistance,
         # ThermalInsulation, WrinkleResistance.
-        self.assertEqual(56, len(enums))
+        #
+        # Path B (May 2026 stylist follow-up) removed 5 (the 5 weather
+        # performance axes — vision can't reliably extract; come from
+        # merchant fabric-spec data, not images) and added 4 endorsed
+        # ShapeArchitecture axes: VolumePlacement, AsymmetryType,
+        # AttachmentStructure, MotionBehavior.
+        #
+        # Net: 44 + 12 - 5 + 4 = 55 enum axes.
+        self.assertEqual(55, len(enums))
         self.assertEqual(2, len(texts))
         self.assertIn("PrimaryColor", texts)
         self.assertIn("SecondaryColor", texts)
-        # Spot-check the Step 2a additions to catch accidental renames
-        # or removals — the migration in 20260515000000_catalog_enriched_v3_axes.sql
-        # ships ALTER TABLE statements that reference these exact names.
-        for new_axis in (
+        # Spot-check the post-Path-B canonical set to catch accidental
+        # renames or removals.
+        for kept_axis in (
+            # Step 2a survivors:
             "ShoulderExposure", "SleeveVolume", "BlouseLength",
             "BorderContrast", "FabricTransparency", "SurfaceFinish",
-            "LayeringVisibility", "BreathabilityLevel", "DryTime",
-            "WaterResistance", "ThermalInsulation", "WrinkleResistance",
+            "LayeringVisibility",
+            # Path B additions (4 endorsed ShapeArchitecture axes):
+            "VolumePlacement", "AsymmetryType", "AttachmentStructure",
+            "MotionBehavior",
         ):
-            self.assertIn(new_axis, enums, f"Step-2a axis {new_axis!r} missing")
+            self.assertIn(kept_axis, enums, f"Post-Path-B axis {kept_axis!r} missing")
+        # Spot-check the Path B removals — the 5 weather performance axes
+        # should NOT be in canonical (they belong in merchant-spec
+        # enrichment, not vision).
+        for removed_axis in (
+            "BreathabilityLevel", "DryTime", "WaterResistance",
+            "ThermalInsulation", "WrinkleResistance",
+        ):
+            self.assertNotIn(
+                removed_axis, enums,
+                f"Path-B-removed axis {removed_axis!r} still present",
+            )
 
     def test_attributes_module_is_config_backed(self) -> None:
         enums, texts = load_garment_attributes()

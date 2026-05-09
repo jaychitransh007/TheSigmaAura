@@ -453,31 +453,46 @@
       "integrated",
       "statement"
     ],
-    "BreathabilityLevel": [
-      "low",
-      "moderate",
-      "high"
-    ],
-    "DryTime": [
-      "slow",
-      "moderate",
-      "fast"
-    ],
-    "WaterResistance": [
+    "VolumePlacement": [
       "none",
-      "low",
-      "medium",
-      "high"
+      "shoulder",
+      "sleeve",
+      "bust",
+      "waist",
+      "hip",
+      "hem",
+      "asymmetric_side",
+      "back",
+      "global"
     ],
-    "ThermalInsulation": [
-      "low",
-      "moderate",
-      "high"
+    "AsymmetryType": [
+      "none",
+      "neckline",
+      "hem",
+      "drape",
+      "closure",
+      "panel",
+      "sleeve",
+      "shoulder",
+      "layered"
     ],
-    "WrinkleResistance": [
-      "low",
-      "moderate",
-      "high"
+    "AttachmentStructure": [
+      "none",
+      "attached_dupatta",
+      "attached_cape",
+      "attached_drape",
+      "attached_sash",
+      "attached_panel",
+      "detachable_layer"
+    ],
+    "MotionBehavior": [
+      "static",
+      "fluid",
+      "swish",
+      "flutter",
+      "trail",
+      "bounce",
+      "dramatic_motion"
     ]
   },
   "text_attributes": [
