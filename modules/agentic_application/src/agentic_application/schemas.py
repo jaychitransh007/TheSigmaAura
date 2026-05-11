@@ -460,6 +460,16 @@ class AnchorGarmentHint(BaseModel):
     subtype: str = ""   # free-text garment name (e.g. "skirt", "lehenga", "midi dress")
     confidence: float = 0.0
 
+    def is_usable(self, threshold: float = 0.5) -> bool:
+        """True when the planner extracted a confident, non-empty anchor.
+
+        Centralises the threshold + non-empty-fields check that the
+        orchestrator was duplicating at two call sites. The default
+        threshold matches PLANNER_ANCHOR_CONFIDENCE_THRESHOLD in the
+        orchestrator; callers can override for specific use cases.
+        """
+        return bool(self.category and self.subtype and self.confidence >= threshold)
+
 
 class CopilotResolvedContext(BaseModel):
     occasion_signal: Optional[str] = None

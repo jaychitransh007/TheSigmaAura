@@ -124,6 +124,13 @@ _RECOMMENDATION_FASHION_THRESHOLD = 50
 #   +1 formality_level matches occasion class
 _WARDROBE_SCORE_MAX = 4.0
 
+# Confidence floor for using the planner's anchor_garment as the
+# wardrobe-anchor fallback when vision enrichment returns null /
+# times out. Below this, the planner is effectively guessing — better
+# to drop the anchor and let the architect search without one than to
+# build a recommendation around a low-confidence garment classification.
+_PLANNER_ANCHOR_CONFIDENCE_THRESHOLD = 0.5
+
 
 
 # Module-level no-op trace stub. Used by handlers that accept an
@@ -2032,20 +2039,14 @@ class AgenticOrchestrator:
                 if _enrichment_status == "failed" or _critical_fields_empty:
                     # Planner-anchor fallback: when vision returns
                     # null/empty, fall back to the planner's structured
-                    # anchor extraction. Planner runs on the user's
-                    # natural language with an LLM, so it handles
+                    # anchor extraction. The planner LLM handles
                     # paraphrases / synonyms / non-English wording that
-                    # the old keyword regex couldn't. See
-                    # CopilotResolvedContext.anchor_garment for the
-                    # contract. Threshold 0.5 — anything weaker than that
-                    # is the model saying "I'm guessing", not worth
-                    # building a recommendation pipeline around.
+                    # the old keyword regex couldn't. Confidence floor
+                    # at _PLANNER_ANCHOR_CONFIDENCE_THRESHOLD — anything
+                    # weaker is the model guessing, not worth anchoring
+                    # a recommendation pipeline on.
                     _planner_anchor = plan_result.resolved_context.anchor_garment
-                    if (
-                        _planner_anchor.category
-                        and _planner_anchor.subtype
-                        and _planner_anchor.confidence >= 0.5
-                    ):
+                    if _planner_anchor.is_usable(_PLANNER_ANCHOR_CONFIDENCE_THRESHOLD):
                         attached_item["garment_category"] = _planner_anchor.category
                         attached_item["garment_subtype"] = _planner_anchor.subtype
                         if not str(attached_item.get("title") or "").strip():
@@ -2094,11 +2095,7 @@ class AgenticOrchestrator:
                 # attrs, but category+subtype are enough to anchor the
                 # architect.
                 _planner_anchor = plan_result.resolved_context.anchor_garment
-                if (
-                    _planner_anchor.category
-                    and _planner_anchor.subtype
-                    and _planner_anchor.confidence >= 0.5
-                ):
+                if _planner_anchor.is_usable(_PLANNER_ANCHOR_CONFIDENCE_THRESHOLD):
                     attached_item = {
                         "garment_category": _planner_anchor.category,
                         "garment_subtype": _planner_anchor.subtype,

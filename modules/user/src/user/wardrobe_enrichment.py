@@ -34,11 +34,14 @@ _client_lock = threading.Lock()
 
 def _shared_client() -> "OpenAI":
     global _client_cache
-    if _client_cache is None:
-        with _client_lock:
-            if _client_cache is None:
-                _client_cache = OpenAI(api_key=get_api_key())
-    return _client_cache
+    # Fast-path early-return form so the return is provably non-None
+    # to type-checkers (Optional cache + non-Optional return).
+    if _client_cache is not None:
+        return _client_cache
+    with _client_lock:
+        if _client_cache is None:
+            _client_cache = OpenAI(api_key=get_api_key())
+        return _client_cache
 
 
 _GARMENT_ATTRIBUTES_PATH = (
@@ -126,11 +129,14 @@ _system_prompt_lock = threading.Lock()
 
 def _system_prompt() -> str:
     global _system_prompt_cache
-    if _system_prompt_cache is None:
-        with _system_prompt_lock:
-            if _system_prompt_cache is None:
-                _system_prompt_cache = _load_prompt()
-    return _system_prompt_cache
+    # Same early-return shape as _shared_client() — keeps the
+    # str return type assertion compatible with mypy.
+    if _system_prompt_cache is not None:
+        return _system_prompt_cache
+    with _system_prompt_lock:
+        if _system_prompt_cache is None:
+            _system_prompt_cache = _load_prompt()
+        return _system_prompt_cache
 
 
 def infer_wardrobe_catalog_attributes(
@@ -147,12 +153,9 @@ def infer_wardrobe_catalog_attributes(
     occasion_fit: str = "",
     brand: str = "",
     notes: str = "",
-    # gpt-5.2/low is the architect+composer's validated sweet spot
-    # for structured-attribute extraction with vision input. gpt-5.5/high
-    # was tried first (matched the profile-analysis service) but ran
-    # 25-60s per call and routinely timed out before returning useful
-    # attributes; gpt-5.2/low returns the same JSON schema in 5-15s
-    # with quality on par for category/color/silhouette extraction.
+    # gpt-5.2/low for structured-attribute vision extraction —
+    # ~5-15s per call, on par with gpt-5.5/high for category/color/
+    # silhouette. See PR #284 for the latency comparison.
     model: str = "gpt-5.2",
     reasoning_effort: str = "low",
     # Bound the OpenAI call so a slow / hung response can't outlive the
