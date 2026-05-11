@@ -92,6 +92,29 @@ Empty-intersection events are logged with full input + attribute + sources for s
 
 **🎨 STYLIST SIGN-OFF NEEDED**: weather_context's split treatment (hard for fabric, soft for color) — needs validation against actual stylist intuition. Default to hard for both if review flags concern.
 
+### 3.3.1 Per-rule tier override — Phase 4.3 hard/soft keys (shipped PR #246, 2026-05-11)
+
+The table above sets a **source-level default**. Phase 4.3 added per-rule tier overrides via new YAML keys: stylists can write `hard_flatters` / `hard_avoid` / `soft_flatters` / `soft_avoid` alongside (or instead of) the bare `flatters` / `avoid` keys. The forced tier overrides whatever the source-level table above would assign.
+
+```yaml
+# Example from body_frame/female.yaml (Pear, post-PR #252)
+Pear:
+  flatters: { ... }
+  avoid:
+    SilhouetteContour: [tapered]      # still hard — strong avoid
+  soft_avoid:
+    SilhouetteContour: [mermaid]      # downgraded — works in bridal couture
+```
+
+Loader behaviour (`yaml_loader.py:_build_attribute_mapping`):
+- All six bucket keys are read independently.
+- Same attribute appearing in both `hard_*` and `soft_*` buckets within ONE entry raises `StyleGraphValidationError`. Pick one tier per attribute per entry.
+- `_collect_unknown_attrs_all_buckets` validates unknown attribute names across all six surfaces.
+
+Engine behaviour (`engine.py:_add_mapping`): emits `ClassifiedContribution`s with tier `"hard"` or `"soft"` per bucket, overriding the source-level default from §3.3. Down-stream tier-classification (`_classify_attr_tier` → `_build_hard_attrs`) routes hard contributions into SQL filters (drop rows) and soft contributions into query-document text (scoring preference).
+
+**Inert until consumed**: PR #246 is the scaffolding; production YAMLs use the per-rule overrides as of PR #252 (bodyframe) and PR #253 (occasion). Pairing_rules is on a separate matcher mechanism (see composer_semantics §X).
+
 ## 4. Conflict precedence — pair relationships
 
 When two sources disagree on the same attribute, precedence resolves the conflict. Inherited from the architect prompt's rules + extended for the 6 sources not previously formalized.
@@ -357,3 +380,5 @@ Every fall-through is logged with the input that didn't compose, feeding the YAM
 ## Revision history
 
 **May 14 2026 (v1)** — initial spec, scoped to architect engine. Composer engine spec follows when Phase 5 starts.
+
+**May 11 2026** — added §3.3.1 documenting Phase 4.3 hard/soft tier override keys (PR #246). Production YAMLs began using these keys in PR #252 (bodyframe) and PR #253 (occasion). The architect engine's reduction logic was not changed by Phase 4.3 — only the YAML surface and `_add_mapping`'s tier assignment for emitted `ClassifiedContribution`s.

@@ -116,11 +116,11 @@ Rule descriptions below are summary form; the YAML at `knowledge/style_graph/pai
 
 For each ordered pair of slots in the tuple, check `compatibility_matrix[slot_a.formality][slot_b.formality]` includes `slot_b.formality`. (Matrix is symmetric; one direction suffices.) Bridal lehenga as an item of any slot rents the formality of every other slot to `ceremonial` regardless of declared formality (the YAML's notes call this out explicitly).
 
-### 4.2 color_story (hard)
+### 4.2 color_story (hard, with metallic_neutral_exception)
 
 Three sub-rules:
 
-- **`max_dominant_colors=3`.** Aggregate `DominantColor` across all slots; if distinct count > 3, violate. Patterned slots count their primary `DominantColor` only.
+- **`max_dominant_colors=3`.** Aggregate `DominantColor` across all slots; if distinct count > 3, violate. Patterned slots count their primary `DominantColor` only. **`metallic_neutral_exception`** (PR #251, 2026-05-11): items with `dominant_color` in the metallic-neutral set (gold / rose_gold / antique_gold / champagne / silver / oxidized_silver / bronze / copper / brass / pewter + metallic_* variants — hardcoded in `pairing.py:_METALLIC_NEUTRAL_COLORS`) OR `fabric_texture == "metallic"` are **excluded from the count**. They function as neutral support colors, not competing dominant hues. Critical for Indian festive outfits where zari / metallic dupatta would otherwise blow the cap. When the exception fires, `aura_composer_rule_exception_applied_total{rule="max_dominant_colors", exception="metallic_neutral_exception"}` ticks and the violation detail string surfaces `(excluded N metallic-neutral)`.
 - **`palette_anchor_required`.** At least one slot's `DominantColor` must be in the user's `SubSeason.PaletteAnchors` (from `palette.yaml`). Pure-neutral outfits where every slot is `cream`/`navy`/`charcoal` satisfy this iff the user's palette includes the corresponding neutral.
 - **`contrast_alignment`.** For each ordered pair of slots, check `compatibility_matrix[a.contrast][b.contrast]` includes `b.contrast`. Mid-contrast pairings always allowed; high-with-low pairings forbidden.
 
@@ -136,12 +136,19 @@ Sub-rules apply by pattern count across the tuple:
 
 `pattern_scale_with_body_frame` is a **soft-recommendation** rule that lives in `pairing_rules.yaml` for documentation but is **not enforced by the composer engine** — body-frame guidance was already baked into the architect's per-direction queries (Phase 4.7 reduction), so re-applying it here would double-count. Note in YAML.
 
-### 4.4 scale_balance (hard, with bridal exception)
+### 4.4 scale_balance (hard, with bridal exception + distributed_statement_exception)
 
 Apply `is_statement(item)` (§5) per slot. Count statement slots in the tuple.
 
 - **0 or 1 statement slots:** pass.
-- **2+ statement slots:** violate, **unless** bridal exception applies (§6).
+- **2+ statement slots:** violate, **unless** bridal exception applies (§6) **OR** `distributed_statement_exception` applies (below).
+
+**`distributed_statement_exception`** (PR #248, 2026-05-11) — multiple moderate-emphasis zones are acceptable when they read as a coordinated visual register rather than competing focal points (typical contemporary Indianwear: blouse + dupatta border + jewellery all coordinated). Eligibility (`_is_distributed_statement_exception_eligible`):
+
+1. Every item has a known `color_temperature` AND all match (single family: warm-only, cool-only, or neutral-only).
+2. No item has `embellishment_level` in `{heavy, statement}` — individual zones stay at moderate density at most.
+
+When eligible, the violation is suspended AND `aura_composer_rule_exception_applied_total{rule="one_statement_per_outfit", exception="distributed_statement_exception"}` ticks once for observability.
 
 `jewellery_doesnt_count` is moot for the engine because retrieval pools never include jewellery — the composer's input is garment slots only. Document this in YAML notes.
 
@@ -162,6 +169,7 @@ Three sub-rules, each potentially -0.10:
 - **`texture_mixing`.** For each ordered pair of slots, check `compatibility_matrix[a.texture][b.texture]` includes `b.texture`. Per-pair violation accumulates (a 3-slot outfit has 3 ordered pairs; up to -0.30).
 - **`weight_pairing`.** For each ordered pair, `compatibility_matrix[a.weight][b.weight]` membership.
 - **`drape_compatibility`.** Pure documentation in the YAML — `flatters` lists every drape value, `avoid` is empty. No engine-enforced violation.
+- **`sheen_hierarchy`** (PR #250, 2026-05-11). Outside the bridal exception, count items with `fabric_texture ∈ {sheen, metallic, embroidered}` (canonical "sheen-bearing surfaces"). When `count > rule.value` (default `1`), -0.10. Bridal contexts (`bridal_exception_active`) bypass — multi-sheen Indianwear at ceremonial weddings is the cultural norm. Hardcoded set lives in `pairing.py:_SHEEN_TEXTURES` and must stay in sync with `garment_attributes.json`'s `FabricTexture` enum.
 
 ### 4.7 cultural_coherence (soft)
 
@@ -173,11 +181,15 @@ Classify each slot's `CulturalRegister ∈ {indian_traditional, indo_western, we
 
 ### 4.8 bridal_specific (hard)
 
-Applies only when the bridal exception is active (§6). When active:
+Applies in two distinct modes — bridal-exception-active and bridal-role-aware (post-PR #249).
 
-- For each slot, check the relevant pairing rule (`bridal_lehenga_pairing`, `heavy_banarasi_pairing`, `sherwani_pairing`, `bandhgala_versatility`) by garment subtype. Each rule's `flatters`/`avoid` on `OccasionFit` and `FormalityLevel` is enforced as a hard membership check on every slot in the tuple.
+**Mode A — bridal exception active (subtype rules):** when `bridal_exception_active(ctx, graph)` per §6, for each slot, check the relevant pairing rule (`bridal_lehenga_pairing`, `heavy_banarasi_pairing`, `sherwani_pairing`, `bandhgala_versatility`) by garment subtype. Each rule's `flatters`/`avoid` on `OccasionFit` and `FormalityLevel` is enforced as a hard membership check on every slot in the tuple.
 
-When the bridal exception is *not* active, this category is skipped (the rules are bridal-context-only by definition).
+**Mode B — `guest_vs_bridal_separation` (PR #249, 2026-05-11):** when `ctx.bridal_role` is set AND not in `{bride, groom}` AND `is_bridal_role_occasion(ctx.occasion_signal)` (per Step 1's `composition/styling_decisions.py:is_bridal_role_occasion`), any item whose `embellishment_level` is in the rule's YAML `avoid: EmbellishmentLevel` block (default `[heavy, statement]`) fires a hard `guest_vs_bridal_separation` drop. Bride / groom roles bypass entirely. Guests at non-bridal occasions also bypass.
+
+The matcher reads `ctx.bridal_role` which is plumbed from `user.occasion_role` via the orchestrator. Default empty (`""`) → the matcher is a no-op, which is the safe production state for upstream callers that haven't been updated to populate the field. Persisted in `_summarize_provenance.bridal_role` (or `"unset"`) for Panel 26 RCA.
+
+When the bridal exception is *not* active AND `bridal_role` is unset, this category is a no-op.
 
 ### 4.9 anchor_constraints (hard, gate-only)
 
@@ -412,3 +424,11 @@ Mirrors the architect router's pre-engine gates exactly.
 ## Revision history
 
 **2026-05-07 (v1)** — initial spec, scoped to composer engine. Locks the six decisions called out in OPEN_TASKS.md Phase 5. Implementation begins with PR 5b (loader + scorer).
+
+**2026-05-11** — Step 4 pairing-matcher additions documented in §4.2, §4.4, §4.6, §4.8:
+- §4.2 — `metallic_neutral_exception` (PR #251) now excludes metallic-neutral colors / metallic-textured items from the `max_dominant_colors=3` count.
+- §4.4 — `distributed_statement_exception` (PR #248) suspends `one_statement_per_outfit` when items share `color_temperature` family AND none individually exceeds moderate embellishment.
+- §4.6 — `sheen_hierarchy` (PR #250) caps sheen-bearing fabric textures at 1 per outfit outside the bridal exception.
+- §4.8 — `guest_vs_bridal_separation` (PR #249) drops tuples carrying bridal-participant embellishment levels when the user's `ctx.bridal_role` is `guest` or `attendee` on a bridal-role occasion. New field `bridal_role` on `TupleContext` (default empty).
+
+Each new matcher emits to `aura_composer_rule_violation_total{rule, is_hard}` per Violation; each exception ticks `aura_composer_rule_exception_applied_total{rule, exception}` once when triggered. Both counters added in PR #257.
