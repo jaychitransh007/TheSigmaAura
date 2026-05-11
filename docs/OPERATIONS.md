@@ -1483,6 +1483,47 @@ combo miss, the fingerprint is too discriminating.
 
 ---
 
+## Panel 35 — Catalog Title/Price Freshness
+
+**Question:** is the catalog title + price column ever empty on
+new rows? PR #292 backfilled all 14k rows from live merchant
+endpoints, but new ingestions could re-introduce the gap if the
+CSV parser drops the columns again. This panel is the canary —
+any non-zero count on a freshly-inserted row is a regression.
+
+```sql
+-- Catalog title/price freshness over the last 7 days.
+-- Splits by row_status so deleted_from_source rows (which legitimately
+-- have empty title/null price) don't pollute the regression signal.
+SELECT
+    date_trunc('day', created_at)            AS day,
+    COUNT(*)                                 AS rows_ingested,
+    COUNT(*) FILTER (WHERE coalesce(row_status, '') <> 'deleted_from_source'
+                       AND (title IS NULL OR title = ''))
+                                             AS empty_title_live_rows,
+    COUNT(*) FILTER (WHERE coalesce(row_status, '') <> 'deleted_from_source'
+                       AND price IS NULL)    AS null_price_live_rows,
+    COUNT(*) FILTER (WHERE row_status = 'deleted_from_source')
+                                             AS deleted_from_source_rows
+FROM catalog_enriched
+WHERE created_at >= NOW() - INTERVAL '7 days'
+GROUP BY day
+ORDER BY day DESC;
+```
+
+A non-zero value in `empty_title_live_rows` or `null_price_live_rows`
+on a new day means a recent ingestion lost the merchant title/price
+during the CSV → catalog_enriched path — most likely the
+`enriched_catalog_upload.csv` step has malformed quoting again.
+Recovery: re-run `ops/scripts/...` title backfill scripts (or check
+the per-merchant source CSV's `title` column header is intact).
+
+`deleted_from_source_rows` is informational — those rows are
+correctly tagged and should not appear in recommendations
+(verified by Panel 4 / pipeline health).
+
+---
+
 ## How to refresh
 
 1. Open Supabase Studio (or your preferred SQL client) connected to staging.

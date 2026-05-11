@@ -659,3 +659,86 @@ def observe_composition_yaml_gap_impact(*, axis: str, impact: float) -> None:
         ).inc(float(impact))
     except Exception:  # noqa: BLE001
         pass
+
+
+# ── Wave 2 (May 12 2026) — visibility for the wardrobe-anchor fallback
+# chain introduced across PRs #275–#293 ─────────────────────────────────
+
+# How often does each fallback path actually fire? Before this counter,
+# we had no metric for "vision succeeded vs planner anchor took over vs
+# no anchor at all" — only log lines. Three terminal sources, plus a
+# catch-all when the orchestrator couldn't form an anchor from anything.
+aura_wardrobe_enrichment_fallback_total = Counter(
+    "aura_wardrobe_enrichment_fallback_total",
+    "Per-turn wardrobe-anchor source after vision + planner fallback chain.",
+    labelnames=("source",),  # vision_ok | planner_anchor | none
+)
+
+
+def observe_wardrobe_enrichment_fallback(*, source: str) -> None:
+    """Record where this turn's wardrobe anchor came from.
+
+    `source` is one of:
+      - "vision_ok"      : gpt-5.2 vision returned non-empty category
+      - "planner_anchor" : vision returned null/empty/timed-out,
+                           planner.resolved_context.anchor_garment used
+      - "none"           : neither path produced a usable anchor
+                           (turn falls through to ask_clarification or
+                           a generic recommendation without an anchor)
+    """
+    if not source:
+        return
+    try:
+        aura_wardrobe_enrichment_fallback_total.labels(source=source).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# Counts catalog rows skipped because they're tagged deleted_from_source.
+# Two paths can skip a row: the orchestrator's wardrobe-first fallback
+# (Postgrest filter at fetch time) and the catalog_search vector path
+# (Python filter at hydration time). Splitting by path so a regression
+# in one doesn't hide behind the other's rate.
+aura_catalog_deleted_skipped_total = Counter(
+    "aura_catalog_deleted_skipped_total",
+    "Catalog rows excluded from recommendations because row_status="
+    "'deleted_from_source' (404 / Product-Not-Found on merchant URL).",
+    labelnames=("path",),  # orchestrator_rows | catalog_search
+)
+
+
+def observe_catalog_deleted_skipped(*, path: str, count: int = 1) -> None:
+    """Record N catalog rows excluded for being deleted-from-source."""
+    if not path or count <= 0:
+        return
+    try:
+        aura_catalog_deleted_skipped_total.labels(path=path).inc(count)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# Histogram of planner-emitted anchor_garment.confidence. Used to
+# calibrate _PLANNER_ANCHOR_CONFIDENCE_THRESHOLD (currently 0.5).
+# Buckets in 0.1 steps from 0 to 1 — the field is bounded so finer
+# buckets don't buy resolution and would inflate cardinality.
+aura_planner_anchor_confidence = Histogram(
+    "aura_planner_anchor_confidence",
+    "Distribution of planner-emitted anchor_garment.confidence per turn.",
+    buckets=(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
+)
+
+
+def observe_planner_anchor_confidence(confidence: Optional[float]) -> None:
+    """Record the planner's anchor_garment.confidence for this turn.
+
+    Skip when the planner didn't extract an anchor at all (confidence=0
+    AND empty category/subtype) — that's a different signal from "low
+    confidence on an extracted anchor". Callers should pass None or
+    skip the call entirely in the no-anchor case.
+    """
+    if confidence is None:
+        return
+    try:
+        aura_planner_anchor_confidence.observe(float(confidence))
+    except Exception:  # noqa: BLE001
+        pass

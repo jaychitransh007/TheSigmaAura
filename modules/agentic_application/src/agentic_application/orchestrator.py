@@ -857,6 +857,22 @@ class AgenticOrchestrator:
             except Exception:
                 rows = []
             self._catalog_rows = list(rows) if isinstance(rows, list) else []
+            # Wave 2: report how many rows the Postgrest filter excluded.
+            # Done as a single-shot at first fetch (the result is cached
+            # for the process lifetime), so this counter ticks per cold
+            # start, not per turn.
+            try:
+                from platform_core.metrics import observe_catalog_deleted_skipped
+                _total_count_rows = self.repo.client.select_many(
+                    "catalog_enriched", columns="product_id",
+                    filters={"row_status": f"eq.{ROW_STATUS_DELETED_FROM_SOURCE}"},
+                    limit=5000,
+                )
+                _skipped = len(_total_count_rows) if isinstance(_total_count_rows, list) else 0
+                if _skipped:
+                    observe_catalog_deleted_skipped(path="orchestrator_rows", count=_skipped)
+            except Exception:  # noqa: BLE001
+                pass
         return list(self._catalog_rows)
 
     def _catalog_row_to_outfit_item(self, row: Dict[str, Any], *, role: str = "") -> Dict[str, Any]:
@@ -2022,6 +2038,17 @@ class AgenticOrchestrator:
         })
         trace_end("copilot_planner", output_summary=f"intent={plan_result.intent}, action={plan_result.action}")
 
+        # Wave 2 observability: record planner-emitted anchor confidence.
+        # Skip when the planner didn't extract anything (empty category) —
+        # that's "no anchor referenced", not "low-confidence anchor".
+        try:
+            _anchor_for_metric = plan_result.resolved_context.anchor_garment
+            if _anchor_for_metric.category and _anchor_for_metric.subtype:
+                from platform_core.metrics import observe_planner_anchor_confidence
+                observe_planner_anchor_confidence(_anchor_for_metric.confidence)
+        except Exception:  # noqa: BLE001
+            pass
+
         # ── Await wardrobe enrichment (kicked off when image_data was
         # received above, ran in parallel with onboarding_gate +
         # user_context + planner). Resolved here so ``attached_item``
@@ -2059,6 +2086,10 @@ class AgenticOrchestrator:
                     and not str(attached_item.get("garment_subtype") or "").strip()
                     and not str(attached_item.get("title") or "").strip()
                 )
+                # Anchor source tracking for aura_wardrobe_enrichment_fallback_total
+                # (Wave 2 observability). Default to vision_ok; the failure
+                # branches below downgrade it.
+                _anchor_source = "vision_ok"
                 if _enrichment_status == "failed" or _critical_fields_empty:
                     # Planner-anchor fallback: when vision returns
                     # null/empty, fall back to the planner's structured
@@ -2075,6 +2106,7 @@ class AgenticOrchestrator:
                         if not str(attached_item.get("title") or "").strip():
                             attached_item["title"] = _planner_anchor.subtype.title()
                         attached_item["enrichment_fallback"] = "planner_anchor"
+                        _anchor_source = "planner_anchor"
                         _log.info(
                             "Wardrobe enrichment fell back to planner anchor: category=%s subtype=%s confidence=%.2f",
                             _planner_anchor.category,
@@ -2083,10 +2115,16 @@ class AgenticOrchestrator:
                         )
                     else:
                         attached_item["enrichment_failed"] = True
+                        _anchor_source = "none"
                         _log.warning(
                             "Wardrobe enrichment returned empty/failed for upload %s and planner had no usable anchor — flagging",
                             attached_item.get("id"),
                         )
+                try:
+                    from platform_core.metrics import observe_wardrobe_enrichment_fallback
+                    observe_wardrobe_enrichment_fallback(source=_anchor_source)
+                except Exception:  # noqa: BLE001
+                    pass
                 # Append attached_context to effective_message so
                 # downstream consumers (architect input, model_call_logs
                 # rows) see the enriched garment context.
@@ -2141,6 +2179,7 @@ class AgenticOrchestrator:
                         _planner_anchor.subtype,
                         _planner_anchor.confidence,
                     )
+                    _anchor_source = "planner_anchor"
                 else:
                     attached_item = None
                     trace_end(
@@ -2148,6 +2187,12 @@ class AgenticOrchestrator:
                         output_summary="failed",
                         status="error",
                     )
+                    _anchor_source = "none"
+                try:
+                    from platform_core.metrics import observe_wardrobe_enrichment_fallback
+                    observe_wardrobe_enrichment_fallback(source=_anchor_source)
+                except Exception:  # noqa: BLE001
+                    pass
 
         plan_result, override_reasons, force_catalog_followup, source_preference = self._apply_planner_overrides(
             plan_result=plan_result,
