@@ -558,6 +558,38 @@ def _evaluate_pattern_mixing(
     return ()
 
 
+def _is_distributed_statement_exception_eligible(items: tuple[Item, ...]) -> bool:
+    """Returns True when scale_balance.distributed_statement_exception
+    applies: multiple statement slots are acceptable when they read as
+    a coordinated visual register rather than competing focal points.
+
+    The stylist's prose says ``all belong to same color family AND
+    embellishment density is controlled (none individually crosses
+    into 'heavy' or 'statement') AND silhouette remains clean.``
+    Operationalised here as:
+
+    1. Every item has a known ``color_temperature`` AND all match (one
+       family: warm-only, cool-only, or neutral-only).
+    2. No item has ``embellishment_level`` in ``{heavy, statement}`` —
+       i.e., individual zones stay at moderate density at most.
+
+    The silhouette clause is intentionally not checked here; it's
+    already covered by ``silhouette_balance.no_all_fitted`` and
+    ``fitted_relaxed_pair``. Skipping prevents double-jeopardy.
+
+    Conservative-by-design: if any item lacks ``color_temperature``,
+    the exception doesn't apply and the base rule fires. Matches the
+    "skip if empty" policy used by other evaluators."""
+    temps = [it.color_temperature for it in items if it.color_temperature]
+    if len(temps) != len(items):
+        return False
+    if len(set(temps)) > 1:
+        return False
+    if any(it.embellishment_level in {"heavy", "statement"} for it in items):
+        return False
+    return True
+
+
 def _evaluate_scale_balance(
     items: tuple[Item, ...], ctx: TupleContext, graph: StyleGraph
 ) -> tuple[Violation, ...]:
@@ -565,6 +597,8 @@ def _evaluate_scale_balance(
         return ()  # statement cap suspended in bridal contexts
     statement_count = sum(1 for it in items if is_statement(it))
     if statement_count > 1:
+        if _is_distributed_statement_exception_eligible(items):
+            return ()  # coordinated multi-statement is intentional Indian styling
         return (
             Violation(
                 category="scale_balance",
