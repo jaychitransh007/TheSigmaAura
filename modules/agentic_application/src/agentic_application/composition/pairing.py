@@ -50,6 +50,15 @@ SOFT_CATEGORIES: tuple[str, ...] = (
     "silhouette_balance",
     "fabric_compatibility",
     "cultural_coherence",
+    # anchor_constraints — only fires on pairing_request turns where
+    # ctx.anchor_item_id is set. No-op on the recommendation_request
+    # hot path (default ctx.anchor_item_id is empty string). Listed
+    # as SOFT despite the YAML's hard_constraint group-level tag —
+    # individual rules (visual_hierarchy + exact_match_avoidance) are
+    # scoring nudges; making them hard would drop tuples in the
+    # untested pairing_request path before we've seen the false-
+    # positive rate. Re-tier later if calibration proves them safe.
+    "anchor_constraints",
 )
 ALL_CATEGORIES: tuple[str, ...] = HARD_CATEGORIES + SOFT_CATEGORIES
 
@@ -243,6 +252,15 @@ class TupleContext:
     # this from user.occasion_role; tests can construct minimal cases
     # without it.
     bridal_role: str = ""
+    # Anchor item_id (Batch B — 2026-05-11). When set, the
+    # _evaluate_anchor_constraints rules fire: visual_hierarchy
+    # (anchor must be the heaviest-embellished item; supporting items
+    # mustn't out-shout the anchor) + exact_match_avoidance (no
+    # supporting item should match the anchor on BOTH dominant_color
+    # AND fabric_texture). Populated by extract_tuple_context from
+    # live.anchor_garment["product_id"] on pairing_request turns. Empty
+    # default → the matcher is a no-op on recommendation_request turns.
+    anchor_item_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -1016,6 +1034,112 @@ def _evaluate_cultural_coherence(
     return tuple(violations)
 
 
+# Embellishment-level rank for anchor_visual_hierarchy ordering. The
+# YAML enum is unordered text; we treat it as a linear scale for the
+# "anchor must dominate" check. Unknown / missing levels return -1
+# (matcher abstains rather than emit false-positives).
+_EMBELLISHMENT_RANK: dict[str, int] = {
+    "none": 0,
+    "minimal": 1,
+    "subtle": 2,
+    "moderate": 3,
+    "heavy": 4,
+    "statement": 5,
+}
+
+
+def _embellishment_rank(value: str) -> int:
+    return _EMBELLISHMENT_RANK.get(value or "", -1)
+
+
+def _evaluate_anchor_constraints(
+    items: tuple[Item, ...], ctx: TupleContext, graph: StyleGraph
+) -> tuple[Violation, ...]:
+    """Batch B — anchor_visual_hierarchy + anchor_exact_match_avoidance.
+
+    Both rules fire only when ``ctx.anchor_item_id`` is non-empty AND
+    one of the tuple's items has a matching ``item_id``. On a normal
+    recommendation_request turn this is a no-op (default empty
+    anchor_item_id; the orchestrator only populates it for
+    pairing_request turns with an uploaded / referenced anchor).
+
+    **anchor_visual_hierarchy**: the anchor must be the heaviest
+    embellished item in the tuple. If any supporting item out-ranks
+    the anchor on the embellishment ladder (none < minimal < subtle <
+    moderate < heavy < statement), fire a soft violation — the
+    supporting piece is competing with the anchor for focal attention.
+
+    **anchor_exact_match_avoidance**: no supporting item should match
+    the anchor on BOTH ``dominant_color`` AND ``fabric_texture``.
+    Coordination needs some variation; catalog-mannequin styling
+    (identical color + texture in two slots) reads flat. Fires a soft
+    violation per matching supporting item.
+
+    Both rules abstain when the required Item attributes are missing
+    (anchor's embellishment_level / dominant_color / fabric_texture).
+    Both are SOFT — see SOFT_CATEGORIES note for the calibration
+    rationale.
+    """
+    if not ctx.anchor_item_id:
+        return ()
+
+    # Identify the anchor by item_id. If not found (e.g., the anchor
+    # was filtered out earlier in the pipeline), the rule abstains.
+    anchor: Item | None = next(
+        (it for it in items if it.item_id == ctx.anchor_item_id), None,
+    )
+    if anchor is None:
+        return ()
+    supporting = [it for it in items if it.item_id != ctx.anchor_item_id]
+    if not supporting:
+        return ()
+
+    violations: list[Violation] = []
+
+    # anchor_visual_hierarchy
+    anchor_rank = _embellishment_rank(anchor.embellishment_level)
+    if anchor_rank >= 0:
+        for s in supporting:
+            s_rank = _embellishment_rank(s.embellishment_level)
+            if s_rank < 0:
+                continue  # supporting item missing data — abstain
+            if s_rank > anchor_rank:
+                violations.append(
+                    Violation(
+                        category="anchor_constraints",
+                        rule="anchor_visual_hierarchy",
+                        detail=(
+                            f"{s.slot}({s.embellishment_level}) out-ranks anchor "
+                            f"{anchor.slot}({anchor.embellishment_level})"
+                        ),
+                        is_hard=False,
+                    )
+                )
+
+    # anchor_exact_match_avoidance — needs both color + texture on anchor
+    if anchor.dominant_color and anchor.fabric_texture:
+        for s in supporting:
+            if not s.dominant_color or not s.fabric_texture:
+                continue
+            if (
+                s.dominant_color == anchor.dominant_color
+                and s.fabric_texture == anchor.fabric_texture
+            ):
+                violations.append(
+                    Violation(
+                        category="anchor_constraints",
+                        rule="anchor_exact_match_avoidance",
+                        detail=(
+                            f"{s.slot} exact-matches anchor on "
+                            f"color={anchor.dominant_color} + texture={anchor.fabric_texture}"
+                        ),
+                        is_hard=False,
+                    )
+                )
+
+    return tuple(violations)
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # Dispatch table — defined after the evaluators so they're in scope.
 # ─────────────────────────────────────────────────────────────────────────
@@ -1033,6 +1157,7 @@ _DISPATCH: dict[str, _EvaluatorFn] = {
     "silhouette_balance": _evaluate_silhouette_balance,
     "fabric_compatibility": _evaluate_fabric_compatibility,
     "cultural_coherence": _evaluate_cultural_coherence,
+    "anchor_constraints": _evaluate_anchor_constraints,
 }
 
 

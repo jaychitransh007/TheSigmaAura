@@ -1213,6 +1213,154 @@ class BridalSpecificTests(unittest.TestCase):
         self.assertEqual(violations, ())
 
 
+class AnchorConstraintsTests(unittest.TestCase):
+    """Batch B (2026-05-11) — anchor_visual_hierarchy +
+    anchor_exact_match_avoidance. Both fire only when
+    ctx.anchor_item_id is set AND a matching item exists in the
+    tuple. On normal recommendation_request turns (default empty
+    ctx.anchor_item_id), the evaluator is a no-op."""
+
+    def _ctx_with_anchor(self, anchor_id: str) -> "TupleContext":
+        from agentic_application.composition.pairing import TupleContext
+        return TupleContext(
+            formality_hint="smart_casual",
+            occasion_signal="daily_office_mnc",
+            palette_anchors=("navy", "cream"),
+            body_shape="Hourglass",
+            intent="pairing_request",
+            anchor_item_id=anchor_id,
+        )
+
+    def test_no_op_without_anchor_item_id(self):
+        # Default ctx has anchor_item_id="" — evaluator returns ().
+        items = (
+            _smart_casual_top(item_id="T1", embellishment_level="heavy"),
+            _smart_casual_bottom(item_id="B1", embellishment_level="statement"),
+        )
+        violations = evaluate_constraint("anchor_constraints", items, _ctx(), _graph())
+        self.assertEqual(violations, ())
+
+    def test_no_op_when_anchor_id_not_in_tuple(self):
+        # ctx.anchor_item_id set but no matching item — abstain.
+        items = (
+            _smart_casual_top(item_id="T1"),
+            _smart_casual_bottom(item_id="B1"),
+        )
+        violations = evaluate_constraint(
+            "anchor_constraints", items, self._ctx_with_anchor("ANCHOR-MISSING"), _graph(),
+        )
+        self.assertEqual(violations, ())
+
+    def test_visual_hierarchy_anchor_dominates_passes(self):
+        # Anchor is statement; supporting is minimal — anchor wins.
+        items = (
+            _smart_casual_top(item_id="A", embellishment_level="statement"),
+            _smart_casual_bottom(item_id="B1", embellishment_level="minimal"),
+        )
+        violations = evaluate_constraint(
+            "anchor_constraints", items, self._ctx_with_anchor("A"), _graph(),
+        )
+        self.assertFalse(any(v.rule == "anchor_visual_hierarchy" for v in violations))
+
+    def test_visual_hierarchy_supporting_out_ranks_anchor_violates(self):
+        # Anchor is moderate; supporting is statement — supporting
+        # out-shouts the anchor.
+        items = (
+            _smart_casual_top(item_id="A", embellishment_level="moderate"),
+            _smart_casual_bottom(item_id="B1", embellishment_level="statement"),
+        )
+        violations = evaluate_constraint(
+            "anchor_constraints", items, self._ctx_with_anchor("A"), _graph(),
+        )
+        rules = {v.rule for v in violations}
+        self.assertIn("anchor_visual_hierarchy", rules)
+        # Soft violation, not hard
+        for v in violations:
+            if v.rule == "anchor_visual_hierarchy":
+                self.assertFalse(v.is_hard)
+
+    def test_visual_hierarchy_equal_rank_passes(self):
+        # Anchor and supporting both moderate — anchor still allowed
+        # to share the rank (rule fires only on STRICTLY higher
+        # supporting rank).
+        items = (
+            _smart_casual_top(item_id="A", embellishment_level="moderate"),
+            _smart_casual_bottom(item_id="B1", embellishment_level="moderate"),
+        )
+        violations = evaluate_constraint(
+            "anchor_constraints", items, self._ctx_with_anchor("A"), _graph(),
+        )
+        self.assertFalse(any(v.rule == "anchor_visual_hierarchy" for v in violations))
+
+    def test_visual_hierarchy_abstains_on_missing_embellishment(self):
+        # Supporting item lacks embellishment_level — rule abstains
+        # for that pair.
+        items = (
+            _smart_casual_top(item_id="A", embellishment_level="moderate"),
+            _smart_casual_bottom(item_id="B1", embellishment_level=""),
+        )
+        violations = evaluate_constraint(
+            "anchor_constraints", items, self._ctx_with_anchor("A"), _graph(),
+        )
+        self.assertFalse(any(v.rule == "anchor_visual_hierarchy" for v in violations))
+
+    def test_exact_match_avoidance_fires_on_color_plus_texture_clone(self):
+        items = (
+            _smart_casual_top(
+                item_id="A", dominant_color="navy", fabric_texture="smooth",
+            ),
+            _smart_casual_bottom(
+                item_id="B1", dominant_color="navy", fabric_texture="smooth",
+            ),
+        )
+        violations = evaluate_constraint(
+            "anchor_constraints", items, self._ctx_with_anchor("A"), _graph(),
+        )
+        self.assertTrue(any(v.rule == "anchor_exact_match_avoidance" for v in violations))
+
+    def test_exact_match_avoidance_passes_on_color_differs(self):
+        items = (
+            _smart_casual_top(
+                item_id="A", dominant_color="navy", fabric_texture="smooth",
+            ),
+            _smart_casual_bottom(
+                item_id="B1", dominant_color="cream", fabric_texture="smooth",
+            ),
+        )
+        violations = evaluate_constraint(
+            "anchor_constraints", items, self._ctx_with_anchor("A"), _graph(),
+        )
+        self.assertFalse(any(v.rule == "anchor_exact_match_avoidance" for v in violations))
+
+    def test_exact_match_avoidance_passes_on_texture_differs(self):
+        items = (
+            _smart_casual_top(
+                item_id="A", dominant_color="navy", fabric_texture="smooth",
+            ),
+            _smart_casual_bottom(
+                item_id="B1", dominant_color="navy", fabric_texture="ribbed",
+            ),
+        )
+        violations = evaluate_constraint(
+            "anchor_constraints", items, self._ctx_with_anchor("A"), _graph(),
+        )
+        self.assertFalse(any(v.rule == "anchor_exact_match_avoidance" for v in violations))
+
+    def test_exact_match_avoidance_abstains_on_missing_attributes(self):
+        items = (
+            _smart_casual_top(
+                item_id="A", dominant_color="", fabric_texture="smooth",
+            ),
+            _smart_casual_bottom(
+                item_id="B1", dominant_color="navy", fabric_texture="smooth",
+            ),
+        )
+        violations = evaluate_constraint(
+            "anchor_constraints", items, self._ctx_with_anchor("A"), _graph(),
+        )
+        self.assertFalse(any(v.rule == "anchor_exact_match_avoidance" for v in violations))
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # score_tuple — orchestration
 # ─────────────────────────────────────────────────────────────────────────
@@ -1320,6 +1468,7 @@ class ScoreTupleTests(unittest.TestCase):
                 "silhouette_balance",
                 "fabric_compatibility",
                 "cultural_coherence",
+                "anchor_constraints",
             ),
         )
 
