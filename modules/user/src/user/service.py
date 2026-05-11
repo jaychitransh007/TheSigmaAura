@@ -669,6 +669,28 @@ class OnboardingService:
             metadata_json["catalog_attribute_error"] = enrichment_error_message
             metadata_json["catalog_attribute_attempts"] = 1
 
+        # Re-validate the projected (post-enrichment) attributes against
+        # the restricted-category guardrail. The pre-enrichment check at
+        # the top of this method only covers user-supplied params. With
+        # text_hint feeding the vision prompt, a malicious user could
+        # phrase the hint to nudge the model into emitting a restricted
+        # subtype/category (e.g. supplying a hint that names a regulated
+        # weapon along with a benign image). The model's prompt is told
+        # to prefer the hint, so we have to enforce the guardrail on the
+        # OUTPUT, not just the input.
+        if enrichment_status == "ok":
+            self.ensure_allowed_wardrobe_item(
+                user_id=user_id,
+                filename=filename,
+                title=projected.get("title", ""),
+                description=projected.get("description", ""),
+                garment_category=projected.get("garment_category", ""),
+                garment_subtype=projected.get("garment_subtype", ""),
+                notes=notes,
+                brand=brand,
+                input_class="wardrobe_item_enriched",
+            )
+
         # Phase 12D follow-up (April 9 2026): pull the explicit
         # non-garment detection signals out of the enrichment response
         # so the orchestrator can branch on them without re-parsing
