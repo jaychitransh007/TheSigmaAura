@@ -123,15 +123,24 @@ Two ways to clean up:
 
 **Step 2b — ✅ shipped (2026-05-11).** Vision re-enrichment ran on 14,296 catalog rows via OpenAI Batch API on `gpt-5-mini`. **14,242 / 14,296 rows enriched ok (99.62%)**; 54 rows with broken Shopify-CDN image URLs dropped from `catalog_enriched` + `catalog_item_embeddings`. v3 + Path-B migrations applied to Aura-Staging via `supabase db push`. Embeddings regenerated against the new ShapeArchitecture + v3 axes (text-embedding-3-small, 1536-dim). Final DB state: `catalog_enriched_count = catalog_embeddings_count = embedded_product_count = 14,242`. Actual cost ~$35-40 (vs $20-25 projected); cost benchmark saved to memory for future runs. Operational tooling shipped: `pull_catalog_to_csv.py` (DB → CSV), `upsert_enriched_to_db.py` (CSV → DB), `resync_catalog_embeddings.py` (regenerate embeddings); chunk-progress logging added to `main.py` + `batch_runner.py`.
 
-**Phase 2 ontology surgery — 🔒 deferred** to post-Step-2b. Larger schema rationalization that needs production data + Phase 4.6 eval set before destabilizing rules already in use:
-- Remove `OccasionFit` / `OccasionSignal` (subjective; derive downstream from embellishment + silhouette + exposure + fabric + formality + archetype).
-- Remove `SilhouetteContour` / `VolumeProfile` / `FitEase` / `HipDefinition` (redundant with `SilhouetteType` + `FitType` + `VolumePlacement`).
-- Remove `StretchLevel` (vision can't reliably extract).
-- Switch `ContrastLevel` / `ColorTemperature` / `ColorSaturation` / `ColorValue` from vision-predicted to algorithmically derived from extracted color palettes (Pillow / OpenCV).
-- Split `GarmentSubtype` → `OutfitStructure` carve-out (`co_ord_set` / `kurta_set` / `lehenga_set` / `ethnic_set` aren't atomic garments).
-- Clean up `ConstructionDetail` (move `deconstructed` / `utility` / `experimental` to a future `StyleExpression` axis).
-- Adopt the 4 deferred ShapeArchitecture axes (`ProjectionType`, `StructuralRhythm`, `EdgeGeometry`, `VolumeIntensity`) only after eval-set ground truth shows they're worth the annotation cost.
-- Target axis count: ~36-40 (vs current 55).
+**Phase 2 ontology surgery — split by real dependency** (re-framed 2026-05-11). Earlier framing put the whole bucket behind "Phase 4.6 eval set", but most items don't actually need the eval set — they need audit + data-analysis on the freshly-enriched 14,242 rows. Only one item is genuinely eval-gated.
+
+**Wave A — gated on audit + data-analysis, NOT eval data:**
+- Remove `OccasionFit` / `OccasionSignal` — Phase 1 already stopped the architect from emitting these in queries (May 3, 2026). Remaining work: audit that no consumer reads the columns, then drop. Trustworthy downstream derivation only required if any consumer still reads the signal.
+- Remove `SilhouetteContour` / `VolumeProfile` / `FitEase` / `HipDefinition` — redundancy claim against `SilhouetteType` + `FitType` + `VolumePlacement` is empirically falsifiable. Run a correlation query on the 14,242 enriched rows; remove only what the data supports.
+- Remove `StretchLevel` — extractability claim is verifiable from the just-completed enrichment run's confidence + null-rate distribution. No eval set required to read those numbers.
+- Switch `ContrastLevel` / `ColorTemperature` / `ColorSaturation` / `ColorValue` from vision-predicted to algorithmic Pillow/OpenCV derivation — accuracy verifiable by spot-check against human perception on a small sample; no style-quality eval set needed for the derivation correctness itself.
+- Split `GarmentSubtype` → `OutfitStructure` carve-out (`co_ord_set` / `kurta_set` / `lehenga_set` / `ethnic_set`) — categorical correctness, not subjective quality.
+- Clean up `ConstructionDetail` (move `deconstructed` / `utility` / `experimental` to a future `StyleExpression` axis) — categorical reclassification.
+
+**Wave B — genuinely gated on Phase 4.6 eval data:**
+- Adopt the 4 deferred ShapeArchitecture axes (`ProjectionType`, `StructuralRhythm`, `EdgeGeometry`, `VolumeIntensity`). These are *additive* axes whose value is hard to justify without ground truth, and adopting them costs another re-enrichment run (~$35-40, ~30hrs wall time per recent benchmark).
+
+**Risk consideration for Wave A**: the absence of an eval set means we can't *systematically* catch quality regressions from each cut. Mitigate with side-by-side retrieval diffs on a small hand-curated set of test queries before merging each surgical PR — much smaller than the 100-500-query Phase 4.6 eval set, but enough to catch a category-level regression.
+
+**Target axis count after Wave A:** ~40-43 (vs current 55). Wave B is +0 to +4 axes depending on eval evidence.
+
+**Ordering:** Step 4 (stylist patches — purely additive) ships first since it's the highest-leverage and lowest-risk change. Then Wave A in surgery-PRs (one per cut), data-driven by an audit script that produces the correlation + null-rate numbers. Wave B waits on Phase 4.6.
 
 ### Catalog enrichment queue (Type A — vision-extractable garment properties)
 
