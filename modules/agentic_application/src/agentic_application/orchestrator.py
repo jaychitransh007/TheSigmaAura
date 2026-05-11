@@ -1599,20 +1599,23 @@ class AgenticOrchestrator:
             _enrichment_executor = ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="wardrobe_enrich"
             )
-            # Don't pass the chat message as the wardrobe `description`:
-            # for image-attached turns the message is usually the synthetic
-            # "What goes with this? Show me pairing options." fallback the
-            # UI fills in when the user attaches a photo without typing.
-            # Letting it bleed into the wardrobe row's description leaves
-            # nonsense like "What goes with this" sitting on the saved item
-            # forever. The vision pipeline writes its own description from
-            # the extracted garment attributes when this is blank.
+            # description="" keeps the chat message OUT of the saved
+            # wardrobe row (the synthetic UI fallback "What goes with
+            # this? Show me pairing options." used to leak there).
+            # text_hint=message.strip() routes the same message into
+            # the vision prompt as a category/subtype prior — without
+            # it, gpt-5.5 sometimes returns null GarmentCategory on
+            # visually-ambiguous garments (e.g. smocked-band skirts
+            # readable as strapless dresses), which trips the
+            # orchestrator's _critical_fields_empty check and aborts
+            # the turn with an unhelpful clarification.
             _enrichment_future = _enrichment_executor.submit(
                 self.onboarding_gateway.save_uploaded_chat_wardrobe_item,
                 user_id=external_user_id,
                 image_data=image_data,
                 description="",
                 notes="Captured from chat image attachment.",
+                text_hint=message.strip(),
                 persist=False,
             )
             _enrichment_executor.shutdown(wait=False)

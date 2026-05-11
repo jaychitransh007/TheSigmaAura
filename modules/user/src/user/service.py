@@ -331,6 +331,7 @@ class OnboardingService:
         title: str = "",
         description: str = "",
         notes: str = "",
+        text_hint: str = "",
         persist: bool = True,
     ) -> Optional[dict]:
         file_data, content_type, filename = self._decode_data_url_image(image_data)
@@ -343,6 +344,7 @@ class OnboardingService:
             title=title,
             description=description,
             notes=notes,
+            text_hint=text_hint,
             persist=persist,
         )
 
@@ -540,6 +542,7 @@ class OnboardingService:
         occasion_fit: str = "",
         brand: str = "",
         notes: str = "",
+        text_hint: str = "",
         persist: bool = True,
     ) -> Optional[dict]:
         if self._repo is None:
@@ -611,11 +614,19 @@ class OnboardingService:
         enrichment_status = "ok"
         enrichment_error_message = ""
         last_exc: Optional[Exception] = None
+        # Pass text_hint to vision as the description-shaped prompt
+        # context: the user's chat message ("What goes with this skirt?")
+        # is a strong prior on category / subtype that lets gpt-5.5
+        # disambiguate visually-ambiguous garments. We feed it into the
+        # `description` slot so the existing prompt template picks it up
+        # — but we never write it back to the wardrobe row's description
+        # column (the projection below derives that from vision attrs).
+        _vision_description = (description or "").strip() or (text_hint or "").strip()
         try:
             extracted = infer_wardrobe_catalog_attributes(
                 image_ref=str(dest),
                 title=title,
-                description=description,
+                description=_vision_description,
                 garment_category=garment_category,
                 garment_subtype=garment_subtype,
                 primary_color=primary_color,
