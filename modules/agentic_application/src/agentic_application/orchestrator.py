@@ -1985,7 +1985,9 @@ class AgenticOrchestrator:
         if _enrichment_future is not None:
             try:
                 # 60s window matches the inner OpenAI per-request
-                # timeout (55s) + retry/network headroom. The previous
+                # timeout (55s) plus thread-handoff / network headroom.
+                # SDK retries are disabled at the client (max_retries=0)
+                # so this stays a true single-call budget. The previous
                 # 45s budget was calibrated for gpt-5-mini at minimal
                 # effort (~14s/call); after the gpt-5.5/high upgrade
                 # in PR #275 a single call genuinely runs ~25-30s and
