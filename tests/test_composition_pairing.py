@@ -879,9 +879,15 @@ class CulturalCoherenceTests(unittest.TestCase):
         self.assertEqual(violations, ())
 
     def test_traditional_plus_western_no_bridge_violates(self):
+        # Western item NOT elevated-fusion-eligible (floral pattern
+        # disqualifies). Tests the base indo_western_fusion path.
         items = (
             _smart_casual_top(cultural_register="indian_traditional"),
-            _smart_casual_bottom(cultural_register="western"),
+            _smart_casual_bottom(
+                cultural_register="western",
+                pattern_type="floral",
+                embellishment_level="moderate",
+            ),
         )
         violations = evaluate_constraint("cultural_coherence", items, _ctx(), _graph())
         self.assertTrue(any(v.rule == "indo_western_fusion" for v in violations))
@@ -908,16 +914,168 @@ class CulturalCoherenceTests(unittest.TestCase):
         self.assertFalse(any(v.rule == "indo_western_fusion" for v in violations))
 
     def test_heavy_traditional_plus_western_double_violates(self):
+        # Western item is intentionally NOT elevated-fusion-eligible
+        # (pattern_type=floral disqualifies the exception). Tests that
+        # both rules fire in the default-non-exception path.
         items = (
             _smart_casual_top(
                 cultural_register="indian_traditional", embellishment_level="heavy"
             ),
-            _smart_casual_bottom(cultural_register="western"),
+            _smart_casual_bottom(
+                cultural_register="western",
+                pattern_type="floral",  # disqualifies elevated_fusion_exception
+                embellishment_level="moderate",
+            ),
         )
         violations = evaluate_constraint("cultural_coherence", items, _ctx(), _graph())
         rules_hit = {v.rule for v in violations}
         self.assertIn("indo_western_fusion", rules_hit)
         self.assertIn("heavy_traditional_no_western_fusion", rules_hit)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # elevated_fusion_exception (Batch A — pure scoring rule). Suspends
+    # indo_western_fusion when Western items are tailored/solid/minimal.
+    # ─────────────────────────────────────────────────────────────────────
+
+    def test_elevated_fusion_exception_suspends_indo_western_fusion(self):
+        # kurta + tailored solid trouser, minimal embellishment — the
+        # stylist's canonical "one anchor, one restraint" pattern.
+        items = (
+            _smart_casual_top(cultural_register="indian_traditional"),
+            _smart_casual_bottom(
+                cultural_register="western",
+                fit_type="tailored",
+                pattern_type="solid",
+                embellishment_level="minimal",
+            ),
+        )
+        violations = evaluate_constraint("cultural_coherence", items, _ctx(), _graph())
+        self.assertFalse(any(v.rule == "indo_western_fusion" for v in violations))
+
+    def test_elevated_fusion_exception_blocked_by_loud_pattern(self):
+        # Western item with a non-solid pattern is "loud" — exception
+        # doesn't apply; indo_western_fusion fires.
+        items = (
+            _smart_casual_top(cultural_register="indian_traditional"),
+            _smart_casual_bottom(
+                cultural_register="western",
+                fit_type="tailored",
+                pattern_type="floral",  # disqualifies
+                embellishment_level="minimal",
+            ),
+        )
+        violations = evaluate_constraint("cultural_coherence", items, _ctx(), _graph())
+        self.assertTrue(any(v.rule == "indo_western_fusion" for v in violations))
+
+    def test_elevated_fusion_exception_blocked_by_heavy_embellishment(self):
+        items = (
+            _smart_casual_top(cultural_register="indian_traditional"),
+            _smart_casual_bottom(
+                cultural_register="western",
+                fit_type="tailored",
+                pattern_type="solid",
+                embellishment_level="moderate",  # > subtle disqualifies
+            ),
+        )
+        violations = evaluate_constraint("cultural_coherence", items, _ctx(), _graph())
+        self.assertTrue(any(v.rule == "indo_western_fusion" for v in violations))
+
+    def test_elevated_fusion_exception_blocked_by_loose_fit(self):
+        items = (
+            _smart_casual_top(cultural_register="indian_traditional"),
+            _smart_casual_bottom(
+                cultural_register="western",
+                fit_type="loose",  # not in {tailored, slim, regular}
+                pattern_type="solid",
+                embellishment_level="minimal",
+            ),
+        )
+        violations = evaluate_constraint("cultural_coherence", items, _ctx(), _graph())
+        self.assertTrue(any(v.rule == "indo_western_fusion" for v in violations))
+
+    def test_elevated_fusion_exception_conservative_on_missing_data(self):
+        # Western item missing fit_type → exception abstains, base
+        # rule fires.
+        items = (
+            _smart_casual_top(cultural_register="indian_traditional"),
+            _smart_casual_bottom(
+                cultural_register="western",
+                fit_type="",
+                pattern_type="solid",
+                embellishment_level="minimal",
+            ),
+        )
+        violations = evaluate_constraint("cultural_coherence", items, _ctx(), _graph())
+        self.assertTrue(any(v.rule == "indo_western_fusion" for v in violations))
+
+    # ─────────────────────────────────────────────────────────────────────
+    # modern_bridal_restraint (Batch A). In bridal context, suspends
+    # heavy_traditional_no_western_fusion when only one anchor item is
+    # heavy/statement and the rest are ≤moderate embellishment.
+    # ─────────────────────────────────────────────────────────────────────
+
+    def test_modern_bridal_restraint_suspends_heavy_traditional_violation(self):
+        # Bridal context (ceremonial + wedding_ceremony) + 1 heavy
+        # traditional anchor + restrained Western support → restraint
+        # pattern fires, violation suppressed.
+        items = (
+            _smart_casual_top(
+                formality="ceremonial",
+                cultural_register="indian_traditional",
+                embellishment_level="heavy",
+            ),
+            _smart_casual_bottom(
+                formality="ceremonial",
+                cultural_register="western",
+                embellishment_level="minimal",
+            ),
+        )
+        violations = evaluate_constraint(
+            "cultural_coherence",
+            items,
+            _ctx(formality_hint="ceremonial", occasion_signal="wedding_ceremony"),
+            _graph(),
+        )
+        self.assertFalse(any(v.rule == "heavy_traditional_no_western_fusion" for v in violations))
+
+    def test_modern_bridal_restraint_blocked_outside_bridal_context(self):
+        # Same item shape but daily_office occasion → not bridal →
+        # violation fires.
+        items = (
+            _smart_casual_top(
+                cultural_register="indian_traditional",
+                embellishment_level="heavy",
+            ),
+            _smart_casual_bottom(
+                cultural_register="western",
+                embellishment_level="minimal",
+            ),
+        )
+        violations = evaluate_constraint("cultural_coherence", items, _ctx(), _graph())
+        self.assertTrue(any(v.rule == "heavy_traditional_no_western_fusion" for v in violations))
+
+    def test_modern_bridal_restraint_blocked_by_two_heavy_items(self):
+        # In bridal context but TWO heavy items → no longer a "single
+        # anchor" pattern → restraint exception doesn't fire.
+        items = (
+            _smart_casual_top(
+                formality="ceremonial",
+                cultural_register="indian_traditional",
+                embellishment_level="heavy",
+            ),
+            _smart_casual_bottom(
+                formality="ceremonial",
+                cultural_register="western",
+                embellishment_level="statement",
+            ),
+        )
+        violations = evaluate_constraint(
+            "cultural_coherence",
+            items,
+            _ctx(formality_hint="ceremonial", occasion_signal="wedding_ceremony"),
+            _graph(),
+        )
+        self.assertTrue(any(v.rule == "heavy_traditional_no_western_fusion" for v in violations))
 
 
 class BridalSpecificTests(unittest.TestCase):
@@ -1113,13 +1271,22 @@ class ScoreTupleTests(unittest.TestCase):
     def test_multiple_soft_violations_accumulate(self):
         # Force three soft violations: all-fitted (Pear, no exemption),
         # heavy_traditional + western, and indo_western_fusion mismatch.
+        # Bottom item NOT elevated-fusion-eligible (floral pattern +
+        # moderate embellishment) so the exceptions don't suspend
+        # cultural_coherence violations.
         result = score_tuple(
             (
                 _smart_casual_top(
                     fit_type="slim", cultural_register="indian_traditional",
                     embellishment_level="heavy",
                 ),
-                _smart_casual_bottom(fit_type="tailored", cultural_register="western"),
+                _smart_casual_bottom(
+                    fit_type="tailored",
+                    cultural_register="western",
+                    pattern_type="floral",  # disqualifies elevated_fusion
+                    pattern_scale="micro",   # under is_statement threshold
+                    embellishment_level="minimal",  # under is_statement threshold
+                ),
             ),
             _ctx(body_shape="Pear", palette_anchors=("navy", "cream")),
             _graph(),

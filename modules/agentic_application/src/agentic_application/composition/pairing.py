@@ -893,6 +893,56 @@ def _evaluate_fabric_compatibility(
     return tuple(violations)
 
 
+def _is_elevated_fusion_exception_eligible(items: tuple[Item, ...]) -> bool:
+    """Returns True when every Western item in the tuple signals
+    restrained / elevated styling: tailored fit + solid pattern +
+    ≤subtle embellishment. This is the stylist's "one anchor, one
+    restraint" framing — the most common AI-styling failure mode is
+    double-dominant fusion where Indian and Western elements BOTH
+    demand attention; the exception unlocks the "Indian anchor +
+    restrained Western support piece" pattern (kurta + tailored
+    trouser, saree + clean full-sleeve bodysuit blouse).
+
+    Conservative-by-design: any Western item missing fit_type /
+    pattern_type / embellishment_level falls through to the base
+    rule. We don't want a bare-defaults item to silently suppress
+    the violation."""
+    western_items = [it for it in items if it.cultural_register == "western"]
+    if not western_items:
+        return False
+    for it in western_items:
+        if not it.fit_type or not it.pattern_type or not it.embellishment_level:
+            return False
+        if it.fit_type not in {"tailored", "slim", "regular"}:
+            return False
+        if it.pattern_type != "solid":
+            return False
+        if it.embellishment_level not in {"none", "minimal", "subtle"}:
+            return False
+    return True
+
+
+def _is_modern_bridal_restraint_eligible(items: tuple[Item, ...]) -> bool:
+    """Returns True when a bridal-context outfit has at most ONE
+    heavy/statement item — the anchor — and everything else is
+    moderate or lighter. Captures the Bengaluru minimal-luxury /
+    destination wedding / daytime ceremony aesthetic the stylist
+    flagged: a single heavy ceremonial saree or lehenga skirt paired
+    with restrained Western or Indo-Western supporting pieces.
+
+    Conservative: requires embellishment_level on every item. Items
+    missing embellishment fall through (matcher abstains rather than
+    risking a wrong suspension of the parent rule)."""
+    levels = [it.embellishment_level for it in items if it.embellishment_level]
+    if len(levels) != len(items):
+        return False
+    heavy_count = sum(1 for lv in levels if lv in {"heavy", "statement"})
+    if heavy_count > 1:
+        return False
+    rest = [lv for lv in levels if lv not in {"heavy", "statement"}]
+    return all(lv in {"none", "minimal", "subtle", "moderate"} for lv in rest)
+
+
 def _evaluate_cultural_coherence(
     items: tuple[Item, ...], ctx: TupleContext, graph: StyleGraph
 ) -> tuple[Violation, ...]:
@@ -913,14 +963,25 @@ def _evaluate_cultural_coherence(
         has_traditional and has_western and not has_fusion
         and len(registers) == len(items)
     ):
-        violations.append(
-            Violation(
-                category="cultural_coherence",
-                rule="indo_western_fusion",
-                detail="indian_traditional + western without indo_western bridge slot",
-                is_hard=False,
+        # elevated_fusion_exception (PR — Batch A): when Western items
+        # are tailored / solid / minimal, the "indian_traditional +
+        # western without indo_western bridge" pattern is intentional
+        # styling (kurta + tailored trouser, saree + clean full-sleeve
+        # bodysuit blouse). Suspend the violation and emit an exception
+        # metric.
+        if _is_elevated_fusion_exception_eligible(items):
+            _record_exception(
+                "indo_western_fusion", "elevated_fusion_exception",
             )
-        )
+        else:
+            violations.append(
+                Violation(
+                    category="cultural_coherence",
+                    rule="indo_western_fusion",
+                    detail="indian_traditional + western without indo_western bridge slot",
+                    is_hard=False,
+                )
+            )
 
     heavy_traditional = any(
         it.cultural_register == "indian_traditional"
@@ -928,14 +989,29 @@ def _evaluate_cultural_coherence(
         for it in items
     )
     if heavy_traditional and has_western:
-        violations.append(
-            Violation(
-                category="cultural_coherence",
-                rule="heavy_traditional_no_western_fusion",
-                detail="heavy/statement traditional item paired with western item",
-                is_hard=False,
+        # modern_bridal_restraint (PR — Batch A): in bridal context, a
+        # restraint pattern (≤1 heavy/statement item — the anchor —
+        # with all others at ≤moderate embellishment) is the
+        # contemporary urban-Indian bridal aesthetic the stylist
+        # explicitly wants the engine to support. Suspend
+        # heavy_traditional_no_western_fusion under those conditions
+        # and emit an exception metric.
+        if (
+            bridal_exception_active(ctx, graph)
+            and _is_modern_bridal_restraint_eligible(items)
+        ):
+            _record_exception(
+                "heavy_traditional_no_western_fusion", "modern_bridal_restraint",
             )
-        )
+        else:
+            violations.append(
+                Violation(
+                    category="cultural_coherence",
+                    rule="heavy_traditional_no_western_fusion",
+                    detail="heavy/statement traditional item paired with western item",
+                    is_hard=False,
+                )
+            )
 
     return tuple(violations)
 
