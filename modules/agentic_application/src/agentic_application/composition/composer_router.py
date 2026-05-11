@@ -190,12 +190,22 @@ def extract_tuple_context(combined_context: CombinedContext) -> TupleContext:
     else:
         anchors = ()
 
+    # Pull the anchor item's product_id when the turn carries one
+    # (pairing_request flow with an uploaded or referenced anchor).
+    # Best-effort: any shape variance in anchor_garment falls through
+    # to empty (matchers abstain on empty anchor_item_id).
+    anchor_item_id = ""
+    anchor_garment = getattr(live, "anchor_garment", None)
+    if isinstance(anchor_garment, dict):
+        anchor_item_id = str(anchor_garment.get("product_id") or "").strip()
+
     return TupleContext(
         formality_hint=str(getattr(live, "formality_hint", "") or ""),
         occasion_signal=str(getattr(live, "occasion_signal", "") or ""),
         palette_anchors=anchors,
         body_shape=body_shape,
         intent="recommendation_request",
+        anchor_item_id=anchor_item_id,
     )
 
 
