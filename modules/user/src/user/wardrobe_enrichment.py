@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from openai import OpenAI
 
@@ -11,14 +11,23 @@ from user_profiler.config import get_api_key
 from user_profiler.service import _extract_response_json, _image_to_input_url
 
 
-# Shared module-level OpenAI client — instantiated once at import
-# time and reused across calls so we don't repeat get_api_key() (file
-# I/O via .env) and httpx-client construction on every wardrobe save.
-# Per-request timeout / retry overrides go through `_client.with_options(...)`
-# inside infer_wardrobe_catalog_attributes. get_api_key() returns "" when
-# no env is configured (CI), which the SDK accepts at construction time —
-# the actual auth check happens at request time.
-_client = OpenAI(api_key=get_api_key())
+# Lazily-instantiated shared OpenAI client. Cached after the first
+# call so we don't repeat get_api_key() (file I/O via .env) and
+# httpx-client construction on every wardrobe save. Construction is
+# deferred (not at module import) so:
+#   - importing this module has no file-I/O side effect,
+#   - tests can mutate env after import and still get a client built
+#     against the current API key,
+#   - CI runners that import without env configured don't pin the
+#     client to an empty key for the lifetime of the process.
+_client_cache: Optional["OpenAI"] = None
+
+
+def _shared_client() -> "OpenAI":
+    global _client_cache
+    if _client_cache is None:
+        _client_cache = OpenAI(api_key=get_api_key())
+    return _client_cache
 
 
 _GARMENT_ATTRIBUTES_PATH = (
@@ -139,7 +148,7 @@ def infer_wardrobe_catalog_attributes(
     # (~165s total) and silently outlive the orchestrator's 60s
     # budget — which is exactly the failure mode this caller's
     # single-attempt strategy was meant to prevent.
-    client = _client.with_options(
+    client = _shared_client().with_options(
         timeout=request_timeout_seconds,
         max_retries=0,
     )
