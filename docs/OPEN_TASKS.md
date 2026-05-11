@@ -125,12 +125,24 @@ Two ways to clean up:
 
 **Phase 2 ontology surgery — split by real dependency** (re-framed 2026-05-11). Earlier framing put the whole bucket behind "Phase 4.6 eval set", but most items don't actually need the eval set — they need audit + data-analysis on the freshly-enriched 14,242 rows. Only one item is genuinely eval-gated.
 
-**Wave A — gated on audit + data-analysis, NOT eval data:**
-- Remove `OccasionFit` / `OccasionSignal` — Phase 1 already stopped the architect from emitting these in queries (May 3, 2026). Remaining work: audit that no consumer reads the columns, then drop. Trustworthy downstream derivation only required if any consumer still reads the signal.
-- Remove `SilhouetteContour` / `VolumeProfile` / `FitEase` / `HipDefinition` — redundancy claim against `SilhouetteType` + `FitType` + `VolumePlacement` is empirically falsifiable. Run a correlation query on the 14,242 enriched rows; remove only what the data supports.
-- Remove `StretchLevel` — extractability claim is verifiable from the just-completed enrichment run's confidence + null-rate distribution. No eval set required to read those numbers.
-- Switch `ContrastLevel` / `ColorTemperature` / `ColorSaturation` / `ColorValue` from vision-predicted to algorithmic Pillow/OpenCV derivation — accuracy verifiable by spot-check against human perception on a small sample; no style-quality eval set needed for the derivation correctness itself.
-- Split `GarmentSubtype` → `OutfitStructure` carve-out (`co_ord_set` / `kurta_set` / `lehenga_set` / `ethnic_set`) — categorical correctness, not subjective quality.
+**Wave A — gated on audit + data-analysis, NOT eval data.** The audit ([PR #254](https://github.com/jaychitransh007/TheSigmaAura/pull/254), report at [docs/phase2_wave_a_audit.md](phase2_wave_a_audit.md)) ran against the 14,242 enriched rows and **refuted most of the originally-claimed cuts**. The actual surgical picture is much smaller than this list originally implied:
+
+- ❌ ~~Remove `OccasionFit`~~ — Audit: 0% null, 0.80 mean confidence; vision extracts confidently. The "subjective derive-downstream" framing isn't supported by the data — these values DO carry independent signal. Keep populating; revisit only if downstream consumers prove unreliable.
+- ⚠️ Remove `OccasionSignal` — Audit: 0% null, p10 confidence 0.60 (borderline). Lower confidence than OccasionFit. **Worth reviewing top-pairs detail before deciding.**
+- ⚠️ Remove `SilhouetteContour` (claimed redundant with `SilhouetteType`) — Audit: entropy ratio 0.45, 63 distinct value-pairs. Real residual signal. **Review top-pairs before any cut.**
+- ❌ ~~Remove `VolumeProfile`~~ — Audit: entropy ratio 0.85, independent of VolumePlacement. Keep.
+- ⚠️ Remove `FitEase` (claimed redundant with `FitType`) — Audit: entropy ratio 0.36, dominant pair `regular→regular` covers 59%, but `relaxed` maps to 3 different FitType values. **Worth reviewing top-pairs detail.**
+- ❌ ~~Remove `HipDefinition`~~ — Audit: entropy ratio 0.88, completely independent of WaistDefinition. Keep.
+- ❌ ~~Remove `StretchLevel`~~ — Audit: 0% null, 0.86 mean confidence. Vision IS extracting reliably (86.5% `none` is a real signal, not a failure). Keep.
+
+**The remaining honest Wave A scope** (~2-3 items, each gated on the top-pairs detail in the audit):
+- `OccasionSignal` — borderline confidence; may be worth dropping if architect doesn't consume.
+- `SilhouetteContour` — redundancy with SilhouetteType is partial, not complete; cut depends on whether the residual signal feeds any rule.
+- `FitEase` — same; weakest signal of the three, but the `relaxed`→{relaxed/loose/boxy} split is real.
+
+Independent of redundancy/extractability, these categorical-correctness items remain valid (audit doesn't apply):
+- Switch `ContrastLevel` / `ColorTemperature` / `ColorSaturation` / `ColorValue` from vision-predicted to algorithmic Pillow/OpenCV derivation — accuracy verifiable by spot-check; no style-quality eval set needed for correctness.
+- Split `GarmentSubtype` → `OutfitStructure` carve-out (`co_ord_set` / `kurta_set` / `lehenga_set` / `ethnic_set`) — categorical correctness.
 - Clean up `ConstructionDetail` (move `deconstructed` / `utility` / `experimental` to a future `StyleExpression` axis) — categorical reclassification.
 
 **Wave B — genuinely gated on Phase 4.6 eval data:**
