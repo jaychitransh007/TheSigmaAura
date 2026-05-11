@@ -103,7 +103,14 @@ def infer_wardrobe_catalog_attributes(
     occasion_fit: str = "",
     brand: str = "",
     notes: str = "",
-    model: str = "gpt-5-mini",
+    # Match the profile image-analysis service (analysis.py:111). The
+    # cheaper gpt-5-mini at minimal effort missed obvious cases (e.g.
+    # a skirt classified as a dress because of an embellished waistband).
+    # Wardrobe ingestion is rarer than catalog enrichment and the
+    # downstream cost of a misclassification — outfits that silently
+    # drop the item, mislabeled titles, wrong role assignment — is high.
+    model: str = "gpt-5.5",
+    reasoning_effort: str = "high",
 ) -> Dict[str, Any]:
     client = OpenAI(api_key=get_api_key())
     image_url = _image_to_input_url(image_ref)
@@ -124,7 +131,7 @@ def infer_wardrobe_catalog_attributes(
         "to `true`, set `garment_present_confidence` to a value reflecting "
         "how clearly you can see the garment (0.7+ for clear garment "
         "photos, 0.5-0.7 for partial/unclear), and proceed to extract the "
-        "46 garment attributes per the rules below.\n"
+        "full garment attribute set per the rules below.\n"
         "\n"
         "Analyze this single wardrobe garment image and return the required JSON.\n"
         "The output schema must match the global catalog enrichment schema exactly.\n"
@@ -142,9 +149,11 @@ def infer_wardrobe_catalog_attributes(
         f"Notes: {notes}\n"
     ).strip()
 
-    # reasoning_effort="minimal" — wardrobe enrichment is structured
-    # vision extraction (read garment attributes from the image into a
-    # fixed schema). No chain-of-thought needed.
+    # Reasoning effort matches the profile image-analysis service so a
+    # single garment photo gets the same careful read as the onboarding
+    # body/headshot photos. The previous minimal-effort runs produced
+    # high-confidence misclassifications that cascaded into wrong role
+    # assignment downstream.
     response = client.responses.create(
         model=model,
         input=[
@@ -160,7 +169,7 @@ def infer_wardrobe_catalog_attributes(
                 ],
             },
         ],
-        reasoning={"effort": "minimal"},
+        reasoning={"effort": reasoning_effort},
         text={"format": response_format()},
     )
     parsed = _extract_response_json(response)
