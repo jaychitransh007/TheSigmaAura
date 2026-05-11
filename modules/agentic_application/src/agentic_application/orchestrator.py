@@ -1615,7 +1615,12 @@ class AgenticOrchestrator:
                 image_data=image_data,
                 description="",
                 notes="Captured from chat image attachment.",
-                text_hint=message.strip(),
+                # Cap the hint so a pathologically long chat message
+                # can't blow the wardrobe-enrichment prompt past the
+                # vision model's context window. 512 chars is well
+                # beyond the typical "What goes with this skirt?"
+                # phrasing this hint is meant to capture.
+                text_hint=message.strip()[:512],
                 persist=False,
             )
             _enrichment_executor.shutdown(wait=False)
