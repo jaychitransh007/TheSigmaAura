@@ -121,7 +121,7 @@ Two ways to clean up:
 
 **Step 2a — ✅ shipped + Path B applied** ([PR #237](https://github.com/jaychitransh007/TheSigmaAura/pull/237) added 12 axes; [PR #239](https://github.com/jaychitransh007/TheSigmaAura/pull/239) Path B removed 5 + added 4 = net 55 enum + 2 text canonical attributes). Schema is post-rationalization, ready for Step 2b.
 
-**Step 2b — 🟡 next.** Vision re-enrichment on 14,296 catalog rows via OpenAI's Batch API on `gpt-5-mini` (provider decision recorded below — Gemini migration was scoped, implemented, and reverted after numerical comparison).
+**Step 2b — ✅ shipped (2026-05-11).** Vision re-enrichment ran on 14,296 catalog rows via OpenAI Batch API on `gpt-5-mini`. **14,242 / 14,296 rows enriched ok (99.62%)**; 54 rows with broken Shopify-CDN image URLs dropped from `catalog_enriched` + `catalog_item_embeddings`. v3 + Path-B migrations applied to Aura-Staging via `supabase db push`. Embeddings regenerated against the new ShapeArchitecture + v3 axes (text-embedding-3-small, 1536-dim). Final DB state: `catalog_enriched_count = catalog_embeddings_count = embedded_product_count = 14,242`. Actual cost ~$35-40 (vs $20-25 projected); cost benchmark saved to memory for future runs. Operational tooling shipped: `pull_catalog_to_csv.py` (DB → CSV), `upsert_enriched_to_db.py` (CSV → DB), `resync_catalog_embeddings.py` (regenerate embeddings); chunk-progress logging added to `main.py` + `batch_runner.py`.
 
 **Phase 2 ontology surgery — 🔒 deferred** to post-Step-2b. Larger schema rationalization that needs production data + Phase 4.6 eval set before destabilizing rules already in use:
 - Remove `OccasionFit` / `OccasionSignal` (subjective; derive downstream from embellishment + silhouette + exposure + fabric + formality + archetype).
@@ -242,12 +242,12 @@ All 8 stylist files reviewed. Queue is finalized. The agreed execution order is 
 
 These have real effect on real traffic without any catalog or schema dependency.
 
-**Step 2 — Catalog re-enrichment** (the single most-leveraged action; ~5-7 days end-to-end).
+**Step 2 — Catalog re-enrichment** — ✅ **shipped 2026-05-11**.
 
-- **2a:** Add new canonical axes to `garment_attributes.json` (`ShoulderExposure`, `SleeveVolume`, `BlouseLength`, `BorderContrast`, `FabricTransparency`, `SurfaceFinish`, `LayeringVisibility`, plus the 5 weather performance axes `BreathabilityLevel` / `DryTime` / `WaterResistance` / `ThermalInsulation` / `WrinkleResistance`). Migrate `catalog_enriched` table schema to store them. Update vision-enrichment prompt to ask for them. ~1-2 days.
-- **2b:** Run vision enrichment on 14,296 catalog rows (~10-15 hours compute, ~$300-700). Backfill DB. Regenerate `catalog_item_embeddings`. ~3-5 days end-to-end including QA.
+- **2a:** ✅ shipped (PRs #237 + #239 — schema rationalized; 55 enum + 2 text canonical attrs).
+- **2b:** ✅ shipped 2026-05-11 — 14,242 / 14,296 rows enriched ok (99.62%), embeddings regenerated, 54 CDN-broken rows dropped. Actual cost ~$35-40 (vs $20-25 projected; budget $0.003/row × 1.5x top-up buffer next time). End-to-end took ~30 hrs real time with two billing-limit pauses.
 
-**Step 3 — Build Phase 4.3 hard/soft yaml_loader + engine reduction** (~3 days). yaml_loader extended to recognize `hard_flatters` / `hard_avoid` / `soft_flatters` / `soft_avoid` keys; reduction logic enforces hard rules unconditionally and treats soft rules as scoring penalties; validators updated; tests covering hard violation = drop, soft violation = penalty. **Inert until Step 4 lands** (no rule in production YAMLs uses the new keys yet).
+**Step 3 — Build Phase 4.3 hard/soft yaml_loader + engine reduction** — 🟡 **next** (~3 days). yaml_loader extended to recognize `hard_flatters` / `hard_avoid` / `soft_flatters` / `soft_avoid` keys; reduction logic enforces hard rules unconditionally and treats soft rules as scoring penalties; validators updated; tests covering hard violation = drop, soft violation = penalty. **Inert until Step 4 lands** (no rule in production YAMLs uses the new keys yet).
 
 **Step 4 — Apply held YAML patches** (3 patches, in one coordinated PR per file).
 
@@ -393,13 +393,15 @@ These foundations remain available; their consumers (the composition engine in P
 **Strategic context:**
 The composition engine (Phase 4) is the architectural endpoint that makes the YAMLs runtime-load-bearing on the hot path. Phases 1–3 are operational wins. Phase 5 extends the wins to the composer. **Phase 6** moves composition entirely offline — pre-rated outfits indexed in `outfit_library`, retrieved via vector + filter on the hot path — which is the only architectural path to sub-3s on the slow side of the cache, since even at full engine acceptance the cold path stays at ~25-30s (composer LLM ~12s + rater ~4s + retrieval ~3s). **Phase 7** replaces the zero-shot LLM Rater with a learned model on feedback signals; that's a quality + cost refinement on top of Phase 6, not a separate latency lever.
 
-**Critical-path priority (2026-05-09):**
+**Critical-path priority (2026-05-11):**
 
-1. 🔒 **Phase 4.2 stylist YAML review (in progress, file 1 of 8 done)** — paid consultant pass on the 8 style-graph YAMLs. Status table + downstream-work queue tracked under "Stylist YAML review — aggregated downstream work" above. **Why this matters most:** the stylist's reviews drive both Phase 4.6 ground-truth and the catalog re-enrichment scope. The downstream work (engine extensions, Type B axes, hard/soft yaml_loader, vision-enrichment prompt update, batched re-enrichment) gates on completing all 8 file reviews so the work can be batched.
-2. 🔒 **Phase 4.6 eval set curation** — 100-500 hand-curated queries with hand-rated outputs. **Why this matters:** every downstream item (composer engine flag-on, Phase 6 library quality validation, Phase 7 learned model held-out evaluation, threshold calibration on both routers) gates on having ground truth.
-3. ⏳ **EAR-1 data accumulation** (~2-3 days from 2026-05-09) — composer router decisions persisting since [PR #222](https://github.com/jaychitransh007/TheSigmaAura/pull/222). **Why this matters:** the composer engine's actual ~4% acceptance driver (`MIN_PICKS` / `pool_too_sparse` / pre-engine eligibility / `low_confidence`) is currently invisible. The next composer-side fix can't be picked correctly until this data shows the breakdown.
-4. 📋 **Phase 6 — Outfit Library** (post-4.6 + post-stylist-and-enrichment, ~3-4 weeks). **Why this matters:** the engines are ~done; the question is whether they run on the hot path (current design, ~25s floor) or offline (library design, sub-500ms hits). Phase 6 is the architectural shift that finishes the sub-3s anchor target. Also gated on the catalog re-enrichment landing (otherwise the library would be built against stale vocabulary).
-5. 📋 **Phase 7 — Layer C** (post-Phase-6 + ~50 feedback events/user). **Why this matters:** at sufficient volume, a learned model on real feedback should outperform zero-shot Rater calibration AND drop the 4s Rater stage to <50ms inference. But it has to come after the library because the library is where every recommendation naturally carries its sub-score vector for training; retrofitting feedback enrichment without it is harder.
+1. ✅ **Phase 4.2 stylist YAML review — DONE** (all 8 files reviewed; downstream work batched into the canonical execution sequence above).
+2. ✅ **Step 2b catalog re-enrichment — DONE 2026-05-11** (14,242 rows enriched on the new ShapeArchitecture + v3 axes; embeddings regenerated). Phase 6 library is now unblocked from a content-vocabulary standpoint.
+3. 🟢 **Step 3 — Phase 4.3 hard/soft yaml_loader** (~3 days engineering; independent of catalog work, can start immediately). Once Step 3 lands, **Step 4** applies the 3 held YAML patches (bodyframe, occasion, pairing engine matchers).
+4. 🔒 **Phase 4.6 eval set curation** — 100-500 hand-curated queries with hand-rated outputs. **Why this matters:** Step 5 (quality validation of all the new enrichment + engine work), composer engine flag-on, Phase 6 library quality validation, Phase 7 learned-model held-out evaluation, and threshold calibration on both routers all gate on having ground truth.
+5. ⏳ **EAR-1 data accumulation** (composer router decisions persisting since [PR #222](https://github.com/jaychitransh007/TheSigmaAura/pull/222)). **Why this matters:** the composer engine's actual ~4% acceptance driver (`MIN_PICKS` / `pool_too_sparse` / pre-engine eligibility / `low_confidence`) is invisible without persistence. Next composer-side fix waits on this breakdown.
+6. 📋 **Phase 6 — Outfit Library** (post-4.6, ~3-4 weeks). **Why this matters:** the engines are ~done; the question is whether they run on the hot path (current design, ~25s floor) or offline (library design, sub-500ms hits). Phase 6 is the architectural shift that finishes the sub-3s anchor target.
+7. 📋 **Phase 7 — Layer C** (post-Phase-6 + ~50 feedback events/user).
 
 Items NOT on the critical path right now (deferred — see Phase headers for trigger conditions): planner model swaps (Phase 1.3/1.4 dropped), composer model swaps (Phase 1.4 dropped), prompt-compression aggressive tier (Phase 3.3/3.5 gated on 4.6), bucketed engine rollout machinery (waits for 4.6).
 
