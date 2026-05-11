@@ -3205,15 +3205,16 @@ def get_web_ui_html(
     return _convCreating;
   }}
 
-  // Fade out and remove a thinking bubble. Safe to call with null.
-  async function pollJob(convId, jobId) {{
+  // Poll a turn job to completion. `previewStageEl` is the per-turn
+  // stage line owned by this send() — passed directly instead of
+  // looked up by id so concurrent turns can't write to each other's
+  // cards. May be null when the caller has no preview to update.
+  async function pollJob(convId, jobId, previewStageEl) {{
     var lastStageText = "";
     var shownIdx = -1;
     var POLL_INTERVAL = 400;
-    // Write stage text to the query preview card if present, else the stage bar
     function setStage(msg) {{
-      var previewStage = document.getElementById("queryPreviewStage");
-      if (previewStage) previewStage.textContent = msg;
+      if (previewStageEl) previewStageEl.textContent = msg;
       stageBar.textContent = msg;
     }}
     try {{
@@ -3398,11 +3399,15 @@ def get_web_ui_html(
       // Stale check — if a newer send() fired during ensureConversation(), bail
       if (myGeneration !== _sendGeneration) return;
 
-      // Show query preview card while processing
+      // Show query preview card while processing. `preview` and
+      // `pStage` are kept as locals so success / catch / pollJob can
+      // address THIS turn's card directly, even when other turns are
+      // in flight — no shared DOM ids to collide on.
+      var preview = null;
+      var pStage = null;
       if (discoveryResultArea) {{
-        var preview = document.createElement("div");
+        preview = document.createElement("div");
         preview.className = "query-preview";
-        preview.id = "queryPreview";
         var pText = document.createElement("p");
         pText.className = "query-preview-text";
         pText.textContent = message;
@@ -3415,9 +3420,8 @@ def get_web_ui_html(
           pImg.onerror = function() {{ this.style.display = "none"; }};
           preview.appendChild(pImg);
         }}
-        var pStage = document.createElement("div");
+        pStage = document.createElement("div");
         pStage.className = "query-preview-stage";
-        pStage.id = "queryPreviewStage";
         preview.appendChild(pStage);
         discoveryResultArea.appendChild(preview);
         // Anchor the just-sent query at the top of the viewport so the
@@ -3440,22 +3444,16 @@ def get_web_ui_html(
       }});
       var job = await res.json();
       if (!res.ok) throw new Error(job.detail || "Failed to start turn");
-      var result = await pollJob(convId, job.job_id);
+      var result = await pollJob(convId, job.job_id, pStage);
 
       // If a newer send() was fired while we were polling, discard this
       // stale result — the newer send already cleared the result area.
       if (myGeneration !== _sendGeneration) return;
 
       // Keep the user-query card visible above the results so the
-      // conversation reads chat-style. Strip its ids + the stage line
-      // so the next iteration can create a fresh preview without
-      // routing its stage messages back into this finished one.
-      var oldPreview = document.getElementById("queryPreview");
-      if (oldPreview) {{
-        oldPreview.removeAttribute("id");
-        var oldStage = document.getElementById("queryPreviewStage");
-        if (oldStage) oldStage.remove();
-      }}
+      // conversation reads chat-style. Drop the stage line now that
+      // the pipeline is done.
+      if (pStage) pStage.remove();
 
       var outfits = result.outfits || [];
       // Attach turn/conversation refs so on-demand actions (e.g. the
@@ -3489,8 +3487,8 @@ def get_web_ui_html(
       // stays visible at the top of the viewport and the new carousel
       // appears below it — instead of scrolling everything to the
       // bottom (which pushed the query card off-screen).
-      if (oldPreview) {{
-        try {{ oldPreview.scrollIntoView({{ block: "start", behavior: "auto" }}); }} catch (_) {{
+      if (preview) {{
+        try {{ preview.scrollIntoView({{ block: "start", behavior: "auto" }}); }} catch (_) {{
           if (homeScroll) homeScroll.scrollTop = homeScroll.scrollHeight;
         }}
       }} else if (homeScroll) {{
@@ -3501,10 +3499,9 @@ def get_web_ui_html(
     }} catch (e) {{
       err.textContent = e.message || String(e);
       // Drop the in-flight preview card on error so a retry can
-      // create a fresh one (and we don't leave a stale "Looking
-      // through the catalog" hint sitting in the history).
-      var failedPreview = document.getElementById("queryPreview");
-      if (failedPreview) failedPreview.remove();
+      // create a fresh one and we don't leave a stale "Looking
+      // through the catalog" hint sitting in the history.
+      if (preview) preview.remove();
     }} finally {{
       sendBtn.disabled = false;
       messageEl.disabled = false;
