@@ -460,13 +460,14 @@ class AnchorGarmentHint(BaseModel):
     subtype: str = ""   # free-text garment name (e.g. "skirt", "lehenga", "midi dress")
     confidence: float = 0.0
 
-    def is_usable(self, threshold: float = 0.5) -> bool:
+    def is_usable(self, threshold: float) -> bool:
         """True when the planner extracted a confident, non-empty anchor.
 
         Centralises the threshold + non-empty-fields check that the
-        orchestrator was duplicating at two call sites. The default
-        threshold matches PLANNER_ANCHOR_CONFIDENCE_THRESHOLD in the
-        orchestrator; callers can override for specific use cases.
+        orchestrator was duplicating at two call sites. Threshold has
+        no default — callers pass _PLANNER_ANCHOR_CONFIDENCE_THRESHOLD
+        (or a use-case-specific override) so the source of truth lives
+        in one place and can't drift between the schema and the caller.
         """
         return bool(self.category and self.subtype and self.confidence >= threshold)
 
