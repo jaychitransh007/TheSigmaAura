@@ -727,6 +727,59 @@ class FabricCompatibilityTests(unittest.TestCase):
         violations = evaluate_constraint("fabric_compatibility", items, _ctx(), _graph())
         self.assertFalse(any(v.rule == "weight_pairing" for v in violations))
 
+    # ─────────────────────────────────────────────────────────────────────
+    # sheen_hierarchy (Phase 4.3 / PR 4c.2). At most one sheen-bearing
+    # surface (sheen / metallic / embroidered fabric_texture) per outfit
+    # outside the bridal exception.
+    # ─────────────────────────────────────────────────────────────────────
+
+    def test_single_sheen_item_passes(self):
+        items = (
+            _smart_casual_top(fabric_texture="sheen"),
+            _smart_casual_bottom(fabric_texture="matte"),
+        )
+        violations = evaluate_constraint("fabric_compatibility", items, _ctx(), _graph())
+        self.assertFalse(any(v.rule == "sheen_hierarchy" for v in violations))
+
+    def test_two_sheen_items_violate_outside_bridal(self):
+        items = (
+            _smart_casual_top(fabric_texture="sheen"),
+            _smart_casual_bottom(fabric_texture="embroidered"),
+        )
+        violations = evaluate_constraint("fabric_compatibility", items, _ctx(), _graph())
+        sheen_v = [v for v in violations if v.rule == "sheen_hierarchy"]
+        self.assertEqual(len(sheen_v), 1)
+        self.assertFalse(sheen_v[0].is_hard)
+
+    def test_metallic_counts_as_sheen(self):
+        items = (
+            _smart_casual_top(fabric_texture="metallic"),
+            _smart_casual_bottom(fabric_texture="embroidered"),
+        )
+        violations = evaluate_constraint("fabric_compatibility", items, _ctx(), _graph())
+        self.assertTrue(any(v.rule == "sheen_hierarchy" for v in violations))
+
+    def test_sheen_hierarchy_bypassed_under_bridal_exception(self):
+        items = (
+            _smart_casual_top(formality="ceremonial", fabric_texture="sheen"),
+            _smart_casual_bottom(formality="ceremonial", fabric_texture="embroidered"),
+        )
+        violations = evaluate_constraint(
+            "fabric_compatibility",
+            items,
+            _ctx(formality_hint="ceremonial", occasion_signal="wedding_ceremony"),
+            _graph(),
+        )
+        self.assertFalse(any(v.rule == "sheen_hierarchy" for v in violations))
+
+    def test_non_sheen_textures_dont_count(self):
+        items = (
+            _smart_casual_top(fabric_texture="smooth"),
+            _smart_casual_bottom(fabric_texture="textured"),
+        )
+        violations = evaluate_constraint("fabric_compatibility", items, _ctx(), _graph())
+        self.assertFalse(any(v.rule == "sheen_hierarchy" for v in violations))
+
 
 class CulturalCoherenceTests(unittest.TestCase):
 

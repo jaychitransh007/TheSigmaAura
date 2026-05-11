@@ -56,6 +56,15 @@ ALL_CATEGORIES: tuple[str, ...] = HARD_CATEGORIES + SOFT_CATEGORIES
 SOFT_PENALTY: float = 0.10
 BASE_SCORE: float = 1.0
 
+# Canonical sheen-bearing fabric textures (per garment_attributes.json
+# FabricTexture enum). The sheen_hierarchy rule caps how many of these
+# can co-occur in an outfit outside the bridal exception. Updating
+# garment_attributes.json's FabricTexture enum requires updating this
+# tuple in the same PR so the matcher stays consistent with the
+# canonical vocabulary.
+_SHEEN_TEXTURES: frozenset[str] = frozenset({"sheen", "metallic", "embroidered"})
+_SHEEN_TEXTURES_LABEL: str = "sheen / metallic / embroidered"
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # Dataclasses
@@ -779,6 +788,27 @@ def _evaluate_fabric_compatibility(
                 )
 
     # drape_compatibility — documentation-only in YAML, no engine check.
+
+    # sheen_hierarchy — count sheen-bearing surfaces; cap outside bridal.
+    sheen_rule = group.rules.get("sheen_hierarchy")
+    if sheen_rule is not None and not bridal_exception_active(ctx, graph):
+        cap = sheen_rule.value if sheen_rule.value is not None else 1
+        sheen_count = sum(
+            1 for it in items if it.fabric_texture in _SHEEN_TEXTURES
+        )
+        if sheen_count > cap:
+            violations.append(
+                Violation(
+                    category="fabric_compatibility",
+                    rule="sheen_hierarchy",
+                    detail=(
+                        f"{sheen_count} sheen-bearing surfaces "
+                        f"({_SHEEN_TEXTURES_LABEL}); cap {cap} outside bridal"
+                    ),
+                    is_hard=False,
+                )
+            )
+
     return tuple(violations)
 
 
