@@ -37,6 +37,20 @@ def _load_prompt() -> str:
     raise FileNotFoundError("Could not locate prompt/copilot_planner.md")
 
 
+# Mirrors outfit_architect.PROMPT_VERSION — short SHA1 of the prompt
+# text so the planner cache (May 11 2026 follow-up) automatically
+# invalidates when the prompt changes. The planner has no modular
+# fragment system the architect has (`anchor.md` / `followup.md`),
+# so just the base prompt feeds the hash.
+import hashlib as _hashlib
+
+def _compute_prompt_version() -> str:
+    return _hashlib.sha1(_load_prompt().encode("utf-8")).hexdigest()[:8]
+
+
+PROMPT_VERSION = _compute_prompt_version()
+
+
 _PLAN_JSON_SCHEMA: Dict[str, Any] = {
     "type": "json_schema",
     "name": "copilot_plan",

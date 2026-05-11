@@ -22,7 +22,7 @@ from platform_core.request_context import (
 )
 
 from .agents.catalog_search_agent import CatalogSearchAgent
-from .agents.copilot_planner import CopilotPlanner, build_planner_input
+from .agents.copilot_planner import CopilotPlanner, build_planner_input, PROMPT_VERSION as PLANNER_PROMPT_VERSION
 from .agents.outfit_architect import OutfitArchitect, PROMPT_VERSION as ARCHITECT_PROMPT_VERSION
 from .cache.architect_cache_key import (
     build_architect_cache_key,
@@ -30,6 +30,11 @@ from .cache.architect_cache_key import (
     denormalised_key_fields,
 )
 from .cache.architect_cache_repository import ArchitectCacheRepository
+from .cache.planner_cache_key import (
+    build_planner_cache_key,
+    denormalised_key_fields as planner_denormalised_key_fields,
+)
+from .cache.planner_cache_repository import PlannerCacheRepository
 from .composition.router import route_recommendation_plan
 from .cache.composer_cache_key import (
     architect_direction_id,
@@ -678,6 +683,11 @@ class AgenticOrchestrator:
         # runs the architect normally and writes the output for next time.
         # See docs/phase_2_cache_design.md.
         self._architect_cache = ArchitectCacheRepository(repo.client)
+        # May 11 2026 — planner output cache mirrors the architect's
+        # pattern. Targets the 7.7s on gpt-5-mini observed in the May 11
+        # latency review (turn f735f414). Same best-effort behaviour:
+        # cache failures degrade to LLM-only mode silently.
+        self._planner_cache = PlannerCacheRepository(repo.client)
         # Phase 4.10 — composition engine feature flag. False (default)
         # means the router falls straight through to the LLM architect;
         # True routes every turn through the engine first (with the
@@ -1790,6 +1800,45 @@ class AgenticOrchestrator:
             has_attached_image=bool(image_data),
         )
 
+        # Phase 2 follow-up (May 11 2026): planner output cache. Lookup
+        # is best-effort — any error treated as miss. Cache key includes
+        # the normalised user_message, profile_cluster, previous_intent /
+        # previous_occasion (follow-up disambiguation), the boolean
+        # signals that change intent path, and the prompt version. See
+        # planner_cache_key.py for the full rationale.
+        from .cache.profile_cluster import cluster_for as _planner_cluster_for
+        _planner_cache_cluster = _planner_cluster_for(user_context)
+        _planner_cache_key = build_planner_cache_key(
+            tenant_id="default",
+            user_message=effective_message,
+            cluster=_planner_cache_cluster,
+            previous_intent=str(previous_context.get("last_intent") or "") or None,
+            previous_occasion=str(previous_context.get("last_occasion") or "") or None,
+            has_attached_image=bool(image_data),
+            has_person_image=has_person_image,
+            wardrobe_count=len(user_context.wardrobe_items or []),
+            planner_prompt_version=PLANNER_PROMPT_VERSION,
+        )
+        try:
+            _planner_cache_hit = self._planner_cache.get(
+                tenant_id="default", cache_key=_planner_cache_key,
+            )
+        except Exception:  # noqa: BLE001 — cache must never break the turn
+            _planner_cache_hit = None
+            try:
+                from platform_core.metrics import aura_planner_cache_decision_total
+                aura_planner_cache_decision_total.labels(outcome="error").inc()
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            try:
+                from platform_core.metrics import aura_planner_cache_decision_total
+                aura_planner_cache_decision_total.labels(
+                    outcome="hit" if _planner_cache_hit is not None else "miss",
+                ).inc()
+            except Exception:  # noqa: BLE001
+                pass
+
         # Run Copilot Planner
         # Model name read from the agent so the trace + log rows
         # follow the agent's _model attribute rather than a hardcoded
@@ -1811,7 +1860,36 @@ class AgenticOrchestrator:
                 model=_planner_model,
                 full_input={"planner_input": to_jsonable(planner_input)},
             ) as _trace_ctx:
-                plan_result = self._copilot_planner.plan(planner_input)
+                if _planner_cache_hit is not None:
+                    # Cache hit: serve the cached plan_result, skip the
+                    # LLM entirely. ~7.7s → ~50ms on hit (lookup +
+                    # parse). Touch the row so hit_count + last_used_at
+                    # reflect the access.
+                    plan_result = _planner_cache_hit
+                    self._planner_cache.touch(
+                        tenant_id="default", cache_key=_planner_cache_key,
+                    )
+                else:
+                    plan_result = self._copilot_planner.plan(planner_input)
+                    # Best-effort cache write — failures don't break the
+                    # turn (the result has already been computed).
+                    self._planner_cache.put(
+                        tenant_id="default",
+                        cache_key=_planner_cache_key,
+                        plan_result=plan_result,
+                        denormalised=planner_denormalised_key_fields(
+                            tenant_id="default",
+                            user_message=effective_message,
+                            cluster=_planner_cache_cluster,
+                            previous_intent=str(previous_context.get("last_intent") or "") or None,
+                            previous_occasion=str(previous_context.get("last_occasion") or "") or None,
+                            has_attached_image=bool(image_data),
+                            has_person_image=has_person_image,
+                            wardrobe_count=len(user_context.wardrobe_items or []),
+                            planner_prompt_version=PLANNER_PROMPT_VERSION,
+                            planner_model=_planner_model,
+                        ),
+                    )
                 _trace_ctx.full_output = to_jsonable(plan_result)
         except Exception as exc:
             planner_ms = int((time.monotonic() - t0) * 1000)
@@ -1854,14 +1932,23 @@ class AgenticOrchestrator:
                 "metadata": {"error": True},
             }
         planner_ms = int((time.monotonic() - t0) * 1000)
-        # Item 4 (May 1, 2026): pull token usage from the planner agent.
-        _planner_usage = getattr(self._copilot_planner, "last_usage", {}) or {}
+        # On cache hit the LLM never ran — stamp the model_call_logs row
+        # with model="cache" and zero tokens so per-model cost rollups
+        # and Panel 23 don't attribute phantom tokens to gpt-5-mini
+        # (mirrors the architect cache's resolver pattern from PR #153).
+        if _planner_cache_hit is not None:
+            _planner_log_model = "cache"
+            _planner_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        else:
+            _planner_log_model = _planner_model
+            # Item 4 (May 1, 2026): pull token usage from the planner agent.
+            _planner_usage = getattr(self._copilot_planner, "last_usage", {}) or {}
         trace.add_model_cost_from_row(self.repo.log_model_call(
             conversation_id=conversation_id,
             turn_id=turn_id,
             service="agentic_application",
             call_type="copilot_planner",
-            model=_planner_model,
+            model=_planner_log_model,
             request_json={"message": effective_message, "intent": plan_result.intent},
             response_json={
                 "intent": plan_result.intent,

@@ -495,13 +495,20 @@ class ConversationRepository:
     # N events (across all event_types interleaved) so prompt size stays
     # bounded and recency dominates.
     #
-    # 30 → 20 (Phase 3.1 May 8 2026). Each event ~100 tokens after JSON
-    # serialization; 30 entries was ~3K tokens for power users — the
-    # single largest line in the architect's per-turn payload after
-    # Phase 1 / 2. Tightened to 20 (~2K tokens) saving ~1K per power-user
-    # turn. Recency still dominates; long-tail events that rarely change
-    # query bias get pruned first.
-    _RECENT_USER_ACTIONS_MAX = 20
+    # 30 → 20 (Phase 3.1, May 8 2026) → 10 (May 11 2026 latency push).
+    # Each event ~100 tokens after JSON serialization; 30 entries was
+    # ~3K tokens for power users — the single largest line in the
+    # architect's per-turn payload after Phase 1 / 2. Tightened to 20
+    # in May 8 (~2K tokens), then to 10 in May 11 (~1K tokens) when the
+    # `copilot_planner` 7.7s latency review identified episodic memory
+    # as the heaviest single block in its 6K-token prompt. Recency
+    # still dominates; long-tail events that rarely change query bias
+    # get pruned first. Per-axis quality risk is bounded — the
+    # architect's flatters/avoid logic operates on aggregate signal
+    # across the timeline, not on any single tail event. Revert to 20
+    # if Panel 18 (rater unsuitable rate) climbs > 1pp on the cohort
+    # whose feedback history exceeds 10 events.
+    _RECENT_USER_ACTIONS_MAX = 10
 
     # The catalog attribute mapping for this method is `_CATALOG_ATTR_MAP`
     # at the top of the class (PR #93, consolidating with the archetypal
