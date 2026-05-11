@@ -57,12 +57,18 @@ BodyShape:
       EmbellishmentZone:   [shoulder, neckline]
       PatternScale:        [medium, large]                # for top
     avoid:
-      SilhouetteContour:   [tapered, mermaid]
+      SilhouetteContour:   [tapered]
       SilhouetteType:      [tapered]
       FitType:             [boxy]                         # at top — masks shoulders
       HipDefinition:       [tapered, shaped]              # cups bigger hips
       EmbellishmentZone:   [hem]                          # draws eye down (hip-zone embellishment maps to hem in canonical taxonomy)
       ShoulderStructure:   [dropped]                      # narrows shoulder line
+    # Phase 4.3 (stylist patch): mermaid is risky for Pear but works
+    # in bridal couture with the right cinching — downgrade from hard
+    # avoid to soft so bridal occasions can override via scoring rather
+    # than hard filter.
+    soft_avoid:
+      SilhouetteContour:   [mermaid]
     notes: >
       Anarkali is the universal pear-friendly silhouette — A-line flares
       from bust, masks heavier hips, draws eye to embellished yoke. Also:
@@ -572,13 +578,14 @@ NeckLength:
 JawlineDefinition:
   Soft:
     flatters:
-      NecklineType:        [collared, mandarin, square, boat]   # adds structure
+      NecklineType:        [collared, mandarin, square, boat, sweetheart]   # sweetheart added per stylist patch — flatters soft jaws via shared rounded geometry; collared/mandarin/square/boat add structure
       EdgeSharpness:       [defined, sharp]
     avoid:
-      NecklineType:        [scoop, sweetheart]                  # too round
+      NecklineType:        [scoop]                              # scoop still too round / unstructured
       EdgeSharpness:       [soft]
     notes: Add structural lines near the face — collared shirt under
-      bandi, mandarin-collar kurta, square-neck saree blouse.
+      bandi, mandarin-collar kurta, square-neck saree blouse. Sweetheart
+      blouse necklines also flatter soft jawlines (shared rounded geometry).
 
   Balanced:
     flatters:
