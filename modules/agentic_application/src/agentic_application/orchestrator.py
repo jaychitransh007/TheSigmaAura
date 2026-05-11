@@ -179,7 +179,17 @@ def _build_candidate_item(product: "RetrievedProduct", role: str = "") -> Dict[s
         or ""
     )
     title = str(metadata.get("title") or enriched.get("title") or product.product_id or "")
-    price = str(metadata.get("price") or enriched.get("price") or "")
+    # Prefer enriched.price over metadata.price. Pre-recovery embeddings
+    # (built before the May 11 2026 title/price backfill) stamped the
+    # metadata blob with `price="Unknown"`, which is truthy in Python's
+    # `or` chain and would shadow the real numeric price now living in
+    # catalog_enriched. Filter "Unknown" / "N/A" / "" on the metadata
+    # fallback so a bad cached value can't beat a good live one.
+    _enriched_price = str(enriched.get("price") or "").strip()
+    _metadata_price = str(metadata.get("price") or "").strip()
+    if _metadata_price.lower() in {"", "unknown", "n/a", "none", "null"}:
+        _metadata_price = ""
+    price = _enriched_price or _metadata_price
     product_url = resolve_product_url(
         raw_url=str(metadata.get("url") or enriched.get("url") or enriched.get("product_url") or ""),
         store=str(enriched.get("store") or metadata.get("store") or ""),
