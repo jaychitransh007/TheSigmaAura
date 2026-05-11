@@ -655,17 +655,18 @@ will look artificially good.
 ## Panel 17 — Architect Input Token Growth
 
 **Question:** is the architect's prompt size creeping up because of
-the new episodic-memory timeline, and is the timeline cap (30 events)
+the new episodic-memory timeline, and is the event cap (10 events)
 still right?
 
 **Context:** PR #90 added `recent_user_actions` (a 30-day timeline of
 the user's like/dislike events with full garment attributes) to the
-architect's input payload. Each row is ~80–150 tokens; with the
-30-event cap a power user adds ~3K tokens to a prompt that was ~9K
-before. PR #92 fixed a silent 400-error that was making the timeline
-empty for every user; once that landed for real, prompt sizes should
-visibly grow for users with feedback history. This panel watches the
-distribution so we know when to revisit `_RECENT_USER_ACTIONS_MAX`.
+architect's input payload. Each row is ~80–150 tokens; the cap was
+30 at introduction, trimmed to 20 in the May 8 latency push, and
+trimmed again to 10 in PR #259 (May 9) — at the 10-event cap a power
+user now adds ~1K tokens to a prompt that was ~9K before. PR #92 fixed
+a silent 400-error that was making the timeline empty for every user.
+This panel watches the distribution so we know when the cap or the
+per-event field set in `_CATALOG_ATTR_MAP` needs revisiting.
 
 ```sql
 -- architect_prompt_tokens_p50_p95_last_7d
@@ -690,14 +691,16 @@ ORDER BY 1 DESC;
 (empty timeline) anchor the p50; active users with feedback history
 push the p95.
 
-**Degraded:** p95 climbs above 14K — usually means a power user has a
-30-event timeline that's denser than expected (long item titles,
-stuffed `user_query` fields). Either tighten the timeline cap or trim
-which fields are surfaced in `_CATALOG_ATTR_MAP`.
+**Degraded:** p95 climbs above 14K — usually means a power user's
+10-event timeline is denser than expected (long item titles, stuffed
+`user_query` fields). Trim which fields are surfaced in
+`_CATALOG_ATTR_MAP` before tightening the event cap further — at 10
+events, further reduction starts cutting into useful signal.
 
 **Unhealthy:** p_max exceeds 18K — that's near the architect prompt
-ceiling and approaching gpt-5.4 context-window pressure. Lower
-`_RECENT_USER_ACTIONS_MAX` from 30 → 20.
+ceiling and approaching gpt-5.4 context-window pressure. First trim
+`_CATALOG_ATTR_MAP`; only drop `_RECENT_USER_ACTIONS_MAX` below 10 if
+that doesn't help.
 
 ---
 
