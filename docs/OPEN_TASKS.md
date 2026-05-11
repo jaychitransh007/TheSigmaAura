@@ -8,13 +8,23 @@ This file lists what's open **now**. Shipped work history lives in `docs/RELEASE
 
 **Pure engineering work: none.** The May 2026 session closed the implement-today queue (PRs #246-#264). Two trigger-driven items remain — no work needed until the trigger fires:
 
-### 1. Masculine top coverage — content gap
+### 1. Masculine top coverage — largely RESOLVED by the May 2026 re-enrichment
 
-**Status.** The catalog carries 0 items across `tshirt`, `polo_tshirt`, `shirt`, `sweatshirt`, `hoodie` for masculine users. The masculine catalog today is dominated by `trouser` (327) / `blazer` (315) / `jeans` (274) — so when a male user asks for "loungewear" or "casual day-out", retrieval returns nothing.
+**Status (verified against staging catalog 2026-05-11 post-re-enrichment):** the gap reported in April 2026 has substantially closed. The catalog now carries:
 
-**Why this is content, not engineering.** Re-enrichment re-tags existing products; it doesn't ingest new ones. To close the gap, the business needs to source + ingest masculine casualwear via the admin tool's per-product pipeline (which is allowed per the frozen-catalog policy — new-product enrichment stays on the table).
+| Subtype | Masculine | Unisex | Combined |
+|---|---:|---:|---:|
+| `shirt` | 922 | 9 | 931 |
+| `tshirt` | 369 | 17 | 386 |
+| `sweatshirt` | 63 | 0 | 63 |
+| `hoodie` | 39 | 3 | 42 |
+| `polo_tshirt` | **0** | 0 | **0** |
 
-**Trigger to act.** When the business decides to expand the masculine cohort. Until then, PR #186/#187 (OccasionFit-based fallback) and PR #192 (empty-retrieval auto-relaxation) route around the gap.
+Total masculine inventory: **4,298 items across 21 subtypes** (not the 8 reported pre-re-enrichment). The May re-enrichment didn't add new products — it fixed subtype recognition. Items previously miscategorised as `blazer` / `jacket` got accurate `shirt` / `sweatshirt` tags.
+
+**Remaining gap:** `polo_tshirt` is the only top subtype with literally zero items. Likely a vocabulary signal — polos may be getting tagged as either `tshirt` or `shirt` by the vision pipeline. To resolve, the business needs to source dedicated polo-tagged products via the admin tool's per-product ingestion (allowed under frozen-catalog policy).
+
+**Trigger to act.** Only if `polo_tshirt` becomes a request driver and the existing `tshirt` / `shirt` fallback isn't sufficient. Most queries that want polos accept tshirts or shirts as substitutes.
 
 ### 2. Phase out `archetypal_preferences` from the composer
 
