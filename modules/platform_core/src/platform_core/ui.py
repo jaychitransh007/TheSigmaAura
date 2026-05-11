@@ -3520,7 +3520,11 @@ def get_web_ui_html(
         pStage.id = "queryPreviewStage";
         preview.appendChild(pStage);
         discoveryResultArea.appendChild(preview);
-        if (homeScroll) homeScroll.scrollTop = homeScroll.scrollHeight;
+        // Anchor the just-sent query at the top of the viewport so the
+        // user keeps seeing what they asked while the pipeline runs.
+        try {{ preview.scrollIntoView({{ block: "start", behavior: "auto" }}); }} catch (_) {{
+          if (homeScroll) homeScroll.scrollTop = homeScroll.scrollHeight;
+        }}
       }}
 
       var payload = {{ user_id: USER_ID, message: message }};
@@ -3542,9 +3546,17 @@ def get_web_ui_html(
       // stale result — the newer send already cleared the result area.
       if (myGeneration !== _sendGeneration) return;
 
-      // Remove the query preview card — replace with actual results
+      // Keep the user-query card visible above the results so the
+      // conversation reads chat-style. Strip its ids + the stage line
+      // so the next iteration can create a fresh preview without
+      // routing its stage messages back into this finished one.
       var oldPreview = document.getElementById("queryPreview");
-      if (oldPreview) oldPreview.remove();
+      if (oldPreview) {{
+        oldPreview.removeAttribute("id");
+        oldPreview.classList.add("query-preview-done");
+        var oldStage = document.getElementById("queryPreviewStage");
+        if (oldStage) oldStage.remove();
+      }}
 
       var outfits = result.outfits || [];
       // Attach turn/conversation refs so on-demand actions (e.g. the
@@ -3567,11 +3579,14 @@ def get_web_ui_html(
       }}
 
       if (outfits.length && discoveryResultArea) {{
-        // Iteration label for stacked carousels (iterations 2+)
+        // Iteration label for stacked carousels (iterations 2+).
+        // The user message itself stays visible in the persistent
+        // query-preview card just above, so the label is just the
+        // iteration counter \u2014 no message duplication.
         if (_iterationCount > 1) {{
           var iterLabel = document.createElement("div");
           iterLabel.className = "iteration-label";
-          iterLabel.textContent = "Iteration " + _iterationCount + " \u00B7 " + message;
+          iterLabel.textContent = "Iteration " + _iterationCount;
           discoveryResultArea.appendChild(iterLabel);
         }}
         // Context summary
@@ -3596,14 +3611,28 @@ def get_web_ui_html(
       // Follow-up chips — clicking them sets _isFollowUp = true
       if (discoveryFollowups) {{
         renderDiscoveryFollowups(result.follow_up_suggestions || [], __groups, discoveryFollowups);
+      }}
 
-      // Scroll results into view
-      if (homeScroll) homeScroll.scrollTop = homeScroll.scrollHeight;
+      // Anchor the just-finished iteration so the user's query card
+      // stays visible at the top of the viewport and the new carousel
+      // appears below it — instead of scrolling everything to the
+      // bottom (which pushed the query card off-screen).
+      if (oldPreview) {{
+        try {{ oldPreview.scrollIntoView({{ block: "start", behavior: "auto" }}); }} catch (_) {{
+          if (homeScroll) homeScroll.scrollTop = homeScroll.scrollHeight;
+        }}
+      }} else if (homeScroll) {{
+        homeScroll.scrollTop = homeScroll.scrollHeight;
       }}
 
 
     }} catch (e) {{
       err.textContent = e.message || String(e);
+      // Drop the in-flight preview card on error so a retry can
+      // create a fresh one (and we don't leave a stale "Looking
+      // through the catalog" hint sitting in the history).
+      var failedPreview = document.getElementById("queryPreview");
+      if (failedPreview) failedPreview.remove();
     }} finally {{
       _isFollowUp = false;
       sendBtn.disabled = false;
