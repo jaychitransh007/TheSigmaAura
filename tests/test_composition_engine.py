@@ -34,6 +34,7 @@ from agentic_application.composition.engine import (
     CompositionInputs,
     CompositionResult,
     ProvenanceEntry,
+    _add_mapping,
     _build_hard_attrs,
     _classify_attr_tier,
     _compute_confidence,
@@ -45,8 +46,9 @@ from agentic_application.composition.engine import (
 )
 from agentic_application.composition.reduction import AttributeContribution
 from agentic_application.composition.relaxation import ClassifiedContribution
-from agentic_application.composition.yaml_loader import load_style_graph
+from agentic_application.composition.yaml_loader import AttributeMapping, load_style_graph
 from agentic_application.schemas import DirectionSpec, QuerySpec, UserContext
+from types import MappingProxyType
 
 
 def _baseline_inputs(**overrides) -> CompositionInputs:
@@ -654,6 +656,94 @@ class HardAttrTierTests(unittest.TestCase):
                     set(q.hard_attrs["SleeveLength"]),
                     "SleeveLength flatters should be exactly the high_altitude_cool values",
                 )
+
+
+class AddMappingHardSoftTierOverrideTests(unittest.TestCase):
+    """Phase 4.3 — `_add_mapping` emits per-bucket ClassifiedContributions
+    with the right tier:
+      - bare flatters/avoid → source-level tier
+      - hard_flatters/hard_avoid → forced "hard"
+      - soft_flatters/soft_avoid → forced "soft"
+    Used by Step 4 stylist patches to override the source-level default
+    on a per-rule basis."""
+
+    @staticmethod
+    def _mk_mapping(**buckets) -> AttributeMapping:
+        empty = MappingProxyType({})
+        def freeze(d):
+            return MappingProxyType({k: tuple(v) for k, v in (d or {}).items()})
+        return AttributeMapping(
+            flatters=freeze(buckets.get("flatters")),
+            avoid=freeze(buckets.get("avoid")),
+            notes="",
+            hard_flatters=freeze(buckets.get("hard_flatters")),
+            hard_avoid=freeze(buckets.get("hard_avoid")),
+            soft_flatters=freeze(buckets.get("soft_flatters")),
+            soft_avoid=freeze(buckets.get("soft_avoid")),
+        )
+
+    def test_bare_flatters_use_source_level_tier(self):
+        by_attr: dict = {}
+        mapping = self._mk_mapping(flatters={"FitType": ["fitted"]})
+        _add_mapping(by_attr, mapping, "body_shape:Hourglass", "body_shape", "hard")
+        contribs = by_attr["FitType"]
+        self.assertEqual(len(contribs), 1)
+        self.assertEqual(contribs[0].tier, "hard")
+        self.assertEqual(contribs[0].contribution.flatters, ("fitted",))
+
+    def test_hard_flatters_force_hard_tier_on_soft_source(self):
+        """Even when the source is soft (archetype), hard_flatters
+        values must surface with tier='hard'."""
+        by_attr: dict = {}
+        mapping = self._mk_mapping(hard_flatters={"VolumeProfile": ["moderate"]})
+        _add_mapping(by_attr, mapping, "archetype:modern_professional", "archetype", "soft")
+        contribs = by_attr["VolumeProfile"]
+        self.assertEqual(len(contribs), 1)
+        self.assertEqual(contribs[0].tier, "hard")
+
+    def test_soft_flatters_force_soft_tier_on_hard_source(self):
+        """Even when the source is hard (body_shape), soft_flatters
+        values must surface with tier='soft' — the stylist's per-rule
+        downgrade."""
+        by_attr: dict = {}
+        mapping = self._mk_mapping(soft_flatters={"WaistDefinition": ["soft_defined"]})
+        _add_mapping(by_attr, mapping, "body_shape:Hourglass", "body_shape", "hard")
+        contribs = by_attr["WaistDefinition"]
+        self.assertEqual(len(contribs), 1)
+        self.assertEqual(contribs[0].tier, "soft")
+
+    def test_three_buckets_on_different_attrs_emit_three_contributions(self):
+        """A mapping that uses bare + hard_ + soft_ on three different
+        attributes produces three contributions — one per bucket per
+        attribute — each tier-tagged independently."""
+        by_attr: dict = {}
+        mapping = self._mk_mapping(
+            flatters={"FitType": ["fitted"]},
+            hard_flatters={"WaistDefinition": ["defined"]},
+            soft_flatters={"NecklineDepth": ["modest"]},
+        )
+        _add_mapping(by_attr, mapping, "body_shape:Hourglass", "body_shape", "hard")
+        self.assertEqual(by_attr["FitType"][0].tier, "hard")          # source-level
+        self.assertEqual(by_attr["WaistDefinition"][0].tier, "hard")  # forced
+        self.assertEqual(by_attr["NecklineDepth"][0].tier, "soft")    # forced
+
+    def test_hard_avoid_only_no_flatters_still_emits_contribution(self):
+        """An entry with only hard_avoid (no hard_flatters) must still
+        contribute to the per-attribute avoid union with tier='hard'."""
+        by_attr: dict = {}
+        mapping = self._mk_mapping(hard_avoid={"FitType": ["loose"]})
+        _add_mapping(by_attr, mapping, "archetype:foo", "archetype", "soft")
+        contribs = by_attr["FitType"]
+        self.assertEqual(len(contribs), 1)
+        self.assertEqual(contribs[0].contribution.flatters, ())
+        self.assertEqual(contribs[0].contribution.avoid, ("loose",))
+        self.assertEqual(contribs[0].tier, "hard")
+
+    def test_no_contribution_emitted_when_all_buckets_empty(self):
+        by_attr: dict = {}
+        mapping = self._mk_mapping()
+        _add_mapping(by_attr, mapping, "body_shape:Hourglass", "body_shape", "hard")
+        self.assertEqual(by_attr, {})
 
 
 if __name__ == "__main__":
