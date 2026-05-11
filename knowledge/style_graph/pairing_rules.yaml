@@ -694,14 +694,24 @@ pairing_rules:
         description: |
           Non-bridal guests should not visually compete with bridal
           focal intensity, even at the same wedding occasion.
+        # Engine matcher: when ctx.bridal_role ∈ {guest, attendee} AND
+        # ctx.occasion_signal is a bridal-role occasion, drop tuples
+        # whose item embellishment levels would compete with bridal
+        # participants. The `avoid` block lists the embellishment
+        # levels reserved for bridal participants. The matcher fires
+        # the violation when ANY item in the guest's tuple carries
+        # one of these values.
+        avoid:
+          EmbellishmentLevel: [heavy, statement]
         notes: |
           Applies through:
           - lower embellishment density than bridal participants
           - reduced veil / dramatic dupatta usage
           - lower jewellery hierarchy
           - simpler silhouette engineering
-          Engine-side: see `bridal_priority` role-aware dressing in the
-          downstream-work queue (occasion review).
+          Bridal participants (bride / groom) bypass this rule via
+          ctx.bridal_role. Engine-side wiring uses Step 1's
+          ``is_bridal_role_occasion`` and ``BRIDAL_ROLE_VALUES``.
 
   # ─────────────────────────────────────────────────────────────────────
   # 9. ANCHOR CONSTRAINTS (for pairing_request intent)
