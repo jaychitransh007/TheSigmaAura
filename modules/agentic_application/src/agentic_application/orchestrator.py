@@ -1589,7 +1589,7 @@ class AgenticOrchestrator:
         _enrichment_t0: Optional[float] = None
         _attachment_source_pending: Optional[str] = None
         if image_data:
-            trace_start("wardrobe_enrichment", model="gpt-5.5", input_summary=f"image_upload, message={message[:80]}")
+            trace_start("wardrobe_enrichment", model="gpt-5.2", input_summary=f"image_upload, message={message[:80]}")
             _enrichment_t0 = time.monotonic()
             # Per-turn executor — submitted task captures all args by
             # value, so the executor can be shut down right after

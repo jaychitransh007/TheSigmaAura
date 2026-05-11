@@ -122,20 +122,19 @@ def infer_wardrobe_catalog_attributes(
     occasion_fit: str = "",
     brand: str = "",
     notes: str = "",
-    # Match the profile image-analysis service (analysis.py:111). The
-    # cheaper gpt-5-mini at minimal effort missed obvious cases (e.g.
-    # a skirt classified as a dress because of an embellished waistband).
-    # Wardrobe ingestion is rarer than catalog enrichment and the
-    # downstream cost of a misclassification — outfits that silently
-    # drop the item, mislabeled titles, wrong role assignment — is high.
-    model: str = "gpt-5.5",
-    reasoning_effort: str = "high",
+    # gpt-5.2/low is the architect+composer's validated sweet spot
+    # for structured-attribute extraction with vision input. gpt-5.5/high
+    # was tried first (matched the profile-analysis service) but ran
+    # 25-60s per call and routinely timed out before returning useful
+    # attributes; gpt-5.2/low returns the same JSON schema in 5-15s
+    # with quality on par for category/color/silhouette extraction.
+    model: str = "gpt-5.2",
+    reasoning_effort: str = "low",
     # Bound the OpenAI call so a slow / hung response can't outlive the
-    # orchestrator's enrichment-future budget. gpt-5.5 high on a
-    # vision input is empirically ~25-30s; 55s gives 2x headroom and
-    # ensures we fail fast inside the orchestrator's 60s window
-    # instead of leaving a background thread eating tokens after the
-    # caller has given up.
+    # orchestrator's enrichment-future budget. gpt-5.2/low on a vision
+    # input is empirically ~5-15s; 55s gives multiple-x headroom and
+    # ensures we fail fast inside the orchestrator's 60s window if the
+    # backend stalls.
     request_timeout_seconds: float = 55.0,
 ) -> Dict[str, Any]:
     # Reuse the shared module-level client; override timeout +
@@ -200,19 +199,12 @@ def infer_wardrobe_catalog_attributes(
         f"Notes: {notes}\n"
     ).strip()
 
-    # Reasoning effort matches the profile image-analysis service so a
-    # single garment photo gets the same careful read as the onboarding
-    # body/headshot photos. The previous minimal-effort runs produced
-    # high-confidence misclassifications that cascaded into wrong role
-    # assignment downstream.
-    #
     # Pass timeout= explicitly to .create() in addition to the
-    # client.with_options() override above. Empirically (PR #279/#281
-    # follow-up turns) the with_options(timeout=...) override didn't
-    # always propagate to the underlying httpx request — turns ran past
-    # the 55s budget into the orchestrator's 60s fallback. Setting it
-    # at the per-call site is the SDK's documented per-request override
-    # and is guaranteed to apply.
+    # client.with_options() override above. Empirically the with_options
+    # timeout didn't always propagate to the underlying httpx request —
+    # turns ran past the 55s budget into the orchestrator's 60s
+    # fallback. The per-call kwarg is the SDK's documented per-request
+    # override and is guaranteed to apply.
     response = client.responses.create(
         model=model,
         input=[
