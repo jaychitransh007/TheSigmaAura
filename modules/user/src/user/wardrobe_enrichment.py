@@ -11,6 +11,16 @@ from user_profiler.config import get_api_key
 from user_profiler.service import _extract_response_json, _image_to_input_url
 
 
+# Shared module-level OpenAI client — instantiated once at import
+# time and reused across calls so we don't repeat get_api_key() (file
+# I/O via .env) and httpx-client construction on every wardrobe save.
+# Per-request timeout / retry overrides go through `_client.with_options(...)`
+# inside infer_wardrobe_catalog_attributes. get_api_key() returns "" when
+# no env is configured (CI), which the SDK accepts at construction time —
+# the actual auth check happens at request time.
+_client = OpenAI(api_key=get_api_key())
+
+
 _GARMENT_ATTRIBUTES_PATH = (
     Path(__file__).resolve().parents[3]
     / "style_engine"
@@ -119,13 +129,17 @@ def infer_wardrobe_catalog_attributes(
     # caller has given up.
     request_timeout_seconds: float = 55.0,
 ) -> Dict[str, Any]:
-    # max_retries=0 disables the OpenAI SDK's default 2-retry policy.
-    # Without this, a 55s timeout could trigger 3 attempts (~165s
-    # total) and silently outlive the orchestrator's 60s budget —
-    # which is exactly the failure mode this caller's single-attempt
-    # strategy was meant to prevent.
-    client = OpenAI(
-        api_key=get_api_key(),
+    # Reuse the shared module-level client; override timeout +
+    # disable retries per-request. with_options() returns a copy
+    # that shares the underlying httpx pool, so we don't pay
+    # construction overhead on every wardrobe save.
+    #
+    # max_retries=0 disables the OpenAI SDK's default 2-retry
+    # policy. Without this, a 55s timeout could trigger 3 attempts
+    # (~165s total) and silently outlive the orchestrator's 60s
+    # budget — which is exactly the failure mode this caller's
+    # single-attempt strategy was meant to prevent.
+    client = _client.with_options(
         timeout=request_timeout_seconds,
         max_retries=0,
     )
