@@ -73,6 +73,7 @@ from .services.onboarding_gateway import ApplicationUserGateway
 from .services.tryon_quality_gate import TryonQualityGate
 from .services.tryon_service import TryonService
 from .services.outfit_decomposition import decompose_outfit_image
+from user.service import resolve_wardrobe_role
 from .qna_messages import generate_stage_message
 from .schemas import (
     CombinedContext,
@@ -4138,29 +4139,7 @@ class AgenticOrchestrator:
         win for unrelated occasions like ``date_night``.
         """
         def role_of(item: Dict[str, Any]) -> str:
-            # Mirror AgenticOrchestrator._wardrobe_role_of two-tier
-            # resolution: trust valid GarmentCategory enum values, fall
-            # back to fuzzy subtype matching for legacy/loose data.
-            category = str(item.get("garment_category") or "").strip().lower()
-            subtype = str(item.get("garment_subtype") or "").strip().lower()
-            if category == "top":
-                return "top"
-            if category == "bottom":
-                return "bottom"
-            if category == "outerwear":
-                return "outerwear"
-            if category == "one_piece" or category == "set":
-                return "one_piece"
-            candidates = {category, subtype}
-            if candidates & {"dress", "gown", "jumpsuit", "playsuit", "suit", "kaftan"}:
-                return "one_piece"
-            if candidates & {"shirt", "tshirt", "tee", "blouse", "kurta", "kurti", "sweater", "sweatshirt", "hoodie"}:
-                return "top"
-            if candidates & {"blazer", "jacket", "coat", "cardigan", "shrug", "shacket"}:
-                return "outerwear"
-            if candidates & {"trouser", "trousers", "pants", "jeans", "palazzo", "skirt", "shorts", "leggings"}:
-                return "bottom"
-            return "other"
+            return resolve_wardrobe_role(item)
 
         def score(item: Dict[str, Any]) -> int:
             value = 0
@@ -4294,39 +4273,10 @@ class AgenticOrchestrator:
         return sufficient, counts
 
     def _wardrobe_role_of(self, item: Dict[str, Any]) -> str:
-        # Two-tier resolution:
-        #   1. If garment_category is one of the 6 proper enum values
-        #      (top/bottom/outerwear/one_piece/set/accessory), trust it
-        #      — the vision schema's top-level taxonomy is what the
-        #      outfit picker is built around.
-        #   2. Otherwise the row predates the current schema or got
-        #      hand-populated with a subtype-shaped string (e.g. some
-        #      historical rows have garment_category="dress"). Fall
-        #      back to fuzzy matching across BOTH fields against the
-        #      subtype enum so legacy / loose data still routes correctly.
-        category = self._normalize_text_token(item.get("garment_category"))
-        subtype = self._normalize_text_token(item.get("garment_subtype"))
-        if category == "top":
-            return "top"
-        if category == "bottom":
-            return "bottom"
-        if category == "outerwear":
-            return "outerwear"
-        if category == "one_piece" or category == "set":
-            return "one_piece"
-        # category == "accessory" or empty/unknown — fall through to fuzzy match.
-        candidates = {category, subtype}
-        if candidates & {"dress", "gown", "jumpsuit", "playsuit", "suit", "co ord", "coord", "kaftan"}:
-            return "one_piece"
-        if candidates & {"shirt", "tshirt", "t shirt", "tee", "blouse", "kurta", "kurti", "sweater", "sweatshirt", "hoodie", "knitwear"}:
-            return "top"
-        if candidates & {"blazer", "jacket", "coat", "cardigan", "shrug", "poncho", "shacket", "nehru jacket", "overshirt"}:
-            return "outerwear"
-        if candidates & {"trouser", "trousers", "pants", "jeans", "palazzo", "skirt", "shorts", "track pants", "leggings", "dungarees"}:
-            return "bottom"
-        if candidates & {"shoe", "shoes", "sneaker", "heels", "loafer", "boot", "sandal"}:
-            return "shoe"
-        return "other"
+        # Delegate to user.service.resolve_wardrobe_role — the single
+        # source of truth shared with OnboardingService and the local
+        # role_of inside _select_wardrobe_occasion_outfit.
+        return resolve_wardrobe_role(item)
 
     def _build_wardrobe_gap_analysis(
         self,

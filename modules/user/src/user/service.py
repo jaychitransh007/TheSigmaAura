@@ -33,6 +33,100 @@ _log = logging.getLogger(__name__)
 _CONVERT_TO_JPEG_EXTENSIONS = frozenset((".heic", ".heif", ".avif"))
 
 
+# ── Wardrobe role resolution (single source of truth) ────────────────
+#
+# Maps a wardrobe item to one of the outfit-slot roles: one_piece, top,
+# outerwear, bottom, shoe, other. Three call sites depended on this
+# logic (OnboardingService._wardrobe_role_of, AgenticOrchestrator's
+# method of the same name, and the local role_of inside
+# _select_wardrobe_occasion_outfit) and the duplicates had drifted —
+# different subtype sets, different separator handling. Consolidated
+# here so they can't drift again. See PR #275 review for the drift
+# audit.
+#
+# Tokens in the canonical sets are space-delimited; _normalize_role_token
+# rewrites hyphens and underscores to spaces so callers don't have to
+# remember which form a particular value uses ("co-ord" vs "co_ord" vs
+# "co ord", "track pants" vs "track_pants", "t-shirt" vs "t shirt").
+
+_ROLE_ONE_PIECE_SUBTYPES = frozenset({
+    "dress", "gown", "jumpsuit", "playsuit", "suit",
+    "co ord", "coord", "kaftan",
+})
+_ROLE_TOP_SUBTYPES = frozenset({
+    "shirt", "tshirt", "t shirt", "tee", "blouse",
+    "kurta", "kurti", "sweater", "sweatshirt", "hoodie", "knitwear",
+})
+_ROLE_OUTERWEAR_SUBTYPES = frozenset({
+    "blazer", "jacket", "coat", "cardigan", "shrug", "poncho",
+    "shacket", "nehru jacket", "overshirt",
+})
+_ROLE_BOTTOM_SUBTYPES = frozenset({
+    "trouser", "trousers", "pants", "jeans", "palazzo", "skirt",
+    "shorts", "track pants", "leggings", "dungarees",
+})
+_ROLE_SHOE_SUBTYPES = frozenset({
+    "shoe", "shoes", "sneaker", "sneakers", "loafer", "loafers",
+    "heel", "heels", "boot", "boots", "sandal", "sandals",
+})
+
+
+def _normalize_role_token(value: Any) -> str:
+    """Lowercase + strip + canonicalize separators (-, _ → space).
+
+    Mirrors AgenticOrchestrator._normalize_text_token. Also drops
+    null-sentinel strings ("null", "none", "unknown", ...) the same way
+    OnboardingService._clean_attr does, so this works whether the caller
+    feeds raw DB rows or pre-cleaned attribute dicts.
+    """
+    text = str(value or "").strip()
+    if text.lower() in {"", "null", "none", "unknown", "unspecified", "n_a", "n/a"}:
+        return ""
+    return text.lower().replace("-", " ").replace("_", " ")
+
+
+def resolve_wardrobe_role(item: dict[str, Any]) -> str:
+    """Map a wardrobe item dict to an outfit-slot role.
+
+    Two-tier resolution:
+      1. If `garment_category` is one of the 6 valid GarmentCategory
+         enum values (top / bottom / outerwear / one_piece / set /
+         accessory), trust it. The vision schema's top-level taxonomy
+         is what the outfit picker is built around.
+      2. Otherwise the row is legacy / hand-populated with a
+         subtype-shaped string in `garment_category` (some historical
+         rows have garment_category="dress"). Fall back to fuzzy
+         matching across BOTH fields against the subtype sets so the
+         row still routes correctly.
+
+    Returns "other" for accessories and anything that doesn't match a
+    known role.
+    """
+    category = _normalize_role_token(item.get("garment_category"))
+    subtype = _normalize_role_token(item.get("garment_subtype"))
+    if category == "top":
+        return "top"
+    if category == "bottom":
+        return "bottom"
+    if category == "outerwear":
+        return "outerwear"
+    if category == "one piece" or category == "set":
+        return "one_piece"
+    # category == "accessory" or empty / unknown — fall through to fuzzy match.
+    candidates = {category, subtype}
+    if candidates & _ROLE_ONE_PIECE_SUBTYPES:
+        return "one_piece"
+    if candidates & _ROLE_TOP_SUBTYPES:
+        return "top"
+    if candidates & _ROLE_OUTERWEAR_SUBTYPES:
+        return "outerwear"
+    if candidates & _ROLE_BOTTOM_SUBTYPES:
+        return "bottom"
+    if candidates & _ROLE_SHOE_SUBTYPES:
+        return "shoe"
+    return "other"
+
+
 def _convert_to_jpeg_if_needed(file_data: bytes, filename: str) -> tuple[bytes, str, str]:
     """Convert HEIC/HEIF/AVIF images to JPEG. Returns (data, content_type, filename).
 
@@ -203,33 +297,7 @@ class OnboardingService:
 
     @staticmethod
     def _wardrobe_role_of(item: dict[str, Any]) -> str:
-        # Two-tier resolution mirroring AgenticOrchestrator._wardrobe_role_of:
-        # trust the 6-value GarmentCategory enum when it's set to a valid
-        # value; otherwise fall back to fuzzy subtype matching across both
-        # fields so legacy / hand-populated rows (which sometimes have
-        # garment_category="dress" — a subtype string) still route correctly.
-        category = OnboardingService._clean_attr(item.get("garment_category")).lower()
-        subtype = OnboardingService._clean_attr(item.get("garment_subtype")).lower()
-        if category == "top":
-            return "top"
-        if category == "bottom":
-            return "bottom"
-        if category == "outerwear":
-            return "outerwear"
-        if category == "one_piece" or category == "set":
-            return "one_piece"
-        candidates = {category, subtype}
-        if candidates & {"dress", "gown", "jumpsuit", "playsuit", "suit", "co-ord", "coord", "kaftan"}:
-            return "one_piece"
-        if candidates & {"shirt", "tshirt", "t-shirt", "tee", "blouse", "kurta", "kurti", "sweater", "sweatshirt", "hoodie", "knitwear"}:
-            return "top"
-        if candidates & {"blazer", "jacket", "coat", "cardigan", "shrug", "poncho", "shacket", "overshirt"}:
-            return "outerwear"
-        if candidates & {"trouser", "trousers", "pants", "jeans", "palazzo", "skirt", "shorts", "track_pants", "leggings", "dungarees"}:
-            return "bottom"
-        if candidates & {"shoe", "shoes", "sneaker", "sneakers", "loafer", "loafers", "heel", "heels", "boot", "boots", "sandal", "sandals"}:
-            return "shoe"
-        return "other"
+        return resolve_wardrobe_role(item)
 
     @staticmethod
     def _occasion_keys_of(item: dict[str, Any]) -> set[str]:
