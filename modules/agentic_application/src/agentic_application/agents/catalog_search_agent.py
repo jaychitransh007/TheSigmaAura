@@ -436,6 +436,7 @@ class CatalogSearchAgent:
                 len(enriched_lookup), len(product_ids),
             )
 
+        _deleted_skipped = 0
         for match in matches:
             metadata = dict(match.get("metadata_json") or {})
             pid = str(match.get("product_id") or metadata.get("id") or "")
@@ -446,6 +447,7 @@ class CatalogSearchAgent:
             # would mean dead Buy-Now links.
             if str(enriched.get("row_status") or "").strip().lower() == ROW_STATUS_DELETED_FROM_SOURCE:
                 _log.info("CatalogSearch: SKIP %s pid=%s", ROW_STATUS_DELETED_FROM_SOURCE, pid[:30])
+                _deleted_skipped += 1
                 continue
             blocked_term = detect_restricted_record({**metadata, **enriched})
             if blocked_term:
@@ -459,6 +461,14 @@ class CatalogSearchAgent:
                     enriched_data=enriched,
                 )
             )
+        if _deleted_skipped:
+            try:
+                from platform_core.metrics import observe_catalog_deleted_skipped
+                observe_catalog_deleted_skipped(
+                    path="catalog_search", count=_deleted_skipped,
+                )
+            except Exception:  # noqa: BLE001
+                pass
         return products
 
     def _batch_fetch_enriched(self, product_ids: List[str]) -> Dict[str, Dict[str, Any]]:
