@@ -112,6 +112,47 @@ def _record_exception(rule: str, exception: str) -> None:
 _SHEEN_TEXTURES: frozenset[str] = frozenset({"sheen", "metallic", "embroidered"})
 _SHEEN_TEXTURES_LABEL: str = "sheen / metallic / embroidered"
 
+# Heritage-weave subtypes per the stylist's pairing review (Banarasi /
+# Kanjeevaram / Chanderi / Patola / Ajrakh / Phulkari / chikankari are
+# textile families, but the catalog tags GARMENT subtypes, not weave
+# families directly. We approximate via subtype + fabric_texture +
+# embellishment_level: a saree / lehenga / sherwani with heavy zardozi
+# OR a handloom-textured garment with heavy fabric_weight is treated as
+# a heavy heritage weave. Conservative-by-design — anything else falls
+# through and doesn't count toward the cap.
+_HERITAGE_WEAVE_SUBTYPES: frozenset[str] = frozenset({
+    "saree", "lehenga", "lehenga_set", "sherwani", "anarkali",
+    "choli", "kurta_set",
+})
+_HERITAGE_WEAVE_TEXTURES: frozenset[str] = frozenset({"handloom", "embroidered"})
+
+
+def _is_heavy_heritage_weave(item: Item) -> bool:
+    """Heuristic classifier for heavy heritage weaves per the stylist's
+    indian_weave_compatibility rule. Returns True when the item is
+    Indian-traditional AND one of:
+      - a heritage saree/lehenga/sherwani family subtype carrying
+        heavy/statement embellishment (zardozi anarkali, brocade
+        sherwani, embroidered lehenga)
+      - a handloom-or-embroidered-textured garment with heavy
+        fabric_weight (heavy handloom saree, brocade kurta)
+
+    The catalog tags GARMENT subtypes, not weave families directly —
+    Banarasi vs Kanjeevaram vs Chanderi can't be distinguished from
+    our enrichment vocab. This approximation captures the practical
+    "more than one ceremonial-weight Indian garment in the outfit"
+    case which is what the stylist's rule guards against.
+    """
+    if item.cultural_register != "indian_traditional":
+        return False
+    is_heritage_subtype = item.subtype in _HERITAGE_WEAVE_SUBTYPES
+    is_heritage_texture = item.fabric_texture in _HERITAGE_WEAVE_TEXTURES
+    is_heavy_embell = item.embellishment_level in {"heavy", "statement"}
+    is_heavy_weight = item.fabric_weight == "heavy"
+    return (is_heritage_subtype and is_heavy_embell) or (
+        is_heritage_texture and is_heavy_weight
+    )
+
 # Metallic-neutral colors per color_story.metallic_neutral_exception
 # YAML rule — these are recognised as pseudo-neutral support colors in
 # Indian festive / bridal contexts (zari, gota patti, antique-gold
@@ -907,6 +948,39 @@ def _evaluate_fabric_compatibility(
                     is_hard=False,
                 )
             )
+
+    # indian_weave_compatibility — at most ONE heavy heritage weave per
+    # outfit outside the bridal exception. Stylist's framing: "multiple
+    # competing heritage weaves" reads as confused styling; one anchor
+    # garment should drive the textile register and other slots should
+    # support, not compete. Bridal context suspends — multi-heritage IS
+    # the cultural norm at ceremonial weddings (bridal lehenga + brocade
+    # choli + heavy dupatta).
+    weave_rule = group.rules.get("indian_weave_compatibility")
+    if weave_rule is not None:
+        if bridal_exception_active(ctx, graph):
+            # Suspended in bridal context — the rule is correct to abstain
+            # here. Emit exception metric so dashboards can distinguish
+            # "rule didn't fire" from "rule was bridal-bypassed".
+            heritage_count = sum(1 for it in items if _is_heavy_heritage_weave(it))
+            if heritage_count > 1:
+                _record_exception(
+                    "indian_weave_compatibility", "bridal_exception",
+                )
+        else:
+            heritage_count = sum(1 for it in items if _is_heavy_heritage_weave(it))
+            if heritage_count > 1:
+                violations.append(
+                    Violation(
+                        category="fabric_compatibility",
+                        rule="indian_weave_compatibility",
+                        detail=(
+                            f"{heritage_count} heavy heritage weaves "
+                            "(cap 1 outside bridal context)"
+                        ),
+                        is_hard=False,
+                    )
+                )
 
     return tuple(violations)
 
