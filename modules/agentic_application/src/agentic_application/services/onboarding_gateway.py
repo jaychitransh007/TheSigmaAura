@@ -91,6 +91,7 @@ class ApplicationUserGateway:
         title: str = "",
         description: str = "",
         notes: str = "",
+        text_hint: str = "",
         persist: bool = True,
     ) -> Optional[dict]:
         existing = self._repo.get_profile_by_user_id(user_id)
@@ -102,6 +103,7 @@ class ApplicationUserGateway:
             title=title,
             description=description,
             notes=notes,
+            text_hint=text_hint,
             persist=persist,
         )
 
