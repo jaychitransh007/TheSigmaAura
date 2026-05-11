@@ -59,18 +59,26 @@ BodyShape:
       SilhouetteType:      [straight, fitted]
       FitType:             [tailored, slim, regular]
       WaistDefinition:     [natural]
-      ShoulderStructure:   [sculpted, padded]              # mild structure adds shape
+      ShoulderStructure:   [padded]                        # mild structure still preferred as hard signal
       VolumeProfile:       [flat, moderate, sculpted]      # sculpted yoke/shoulder structure adds visual shape to a straight column frame
       ConstructionDetail:  [pleated]
     avoid:
       SilhouetteType:      [oversized, boxy]
       WaistDefinition:     [undefined]                     # makes silhouette read as a column
       ShoulderStructure:   [dropped]
+    # Phase 4.3 (stylist patch): younger urban Indian users increasingly
+    # prefer softer tailoring over aggressive shoulder architecture.
+    # `sculpted` ShoulderStructure moves to soft_flatters — still a
+    # preference but no longer a hard requirement; padded remains hard.
+    soft_flatters:
+      ShoulderStructure:   [sculpted]
     notes: >
       Straight up-and-down frame. Goal: introduce shape via tailoring.
       Bandhgala (slight shoulder structure), tailored sherwani, fitted
       bandi over kurta, pleated trouser. A pintucked or yoked kurta
-      adds visual interest at the chest.
+      adds visual interest at the chest. Younger urban users (Bengaluru,
+      Mumbai, Hyderabad) often prefer softer shoulder structure —
+      `sculpted` is a preference not a requirement.
 
   Pear:
     flatters:
