@@ -815,7 +815,15 @@ class AgenticOrchestrator:
     def _get_catalog_rows(self) -> List[Dict[str, Any]]:
         if self._catalog_rows is None:
             try:
-                rows = self.repo.client.select_many("catalog_enriched")
+                # Exclude products tagged deleted_from_source by the
+                # title-recovery backfill (May 11 2026). These are URLs
+                # that returned 404 / Product-Not-Found on the live
+                # merchant storefront — putting them into outfit
+                # recommendations would surface dead links.
+                rows = self.repo.client.select_many(
+                    "catalog_enriched",
+                    filters={"row_status": "neq.deleted_from_source"},
+                )
             except Exception:
                 rows = []
             self._catalog_rows = list(rows) if isinstance(rows, list) else []

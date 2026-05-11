@@ -439,6 +439,13 @@ class CatalogSearchAgent:
             metadata = dict(match.get("metadata_json") or {})
             pid = str(match.get("product_id") or metadata.get("id") or "")
             enriched = dict(enriched_lookup.get(pid, {}) or {})
+            # Drop products tagged gone-from-merchant by the title
+            # recovery backfill (May 11 2026). These returned 404 /
+            # Product-Not-Found at the live storefront — surfacing them
+            # would mean dead Buy-Now links.
+            if str(enriched.get("row_status") or "").strip().lower() == "deleted_from_source":
+                _log.info("CatalogSearch: SKIP deleted_from_source pid=%s", pid[:30])
+                continue
             blocked_term = detect_restricted_record({**metadata, **enriched})
             if blocked_term:
                 _log.info("CatalogSearch: BLOCKED pid=%s term=%s", pid[:30], blocked_term)
