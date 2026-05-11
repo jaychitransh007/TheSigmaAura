@@ -535,15 +535,6 @@ def get_web_ui_html(
       transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
     }
     .carousel-nav button:hover { border-color: var(--ink); color: var(--ink); }
-    /* Iteration label above stacked carousel rows */
-    .iteration-label {
-      font-size: 10px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.14em;
-      color: var(--ink-4);
-      padding: 12px 4px 4px;
-      max-width: 880px;
-      margin: 0 auto;
-    }
     /* Staggered entrance for intent groups on the Outfits tab */
     @keyframes aura-group-rise {
       from { opacity: 0; transform: translateY(16px); }
@@ -3366,9 +3357,6 @@ def get_web_ui_html(
   // SEND — Discovery surface flow (Phase 15)
   // ══════════════════════════════════════════════
 
-  // Track iteration count for stacked carousels within one intent group
-  var _iterationCount = 0;
-  var _isFollowUp = false;
   // Monotonic send counter — used to discard stale poll results when the
   // user fires a second request before the first one finishes.
   var _sendGeneration = 0;
@@ -3389,19 +3377,9 @@ def get_web_ui_html(
     messageEl.disabled = true;
     if (discoveryWelcome) discoveryWelcome.style.display = "none";
 
-    // Image/wardrobe/wishlist attachments always start a new intent group
-    if (pendingImageData || pendingWardrobeItemId || pendingWishlistProductId) {{
-      _isFollowUp = false;
-    }}
-
-    // New request: clear the result area and start fresh.
-    // Follow-up: keep existing carousels, append below (iteration stacking).
-    if (!_isFollowUp) {{
-      if (discoveryResultArea) discoveryResultArea.innerHTML = "";
-      _iterationCount = 0;
-      conversationId = "";
-    }}
-    _iterationCount += 1;
+    // Every turn appends to the result area + reuses the same
+    // conversation, so the user can scroll back through their whole
+    // session. Reload the page to start fresh.
 
     // Capture ALL pending attachment state synchronously BEFORE any async work.
     // This prevents a concurrent send()'s clearImagePreview() from wiping
@@ -3410,7 +3388,7 @@ def get_web_ui_html(
     var attachedWardrobeItemId = pendingWardrobeItemId;
     var attachedWishlistProductId = pendingWishlistProductId;
     var previewImgUrl = attachedImage || pendingWardrobeImageUrl || pendingWishlistImageUrl || "";
-    console.log("[AURA] Send: image =", !!attachedImage, "wardrobe =", attachedWardrobeItemId, "wishlist =", attachedWishlistProductId, "iteration =", _iterationCount);
+    console.log("[AURA] Send: image =", !!attachedImage, "wardrobe =", attachedWardrobeItemId, "wishlist =", attachedWishlistProductId);
     messageEl.value = "";
     clearImagePreview();
 
@@ -3501,17 +3479,6 @@ def get_web_ui_html(
       }}
 
       if (outfits.length && discoveryResultArea) {{
-        // Iteration label for stacked carousels (iterations 2+).
-        // The user message itself stays visible in the persistent
-        // query-preview card just above, so the label is just the
-        // iteration counter \u2014 no message duplication.
-        if (_iterationCount > 1) {{
-          var iterLabel = document.createElement("div");
-          iterLabel.className = "iteration-label";
-          iterLabel.textContent = "Iteration " + _iterationCount;
-          discoveryResultArea.appendChild(iterLabel);
-        }}
-
         var carouselContainer = document.createElement("div");
         carouselContainer.className = "discovery-result";
         carouselContainer.style.padding = "0 0 16px";
@@ -3540,7 +3507,6 @@ def get_web_ui_html(
       var failedPreview = document.getElementById("queryPreview");
       if (failedPreview) failedPreview.remove();
     }} finally {{
-      _isFollowUp = false;
       sendBtn.disabled = false;
       messageEl.disabled = false;
       messageEl.focus();
