@@ -1371,6 +1371,116 @@ the weight is doing its job; leave alone.
 
 ---
 
+## Panel 33 — Cache Hit-Rate by Stage (LLM caches)
+
+**Question:** how often is each LLM-stage cache serving versus the
+LLM running? Three caches contribute: planner (Phase 2 follow-up,
+PR #259), architect (Phase 2.2), composer (Phase 2.3). All three
+stamp `model='cache'` on the `model_call_logs` row when a hit is
+served — Panel 33 reads that stamping directly.
+
+Healthy steady-state hit rate per the design docs:
+- Planner: 20-40% (depends on repeat-query rate)
+- Architect: 20-40% (same)
+- Composer: 25-45% (typically slightly higher because composer
+  is downstream of canonicalisation in Phase 4.11)
+
+Below 10% steady-state on any stage = either (a) cache fingerprint
+is too discriminating (debug via the cache table's denormalised
+key fields) or (b) the user cohort has highly novel queries.
+
+Above 70% steady-state = either healthy (high repeat traffic) or
+the key is too COARSE and stale plans are being served. Cross-check
+against Panel 18 (rater unsuitable rate) to distinguish.
+
+```promql
+# Real-time per-stage hit rate over the last hour.
+# aura_planner_cache_decision_total ticks on every planner attempt.
+# Architect and composer don't have analogous outcome counters yet —
+# the SQL view below covers them.
+sum(rate(aura_planner_cache_decision_total{outcome="hit"}[1h]))
+  / sum(rate(aura_planner_cache_decision_total[1h]))
+```
+
+```sql
+-- Per-stage hit rate from model_call_logs over the last 7 days.
+-- cache hits stamp model='cache'; LLM runs stamp the model id.
+-- Filters by call_type so each row maps to exactly one stage.
+WITH stage_decisions AS (
+    SELECT
+        call_type AS stage,
+        CASE WHEN model = 'cache' THEN 'hit' ELSE 'miss' END AS outcome,
+        created_at::date AS day
+    FROM model_call_logs
+    WHERE call_type IN ('copilot_planner', 'outfit_architect', 'outfit_composer')
+      AND created_at >= NOW() - INTERVAL '7 days'
+      AND status = 'ok'
+)
+SELECT
+    stage,
+    COUNT(*)                                         AS total_calls,
+    COUNT(*) FILTER (WHERE outcome = 'hit')          AS cache_hits,
+    ROUND(
+        100.0 * COUNT(*) FILTER (WHERE outcome = 'hit')
+        / NULLIF(COUNT(*), 0),
+        1
+    )                                                AS hit_rate_pct
+FROM stage_decisions
+GROUP BY stage
+ORDER BY stage;
+```
+
+---
+
+## Panel 34 — Try-on Cache Hit-Rate
+
+**Question:** how often does the try-on render avoid a fresh Gemini
+call? This is the single largest cost lever in the pipeline (~$0.04
+per render, 84% of cold-turn cost on a typical 3-outfit response).
+Try-on cache hits surface in `model_call_logs.call_type='virtual_tryon_cache_hit'`;
+misses fire `call_type='virtual_tryon'` (no `_cache_hit` suffix).
+
+```sql
+-- Try-on cache hit rate over the last 7 days.
+-- Each row in model_call_logs is one render attempt; the call_type
+-- distinguishes hit from miss.
+WITH tryon_decisions AS (
+    SELECT
+        CASE
+            WHEN call_type = 'virtual_tryon_cache_hit' THEN 'hit'
+            WHEN call_type = 'virtual_tryon'           THEN 'miss'
+            ELSE 'other'
+        END AS outcome,
+        created_at::date AS day
+    FROM model_call_logs
+    WHERE call_type IN ('virtual_tryon', 'virtual_tryon_cache_hit')
+      AND created_at >= NOW() - INTERVAL '7 days'
+)
+SELECT
+    day,
+    COUNT(*)                                  AS total_renders,
+    COUNT(*) FILTER (WHERE outcome = 'hit')   AS cache_hits,
+    ROUND(
+        100.0 * COUNT(*) FILTER (WHERE outcome = 'hit')
+        / NULLIF(COUNT(*), 0),
+        1
+    )                                         AS hit_rate_pct
+FROM tryon_decisions
+GROUP BY day
+ORDER BY day DESC;
+```
+
+A turn-level audit (which specific outfit renders are missing) lives
+in `ops/scripts/turn_forensics.py` per-turn output — look at the
+`virtual_tryon_cache_hit` vs `virtual_tryon` rows under MODEL_CALL_LOGS.
+
+If sustained hit rate is <30%, the next investigation is the
+`virtual_tryon_images` fingerprint logic: which inputs determine
+cache-key equality? If two turns with the same user + same garment
+combo miss, the fingerprint is too discriminating.
+
+---
+
 ## How to refresh
 
 1. Open Supabase Studio (or your preferred SQL client) connected to staging.
