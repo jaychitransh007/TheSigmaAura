@@ -1430,9 +1430,11 @@ work the diagnosis there.
   1. Run `select count(*) from catalog_item_embeddings;` — if 0 or far below
      the production target (~14k), restore from the last known-good
      embeddings backup or rerun `POST /v1/admin/catalog/embeddings/resync`.
-  2. Verify `catalog_enriched` row count matches expectations (Gate 2
-     reference: 14,296 garment-only rows). If `catalog_enriched` shrank,
-     investigate the most recent admin job.
+  2. Verify `catalog_enriched` row count matches expectations
+     (reference as of 2026-05-11: **14,242 garment-only rows** post-
+     Step-2b re-enrichment; 54 rows with broken Shopify-CDN image URLs
+     were intentionally dropped). If `catalog_enriched` shrank below
+     14,242, investigate the most recent admin job.
   3. If the catalog rows look correct but pgvector queries time out, check
      Panel 15 (Catalog Search Timeout Rate) and the Supabase compute tier;
      consider rebuilding the HNSW index.

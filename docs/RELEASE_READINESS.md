@@ -22,14 +22,21 @@ The pipeline must produce a usable answer for every primary intent without
 manual intervention.
 
 - [ ] All tests across `tests/` pass against the current branch
-      (verified May 8, 2026: **1015 L0 tests, 1 skipped, 0 failures**).
-      Cumulative scope spans the composition + composer engines (Phase
-      4.7–5), per-axis YAML gap weighting + tuning harness (PR #200),
-      empty-retrieval auto-relaxation (PR #192), engine-eligibility for
-      all 7 follow-up intents (PRs #190/#191/#198/#199), Phase 3 prompt
+      (verified May 11, 2026: **1,225 L0 tests, 1 skipped, 239 subtests passed,
+      0 failures**). Cumulative scope spans the composition + composer
+      engines (Phase 4.7–5), per-axis YAML gap weighting + tuning harness
+      (PR #200), empty-retrieval auto-relaxation (PR #192), engine-eligibility
+      for all 7 follow-up intents (PRs #190/#191/#198/#199), Phase 3 prompt
       compression + audit harness (PR #202), the 4 must-fix observability
-      counters (PR #204), and the cleanup pass that retired dead-code
-      stubs and PR-review comment debt (PR #205).
+      counters (PR #204), cleanup pass (PR #205), the Path A → v3 axis
+      additions (PR #237) + Path B rationalization (PR #239), the May-2026
+      catalog re-enrichment + embedding resync (Step 2b shipped 2026-05-11),
+      Phase 4.3 hard/soft yaml_loader (PR #246), the 4 new pairing matchers
+      (PRs #248-#251: distributed_statement_exception,
+      guest_vs_bridal_separation, sheen_hierarchy, metallic_neutral_exception),
+      bodyframe + occasion existing-vocab edits (PRs #252-#253), the Phase 2
+      Wave A audit script + report (PR #254), and the composer-side
+      per-rule observability counters + A5.2b runbook (PR #257).
 - [ ] `ops/scripts/validate_dependency_report.py` runs to completion with
       zero failed assertions.
 - [ ] `ops/scripts/smoke_test_full_flow.sh` runs to completion against a
@@ -51,9 +58,12 @@ manual intervention.
 The environment we ship to must have the data the pipeline depends on.
 
 - [ ] `catalog_enriched` has at least 500 rows with `row_status in ('ok','complete')`.
-      (verified April 10, 2026: 14,296 items, all enriched, all embedded,
-      zero null filter columns. Dead/delisted items cleaned up. Vastramay,
-      Powerlook, CampusSutra re-embedded from DB via resync endpoint.)
+      (Verified May 11, 2026: **14,242 items, all enriched on the v3 +
+      ShapeArchitecture axis set, all embedded, zero null filter columns.**
+      Step 2b re-enrichment shipped 2026-05-11 (PRs #237 + #239 + the
+      enrichment run); 54 rows with broken Shopify-CDN image URLs were
+      intentionally dropped. **Catalog is frozen — no further bulk
+      re-enrichment** per no-re-enrichment policy 2026-05-11.)
 - [ ] `catalog_item_embeddings` has the same row count as the embeddable
       subset of `catalog_enriched` (no orphan rows, no missing embeddings).
 - [ ] All Supabase migrations under `supabase/migrations/` have been
@@ -157,6 +167,33 @@ These are explicit non-goals — do not block the release on them:
 # Recently Shipped (May 1, 2026 — migrated May 3, 2026)
 
 _Migrated from `CURRENT_STATE.md`. The May-1 "Open Items Plan" — every item now ✅ shipped — is preserved here as a record of work landed during the platform pass. For ongoing release readiness criteria see the Gates above._
+
+## May 9–11, 2026 — Catalog re-enrichment + Phase 4.3 hard/soft + pairing matchers + observability close-out
+
+Catalog re-enrichment (Step 2b) ran on the v3 + Path B axis set, plus the engineering work that depended on it — Phase 4.3 hard/soft yaml_loader, four new composer-side pairing matchers, the bodyframe / occasion existing-vocab edits, the Phase 2 Wave A ontology-surgery audit, and observability follow-ups so the new rules are diagnosable in production. The no-bulk-re-enrichment policy was also codified here.
+
+| PR | Title | Net change |
+|---|---|---|
+| #237 | Step 2a — v3 axis additions to canonical schema | 12 new axes: ShapeArchitecture quad + v3 axes (FabricTransparency, SurfaceFinish, LayeringVisibility, BlouseLength, ShoulderExposure, SleeveVolume, BorderContrast). Schema migration + canonical garment_attributes.json. |
+| #239 | Path B rationalization | Drops 5 weather perf axes (BreathabilityLevel / DryTime / WaterResistance / ThermalInsulation / WrinkleResistance) which couldn't be reliably extracted from vision. Net: 55 enum + 2 text canonical attrs. |
+| (May 11) | Step 2b catalog re-enrichment + embedding resync | 14,242 / 14,296 rows enriched ok (99.62%); 54 CDN-broken rows dropped from catalog_enriched + catalog_item_embeddings; embeddings regenerated via text-embedding-3-small. Cost ~$35-40, ~30 hrs wall time with two billing-limit pauses. Ops tooling: `pull_catalog_to_csv.py`, `upsert_enriched_to_db.py`, `resync_catalog_embeddings.py`. |
+| #246 | Phase 4.3 hard/soft yaml_loader | yaml_loader recognises `hard_flatters` / `hard_avoid` / `soft_flatters` / `soft_avoid` keys alongside bare `flatters` / `avoid`. Engine `_add_mapping` emits ClassifiedContributions with forced hard/soft tier overriding source-level default. AttributeMapping gains 4 new fields; same-attr-in-both-buckets rejected at load. |
+| #248 | distributed_statement_exception matcher | Suspends the `scale_balance.one_statement_per_outfit` cap when items share a single `color_temperature` family AND no item is individually heavy/statement — the coordinated-Indianwear case. |
+| #249 | guest_vs_bridal_separation matcher + `bridal_role` on TupleContext | When `ctx.bridal_role ∈ {guest, attendee}` AND occasion is a bridal-role occasion, tuples carrying items at bridal-participant embellishment levels (heavy / statement) drop. Bride / groom bypass. Wires Step 1's `is_bridal_role_occasion` lookup into composer scoring. |
+| #250 | sheen_hierarchy matcher | Outside bridal exception, cap items with fabric_texture ∈ {sheen, metallic, embroidered} at 1 per outfit. Soft penalty. Configurable cap via YAML `value` field. |
+| #251 | metallic_neutral_exception wiring | `_evaluate_color_story.max_dominant_colors` now excludes items with dominant_color ∈ metallic-neutral set (gold / champagne / antique gold / bronze / etc.) OR fabric_texture=metallic. Fixes false-positive on Indian festive outfits with zari / metallic dupatta accents. |
+| #252 | bodyframe existing-vocab edits | 3 surgical hard/soft tier shifts using Phase 4.3 scaffolding: Pear `mermaid avoid → soft_avoid` (bridal exception); JawlineDefinition Soft `sweetheart avoid → flatters`; male Rectangle `sculpted flatters → soft_flatters` (urban-Indian softening). |
+| #253 | daily_office_mnc soft_avoid downgrade | `FabricTexture: [metallic, embroidered]` moves from hard avoid → soft_avoid. Subtle Indo-Western fusion (zari kurta + tailored trouser, bandhgala with muted embroidery) stops being retrieval-time vetoed. |
+| #254 | Phase 2 Wave A ontology-surgery audit | `ops/scripts/phase2_wave_a_audit.py` + first-run report at `docs/phase2_wave_a_audit.md`. Refuted most of the originally-claimed Wave A removals — 5 of 7 candidates carry independent signal per the entropy + extractability analysis. |
+| #255 | OPEN_TASKS Wave A reframe | Updated the Wave A list to reflect the audit findings: 3 borderline candidates remain (OccasionSignal / SilhouetteContour / FitEase), each gated on top-pairs review before any cut. |
+| #256 | No-bulk-re-enrichment policy + OPEN_TASKS surgery | -214 / +61 lines on OPEN_TASKS.md. Dropped all dormant-vocab queue items, Wave B (4 deferred ShapeArchitecture axes), FabricTexture decomposition, 4-stage extraction. Added explicit policy section + "Where quality improvements come from on a frozen catalog" forward plan. |
+| #257 | Composer-side per-rule observability + A5.2b runbook | New Prometheus counters: `aura_composer_rule_violation_total{rule, is_hard}` ticks per Violation; `aura_composer_rule_exception_applied_total{rule, exception}` ticks when an exception suppresses or modifies a violation. `_summarize_provenance` persists `ctx.bridal_role` for Panel 26 RCA. Panel 26 `LIMIT 30 → 200`. New A5.2b sub-runbook covers the 4 pairing-matcher fire RCA flow. |
+
+**Test suite at end of May 11 push:** 1,225 passed + 1 skipped + 239 subtests passed. **Catalog frozen at 14,242 garment-only rows** post-Step-2b; no further bulk re-enrichment per policy.
+
+**Still gated on humans:**
+- Phase 4.2 ✅ done (all 8 stylist files reviewed)
+- Phase 4.6 — eval-set curation (100-500 hand-curated queries) — required for Step 5 quality validation, composer engine flag-on rollout, Phase 6 library quality validation, Phase 7 learned-model held-out evaluation, the 3 borderline Wave A cuts, and threshold calibration on both routers
 
 ## May 6–7, 2026 — Phase 4.7+ composition engine + canonicalization + observability
 
@@ -298,12 +335,12 @@ The LLM Rater is now the sole ranker. New observability rows live in `tool_trace
 **Staging readouts (May 1, 2026):**
 | Check | Result |
 |---|---|
-| `schema_audit.py` against staging | **PASS** — 46 attributes, no migration drift |
+| `schema_audit.py` against staging | **PASS** — 55 enum + 2 text canonical attrs as of Step 2a + Path B (PRs #237/#239), no migration drift |
 | `validate_dependency_report.py` (in-memory harness) | **PASS** — 15/15 assertions |
 | Live `dependency_report` against staging telemetry | 11 onboarded users, 9 repeat sessions total, wardrobe memory shows +60pp retention lift, feedback +54pp |
-| `catalog_enriched` row count | **14,296** (14,295 in `(ok,complete)`) ✅ exceeds 500 threshold |
-| `catalog_item_embeddings` row count | **14,296** ✅ exact 1:1 with embeddable subset |
-| Embedding orphan check | 0 enrichable rows missing an embedding; 1 stale embedding (cleanup PR-worthy, not blocking) |
+| `catalog_enriched` row count | **14,242** ✅ post-Step-2b re-enrichment (54 CDN-broken rows dropped from original 14,296); all rows enriched on v3 + ShapeArchitecture axis set |
+| `catalog_item_embeddings` row count | **14,242** ✅ exact 1:1 with `catalog_enriched`; embeddings regenerated against new axis set (text-embedding-3-small, 1536-dim) |
+| Embedding orphan check | 0 orphans after Step-2b cleanup |
 | `feedback_events` count | 672 (237 likes / 435 dislikes); all rows have `turn_id`, `outfit_rank`, `event_type` |
 | `tool_traces.composer_decision` / `rater_decision` rows | LLM ranker logging shipped May 3 (PR #29 / #30) — needs production traffic to accumulate |
 
@@ -312,7 +349,7 @@ The LLM Rater is now the sole ranker. New observability rows live in `tool_trace
 **Plan:** see `docs/RELEASE_READINESS.md` for the existing checklist. The concrete actions per gate:
 
 **Gate 1 — Functional Correctness:**
-- ~~run `pytest tests/` (must be 312/312 green)~~ ✅ May 1, 2026: 329 passed + 1 skipped (skip is the "weights file missing" test — file now exists from staging calibration).
+- ~~run `pytest tests/` (must be 312/312 green)~~ ✅ Updated 2026-05-11: **1,225 passed + 1 skipped + 239 subtests passed** (skip is the "weights file missing" test). Cumulative additions since May 1: composition + composer engines (Phase 4.7-5), Path A→v3 axes (#237), Path B rationalization (#239), Step 2b catalog re-enrichment + embedding resync (May 11), Phase 4.3 hard/soft yaml_loader (#246), 4 new pairing matchers (#248-#251), bodyframe + occasion existing-vocab YAML edits (#252-#253), Phase 2 Wave A audit (#254), composer-side per-rule observability counters (#257).
 - ~~run `APP_ENV=staging python3 ops/scripts/validate_dependency_report.py`~~ ✅ May 1, 2026: 15/15 assertions PASS against staging.
 - run `ops/scripts/smoke_test_full_flow.sh` end-to-end against staging (deferred — needs deployed app + explicit approval to incur LLM token costs for the architect call. Read-only checks below cover the parts that don't need a live HTTP server.)
 - catalog-unavailable test in staging: temporarily empty `catalog_item_embeddings`, POST a turn, assert guardrail copy fires (deferred — destructive against shared staging, needs explicit approval)

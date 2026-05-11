@@ -1738,7 +1738,9 @@ Executed April 10, 2026. All three stores re-embedded via `POST /v1/admin/catalo
 
 Additional cleanup: 61 Koskii/Showoffff items enriched via batch API then re-embedded. 85 dead items (84 Powerlook + 1 Vastramay with delisted products and broken images) deleted. 271 items with empty product URLs deleted.
 
-Final catalog: **14,296 items** — all enriched, all embedded, zero null filter columns.
+Final catalog (April 2026): 14,296 items — all enriched on the original axis set, all embedded.
+
+**Updated 2026-05-11:** Step 2b re-enrichment ran on this catalog with the v3 + Path B axis set (12 new attributes added, 5 weather columns dropped). 54 rows with broken Shopify-CDN image URLs failed enrichment and were dropped from `catalog_enriched` + `catalog_item_embeddings`. **Current state: 14,242 garment-only items, all enriched on the new axis set, all embedded.** Catalog is frozen — no further bulk re-enrichment (no-re-enrichment policy 2026-05-11).
 
 ---
 

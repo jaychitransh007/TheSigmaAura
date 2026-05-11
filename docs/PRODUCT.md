@@ -388,9 +388,9 @@ Strategy: **stylist for retention, shopping for revenue.** The product should fe
 
 ## Executive Status
 
-Project status (as of 2026-05-08):
+Project status (as of 2026-05-11):
 - user layer: implemented and usable
-- catalog layer: implemented and usable (14,296 garment-only items, all enriched/embedded)
+- catalog layer: implemented and usable (14,242 garment-only items, all enriched on the v3 + ShapeArchitecture axis set, all embedded; catalog is now frozen — no further bulk re-enrichment)
 - application layer: end-to-end recommendation pipeline with copilot planner, wardrobe ingestion, image moderation, and confidence engines
 - **composition engine SHIPPED (Phase 4.7, behind `AURA_COMPOSITION_ENGINE_ENABLED` flag).** YAML-driven deterministic outfit-direction planning replaces the architect LLM on engine-accepted turns. Architect stage 19s → ~0ms; engine-friendly follow-up intents (decrease_formality, increase_formality, more_options, similar_to_previous, change_color, full_alternative, increase_boldness) all route to engine. Per-axis YAML-gap weights with confidence threshold 0.50. LLM falls back on confidence misses, anchor turns, or YAML gaps.
 - **composer engine SHIPPED behind flag (Phase 5, `AURA_COMPOSER_ENGINE_ENABLED`).** Deterministic tuple scoring replaces LLM composer. Flag-on validation gated on Phase 4.6 eval-set + 4.2 stylist YAML review (both blocked on human work).
@@ -410,9 +410,9 @@ Project status (as of 2026-05-08):
 - wishlist: wishlisted catalog garments with product images, title, price, Buy Now — data from `catalog_interaction_history` hydrated with `catalog_enriched`
 - trial room: virtual try-on render gallery (2:3 aspect ratio, gradient timestamp overlay) — data from `virtual_tryon_images`
 - catalog admin: pipeline with upload, enrichment sync, embedding generation, URL backfill, include-incomplete toggle, skip-already-embedded optimization, **resync-from-DB endpoint** (`POST /v1/admin/catalog/embeddings/resync`) for re-embedding enriched items with product_id_prefix filter and paginated fetch
-- catalog health: **14,296 garment-only items** — all enriched, all embedded, zero null filter columns; 90 accessories + 271 empty-URL items deleted; 99 blazer/jacket/shacket recategorized from top→outerwear; Vastramay/Powerlook/CampusSutra re-embedded from DB after enrichment
+- catalog health: **14,242 garment-only items** — all enriched on the v3 + ShapeArchitecture axis set (Step 2b re-enrichment shipped May 11, 2026; 54 rows with broken Shopify-CDN image URLs dropped, 14,242/14,296 ok = 99.62%), all embedded, zero null filter columns. **Catalog is frozen** — no further bulk re-enrichment (no-re-enrichment policy 2026-05-11)
 - retrieval performance: **batched embeddings** (single OpenAI call for all query documents) + **parallel search+hydrate** (ThreadPoolExecutor, 4 workers) — ~4x speedup vs sequential
-- query document coverage: **all 46 enrichment attributes** in architect query template including EMBELLISHMENT (EmbellishmentLevel/Type/Zone) and VISUAL_DIRECTION (VerticalWeightBias, VisualWeightPlacement, StructuralFocus, BodyFocusZone, LineDirection)
+- query document coverage: **all enrichment attributes** in architect query template (55 enum + 2 text canonical attrs as of Step 2a + Path B); includes EMBELLISHMENT (EmbellishmentLevel/Type/Zone), VISUAL_DIRECTION (VerticalWeightBias, VisualWeightPlacement, StructuralFocus, BodyFocusZone, LineDirection), and the ShapeArchitecture quad (VolumePlacement, AsymmetryType, AttachmentStructure, MotionBehavior) + v3 axes (FabricTransparency, SurfaceFinish, LayeringVisibility, BlouseLength, ShoulderExposure, SleeveVolume, BorderContrast) shipped 2026-05-11
 
 The system is a working recommendation engine with supporting infrastructure, now with deterministic engine paths replacing LLM hops on the common case (composition + composer). Wardrobe-first is live across the recommendation flow. Open work tracked in `docs/OPEN_TASKS.md`: Phase 6 streaming delivery (perceived-latency UX win), Phase 4.6 eval-set curation (gates several follow-on validations), Phase 4.2 stylist YAML review (paid consultant pass), and Phase 7 distillation (gated on 10K+ traces).
 
