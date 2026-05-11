@@ -27,4 +27,8 @@ SELECT
 FROM reasons
 GROUP BY drop_reason
 ORDER BY total_drops DESC
-LIMIT 30;
+LIMIT 200;
+-- LIMIT was 30; raised to 200 (May 11 2026) — drop_reason cardinality is
+-- bounded by rule-name count (~15-20 today) but kept loose so the next
+-- pairing-rule expansion doesn't silently truncate rare-but-meaningful
+-- entries from the panel.

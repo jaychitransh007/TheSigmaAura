@@ -410,6 +410,10 @@ class RouteEnginePathTests(unittest.TestCase):
         # provenance_summary populated with engine-side counts.
         self.assertIn("total_tuples", decision.provenance_summary)
         self.assertIn("kept", decision.provenance_summary)
+        # bridal_role persisted to provenance_summary so Panel 26 RCA
+        # can distinguish guest_vs_bridal_separation fires from unset
+        # role context. Default ctx has no role → "unset".
+        self.assertEqual(decision.provenance_summary["bridal_role"], "unset")
         # engine_ms populated.
         self.assertIsNotNone(decision.engine_ms)
         self.assertGreaterEqual(decision.engine_ms, 0)

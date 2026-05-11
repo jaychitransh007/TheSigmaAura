@@ -56,6 +56,44 @@ ALL_CATEGORIES: tuple[str, ...] = HARD_CATEGORIES + SOFT_CATEGORIES
 SOFT_PENALTY: float = 0.10
 BASE_SCORE: float = 1.0
 
+# Telemetry helpers — wrapped in try/except so a metrics registry hiccup
+# never breaks scoring. The composer's tuple-scoring loop is hot path;
+# we tolerate metrics-emission errors silently and rely on dashboards
+# noticing the gap.
+
+
+def _record_violations(violations: Sequence["Violation"]) -> None:
+    """Tick the per-rule Prometheus counter for each Violation. Called
+    once per HARD short-circuit and once per SOFT accumulation so the
+    same rule string surfaces both as a real-time Prometheus signal AND
+    in the trace's dropped_by_reason dict (already captured upstream)."""
+    if not violations:
+        return
+    try:
+        from platform_core.metrics import aura_composer_rule_violation_total
+        for v in violations:
+            aura_composer_rule_violation_total.labels(
+                rule=v.rule, is_hard=("true" if v.is_hard else "false"),
+            ).inc()
+    except Exception:  # noqa: BLE001 — telemetry never breaks scoring
+        pass
+
+
+def _record_exception(rule: str, exception: str) -> None:
+    """Tick when a rule exception (distributed_statement_exception,
+    metallic_neutral_exception, etc.) suppresses or modifies a
+    violation. Lets dashboards distinguish "rule didn't fire" from
+    "rule fired but was suppressed by exception X" — the latter is
+    expected; the former unexpected."""
+    try:
+        from platform_core.metrics import aura_composer_rule_exception_applied_total
+        aura_composer_rule_exception_applied_total.labels(
+            rule=rule, exception=exception,
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # Canonical sheen-bearing fabric textures (per garment_attributes.json
 # FabricTexture enum). The sheen_hierarchy rule caps how many of these
 # can co-occur in an outfit outside the bridal exception. Updating
@@ -385,6 +423,7 @@ def score_tuple(
     for cat in HARD_CATEGORIES:
         violations = evaluate_constraint(cat, items_t, ctx, graph)
         if violations:
+            _record_violations(violations)
             return TupleScore(
                 base_score=0.0,
                 violations=violations,
@@ -395,6 +434,8 @@ def score_tuple(
     soft_violations: list[Violation] = []
     for cat in SOFT_CATEGORIES:
         soft_violations.extend(evaluate_constraint(cat, items_t, ctx, graph))
+    if soft_violations:
+        _record_violations(soft_violations)
 
     hard_attr_violations = _count_tuple_hard_attr_violations(items_t, ctx.hard_attrs)
     raw_hard_attr_penalty = HARD_ATTR_TUPLE_PENALTY * hard_attr_violations
@@ -499,6 +540,8 @@ def _evaluate_color_story(
                 is_hard=True,
             )
         )
+    if excluded_count:
+        _record_exception("max_dominant_colors", "metallic_neutral_exception")
 
     # palette_anchor_required: at least one slot in user's palette anchors.
     # Skip when caller didn't provide anchors (test setups, profile gaps).
@@ -654,6 +697,7 @@ def _evaluate_scale_balance(
     statement_count = sum(1 for it in items if is_statement(it))
     if statement_count > 1:
         if _is_distributed_statement_exception_eligible(items):
+            _record_exception("one_statement_per_outfit", "distributed_statement_exception")
             return ()  # coordinated multi-statement is intentional Indian styling
         return (
             Violation(
