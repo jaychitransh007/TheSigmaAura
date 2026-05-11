@@ -827,9 +827,16 @@ class AgenticOrchestrator:
                 # that returned 404 / Product-Not-Found on the live
                 # merchant storefront — putting them into outfit
                 # recommendations would surface dead links.
+                #
+                # `neq.deleted_from_source` alone would also exclude
+                # rows with row_status IS NULL (Postgrest's neq treats
+                # NULL as "not comparable" → excluded). Wrap in an
+                # or= filter so NULL rows are kept; this matches the
+                # Python-side check in catalog_search_agent which only
+                # drops rows that are *explicitly* deleted_from_source.
                 rows = self.repo.client.select_many(
                     "catalog_enriched",
-                    filters={"row_status": "neq.deleted_from_source"},
+                    filters={"or": "(row_status.neq.deleted_from_source,row_status.is.null)"},
                 )
             except Exception:
                 rows = []
