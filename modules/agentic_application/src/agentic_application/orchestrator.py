@@ -73,7 +73,7 @@ from .services.onboarding_gateway import ApplicationUserGateway
 from .services.tryon_quality_gate import TryonQualityGate
 from .services.tryon_service import TryonService
 from .services.outfit_decomposition import decompose_outfit_image
-from user.service import resolve_wardrobe_role
+from user.service import extract_garment_hint_from_text, resolve_wardrobe_role
 from .qna_messages import generate_stage_message
 from .schemas import (
     CombinedContext,
@@ -2022,11 +2022,29 @@ class AgenticOrchestrator:
                     and not str(attached_item.get("title") or "").strip()
                 )
                 if _enrichment_status == "failed" or _critical_fields_empty:
-                    attached_item["enrichment_failed"] = True
-                    _log.warning(
-                        "Wardrobe enrichment returned empty/failed for upload %s — flagging on attached_item",
-                        attached_item.get("id"),
-                    )
+                    # Text-based fallback: if the user's message clearly
+                    # names a garment ("what goes with this skirt?"),
+                    # use that as the anchor classification. Vision
+                    # nulls and timeouts shouldn't kill the whole turn
+                    # when the user already told us what the piece is.
+                    _text_hint = extract_garment_hint_from_text(message)
+                    if _text_hint:
+                        attached_item["garment_category"] = _text_hint["garment_category"]
+                        attached_item["garment_subtype"] = _text_hint["garment_subtype"]
+                        if not str(attached_item.get("title") or "").strip():
+                            attached_item["title"] = _text_hint["garment_subtype"].title()
+                        attached_item["enrichment_fallback"] = "text_hint"
+                        _log.info(
+                            "Wardrobe enrichment fell back to user-text hint: category=%s subtype=%s",
+                            _text_hint["garment_category"],
+                            _text_hint["garment_subtype"],
+                        )
+                    else:
+                        attached_item["enrichment_failed"] = True
+                        _log.warning(
+                            "Wardrobe enrichment returned empty/failed for upload %s — flagging on attached_item",
+                            attached_item.get("id"),
+                        )
                 # Append attached_context to effective_message so
                 # downstream consumers (architect input, model_call_logs
                 # rows) see the enriched garment context.
@@ -2051,12 +2069,41 @@ class AgenticOrchestrator:
                     garment_present_confidence=float(attached_item.get("garment_present_confidence") or 1.0),
                 )
             else:
-                attached_item = None
-                trace_end(
-                    "wardrobe_enrichment",
-                    output_summary="failed",
-                    status="error",
-                )
+                # Background thread didn't return in time. Try the
+                # text-hint fallback so a user who already named the
+                # garment still gets a pairing response. We don't have
+                # an image-derived color or any of the rich attrs, but
+                # category+subtype are enough to anchor the architect.
+                _text_hint = extract_garment_hint_from_text(message)
+                if _text_hint:
+                    attached_item = {
+                        "garment_category": _text_hint["garment_category"],
+                        "garment_subtype": _text_hint["garment_subtype"],
+                        "title": _text_hint["garment_subtype"].title(),
+                        "attachment_source": _attachment_source_pending,
+                        "enrichment_fallback": "text_hint",
+                        "is_garment_photo": True,
+                    }
+                    _attached_context = self._attached_item_context(attached_item)
+                    if _attached_context:
+                        effective_message = f"{message.strip()} {_attached_context}".strip()
+                    trace_end(
+                        "wardrobe_enrichment",
+                        output_summary=f"timeout, text_fallback={_text_hint['garment_subtype']}",
+                        status="ok",
+                    )
+                    _log.info(
+                        "Wardrobe enrichment timed out; using text-hint anchor: category=%s subtype=%s",
+                        _text_hint["garment_category"],
+                        _text_hint["garment_subtype"],
+                    )
+                else:
+                    attached_item = None
+                    trace_end(
+                        "wardrobe_enrichment",
+                        output_summary="failed",
+                        status="error",
+                    )
 
         plan_result, override_reasons, force_catalog_followup, source_preference = self._apply_planner_overrides(
             plan_result=plan_result,

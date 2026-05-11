@@ -205,6 +205,14 @@ def infer_wardrobe_catalog_attributes(
     # body/headshot photos. The previous minimal-effort runs produced
     # high-confidence misclassifications that cascaded into wrong role
     # assignment downstream.
+    #
+    # Pass timeout= explicitly to .create() in addition to the
+    # client.with_options() override above. Empirically (PR #279/#281
+    # follow-up turns) the with_options(timeout=...) override didn't
+    # always propagate to the underlying httpx request — turns ran past
+    # the 55s budget into the orchestrator's 60s fallback. Setting it
+    # at the per-call site is the SDK's documented per-request override
+    # and is guaranteed to apply.
     response = client.responses.create(
         model=model,
         input=[
@@ -220,6 +228,7 @@ def infer_wardrobe_catalog_attributes(
                 ],
             },
         ],
+        timeout=request_timeout_seconds,
         reasoning={"effort": reasoning_effort},
         text={"format": response_format()},
     )
