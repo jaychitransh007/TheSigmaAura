@@ -65,6 +65,23 @@ BASE_SCORE: float = 1.0
 _SHEEN_TEXTURES: frozenset[str] = frozenset({"sheen", "metallic", "embroidered"})
 _SHEEN_TEXTURES_LABEL: str = "sheen / metallic / embroidered"
 
+# Metallic-neutral colors per color_story.metallic_neutral_exception
+# YAML rule — these are recognised as pseudo-neutral support colors in
+# Indian festive / bridal contexts (zari, gota patti, antique-gold
+# embroidery) rather than competing dominant hues. Items with one of
+# these dominant_colors (OR with fabric_texture=metallic) are excluded
+# from the max_dominant_colors count so a saree + blouse + gold zari
+# dupatta doesn't fail the 3-color cap on a technicality.
+#
+# Vocabulary source: stylist palette review v_1, neutral-luxury tones
+# section. Names match Aura's free-text PrimaryColor / SecondaryColor
+# enrichment values; underscores preserved for multi-word colors.
+_METALLIC_NEUTRAL_COLORS: frozenset[str] = frozenset({
+    "gold", "rose_gold", "antique_gold", "champagne", "silver",
+    "oxidized_silver", "bronze", "copper", "brass", "pewter",
+    "metallic_gold", "metallic_silver", "metallic_bronze",
+})
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # Dataclasses
@@ -452,13 +469,33 @@ def _evaluate_color_story(
         if max_rule is not None and max_rule.value is not None
         else 3
     )
-    distinct = {it.dominant_color for it in items if it.dominant_color}
+    # metallic_neutral_exception (PR 4c.3): items with fabric_texture=
+    # metallic OR dominant_color in the metallic-neutral set are excluded
+    # from the count — they function as neutral support colors rather
+    # than competing dominant hues. The exception is YAML-gated: if the
+    # rule entry is missing, fall back to the strict count.
+    exception_enabled = "metallic_neutral_exception" in group.rules
+    distinct: set[str] = set()
+    excluded_count = 0
+    for it in items:
+        if not it.dominant_color:
+            continue
+        if exception_enabled and (
+            it.fabric_texture == "metallic"
+            or it.dominant_color in _METALLIC_NEUTRAL_COLORS
+        ):
+            excluded_count += 1
+            continue
+        distinct.add(it.dominant_color)
     if len(distinct) > max_count:
+        detail = f"{len(distinct)} dominant colors > {max_count} limit"
+        if excluded_count:
+            detail += f" (excluded {excluded_count} metallic-neutral)"
         violations.append(
             Violation(
                 category="color_story",
                 rule="max_dominant_colors",
-                detail=f"{len(distinct)} dominant colors > {max_count} limit",
+                detail=detail,
                 is_hard=True,
             )
         )
