@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -15,18 +16,28 @@ from user_profiler.service import _extract_response_json, _image_to_input_url
 # call so we don't repeat get_api_key() (file I/O via .env) and
 # httpx-client construction on every wardrobe save. Construction is
 # deferred (not at module import) so:
-#   - importing this module has no file-I/O side effect,
+#   - importing this module performs no .env I/O or HTTPX setup,
 #   - tests can mutate env after import and still get a client built
 #     against the current API key,
 #   - CI runners that import without env configured don't pin the
 #     client to an empty key for the lifetime of the process.
+#
+# Wardrobe enrichment runs inside a ThreadPoolExecutor (orchestrator
+# submits one per image-attached turn), so two concurrent uploads can
+# both hit _shared_client() before either has populated the cache.
+# Double-checked locking ensures only one OpenAI() / get_api_key()
+# call wins — the latter matters because get_api_key()'s _load_dotenv
+# mutates os.environ and is not safe under concurrent calls.
 _client_cache: Optional["OpenAI"] = None
+_client_lock = threading.Lock()
 
 
 def _shared_client() -> "OpenAI":
     global _client_cache
     if _client_cache is None:
-        _client_cache = OpenAI(api_key=get_api_key())
+        with _client_lock:
+            if _client_cache is None:
+                _client_cache = OpenAI(api_key=get_api_key())
     return _client_cache
 
 
@@ -105,7 +116,21 @@ def response_format() -> Dict[str, Any]:
     }
 
 
-SYSTEM_PROMPT = _load_prompt()
+# Lazily-loaded system prompt. Same rationale as _shared_client():
+# importing this module shouldn't read files from disk. Double-checked
+# locking guards against concurrent first-callers in the wardrobe
+# ThreadPoolExecutor; once cached, subsequent reads are lock-free.
+_system_prompt_cache: Optional[str] = None
+_system_prompt_lock = threading.Lock()
+
+
+def _system_prompt() -> str:
+    global _system_prompt_cache
+    if _system_prompt_cache is None:
+        with _system_prompt_lock:
+            if _system_prompt_cache is None:
+                _system_prompt_cache = _load_prompt()
+    return _system_prompt_cache
 
 
 def infer_wardrobe_catalog_attributes(
@@ -210,7 +235,7 @@ def infer_wardrobe_catalog_attributes(
         input=[
             {
                 "role": "system",
-                "content": [{"type": "input_text", "text": SYSTEM_PROMPT}],
+                "content": [{"type": "input_text", "text": _system_prompt()}],
             },
             {
                 "role": "user",
