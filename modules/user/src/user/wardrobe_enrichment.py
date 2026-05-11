@@ -119,7 +119,16 @@ def infer_wardrobe_catalog_attributes(
     # caller has given up.
     request_timeout_seconds: float = 55.0,
 ) -> Dict[str, Any]:
-    client = OpenAI(api_key=get_api_key(), timeout=request_timeout_seconds)
+    # max_retries=0 disables the OpenAI SDK's default 2-retry policy.
+    # Without this, a 55s timeout could trigger 3 attempts (~165s
+    # total) and silently outlive the orchestrator's 60s budget —
+    # which is exactly the failure mode this caller's single-attempt
+    # strategy was meant to prevent.
+    client = OpenAI(
+        api_key=get_api_key(),
+        timeout=request_timeout_seconds,
+        max_retries=0,
+    )
     image_url = _image_to_input_url(image_ref)
     mime_type, _ = mimetypes.guess_type(str(image_ref))
     mime_type = mime_type or "image/jpeg"
