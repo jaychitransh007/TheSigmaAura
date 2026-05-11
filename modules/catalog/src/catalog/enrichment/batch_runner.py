@@ -1,10 +1,16 @@
 import json
 import time
+from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from openai import OpenAI
 
 from .config import PipelineConfig
+
+
+def _log(msg: str) -> None:
+    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    print(f"[{ts}] {msg}", flush=True)
 
 
 class BatchRunner:
@@ -28,9 +34,28 @@ class BatchRunner:
     def wait_for_completion(self, batch_id: str) -> Dict:
         max_wait_s = self.config.max_wait_minutes * 60
         elapsed = 0
+        last_status_logged = ""
+        last_progress_log_s = 0
         while elapsed <= max_wait_s:
             batch = self.client.batches.retrieve(batch_id)
-            if batch.status in {"completed", "failed", "cancelled", "expired"}:
+            status = batch.status
+            counts = getattr(batch, "request_counts", None)
+            if counts is not None:
+                completed = getattr(counts, "completed", 0) or 0
+                failed = getattr(counts, "failed", 0) or 0
+                total = getattr(counts, "total", 0) or 0
+            else:
+                completed, failed, total = 0, 0, 0
+
+            if status != last_status_logged:
+                _log(f"  batch {batch_id} status={status} ({completed}/{total} done, {failed} failed, elapsed={elapsed}s)")
+                last_status_logged = status
+                last_progress_log_s = elapsed
+            elif elapsed - last_progress_log_s >= 300:
+                _log(f"  batch {batch_id} still {status} ({completed}/{total} done, {failed} failed, elapsed={elapsed}s)")
+                last_progress_log_s = elapsed
+
+            if status in {"completed", "failed", "cancelled", "expired"}:
                 return batch.model_dump()
             time.sleep(self.config.poll_interval_seconds)
             elapsed += self.config.poll_interval_seconds
