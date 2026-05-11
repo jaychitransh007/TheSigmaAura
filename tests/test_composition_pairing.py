@@ -791,9 +791,11 @@ class CulturalCoherenceTests(unittest.TestCase):
 
 class BridalSpecificTests(unittest.TestCase):
 
-    def test_bridal_specific_is_v1_no_op(self):
-        # v1 deferral: composer_semantics.md §4.8 — formality_alignment
-        # already keeps non-ceremonial slots out, subtype rules ship later.
+    def test_bridal_specific_is_no_op_without_bridal_role(self):
+        # Default ctx.bridal_role is "" — guest_vs_bridal_separation
+        # doesn't fire, matching pre-Phase-4.3 behaviour. Other subtype
+        # rules (bridal_lehenga_pairing etc.) remain no-ops here too —
+        # they're practically covered by formality_alignment.
         items = (
             _smart_casual_top(formality="ceremonial", subtype="lehenga"),
             _smart_casual_bottom(formality="ceremonial", subtype="choli"),
@@ -802,6 +804,121 @@ class BridalSpecificTests(unittest.TestCase):
             "bridal_specific",
             items,
             _ctx(formality_hint="ceremonial", occasion_signal="wedding_ceremony"),
+            _graph(),
+        )
+        self.assertEqual(violations, ())
+
+    # ─────────────────────────────────────────────────────────────────────
+    # guest_vs_bridal_separation (Phase 4.3 / PR 4c.1b). When the user is
+    # attending a wedding-context occasion as a guest, their tuples can't
+    # carry items at bridal-participant embellishment levels (heavy /
+    # statement per YAML).
+    # ─────────────────────────────────────────────────────────────────────
+
+    def test_guest_with_heavy_item_at_bridal_occasion_violates(self):
+        items = (
+            _smart_casual_top(formality="ceremonial", embellishment_level="heavy"),
+            _smart_casual_bottom(formality="ceremonial", embellishment_level="minimal"),
+        )
+        violations = evaluate_constraint(
+            "bridal_specific",
+            items,
+            _ctx(
+                formality_hint="ceremonial",
+                occasion_signal="wedding_ceremony",
+                bridal_role="guest",
+            ),
+            _graph(),
+        )
+        self.assertEqual(len(violations), 1)
+        self.assertEqual(violations[0].rule, "guest_vs_bridal_separation")
+
+    def test_attendee_treated_as_guest_for_separation(self):
+        # ``attendee`` is the default non-bridal-party role; same cap applies.
+        items = (
+            _smart_casual_top(formality="ceremonial", embellishment_level="statement"),
+            _smart_casual_bottom(formality="ceremonial", embellishment_level="minimal"),
+        )
+        violations = evaluate_constraint(
+            "bridal_specific",
+            items,
+            _ctx(
+                formality_hint="ceremonial",
+                occasion_signal="wedding_ceremony",
+                bridal_role="attendee",
+            ),
+            _graph(),
+        )
+        self.assertEqual(len(violations), 1)
+        self.assertEqual(violations[0].rule, "guest_vs_bridal_separation")
+
+    def test_bride_bypasses_separation(self):
+        items = (
+            _smart_casual_top(formality="ceremonial", embellishment_level="statement"),
+            _smart_casual_bottom(formality="ceremonial", embellishment_level="heavy"),
+        )
+        violations = evaluate_constraint(
+            "bridal_specific",
+            items,
+            _ctx(
+                formality_hint="ceremonial",
+                occasion_signal="wedding_ceremony",
+                bridal_role="bride",
+            ),
+            _graph(),
+        )
+        self.assertEqual(violations, ())
+
+    def test_groom_bypasses_separation(self):
+        items = (
+            _smart_casual_top(formality="ceremonial", embellishment_level="heavy"),
+            _smart_casual_bottom(formality="ceremonial", embellishment_level="moderate"),
+        )
+        violations = evaluate_constraint(
+            "bridal_specific",
+            items,
+            _ctx(
+                formality_hint="ceremonial",
+                occasion_signal="wedding_ceremony",
+                bridal_role="groom",
+            ),
+            _graph(),
+        )
+        self.assertEqual(violations, ())
+
+    def test_guest_with_only_moderate_passes(self):
+        # moderate is NOT in the cap (heavy + statement only) — passes.
+        items = (
+            _smart_casual_top(formality="ceremonial", embellishment_level="moderate"),
+            _smart_casual_bottom(formality="ceremonial", embellishment_level="minimal"),
+        )
+        violations = evaluate_constraint(
+            "bridal_specific",
+            items,
+            _ctx(
+                formality_hint="ceremonial",
+                occasion_signal="wedding_ceremony",
+                bridal_role="guest",
+            ),
+            _graph(),
+        )
+        self.assertEqual(violations, ())
+
+    def test_guest_at_non_bridal_occasion_no_op(self):
+        # bridal_role set, but occasion isn't a bridal-role occasion —
+        # rule shouldn't fire. is_bridal_role_occasion gates this.
+        items = (
+            _smart_casual_top(formality="smart_casual", embellishment_level="heavy"),
+            _smart_casual_bottom(formality="smart_casual", embellishment_level="minimal"),
+        )
+        violations = evaluate_constraint(
+            "bridal_specific",
+            items,
+            _ctx(
+                formality_hint="smart_casual",
+                occasion_signal="daily_office_mnc",
+                bridal_role="guest",
+            ),
             _graph(),
         )
         self.assertEqual(violations, ())

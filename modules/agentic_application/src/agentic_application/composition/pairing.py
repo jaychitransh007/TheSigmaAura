@@ -31,6 +31,7 @@ from itertools import combinations
 from types import MappingProxyType
 from typing import Callable, Mapping, Sequence
 
+from .styling_decisions import is_bridal_role_occasion
 from .yaml_loader import StyleGraph
 
 
@@ -169,6 +170,15 @@ class TupleContext:
     # (it materializes a set defensively), but engine-built contexts
     # use frozensets directly.
     hard_attrs: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    # Bridal-role context (Phase 4.3 / Step 1's bridal_priority lookup).
+    # One of: "bride", "groom", "guest", "attendee", or "" (unset).
+    # When set AND the occasion is a bridal-role occasion, evaluators
+    # may apply role-specific rules (e.g., guest_vs_bridal_separation
+    # caps guest embellishment below bridal participants). Empty default
+    # preserves pre-Phase-4.3 behaviour — the orchestrator populates
+    # this from user.occasion_role; tests can construct minimal cases
+    # without it.
+    bridal_role: str = ""
 
 
 @dataclass(frozen=True)
@@ -612,21 +622,71 @@ def _evaluate_scale_balance(
     return ()
 
 
+# Bridal participants whose tuples are NOT capped by
+# guest_vs_bridal_separation. Anything not in this set is treated as
+# guest-equivalent for the purposes of the cap.
+_BRIDAL_PARTICIPANT_ROLES: frozenset[str] = frozenset({"bride", "groom"})
+
+
 def _evaluate_bridal_specific(
     items: tuple[Item, ...], ctx: TupleContext, graph: StyleGraph
 ) -> tuple[Violation, ...]:
-    """v1 no-op. Subtype-specific rules (bridal_lehenga_pairing,
-    heavy_banarasi_pairing, sherwani_pairing, bandhgala_versatility)
-    enforce per-subtype companion constraints whose practical effect
-    on the tuple-scoring path is already covered by formality_alignment
-    (ceremonial-only pairings) and scale_balance's bridal exception.
+    """Bridal-specific subtype rules. Most subtype-specific rules
+    (bridal_lehenga_pairing, heavy_banarasi_pairing, sherwani_pairing,
+    bandhgala_versatility) remain practically covered by
+    formality_alignment + scale_balance's bridal exception.
 
-    Subtype-specific enforcement (e.g., dupatta-must-be-lighter-weight-
-    than-lehenga) ships in a Phase 5 follow-up after the core engine
-    is validated. Empty implementation here documents the deferral
-    rather than silently leaving the category un-dispatched.
+    What this evaluator DOES enforce (PR 4c.1b):
+
+    ``guest_vs_bridal_separation`` — when ctx.bridal_role indicates a
+    non-bridal-participant role (anything not in ``bride``/``groom``)
+    AND the occasion is a bridal-role occasion (wedding_ceremony,
+    sangeet, mehndi, haldi, engagement, reception per Step 1's
+    is_bridal_role_occasion), tuples carrying items whose
+    EmbellishmentLevel is in the rule's ``avoid`` block fire a
+    hard violation. The rule's ``avoid`` block is YAML-driven so the
+    stylist can tune the cap (default: heavy + statement reserved for
+    bridal participants).
+
+    The matcher is a no-op when ctx.bridal_role is unset — most
+    upstream call sites haven't been plumbed yet. Tests construct
+    populated ctx directly to exercise the rule.
     """
-    return ()
+    if not ctx.bridal_role:
+        return ()
+    if ctx.bridal_role in _BRIDAL_PARTICIPANT_ROLES:
+        return ()
+    if not is_bridal_role_occasion(ctx.occasion_signal):
+        return ()
+
+    group = graph.pairing_rules.get("bridal_specific")
+    if group is None:
+        return ()
+    rule = group.rules.get("guest_vs_bridal_separation")
+    if rule is None:
+        return ()
+    capped = rule.avoid.get("EmbellishmentLevel", ())
+    if not capped:
+        return ()
+    capped_set = set(capped)
+
+    violators = [
+        it for it in items if it.embellishment_level in capped_set
+    ]
+    if not violators:
+        return ()
+    detail = (
+        f"guest at {ctx.occasion_signal}: "
+        f"{len(violators)} item(s) at bridal-participant embellishment level"
+    )
+    return (
+        Violation(
+            category="bridal_specific",
+            rule="guest_vs_bridal_separation",
+            detail=detail,
+            is_hard=True,
+        ),
+    )
 
 
 def _evaluate_silhouette_balance(
