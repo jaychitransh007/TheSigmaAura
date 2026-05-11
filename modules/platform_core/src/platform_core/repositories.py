@@ -564,7 +564,7 @@ class ConversationRepository:
             return []
 
         # Hydrate garment attributes (one batched query) and turn user_messages
-        # (one batched query) — same pattern as aggregate_archetypal_feedback.
+        # (one batched query).
         garment_ids = sorted({str(ev.get("garment_id") or "").strip() for ev in events if ev.get("garment_id")})
         turn_ids = sorted({str(ev.get("turn_id") or "").strip() for ev in events if ev.get("turn_id")})
 

@@ -73,7 +73,7 @@ Five weight profiles, picked by `select_weight_profile()` from planner-resolved 
 
 For `complete` (single-item) outfits, `pairing` drops out and the remaining five weights renormalize to sum to 1.0. The Rater emits `pairing: 3` in this case and `compute_fashion_score` ignores it.
 
-`unsuitable=True` is the only hard veto. PR #89 (May 5 2026) removed the `archetypal_preferences.disliked` aggregate-veto rule that was producing systematic empty responses (T12 had 8/8 outfits vetoed); past likes/dislikes are now applied upstream by the Architect (retrieval bias via episodic memory) and the Composer (item-selection bias).
+`unsuitable=True` is the only hard veto. PR #89 (May 5 2026) removed the `archetypal_preferences.disliked` aggregate-veto rule that was producing systematic empty responses (T12 had 8/8 outfits vetoed). Past likes/dislikes are now applied via `recent_user_actions` episodic memory: the Architect biases retrieval upstream, and the Rater applies context-aware avoidance downstream. The Composer's soft preference on archetypal_preferences was dropped May 8 2026.
 
 ### Episodic memory at the architect (PR #90 / #92 / #93)
 
@@ -115,7 +115,7 @@ Pre-#82, `"auto"` defaulted to wardrobe-first; the resulting confusion (catalog 
 | `_RECOMMENDATION_FASHION_THRESHOLD` | `orchestrator.py:92` | Pre-render gate at `50`. Outfits below the floor or flagged `unsuitable` never reach the user. History: `75` → `60` (PR #81) → `50` (PR #101 R7). |
 | `list_recent_user_actions()` | `repositories.py` (PR #90) | Pulls feedback_events for the user (last 30 days, like+dislike), hydrates garment attrs from `catalog_enriched`, joins `user_query` from `conversation_turns`. Cap of 30 events per user. Empty list on cold start. |
 | `_wardrobe_meets_minimum_coverage()` | `orchestrator.py` (PR #82) | Returns `(sufficient, counts_by_role)`. Strict-AND: ≥2 tops AND ≥2 bottoms AND ≥2 one-pieces. Used by both `_build_wardrobe_first_occasion_response` (the gate) and `_build_wardrobe_only_occasion_fallback` (the message), threaded via `precomputed_coverage` to avoid double-walking the same wardrobe. |
-| `_CATALOG_ATTR_MAP` | `repositories.py` (PR #93) | Single source of truth for snake_case prompt key → PascalCase DB column on `catalog_enriched`. Used by `aggregate_archetypal_feedback` and `list_recent_user_actions`. |
+| `_CATALOG_ATTR_MAP` | `repositories.py` (PR #93) | Single source of truth for snake_case prompt key → PascalCase DB column on `catalog_enriched`. Used by `list_recent_user_actions`. |
 | `weather_context` / `time_of_day` / `target_product_type` | 12A/C | New `CopilotResolvedContext` fields extracted by the planner, consumed by the architect. |
 | `is_anchor` flag on candidate items | 12D | Set by orchestrator anchor injection; consumed by `_enforce_cross_outfit_diversity` to exempt anchor products from the "no repeats" rule. Fixes the pre-existing bug where pairing turns collapsed to 1 outfit. |
 | Wardrobe-anchor image resolution | 12D follow-up | `_product_to_item` resolves `image_url` from `enriched_data["image_path"]` and tags wardrobe rows with `source="wardrobe"`. `tryon_service.generate_tryon_outfit` dispatches HTTP(S) URLs to `_download_image` and local `data/...` paths to `_load_local_image`. |

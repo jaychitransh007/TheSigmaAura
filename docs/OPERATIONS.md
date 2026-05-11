@@ -860,8 +860,7 @@ errored silently.
 **Unhealthy:** drops to ≤5% — same recurrence of the PR #92 failure
 mode (silent 400, swallowed exception). With PR #93's `_log.warning`
 on the silent `except` blocks, the cause should now appear in logs
-— grep `list_recent_user_actions` and `aggregate_archetypal_feedback`
-for warnings.
+— grep `list_recent_user_actions` for warnings.
 
 > Future panel: a per-turn signal (was the architect's
 > `recent_user_actions` payload non-empty?). That requires the
