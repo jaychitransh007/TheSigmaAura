@@ -6,7 +6,7 @@ This file lists what's open **now**. Shipped work history lives in `docs/RELEASE
 
 ## Worth focusing on (today)
 
-**Pure engineering work: none.** The May 2026 session closed the implement-today queue (PRs #246-#264). Two trigger-driven items remain — no work needed until the trigger fires:
+**Pure engineering work: none.** The May 2026 session closed the implement-today queue (PRs #246-#264). One trigger-driven item remains — no work needed until the trigger fires:
 
 ### 1. Masculine top coverage — largely RESOLVED by the May 2026 re-enrichment
 
@@ -25,14 +25,6 @@ Total masculine inventory: **4,298 items across 21 subtypes** (not the 8 reporte
 **Remaining gap:** `polo_tshirt` is the only top subtype with literally zero items. Likely a vocabulary signal — polos may be getting tagged as either `tshirt` or `shirt` by the vision pipeline. To resolve, the business needs to source dedicated polo-tagged products via the admin tool's per-product ingestion (allowed under frozen-catalog policy).
 
 **Trigger to act.** Only if `polo_tshirt` becomes a request driver and the existing `tshirt` / `shirt` fallback isn't sufficient. Most queries that want polos accept tshirts or shirts as substitutes.
-
-### 2. Phase out `archetypal_preferences` from the composer
-
-**Status.** Composer still reads `archetypal_preferences` as a soft preference (see `prompt/outfit_composer.md`). The architect already uses episodic memory (`recent_user_actions`) for the same signal — the composer's read is the last consumer of the aggregate version.
-
-**Trigger to act.** Panel 18 (rater unsuitable rate) sustains <5% over a stable week, proving the architect's episodic memory is sufficient on its own. At that point, drop the composer's soft preference; the aggregate signal becomes dead code and can be cleaned up.
-
-**Effort.** ~half-day code change in composer + small backend cleanup of `aggregate_archetypal_feedback` if no other consumer remains.
 
 ---
 
