@@ -1,10 +1,10 @@
 # Application Layer — Implementation Specification
 
-Last updated: May 8, 2026. Recent shipping covered in § Live System Reference (bottom): composition engine (Phase 4.7), composer engine (Phase 5, behind flag), Phase 3 prompt compression, must-fix observability counters (panels 29-32), `_RECENT_USER_ACTIONS_MAX` cap 30→20, dead-code stub + comment-debt cleanup.
+Last updated: May 12, 2026. Recent shipping covered in § Live System Reference (bottom): wardrobe vision enrichment on `gpt-5.2/low` with 55s explicit timeout + `max_retries=0` + user-text threaded to vision (PRs #275-#286), planner emits structured `anchor_garment` (replaces keyword regex; PRs #287/#292), `deleted_from_source` rows filtered from both retrieval paths after one-time catalog title/price recovery (PRs #288-#291), observability waves 1+2 (PRs #295/#296: 3 new metrics + Panel 35), and UI: persistent multi-turn stacking + composer/stage cleanup (PRs #270-#274/#294). Earlier sessions: planner output cache + `recent_user_actions` cap 20→10 (PR #259), composer-side per-rule observability + 4 pairing matchers (PRs #257/#261-#263), composition engine (Phase 4.7), composer engine (Phase 5, behind flag), Phase 3 prompt compression.
 
 > **⚠️ Header sections are partially deprecated; § Live System Reference (bottom) is authoritative.** The opening "Implementation Spec" sections of this document still describe the *legacy* routing layer (`intent_router.py`, `intent_handlers.py`, `context_gate.py`, `context/occasion_resolver.py`) which has been **deleted** from the codebase and replaced by the LLM copilot planner inlined into `process_turn`.
 >
-> **The authoritative "what is running right now" view lives at the bottom of this file in § Live System Reference (May 8, 2026)** — migrated from the now-deleted `CURRENT_STATE.md`. When the legacy header sections disagree with § Live System Reference, the latter wins.
+> **The authoritative "what is running right now" view lives at the bottom of this file in § Live System Reference (May 12, 2026)** — migrated from the now-deleted `CURRENT_STATE.md`. When the legacy header sections disagree with § Live System Reference, the latter wins.
 >
 > Other docs that delegate to this one:
 > - `docs/PRODUCT.md` — product framing, personas, gap-versus-target
@@ -79,7 +79,7 @@ Implemented now:
 - profile as style dossier: display-xl Fraunces name hero, italic adjective list, champagne signal rule on palette card, underline-only edit inputs, theme toggle, flat analysis badges
 - chat: italic Fraunces welcome headline, borderless stylist bubbles (2px ink left rule on agent copy), ⌘K history rail toggle, follow-up uppercase bucket headers, stylist-voice stage messages (one-per-poll advance), 960px feed width
 - header nav: 56px, uppercase tracked label links with ink underline active state, Home · Outfits · Checks · Wardrobe · Saved (Phase 15: intent-organized, no chat tab)
-- wardrobe add-item drawer (right-edge slide) — photo-only upload with auto-enrichment (46 attributes via vision API)
+- wardrobe add-item drawer (right-edge slide) — photo-only upload with auto-enrichment (57 attributes — 55 enum + 2 text — via gpt-5.2/low vision API; user-typed message threaded to vision for disambiguation)
 - catalog pipeline: auto-generated product_id from URL for CSVs lacking the column
 - Outfits tab (Phase 15 — replaces Looks + Trial Room): intent-grouped history with PDP carousels per occasion/intent section. Each section = Fraunces italic title + relative time + swipeable PDP cards. Try-on images embedded in PDP cards. Liked outfits persist with filled heart; hidden outfits filtered from history via (turn_id, outfit_rank) keys in feedback_events. Read-time hydration for historical turns missing outfits.
 - Checks tab (Phase 15): outfit check history — each check as a card with user message + stylist assessment
@@ -229,7 +229,7 @@ Primary intent taxonomy (post-Phase 12A: 7 advisory + silent wardrobe_ingestion)
 | `style_discovery` | "What style suits me?" | text question, profile, images | analysis, interpretations, preferences | style explanation, archetype rationale, next actions |
 | `explanation_request` | "Why did you recommend this?" | reference to prior answer | prior chats, recommendation history, confidence state | transparent explanation |
 | `feedback_submission` | "I liked / disliked this." | explicit feedback | recommendation history, wardrobe, comfort learning | stored feedback + learning update |
-| `wardrobe_ingestion` | (silent) "Save this into my wardrobe." | item image(s), link, text | profile, moderation, wardrobe store | wardrobe item saved + 46-attribute enrichment. **Not** classified by the planner from user messages — programmatic / bulk-upload path only. |
+| `wardrobe_ingestion` | (silent) "Save this into my wardrobe." | item image(s), link, text | profile, moderation, wardrobe store | wardrobe item saved + 57-attribute enrichment (55 enum + 2 text, via gpt-5.2/low vision; user-typed message threaded to disambiguate). **Not** classified by the planner from user messages — programmatic / bulk-upload path only. |
 
 Removed in Phase 12A (do not extend):
 - `shopping_decision`, `garment_on_me_request`, `virtual_tryon_request` → folded into `garment_evaluation` (visually-grounded evaluator pipeline)
@@ -767,20 +767,23 @@ Active models used by application agents:
 
 | Agent | Model | Provider | Output Mode |
 |---|---|---|---|
-| Copilot Planner | `gpt-5.5` | OpenAI | JSON schema (strict) |
-| Outfit Architect | `gpt-5.5` | OpenAI | JSON schema (strict). System prompt assembled at request time: 4.8K-token base + optional anchor module + optional follow-up module. |
+| Copilot Planner | `gpt-5-mini`, `reasoning_effort=minimal` | OpenAI | JSON schema (strict). Emits typed `anchor_garment: {category, subtype, confidence}` block consumed by the orchestrator for wardrobe-anchor gating (PRs #287/#292, replaces the keyword regex). |
+| Outfit Architect | `gpt-5.2`, `reasoning_effort=low` | OpenAI | JSON schema (strict). System prompt assembled at request time: 4.8K-token base + optional anchor module + optional follow-up module. |
+| Outfit Composer | `gpt-5.2`, `reasoning_effort=low` | OpenAI | JSON schema (strict) |
+| Outfit Rater | `gpt-5-mini` | OpenAI | JSON schema (strict). 6-axis rubric (`occasion_fit`, `body_harmony`, `color_harmony`, `pairing`, `formality`, `statement`). |
 | Visual Evaluator | `gpt-5-mini` | OpenAI | JSON schema (strict), vision input |
-| Style Advisor | `gpt-5.4` (May 5, 2026 — was `gpt-5.5`; reasoning_effort=low) | OpenAI | JSON schema (strict) |
+| Style Advisor | `gpt-5.4`, `reasoning_effort=low` | OpenAI | JSON schema (strict) |
 | User Profiler (visual) | `gpt-5.5` | OpenAI | JSON schema (strict), reasoning effort: high |
 | User Profiler (textual) | `gpt-5.5` | OpenAI | JSON schema (strict) |
 | User Analysis (onboarding) | `gpt-5.5` | OpenAI | JSON schema (strict), reasoning effort: high |
+| Wardrobe Enrichment (vision) | `gpt-5.2`, `reasoning_effort=low` | OpenAI | JSON schema, vision input. Explicit 55s `timeout=` on `.create()`; `max_retries=0` (default 2 silently undid the budget). Lazy-init client + lazy-loaded system prompt. (PRs #275/#277/#278/#284/#285) |
 | Catalog Enrichment | `gpt-5-mini` | OpenAI | JSON schema |
 | Outfit Decomposition | `gpt-5-mini` | OpenAI | JSON schema, vision input |
 | Image Moderation | `gpt-5-mini` | OpenAI | JSON schema, vision input |
 | Query Embedding | `text-embedding-3-small` | OpenAI | 1536-dimensional vector |
 | Virtual Try-on | `gemini-3.1-flash-image-preview` | Google | Image generation |
 
-May 1, 2026: model migration consolidated reasoning paths on `gpt-5.5` and vision/transformation paths on `gpt-5-mini`. The architect has no fallback — failure returns an error to the user. The visual evaluator ranks by `fashion_score` when its LLM call fails. Try-on uses Google Gemini with direct API key authentication (not Vertex AI / service accounts).
+Current model assignment (as of May 12, 2026): architect and composer run `gpt-5.2/low` (the locked-in sweet spot — gpt-5-mini failed quality on these stages, gpt-5.5 was unnecessarily slow). Planner + rater stay on `gpt-5-mini`. Wardrobe vision enrichment was upgraded from `gpt-5-mini` → `gpt-5.2/low` on May 12 to match attribute quality on structurally non-trivial garments. The architect has no fallback — failure returns an error to the user. The visual evaluator ranks by `fashion_score` when its LLM call fails. Try-on uses Google Gemini with direct API key authentication (not Vertex AI / service accounts).
 
 ## Active Catalog Reality
 
@@ -814,7 +817,7 @@ Orchestrator (agentic_application/orchestrator.py)
     |         +--> bypass: "surprise me", follow-up turns, max 2 consecutive blocks
     |
     v
-4. Outfit Architect (gpt-5.5, JSON schema; conditional anchor/followup prompt modules)
+4. Outfit Architect (gpt-5.2/low, JSON schema; conditional anchor/followup prompt modules)
     |
     v
 5. Catalog Search Agent (batched embed + parallel search)
@@ -2012,9 +2015,9 @@ All features complete — no outstanding blockers.
 
 ---
 
-# Live System Reference (May 8, 2026)
+# Live System Reference (May 12, 2026)
 
-_Migrated from `CURRENT_STATE.md` on May 3, 2026. Refreshed May 8, 2026 to cover the May-6 → May-8 shipping wave: composition engine (Phase 4.7), composer engine (Phase 5, behind flag), per-axis YAML-gap weighting + tuning harness, empty-retrieval auto-relaxation, engine eligibility for all 7 follow-up intents, Phase 3 prompt compression + audit harness, must-fix observability counters (panels 29-32 + runbooks A6-A8), and dead-code/comment-debt cleanup. Models on production: architect + composer on `gpt-5.2` (was gpt-5.4); planner + rater on `gpt-5-mini`; style advisor on `gpt-5.4`. Active env flags: `AURA_COMPOSITION_ENGINE_ENABLED`, `AURA_COMPOSER_ENGINE_ENABLED`, `AURA_TRYON_ENABLED`. This is the authoritative "what is running right now" view that other docs delegate to. The historical decision-log (Phase 9–15) lives at the bottom of `docs/WORKFLOW_REFERENCE.md`._
+_Migrated from `CURRENT_STATE.md` on May 3, 2026. Refreshed May 12, 2026 to cover the May-11 → May-12 shipping wave: wardrobe vision enrichment on `gpt-5.2/low` with 55s explicit timeout + `max_retries=0` + lazy-init client + lazy-loaded system prompt (PRs #275-#286); user-typed message threaded to wardrobe vision input so the model can disambiguate (skirt vs dress) and the empty-description response no longer leaks into wardrobe `notes` (PRs #275/#279); planner emits typed `anchor_garment: {category, subtype, confidence}` and the orchestrator gates wardrobe-anchor flow on `is_usable(0.5)` instead of a keyword regex (PRs #287/#292); one-time catalog title/price recovery via Shopify `.json` + JSON-LD parsing, with 1,064 missing-on-merchant rows tagged `row_status='deleted_from_source'`; both retrieval paths exclude those rows via `or=(row_status.neq.deleted_from_source,row_status.is.null)` (PRs #288-#291); observability waves 1+2 added `aura_wardrobe_enrichment_fallback_total{source}`, `aura_catalog_deleted_skipped_total{path}`, `aura_planner_anchor_confidence` (Histogram, 10 buckets), and Panel 35 — Catalog Title/Price Freshness (PRs #295/#296); and UI: persistent multi-turn stacking so every turn (query card + reply + outfit cards) stays visible as new turns are appended, plus composer/stage cleanup (PRs #270-#274/#294). Models on production: architect + composer on `gpt-5.2/low` (the locked-in sweet spot); planner + rater + visual evaluator + decomposition + moderation + catalog enrichment on `gpt-5-mini`; wardrobe vision enrichment on `gpt-5.2/low` (was gpt-5-mini pre-#284); style advisor on `gpt-5.4/low`; user profile / analysis on `gpt-5.5/high`. Active env flags: `AURA_COMPOSITION_ENGINE_ENABLED`, `AURA_COMPOSER_ENGINE_ENABLED`, `AURA_TRYON_ENABLED`. This is the authoritative "what is running right now" view that other docs delegate to. The historical decision-log (Phase 9–15) lives at the bottom of `docs/WORKFLOW_REFERENCE.md`._
 
 ## Active Runtime
 

@@ -1,6 +1,8 @@
 # Workflow Reference — Intent Execution Flows
 
-Last updated: May 6, 2026 (post-PR-#101: rater on a 6-dim 1/2/3 scale; episodic memory at the architect; source_preference→catalog default; composer-emitted card names; threshold 50)
+Last updated: May 12, 2026.
+**Recent (May 11-12):** planner emits structured `anchor_garment: {category, subtype, confidence}` and the orchestrator gates wardrobe-anchor flow on `is_usable(threshold=0.5)` instead of the keyword regex (PRs #287/#292; `extract_garment_hint_from_text` deleted). Wardrobe vision enrichment now runs `gpt-5.2/low` with explicit 55s timeout + `max_retries=0` (PRs #275-#286), with the user-typed message threaded into the vision call for disambiguation. Catalog retrieval (both `orchestrator._get_catalog_rows()` and the catalog search agent) excludes `row_status='deleted_from_source'` rows using `or=(row_status.neq.deleted_from_source,row_status.is.null)` (PRs #288-#291). New metrics: `aura_wardrobe_enrichment_fallback_total{source}`, `aura_catalog_deleted_skipped_total{path}`, `aura_planner_anchor_confidence` (Histogram, 10 buckets); new Panel 35 — Catalog Title/Price Freshness (PRs #295/#296). UI: every turn stays visible as new turns are appended; duplicate stage indicator above the composer removed (PRs #270-#274/#294).
+**Earlier (May 6 post-PR-#101):** rater on a 6-dim 1/2/3 scale; episodic memory at the architect; source_preference→catalog default; composer-emitted card names; threshold 50.
 
 > **What this is (and isn't):** This is **reference documentation for humans
 > reading the codebase**. It describes how each intent is executed by the
@@ -339,13 +341,16 @@ User message
    │   └── STOP — do not proceed to pipeline
    └── If image attached OR previous anchor exists: proceed to step 3
 
-3. Planner Override: _message_requests_pairing() [corrects LLM misclassification]
-   ├── Demonstrative phrases ("with this", "pair this"): require attached image OR previous anchor
-   ├── Wardrobe phrases ("what goes with my"): always trigger without image
-   ├── Generic phrases ("complete the outfit"): always trigger without image
-   ├── If triggered: override intent → PAIRING_REQUEST, action → RUN_RECOMMENDATION_PIPELINE
-   ├── Extract anchor piece title from attached item or previous context
-   └── Common case: planner classifies as occasion_recommendation, override corrects to pairing_request
+3. Planner-Emitted Anchor Detection [PR #287/#292, May 12, 2026]
+   ├── The copilot planner emits `anchor_garment: {category, subtype, confidence}` as a typed
+   │   field on `CopilotResolvedContext`. No regex, no keyword list.
+   ├── `AnchorGarmentHint.is_usable(threshold=0.5)` gates wardrobe-anchor flow.
+   ├── Handles paraphrases / synonyms / non-English ("ye saree ke saath kya pehnu", "what
+   │   goes with this floral midi") without per-phrase coverage.
+   ├── If `is_usable` → orchestrator routes through the anchor path; the uploaded /
+   │   previously-attached garment becomes the synthetic anchor in Stage 2.5.
+   └── Confidence distribution is exported via the `aura_planner_anchor_confidence`
+       Prometheus histogram (10 buckets, 0.0→1.0) for tuning the threshold over time.
 
 4. Full Pipeline (same 6 stages as occasion recommendation — no short-circuit paths)
    │
@@ -955,7 +960,7 @@ Follow-up intents are detected by the copilot planner via `resolved_context.foll
 | Outfit Architect (LLM fallback) | gpt-5.2 | Same intents, but only when the engine path falls through (yaml_gap / low_confidence / needs_disambiguation / excessive_widening / ineligibility). System prompt composed at request time: 4.8K-token base + optional anchor module + optional follow-up module. | occasion_recommendation, pairing_request |
 | Visual Evaluator | gpt-5-mini (vision) | Per-candidate after try-on; sole evaluator in the system (legacy agents removed) | occasion_recommendation, pairing_request, garment_evaluation, outfit_check |
 | Style Advisor | gpt-5.5 | Open-ended style discovery + explanation against prior recommendations | style_discovery (general topic), explanation_request (when previous_recommendations exists) |
-| Wardrobe Enrichment | gpt-5-mini (vision) | On every chat-uploaded garment image + outfit decomposition | wardrobe_ingestion (silent), pairing_request (when image attached), outfit_check (async decomposition), garment_evaluation (when image attached) |
+| Wardrobe Enrichment | gpt-5.2/low (vision) — upgraded from gpt-5-mini on 2026-05-12 (PRs #275/#277/#278/#284/#285) to match attribute quality on structurally non-trivial garments. Explicit 55s `timeout=` on `.create()` (with_options didn't propagate). `max_retries=0` so the SDK doesn't burn 3 × 55s on transient errors. User-typed message threaded into vision input so the model can disambiguate (skirt vs dress). Lazy-init shared client + lazy-loaded system prompt. | On every chat-uploaded garment image + outfit decomposition | wardrobe_ingestion (silent), pairing_request (when image attached), outfit_check (async decomposition), garment_evaluation (when image attached) |
 | Try-On Service | gemini-3.1-flash-image-preview | Inline before visual evaluator for the top-3 candidates. Renders run in a `ThreadPoolExecutor` parallel batch; cache hits (per `find_tryon_image_by_garments`) short-circuit inside the thread before the Gemini call. INFO logs emit `tryon parallel batch: N/N succeeded (cold=K, cache_hit=M) in Xms wallclock` per batch. | occasion_recommendation, pairing_request, garment_evaluation |
 
 **No LLM calls** (deterministic only):

@@ -1,6 +1,6 @@
 # Intent-Driven Fashion Copilot Architecture
 
-Last updated: May 8, 2026 (header bullets only — body text below is still the older target-state aspiration)
+Last updated: May 12, 2026 (header bullets only — body text below is still the older target-state aspiration)
 
 > **⚠️ Target-state document — substantially superseded by Phase 12 + Phase 13 + Phase 4 + Phase 5.** This
 > file describes the *aspirational* architecture (web + WhatsApp,
@@ -99,6 +99,58 @@ Last updated: May 8, 2026 (header bullets only — body text below is still the 
 >    json_schema`. New `ops/scripts/audit_prompt_tokens.py` regression guard.
 >    Aggressive 14K → 5K via YAML-row injection (3.3/3.5) deferred until
 >    after Phase 4.6 eval set.
+> 13. **Planner emits structured `anchor_garment`** (May 12, 2026, PRs
+>    #287 / #292). The orchestrator no longer keyword-matches the raw user
+>    message to detect a wardrobe-anchor pairing intent. Instead, the
+>    copilot planner emits a typed `anchor_garment: {category, subtype,
+>    confidence}` block alongside its other structured signals; the
+>    orchestrator gates wardrobe-anchor flow on
+>    `anchor_garment.is_usable(threshold=0.5)`. Drops the brittle
+>    keyword extractor (`extract_garment_hint_from_text` deleted) and
+>    handles paraphrases / non-English / synonyms with no extra code.
+>    `aura_planner_anchor_confidence` (Histogram, 10 buckets 0.0→1.0)
+>    is the live tuning signal for the threshold.
+> 14. **Wardrobe vision enrichment on gpt-5.2 / low** (May 12, 2026,
+>    PRs #275 / #277 / #278 / #284 / #285). Per-item wardrobe ingestion
+>    vision call moved from gpt-5-mini to gpt-5.2/low to match attribute
+>    quality on garments with non-trivial structure. Per-request budget:
+>    explicit 55 s timeout passed to `chat.completions.create()` (the SDK's
+>    `with_options(timeout=...)` didn't propagate reliably), and
+>    `max_retries=0` so the SDK doesn't burn 3 × 55 s on transient errors.
+>    Lazy-init shared OpenAI client + lazy-loaded system prompt via
+>    double-checked locking. Vision input is now threaded with the user's
+>    typed message so the model can disambiguate ("what goes with this
+>    skirt?" + photo → skirt, not dress). Empty-description response no
+>    longer leaks into the wardrobe `notes` field.
+> 15. **`row_status='deleted_from_source'` filtered out of recommendations**
+>    (May 12, 2026, PRs #288 / #291). Catalog-recovery pass (one-time
+>    backfill of real merchant titles + prices via Shopify `.json`
+>    endpoints + JSON-LD parsing on 14k rows) tagged 1,064 products as
+>    `deleted_from_source` where the merchant no longer serves the URL.
+>    Both retrieval paths (`orchestrator._get_catalog_rows()` and the
+>    catalog search agent) exclude those rows. Filter uses Postgrest
+>    `or=(row_status.neq.deleted_from_source,row_status.is.null)` to keep
+>    NULL-status rows in scope (Postgrest `neq` excludes NULL otherwise).
+>    `aura_catalog_deleted_skipped_total{path}` counts skips on each path.
+>    The shared constant `ROW_STATUS_DELETED_FROM_SOURCE` lives in
+>    `catalog/retrieval/document_builder.py`.
+> 16. **Observability waves 1 + 2 shipped** (May 12, 2026, PRs #295 / #296).
+>    New metrics: `aura_wardrobe_enrichment_fallback_total{source}` (labels:
+>    `vision_ok` / `planner_anchor` / `none`), `aura_catalog_deleted_skipped_total{path}`
+>    (labels: `orchestrator_rows` / `catalog_search`),
+>    `aura_planner_anchor_confidence` (Histogram, 10 buckets). New Panel 35
+>    — Catalog Title/Price Freshness — watches for title/price regressions
+>    on `catalog_enriched` ingestion, split by `row_status` so the
+>    intentionally-empty deleted_from_source rows don't pollute the
+>    signal.
+> 17. **UI: persistent multi-turn stacking + composer/stage cleanup**
+>    (May 11–12, 2026, PRs #270-#274 / #294). Every turn (user query card
+>    + stylist reply + outfit cards) stays visible as new turns are
+>    appended; previous results no longer get wiped when a follow-up is
+>    asked. Removed the "catalog only · 3 looks" context line and
+>    follow-up suggestion chips below outfits, and dropped the duplicate
+>    stage indicator above the composer (the per-turn stage line is
+>    authoritative).
 >
 > For the authoritative "what is running right now" view, always defer to
 > `docs/APPLICATION_SPECS.md` § Live System Reference. When this
