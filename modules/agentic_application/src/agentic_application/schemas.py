@@ -441,6 +441,26 @@ class OutfitCard(BaseModel):
     tryon_image: Optional[str] = None  # data URL of virtual try-on image
 
 
+class AnchorGarmentHint(BaseModel):
+    """Planner-extracted classification of the garment the user is
+    pairing-around. Populated from the user's natural-language reference
+    (owned piece, attached image they describe, prior-turn anchor). Used
+    by the orchestrator as the wardrobe anchor when the vision pipeline
+    can't classify the image (timeout / null category). Replaces the
+    earlier keyword-regex `extract_garment_hint_from_text` fallback —
+    the LLM handles paraphrases, synonyms, and non-English wording that
+    the regex couldn't.
+
+    `category` is enum-constrained to the 6 vision-schema GarmentCategory
+    values so role-routing stays aligned with the catalog. `subtype` is
+    free-text so the model can return "lehenga", "midi", or any specific
+    name even when it's outside the catalog enum.
+    """
+    category: str = ""  # "" or top|bottom|outerwear|one_piece|set|accessory
+    subtype: str = ""   # free-text garment name (e.g. "skirt", "lehenga", "midi dress")
+    confidence: float = 0.0
+
+
 class CopilotResolvedContext(BaseModel):
     occasion_signal: Optional[str] = None
     formality_hint: Optional[str] = None
@@ -449,6 +469,11 @@ class CopilotResolvedContext(BaseModel):
     is_followup: bool = False
     followup_intent: Optional[str] = None
     style_goal: str = ""
+    # Phase 6 (May 11 2026): planner-extracted anchor garment. Populated
+    # from natural language so the orchestrator has a usable anchor even
+    # when vision enrichment times out or returns nulls. Replaces the
+    # earlier keyword-regex fallback in user/service.py.
+    anchor_garment: AnchorGarmentHint = Field(default_factory=AnchorGarmentHint)
     # Phase 5x (May 8 2026): explicit user preferences along open
     # catalog-attribute axes (EmbellishmentLevel, ContrastLevel,
     # NecklineType, ...). See LiveContext.extracted_preferences for
