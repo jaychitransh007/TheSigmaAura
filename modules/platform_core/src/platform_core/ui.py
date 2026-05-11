@@ -563,13 +563,6 @@ def get_web_ui_html(
       [data-intent-section] { animation: none !important; transition: none !important; }
     }
 
-    /* Follow-up chips below the carousel */
-    .discovery-followups {
-      max-width: 1080px;
-      margin: 0 auto;
-      padding: 0 36px 24px;
-    }
-
     /* Outfits tab content container */
     .outfits-content {
       max-width: 1080px;
@@ -630,30 +623,6 @@ def get_web_ui_html(
     @media (max-width: 640px) {
       .welcome-prompts { gap: 18px 24px; }
     }
-
-    /* Follow-up suggestions — Confident Luxe: uppercase bucket headers, hairline chips */
-    .followup-groups { margin: 20px 0 8px; padding-left: 22px; }
-    .followup-group { margin-bottom: 14px; }
-    .followup-group:last-child { margin-bottom: 0; }
-    .followup-group strong {
-      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;
-      color: var(--ink-4); display: block; margin-bottom: 10px;
-    }
-    .followup-row { display: flex; flex-wrap: wrap; gap: 8px; }
-    .followup-chip {
-      appearance: none;
-      background: transparent;
-      border: 1px solid var(--line);
-      border-radius: var(--radius-full);
-      padding: 7px 14px;
-      font-family: inherit;
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--ink-2);
-      cursor: pointer;
-      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
-    }
-    .followup-chip:hover { border-color: var(--ink); color: var(--ink); }
 
     /* Stage progress — stylist voice, italic, quiet */
     .stage-bar {
@@ -1986,7 +1955,6 @@ def get_web_ui_html(
       </div>
     </div>
     <div id="discoveryResultArea" class="discovery-result"></div>
-    <div id="discoveryFollowups" class="discovery-followups"></div>
     <div class="composer-error" id="composerError" style="max-width:680px;margin:0 auto;padding:0 32px;"></div>
   </div>
   <div class="home-input-bar" id="discoveryTop">
@@ -2329,7 +2297,6 @@ def get_web_ui_html(
   var discoveryTop = document.getElementById("discoveryTop");
   var discoveryThinking = document.getElementById("discoveryThinking");
   var discoveryResultArea = document.getElementById("discoveryResultArea");
-  var discoveryFollowups = document.getElementById("discoveryFollowups");
   var discoveryWelcome = document.getElementById("discoveryWelcome");
   var homeScroll = document.getElementById("homeScroll");
   var stageBar = discoveryThinking;
@@ -3394,50 +3361,6 @@ def get_web_ui_html(
     }}
   }}
 
-  function renderDiscoveryFollowups(suggestions, structuredGroups, container) {{
-    container.innerHTML = "";
-    if ((!suggestions || !suggestions.length) && (!structuredGroups || !structuredGroups.length)) return;
-    var wrap = document.createElement("div");
-    wrap.className = "followup-groups";
-    var groupsToRender = [];
-    if (structuredGroups && structuredGroups.length) {{
-      structuredGroups.forEach(function(g) {{
-        var items = (g && g.suggestions) || [];
-        if (items.length) groupsToRender.push({{ label: g.label || "Suggestions", items: items }});
-      }});
-    }} else {{
-      var grouped = {{ "Improve It": [], "Show Alternatives": [], "Explain Why": [], "Shop The Gap": [], "Save For Later": [] }};
-      function bucketFor(text) {{
-        var n = String(text || "").toLowerCase();
-        if (n.indexOf("explain") !== -1 || n.indexOf("why") !== -1) return "Explain Why";
-        if (n.indexOf("save") !== -1 || n.indexOf("later") !== -1) return "Save For Later";
-        if (n.indexOf("catalog") !== -1 || n.indexOf("shop") !== -1 || n.indexOf("buy") !== -1) return "Shop The Gap";
-        if (n.indexOf("more") !== -1 || n.indexOf("different") !== -1 || n.indexOf("alternative") !== -1) return "Show Alternatives";
-        return "Improve It";
-      }}
-      for (var i = 0; i < suggestions.length; i++) grouped[bucketFor(suggestions[i])].push(suggestions[i]);
-      Object.entries(grouped).forEach(function(entry) {{
-        if (entry[1].length) groupsToRender.push({{ label: entry[0], items: entry[1] }});
-      }});
-    }}
-    groupsToRender.forEach(function(g) {{
-      var section = document.createElement("div"); section.className = "followup-group";
-      var title = document.createElement("strong");
-      title.textContent = String(g.label || "").toUpperCase();
-      var row = document.createElement("div"); row.className = "followup-row";
-      g.items.forEach(function(text) {{
-        var btn = document.createElement("button");
-        btn.className = "followup-chip";
-        btn.type = "button";
-        btn.textContent = text;
-        btn.addEventListener("click", function() {{ messageEl.value = text; container.innerHTML = ""; _isFollowUp = true; send(); }});
-        row.appendChild(btn);
-      }});
-      section.appendChild(title); section.appendChild(row); wrap.appendChild(section);
-    }});
-    container.appendChild(wrap);
-  }}
-
 
   // ══════════════════════════════════════════════
   // SEND — Discovery surface flow (Phase 15)
@@ -3479,7 +3402,6 @@ def get_web_ui_html(
       conversationId = "";
     }}
     _iterationCount += 1;
-    if (discoveryFollowups) discoveryFollowups.innerHTML = "";
 
     // Capture ALL pending attachment state synchronously BEFORE any async work.
     // This prevents a concurrent send()'s clearImagePreview() from wiping
@@ -3589,28 +3511,12 @@ def get_web_ui_html(
           iterLabel.textContent = "Iteration " + _iterationCount;
           discoveryResultArea.appendChild(iterLabel);
         }}
-        // Context summary
-        var occasion = __md.occasion || "";
-        var source = __md.answer_source || "";
-        var contextParts = [];
-        if (occasion) contextParts.push(occasion.replace(/_/g, " "));
-        if (source) contextParts.push(source.replace(/_/g, " "));
-        contextParts.push(outfits.length + (outfits.length === 1 ? " look" : " looks"));
-        var ctxEl = document.createElement("div");
-        ctxEl.className = "result-context";
-        ctxEl.textContent = contextParts.join(" \u00B7 ");
-        discoveryResultArea.appendChild(ctxEl);
 
         var carouselContainer = document.createElement("div");
         carouselContainer.className = "discovery-result";
         carouselContainer.style.padding = "0 0 16px";
         discoveryResultArea.appendChild(carouselContainer);
         renderPdpCarousel(outfits, convId, __md, carouselContainer);
-      }}
-
-      // Follow-up chips — clicking them sets _isFollowUp = true
-      if (discoveryFollowups) {{
-        renderDiscoveryFollowups(result.follow_up_suggestions || [], __groups, discoveryFollowups);
       }}
 
       // Anchor the just-finished iteration so the user's query card
