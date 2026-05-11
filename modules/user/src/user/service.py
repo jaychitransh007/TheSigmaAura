@@ -600,65 +600,63 @@ class OnboardingService:
             "formality_level": formality_level,
             "occasion_fit": occasion_fit,
         }
-        # Phase 12D: retry the 46-attribute vision enrichment once on
-        # transient failure (rate limit, network blip, malformed response).
-        # If both attempts fail, persist the row with a clear failure
-        # marker so the orchestrator can detect the empty-attributes state
-        # and surface a clarification to the user instead of pretending the
-        # save succeeded with usable data.
+        # Single-attempt vision enrichment. The 2-attempt retry was
+        # introduced for gpt-5-mini at minimal effort (~14s per call),
+        # where doubling on transient failures was cheap. With the
+        # gpt-5.5/high upgrade a single call is ~25-30s and two attempts
+        # blew past the orchestrator's 60s enrichment-future budget,
+        # making the wardrobe row fail to save even when the model
+        # eventually succeeded. Fail fast — the orchestrator already
+        # handles the empty-attributes case by surfacing a clarification.
         enrichment_status = "ok"
         enrichment_error_message = ""
         last_exc: Optional[Exception] = None
-        for attempt in (1, 2):
-            try:
-                extracted = infer_wardrobe_catalog_attributes(
-                    image_ref=str(dest),
-                    title=title,
-                    description=description,
-                    garment_category=garment_category,
-                    garment_subtype=garment_subtype,
-                    primary_color=primary_color,
-                    secondary_color=secondary_color,
-                    pattern_type=pattern_type,
-                    formality_level=formality_level,
-                    occasion_fit=occasion_fit,
-                    brand=brand,
-                    notes=notes,
-                )
-                metadata_json["catalog_attribute_extraction_status"] = "ok"
-                metadata_json["catalog_attributes"] = dict(extracted.get("attributes") or {})
-                metadata_json["catalog_attribute_model"] = str(extracted.get("model") or "")
-                metadata_json["catalog_attribute_extracted_at"] = datetime.now(timezone.utc).isoformat()
-                metadata_json["catalog_attribute_attempts"] = attempt
-                metadata_json["user_supplied_fields"] = dict(projected)
-                projected = self._project_catalog_attributes(
-                    extracted=extracted,
-                    title=title,
-                    description=description,
-                    garment_category=garment_category,
-                    garment_subtype=garment_subtype,
-                    primary_color=primary_color,
-                    secondary_color=secondary_color,
-                    pattern_type=pattern_type,
-                    formality_level=formality_level,
-                    occasion_fit=occasion_fit,
-                )
-                last_exc = None
-                break
-            except Exception as exc:
-                last_exc = exc
-                _log.warning(
-                    "Wardrobe enrichment attempt %d failed for %s: %s",
-                    attempt,
-                    user_id,
-                    exc,
-                )
+        try:
+            extracted = infer_wardrobe_catalog_attributes(
+                image_ref=str(dest),
+                title=title,
+                description=description,
+                garment_category=garment_category,
+                garment_subtype=garment_subtype,
+                primary_color=primary_color,
+                secondary_color=secondary_color,
+                pattern_type=pattern_type,
+                formality_level=formality_level,
+                occasion_fit=occasion_fit,
+                brand=brand,
+                notes=notes,
+            )
+            metadata_json["catalog_attribute_extraction_status"] = "ok"
+            metadata_json["catalog_attributes"] = dict(extracted.get("attributes") or {})
+            metadata_json["catalog_attribute_model"] = str(extracted.get("model") or "")
+            metadata_json["catalog_attribute_extracted_at"] = datetime.now(timezone.utc).isoformat()
+            metadata_json["catalog_attribute_attempts"] = 1
+            metadata_json["user_supplied_fields"] = dict(projected)
+            projected = self._project_catalog_attributes(
+                extracted=extracted,
+                title=title,
+                description=description,
+                garment_category=garment_category,
+                garment_subtype=garment_subtype,
+                primary_color=primary_color,
+                secondary_color=secondary_color,
+                pattern_type=pattern_type,
+                formality_level=formality_level,
+                occasion_fit=occasion_fit,
+            )
+        except Exception as exc:
+            last_exc = exc
+            _log.warning(
+                "Wardrobe enrichment failed for %s: %s",
+                user_id,
+                exc,
+            )
         if last_exc is not None:
             enrichment_status = "failed"
             enrichment_error_message = str(last_exc)
             metadata_json["catalog_attribute_extraction_status"] = "failed"
             metadata_json["catalog_attribute_error"] = enrichment_error_message
-            metadata_json["catalog_attribute_attempts"] = 2
+            metadata_json["catalog_attribute_attempts"] = 1
 
         # Phase 12D follow-up (April 9 2026): pull the explicit
         # non-garment detection signals out of the enrichment response
