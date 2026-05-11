@@ -1,6 +1,6 @@
 alert: aura_architect_p95_latency_high
 description: |
-  Outfit architect (gpt-5.4) p95 latency above 10s for 15 minutes.
+  Outfit architect (gpt-5.2 low-effort) p95 latency above 10s for 15 minutes.
   Indicates the LLM provider is slow or the prompt/payload size has
   grown unexpectedly.
 expr: |

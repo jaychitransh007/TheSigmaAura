@@ -36,15 +36,21 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 # Cost estimates (USD per 1M tokens) — May 2026 lineup. Approximate;
 # the orchestrator's cost_estimator is the source of truth for billing,
 # this script is read-only and only needs ballpark numbers for ops.
+#
+# gpt-5.5 was briefly used for wardrobe enrichment (May 11 2026,
+# PR #275 → reverted in PR #284). Historical turns in that window
+# need an entry here or their cost rolls up to $0.
 _COST_PER_M_INPUT: Dict[str, float] = {
     "gpt-5.2": 2.50,
     "gpt-5.4": 2.50,
+    "gpt-5.5": 5.00,  # premium tier; placeholder until billing console confirms
     "gpt-5-mini": 0.50,
     "text-embedding-3-small": 0.02,
 }
 _COST_PER_M_OUTPUT: Dict[str, float] = {
     "gpt-5.2": 10.00,
     "gpt-5.4": 10.00,
+    "gpt-5.5": 20.00,  # premium tier; placeholder until billing console confirms
     "gpt-5-mini": 2.00,
     "text-embedding-3-small": 0.0,
 }
