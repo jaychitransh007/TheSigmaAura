@@ -522,6 +522,15 @@ pairing_rules:
         description: |
           Multiple sheen surfaces require hierarchy:
           one dominant sheen, one supporting matte / soft texture.
+        # Engine matcher: count items whose fabric_texture is one of
+        # the canonical sheen-bearing surfaces (sheen, metallic,
+        # embroidered — hardcoded in pairing.py:_SHEEN_TEXTURES). The
+        # `value` field below sets the cap; outside the bridal
+        # exception, exceeding it triggers a soft violation. Bridal
+        # contexts (formality=ceremonial AND occasion ∈ scale_balance
+        # bridal trigger list) bypass — multiple sheen surfaces are
+        # the cultural norm there.
+        value: 1
         notes: |
           Satin top + sequinned skirt + metallic embroidery + glossy
           heels quickly becomes visually noisy outside bridalwear.
