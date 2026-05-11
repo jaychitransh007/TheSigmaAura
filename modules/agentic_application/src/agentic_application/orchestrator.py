@@ -1984,7 +1984,15 @@ class AgenticOrchestrator:
         # 14-17s — overlap saves 3-7s per image-attached turn.
         if _enrichment_future is not None:
             try:
-                _maybe_attached = _enrichment_future.result(timeout=45)
+                # 60s window matches the inner OpenAI per-request
+                # timeout (55s) + retry/network headroom. The previous
+                # 45s budget was calibrated for gpt-5-mini at minimal
+                # effort (~14s/call); after the gpt-5.5/high upgrade
+                # in PR #275 a single call genuinely runs ~25-30s and
+                # the orchestrator was giving up before the background
+                # thread finished — leaving wardrobe rows unsaved
+                # despite the model eventually succeeding.
+                _maybe_attached = _enrichment_future.result(timeout=60)
             except Exception:
                 _log.exception("Wardrobe enrichment thread failed")
                 _maybe_attached = None

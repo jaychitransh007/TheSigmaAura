@@ -111,8 +111,15 @@ def infer_wardrobe_catalog_attributes(
     # drop the item, mislabeled titles, wrong role assignment — is high.
     model: str = "gpt-5.5",
     reasoning_effort: str = "high",
+    # Bound the OpenAI call so a slow / hung response can't outlive the
+    # orchestrator's enrichment-future budget. gpt-5.5 high on a
+    # vision input is empirically ~25-30s; 55s gives 2x headroom and
+    # ensures we fail fast inside the orchestrator's 60s window
+    # instead of leaving a background thread eating tokens after the
+    # caller has given up.
+    request_timeout_seconds: float = 55.0,
 ) -> Dict[str, Any]:
-    client = OpenAI(api_key=get_api_key())
+    client = OpenAI(api_key=get_api_key(), timeout=request_timeout_seconds)
     image_url = _image_to_input_url(image_ref)
     mime_type, _ = mimetypes.guess_type(str(image_ref))
     mime_type = mime_type or "image/jpeg"
