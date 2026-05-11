@@ -6,7 +6,7 @@ This file lists what's open **now**. Shipped work history lives in `docs/RELEASE
 
 ## Worth focusing on (today)
 
-**Pure engineering work: none.** The May 2026 session closed the implement-today queue (PRs #246-#264). One trigger-driven item remains — no work needed until the trigger fires:
+**Pure engineering work: none.** The May 11–12 wardrobe / UI / catalog / planner / observability wave (PRs #270-#296) closed every implement-today item we had open. One trigger-driven item remains — no work needed until the trigger fires:
 
 ### 1. Masculine top coverage — largely RESOLVED by the May 2026 re-enrichment
 

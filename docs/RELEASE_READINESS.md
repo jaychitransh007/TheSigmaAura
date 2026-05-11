@@ -168,6 +168,68 @@ These are explicit non-goals — do not block the release on them:
 
 _Migrated from `CURRENT_STATE.md`. The May-1 "Open Items Plan" — every item now ✅ shipped — is preserved here as a record of work landed during the platform pass. For ongoing release readiness criteria see the Gates above._
 
+## May 11–12, 2026 — UI multi-turn stacking + wardrobe vision overhaul + catalog title/price recovery + planner anchor + observability waves 1-2
+
+A 27-PR sweep across UI, wardrobe ingestion, catalog data quality, planner architecture, and observability. Grouped by area:
+
+### UI — persistent multi-turn stacking + cleanup (PRs #270-#274, #294)
+
+| PR | Title | Net change |
+|---|---|---|
+| #270 | Persistent user-query card + `tool_traces` status constraint fix | The user's typed message now persists as a chat card alongside the stylist's response; previously it was replaced when the response rendered. Also fixed the `tool_traces` 400 (`status='fallback'` violated the table's `('ok','error')` CHECK constraint — fallback now goes into `output_json` with `status='ok'`). |
+| #271 | Drop context line + follow-up chips from live result | Removed the "CATALOG ONLY · 3 LOOKS" header and the follow-up suggestion chips below outfit cards. |
+| #272 | Stack every turn in one session, never wipe prior results | New turns append below previous turns; the entire conversation is scrollable within a session. `setStage()` writes only to the per-turn `pStage` element (not a global one). |
+| #273 | Drop dead query-preview-done class (review of #270) | — |
+| #274 | Pass preview refs directly, drop global ids (review of #272) | — |
+| #294 | Drop duplicate stage indicator from above the composer | The fixed stage bar above the input was redundant with the per-turn stage line. Per-turn is now authoritative. |
+
+### Wardrobe vision enrichment — model + budget + threading + disambiguation (PRs #275-#286)
+
+| PR | Title | Net change |
+|---|---|---|
+| #275 | Upgrade vision model, stop description leak, fix role exclusion | Initial swap of wardrobe-ingestion vision from `gpt-5-mini` to a larger model. Empty-description response no longer leaks into the wardrobe `notes` field. `resolve_wardrobe_role()` consolidated into a module-scope single source of truth; role-filter exclusion is no longer silent. |
+| #276 | Consolidate role mapping to one source of truth (review of #275) | 5 canonical-subtype constants (`_ROLE_ONE_PIECE_SUBTYPES`, `_ROLE_TOP_SUBTYPES`, …); two-tier role resolution — proper enum first, fuzzy subtype fallback second. |
+| #277 | Widen latency budget for vision enrichment | Per-request budget raised; the user-facing "Saving…" state was hanging because the SDK was running over the previous budget. |
+| #278 | Disable OpenAI SDK retries to honor the timeout (review of #277) | `max_retries=0` on the OpenAI client. Default 2 was silently undoing the timeout (3 × 55s ≈ 165s). |
+| #279 | Thread user text to vision, forbid null `GarmentCategory` | Vision call now receives the user's typed message alongside the image so it can disambiguate "what goes with this skirt?" + photo → skirt, not dress. `GarmentCategory` is no longer nullable in the schema. |
+| #280 | Reuse module-level OpenAI client (review of #279) | One shared `OpenAI()` instance instead of per-call construction. |
+| #281 | Re-validate post-enrichment attrs, cap text_hint length (review of #279) | Post-enrichment validation rejects rows that didn't satisfy the schema; `text_hint` capped to prevent prompt-bomb. |
+| #282 | Lazy-init shared OpenAI client (review of #280) | Double-checked locking — the shared client is constructed on first use, not at import. |
+| #283 | Text-based garment-type fallback when vision can't anchor | If vision can't anchor the garment, fall back to plural-aware text-hint extraction over the user message before giving up. |
+| #284 | Switch vision model to `gpt-5.2/low` | Final model choice. Gpt-5.5/high was 70-110s on a single item; gpt-5.2/low completes in 12-25s with no quality loss on the 57-attribute schema. The locked-in sweet spot for this stage. |
+| #285 | Thread-safe lazy init + lazy system prompt (review of #282) | Both `_shared_client()` and `_system_prompt()` use double-checked locking. Mypy-clean (Optional cache + non-Optional return refactored to fast-path early return). |
+| #286 | Match plural garment names in text-hint extractor (review of #283) | "skirts" / "blazers" / "sarees" now match the same subtype lookups as their singulars. |
+
+### Planner — structured `anchor_garment` replaces keyword regex (PRs #287, #292)
+
+| PR | Title | Net change |
+|---|---|---|
+| #287 | Structured `anchor_garment` extraction; drop keyword regex | The planner emits a typed `anchor_garment: {category, subtype, confidence}` block. New `AnchorGarmentHint.is_usable(threshold)` method (explicit threshold, no default). `_PLANNER_ANCHOR_CONFIDENCE_THRESHOLD = 0.5` in the orchestrator. `extract_garment_hint_from_text` deleted. `_PLAN_JSON_SCHEMA` extended (category enum, subtype string, confidence number). |
+| #292 | Ship the `anchor_garment` prompt instructions (missed in #287) | The squash for #287 didn't include `prompt/copilot_planner.md` (the file was edited in the main repo's working tree, not the worktree where commits were made). Recovered the 11-line instruction block here, with examples (lehenga, midi, Hindi). `audit_prompt_tokens.py` budget bumped to 6000 to fit the new instructions. |
+
+### Catalog — title/price recovery + `deleted_from_source` filter (PRs #288-#291, #293)
+
+| Item | Detail |
+|---|---|
+| One-time backfill (May 11) | Recovered ~13,178 real merchant titles + 13,177 real prices on the 14,242-row catalog via Shopify `.json` endpoints (offduty, showoffff, vastramay, powerlook, campussutra, taruni, nicobar, fawn24) and HTML JSON-LD parsing (koskii, virgio). 1,064 rows where the merchant no longer serves the URL were tagged `row_status='deleted_from_source'` rather than dropped. **No new enrichment** — this only touched the `title` and `price` columns. |
+| #288 | Exclude `deleted_from_source` from recommendations | Both retrieval paths (`orchestrator._get_catalog_rows()` and the catalog search agent) skip rows tagged `deleted_from_source`. Filter uses Postgrest `or=(row_status.neq.deleted_from_source,row_status.is.null)` because bare `neq` excludes NULL-status rows too. |
+| #289 | Review feedback for PRs #284 / #285 / #287 | — |
+| #290 | Review feedback for PRs #288 / #289 | — |
+| #291 | Extract `deleted_from_source` to shared constant (review of #290) | `ROW_STATUS_DELETED_FROM_SOURCE` constant in `catalog/retrieval/document_builder.py`. |
+| #293 | Prefer `enriched.price` over stale `metadata.price="Unknown"` | The orchestrator was reading `metadata.price` first, which carried stale "Unknown" text on some rows. Switched to enriched-price-first with explicit unknown-string canonicalization. |
+
+### Observability — waves 1 + 2 (PRs #295, #296)
+
+| PR | Title | Net change |
+|---|---|---|
+| #295 | Wave-1 obs review after wardrobe / catalog churn | First-pass audit of the metric surface after the wardrobe / catalog / planner waves; identified gaps for wave 2. |
+| #296 | Wave-2 — new metrics + freshness panel | Three new Prometheus instruments: `aura_wardrobe_enrichment_fallback_total{source}` (labels: `vision_ok` / `planner_anchor` / `none`); `aura_catalog_deleted_skipped_total{path}` (labels: `orchestrator_rows` / `catalog_search`); `aura_planner_anchor_confidence` (Histogram, 10 buckets 0.0→1.0). New Panel 35 — Catalog Title/Price Freshness — watches for title/price regressions on the `catalog_enriched` ingestion stream, split by `row_status` so the intentionally-empty `deleted_from_source` rows don't pollute the signal. SQL auto-extracted to `ops/dashboards/panel_35_catalog_title_price_freshness.sql`. |
+
+**Catalog state at end of May-12 push:** still **frozen at 14,242 garment-only rows** under the no-bulk-re-enrichment policy. Title + price columns refreshed (one-time, allowed under policy because this is data recovery, not vision re-enrichment). 1,064 of those rows now visibly tagged `deleted_from_source` and excluded from recommendations.
+
+**Still gated on humans:**
+- Phase 4.6 — eval-set curation (100-500 hand-curated queries) remains the blocker for composer engine flag-on validation, threshold calibration, and the borderline Wave A cuts.
+
 ## May 9–11, 2026 — Catalog re-enrichment + Phase 4.3 hard/soft + pairing matchers + observability close-out
 
 Catalog re-enrichment (Step 2b) ran on the v3 + Path B axis set, plus the engineering work that depended on it — Phase 4.3 hard/soft yaml_loader, four new composer-side pairing matchers, the bodyframe / occasion existing-vocab edits, the Phase 2 Wave A ontology-surgery audit, and observability follow-ups so the new rules are diagnosable in production. The no-bulk-re-enrichment policy was also codified here.
