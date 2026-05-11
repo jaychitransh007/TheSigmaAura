@@ -278,6 +278,23 @@ aura_composer_rule_exception_applied_total = Counter(
 )
 
 
+# May 11 2026 — planner-cache decision counter. Ticks once per
+# orchestrator turn that consulted the planner_output_cache, labelled
+# by outcome:
+#   - hit:   cached CopilotPlanResult was served; planner LLM skipped
+#   - miss:  no cache entry; planner LLM ran normally and the result
+#            was written to the cache
+#   - error: cache lookup threw (treated as miss, but tracked
+#            separately so a degraded-DB spike doesn't masquerade as
+#            a low hit-rate trend)
+# Cardinality: 3 series, hard-bounded.
+aura_planner_cache_decision_total = Counter(
+    "aura_planner_cache_decision_total",
+    "copilot_planner output-cache decisions per turn.",
+    labelnames=("outcome",),
+)
+
+
 # May 8 2026 — try-on flag state counter (PR #185 observability gap).
 # Ticks once per turn that reaches the try-on gate, labelled by whether
 # the AURA_TRYON_ENABLED flag was on. Without this, "tryon stage slow"
