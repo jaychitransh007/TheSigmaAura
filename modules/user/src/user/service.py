@@ -160,11 +160,13 @@ def extract_garment_hint_from_text(message: str) -> Optional[dict[str, str]]:
     text = str(message).lower().replace("-", " ").replace("_", " ")
     for category, subtypes in _ROLE_BUCKETS_BY_CATEGORY:
         for subtype in sorted(subtypes, key=len, reverse=True):
-            # \b word-boundary so "skirt?" / "skirt." / "skirt," all hit
-            # but "miniskirt" doesn't and "blazers" matches "blazer" only
-            # when the trailing 's' isn't part of the lexicon — keep
-            # \b-only to avoid false plurals here.
-            pattern = r"\b" + re.escape(subtype) + r"\b"
+            # \b ... (s|es)? \b accepts both singular and the two common
+            # English plural shapes (skirt/skirts, dress/dresses), since
+            # users phrase pairing requests both ways ("what goes with
+            # these jeans" vs "this skirt"). The `?` keeps the singular
+            # match still working; the trailing \b prevents matching
+            # mid-word ("blazered", "skirting").
+            pattern = r"\b" + re.escape(subtype) + r"(?:s|es)?\b"
             if re.search(pattern, text):
                 return {"garment_category": category, "garment_subtype": subtype}
     return None
