@@ -50,13 +50,23 @@ occasion:
       OccasionFit:           [very_casual, festive, traditional, party, active]
       EmbellishmentLevel:    [moderate, heavy, statement]
       EmbellishmentType:     [sequins, mirror_work, distressing, studs]
+    # Phase 4.3 (stylist patch): metallic / embroidered FabricTexture
+    # was previously a hard avoid for office settings. The stylist
+    # downgraded this — subtle metallic thread or tonal embroidery on
+    # a tailored kurta or saree blouse is increasingly common in Indian
+    # MNC corporate styling (Indo-Western fusion). Soft penalty rather
+    # than retrieval-time filter; bandhgala-with-zari and similar
+    # office-appropriate Indo-Western pieces stop being rejected for
+    # texture alone.
+    soft_avoid:
       FabricTexture:         [metallic, embroidered]
     notes: >
       MNC corporate floor — most Western-formal of the work occasions.
       Indo-Western fusion accepted: cigarette pant + tucked silk shirt
       + bandi, tailored shirt + chinos. Cotton saree (tant, mul) with
-      crisp pleats and a structured blouse. No zardozi, no sequins,
-      not even subtle ones.
+      crisp pleats and a structured blouse. Loud zardozi and sequins
+      still inappropriate; subtle metallic thread and tonal embroidery
+      now pass as soft preferences rather than hard rejections.
 
   daily_office_indian_corp:
     archetype: work_mode
