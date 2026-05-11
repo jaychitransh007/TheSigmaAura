@@ -203,16 +203,31 @@ class OnboardingService:
 
     @staticmethod
     def _wardrobe_role_of(item: dict[str, Any]) -> str:
-        category = OnboardingService._clean_attr(item.get("garment_category") or item.get("garment_subtype")).lower()
-        if category in {"dress", "jumpsuit", "co-ord", "coord", "suit"}:
-            return "one_piece"
-        if category in {"top", "shirt", "tshirt", "t-shirt", "tee", "blouse", "knitwear", "sweater"}:
+        # Two-tier resolution mirroring AgenticOrchestrator._wardrobe_role_of:
+        # trust the 6-value GarmentCategory enum when it's set to a valid
+        # value; otherwise fall back to fuzzy subtype matching across both
+        # fields so legacy / hand-populated rows (which sometimes have
+        # garment_category="dress" — a subtype string) still route correctly.
+        category = OnboardingService._clean_attr(item.get("garment_category")).lower()
+        subtype = OnboardingService._clean_attr(item.get("garment_subtype")).lower()
+        if category == "top":
             return "top"
-        if category in {"blazer", "jacket", "coat", "cardigan", "outerwear", "overshirt"}:
-            return "outerwear"
-        if category in {"bottom", "trouser", "trousers", "pants", "jeans", "skirt", "shorts"}:
+        if category == "bottom":
             return "bottom"
-        if category in {"shoe", "shoes", "sneaker", "sneakers", "loafer", "loafers", "heel", "heels", "boot", "boots", "sandal", "sandals"}:
+        if category == "outerwear":
+            return "outerwear"
+        if category == "one_piece" or category == "set":
+            return "one_piece"
+        candidates = {category, subtype}
+        if candidates & {"dress", "gown", "jumpsuit", "playsuit", "suit", "co-ord", "coord", "kaftan"}:
+            return "one_piece"
+        if candidates & {"shirt", "tshirt", "t-shirt", "tee", "blouse", "kurta", "kurti", "sweater", "sweatshirt", "hoodie", "knitwear"}:
+            return "top"
+        if candidates & {"blazer", "jacket", "coat", "cardigan", "shrug", "poncho", "shacket", "overshirt"}:
+            return "outerwear"
+        if candidates & {"trouser", "trousers", "pants", "jeans", "palazzo", "skirt", "shorts", "track_pants", "leggings", "dungarees"}:
+            return "bottom"
+        if candidates & {"shoe", "shoes", "sneaker", "sneakers", "loafer", "loafers", "heel", "heels", "boot", "boots", "sandal", "sandals"}:
             return "shoe"
         return "other"
 

@@ -1588,7 +1588,7 @@ class AgenticOrchestrator:
         _enrichment_t0: Optional[float] = None
         _attachment_source_pending: Optional[str] = None
         if image_data:
-            trace_start("wardrobe_enrichment", model="gpt-5-mini", input_summary=f"image_upload, message={message[:80]}")
+            trace_start("wardrobe_enrichment", model="gpt-5.5", input_summary=f"image_upload, message={message[:80]}")
             _enrichment_t0 = time.monotonic()
             # Per-turn executor — submitted task captures all args by
             # value, so the executor can be shut down right after
@@ -1598,11 +1598,19 @@ class AgenticOrchestrator:
             _enrichment_executor = ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="wardrobe_enrich"
             )
+            # Don't pass the chat message as the wardrobe `description`:
+            # for image-attached turns the message is usually the synthetic
+            # "What goes with this? Show me pairing options." fallback the
+            # UI fills in when the user attaches a photo without typing.
+            # Letting it bleed into the wardrobe row's description leaves
+            # nonsense like "What goes with this" sitting on the saved item
+            # forever. The vision pipeline writes its own description from
+            # the extracted garment attributes when this is blank.
             _enrichment_future = _enrichment_executor.submit(
                 self.onboarding_gateway.save_uploaded_chat_wardrobe_item,
                 user_id=external_user_id,
                 image_data=image_data,
-                description=message.strip(),
+                description="",
                 notes="Captured from chat image attachment.",
                 persist=False,
             )
@@ -4130,12 +4138,27 @@ class AgenticOrchestrator:
         win for unrelated occasions like ``date_night``.
         """
         def role_of(item: Dict[str, Any]) -> str:
-            category = str(item.get("garment_category") or item.get("garment_subtype") or "").strip().lower()
-            if category in {"dress", "jumpsuit", "suit"}:
-                return "one_piece"
-            if category in {"top", "shirt", "blouse", "blazer", "jacket", "coat", "cardigan", "outerwear"}:
+            # Mirror AgenticOrchestrator._wardrobe_role_of two-tier
+            # resolution: trust valid GarmentCategory enum values, fall
+            # back to fuzzy subtype matching for legacy/loose data.
+            category = str(item.get("garment_category") or "").strip().lower()
+            subtype = str(item.get("garment_subtype") or "").strip().lower()
+            if category == "top":
                 return "top"
-            if category in {"bottom", "trousers", "pants", "jeans", "skirt"}:
+            if category == "bottom":
+                return "bottom"
+            if category == "outerwear":
+                return "outerwear"
+            if category == "one_piece" or category == "set":
+                return "one_piece"
+            candidates = {category, subtype}
+            if candidates & {"dress", "gown", "jumpsuit", "playsuit", "suit", "kaftan"}:
+                return "one_piece"
+            if candidates & {"shirt", "tshirt", "tee", "blouse", "kurta", "kurti", "sweater", "sweatshirt", "hoodie"}:
+                return "top"
+            if candidates & {"blazer", "jacket", "coat", "cardigan", "shrug", "shacket"}:
+                return "outerwear"
+            if candidates & {"trouser", "trousers", "pants", "jeans", "palazzo", "skirt", "shorts", "leggings"}:
                 return "bottom"
             return "other"
 
@@ -4160,6 +4183,26 @@ class AgenticOrchestrator:
             [dict(item, _role=role_of(item), _score=score(item)) for item in wardrobe_items],
             key=lambda item: (-int(item.get("_score") or 0), str(item.get("title") or "").lower()),
         )
+        # Make silent role-filter exclusion audible. Items that land as
+        # role="other" (category didn't match any outfit slot) or score
+        # zero (no occasion / formality signal) fall through the picker
+        # without any signal to the user. Log each so the mismatch is
+        # debuggable from server logs.
+        for _ranked_item in ranked:
+            _role = str(_ranked_item.get("_role") or "")
+            _scr = int(_ranked_item.get("_score") or 0)
+            if _role == "other" or _scr == 0:
+                _log.info(
+                    "wardrobe_item_excluded id=%s title=%r category=%r subtype=%r role=%s score=%d occasion=%r reason=%s",
+                    _ranked_item.get("id"),
+                    _ranked_item.get("title"),
+                    _ranked_item.get("garment_category"),
+                    _ranked_item.get("garment_subtype"),
+                    _role or "unknown",
+                    _scr,
+                    occasion,
+                    "role_other" if _role == "other" else "score_zero",
+                )
         one_piece = next((item for item in ranked if item.get("_role") == "one_piece" and int(item.get("_score") or 0) > 0), None)
         if one_piece is not None:
             return (
@@ -4251,16 +4294,37 @@ class AgenticOrchestrator:
         return sufficient, counts
 
     def _wardrobe_role_of(self, item: Dict[str, Any]) -> str:
-        category = self._normalize_text_token(item.get("garment_category") or item.get("garment_subtype"))
-        if category in {"dress", "jumpsuit", "suit"}:
-            return "one_piece"
-        if category in {"top", "shirt", "blouse", "tee", "t shirt", "tshirt", "sweater", "knitwear"}:
+        # Two-tier resolution:
+        #   1. If garment_category is one of the 6 proper enum values
+        #      (top/bottom/outerwear/one_piece/set/accessory), trust it
+        #      — the vision schema's top-level taxonomy is what the
+        #      outfit picker is built around.
+        #   2. Otherwise the row predates the current schema or got
+        #      hand-populated with a subtype-shaped string (e.g. some
+        #      historical rows have garment_category="dress"). Fall
+        #      back to fuzzy matching across BOTH fields against the
+        #      subtype enum so legacy / loose data still routes correctly.
+        category = self._normalize_text_token(item.get("garment_category"))
+        subtype = self._normalize_text_token(item.get("garment_subtype"))
+        if category == "top":
             return "top"
-        if category in {"blazer", "jacket", "coat", "cardigan", "outerwear", "overshirt"}:
-            return "outerwear"
-        if category in {"bottom", "trousers", "pants", "jeans", "skirt", "shorts"}:
+        if category == "bottom":
             return "bottom"
-        if category in {"shoe", "shoes", "sneaker", "heels", "loafer", "boot", "sandal"}:
+        if category == "outerwear":
+            return "outerwear"
+        if category == "one_piece" or category == "set":
+            return "one_piece"
+        # category == "accessory" or empty/unknown — fall through to fuzzy match.
+        candidates = {category, subtype}
+        if candidates & {"dress", "gown", "jumpsuit", "playsuit", "suit", "co ord", "coord", "kaftan"}:
+            return "one_piece"
+        if candidates & {"shirt", "tshirt", "t shirt", "tee", "blouse", "kurta", "kurti", "sweater", "sweatshirt", "hoodie", "knitwear"}:
+            return "top"
+        if candidates & {"blazer", "jacket", "coat", "cardigan", "shrug", "poncho", "shacket", "nehru jacket", "overshirt"}:
+            return "outerwear"
+        if candidates & {"trouser", "trousers", "pants", "jeans", "palazzo", "skirt", "shorts", "track pants", "leggings", "dungarees"}:
+            return "bottom"
+        if candidates & {"shoe", "shoes", "sneaker", "heels", "loafer", "boot", "sandal"}:
             return "shoe"
         return "other"
 
