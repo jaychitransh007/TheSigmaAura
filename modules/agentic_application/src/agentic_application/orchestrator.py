@@ -8,6 +8,7 @@ from threading import Thread
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
+from catalog.retrieval.document_builder import ROW_STATUS_DELETED_FROM_SOURCE
 from platform_core.config import AuraRuntimeConfig
 from platform_core.distillation_traces import record_stage_trace, to_jsonable
 from platform_core.fallback_messages import graceful_policy_message
@@ -836,7 +837,12 @@ class AgenticOrchestrator:
                 # drops rows that are *explicitly* deleted_from_source.
                 rows = self.repo.client.select_many(
                     "catalog_enriched",
-                    filters={"or": "(row_status.neq.deleted_from_source,row_status.is.null)"},
+                    filters={
+                        "or": (
+                            f"(row_status.neq.{ROW_STATUS_DELETED_FROM_SOURCE}"
+                            f",row_status.is.null)"
+                        ),
+                    },
                 )
             except Exception:
                 rows = []

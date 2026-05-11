@@ -39,6 +39,13 @@ ATTRIBUTE_SECTIONS: List[Tuple[str, List[str]]] = [
 ]
 EMBEDDABLE_ROW_STATUS = {"ok", "complete"}
 
+# Set by the title/price recovery backfill (May 11 2026) on any row
+# whose merchant URL returned 404 / Product-Not-Found. The orchestrator's
+# _get_catalog_rows() and CatalogSearchAgent._hydrate_matches() exclude
+# rows with this status so dead Buy-Now links never surface in outfit
+# recommendations.
+ROW_STATUS_DELETED_FROM_SOURCE = "deleted_from_source"
+
 
 def build_catalog_document(row: Dict[str, str], row_index: int, config: CatalogEmbeddingConfig) -> CatalogDocument:
     row_id = str(row.get("source_row_number") or row.get("") or row_index)

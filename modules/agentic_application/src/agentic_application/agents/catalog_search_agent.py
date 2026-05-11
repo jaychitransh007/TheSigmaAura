@@ -5,6 +5,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from catalog.retrieval.document_builder import ROW_STATUS_DELETED_FROM_SOURCE
 from platform_core.restricted_categories import detect_restricted_record
 from platform_core.supabase_rest import SupabaseRestClient
 
@@ -443,8 +444,8 @@ class CatalogSearchAgent:
             # recovery backfill (May 11 2026). These returned 404 /
             # Product-Not-Found at the live storefront — surfacing them
             # would mean dead Buy-Now links.
-            if str(enriched.get("row_status") or "").strip().lower() == "deleted_from_source":
-                _log.info("CatalogSearch: SKIP deleted_from_source pid=%s", pid[:30])
+            if str(enriched.get("row_status") or "").strip().lower() == ROW_STATUS_DELETED_FROM_SOURCE:
+                _log.info("CatalogSearch: SKIP %s pid=%s", ROW_STATUS_DELETED_FROM_SOURCE, pid[:30])
                 continue
             blocked_term = detect_restricted_record({**metadata, **enriched})
             if blocked_term:
