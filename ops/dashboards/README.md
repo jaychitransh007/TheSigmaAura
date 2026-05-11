@@ -34,6 +34,8 @@ this directory makes the SQL paste-ready for Supabase Studio / Metabase / Grafan
 - [`panel_27_composer_per_tuple_score_distribution.sql`](panel_27_composer_per_tuple_score_distribution.sql)
 - [`panel_28_composer_single_turn_diagnostic.sql`](panel_28_composer_single_turn_diagnostic.sql)
 - [`panel_32_composition_per_axis_gap_impact.sql`](panel_32_composition_per_axis_gap_impact.sql)
+- [`panel_33_cache_hit_rate_by_stage_llm_caches.sql`](panel_33_cache_hit_rate_by_stage_llm_caches.sql)
+- [`panel_34_try_on_cache_hit_rate.sql`](panel_34_try_on_cache_hit_rate.sql)
 <!-- preserve-below -->
 <!-- Content below this marker is curator-maintained and survives regeneration
      by ops/scripts/extract_dashboard_sql.py. See PR #96 for the marker logic. -->
