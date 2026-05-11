@@ -351,6 +351,84 @@ class ColorStoryTests(unittest.TestCase):
         rules_hit = {v.rule for v in violations}
         self.assertIn("max_dominant_colors", rules_hit)
 
+    # ─────────────────────────────────────────────────────────────────────
+    # metallic_neutral_exception (Phase 4.3 / PR 4c.3). Items whose
+    # dominant_color is a metallic-neutral (gold / champagne / antique
+    # gold / bronze / etc.) OR whose fabric_texture is "metallic" are
+    # excluded from the max_dominant_colors count — they function as
+    # neutral support rather than competing dominant hues. Critical for
+    # Indian festive / bridal outfits where zari, gota patti, and
+    # antique-gold embroidery would otherwise blow the 3-color cap.
+    # ─────────────────────────────────────────────────────────────────────
+
+    def test_metallic_neutral_color_excluded_from_dominant_count(self):
+        # Without exception: 4 distinct colors → would violate.
+        # With exception: gold is metallic-neutral → excluded → 3 colors
+        # which is exactly the cap → no violation.
+        items = (
+            _smart_casual_top(dominant_color="navy"),
+            _smart_casual_bottom(dominant_color="cream"),
+            _structured_outerwear(dominant_color="rust"),
+            Item(item_id="DUP", slot="top", formality="smart_casual",
+                 dominant_color="gold", contrast_level="medium",
+                 pattern_type="solid"),
+        )
+        violations = evaluate_constraint("color_story", items, _ctx(), _graph())
+        self.assertFalse(any(v.rule == "max_dominant_colors" for v in violations))
+
+    def test_metallic_fabric_texture_excluded_from_dominant_count(self):
+        # Item has non-metallic-neutral color (red) but its fabric_texture
+        # is "metallic" — engine treats the surface as the dominant
+        # signal and excludes the slot from the color count.
+        items = (
+            _smart_casual_top(dominant_color="navy"),
+            _smart_casual_bottom(dominant_color="cream"),
+            _structured_outerwear(dominant_color="rust"),
+            Item(item_id="DUP", slot="top", formality="smart_casual",
+                 dominant_color="red", contrast_level="medium",
+                 pattern_type="solid", fabric_texture="metallic"),
+        )
+        violations = evaluate_constraint("color_story", items, _ctx(), _graph())
+        self.assertFalse(any(v.rule == "max_dominant_colors" for v in violations))
+
+    def test_metallic_neutral_exception_does_not_save_truly_over_cap(self):
+        # 5 distinct non-metallic colors → still violates even after the
+        # exception excludes a metallic slot. Exception is a budget
+        # rebate, not an unbounded override.
+        items = (
+            _smart_casual_top(dominant_color="navy"),
+            _smart_casual_bottom(dominant_color="cream"),
+            _structured_outerwear(dominant_color="rust"),
+            Item(item_id="X1", slot="top", formality="smart_casual",
+                 dominant_color="emerald", contrast_level="medium",
+                 pattern_type="solid"),
+            Item(item_id="X2", slot="bottom", formality="smart_casual",
+                 dominant_color="violet", contrast_level="medium",
+                 pattern_type="solid"),
+            Item(item_id="DUP", slot="top", formality="smart_casual",
+                 dominant_color="gold", contrast_level="medium",
+                 pattern_type="solid"),
+        )
+        violations = evaluate_constraint("color_story", items, _ctx(), _graph())
+        rules_hit = {v.rule for v in violations}
+        self.assertIn("max_dominant_colors", rules_hit)
+
+    def test_two_metallic_neutrals_both_excluded(self):
+        # Both gold + champagne are metallic-neutrals — both excluded —
+        # 2 dominant colors remain → no violation.
+        items = (
+            _smart_casual_top(dominant_color="navy"),
+            _smart_casual_bottom(dominant_color="cream"),
+            Item(item_id="DUP1", slot="top", formality="smart_casual",
+                 dominant_color="gold", contrast_level="medium",
+                 pattern_type="solid"),
+            Item(item_id="DUP2", slot="top", formality="smart_casual",
+                 dominant_color="champagne", contrast_level="medium",
+                 pattern_type="solid"),
+        )
+        violations = evaluate_constraint("color_story", items, _ctx(), _graph())
+        self.assertFalse(any(v.rule == "max_dominant_colors" for v in violations))
+
     def test_no_palette_anchor_violates(self):
         # User's anchors = (navy, cream); items use neither.
         items = (
