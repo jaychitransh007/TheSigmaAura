@@ -356,19 +356,6 @@ def get_web_ui_html(
     .discovery-send:disabled { opacity: 0.3; cursor: default; }
     .discovery-send .arrow { display: inline-block; transform: rotate(-90deg); }
 
-    /* Thinking indicator below input */
-    .discovery-thinking {
-      max-width: 680px;
-      margin: 8px auto 0;
-      font-size: 12px;
-      font-style: italic;
-      color: var(--ink-3);
-      min-height: 18px;
-      text-align: left;
-      padding: 0 4px;
-    }
-    .discovery-thinking:empty { display: none; }
-
     /* Active result area */
     .discovery-result {
       max-width: 1080px;
@@ -614,14 +601,6 @@ def get_web_ui_html(
     @media (max-width: 640px) {
       .welcome-prompts { gap: 18px 24px; }
     }
-
-    /* Stage progress — stylist voice, italic, quiet */
-    .stage-bar {
-      padding: 0 32px; max-width: 960px; margin: 0 auto; width: 100%;
-      font-size: 12px; color: var(--ink-3); min-height: 18px;
-      font-style: italic;
-    }
-    .stage-bar:empty { display: none; }
 
     /* ===== Chat Composer — Confident Luxe: hairline, focus-only elevation ===== */
     .composer-wrap {
@@ -1949,7 +1928,6 @@ def get_web_ui_html(
     <div class="composer-error" id="composerError" style="max-width:680px;margin:0 auto;padding:0 32px;"></div>
   </div>
   <div class="home-input-bar" id="discoveryTop">
-    <div class="discovery-thinking" id="discoveryThinking"></div>
     <div class="discovery-composer" id="composerArea">
       <div class="image-chip" id="imageChip">
         <div class="chip-inner">
@@ -2286,11 +2264,9 @@ def get_web_ui_html(
   var discoveryInput = document.getElementById("discoveryInput");
   var discoverySend = document.getElementById("discoverySend");
   var discoveryTop = document.getElementById("discoveryTop");
-  var discoveryThinking = document.getElementById("discoveryThinking");
   var discoveryResultArea = document.getElementById("discoveryResultArea");
   var discoveryWelcome = document.getElementById("discoveryWelcome");
   var homeScroll = document.getElementById("homeScroll");
-  var stageBar = discoveryThinking;
   var messageEl = discoveryInput;
   var sendBtn = discoverySend;
   var err = document.getElementById("composerError");
@@ -3175,11 +3151,10 @@ def get_web_ui_html(
     return out;
   }}
 
-  function renderStages(stages) {{
-    var visible = visibleStages(stages);
-    var latest = visible.length ? visible[visible.length - 1] : null;
-    stageBar.textContent = latest ? latest.message : "";
-  }}
+  // Legacy renderStages still callable but no-op — stage progress now
+  // lives inside each turn's query-preview card via setStage(). Kept
+  // because pollJob's earlier branches in the codebase reference it.
+  function renderStages(_stages) {{}}
 
   // ══════════════════════════════════════════════
   // CONVERSATION & SENDING
@@ -3215,7 +3190,6 @@ def get_web_ui_html(
     var POLL_INTERVAL = 400;
     function setStage(msg) {{
       if (previewStageEl) previewStageEl.textContent = msg;
-      stageBar.textContent = msg;
     }}
     try {{
       while (true) {{
