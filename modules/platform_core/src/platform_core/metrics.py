@@ -245,6 +245,39 @@ aura_retrieval_attr_violation_total = Counter(
 )
 
 
+# May 11 2026 — composer-side per-rule violation counter. Companion to
+# aura_retrieval_attr_violation_total but for the COMPOSER side of the
+# pipeline. Ticks once per Violation emitted by score_tuple, labelled
+# by rule name + is_hard. Lets dashboards / alerts answer in real-time:
+#   - which pairing rule is firing the most?
+#   - what's the hard-rule drop rate vs soft-rule penalty rate?
+# Before this counter, that data only existed in distillation_traces
+# JSON — visible only via Panel 26 SQL drill-down, never as a Prometheus
+# alert trigger.
+# Cardinality: ~15-20 series (current rule count × {hard, soft}); the
+# is_hard label is a string ("true" / "false") because Prometheus labels
+# don't accept bools.
+aura_composer_rule_violation_total = Counter(
+    "aura_composer_rule_violation_total",
+    "Composer-stage pairing-rule violations per (rule, is_hard).",
+    labelnames=("rule", "is_hard"),
+)
+
+
+# May 11 2026 — composer-side exception-applied counter. Ticks once
+# per tuple per exception that fired (e.g., distributed_statement_
+# exception suspending a rule, metallic_neutral_exception excluding
+# items from a count). Exceptions currently SUPPRESS a violation
+# rather than emit a positive signal, so without this counter an
+# overly-lenient exception is invisible in dashboards. Cardinality:
+# ~6 series (one per exception name × parent rule).
+aura_composer_rule_exception_applied_total = Counter(
+    "aura_composer_rule_exception_applied_total",
+    "Composer-stage rule exceptions that suppressed or modified a violation.",
+    labelnames=("rule", "exception"),
+)
+
+
 # May 8 2026 — try-on flag state counter (PR #185 observability gap).
 # Ticks once per turn that reaches the try-on gate, labelled by whether
 # the AURA_TRYON_ENABLED flag was on. Without this, "tryon stage slow"

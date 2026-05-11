@@ -204,13 +204,24 @@ def extract_tuple_context(combined_context: CombinedContext) -> TupleContext:
 # ─────────────────────────────────────────────────────────────────────────
 
 
-def _summarize_provenance(result: ComposerEngineResult) -> dict[str, Any]:
+def _summarize_provenance(
+    result: ComposerEngineResult,
+    ctx: TupleContext | None = None,
+) -> dict[str, Any]:
     """Compact provenance for trace + dashboard ingest.
 
     Surfaces tuple counts (total, kept, dropped, picked) and
     drop_reason distribution so panels 25-28 can slice trends. Keeps
     cardinality tight — no per-attribute payloads here, just integers
-    and a small enum-keyed dict."""
+    and a small enum-keyed dict.
+
+    ``ctx`` is optional but recommended; when supplied, the
+    ``bridal_role`` field gets persisted so Panel 26 spikes in
+    ``guest_vs_bridal_separation`` drops can be RCA'd without having
+    to re-derive the role from upstream user context (which may be
+    several persistence layers away). Empty default ``"unset"`` lets
+    dashboards distinguish "rule fired despite role being unset"
+    (matcher bug) from "rule fired with role=guest" (expected)."""
     if not result.provenance:
         return {}
     by_drop: dict[str, int] = {}
@@ -224,13 +235,16 @@ def _summarize_provenance(result: ComposerEngineResult) -> dict[str, Any]:
             kept += 1
         if p.picked:
             picked += 1
-    return {
+    summary: dict[str, Any] = {
         "total_tuples": len(result.provenance),
         "kept": kept,
         "dropped_total": sum(by_drop.values()),
         "dropped_by_reason": by_drop,
         "picked": picked,
     }
+    if ctx is not None:
+        summary["bridal_role"] = ctx.bridal_role or "unset"
+    return summary
 
 
 def route_composer_plan(
@@ -350,7 +364,7 @@ def _route_engine_first(
         )
     engine_ms = int((time.monotonic() - _engine_t0) * 1000)
 
-    provenance_summary = _summarize_provenance(result)
+    provenance_summary = _summarize_provenance(result, ctx)
 
     if result.composer_result is None:
         return ComposerRouterDecision(
@@ -461,7 +475,7 @@ def _route_shadow(
         engine_confidence=engine.confidence,
         yaml_gaps=engine.yaml_gaps,
         engine_ms=engine_ms,
-        provenance_summary=_summarize_provenance(engine),
+        provenance_summary=_summarize_provenance(engine, ctx),
         shadow_comparison=shadow_comparison,
     )
 

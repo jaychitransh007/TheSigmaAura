@@ -1333,5 +1333,98 @@ class TriggersOnFieldTests(unittest.TestCase):
             )
 
 
+class ObservabilityCounterTests(unittest.TestCase):
+    """Phase 4.3 observability — score_tuple ticks
+    aura_composer_rule_violation_total per violation; exception paths
+    tick aura_composer_rule_exception_applied_total. These metrics let
+    dashboards alert in real time without having to drill into
+    distillation_traces JSON."""
+
+    def setUp(self):
+        from platform_core import metrics
+        self._violation_metric = metrics.aura_composer_rule_violation_total
+        self._exception_metric = metrics.aura_composer_rule_exception_applied_total
+
+    def _violation_count(self, rule: str, is_hard: str) -> float:
+        """Read the current counter value for (rule, is_hard). Counter
+        values are monotonic; tests compare before/after deltas."""
+        try:
+            return self._violation_metric.labels(rule=rule, is_hard=is_hard)._value.get()
+        except Exception:
+            return 0.0
+
+    def _exception_count(self, rule: str, exception: str) -> float:
+        try:
+            return self._exception_metric.labels(rule=rule, exception=exception)._value.get()
+        except Exception:
+            return 0.0
+
+    def test_score_tuple_emits_violation_counter_on_hard_drop(self):
+        """A hard short-circuit drop must tick the counter once with
+        is_hard=true so dashboards can alert on the hard-rule rate."""
+        before = self._violation_count("max_dominant_colors", "true")
+        # 4 distinct non-metallic colors → max_dominant_colors fires hard.
+        items = (
+            _smart_casual_top(dominant_color="navy"),
+            _smart_casual_bottom(dominant_color="cream"),
+            _structured_outerwear(dominant_color="rust"),
+            Item(item_id="X1", slot="top", formality="smart_casual",
+                 dominant_color="emerald", contrast_level="medium",
+                 pattern_type="solid"),
+        )
+        result = score_tuple(items, _ctx(), _graph())
+        after = self._violation_count("max_dominant_colors", "true")
+        self.assertTrue(result.dropped)
+        self.assertEqual(after - before, 1.0)
+
+    def test_score_tuple_emits_violation_counter_on_soft_violation(self):
+        """A soft accumulation must tick the counter with is_hard=false."""
+        before = self._violation_count("sheen_hierarchy", "false")
+        items = (
+            _smart_casual_top(fabric_texture="sheen"),
+            _smart_casual_bottom(fabric_texture="metallic"),
+        )
+        result = score_tuple(items, _ctx(), _graph())
+        after = self._violation_count("sheen_hierarchy", "false")
+        # sheen_hierarchy fires soft → tuple survives but counter ticks.
+        self.assertFalse(result.dropped)
+        self.assertEqual(after - before, 1.0)
+
+    def test_distributed_statement_exception_ticks_exception_counter(self):
+        before = self._exception_count(
+            "one_statement_per_outfit", "distributed_statement_exception",
+        )
+        items = (
+            _smart_casual_top(
+                embellishment_level="moderate", color_temperature="warm",
+            ),
+            _smart_casual_bottom(
+                embellishment_level="moderate", color_temperature="warm",
+            ),
+        )
+        evaluate_constraint("scale_balance", items, _ctx(), _graph())
+        after = self._exception_count(
+            "one_statement_per_outfit", "distributed_statement_exception",
+        )
+        self.assertEqual(after - before, 1.0)
+
+    def test_metallic_neutral_exception_ticks_exception_counter(self):
+        before = self._exception_count(
+            "max_dominant_colors", "metallic_neutral_exception",
+        )
+        items = (
+            _smart_casual_top(dominant_color="navy"),
+            _smart_casual_bottom(dominant_color="cream"),
+            Item(item_id="DUP", slot="top", formality="smart_casual",
+                 dominant_color="gold", contrast_level="medium",
+                 pattern_type="solid"),
+        )
+        evaluate_constraint("color_story", items, _ctx(), _graph())
+        after = self._exception_count(
+            "max_dominant_colors", "metallic_neutral_exception",
+        )
+        self.assertEqual(after - before, 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()

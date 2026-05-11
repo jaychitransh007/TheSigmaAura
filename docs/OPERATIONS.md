@@ -1097,11 +1097,16 @@ means the env var didn't propagate. Check the boot log.
 often, and which YAML categories need stylist review next?
 
 **Context:** PR 5c (Phase 5c) emits per-tuple provenance with
-`drop_reason` ∈ {formality_alignment, color_story, pattern_mixing,
-scale_balance, bridal_specific, low_picks, low_confidence,
-pool_too_sparse, none}. The router's `provenance_summary` keeps
-counts per drop_reason. Panel surfaces top reasons over a 30-day
-window.
+`drop_reason` is now an open set — the bucket includes category-level
+short-circuits (formality_alignment / color_story / pattern_mixing /
+scale_balance / bridal_specific), engine fall-through reasons
+(low_picks / low_confidence / pool_too_sparse / none), AND specific
+per-rule strings emitted by `_evaluate_bridal_specific` and similar
+(e.g., `guest_vs_bridal_separation`). The router's `provenance_summary`
+keeps counts per drop_reason verbatim. Panel surfaces top reasons over
+a 30-day window. **For real-time alerting on specific rule fires use
+`aura_composer_rule_violation_total{rule,is_hard}` Prometheus counter
+instead — it ticks per Violation rather than per dropped tuple.**
 
 ```sql
 -- composer_drop_reason_distribution_last_30d
@@ -1129,7 +1134,11 @@ SELECT
 FROM reasons
 GROUP BY drop_reason
 ORDER BY total_drops DESC
-LIMIT 30;
+LIMIT 200;
+-- LIMIT was 30; raised to 200 (May 11 2026) — drop_reason cardinality is
+-- bounded by rule-name count (~15-20 today) but kept loose so the next
+-- pairing-rule expansion doesn't silently truncate rare-but-meaningful
+-- entries from the panel.
 ```
 
 **How to use:** the top 5 drop_reasons are the highest-leverage
@@ -1513,6 +1522,17 @@ The composer engine (PR 5c, wired in PR 5d) replaces the LLM `OutfitComposer` wi
   1. Cross-check Panel 16 (low_confidence_catalog_responses) — if architect+composer pool sizes look low, retrieval is the upstream cause.
   2. Inspect `model_call_logs.request_json` on a sparse turn for the architect's emitted directions; verify they map to actual catalog inventory via `ops/scripts/turn_forensics.py`.
   3. If retrieval is underperforming generally, that's a catalog data problem, not a composer problem — engine will start succeeding once retrieval recovers.
+
+**A5.2b — Engine runs but specific pairing rules are over-dropping (post-PR #248-#251).**
+- **Signal:** Panel 26 shows high counts of `guest_vs_bridal_separation`, `sheen_hierarchy`, `max_dominant_colors`, or `one_statement_per_outfit`; the four pairing matchers shipped May 2026 changed the composer's drop landscape and can over-fire if the YAML thresholds drift from the catalog's actual value distribution.
+- **Cause hierarchy (check in order):**
+  1. `guest_vs_bridal_separation` fires — `provenance_summary.bridal_role == "guest"` or `"attendee"` correctly identifies the upstream role context. If `bridal_role == "unset"` AND the rule still fired, that's a matcher bug (the rule's gate should require a non-empty role). RCA via `aura_composer_rule_violation_total{rule="guest_vs_bridal_separation"}` rate vs `bridal_role="guest"` rate.
+  2. `sheen_hierarchy` fires outside the bridal exception — likely the YAML's `value: 1` cap is too strict for the catalog's actual fabric_texture distribution. Check `aura_composer_rule_exception_applied_total{exception="distributed_statement_exception"}` to see if related exceptions are saving similar cases; if not, the cap needs review.
+  3. `max_dominant_colors` fires with `(excluded N metallic-neutral)` in detail — the metallic-neutral exception is firing but not enough; expand `_METALLIC_NEUTRAL_COLORS` set in `pairing.py` after auditing actual catalog `dominant_color` values via Panel 22.
+- **First three actions:**
+  1. Open Panel 26; sort by `total_drops`. Compare to baseline (typical: formality/color/pattern rules dominate).
+  2. Cross-reference with `aura_composer_rule_exception_applied_total` — high violations + low exception fires = matcher is correctly identifying violations and exceptions aren't masking them; high violations + high exception fires = exception is partially working but threshold needs tuning.
+  3. Per-rule YAML lives at `knowledge/style_graph/pairing_rules.yaml`. Stylist context (when and why each rule was added) lives in `knowledge/knowledge_v2/updated_review_style_notes_pairing.md`.
 
 **A5.3 — Engine accepts but Panel 18 (rater unsuitable rate) ticks above 5%.**
 - **Signal:** rater-side `unsuitable=True` rate climbs after the composer flag flips.
