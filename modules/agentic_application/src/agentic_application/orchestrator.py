@@ -6053,8 +6053,11 @@ class AgenticOrchestrator:
                                 "engine_ms": _router_decision.engine_ms,
                             },
                             latency_ms=_router_decision.engine_ms,
-                            status="ok" if _router_decision.used_engine else "fallback",
-                            error_message=_router_decision.fallback_reason or "",
+                            # tool_traces.status check constraint: ('ok','error').
+                            # The trace operation itself never errors here —
+                            # whether the engine ran or fell back is captured
+                            # in output_json.used_engine + .fallback_reason.
+                            status="ok",
                         )
                     except Exception:  # noqa: BLE001 — trace persistence never breaks the turn
                         _log.warning(
@@ -6747,8 +6750,11 @@ class AgenticOrchestrator:
                             "engine_ms": _composer_router_decision.engine_ms,
                         },
                         latency_ms=_composer_router_decision.engine_ms,
-                        status="ok" if _composer_router_decision.used_engine else "fallback",
-                        error_message=_composer_router_decision.fallback_reason or "",
+                        # tool_traces.status check constraint: ('ok','error').
+                        # The trace operation itself never errors here — whether
+                        # the engine ran or fell back is captured in
+                        # output_json.used_engine + .fallback_reason.
+                        status="ok",
                     )
                 except Exception:  # noqa: BLE001 — trace persistence never breaks the turn
                     _log.warning(
