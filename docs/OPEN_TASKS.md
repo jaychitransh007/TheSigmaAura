@@ -140,25 +140,32 @@ Two ways to clean up:
 - `SilhouetteContour` — redundancy with SilhouetteType is partial, not complete; cut depends on whether the residual signal feeds any rule.
 - `FitEase` — same; weakest signal of the three, but the `relaxed`→{relaxed/loose/boxy} split is real.
 
-Independent of redundancy/extractability, these categorical-correctness items remain valid (audit doesn't apply):
-- Switch `ContrastLevel` / `ColorTemperature` / `ColorSaturation` / `ColorValue` from vision-predicted to algorithmic Pillow/OpenCV derivation — accuracy verifiable by spot-check; no style-quality eval set needed for correctness.
-- Split `GarmentSubtype` → `OutfitStructure` carve-out (`co_ord_set` / `kurta_set` / `lehenga_set` / `ethnic_set`) — categorical correctness.
-- Clean up `ConstructionDetail` (move `deconstructed` / `utility` / `experimental` to a future `StyleExpression` axis) — categorical reclassification.
+Independent of redundancy/extractability, these categorical-correctness items WERE on the list:
+- ~~Switch `ContrastLevel` / `ColorTemperature` / `ColorSaturation` / `ColorValue` from vision-predicted to algorithmic Pillow/OpenCV derivation.~~ ⛔ **Dropped 2026-05-11 (late)** — requires embedding regen for full retrieval effect; embedding regen is now forbidden alongside re-enrichment.
+- ~~Split `GarmentSubtype` → `OutfitStructure` carve-out.~~ ⛔ **Dropped** — same reason.
+- ~~Clean up `ConstructionDetail`.~~ ⛔ **Dropped** — same reason.
 
-**Wave B — DROPPED 2026-05-11.** Adopting the 4 deferred ShapeArchitecture axes (`ProjectionType`, `StructuralRhythm`, `EdgeGeometry`, `VolumeIntensity`) required bulk re-enrichment, which is now forbidden per the no-bulk-re-enrichment policy below. These axes will not be adopted.
+**Wave A entire bucket — DROPPED 2026-05-11 (late).** The audit was already inconclusive on the 3 borderline candidates (OccasionSignal / SilhouetteContour / FitEase); under the tightened frozen-catalog policy (no embedding regen either), none of these can ship with full retrieval effect anyway. The whole Wave A queue is parked until policy reversal.
 
-**Risk consideration for Wave A**: the absence of an eval set means we can't *systematically* catch quality regressions from each cut. Mitigate with side-by-side retrieval diffs on a small hand-curated set of test queries before merging each surgical PR.
+**Wave B — DROPPED 2026-05-11.** Adopting the 4 deferred ShapeArchitecture axes (`ProjectionType`, `StructuralRhythm`, `EdgeGeometry`, `VolumeIntensity`) required bulk re-enrichment. Dead.
 
 **Target axis count after Wave A:** ~52-53 (vs current 55) — 3 borderline cuts at most.
 
-### ⛔ No-bulk-re-enrichment policy (2026-05-11)
+### ⛔ Frozen-catalog policy (2026-05-11, tightened late same day)
 
-The catalog is **frozen** at the 14,242-row enrichment state. Bulk re-enrichment is no longer on the table — the May 2026 run cost ~$35-40 and ~30hrs wall time, and the user has made it a hard policy that no further bulk or targeted re-enrichment of existing rows will be funded. Plan all future quality work around the frozen vocabulary.
+The catalog AND its embeddings are **frozen** at the 14,242-row state. **Both** operations below are forbidden under this policy:
+
+| Operation | Cost | Time | Status |
+|---|---|---|---|
+| Vision re-enrichment (gpt-5-mini batch on existing rows) | $35-40 | ~30h | ⛔ Forbidden |
+| Embedding regeneration (text-embedding-3-small on existing rows) | ~$0.50 | ~35 min | ⛔ Forbidden (tightened from "avoid by default") |
+
+Plan all future quality work around the frozen vocabulary AND the existing embeddings.
 
 **What's still allowed:**
-- Per-product enrichment of NEW catalog items at ingestion time (admin tool's vision pipeline path)
-- Embedding regeneration when a column drop / YAML change materially alters embedding text (avoid by default; ~$0.50 + 35 min)
-- Schema changes that are pure SQL transforms over existing rows: column drops, column adds with default values, categorical reclassifications
+- Per-product enrichment of NEW catalog items at ingestion time (admin tool's vision pipeline path) — that's how new catalog items become tagged + retrievable in the first place. Per-product, not bulk.
+- Per-product embedding generation for newly ingested items (parallel to per-product vision enrichment).
+- Schema changes that are pure SQL transforms over existing rows (column drops, column adds with default values, categorical reclassifications) — BUT note that without an embedding regen, such changes only affect SQL-filter behaviour; semantic similarity search keeps encoding the pre-change state. Most aren't worth shipping on SQL-only effect alone.
 
 **What's permanently dead:**
 - The "Catalog enrichment queue" of dormant stylist values (`wrap_with_hard_cinching`, `kasavu_border`, `temple_border`, `lightly_padded`, `angled_seam`, `vertical_panel`, `center_gathering`, `textured_yoke`, `epaulettes`, `rigid_tight`, `distributed_heavy`, `hard_cinched` / `soft_defined` / `strategic_defined`, `micro_mini`) — these values can't be populated without re-enrichment.
@@ -166,8 +173,12 @@ The catalog is **frozen** at the 14,242-row enrichment state. Bulk re-enrichment
 - **`SurfaceFinish` axis adoption** (high_shine_metallic / antique_metallic / brushed_metallic) — same.
 - **Wave B** of the ontology surgery (4 deferred ShapeArchitecture axes) — adoption required re-enrichment.
 - **4-stage extraction architecture** — the staged-extraction refactor was a re-enrichment-time improvement. Moot.
+- **Wave A surgical cuts** (OccasionSignal / SilhouetteContour / FitEase column drops) — the audit was inconclusive on signal value, AND any cut would require embedding regen for full retrieval effect. Both gates fail.
+- **Color-axes algorithmic switch** (Pillow/OpenCV deriving ContrastLevel / ColorTemperature / ColorSaturation / ColorValue) — image processing only on input but the new values would need embedding regen to feed semantic retrieval. Dead under the tightened policy.
+- **GarmentSubtype → OutfitStructure carve-out** — SQL reclassification, but the new column would need embedding regen to be useful for retrieval. Dead.
+- **ConstructionDetail cleanup** (move `deconstructed` / `utility` / `experimental` to a future `StyleExpression` axis) — same. Dead.
 
-The stylist's prose-only documentation for the dropped vocabulary remains in `knowledge/knowledge_v2/` as a historical reference; if a future policy reversal authorises re-enrichment, those files specify what to add.
+The stylist's prose-only documentation for the dropped vocabulary remains in `knowledge/knowledge_v2/` as a historical reference; if a future policy reversal authorises re-enrichment + embedding regen, those files specify what to add.
 
 ### Where quality improvements come from (going forward)
 
@@ -189,20 +200,21 @@ Without re-enrichment, the four levers remaining:
 | **Step 4 (full)** — Remaining bodyframe + occasion edits depending on dormant vocabulary | ⛔ Dropped (no-re-enrichment policy). The ~10 dormant values cannot be populated; rules referencing them would bind to zero rows. |
 | **Step 5** — Quality validation via Phase 4.6 eval set | 🔒 Blocked on Phase 4.6 human curation |
 
-### Engineering items still actionable (no re-enrichment needed)
+### Engineering items still actionable (no re-enrichment, no embedding regen)
 
-These all use the existing catalog vocabulary or operate at composition time. Listed in rough priority order:
+These all use the existing catalog vocabulary AND the existing embeddings — pure engine / scoring / observability changes that the frozen-catalog policy permits. Listed in rough priority order:
 
-1. **Phase 4.6 eval set curation** — 🔒 blocked on human. Gates Step 5, composer engine flag-on, Phase 6 library quality validation, Phase 7 held-out evaluation, threshold calibration on both routers, the 3 borderline Wave A surgical PRs. Single highest-leverage unblock.
-2. **`anchor_visual_hierarchy` + `anchor_exact_match_avoidance` matchers** — needs `anchor_item_id` plumbing on `TupleContext` from upstream (composer reads it from the user's uploaded anchor when intent is `pairing_request`). ~2-3 days of plumbing + matchers + tests. No catalog dependency.
-3. **`indian_weave_compatibility` engine matcher** — heritage-weave classifier from existing attributes (subtype + fabric_texture + cultural_register → weave-family bucket), then cap on multiple heritage-heavy items in one outfit. ~2 days.
-4. **`elevated_fusion_exception` override on `_evaluate_cultural_coherence`** — soften the cultural-coherence soft penalty when Western elements signal tailored/monochrome/minimal. ~1 day.
-5. **Wave A surgical cuts (3 borderline candidates)** — `OccasionSignal`, `SilhouetteContour`, `FitEase`. Each needs a top-pairs review in `docs/phase2_wave_a_audit.md` before committing. Column drops only (no embedding regen needed if existing embeddings stay).
-6. **Color-axes algorithmic switch** — `ContrastLevel` / `ColorTemperature` / `ColorSaturation` / `ColorValue` derived from Pillow/OpenCV on the existing product images (no vision-API call; image processing only). One PR per axis. ~1 day each.
-7. **`GarmentSubtype` → `OutfitStructure` carve-out** — categorical SQL reclassification of `co_ord_set` / `kurta_set` / `lehenga_set` / `ethnic_set` into a new column. No re-enrichment.
-8. **`ConstructionDetail` cleanup** — move `deconstructed` / `utility` / `experimental` to a future `StyleExpression` axis via SQL reclassification.
-9. **Composer-side EAR-1 data accumulation** — composer router decisions persisting since PR #222. Wait for ~1 week of data, then diagnose the ~4% composer engine acceptance rate driver (which fall-through gate fires most).
-10. **`modern_bridal_restraint`** — soft scoring boost for restrained-luxury bridal styling (minimal embellishment + ivory/pastel palette under bridal occasion). Pure scoring rule, no catalog dependency.
+1. **Phase 4.6 eval set curation** — 🔒 blocked on human. Gates Step 5, composer engine flag-on, Phase 6 library quality validation, Phase 7 held-out evaluation, threshold calibration on both routers. Single highest-leverage unblock.
+2. **`anchor_visual_hierarchy` + `anchor_exact_match_avoidance` matchers** — needs `anchor_item_id` plumbing on `TupleContext` from upstream (composer reads it from the user's uploaded anchor when intent is `pairing_request`). ~2-3 days of plumbing + matchers + tests. No catalog or embedding dependency.
+3. **`indian_weave_compatibility` engine matcher** — heritage-weave classifier from existing attributes (subtype + fabric_texture + cultural_register → weave-family bucket), then cap on multiple heritage-heavy items in one outfit. ~2 days. Pure engine logic on existing Item fields.
+4. **`elevated_fusion_exception` override on `_evaluate_cultural_coherence`** — soften the cultural-coherence soft penalty when Western elements signal tailored/monochrome/minimal. ~1 day. Scoring rule, no catalog touch.
+5. **`modern_bridal_restraint`** — soft scoring boost for restrained-luxury bridal styling (minimal embellishment + ivory/pastel palette under bridal occasion). Pure scoring rule, no catalog touch.
+6. **Composer EAR-1 diagnosis** — composer router decisions accumulating since [PR #222](https://github.com/jaychitransh007/TheSigmaAura/pull/222). After ~1 week of data, diagnose the ~4% composer engine acceptance driver. Unlocks the biggest single latency lever (composer engine flag-on, post-Phase-4.6). Read-only analysis.
+7. **Cache-hit-rate dashboards** — surface the existing `aura_planner_cache_decision_total`, `aura_architect_cache_*`, `aura_composer_cache_*` counters as rolling-window panels. ~1 day. Pure observability.
+8. **Try-on cache hit-rate audit** — `df1c91e5` showed 2/3 try-on renders cache-hit (saved ~20s + $0.08). Audit whether the sustained rate is structurally high or whether there's a fingerprint fix to lift it. ~1-2 days. Diagnostic.
+9. **Rater latency variance investigation** — rater went 5.9s → 10.4s between near-identical turns. If p75 is sustained at >10s, it's now the largest LLM stage and worth a diagnostic pass. ~1 day. Pure diagnostic.
+
+**Items previously listed here but now dead under the tightened frozen-catalog policy** (would have required embedding regen for full effect): Wave A surgical cuts (OccasionSignal / SilhouetteContour / FitEase), color-axes Pillow/OpenCV switch, GarmentSubtype → OutfitStructure carve-out, ConstructionDetail cleanup. See the policy section above.
 
 ---
 ---
@@ -255,23 +267,26 @@ These foundations remain available; their consumers (the composition engine in P
 **Strategic context:**
 The composition engine (Phase 4) is the architectural endpoint that makes the YAMLs runtime-load-bearing on the hot path. Phases 1–3 are operational wins. Phase 5 extends the wins to the composer. **Phase 6** moves composition entirely offline — pre-rated outfits indexed in `outfit_library`, retrieved via vector + filter on the hot path — which is the only architectural path to sub-3s on the slow side of the cache, since even at full engine acceptance the cold path stays at ~25-30s (composer LLM ~12s + rater ~4s + retrieval ~3s). **Phase 7** replaces the zero-shot LLM Rater with a learned model on feedback signals; that's a quality + cost refinement on top of Phase 6, not a separate latency lever.
 
-**Critical-path priority (2026-05-11 — post-no-re-enrichment policy):**
+**Critical-path priority (2026-05-11 — post-frozen-catalog policy, tightened to also forbid embedding regen):**
 
 1. ✅ **Phase 4.2 stylist YAML review — DONE** (all 8 files reviewed; existing-vocab subset shipped, dormant-vocab subset dropped per policy).
 2. ✅ **Step 2 catalog re-enrichment — DONE** (last bulk run; catalog is now frozen at 14,242 rows).
 3. ✅ **Step 3 — Phase 4.3 hard/soft yaml_loader — DONE** (PR #246).
 4. ✅ **Step 4 (thin) — DONE 2026-05-11** (PRs #248-#253): 4 pairing matchers + bodyframe + occasion existing-vocab edits.
-5. 🔒 **Phase 4.6 eval set curation** — single highest-leverage unblock. Gates Step 5 quality validation, composer engine flag-on, Phase 6 library quality validation, Phase 7 held-out evaluation, threshold calibration on both routers, and the 3 borderline Wave A surgical cuts.
-6. ⏳ **EAR-1 data accumulation** (composer router decisions persisting since [PR #222](https://github.com/jaychitransh007/TheSigmaAura/pull/222)). After ~1 week of data, diagnose the ~4% composer engine acceptance rate driver.
-7. 🟢 **Anchor matchers + indian_weave_compatibility + elevated_fusion_exception** — ~5-6 days total of engine-side work that uses existing catalog vocab. Each is a small standalone PR.
-8. 🟢 **Wave A surgical cuts** (column drops for OccasionSignal / SilhouetteContour / FitEase if top-pairs review supports each) — 1 PR per cut, ~half day each.
-9. 🟢 **Color-axes algorithmic switch** (Pillow/OpenCV on existing product images; no re-enrichment). ~1 day per axis, 4 axes.
-10. 📋 **Phase 6 — Outfit Library** (post-4.6, ~3-4 weeks). The actual sub-3s lever on the slow side of the cache. Operates on the frozen catalog — no enrichment dependency.
-11. 📋 **Phase 7 — Layer C** (post-Phase-6 + feedback volume). Replaces zero-shot Rater with learned model.
+5. ✅ **Planner output cache — DONE 2026-05-11** (PR #259): hit confirmed in production on turn `df1c91e5` (-10s + -$0.014 on hit).
+6. 🔒 **Phase 4.6 eval set curation** — single highest-leverage unblock. Gates Step 5 quality validation, composer engine flag-on, Phase 6 library quality validation, Phase 7 held-out evaluation, threshold calibration on both routers.
+7. ⏳ **EAR-1 data accumulation** (composer router decisions persisting since [PR #222](https://github.com/jaychitransh007/TheSigmaAura/pull/222)). After ~1 week of data, diagnose the ~4% composer engine acceptance rate driver. Unlocks the biggest single latency lever (#10 composer engine flag-on) once Phase 4.6 lands.
+8. 🟢 **Anchor matchers + indian_weave_compatibility + elevated_fusion_exception + modern_bridal_restraint** — ~5-6 days total of pure engine-side work. No catalog or embedding touch. Each is a small standalone PR.
+9. 🟢 **Cache + try-on + rater diagnostics** — dashboards for the 3 caches (~1d), try-on hit-rate audit (~1-2d), rater variance investigation (~1d). All observability/diagnostic; no catalog touch.
+10. 📋 **Composer engine flag-on** (post-Phase-4.6). The biggest single non-architectural latency lever.
+11. 📋 **Phase 6 — Outfit Library** (post-4.6, ~3-4 weeks). The actual sub-3s architectural lever. Operates on the frozen catalog AND frozen embeddings.
+12. 📋 **Phase 7 — Layer C** (post-Phase-6 + feedback volume). Replaces zero-shot Rater with learned model.
 
 Items NOT on the critical path (deferred — see Phase headers for trigger conditions): planner model swaps (Phase 1.3/1.4 dropped), composer model swaps (Phase 1.4 dropped), prompt-compression aggressive tier (Phase 3.3/3.5 gated on 4.6), bucketed engine rollout machinery (waits for 4.6).
 
-**Items DROPPED per no-re-enrichment policy:** Step 4 full bodyframe + occasion patches (dormant vocab), Wave B ontology surgery (4 ShapeArchitecture axes), FabricTexture decomposition + SurfaceFinish axis, 4-stage extraction architecture, all dormant new-vocabulary additions queued from stylist files.
+**Items DROPPED per frozen-catalog policy:**
+- Step 4 full bodyframe + occasion patches (dormant vocab); FabricTexture decomposition + SurfaceFinish axis; 4-stage extraction architecture; all dormant new-vocabulary additions queued from stylist files; Wave B ontology surgery (4 ShapeArchitecture axes).
+- **(Tightened 2026-05-11 late):** Wave A surgical cuts (OccasionSignal / SilhouetteContour / FitEase) — audit-inconclusive AND would need embedding regen; color-axes Pillow/OpenCV switch — would need embedding regen; GarmentSubtype → OutfitStructure carve-out — would need embedding regen; ConstructionDetail cleanup — would need embedding regen.
 
 ---
 
