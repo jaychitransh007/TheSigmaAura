@@ -6,6 +6,7 @@ out/
 *.pyc
 data/
 archive/
+logs/
 .DS_Store
-.claude/settings.local.json
+.claude/
 supabase/.temp/

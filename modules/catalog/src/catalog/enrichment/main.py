@@ -2,7 +2,14 @@ import argparse
 import csv
 import json
 import os
+import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+
+
+def _log(msg: str) -> None:
+    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    print(f"[{ts}] {msg}", flush=True)
 
 from .audit import run_schema_audit, write_audit_report
 from .batch_builder import build_batch_input_jsonl, build_request_body, build_retry_batch_input_jsonl
@@ -396,6 +403,7 @@ def _run_auto_chunk_pipeline(
         merged_all_rows: List[Dict[str, Any]] = resumed_rows
         pending_chunks = resumed_pending_chunks
         completed_chunks = resumed_completed_chunks
+        _log(f"Resumed from checkpoint: completed_chunks={completed_chunks} pending_chunks={len(pending_chunks)}")
     else:
         merged_all_rows = []
         # ``--max-batch-input-tokens 0`` disables the token cap; use
@@ -403,6 +411,8 @@ def _run_auto_chunk_pipeline(
         token_cap = args.max_batch_input_tokens
         if token_cap == 0:
             token_cap = None
+        _log(f"Splitting {len(rows)} rows into chunks (max_bytes={args.max_batch_bytes:,}, max_tokens={token_cap})...")
+        t_split = time.time()
         pending_chunks = _split_rows_for_max_batch_bytes(
             rows=rows,
             config=config,
@@ -410,7 +420,11 @@ def _run_auto_chunk_pipeline(
             max_batch_input_tokens=token_cap,
         )
         completed_chunks = 0
+        _log(f"Split complete: {len(pending_chunks)} chunks in {time.time() - t_split:.1f}s")
+        chunk_sizes = [len(c) for c in pending_chunks]
+        _log(f"Chunk sizes (rows): min={min(chunk_sizes)}, max={max(chunk_sizes)}, median={sorted(chunk_sizes)[len(chunk_sizes)//2]}")
 
+    total_chunks_planned = len(pending_chunks) + completed_chunks
     api_key = get_api_key()
     runner = BatchRunner(api_key=api_key, config=config)
 
@@ -432,12 +446,19 @@ def _run_auto_chunk_pipeline(
         chunk_output_csv = os.path.join(chunk_out_dir, "enriched_chunk.csv")
         chunk_report_json = os.path.join(chunk_out_dir, "run_report.json")
 
+        _log(f"[{chunk_name}] {len(chunk_rows)} rows — building batch JSONL ({chunk_index}/{total_chunks_planned})")
+        t_chunk = time.time()
         build_batch_input_jsonl(chunk_rows, batch_input_jsonl, config)
+        jsonl_bytes = os.path.getsize(batch_input_jsonl)
+        _log(f"[{chunk_name}] JSONL written: {jsonl_bytes:,} bytes — uploading to OpenAI")
 
         try:
             input_file_id = runner.upload_batch_file(batch_input_jsonl)
+            _log(f"[{chunk_name}] uploaded file_id={input_file_id} — creating batch")
             batch_id = runner.create_batch(input_file_id)
+            _log(f"[{chunk_name}] batch_id={batch_id} — polling for completion")
             batch_data = runner.wait_for_completion(batch_id)
+            _log(f"[{chunk_name}] batch status={batch_data.get('status')} after {time.time() - t_chunk:.1f}s")
             save_batch_metadata(batch_data, batch_meta_json)
         except Exception as exc:
             error_message = str(exc)
@@ -537,6 +558,12 @@ def _run_auto_chunk_pipeline(
             build_retry_batch_input_jsonl(chunk_rows, failed_indices, chunk_retry_jsonl, config)
 
         merged_all_rows.extend(chunk_merged_rows)
+        elapsed = time.time() - t_chunk
+        _log(
+            f"[{chunk_name}] DONE: ok={chunk_report['ok_rows']}/{chunk_report['total_rows']} "
+            f"errored={chunk_report['errored_rows']} elapsed={elapsed/60:.1f}min "
+            f"(progress: {chunk_index}/{total_chunks_planned}, total_enriched={len(merged_all_rows)})"
+        )
         chunk_manifest.append(
             {
                 "chunk_name": chunk_name,
@@ -549,6 +576,7 @@ def _run_auto_chunk_pipeline(
             }
         )
 
+    _log(f"All chunks complete. Writing final CSV: {args.output} ({len(merged_all_rows)} rows)")
     write_csv(merged_all_rows, args.output)
     final_report = build_run_report(merged_all_rows)
     final_report["auto_chunk"] = {
