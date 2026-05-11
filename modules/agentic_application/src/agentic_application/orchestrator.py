@@ -73,7 +73,7 @@ from .services.onboarding_gateway import ApplicationUserGateway
 from .services.tryon_quality_gate import TryonQualityGate
 from .services.tryon_service import TryonService
 from .services.outfit_decomposition import decompose_outfit_image
-from user.service import extract_garment_hint_from_text, resolve_wardrobe_role
+from user.service import resolve_wardrobe_role
 from .qna_messages import generate_stage_message
 from .schemas import (
     CombinedContext,
@@ -2022,27 +2022,37 @@ class AgenticOrchestrator:
                     and not str(attached_item.get("title") or "").strip()
                 )
                 if _enrichment_status == "failed" or _critical_fields_empty:
-                    # Text-based fallback: if the user's message clearly
-                    # names a garment ("what goes with this skirt?"),
-                    # use that as the anchor classification. Vision
-                    # nulls and timeouts shouldn't kill the whole turn
-                    # when the user already told us what the piece is.
-                    _text_hint = extract_garment_hint_from_text(message)
-                    if _text_hint:
-                        attached_item["garment_category"] = _text_hint["garment_category"]
-                        attached_item["garment_subtype"] = _text_hint["garment_subtype"]
+                    # Planner-anchor fallback: when vision returns
+                    # null/empty, fall back to the planner's structured
+                    # anchor extraction. Planner runs on the user's
+                    # natural language with an LLM, so it handles
+                    # paraphrases / synonyms / non-English wording that
+                    # the old keyword regex couldn't. See
+                    # CopilotResolvedContext.anchor_garment for the
+                    # contract. Threshold 0.5 — anything weaker than that
+                    # is the model saying "I'm guessing", not worth
+                    # building a recommendation pipeline around.
+                    _planner_anchor = plan_result.resolved_context.anchor_garment
+                    if (
+                        _planner_anchor.category
+                        and _planner_anchor.subtype
+                        and _planner_anchor.confidence >= 0.5
+                    ):
+                        attached_item["garment_category"] = _planner_anchor.category
+                        attached_item["garment_subtype"] = _planner_anchor.subtype
                         if not str(attached_item.get("title") or "").strip():
-                            attached_item["title"] = _text_hint["garment_subtype"].title()
-                        attached_item["enrichment_fallback"] = "text_hint"
+                            attached_item["title"] = _planner_anchor.subtype.title()
+                        attached_item["enrichment_fallback"] = "planner_anchor"
                         _log.info(
-                            "Wardrobe enrichment fell back to user-text hint: category=%s subtype=%s",
-                            _text_hint["garment_category"],
-                            _text_hint["garment_subtype"],
+                            "Wardrobe enrichment fell back to planner anchor: category=%s subtype=%s confidence=%.2f",
+                            _planner_anchor.category,
+                            _planner_anchor.subtype,
+                            _planner_anchor.confidence,
                         )
                     else:
                         attached_item["enrichment_failed"] = True
                         _log.warning(
-                            "Wardrobe enrichment returned empty/failed for upload %s — flagging on attached_item",
+                            "Wardrobe enrichment returned empty/failed for upload %s and planner had no usable anchor — flagging",
                             attached_item.get("id"),
                         )
                 # Append attached_context to effective_message so
@@ -2069,19 +2079,24 @@ class AgenticOrchestrator:
                     garment_present_confidence=float(attached_item.get("garment_present_confidence") or 1.0),
                 )
             else:
-                # Background thread didn't return in time. Try the
-                # text-hint fallback so a user who already named the
-                # garment still gets a pairing response. We don't have
-                # an image-derived color or any of the rich attrs, but
-                # category+subtype are enough to anchor the architect.
-                _text_hint = extract_garment_hint_from_text(message)
-                if _text_hint:
+                # Background thread didn't return in time. Fall back to
+                # the planner's structured anchor extraction so a user
+                # who named the garment in chat still gets a pairing
+                # response. We don't have image-derived color or rich
+                # attrs, but category+subtype are enough to anchor the
+                # architect.
+                _planner_anchor = plan_result.resolved_context.anchor_garment
+                if (
+                    _planner_anchor.category
+                    and _planner_anchor.subtype
+                    and _planner_anchor.confidence >= 0.5
+                ):
                     attached_item = {
-                        "garment_category": _text_hint["garment_category"],
-                        "garment_subtype": _text_hint["garment_subtype"],
-                        "title": _text_hint["garment_subtype"].title(),
+                        "garment_category": _planner_anchor.category,
+                        "garment_subtype": _planner_anchor.subtype,
+                        "title": _planner_anchor.subtype.title(),
                         "attachment_source": _attachment_source_pending,
-                        "enrichment_fallback": "text_hint",
+                        "enrichment_fallback": "planner_anchor",
                         "is_garment_photo": True,
                     }
                     _attached_context = self._attached_item_context(attached_item)
@@ -2089,13 +2104,14 @@ class AgenticOrchestrator:
                         effective_message = f"{message.strip()} {_attached_context}".strip()
                     trace_end(
                         "wardrobe_enrichment",
-                        output_summary=f"timeout, text_fallback={_text_hint['garment_subtype']}",
+                        output_summary=f"timeout, planner_anchor={_planner_anchor.subtype}",
                         status="ok",
                     )
                     _log.info(
-                        "Wardrobe enrichment timed out; using text-hint anchor: category=%s subtype=%s",
-                        _text_hint["garment_category"],
-                        _text_hint["garment_subtype"],
+                        "Wardrobe enrichment timed out; using planner anchor: category=%s subtype=%s confidence=%.2f",
+                        _planner_anchor.category,
+                        _planner_anchor.subtype,
+                        _planner_anchor.confidence,
                     )
                 else:
                     attached_item = None

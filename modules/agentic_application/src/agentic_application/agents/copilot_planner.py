@@ -17,6 +17,7 @@ from user_profiler.config import get_api_key
 
 from ..intent_registry import Action, Intent, intent_enum_values, action_enum_values
 from ..schemas import (
+    AnchorGarmentHint,
     CopilotActionParameters,
     CopilotPlanResult,
     CopilotResolvedContext,
@@ -99,6 +100,7 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     "target_product_type",
                     "weather_context",
                     "time_of_day",
+                    "anchor_garment",
                     "extracted_preferences",
                 ],
                 "properties": {
@@ -119,6 +121,34 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     "target_product_type": {"type": "string"},
                     "weather_context": {"type": "string"},
                     "time_of_day": {"type": "string"},
+                    # Phase 6 (May 11 2026): structured garment anchor.
+                    # category is enum-constrained to the 6 vision-schema
+                    # GarmentCategory values so the orchestrator can route
+                    # by role; subtype is free-text so the model can name
+                    # specific pieces ("lehenga", "midi dress") that may
+                    # not be in the catalog enum. Empty category means
+                    # "no anchor garment referenced in this turn."
+                    "anchor_garment": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["category", "subtype", "confidence"],
+                        "properties": {
+                            "category": {
+                                "type": "string",
+                                "enum": [
+                                    "",
+                                    "top",
+                                    "bottom",
+                                    "outerwear",
+                                    "one_piece",
+                                    "set",
+                                    "accessory",
+                                ],
+                            },
+                            "subtype": {"type": "string"},
+                            "confidence": {"type": "number"},
+                        },
+                    },
                     # Phase 5x: explicit user preferences along open
                     # catalog-attribute axes. Strict-mode JSON schema
                     # forbids arbitrary-key objects, so this is an array
@@ -521,6 +551,15 @@ class CopilotPlanner:
             cleaned = [s for v in values if (s := str(v).strip())]
             if cleaned:
                 extracted_preferences[attr] = cleaned
+        anchor_raw = resolved_raw.get("anchor_garment") or {}
+        if isinstance(anchor_raw, dict):
+            anchor_garment = AnchorGarmentHint(
+                category=str(anchor_raw.get("category") or "").strip(),
+                subtype=str(anchor_raw.get("subtype") or "").strip(),
+                confidence=float(anchor_raw.get("confidence") or 0.0),
+            )
+        else:
+            anchor_garment = AnchorGarmentHint()
         resolved = CopilotResolvedContext(
             occasion_signal=resolved_raw.get("occasion_signal"),
             formality_hint=resolved_raw.get("formality_hint"),
@@ -533,6 +572,7 @@ class CopilotPlanner:
             target_product_type=str(resolved_raw.get("target_product_type") or ""),
             weather_context=str(resolved_raw.get("weather_context") or ""),
             time_of_day=str(resolved_raw.get("time_of_day") or ""),
+            anchor_garment=anchor_garment,
             extracted_preferences=extracted_preferences,
         )
 

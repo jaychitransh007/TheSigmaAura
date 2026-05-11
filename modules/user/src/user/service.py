@@ -3,7 +3,6 @@ import io
 import logging
 import mimetypes
 import os
-import re
 import subprocess
 import tempfile
 import base64
@@ -126,50 +125,6 @@ def resolve_wardrobe_role(item: dict[str, Any]) -> str:
     if candidates & _ROLE_SHOE_SUBTYPES:
         return "shoe"
     return "other"
-
-
-# Each (category, subtype-set) pair drives both wardrobe-role
-# resolution and the text-hint extractor below. Order matches the
-# role-mapper precedence: one_piece → top → outerwear → bottom → shoe.
-_ROLE_BUCKETS_BY_CATEGORY: tuple[tuple[str, frozenset[str]], ...] = (
-    ("one_piece", _ROLE_ONE_PIECE_SUBTYPES),
-    ("top", _ROLE_TOP_SUBTYPES),
-    ("outerwear", _ROLE_OUTERWEAR_SUBTYPES),
-    ("bottom", _ROLE_BOTTOM_SUBTYPES),
-    ("accessory", _ROLE_SHOE_SUBTYPES),
-)
-
-
-def extract_garment_hint_from_text(message: str) -> Optional[dict[str, str]]:
-    """Scan a user message for an explicit garment-type word.
-
-    When the wardrobe vision pipeline times out or returns null
-    GarmentCategory, the user's own text (e.g. "what goes with this
-    skirt?") often names the garment unambiguously. Returns
-    {"garment_category": ..., "garment_subtype": ...} for the first
-    hit, or None when nothing matches.
-
-    Matches against the same canonical subtype sets used by
-    `resolve_wardrobe_role`, so a fix to the role mapper's vocabulary
-    automatically flows to the text fallback too. Within each bucket
-    we check longest-token-first so "track pants" wins over "pants"
-    in a sentence like "tailored track pants".
-    """
-    if not message:
-        return None
-    text = str(message).lower().replace("-", " ").replace("_", " ")
-    for category, subtypes in _ROLE_BUCKETS_BY_CATEGORY:
-        for subtype in sorted(subtypes, key=len, reverse=True):
-            # \b ... (s|es)? \b accepts both singular and the two common
-            # English plural shapes (skirt/skirts, dress/dresses), since
-            # users phrase pairing requests both ways ("what goes with
-            # these jeans" vs "this skirt"). The `?` keeps the singular
-            # match still working; the trailing \b prevents matching
-            # mid-word ("blazered", "skirting").
-            pattern = r"\b" + re.escape(subtype) + r"(?:s|es)?\b"
-            if re.search(pattern, text):
-                return {"garment_category": category, "garment_subtype": subtype}
-    return None
 
 
 def _convert_to_jpeg_if_needed(file_data: bytes, filename: str) -> tuple[bytes, str, str]:
