@@ -145,223 +145,64 @@ Independent of redundancy/extractability, these categorical-correctness items re
 - Split `GarmentSubtype` → `OutfitStructure` carve-out (`co_ord_set` / `kurta_set` / `lehenga_set` / `ethnic_set`) — categorical correctness.
 - Clean up `ConstructionDetail` (move `deconstructed` / `utility` / `experimental` to a future `StyleExpression` axis) — categorical reclassification.
 
-**Wave B — genuinely gated on Phase 4.6 eval data:**
-- Adopt the 4 deferred ShapeArchitecture axes (`ProjectionType`, `StructuralRhythm`, `EdgeGeometry`, `VolumeIntensity`). These are *additive* axes whose value is hard to justify without ground truth, and adopting them costs another re-enrichment run (~$35-40, ~30hrs wall time per recent benchmark).
+**Wave B — DROPPED 2026-05-11.** Adopting the 4 deferred ShapeArchitecture axes (`ProjectionType`, `StructuralRhythm`, `EdgeGeometry`, `VolumeIntensity`) required bulk re-enrichment, which is now forbidden per the no-bulk-re-enrichment policy below. These axes will not be adopted.
 
-**Risk consideration for Wave A**: the absence of an eval set means we can't *systematically* catch quality regressions from each cut. Mitigate with side-by-side retrieval diffs on a small hand-curated set of test queries before merging each surgical PR — much smaller than the 100-500-query Phase 4.6 eval set, but enough to catch a category-level regression.
+**Risk consideration for Wave A**: the absence of an eval set means we can't *systematically* catch quality regressions from each cut. Mitigate with side-by-side retrieval diffs on a small hand-curated set of test queries before merging each surgical PR.
 
-**Target axis count after Wave A:** ~40-43 (vs current 55). Wave B is +0 to +4 axes depending on eval evidence.
+**Target axis count after Wave A:** ~52-53 (vs current 55) — 3 borderline cuts at most.
 
-**Ordering:** Step 4 (stylist patches — purely additive) ships first since it's the highest-leverage and lowest-risk change. Then Wave A in surgery-PRs (one per cut), data-driven by an audit script that produces the correlation + null-rate numbers. Wave B waits on Phase 4.6.
+### ⛔ No-bulk-re-enrichment policy (2026-05-11)
 
-### Catalog enrichment queue (Type A — vision-extractable garment properties)
+The catalog is **frozen** at the 14,242-row enrichment state. Bulk re-enrichment is no longer on the table — the May 2026 run cost ~$35-40 and ~30hrs wall time, and the user has made it a hard policy that no further bulk or targeted re-enrichment of existing rows will be funded. Plan all future quality work around the frozen vocabulary.
 
-These are visible from product images. Need: (1) vision-enrichment prompt updated to ask for them, (2) re-run on the 14,296 catalog rows, (3) backfill `catalog_enriched`, (4) regenerate embeddings.
+**What's still allowed:**
+- Per-product enrichment of NEW catalog items at ingestion time (admin tool's vision pipeline path)
+- Embedding regeneration when a column drop / YAML change materially alters embedding text (avoid by default; ~$0.50 + 35 min)
+- Schema changes that are pure SQL transforms over existing rows: column drops, column adds with default values, categorical reclassifications
 
-**From `archetype.yaml` (PR #226 — applied to canonical schema, not yet in catalog):**
-- `SilhouetteType`: relaxed_tailored, layered, sculptural
-- `FabricTexture`: low_luster, sheer, slub, performance, handloom
-- `ConstructionDetail`: deconstructed, utility, experimental
-- `EmbellishmentType`: tonal_embroidery, self_texture, chikankari, kantha
+**What's permanently dead:**
+- The "Catalog enrichment queue" of dormant stylist values (`wrap_with_hard_cinching`, `kasavu_border`, `temple_border`, `lightly_padded`, `angled_seam`, `vertical_panel`, `center_gathering`, `textured_yoke`, `epaulettes`, `rigid_tight`, `distributed_heavy`, `hard_cinched` / `soft_defined` / `strategic_defined`, `micro_mini`) — these values can't be populated without re-enrichment.
+- **`FabricTexture` decomposition** (split into `FabricTexture` + `SurfaceFinish` + `ConstructionDetail`) — would require re-tagging every row.
+- **`SurfaceFinish` axis adoption** (high_shine_metallic / antique_metallic / brushed_metallic) — same.
+- **Wave B** of the ontology surgery (4 deferred ShapeArchitecture axes) — adoption required re-enrichment.
+- **4-stage extraction architecture** — the staged-extraction refactor was a re-enrichment-time improvement. Moot.
 
-**From `bodyframe_stylist_revision_patchset_v_1.md` (received 2026-05-09, not yet applied to canonical):**
-- `ShoulderStructure`: lightly_padded
-- `ConstructionDetail`: angled_seam, vertical_panel, center_gathering, textured_yoke, epaulettes
-- `SilhouetteContour`: wrap_with_hard_cinching
-- `WaistDefinition`: soft_defined, strategic_defined, hard_cinched
-- `FabricDrape`: rigid_tight
-- `EmbellishmentLevel`: distributed_heavy
+The stylist's prose-only documentation for the dropped vocabulary remains in `knowledge/knowledge_v2/` as a historical reference; if a future policy reversal authorises re-enrichment, those files specify what to add.
 
-**From `updated_occasion_yaml_review_with_stylist_notes.md` (received 2026-05-09):**
-- `EmbellishmentType`: kasavu_border, temple_border (region-specific border treatments — Kerala / Tamil Nadu)
-- `GarmentLength`: micro_mini (stylist used `HemLength` — same axis, vocabulary alignment needed; new value)
+### Where quality improvements come from (going forward)
 
-**From `weather_yaml_review_and_updated_occasion_style_notes.md` (received 2026-05-09 — 6 in-place edits already shipped):**
-- No new vocabulary added. The big finding here is structural: **`FabricTexture` decomposition.** Stylist flagged that today's `FabricTexture` enum mixes tactile texture (smooth, ribbed, textured), optical finish (sheen, metallic, matte), and construction detail (embroidered) — semantically overloaded; creates contradictory weather-reasoning rules. Proposed split:
-  - Keep in `FabricTexture`: smooth, ribbed, textured (tactile only)
-  - Move to new `SurfaceFinish` axis: sheen, metallic, matte
-  - Move to existing `ConstructionDetail`: embroidered
-  - Migration affects: garment_attributes.json schema, all 8 YAMLs, catalog enrichment for the 14,296 rows (re-tagged from old → new axes), embeddings regenerated. Higher cost than a simple value addition because *every* row's FabricTexture cell needs interpretation.
+Without re-enrichment, the four levers remaining:
 
-**From `palette_yaml_stylist_review_and_style_notes.md` (received 2026-05-09 — black handling, neutral luxury, monochrome, Deep Winter cleanup applied in-place):**
-- **Metallic decomposition** — folds into the SurfaceFinish split above. The stylist wants the future `SurfaceFinish` axis to distinguish:
-  - `high_shine_metallic` (mirror-shine; muted palettes typically fail under this)
-  - `antique_metallic` (oxidized, brushed, dull champagne, aged bronze; muted palettes succeed with these)
-  - `brushed_metallic` (matte gold, brushed steel)
-  Today's single `metallic` value forces a binary that over-bans muted-palette users from a category they can absolutely wear. Resolve in the same batch as the FabricTexture decomposition.
-- Vocabulary adds — all PrimaryColor / SecondaryColor (free-form text, no canonical schema impact). Catalog enrichment for these neutral-luxury tones (espresso, mushroom, greige, cocoa, tobacco, etc.) means the vision-enrichment prompt should be updated to recognize them when re-running enrichment. Currently catalog rows skew toward festive vocabulary; neutral-luxury palette rows may be undertagged.
+1. **Engine logic on existing vocabulary** — pairing matchers, reduction rules, composition-time derivations (`styling_decisions.py` pattern). The four matchers shipped 2026-05-11 (`distributed_statement_exception`, `guest_vs_bridal_separation`, `sheen_hierarchy`, `metallic_neutral_exception`) follow this pattern.
+2. **YAML rules using existing canonical values** — body_frame, occasion, weather, palette, archetype, query_structure, pairing_rules edits that reference values already present on the 14,242 rows. Phase 4.3's hard/soft keys (PR #246) let the stylist tune the hard-vs-soft tier per rule.
+3. **Composer-side scoring + retrieval-side filtering refinements** — better use of the existing attribute signal in the LLM rater + retrieval RPC. No catalog changes required.
+4. **Learned models on feedback** (Phase 7) — once feedback volume permits, replace the zero-shot rater with a model trained on real accept/reject signals carrying the sub-score vector at recommendation time.
 
-**New top-level canonical axes** (need schema work in addition to enrichment):
-- `ShoulderExposure`: Closed, CapExposed, OffShoulder, OneShoulder, Strapless, ColdShoulder *(from bodyframe)*
-- `SleeveVolume`: Slim, Moderate, Puff, Bishop, Dramatic *(from bodyframe)*
-- `BlouseLength`: Cropped, Standard, Longline *(from bodyframe)*
-- `BorderContrast`: low, medium, high *(from occasion — used on Onam for `kasavu` border emphasis)*
-- `FabricTransparency`: low, medium, high *(from occasion — used on Holi to keep wet color from soaking through)*
-- `SurfaceFinish` *(from weather — see FabricTexture decomposition above)*
-- **5 performance axes** *(from weather — Indian-monsoon-driven; not strictly visible from images, may need garment-spec data or partial vision inference):*
-  - `BreathabilityLevel`: low, moderate, high
-  - `DryTime`: slow, moderate, fast
-  - `WaterResistance`: none, low, medium, high
-  - `ThermalInsulation`: low, moderate, high
-  - `WrinkleResistance`: low, moderate, high
-- `LayeringVisibility`: hidden, integrated, statement *(from weather — North Indian ceremonial layering: shawl over lehenga vs thermal under sherwani)*
+### Canonical execution sequence — current state
 
-(More from upcoming stylist files will append here.)
+| Step | Status |
+|---|---|
+| **Step 1** — Engineering items independent of catalog | ✅ Shipped 2026-05 (PRs #234, #235, #236): `DupattaDrape` + `LayeringStructure` derivation, `MovementSecurity` + `SupportRequirement`, `bridal_priority` role-aware lookup, vocabulary registry, canonical enum audit, yearly Navratri config |
+| **Step 2** — Catalog re-enrichment | ✅ Shipped 2026-05-11: 14,242 / 14,296 rows enriched, embeddings regenerated. **This is the last bulk re-enrichment.** |
+| **Step 3** — Phase 4.3 hard/soft yaml_loader | ✅ Shipped 2026-05-11 (PR #246) |
+| **Step 4 (thin)** — Existing-vocab subset of stylist patches + pairing matchers | ✅ Shipped 2026-05-11 (PRs #248-#253): 4 pairing matchers, bodyframe Pear/JawlineDefinition/male Rectangle, occasion daily_office_mnc downgrade |
+| **Step 4 (full)** — Remaining bodyframe + occasion edits depending on dormant vocabulary | ⛔ Dropped (no-re-enrichment policy). The ~10 dormant values cannot be populated; rules referencing them would bind to zero rows. |
+| **Step 5** — Quality validation via Phase 4.6 eval set | 🔒 Blocked on Phase 4.6 human curation |
 
-### Engine extension queue (Type B — composition-time concepts, NOT catalog)
+### Engineering items still actionable (no re-enrichment needed)
 
-These are decisions the engine makes at composition time. They don't go on individual garment rows. Each needs new code in the composition engine + reduction logic.
+These all use the existing catalog vocabulary or operate at composition time. Listed in rough priority order:
 
-**From `bodyframe_stylist_revision_patchset_v_1.md`:**
-- `DupattaDrape` (VerticalFall, SingleShoulder, OpenUDrape, SideFall) — how the user drapes the dupatta when wearing the outfit. Composition emits this per outfit, not per garment.
-- `LayeringStructure` (OpenFront, CapeOverlay, LonglineJacket, SoftOvershirt) — pairing decision (e.g., "include a longline jacket"), not a property of any single garment.
-- `SupportRequirement` (Low, Medium, High) — depends on garment fit + occasion combination.
-- `MovementSecurity` (Secure, Moderate, Delicate) — same.
-
-**From `updated_occasion_yaml_review_with_stylist_notes.md`:**
-- `MovementEase` (low, moderate, high) — used on Sangeet + Navratri (dance-heavy occasions). **Vocabulary alignment with bodyframe's `MovementSecurity`** — same concept, different name. Pick one canonical name during the batch-execute pass.
-- **`bridal_priority` role-aware dressing** — entirely new structural concept. Wedding occasions need bride / groom / guest sub-roles with different rule sets per role (guests must NEVER receive equivalent embellishment recommendations as bridal participants attending the same wedding). Engine currently treats all attendees uniformly. Needs schema support for "role within occasion" context + role-conditional rule lookup.
-- **External yearly Navratri color-sequence config** — Navratri has a 9-night designated daily color sequence that changes yearly. Should be an external config the engine reads at runtime, not hardcoded in YAML. Stylist flagged this explicitly.
-
-**Vocabulary mismatch with existing canonical** (note for batch-execute):
-- Stylist's `SkinExposureLevel: [modest, balanced, elevated]` — canonical already has `SkinExposureLevel: [very_low, low, medium, high, very_high]`. Resolve during batch-execute (likely keep canonical's 5-band scale, alias stylist's labels in canonicalize).
-- Stylist's `HemLength` — canonical uses `GarmentLength` (with values cropped, waist, hip, mid_thigh, thigh, knee, calf, ankle, floor). Same axis, different name. Add `micro_mini` to GarmentLength.
-
-(More from upcoming stylist files will append here.)
-
-### Engineering flags surfaced by stylist (cross-cutting)
-
-Items the stylist explicitly flagged as engineering work that no single YAML can express:
-
-1. **External yearly Navratri color-sequence config** — see Engine extension queue above.
-2. **Bridal-role engine support** — see Engine extension queue above (`bridal_priority`).
-3. **Exposure / modesty attribute family audit** — `SkinExposureLevel` exists; `ShoulderExposure` is queued. Stylist also wants `NecklineDepth` enforced as hard rules in conservative contexts (in_laws_first_meeting, daily_office_mnc) — already canonical, just needs hard/soft routing.
-4. **Canonical enum registry audit** — stylist flagged inconsistencies across YAMLs in how `OccasionFit`, `OccasionSignal`, `EmbellishmentType`, `FabricTexture`, `PrimaryColor` values are spelled / scoped (e.g., `formal` vs `semi_formal` vs `smart_casual`; `traditional` vs `festive`; `party` vs `night_out`; `workwear` vs `office`). Worth a one-pass canonicalization sweep before batch-applying patches.
-5. **Fabric-pairing compatibility layer** — silk × cotton, brocade × handloom, etc. Stylist already flagged this as the major content gap that the upcoming `pairing_rules.yaml` review will address. Carrying as a forward-looking note here so the engineering work isn't surprise-discovered then.
-
-### Hard / soft rule key support — Phase 4.3 (engineering, gates body_frame application)
-
-Stylist's body_frame patch uses `hard_flatters` / `hard_avoid` / `soft_flatters` / `soft_avoid` keys throughout. Current yaml_loader only recognizes `flatters` / `avoid` ([yaml_loader.py:271-276](../modules/agentic_application/src/agentic_application/composition/yaml_loader.py:271-276)) — `hard_*` / `soft_*` keys would be silently ignored.
-
-Required code work:
-1. yaml_loader extended to read both naming styles (back-compat) and surface hard/soft separately.
-2. Reduction logic in `composition.engine` updated to enforce hard rules unconditionally and treat soft rules as scoring penalties (matches the `PENALTY_*` pattern in composer_engine).
-3. Validators updated to permit the new keys.
-4. Tests covering hard violation = drop, soft violation = score penalty.
-
-Estimated ~3 days of engineering. Independent of catalog re-enrichment; can ship in parallel.
-
-### Canonical execution sequence (locked 2026-05-09)
-
-All 8 stylist files reviewed. Queue is finalized. The agreed execution order is below.
-
-**Step 1 — Ship engineering items independent of catalog (~1.5-2 weeks).** 8 items, packaged as 3 small PRs:
-
-- **PR A:** `DupattaDrape` derivation + `LayeringStructure` recommendation (composition-time decisions; emit styling outputs based on body shape + occasion).
-- **PR B:** `MovementSecurity` / `SupportRequirement` derivation + `bridal_priority` role-aware schema (bride / groom / guest sub-roles within wedding occasions).
-- **PR C:** Vocabulary alignments (`HemLength` → `GarmentLength`, `MovementEase` ↔ `MovementSecurity`, `SkinExposureLevel` label aliasing) + canonical enum registry audit + yearly Navratri color-sequence config.
-
-These have real effect on real traffic without any catalog or schema dependency.
-
-**Step 2 — Catalog re-enrichment** — ✅ **shipped 2026-05-11**.
-
-- **2a:** ✅ shipped (PRs #237 + #239 — schema rationalized; 55 enum + 2 text canonical attrs).
-- **2b:** ✅ shipped 2026-05-11 — 14,242 / 14,296 rows enriched ok (99.62%), embeddings regenerated, 54 CDN-broken rows dropped. Actual cost ~$35-40 (vs $20-25 projected; budget $0.003/row × 1.5x top-up buffer next time). End-to-end took ~30 hrs real time with two billing-limit pauses.
-
-**Step 3 — Build Phase 4.3 hard/soft yaml_loader + engine reduction** — 🟡 **next** (~3 days). yaml_loader extended to recognize `hard_flatters` / `hard_avoid` / `soft_flatters` / `soft_avoid` keys; reduction logic enforces hard rules unconditionally and treats soft rules as scoring penalties; validators updated; tests covering hard violation = drop, soft violation = penalty. **Inert until Step 4 lands** (no rule in production YAMLs uses the new keys yet).
-
-**Step 4 — Apply held YAML patches** (3 patches, in one coordinated PR per file).
-
-- bodyframe (in-place edits using new axes + hard/soft).
-- occasion (hard/soft-keyed edits).
-- pairing_rules engine matchers (wire the prose-keyword matchers for `indian_weave_compatibility`, `metallic_neutral_exception`, etc.).
-
-**Step 5 — Quality validation via Phase 4.6 eval set.** Gated on Phase 4.6's own delivery (still 🔒 Blocked on human). Runs `composition_quality_eval.py` end-to-end against the eval set with the new attributes flowing.
-
-### Sequencing notes
-
-- **Step 1 items are all independent** of each other AND of Step 2. Calendar pressure can overlap them.
-- **Step 2a is a strict prerequisite for Step 2b** — re-enrichment can't run until the schema knows the new axes/values.
-- **Step 3 can run in parallel with Step 2** (they don't share files), but it's invisible in production until Step 4 wires it up.
-- **Step 4 needs Steps 2 + 3 to land first**; the patches reference both new axes (from Step 2) and hard/soft keys (from Step 3).
-- **Step 5 can begin as soon as Phase 4.6 eval set + Steps 2 + 3 + 4 land.**
-
-### Catalog enrichment provider decision (2026-05-09)
-
-**Decision:** stay on **`gpt-5-mini` via OpenAI Batch API**. Gemini-2.5-Flash was scoped, implemented (PR #241), and reverted after numerical comparison.
-
-| | GPT-5 mini batch | Gemini 2.5 Flash batch |
-|---|---:|---:|
-| Input price | $0.125 / 1M | $0.150 / 1M |
-| Output price | $1.000 / 1M | $1.250 / 1M |
-| Per-row cost (~3.5K input / ~1K output) | ~$0.0014 | ~$0.0018 |
-| **14,296-row total** | **~$20** | ~$26 |
-| MMMU vision benchmark | 79.7% | 79.7% |
-
-GPT-5 mini batch is **~30% cheaper for our exact token mix** and ties on MMMU. Gemini's domain-specific quality on Indian fashion was unverified (no public benchmark covers it); the cost difference was small but we pay it deterministically, the quality upside was speculative, and OpenAI's batch tooling is already integrated + production-validated. Keep gpt-5-mini.
-
-**What we kept from the Gemini exploration:**
-- The expanded prompt header (confidence-band rules, image-evidence rules, tie-break rules, Indian-context note) — useful regardless of provider. Lives in `modules/catalog/src/catalog/enrichment/prompts/system_prompt.txt`.
-- Token-aware batch chunking (added 2026-05-09 — see below). Originally a Gemini concern, but it benefits the OpenAI Batch API path too — proactively splits large catalog runs to stay under the org's enqueued-tokens-per-minute ceiling instead of relying on reactive retry.
-
-### Token-aware batch chunking (2026-05-09)
-
-OpenAI's Batch API has two sets of caps that can reject a submitted batch:
-
-1. **File-level:** ≤ 200 MB upload size, ≤ 50,000 requests per file. Existing `_split_rows_for_max_batch_bytes` in `modules/catalog/src/catalog/enrichment/main.py` handles the byte cap (default 180 MB).
-2. **Org-level:** enqueued tokens per minute (TPM), tier-dependent. A batch that fits under 200 MB can still get rejected with `enqueued_token_limit_reached` if its combined input tokens exceed the org's TPM ceiling.
-
-The existing code reactively retries via `_split_chunk_for_retry` when this happens, but proactive splitting is cheaper. `_split_rows_for_max_batch_bytes` now also enforces a `max_batch_input_tokens` cap (default `1.5M` from `PipelineConfig`):
-
-- Per-row token estimate: cached system-prompt tokens + per-row text tokens + ~300 tokens per attached image.
-- A row exceeding the cap on its own raises (catches misconfiguration before submission).
-- Chunks break on whichever cap (bytes or tokens) is hit first.
-
-CLI flag: `--max-batch-input-tokens N` (default = `PipelineConfig.max_batch_input_tokens`, currently 1.5M; pass `0` to disable the token cap and rely only on `--max-batch-bytes`).
-
-For Step 2b on the 14,296-row catalog: total estimated input ~50M tokens. Default 1.5M-token cap → ~33 batch chunks, each well under both file and TPM ceilings. Tune `max_batch_input_tokens` upward if the org's TPM tier permits.
-
-### Prompt-engineering pass (2026-05-09 architectural review)
-
-External review surfaced two classes of recommendation:
-
-**Shipped — prompt-only, no architectural cost** (lives in `modules/catalog/src/catalog/enrichment/prompts/system_prompt.txt`):
-- **Independence rule** — each attribute axis is independent unless explicitly linked; resists the model's tendency to produce a globally coherent narrative at the cost of localized accuracy.
-- **Globalized applicability rule** — if an axis isn't visually applicable to the garment category, return null with confidence ≤ 0.2. Replaces per-axis "return null when..." duplication.
-- **Visibility-quality confidence rule** — confidence reflects both certainty AND visibility quality. Plausible inferences from partial views land at 0.4-0.6, not 0.8+.
-- **Ambiguity rule** — when two values are equally plausible and visual evidence is insufficient, return null with low confidence rather than forcing a deterministic choice. Replaces enum-order tie-breaking which biases the catalog distribution systematically.
-- **Semantic-attribute construction-over-marketing rule** — `OccasionFit` / `OccasionSignal` / `FormalityLevel` / `FormalitySignalStrength` / `TimeOfDay` should be inferred from garment construction, not stereotyped categories (sequins ≠ automatically party, kurta ≠ automatically traditional).
-- **MotionBehavior confidence cap** at 0.75 — inferring motion from a static image is one of the least reliable vision tasks. Cap unless construction is unambiguously dance-coded.
-
-**Deferred — staged extraction architecture (Phase 2 ontology surgery item):**
-
-The single highest-ROI improvement per the review is splitting extraction into **4 sequential stages**:
-
-| Stage | Axes | Why |
-|---|---|---|
-| 1 — Structural Identity | GarmentCategory, GarmentSubtype, GarmentLength, StylingCompleteness, GenderExpression | Stabilises ontology routing; cheap |
-| 2 — Shape + Construction | Silhouette*, Fit*, WaistDefinition, HipDefinition, ShoulderStructure, Sleeve*, Neckline*, VolumePlacement, AsymmetryType, AttachmentStructure | Geometry from images |
-| 3 — Surface + Material | Fabric*, Pattern*, Embellishment*, SurfaceFinish, BorderContrast | Material reading |
-| 4 — Styling / Semantic | Occasion*, Formality*, MotionBehavior, VisualWeight*, StructuralFocus | Most interpretive — runs LAST so structural axes are locked first |
-
-Each stage receives ONLY its relevant ontology slice (not the full schema). Attribute axes don't contaminate each other across stages. JSON validity improves at smaller per-call schemas.
-
-**Cost trade-off** at 14,296 rows × OpenAI Batch:
-- Single-pass (current): ~$20.
-- 4-stage extraction: ~$50-55 (~2.5× — each stage has a smaller prompt + fewer axes, so per-call cost is lower than a single-pass call; net ~2.5× rather than 4×).
-
-**Engineering scope** if adopted:
-- 4 per-stage system prompts (or one prompt with stage-conditional sections).
-- 4 per-stage `response_schema` builders (slice the canonical attribute registry by stage).
-- `batch_builder.py` builds 4 batch files per row.
-- `merge_writer.py` merges results per row across the 4 stages.
-- Partial-failure handling (what if stage 2 succeeds but stage 4 fails?).
-- New per-stage CLI mode + tests.
-- Estimated: ~2-3 days engineering + ~1 day QA.
-
-**Trigger for adoption:** Phase 4.6 eval-set delivery + a head-to-head comparison on the eval set (current single-pass vs 4-stage). The cost increase is justified only if the consistency / accuracy improvement is empirically meaningful.
-
-**Until then:** the current single-pass path with the prompt-engineering improvements above is the production configuration for Step 2b.
+1. **Phase 4.6 eval set curation** — 🔒 blocked on human. Gates Step 5, composer engine flag-on, Phase 6 library quality validation, Phase 7 held-out evaluation, threshold calibration on both routers, the 3 borderline Wave A surgical PRs. Single highest-leverage unblock.
+2. **`anchor_visual_hierarchy` + `anchor_exact_match_avoidance` matchers** — needs `anchor_item_id` plumbing on `TupleContext` from upstream (composer reads it from the user's uploaded anchor when intent is `pairing_request`). ~2-3 days of plumbing + matchers + tests. No catalog dependency.
+3. **`indian_weave_compatibility` engine matcher** — heritage-weave classifier from existing attributes (subtype + fabric_texture + cultural_register → weave-family bucket), then cap on multiple heritage-heavy items in one outfit. ~2 days.
+4. **`elevated_fusion_exception` override on `_evaluate_cultural_coherence`** — soften the cultural-coherence soft penalty when Western elements signal tailored/monochrome/minimal. ~1 day.
+5. **Wave A surgical cuts (3 borderline candidates)** — `OccasionSignal`, `SilhouetteContour`, `FitEase`. Each needs a top-pairs review in `docs/phase2_wave_a_audit.md` before committing. Column drops only (no embedding regen needed if existing embeddings stay).
+6. **Color-axes algorithmic switch** — `ContrastLevel` / `ColorTemperature` / `ColorSaturation` / `ColorValue` derived from Pillow/OpenCV on the existing product images (no vision-API call; image processing only). One PR per axis. ~1 day each.
+7. **`GarmentSubtype` → `OutfitStructure` carve-out** — categorical SQL reclassification of `co_ord_set` / `kurta_set` / `lehenga_set` / `ethnic_set` into a new column. No re-enrichment.
+8. **`ConstructionDetail` cleanup** — move `deconstructed` / `utility` / `experimental` to a future `StyleExpression` axis via SQL reclassification.
+9. **Composer-side EAR-1 data accumulation** — composer router decisions persisting since PR #222. Wait for ~1 week of data, then diagnose the ~4% composer engine acceptance rate driver (which fall-through gate fires most).
+10. **`modern_bridal_restraint`** — soft scoring boost for restrained-luxury bridal styling (minimal embellishment + ivory/pastel palette under bridal occasion). Pure scoring rule, no catalog dependency.
 
 ---
 ---
@@ -414,17 +255,23 @@ These foundations remain available; their consumers (the composition engine in P
 **Strategic context:**
 The composition engine (Phase 4) is the architectural endpoint that makes the YAMLs runtime-load-bearing on the hot path. Phases 1–3 are operational wins. Phase 5 extends the wins to the composer. **Phase 6** moves composition entirely offline — pre-rated outfits indexed in `outfit_library`, retrieved via vector + filter on the hot path — which is the only architectural path to sub-3s on the slow side of the cache, since even at full engine acceptance the cold path stays at ~25-30s (composer LLM ~12s + rater ~4s + retrieval ~3s). **Phase 7** replaces the zero-shot LLM Rater with a learned model on feedback signals; that's a quality + cost refinement on top of Phase 6, not a separate latency lever.
 
-**Critical-path priority (2026-05-11):**
+**Critical-path priority (2026-05-11 — post-no-re-enrichment policy):**
 
-1. ✅ **Phase 4.2 stylist YAML review — DONE** (all 8 files reviewed; downstream work batched into the canonical execution sequence above).
-2. ✅ **Step 2b catalog re-enrichment — DONE 2026-05-11** (14,242 rows enriched on the new ShapeArchitecture + v3 axes; embeddings regenerated). Phase 6 library is now unblocked from a content-vocabulary standpoint.
-3. 🟢 **Step 3 — Phase 4.3 hard/soft yaml_loader** (~3 days engineering; independent of catalog work, can start immediately). Once Step 3 lands, **Step 4** applies the 3 held YAML patches (bodyframe, occasion, pairing engine matchers).
-4. 🔒 **Phase 4.6 eval set curation** — 100-500 hand-curated queries with hand-rated outputs. **Why this matters:** Step 5 (quality validation of all the new enrichment + engine work), composer engine flag-on, Phase 6 library quality validation, Phase 7 learned-model held-out evaluation, and threshold calibration on both routers all gate on having ground truth.
-5. ⏳ **EAR-1 data accumulation** (composer router decisions persisting since [PR #222](https://github.com/jaychitransh007/TheSigmaAura/pull/222)). **Why this matters:** the composer engine's actual ~4% acceptance driver (`MIN_PICKS` / `pool_too_sparse` / pre-engine eligibility / `low_confidence`) is invisible without persistence. Next composer-side fix waits on this breakdown.
-6. 📋 **Phase 6 — Outfit Library** (post-4.6, ~3-4 weeks). **Why this matters:** the engines are ~done; the question is whether they run on the hot path (current design, ~25s floor) or offline (library design, sub-500ms hits). Phase 6 is the architectural shift that finishes the sub-3s anchor target.
-7. 📋 **Phase 7 — Layer C** (post-Phase-6 + ~50 feedback events/user).
+1. ✅ **Phase 4.2 stylist YAML review — DONE** (all 8 files reviewed; existing-vocab subset shipped, dormant-vocab subset dropped per policy).
+2. ✅ **Step 2 catalog re-enrichment — DONE** (last bulk run; catalog is now frozen at 14,242 rows).
+3. ✅ **Step 3 — Phase 4.3 hard/soft yaml_loader — DONE** (PR #246).
+4. ✅ **Step 4 (thin) — DONE 2026-05-11** (PRs #248-#253): 4 pairing matchers + bodyframe + occasion existing-vocab edits.
+5. 🔒 **Phase 4.6 eval set curation** — single highest-leverage unblock. Gates Step 5 quality validation, composer engine flag-on, Phase 6 library quality validation, Phase 7 held-out evaluation, threshold calibration on both routers, and the 3 borderline Wave A surgical cuts.
+6. ⏳ **EAR-1 data accumulation** (composer router decisions persisting since [PR #222](https://github.com/jaychitransh007/TheSigmaAura/pull/222)). After ~1 week of data, diagnose the ~4% composer engine acceptance rate driver.
+7. 🟢 **Anchor matchers + indian_weave_compatibility + elevated_fusion_exception** — ~5-6 days total of engine-side work that uses existing catalog vocab. Each is a small standalone PR.
+8. 🟢 **Wave A surgical cuts** (column drops for OccasionSignal / SilhouetteContour / FitEase if top-pairs review supports each) — 1 PR per cut, ~half day each.
+9. 🟢 **Color-axes algorithmic switch** (Pillow/OpenCV on existing product images; no re-enrichment). ~1 day per axis, 4 axes.
+10. 📋 **Phase 6 — Outfit Library** (post-4.6, ~3-4 weeks). The actual sub-3s lever on the slow side of the cache. Operates on the frozen catalog — no enrichment dependency.
+11. 📋 **Phase 7 — Layer C** (post-Phase-6 + feedback volume). Replaces zero-shot Rater with learned model.
 
-Items NOT on the critical path right now (deferred — see Phase headers for trigger conditions): planner model swaps (Phase 1.3/1.4 dropped), composer model swaps (Phase 1.4 dropped), prompt-compression aggressive tier (Phase 3.3/3.5 gated on 4.6), bucketed engine rollout machinery (waits for 4.6).
+Items NOT on the critical path (deferred — see Phase headers for trigger conditions): planner model swaps (Phase 1.3/1.4 dropped), composer model swaps (Phase 1.4 dropped), prompt-compression aggressive tier (Phase 3.3/3.5 gated on 4.6), bucketed engine rollout machinery (waits for 4.6).
+
+**Items DROPPED per no-re-enrichment policy:** Step 4 full bodyframe + occasion patches (dormant vocab), Wave B ontology surgery (4 ShapeArchitecture axes), FabricTexture decomposition + SurfaceFinish axis, 4-stage extraction architecture, all dormant new-vocabulary additions queued from stylist files.
 
 ---
 
