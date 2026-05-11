@@ -3453,7 +3453,6 @@ def get_web_ui_html(
       var oldPreview = document.getElementById("queryPreview");
       if (oldPreview) {{
         oldPreview.removeAttribute("id");
-        oldPreview.classList.add("query-preview-done");
         var oldStage = document.getElementById("queryPreviewStage");
         if (oldStage) oldStage.remove();
       }}
