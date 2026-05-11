@@ -859,6 +859,131 @@ class FabricCompatibilityTests(unittest.TestCase):
         self.assertFalse(any(v.rule == "sheen_hierarchy" for v in violations))
 
 
+class IndianWeaveCompatibilityTests(unittest.TestCase):
+    """Batch C (2026-05-11) — indian_weave_compatibility under
+    fabric_compatibility. At most one heavy heritage weave per outfit
+    outside the bridal exception."""
+
+    def _heritage_saree(self, **overrides) -> Item:
+        base = dict(
+            item_id="S",
+            slot="complete",
+            formality="ceremonial",
+            cultural_register="indian_traditional",
+            subtype="saree",
+            embellishment_level="heavy",
+            fabric_texture="embroidered",
+            fabric_weight="heavy",
+            dominant_color="maroon",
+        )
+        base.update(overrides)
+        return Item(**base)
+
+    def _heritage_lehenga(self, **overrides) -> Item:
+        base = dict(
+            item_id="L",
+            slot="complete",
+            formality="ceremonial",
+            cultural_register="indian_traditional",
+            subtype="lehenga",
+            embellishment_level="heavy",
+            fabric_texture="embroidered",
+            fabric_weight="heavy",
+            dominant_color="gold",
+        )
+        base.update(overrides)
+        return Item(**base)
+
+    def test_single_heritage_weave_passes(self):
+        items = (
+            self._heritage_saree(),
+            _smart_casual_bottom(
+                cultural_register="western",
+                subtype="trouser",
+                embellishment_level="minimal",
+            ),
+        )
+        violations = evaluate_constraint("fabric_compatibility", items, _ctx(), _graph())
+        self.assertFalse(any(v.rule == "indian_weave_compatibility" for v in violations))
+
+    def test_two_heritage_weaves_violate_outside_bridal(self):
+        items = (
+            self._heritage_saree(item_id="S"),
+            self._heritage_lehenga(item_id="L"),
+        )
+        violations = evaluate_constraint("fabric_compatibility", items, _ctx(), _graph())
+        rule_hits = [v for v in violations if v.rule == "indian_weave_compatibility"]
+        self.assertEqual(len(rule_hits), 1)
+        self.assertFalse(rule_hits[0].is_hard)
+
+    def test_two_heritage_weaves_pass_under_bridal_exception(self):
+        items = (
+            self._heritage_saree(item_id="S"),
+            self._heritage_lehenga(item_id="L"),
+        )
+        violations = evaluate_constraint(
+            "fabric_compatibility",
+            items,
+            _ctx(formality_hint="ceremonial", occasion_signal="wedding_ceremony"),
+            _graph(),
+        )
+        self.assertFalse(any(v.rule == "indian_weave_compatibility" for v in violations))
+
+    def test_western_register_not_counted_as_heritage(self):
+        # Two embroidered+heavy items but both western — no heritage
+        # contribution from either.
+        items = (
+            _smart_casual_top(
+                cultural_register="western", subtype="blouse",
+                fabric_texture="embroidered", fabric_weight="heavy",
+                embellishment_level="heavy",
+            ),
+            _smart_casual_bottom(
+                cultural_register="western", subtype="skirt",
+                fabric_texture="embroidered", fabric_weight="heavy",
+                embellishment_level="heavy",
+            ),
+        )
+        violations = evaluate_constraint("fabric_compatibility", items, _ctx(), _graph())
+        self.assertFalse(any(v.rule == "indian_weave_compatibility" for v in violations))
+
+    def test_light_traditional_subtype_not_counted_as_heritage(self):
+        # Traditional saree but minimal embellishment + light weight —
+        # not "heavy heritage" → no contribution.
+        items = (
+            Item(
+                item_id="S1", slot="complete", cultural_register="indian_traditional",
+                subtype="saree", embellishment_level="minimal",
+                fabric_texture="smooth", fabric_weight="light",
+            ),
+            Item(
+                item_id="S2", slot="complete", cultural_register="indian_traditional",
+                subtype="lehenga", embellishment_level="minimal",
+                fabric_texture="smooth", fabric_weight="light",
+            ),
+        )
+        violations = evaluate_constraint("fabric_compatibility", items, _ctx(), _graph())
+        self.assertFalse(any(v.rule == "indian_weave_compatibility" for v in violations))
+
+    def test_heritage_classifier_handloom_path(self):
+        # Alternative classifier path: handloom + heavy weight even
+        # without heavy embellishment. Pair two of these → violation.
+        items = (
+            Item(
+                item_id="H1", slot="top", cultural_register="indian_traditional",
+                subtype="kurta", fabric_texture="handloom", fabric_weight="heavy",
+                embellishment_level="minimal",
+            ),
+            Item(
+                item_id="H2", slot="bottom", cultural_register="indian_traditional",
+                subtype="palazzo", fabric_texture="handloom", fabric_weight="heavy",
+                embellishment_level="minimal",
+            ),
+        )
+        violations = evaluate_constraint("fabric_compatibility", items, _ctx(), _graph())
+        self.assertTrue(any(v.rule == "indian_weave_compatibility" for v in violations))
+
+
 class CulturalCoherenceTests(unittest.TestCase):
 
     def test_all_traditional_passes(self):
