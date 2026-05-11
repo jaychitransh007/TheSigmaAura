@@ -390,5 +390,102 @@ class FailureModeTests(unittest.TestCase):
         self.assertIn("BodyShape", str(cm.exception))
 
 
+class HardSoftTierKeysTests(unittest.TestCase):
+    """Phase 4.3: ``hard_flatters`` / ``hard_avoid`` / ``soft_flatters`` /
+    ``soft_avoid`` parsing on AttributeMapping. The loader must accept
+    these keys, reject the same attribute appearing in both hard and
+    soft buckets within one entry, and validate unknown attribute names
+    in all six buckets (bare + hard + soft)."""
+
+    def setUp(self):
+        clear_cache()
+        self.tmp = Path(tempfile.mkdtemp())
+        self.style_graph = self.tmp / "style_graph"
+        shutil.copytree(CANON_STYLE_GRAPH_DIR, self.style_graph)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        clear_cache()
+
+    def _patch_hourglass(self, **buckets):
+        """Replace the Hourglass entry in body_frame/female.yaml with one
+        carrying the given hard_/soft_ buckets (keys: hard_flatters,
+        hard_avoid, soft_flatters, soft_avoid). Each value is a dict of
+        ``attr -> [values]``."""
+        import yaml as _yaml
+        path = self.style_graph / "body_frame" / "female.yaml"
+        with open(path) as f:
+            doc = _yaml.safe_load(f)
+        # Keep an existing flatters/avoid so the entry isn't empty.
+        entry = {
+            "flatters": {"FitType": ["fitted"]},
+            "avoid": {},
+            **buckets,
+        }
+        doc["BodyShape"]["Hourglass"] = entry
+        with open(path, "w") as f:
+            _yaml.safe_dump(doc, f)
+
+    def test_hard_flatters_parsed_and_surfaced(self):
+        self._patch_hourglass(
+            hard_flatters={"WaistDefinition": ["defined", "hard_cinched"]},
+            hard_avoid={"FitType": ["loose"]},
+        )
+        graph = load_style_graph(self.style_graph)
+        m = graph.body_frame_female["BodyShape"]["Hourglass"]
+        self.assertEqual(m.hard_flatters["WaistDefinition"], ("defined", "hard_cinched"))
+        self.assertEqual(m.hard_avoid["FitType"], ("loose",))
+        # Bare buckets unchanged.
+        self.assertEqual(m.flatters["FitType"], ("fitted",))
+
+    def test_soft_flatters_parsed_and_surfaced(self):
+        self._patch_hourglass(
+            soft_flatters={"WaistDefinition": ["soft_defined"]},
+            soft_avoid={"VolumeProfile": ["voluminous"]},
+        )
+        graph = load_style_graph(self.style_graph)
+        m = graph.body_frame_female["BodyShape"]["Hourglass"]
+        self.assertEqual(m.soft_flatters["WaistDefinition"], ("soft_defined",))
+        self.assertEqual(m.soft_avoid["VolumeProfile"], ("voluminous",))
+
+    def test_same_attribute_in_both_hard_and_soft_raises(self):
+        self._patch_hourglass(
+            hard_flatters={"WaistDefinition": ["defined"]},
+            soft_flatters={"WaistDefinition": ["soft_defined"]},
+        )
+        with self.assertRaises(StyleGraphValidationError) as cm:
+            load_style_graph(self.style_graph)
+        msg = str(cm.exception)
+        self.assertIn("WaistDefinition", msg)
+        self.assertIn("hard_", msg)
+        self.assertIn("soft_", msg)
+
+    def test_unknown_attribute_in_hard_flatters_raises(self):
+        self._patch_hourglass(
+            hard_flatters={"BogusHardAttr": ["x"]},
+        )
+        with self.assertRaises(StyleGraphValidationError) as cm:
+            load_style_graph(self.style_graph)
+        self.assertIn("BogusHardAttr", str(cm.exception))
+
+    def test_unknown_attribute_in_soft_avoid_raises(self):
+        self._patch_hourglass(
+            soft_avoid={"BogusSoftAvoid": ["y"]},
+        )
+        with self.assertRaises(StyleGraphValidationError) as cm:
+            load_style_graph(self.style_graph)
+        self.assertIn("BogusSoftAvoid", str(cm.exception))
+
+    def test_default_empty_buckets_when_no_hard_soft_keys(self):
+        """Entries that don't use hard_/soft_ keys (the production state
+        today) get empty MappingProxyType buckets — back-compat check."""
+        graph = load_style_graph(self.style_graph)
+        m = graph.body_frame_female["BodyShape"]["Hourglass"]
+        self.assertEqual(dict(m.hard_flatters), {})
+        self.assertEqual(dict(m.hard_avoid), {})
+        self.assertEqual(dict(m.soft_flatters), {})
+        self.assertEqual(dict(m.soft_avoid), {})
+
+
 if __name__ == "__main__":
     unittest.main()

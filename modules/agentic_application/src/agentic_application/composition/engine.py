@@ -211,6 +211,19 @@ def _add_mapping(
     structure attributes keep ``weather_fabric`` + hard. Caller passes
     the already-resolved ``source_kind``+``tier`` as the fabric default.
 
+    Phase 4.3 — three buckets per mapping, each with its own tier:
+      - bare ``flatters`` / ``avoid``: take the source-level ``tier``
+        (or ``weather_color`` override when color_attrs_split fires).
+      - ``hard_flatters`` / ``hard_avoid``: forced ``tier="hard"``
+        regardless of source-level tier.
+      - ``soft_flatters`` / ``soft_avoid``: forced ``tier="soft"``
+        regardless of source-level tier.
+    Stylist uses the hard_/soft_ variants when a single rule within an
+    otherwise-soft (or otherwise-hard) source needs the opposite
+    classification. ``_build_attribute_mapping`` rejects same-attribute-
+    in-both-buckets within one entry, so each (attr, mapping) pair
+    produces at most one contribution per bucket.
+
     Note on source labels: the per-contribution ``source`` string is
     rewritten to use the per-attribute ``kind`` rather than the caller-
     supplied prefix. Otherwise weather contributions ALL carry source
@@ -224,42 +237,61 @@ def _add_mapping(
     def _attr_source(kind: str) -> str:
         return f"{kind}:{source_value}" if source_value else source
 
-    seen_attrs: set[str] = set()
-    for attr, vals in mapping.flatters.items():
-        seen_attrs.add(attr)
+    def _resolve_kind_and_tier(attr: str, default_tier: str) -> tuple[str, str]:
         if color_attrs_split and attr in _WEATHER_COLOR_ATTRS:
-            kind, t = "weather_color", "soft"
-        else:
-            kind, t = source_kind, tier
+            return "weather_color", "soft"
+        return source_kind, default_tier
+
+    def _emit(
+        attr: str,
+        flatters_vals: tuple[str, ...],
+        avoid_vals: tuple[str, ...],
+        bucket_tier: str,
+    ) -> None:
+        if not flatters_vals and not avoid_vals:
+            return
+        kind, t = _resolve_kind_and_tier(attr, bucket_tier)
         by_attr.setdefault(attr, []).append(
             ClassifiedContribution(
                 contribution=AttributeContribution(
                     source=_attr_source(kind),
-                    flatters=tuple(vals),
-                    avoid=tuple(mapping.avoid.get(attr, ())),
+                    flatters=flatters_vals,
+                    avoid=avoid_vals,
                 ),
                 source_kind=kind,
                 tier=t,
             )
         )
-    # avoid-only: contributors that mention an attr in avoid but not
-    # flatters still influence the union.
+
+    # Bucket 1: bare flatters/avoid — source-level tier applies.
+    seen_bare: set[str] = set()
+    for attr, vals in mapping.flatters.items():
+        seen_bare.add(attr)
+        _emit(attr, tuple(vals), tuple(mapping.avoid.get(attr, ())), tier)
     for attr, vals in mapping.avoid.items():
-        if attr in seen_attrs:
+        if attr in seen_bare:
+            continue  # already emitted by the flatters loop above
+        _emit(attr, (), tuple(vals), tier)
+
+    # Bucket 2: hard_flatters / hard_avoid — forced hard tier.
+    seen_hard: set[str] = set()
+    for attr, vals in mapping.hard_flatters.items():
+        seen_hard.add(attr)
+        _emit(attr, tuple(vals), tuple(mapping.hard_avoid.get(attr, ())), "hard")
+    for attr, vals in mapping.hard_avoid.items():
+        if attr in seen_hard:
             continue
-        if color_attrs_split and attr in _WEATHER_COLOR_ATTRS:
-            kind, t = "weather_color", "soft"
-        else:
-            kind, t = source_kind, tier
-        by_attr.setdefault(attr, []).append(
-            ClassifiedContribution(
-                contribution=AttributeContribution(
-                    source=_attr_source(kind), flatters=(), avoid=tuple(vals),
-                ),
-                source_kind=kind,
-                tier=t,
-            )
-        )
+        _emit(attr, (), tuple(vals), "hard")
+
+    # Bucket 3: soft_flatters / soft_avoid — forced soft tier.
+    seen_soft: set[str] = set()
+    for attr, vals in mapping.soft_flatters.items():
+        seen_soft.add(attr)
+        _emit(attr, tuple(vals), tuple(mapping.soft_avoid.get(attr, ())), "soft")
+    for attr, vals in mapping.soft_avoid.items():
+        if attr in seen_soft:
+            continue
+        _emit(attr, (), tuple(vals), "soft")
 
 
 def _resolve_body_frame_yaml(

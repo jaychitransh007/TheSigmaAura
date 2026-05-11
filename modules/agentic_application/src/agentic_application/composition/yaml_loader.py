@@ -81,11 +81,24 @@ class AttributeMapping:
     """The base shape shared by every attribute-mapping entry across the
     style graph. ``flatters`` and ``avoid`` map a canonical garment-attribute
     name to a tuple of values; both default to empty dicts (some entries
-    carry only ``notes:`` and intentionally have no flatters/avoid)."""
+    carry only ``notes:`` and intentionally have no flatters/avoid).
+
+    ``hard_flatters`` / ``hard_avoid`` / ``soft_flatters`` / ``soft_avoid``
+    are the Phase 4.3 per-rule tier overrides. Stylist writes these in
+    place of bare ``flatters`` / ``avoid`` when the rule needs an
+    explicit hard vs soft classification that diverges from the source-
+    level default. Same-attribute-in-both-tiers within one entry is
+    rejected at load time — pick one tier per attribute per entry.
+    Inert until Phase 4.3 reduction wiring lands; bare ``flatters`` /
+    ``avoid`` continue to take the source-level tier."""
 
     flatters: Mapping[str, tuple[str, ...]]
     avoid: Mapping[str, tuple[str, ...]]
     notes: str = ""
+    hard_flatters: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
+    hard_avoid: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
+    soft_flatters: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
+    soft_avoid: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
 
 
 @dataclass(frozen=True)
@@ -269,10 +282,33 @@ def _freeze_attr_lists(raw: Any) -> Mapping[str, tuple[str, ...]]:
 
 
 def _build_attribute_mapping(entry: Mapping[str, Any]) -> AttributeMapping:
+    flatters = _freeze_attr_lists(entry.get("flatters"))
+    avoid = _freeze_attr_lists(entry.get("avoid"))
+    hard_flatters = _freeze_attr_lists(entry.get("hard_flatters"))
+    hard_avoid = _freeze_attr_lists(entry.get("hard_avoid"))
+    soft_flatters = _freeze_attr_lists(entry.get("soft_flatters"))
+    soft_avoid = _freeze_attr_lists(entry.get("soft_avoid"))
+
+    # Phase 4.3: same attribute can't appear in both hard_ and soft_
+    # buckets within one entry — that conflates the per-rule tier the
+    # stylist is trying to express. Forces unambiguous classification.
+    both_flatters = set(hard_flatters) & set(soft_flatters)
+    both_avoid = set(hard_avoid) & set(soft_avoid)
+    if both_flatters or both_avoid:
+        offenders = sorted(both_flatters | both_avoid)
+        raise StyleGraphValidationError(
+            f"attribute(s) {offenders!r} appear in both hard_ and soft_ "
+            "buckets within one entry — pick one tier per attribute per entry."
+        )
+
     return AttributeMapping(
-        flatters=_freeze_attr_lists(entry.get("flatters")),
-        avoid=_freeze_attr_lists(entry.get("avoid")),
+        flatters=flatters,
+        avoid=avoid,
         notes=str(entry.get("notes") or "").strip(),
+        hard_flatters=hard_flatters,
+        hard_avoid=hard_avoid,
+        soft_flatters=soft_flatters,
+        soft_avoid=soft_avoid,
     )
 
 
@@ -298,6 +334,23 @@ def _collect_unknown_attrs(
     for attr in flat_or_avoid:
         if attr not in known:
             sink.append(f"{label}: unknown attribute {attr!r}")
+
+
+def _collect_unknown_attrs_all_buckets(
+    label: str,
+    mapping: "AttributeMapping",
+    known: frozenset[str],
+    sink: list[str],
+) -> None:
+    """Walk every bucket on an AttributeMapping (bare + hard + soft) for
+    unknown-attribute validation. Centralizes the per-bucket label
+    convention so adding a new bucket later means one edit, not seven."""
+    _collect_unknown_attrs(label + ".flatters", mapping.flatters, known, sink)
+    _collect_unknown_attrs(label + ".avoid", mapping.avoid, known, sink)
+    _collect_unknown_attrs(label + ".hard_flatters", mapping.hard_flatters, known, sink)
+    _collect_unknown_attrs(label + ".hard_avoid", mapping.hard_avoid, known, sink)
+    _collect_unknown_attrs(label + ".soft_flatters", mapping.soft_flatters, known, sink)
+    _collect_unknown_attrs(label + ".soft_avoid", mapping.soft_avoid, known, sink)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -327,8 +380,7 @@ def _load_attribute_dimensioned(
                 )
             mapping = _build_attribute_mapping(entry)
             label = f"{yaml_label}.{dim_name}.{value_name}"
-            _collect_unknown_attrs(label + ".flatters", mapping.flatters, known, unknown_sink)
-            _collect_unknown_attrs(label + ".avoid", mapping.avoid, known, unknown_sink)
+            _collect_unknown_attrs_all_buckets(label, mapping, known, unknown_sink)
             dim_out[str(value_name)] = mapping
         out[str(dim_name)] = MappingProxyType(dim_out)
     return MappingProxyType(out)
@@ -350,8 +402,7 @@ def _load_occasion(
             )
         mapping = _build_attribute_mapping(fields)
         label = f"occasion.{name}"
-        _collect_unknown_attrs(label + ".flatters", mapping.flatters, known, unknown_sink)
-        _collect_unknown_attrs(label + ".avoid", mapping.avoid, known, unknown_sink)
+        _collect_unknown_attrs_all_buckets(label, mapping, known, unknown_sink)
         out[str(name)] = OccasionEntry(
             name=str(name),
             archetype=str(fields.get("archetype", "")),
@@ -377,8 +428,7 @@ def _load_weather(
             raise StyleGraphValidationError(f"{path}: weather.{name} not a mapping")
         mapping = _build_attribute_mapping(fields)
         label = f"weather.{name}"
-        _collect_unknown_attrs(label + ".flatters", mapping.flatters, known, unknown_sink)
-        _collect_unknown_attrs(label + ".avoid", mapping.avoid, known, unknown_sink)
+        _collect_unknown_attrs_all_buckets(label, mapping, known, unknown_sink)
         out[str(name)] = WeatherEntry(
             name=str(name),
             description=str(fields.get("description", "")),
@@ -411,8 +461,7 @@ def _load_query_structure(
                 )
             mapping = _build_attribute_mapping(fields)
             label = f"query_structure.{intent}.{name}"
-            _collect_unknown_attrs(label + ".flatters", mapping.flatters, known, unknown_sink)
-            _collect_unknown_attrs(label + ".avoid", mapping.avoid, known, unknown_sink)
+            _collect_unknown_attrs_all_buckets(label, mapping, known, unknown_sink)
             cv = fields.get("cultural_variants") or {}
             if not isinstance(cv, dict):
                 raise StyleGraphValidationError(
