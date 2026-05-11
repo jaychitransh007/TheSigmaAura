@@ -536,6 +536,88 @@ class ScaleBalanceTests(unittest.TestCase):
         )
         self.assertEqual(violations, ())
 
+    # ─────────────────────────────────────────────────────────────────────
+    # distributed_statement_exception (Phase 4.3 / PR 4c.1a — pairing engine
+    # matcher for the stylist's "coordinated multi-statement Indianwear"
+    # carve-out). Allows two statement slots iff all items share a single
+    # color_temperature family AND no item is individually heavy/statement
+    # embellishment.
+    # ─────────────────────────────────────────────────────────────────────
+
+    def test_distributed_statement_exception_warm_family_moderate_passes(self):
+        """Two moderate-embellishment items sharing warm color_temperature
+        — the coordinated-Indianwear case the stylist flagged."""
+        violations = evaluate_constraint(
+            "scale_balance",
+            (
+                _smart_casual_top(
+                    embellishment_level="moderate", color_temperature="warm",
+                ),
+                _smart_casual_bottom(
+                    embellishment_level="moderate", color_temperature="warm",
+                ),
+            ),
+            _ctx(),
+            _graph(),
+        )
+        self.assertEqual(violations, ())
+
+    def test_distributed_statement_exception_blocked_by_heavy_item(self):
+        """Even with same color_temperature, a single heavy/statement item
+        makes the exception ineligible — at least one zone is too loud."""
+        violations = evaluate_constraint(
+            "scale_balance",
+            (
+                _smart_casual_top(
+                    embellishment_level="heavy", color_temperature="warm",
+                ),
+                _smart_casual_bottom(
+                    embellishment_level="moderate", color_temperature="warm",
+                ),
+            ),
+            _ctx(),
+            _graph(),
+        )
+        self.assertEqual(len(violations), 1)
+        self.assertEqual(violations[0].rule, "one_statement_per_outfit")
+
+    def test_distributed_statement_exception_blocked_by_mixed_temperatures(self):
+        """Statement items in different color_temperature families compete
+        rather than coordinate — exception doesn't apply."""
+        violations = evaluate_constraint(
+            "scale_balance",
+            (
+                _smart_casual_top(
+                    embellishment_level="moderate", color_temperature="warm",
+                ),
+                _smart_casual_bottom(
+                    embellishment_level="moderate", color_temperature="cool",
+                ),
+            ),
+            _ctx(),
+            _graph(),
+        )
+        self.assertEqual(len(violations), 1)
+        self.assertEqual(violations[0].rule, "one_statement_per_outfit")
+
+    def test_distributed_statement_exception_skipped_on_missing_color_temp(self):
+        """Conservative: if any item lacks color_temperature, exception
+        can't be confirmed — fall through to the base rule."""
+        violations = evaluate_constraint(
+            "scale_balance",
+            (
+                _smart_casual_top(
+                    embellishment_level="moderate", color_temperature="",
+                ),
+                _smart_casual_bottom(
+                    embellishment_level="moderate", color_temperature="warm",
+                ),
+            ),
+            _ctx(),
+            _graph(),
+        )
+        self.assertEqual(len(violations), 1)
+
 
 class SilhouetteBalanceTests(unittest.TestCase):
 
