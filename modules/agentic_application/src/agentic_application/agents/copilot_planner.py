@@ -553,10 +553,17 @@ class CopilotPlanner:
                 extracted_preferences[attr] = cleaned
         anchor_raw = resolved_raw.get("anchor_garment") or {}
         if isinstance(anchor_raw, dict):
+            # Strict mode usually returns a number per the schema, but a
+            # malformed completion ("0.5", "high", "") shouldn't 500 the
+            # turn. Fail closed (confidence=0 → not usable) instead.
+            try:
+                confidence = float(anchor_raw.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                confidence = 0.0
             anchor_garment = AnchorGarmentHint(
                 category=str(anchor_raw.get("category") or "").strip(),
                 subtype=str(anchor_raw.get("subtype") or "").strip(),
-                confidence=float(anchor_raw.get("confidence") or 0.0),
+                confidence=confidence,
             )
         else:
             anchor_garment = AnchorGarmentHint()
