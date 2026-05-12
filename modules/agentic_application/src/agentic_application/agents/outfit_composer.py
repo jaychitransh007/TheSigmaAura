@@ -771,13 +771,12 @@ class OutfitComposer:
         drop_reasons = []
         for raw_outfit in raw.get("outfits", []):
             try:
-                raw_descs = raw_outfit.get("item_descriptions") or {}
-                clean_descs: Dict[str, str] = {}
-                if isinstance(raw_descs, dict):
-                    for k, v in raw_descs.items():
-                        if v is None:
-                            continue
-                        clean_descs[str(k)] = str(v).strip()
+                raw_descs = raw_outfit.get("item_descriptions")
+                clean_descs: Dict[str, str] = (
+                    {str(k): str(v).strip() for k, v in raw_descs.items() if v is not None}
+                    if isinstance(raw_descs, dict)
+                    else {}
+                )
                 outfit = ComposedOutfit(
                     composer_id=str(raw_outfit.get("composer_id", "")),
                     direction_id=str(raw_outfit.get("direction_id", "")),

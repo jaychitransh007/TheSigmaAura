@@ -185,7 +185,6 @@ def get_web_ui_html(
       to   { opacity: 1; transform: translateX(0); }
     }
     .wardrobe-title-block .wardrobe-count,
-    .results-header p,
     .dossier-hero .dossier-statement {
       animation: aura-track-in var(--dur-3) var(--ease) both;
       animation-delay: 120ms;
@@ -200,7 +199,6 @@ def get_web_ui_html(
       body.view-wishlist .page-wishlist,
       body.view-profile .page-profile,
       .wardrobe-title-block .wardrobe-count,
-      .results-header p,
       .dossier-hero .dossier-statement { animation: none !important; }
     }
 
@@ -549,10 +547,10 @@ def get_web_ui_html(
       display: flex; gap: 20px 24px; flex-wrap: wrap; margin-bottom: 14px;
       padding-bottom: 14px; border-bottom: 1px solid var(--line);
     }
-    @media (max-width: 960px) {
+    @media (max-width: 900px) {
       .page-outfits { padding: 32px 24px; }
     }
-    @media (max-width: 720px) {
+    @media (max-width: 600px) {
       .page-outfits { padding: 24px 16px; }
     }
 
@@ -1213,14 +1211,6 @@ def get_web_ui_html(
       margin-bottom: 32px; gap: 24px; flex-wrap: wrap;
     }
     .wardrobe-title-block { display: flex; align-items: baseline; gap: 24px; flex-wrap: wrap; }
-    .wardrobe-header h2 {
-      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
-      font-size: clamp(36px, 5vw, 48px);
-      font-weight: 400;
-      line-height: 1.05;
-      color: var(--ink);
-      margin: 0;
-    }
     .wardrobe-count {
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 11px;
@@ -1399,26 +1389,6 @@ def get_web_ui_html(
     .wardrobe-add-btn:hover { background: var(--ink-2); border-color: var(--ink-2); }
 
     /* ===== Looks (Results) Page — Confident Luxe lookbook ===== */
-    .results-header {
-      display: flex; align-items: flex-start; justify-content: space-between;
-      gap: 24px; flex-wrap: wrap; margin-bottom: 32px;
-    }
-    .results-header h2 {
-      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
-      font-size: clamp(36px, 5vw, 48px);
-      font-weight: 400;
-      line-height: 1.05;
-      color: var(--ink);
-      margin: 0;
-    }
-    .results-header p {
-      font-size: 13px;
-      color: var(--ink-3);
-      font-style: italic;
-      line-height: 1.5;
-      margin: 8px 0 0;
-      max-width: 480px;
-    }
     .results-empty {
       grid-column: 1 / -1;
       text-align: center;
@@ -1543,7 +1513,7 @@ def get_web_ui_html(
     }
     /* Shared "No image" tile placeholder used by wardrobe picker, wishlist picker, and saved cards. */
     .no-image-placeholder {
-      width: 100%; height: 100%;
+      width: 100%;
       aspect-ratio: 3/4;
       background: var(--surface-alt);
       display: flex; align-items: center; justify-content: center;
@@ -2064,7 +2034,7 @@ def get_web_ui_html(
   </nav>
   <div class="header-actions">
     <div class="avatar-menu">
-      <button class="avatar-btn" id="avatarBtn" aria-label="User menu"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>
+      <button class="avatar-btn" id="avatarBtn" aria-label="User menu"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>
       <div class="avatar-dropdown" id="avatarDropdown">
         <a href="/?user={safe_user_id}&view=profile">Profile</a>
         <!-- Edit is now inline on the profile page -->
@@ -2107,7 +2077,7 @@ def get_web_ui_html(
         <div class="chip-inner">
           <img id="imageChipImg" src="" alt="Attached" />
           <span class="name" id="imageChipName"></span>
-          <button class="remove" id="imageChipRemove" aria-label="Remove image"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          <button class="remove" id="imageChipRemove" aria-label="Remove image"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
       </div>
       <div class="discovery-input-wrap">
@@ -2120,7 +2090,7 @@ def get_web_ui_html(
           </div>
         </div>
         <input type="text" class="discovery-input" id="discoveryInput" placeholder="Describe what you need..." aria-label="Describe what you need" />
-        <button class="discovery-send" id="discoverySend" type="button" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
+        <button class="discovery-send" id="discoverySend" type="button" aria-label="Send"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
       </div>
     </div>
   </div>
@@ -2201,7 +2171,7 @@ def get_web_ui_html(
     <form id="addItemForm">
       <label for="addItemFile" class="dropzone-label" id="addItemDropzone">
         <img class="modal-preview" id="addItemPreview" style="display:none;max-height:200px;border-radius:var(--radius-sm);" alt="" />
-        <span id="addItemPlaceholder" style="opacity:0.4;color:var(--ink-3);"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+        <span id="addItemPlaceholder" style="opacity:0.4;color:var(--ink-3);"><svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
         <span id="addItemLabel" class="dropzone-hint">Tap to upload or drag a photo</span>
         <input type="file" id="addItemFile" accept="image/*" required style="display:none;" />
       </label>
@@ -2510,6 +2480,14 @@ def get_web_ui_html(
   // pattern; returns a Promise<boolean> (confirm → true on OK, false on
   // cancel or backdrop click; alert → resolves true on OK).
   var auraPrompt = (function() {{
+    // Must match --dur-2 (the .modal-overlay opacity transition) so
+    // the overlay is fully faded out before we detach it from the DOM.
+    function _modalFadeMs() {{
+      var v = getComputedStyle(document.documentElement).getPropertyValue("--dur-2") || "240ms";
+      var n = parseFloat(v);
+      if (!isFinite(n)) return 240;
+      return v.indexOf("ms") !== -1 ? n : n * 1000;
+    }}
     function _open(opts) {{
       return new Promise(function(resolve) {{
         var overlay = document.createElement("div");
@@ -2529,11 +2507,18 @@ def get_web_ui_html(
         }}
         var actions = document.createElement("div");
         actions.className = "modal-actions";
+        function onKeydown(ev) {{
+          if (ev.key === "Escape" || ev.key === "Esc") {{
+            ev.preventDefault();
+            close(false);
+          }}
+        }}
         function close(result) {{
+          document.removeEventListener("keydown", onKeydown, true);
           overlay.classList.remove("open");
           setTimeout(function() {{
             if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-          }}, 240);
+          }}, _modalFadeMs());
           resolve(result);
         }}
         if (opts.showCancel) {{
@@ -2555,6 +2540,7 @@ def get_web_ui_html(
         overlay.addEventListener("click", function(ev) {{
           if (ev.target === overlay) close(false);
         }});
+        document.addEventListener("keydown", onKeydown, true);
         document.body.appendChild(overlay);
         requestAnimationFrame(function() {{
           overlay.classList.add("open");
@@ -3827,7 +3813,7 @@ def get_web_ui_html(
           '<div class="closet-actions">' +
             '<button class="studio-btn primary" type="button" data-wardrobe-prompt="' + escapeHtml("Style my " + title + " from my wardrobe.") + '" data-wardrobe-img="' + escapeHtml(imageUrl || "") + '">Style This</button>' +
             '<button class="studio-btn" type="button" data-action="edit" data-item-id="' + escapeHtml(item.id) + '">Edit</button>' +
-            '<button class="studio-btn danger icon-only" type="button" data-action="delete" data-item-id="' + escapeHtml(item.id) + '" aria-label="Delete piece"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>' +
+            '<button class="studio-btn danger icon-only" type="button" data-action="delete" data-item-id="' + escapeHtml(item.id) + '" aria-label="Delete piece"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>' +
           '</div>' +
         '</div></article>';
     }}).join("");
