@@ -82,6 +82,7 @@ def _build_item_card(item: Dict[str, Any]) -> Dict[str, Any]:
         "fit_type": str(item.get("fit_type", "")),
         "silhouette_type": str(item.get("silhouette_type", "")),
         "source": str(item.get("source", "catalog") or "catalog"),
+        "description": str(item.get("description", "")),
     }
 
 

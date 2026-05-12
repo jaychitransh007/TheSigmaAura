@@ -143,6 +143,7 @@ def _build_composer_json_schema(direction_letters: Sequence[str]) -> Dict[str, A
                             "item_ids",
                             "rationale",
                             "name",
+                            "item_descriptions",
                         ],
                         "properties": {
                             "composer_id": {"type": "string"},
@@ -164,6 +165,15 @@ def _build_composer_json_schema(direction_letters: Sequence[str]) -> Dict[str, A
                                 "type": "string",
                                 "description": "Short stylist-flavored title for the outfit (2-5 words, e.g. 'Sharp Navy Boardroom').",
                                 "maxLength": 100,
+                            },
+                            # One-sentence garment description per item_id.
+                            # Keys MUST match the item_ids array above; the
+                            # frontend surfaces this in the product detail
+                            # panel when the user selects a single garment.
+                            "item_descriptions": {
+                                "type": "object",
+                                "description": "One-sentence stylist description per item_id (12-25 words). Keys match item_ids exactly.",
+                                "additionalProperties": {"type": "string"},
                             },
                         },
                     },
@@ -761,6 +771,13 @@ class OutfitComposer:
         drop_reasons = []
         for raw_outfit in raw.get("outfits", []):
             try:
+                raw_descs = raw_outfit.get("item_descriptions") or {}
+                clean_descs: Dict[str, str] = {}
+                if isinstance(raw_descs, dict):
+                    for k, v in raw_descs.items():
+                        if v is None:
+                            continue
+                        clean_descs[str(k)] = str(v).strip()
                 outfit = ComposedOutfit(
                     composer_id=str(raw_outfit.get("composer_id", "")),
                     direction_id=str(raw_outfit.get("direction_id", "")),
@@ -772,6 +789,7 @@ class OutfitComposer:
                     # would ship as the card title. [:100] mirrors the
                     # schema cap above as a defensive belt.
                     name=str(raw_outfit.get("name") or "").strip()[:100],
+                    item_descriptions=clean_descs,
                 )
             except (ValidationError, TypeError, AttributeError, ValueError) as exc:  # defensive parse
                 _log.warning("OutfitComposer: malformed outfit payload (%s); skipping", exc)

@@ -7151,9 +7151,11 @@ class AgenticOrchestrator:
                     product = products_by_id.get(iid)
                     if product is None:
                         continue
-                    items.append(
-                        _build_candidate_item(product, role=_role_for_position(composed, items)),
-                    )
+                    item = _build_candidate_item(product, role=_role_for_position(composed, items))
+                    item_desc = composed.item_descriptions.get(iid, "")
+                    if item_desc:
+                        item["description"] = item_desc
+                    items.append(item)
                 if not items:
                     continue
                 candidates.append(
