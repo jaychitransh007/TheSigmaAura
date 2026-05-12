@@ -6,9 +6,15 @@ This file lists what's open **now**. Shipped work history lives in `docs/RELEASE
 
 ## Worth focusing on (today)
 
-**Pure engineering work: none.** The May 11–12 wardrobe / UI / catalog / planner / observability wave (PRs #270-#296) closed every implement-today item we had open. One trigger-driven item remains — no work needed until the trigger fires:
+**Pure engineering work: none.** The May 11–12 wardrobe / UI / catalog / planner / observability wave (PRs #270-#296) **plus the May 12 evening Outfits-redesign + card-rework + UI-polish wave (PRs #298-#309)** closed every implement-today item we had open. Two trigger-driven items remain — no work needed until their triggers fire.
 
-### 1. Masculine top coverage — largely RESOLVED by the May 2026 re-enrichment
+### Multi-item checkout (deferred — no trigger yet)
+
+The Outfit card's "Buy Outfit" button is rendered disabled (PR #306, May 12 2026) because there's no multi-item checkout flow. Per-item Buy Now still works (opens `product_url` in a new tab). Wire when a real cart or merchant-ledger flow lands. No backend work required today — the button is a frontend stub.
+
+### Masculine `polo_tshirt` coverage (trigger-driven)
+
+### Masculine top coverage — largely RESOLVED by the May 2026 re-enrichment
 
 **Status (verified against staging catalog 2026-05-11 post-re-enrichment):** the gap reported in April 2026 has substantially closed. The catalog now carries:
 

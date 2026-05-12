@@ -168,6 +168,57 @@ These are explicit non-goals — do not block the release on them:
 
 _Migrated from `CURRENT_STATE.md`. The May-1 "Open Items Plan" — every item now ✅ shipped — is preserved here as a record of work landed during the platform pass. For ongoing release readiness criteria see the Gates above._
 
+## May 12, 2026 (evening) — Outfits redesign + outfit card rework + UI polish (PRs #298–#309)
+
+A 12-PR sweep across the Outfits tab grouping, the outfit card right column, and broad UI polish. The user-facing rater radar was retired (the rater still runs server-side for ranking/filtering). The composer gained per-item descriptions to feed the new product detail panel.
+
+### Outfits tab — occasion-driven grouping + flattened carousels (PRs #298–#301)
+
+| PR | Title | Net change |
+|---|---|---|
+| #298 | Occasion-driven groupings + intent/source filters | Replaces the 8-broad-bucket theme taxonomy with 8 fine-grained occasion buckets (wedding / festive / date / office / beach / travel / party / casual) + 3 formality fallback buckets (smart_looks / easy_everyday / off_duty) for sessions with no occasion signal. New `map_formality_to_bucket()` in `theme_taxonomy.py`; orchestrator overrides `style_sessions` sentinel via avg `formality_pct` across each session's outfits. Intent + source moved from per-session metadata strip into page-level filter chips. Outfits page header dropped. |
+| #299 | One carousel per theme + smaller title | Each theme now renders a single carousel of every look across all its sessions (previously one carousel per session). Per-card turn-summary already updates when the user navigates, so the user query naturally shifts as cards from different sessions slide into view. Theme title font 36px → 22px (desktop), 28px → 20px (mobile); subtitle "X looks across Y sessions" dropped; per-session "N looks · Xh ago" strip dropped. |
+| #300 | Drop intent filter, widen source filter | Pairings / Occasions / Capsules row removed. Source row (All / From Wardrobe / Hybrid / Shop) stretched to full page width to match Wardrobe page's category-filter rhythm. `.page-outfits` aligned with `.page-wardrobe`: max-width 1440px, 48px padding, 900/600 responsive breakpoints. |
+| #301 | Drop tab page headers (Checks / Wardrobe / Saved) | The tab nav is the breadcrumb; on-page titles + subtitles were redundant chrome. Wardrobe keeps the piece-count + Add piece action (functional). |
+
+### UI polish (PRs #302–#304)
+
+| PR | Title | Net change |
+|---|---|---|
+| #302 | Replace emoji / unicode icons with inline SVGs | 👤 avatar, × image-chip remove, ➤ composer send, 📸 upload placeholder, 🗑 wardrobe trash all become inline SVGs (24px viewBox, 1.8 stroke). Wishlist "Save" → ♥ toggle becomes "Save" → "Saved" text toggle (matches `.btn-wishlist` text-only styling). |
+| #303 | `auraPrompt` styled modal replaces native `alert` / `confirm` | New `.modal-prompt` variant of `.modal-overlay`. API: `auraPrompt.confirm(title, message, {okLabel, cancelLabel, danger}) → Promise<bool>`, `auraPrompt.alert(title, message) → Promise<true>`. Replaces 4 call sites (wardrobe delete + 3 upload errors). New `.btn-primary.btn-danger` styling for destructive confirms. |
+| #304 | Consolidate 35 inline styles → CSS classes | New classes: `.no-image-placeholder` (3 sites), `.dropzone-label` + `.dropzone-hint`, `.modal-subtitle`, `.saved-card` + `.saved-card-image` / `-body` / `-title` / `-price` / `-meta` / `-buy`. Net: 35 → 23 inline `style=` attrs. |
+
+### Composer per-item description (PR #305)
+
+| PR | Title | Net change |
+|---|---|---|
+| #305 | Per-item description for the product detail panel | New `item_descriptions: Dict[str, str]` on `ComposedOutfit`; new `description: str` on `OutfitItem`. Composer prompt (`prompt/outfit_composer.md`) now writes one sentence (12-25 words) per chosen item describing the garment itself (not pairing logic). Threaded end-to-end: prompt → JSON schema → parser → orchestrator → `_build_item_card` → frontend. Budget bumped 1600 → 1700. Backward-compat: defaults empty, so cached/older outfits keep working. |
+
+### Outfit card rework (PR #306)
+
+| PR | Title | Net change |
+|---|---|---|
+| #306 | Context-sync'd detail panel + drop user-facing rater radar | The right column of the outfit card becomes a detail panel whose content tracks the active thumbnail. **Garment mode** (garment thumbnail active): title + ×1.2 marked-up price + composer-authored `description` + XS-XL size chips + Buy Now + Save. **Outfit mode** (try-on thumbnail active — default): outfit title + `reasoning` + per-garment rows with price + size chips + disabled Buy Outfit. New `auraPrice()` JS helper (1.2× markup, en-IN locale, returns "" for non-numeric). New CSS: `.detail-panel`, `.detail-title`, `.detail-price`, `.detail-description`, `.detail-sizes`, `.size-chip`, `.btn-buy-primary`, `.detail-save`, `.detail-items`, `.detail-item-row`, `.detail-item-meta`, `.detail-item-price`, `.detail-item-sizes`. **Rater radar removed from the UI** (`renderCompactProfile()` and ~165 lines of radar SVG deleted) — the rater still runs server-side for ranking/filtering, only the user-facing component is gone. The card header drops its reasoning paragraph (now in the detail panel). |
+
+### Review feedback fixes (PRs #307–#309)
+
+| PR | Title | Net change |
+|---|---|---|
+| #307 | Review-feedback batch across #300–#305 | `.page-outfits` responsive breakpoints 960/720 → 900/600 to match wardrobe; dead `.results-header` + `.wardrobe-header h2` CSS removed; `aria-hidden="true"` added to 5 decorative SVGs (parent buttons carry the aria-label); `auraPrompt` ESC dismissal + 240ms fade-out reads `--dur-2` from CSS; `.no-image-placeholder` drops `height: 100%` (conflicted with `aspect-ratio: 3/4`); composer `item_descriptions` parser converted to dict comprehension. |
+| #308 | Card index mismatch + size-chip toggle + ESC scoping | Detail panel was using thumbnail-array index directly into `items[]`, which mismatched whenever any item had no image. Image entries now carry their source `item` reference; renderDetailPanel reads `images[idx].item` directly. Size chips now toggle off on a second click. ESC handler now checks the top-most open overlay (a literal `stopImmediatePropagation` would have closed the wrong modal when modals stack — capture-phase listeners fire in registration order). |
+| #309 | Single-element lookup for size-chip deselect | Tiny perf nit — `querySelectorAll` + `forEach` deselect replaced with `querySelector('.size-chip.selected')`. |
+
+**Card state at end of May-12 evening push:**
+- Outfit card: thumbs | hero | context-sync'd detail panel (garment mode or outfit mode); compact header (title + Like/Hide); rater radar retired from UI; ×1.2 price markup applied at render; XS-XL size chips (visual-only); Buy Outfit disabled (multi-item checkout not wired).
+- Composer emits `item_descriptions` for every new outfit; older cached outfits show empty description rows (graceful).
+- Native browser dialogs replaced with in-app `auraPrompt` modal (ESC-dismissable, scoped to top-most overlay).
+- All chrome icons are inline SVGs with `aria-hidden="true"` where the parent button has an aria-label.
+
+**Open follow-ups:** "Buy Outfit" multi-item checkout (the button is rendered disabled; wire when a real cart flow lands).
+
+---
+
 ## May 11–12, 2026 — UI multi-turn stacking + wardrobe vision overhaul + catalog title/price recovery + planner anchor + observability waves 1-2
 
 A 27-PR sweep across UI, wardrobe ingestion, catalog data quality, planner architecture, and observability. Grouped by area:
