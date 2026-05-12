@@ -45,7 +45,10 @@ _BUDGETS: dict[str, int] = {
     "outfit_architect_followup.md": 850,
     # +100 for item_descriptions field (PR #305)
     # +100 for array-of-objects schema reshape (PR #313 hotfix)
-    "outfit_composer.md": 1800,
+    # +100 for longer description directive + example (PR #318)
+    # CI doesn't have tiktoken installed and uses the char/4 fallback,
+    # which over-counts vs tiktoken by ~3-5%. Keep headroom for that.
+    "outfit_composer.md": 1900,
     "outfit_rater.md": 2600,
     "outfit_decomposition.md": 800,
     "copilot_planner.md": 6000,  # +500 for anchor_garment field (PR #287 follow-up)
