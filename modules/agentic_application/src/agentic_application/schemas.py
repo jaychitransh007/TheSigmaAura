@@ -311,11 +311,12 @@ class ComposedOutfit(BaseModel):
     # Per-item garment descriptions keyed by item_id (2-3 sentences,
     # 30-55 words, stylist voice). The Composer writes these so the
     # user-facing product detail panel can show stylist-flavored copy
-    # per garment ("A relaxed linen tee in warm ivory, gentle drape
-    # over the chest. The weave breathes, the hand stays soft after a
-    # wash. Reads casual but quietly considered."). Empty for older
-    # outfits composed before the field existed; the frontend treats
-    # missing values as "no description".
+    # per garment ("A relaxed linen tee in warm ivory with a gentle
+    # drape over the chest and a low-tension hem. The weave breathes
+    # through the day and the hand stays soft after a wash. Reads
+    # casual but quietly considered."). Empty for older outfits
+    # composed before the field existed; the frontend treats missing
+    # values as "no description".
     item_descriptions: Dict[str, str] = Field(default_factory=dict)
 
 
