@@ -2508,10 +2508,18 @@ def get_web_ui_html(
         var actions = document.createElement("div");
         actions.className = "modal-actions";
         function onKeydown(ev) {{
-          if (ev.key === "Escape" || ev.key === "Esc") {{
-            ev.preventDefault();
-            close(false);
-          }}
+          if (ev.key !== "Escape" && ev.key !== "Esc") return;
+          // Only the top-most open modal should consume ESC. Multiple
+          // capture-phase document listeners fire in registration order,
+          // so a literal stopImmediatePropagation in the first-registered
+          // listener would close the WRONG modal (older one, behind the
+          // top). Checking against the last open .modal-overlay scopes
+          // correctly regardless of registration order.
+          var open = document.querySelectorAll(".modal-overlay.open");
+          if (open.length && open[open.length - 1] !== overlay) return;
+          ev.preventDefault();
+          ev.stopImmediatePropagation();
+          close(false);
         }}
         function close(result) {{
           document.removeEventListener("keydown", onKeydown, true);
@@ -2975,13 +2983,17 @@ def get_web_ui_html(
     if (isOutfitCheckCard) thumbs.style.display = "none";
     var images = [];
     var items = outfit.items || [];
+    // Carry the source item on each image so the detail panel can map
+    // back to the right garment even when some items have no image
+    // (then images.length < items.length and using idx directly into
+    // items[] would point at the wrong garment).
     if (!isOutfitCheckCard) {{
       for (var ii = 0; ii < items.length; ii++) {{
         var src = firstImageUrl(items[ii]);
-        if (src) images.push({{ src: src, label: items[ii].title || items[ii].garment_category || "Product" }});
+        if (src) images.push({{ src: src, label: items[ii].title || items[ii].garment_category || "Product", item: items[ii] }});
       }}
     }}
-    if (outfit.tryon_image) images.push({{ src: outfit.tryon_image, label: isOutfitCheckCard ? "Your outfit" : "Virtual Try-On" }});
+    if (outfit.tryon_image) images.push({{ src: outfit.tryon_image, label: isOutfitCheckCard ? "Your outfit" : "Virtual Try-On", item: null }});
     var defaultIdx = outfit.tryon_image ? images.length - 1 : 0;
 
     // Col 2: Hero image — for outfit check, always the uploaded photo
@@ -3058,8 +3070,9 @@ def get_web_ui_html(
       scopeEl.querySelectorAll('.detail-sizes, .detail-item-sizes').forEach(function(group) {{
         group.querySelectorAll('.size-chip').forEach(function(chip) {{
           chip.addEventListener('click', function() {{
+            var wasSelected = chip.classList.contains('selected');
             group.querySelectorAll('.size-chip').forEach(function(o) {{ o.classList.remove('selected'); }});
-            chip.classList.add('selected');
+            if (!wasSelected) chip.classList.add('selected');
           }});
         }});
       }});
@@ -3157,11 +3170,13 @@ def get_web_ui_html(
         info.appendChild(renderOutfitCheckPanel());
         return;
       }}
+      var entry = images[idx];
+      var targetItem = entry ? entry.item : null;
       var isTryon = !!outfit.tryon_image && idx === images.length - 1;
-      if (isTryon || !items[idx]) {{
+      if (isTryon || !targetItem) {{
         info.appendChild(renderOutfitDetail());
       }} else {{
-        info.appendChild(renderGarmentDetail(items[idx]));
+        info.appendChild(renderGarmentDetail(targetItem));
       }}
     }}
 
