@@ -406,7 +406,7 @@ Project status (as of 2026-05-11):
   - **Home.** Discovery input + PDP carousel with CSS slide transitions, swipe/keyboard nav, iteration stacking.
   - **Outfits.** Occasion-driven theme buckets (Beach & Vacation / Date Night / Office & Professional / Party & Night Out / Wedding & Engagement / Festival / Weekend & Everyday / Travel) + formality fallback (Smart Looks / Easy Everyday / Off-Duty) for sessions with no occasion signal — driven server-side from the planner's occasion + the rater's `formality_pct`. Each theme renders a single flattened carousel of every look in that bucket (no nested per-session carousels). Single source filter (All / From Wardrobe / Hybrid / Shop).
   - **Checks.** Outfit-check cards.
-  - **Outfit card (PR #306).** 3-column body (thumbs | hero | context-sync'd detail panel). Try-on active → outfit mode (title + reasoning + per-garment price + XS-XL size chips + disabled Buy Outfit). Garment active → garment mode (title + ×1.2 marked-up price + composer-authored `description` + size chips + Buy Now + Save). User-facing rater radar retired; rater still runs server-side for ranking/filtering.
+  - **Outfit card (PR #306).** 3-column body (thumbnails | hero | context-sync'd detail panel). Try-on active → outfit mode (outfit title, reasoning, per-garment marked-up price + XS-XL size chips, disabled Buy Outfit). Garment active → garment mode (garment title, ×1.2 marked-up price, composer-authored description, XS-XL size chips, Buy Now, Save). User-facing rater radar retired; rater still runs server-side for ranking/filtering.
   - **Removed surfaces.** No chat bubbles, no conversation sidebar, no Trial Room tab, no Looks page.
   - **Feedback.** Contextual strip on the outfit card (heart + Hide opening a feedback modal with reaction chips + textarea).
   - **Modals.** Native browser `alert` / `confirm` replaced with in-app `auraPrompt` helper (ESC-dismissable; scoped to the top-most overlay when modals stack).
@@ -461,8 +461,8 @@ Success means users come back before real decisions: should I buy this, what goe
 - virtual try-on via Gemini with quality gate
 - 3-column PDP outfit cards (thumbnails | hero | context-sync'd detail panel, PR #306):
   - **Detail panel mode** follows the active thumbnail.
-  - **Outfit mode** (try-on active): reasoning, per-garment rows with price + size chips, disabled Buy Outfit (multi-item checkout not wired).
-  - **Garment mode** (garment active): composer-authored `description`, ×1.2 price markup applied at render, size chips, Buy Now, Save.
+  - **Outfit mode** (try-on active): outfit title, reasoning, per-garment rows with marked-up price + size chips, disabled Buy Outfit (multi-item checkout not wired).
+  - **Garment mode** (garment active): garment title, composer-authored `description`, ×1.2 price markup applied at render, size chips, Buy Now, Save.
   - **Per-item description.** Composer (`outfit_composer.md`) writes one sentence per garment into `item_descriptions: {item_id: str}`, threaded ComposedOutfit → orchestrator → response_formatter into `OutfitItem.description`.
   - **Rater visibility.** User-facing radar retired May 12 2026. Rater still runs server-side for ranking / filtering (`fashion_score_pct`, `formality_pct`, etc. populate on `EvaluatedRecommendation` but are not displayed).
 - `analysis_confidence_pct` — attribute-level analysis confidence (average LLM confidence across all profile attributes); used to scale evaluation radar chart scores at render time; fetched once per page load, applied consistently to all cards including history
