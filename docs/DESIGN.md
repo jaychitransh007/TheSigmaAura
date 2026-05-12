@@ -27,7 +27,7 @@ Key UI patterns implemented:
 - **Wardrobe edit modal**: Full metadata edit form (title, description, category, subtype, colors, pattern, formality, occasion, brand, notes) with image preview. Calls PATCH endpoint.
 - **Wardrobe delete**: Per-card delete button with confirmation dialog. Soft-deletes via is_active=false.
 - **Wardrobe filters**: Search bar (title/description/brand/category), category chips (All, Tops, Bottoms, Shoes, Dresses, Outerwear, Accessories, Occasion-ready), color filter row (11 colors), and localStorage persistence across page loads. The `Occasion-ready` chip now matches against the enrichment metadata tag set (`wedding`, `cocktail_party`, `office`, `semi_formal` + formality `smart_casual` and above) instead of "any non-empty `occasion_fit`".
-- **Outfit PDP card**: Full-width header (title + Like/Hide icons + full stylist reasoning) above 3-column body (thumbnails | hero | products + chart). The card title is the composer-emitted stylist-flavored name (PR #88, e.g. *"Camel Sand Refined"*, *"Sharp Navy Boardroom"*) — not "Outfit 1 / 2 / 3". Products show title / Rs. price / Buy Now + Save. **Rater radar (R7, May 2026)**: 6-axis hexagon (oxblood `--accent`) populated directly from the rater's six 1/2/3 sub-scores rescaled to 0/50/100 — `Occasion`, `Body`, `Color`, `Pairing`, `Formality`, `Statement`. For `complete` (single-item) outfits the `Pairing` axis drops and the chart renders as a 5-axis pentagon (the dim doesn't apply when there's nothing to pair). Center label is the blended `fashion_score_pct` (0–100). The legacy split-polar Nightingale chart (8-axis archetype top + 4–7-axis fit/eval bottom) was removed in V2 alongside the visual_evaluator. Hide opens a feedback modal with reaction chips + textarea before removing the card.
+- **Outfit PDP card** (May 12 2026): compact header (title + Like/Hide icons only — reasoning paragraph moved into the detail panel) above a 3-column body (thumbnails | hero | **detail panel**). The card title is the composer-emitted stylist-flavored name (PR #88, e.g. *"Camel Sand Refined"*, *"Sharp Navy Boardroom"*). The right column is a **context-sync'd detail panel** whose content tracks the active thumbnail. Clicking the try-on thumbnail (default) renders **outfit mode** — outfit title, full `reasoning`, one row per garment with price + XS-XL size chips, and a disabled "Buy Outfit" button (multi-item checkout not wired yet). Clicking a garment thumbnail renders **garment mode** — garment title, marked-up price (×1.2 markup applied at render), composer-authored `description`, XS-XL size chips, Buy Now (opens `product_url`), Save (wishlist POST). Wardrobe items show "From your wardrobe" in place of price. **The user-facing rater radar was retired (PR #306)** — the rater still runs server-side to rank and filter outfits, but its sub-scores aren't surfaced on the card. Hide opens a feedback modal with reaction chips + textarea before removing the card.
 - **Follow-up suggestions as labelled groups**: Quick-reply chips rendered under bucket headers (`Improve It`, `Show Alternatives`, `Shop The Gap`), driven by `follow_up_groups` on response metadata. Clicking a follow-up chip adds a new iteration carousel row within the same intent group (iteration stacking).
 - **Wardrobe-first copy**: Wardrobe-first occasion responses name the selected pieces and explain *why* they fit. Hybrid responses name both wardrobe anchors and catalog gap-fillers explicitly.
 - **Wishlist tab** (Saved): grid of wishlisted catalog garments with title, price, Buy Now link. Data from `catalog_interaction_history` hydrated with `catalog_enriched`.
@@ -922,26 +922,51 @@ Chat composer features:
 ## Chat UI: Outfit Card — 3-Column PDP Layout + Feedback CTAs
 
 Status:
-- implemented
+- implemented (rewritten May 12 2026, PR #306)
 
 Current UI behavior (implemented):
 - one unified PDP-style card per outfit (`.outfit-card` CSS class)
-- desktop: 3-column grid (`80px | flex | 40%`)
-  - Col 1: vertical thumbnail rail (product images + try-on, 64×64px, active accent border)
+- desktop: 3-column grid (`100px | 1fr | 44%`)
+  - Col 1: vertical thumbnail rail (product images + try-on, active accent border)
   - Col 2: hero image viewer (full height, default to try-on when present)
-  - Col 3: info panel (title — composer-emitted stylist-flavored name, stylist summary ≤100 chars, product specs with Rs. price + Buy Now, **rater radar** — 6-axis hexagon for paired/three_piece, 5-axis pentagon for complete outfits — with `fashion_score_pct` at center, icon feedback buttons)
-- mobile (`max-width: 900px`): hero image → horizontal thumbnail strip → info panel
+  - Col 3: **context-sync'd detail panel** (see modes below)
+- compact card header above all three columns: outfit title + Like/Hide icons only (the long reasoning paragraph moved into the detail panel's outfit mode)
+- mobile (`max-width: 900px`): hero image → horizontal thumbnail strip → detail panel
+
+Detail panel modes (PR #306):
+- **Outfit mode** (try-on thumbnail active — the default): outfit title, full `reasoning`, one row per garment with title + price + XS-XL size chips, and a disabled "Buy Outfit" button (multi-item checkout not wired yet). Title and reasoning come from the composer.
+- **Garment mode** (any garment thumbnail active): garment title, marked-up price, composer-authored per-item `description`, XS-XL size chips, Buy Now (opens `product_url` in new tab), Save (wishlist POST). Wardrobe items show "From your wardrobe" in place of price and hide the Buy/Save CTAs.
+- The two modes share `.detail-panel`, `.detail-title`, `.detail-price`, `.detail-description`, `.detail-sizes`, `.size-chip`, `.btn-buy-primary`, `.detail-save` primitives.
+
+Price markup:
+- Frontend applies a flat **1.2× markup** at render time via `auraPrice(rawPrice)` (`Rs. 1,23,456`, en-IN locale). Backend stores raw catalog price; the markup lives on the FE so it can be tuned per-promo without touching the catalog.
+- `auraPrice` returns empty string for "Unknown" / "N/A" / non-numeric inputs so callers can skip the row.
+
+Size chips:
+- XS / S / M / L / XL — visual-only toggle (no backend wiring yet). Single-select within a chip group. Clicking the selected chip again deselects it.
+
+Per-item description source:
+- The composer (`prompt/outfit_composer.md`) writes one sentence per garment into `item_descriptions: {item_id: str}`. Threaded through ComposedOutfit → orchestrator → response_formatter into `OutfitItem.description`. Older cached outfits composed before May 12 2026 have empty descriptions; the panel hides the description block in that case.
+
+Rater visibility:
+- **The user-facing rater radar was retired in PR #306.** The rater still runs server-side for ranking and filtering — `fashion_score_pct`, `formality_pct`, `statement_pct`, etc. all still populate on `EvaluatedRecommendation` — but none of those values are surfaced on the card today.
 
 Thumbnail ordering:
 - paired outfit: topwear, bottomwear, virtual try-on
 - single-piece: garment, virtual try-on
 - default hero: try-on when present, otherwise first garment
+- image entries carry an `item` reference so the detail panel can map back to the right garment when some items have no image (`images.length < items.length`)
 
 Feedback behavior:
-- `Like This` — sends `event_type: "like"` immediately via POST to `/v1/conversations/{id}/feedback`
-- `Didn't Like This` — expands textarea + Submit; cancel collapses
-- loading spinner and success/error state on submission
-- feedback hides CTAs after successful submission
+- `Like` — sends `event_type: "like"` immediately via POST to `/v1/conversations/{id}/feedback`
+- `Hide` — opens a feedback modal with reaction chips + textarea before removing the card from the carousel
+- correlation: `conversation_id` + `turn_id` + `outfit_rank`
+
+Native confirm/alert replaced (PR #303):
+- Wardrobe item delete + image upload errors used to call `confirm()` / `alert()`. They now use the in-app `auraPrompt` helper (`.modal-prompt` variant of the existing `.modal-overlay`). API: `auraPrompt.confirm(title, message, {okLabel, cancelLabel, danger}) → Promise<bool>`, `auraPrompt.alert(title, message) → Promise<true>`. ESC closes the top-most open overlay.
+
+Iconography (PR #302):
+- All chrome icons are inline SVGs (24px viewBox, 1.8 stroke) — no emoji or unicode glyphs. Avatar, image-chip close, composer send, upload placeholder, wardrobe trash all carry `aria-hidden="true"` on the SVG since their parent buttons already have `aria-label`.
 
 Feedback persistence:
 - UI is outfit-level; backend fans out to one `feedback_events` row per garment
