@@ -177,7 +177,7 @@ def _build_composer_json_schema(direction_letters: Sequence[str]) -> Dict[str, A
                             # panel when the user selects a single garment.
                             "item_descriptions": {
                                 "type": "array",
-                                "description": "One row per item_id in the item_ids array above (same length, same ordering). Each description is a single sentence (12-25 words) about that garment.",
+                                "description": "One row per item_id in the item_ids array above (same length, same ordering). Each description is 2-3 sentences (30-55 words) about that garment — silhouette, fabric, color, finish, hand-feel, how it sits on the body.",
                                 "items": {
                                     "type": "object",
                                     "additionalProperties": False,
