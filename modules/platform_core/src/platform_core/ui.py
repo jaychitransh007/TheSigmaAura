@@ -878,16 +878,6 @@ def get_web_ui_html(
       line-height: 1.15;
       color: var(--ink);
     }
-    /* Summary — stylist caption, compact */
-    .outfit-summary { padding: 0; }
-    .outfit-summary-label {
-      font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;
-      color: var(--ink-4); margin-bottom: 4px;
-    }
-    .outfit-summary-text {
-      font-size: 13px; font-style: italic;
-      color: var(--ink-3); line-height: 1.55; margin: 0;
-    }
     /* Per-item source label injected above each product title */
     .product-source-label {
       display: block;
@@ -926,6 +916,119 @@ def get_web_ui_html(
     .btn-wishlist { color: var(--ink-4); }
     .btn-wishlist:hover { color: var(--ink); }
     .btn-wishlist.wishlisted { color: var(--accent); }
+    /* ── Detail panel — right column of the outfit card ───────────
+       Two modes: garment (single item from a thumbnail click) and
+       outfit (the try-on view). Both share these primitives. */
+    .detail-panel {
+      display: flex; flex-direction: column; gap: 16px;
+      padding: 4px 0;
+    }
+    .detail-title {
+      font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
+      font-size: 22px; font-weight: 400; font-style: italic;
+      line-height: 1.2;
+      color: var(--ink);
+    }
+    .detail-price {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 16px; font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.02em;
+    }
+    .detail-description {
+      font-size: 13px; line-height: 1.6;
+      color: var(--ink-3);
+      margin: 0;
+    }
+    .detail-sizes { display: flex; gap: 6px; flex-wrap: wrap; }
+    .size-chip {
+      appearance: none;
+      border: 1px solid var(--line-strong);
+      background: transparent;
+      border-radius: var(--radius-sm);
+      padding: 6px 12px;
+      min-width: 36px;
+      font-family: inherit;
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--ink-3);
+      cursor: pointer;
+      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease);
+    }
+    .size-chip:hover { border-color: var(--ink); color: var(--ink); }
+    .size-chip.selected {
+      background: var(--ink); border-color: var(--ink); color: var(--canvas);
+    }
+    .detail-cta { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
+    .btn-buy-primary {
+      flex: 1;
+      padding: 12px 20px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: var(--canvas);
+      font-family: inherit;
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      cursor: pointer;
+      text-decoration: none; text-align: center;
+      transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+    }
+    .btn-buy-primary:hover { background: var(--ink-2); border-color: var(--ink-2); }
+    .btn-buy-primary:disabled,
+    .btn-buy-primary[disabled] {
+      background: var(--surface-sunk);
+      border-color: var(--line);
+      color: var(--ink-4);
+      cursor: not-allowed;
+    }
+    .detail-save {
+      appearance: none;
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line-strong);
+      background: transparent;
+      color: var(--ink-3);
+      font-family: inherit;
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      cursor: pointer;
+      transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+    }
+    .detail-save:hover { border-color: var(--ink); color: var(--ink); }
+    .detail-save.wishlisted { color: var(--accent); border-color: var(--accent); }
+    .detail-items {
+      display: flex; flex-direction: column; gap: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+    .detail-item-row {
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .detail-item-title {
+      font-size: 13px; font-weight: 600;
+      color: var(--ink); line-height: 1.3;
+    }
+    .detail-item-meta {
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    }
+    .detail-item-price {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 12px; font-weight: 500;
+      color: var(--accent);
+    }
+    .detail-item-price.wardrobe {
+      color: var(--ink-4);
+      font-family: inherit;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      font-size: 10px;
+    }
+    .detail-item-sizes { display: flex; gap: 4px; flex-wrap: wrap; }
+    .detail-item-sizes .size-chip {
+      padding: 3px 8px; min-width: 28px;
+      font-size: 9px;
+    }
+    .buy-outfit-btn { margin-top: 6px; }
     .outfit-item-source { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
     .chip {
       font-size: 10px; font-weight: 600;
@@ -944,26 +1047,10 @@ def get_web_ui_html(
       max-width: 100%; height: auto;
       aspect-ratio: 280 / 300;
     }
-    .radar-toggle { display: none; }
-    .outfit-profile-wrap { display: flex; flex-direction: column; gap: 8px; }
-    /* PR V1 — Rater 5-axis radar, populated directly from the rated dims. */
-    .rater-radar-wrap { display: flex; justify-content: center; padding: 4px 0; }
-    .rater-radar { display: block; width: 100%; max-width: 220px; height: auto; }
-    .rater-radar-label {
-      font-size: 11px;
-      font-weight: 600;
-      fill: var(--ink);
-      letter-spacing: 0.02em;
-    }
-    .rater-radar-center {
-      font-size: 22px;
-      font-weight: 700;
-      fill: var(--accent);
-      font-variant-numeric: tabular-nums;
-    }
-    .compact-rationale {
-      margin: 8px 0 4px; font-size: 12px; line-height: 1.45; color: var(--ink);
-    }
+    /* Rater radar / profile-wrap / compact-rationale CSS removed —
+       the rater still runs server-side for ranking, but the user-facing
+       radar was retired; per-item description now lives in the detail
+       panel (right column of the outfit card). */
     .outfit-rationale { margin-top: 4px; }
     .outfit-rationale summary {
       font-size: 12px; font-weight: 700; color: var(--accent); cursor: pointer;
@@ -2389,6 +2476,26 @@ def get_web_ui_html(
   // UTILITY HELPERS
   // ══════════════════════════════════════════════
 
+  // Display price with a flat 1.2x markup applied at render time, in
+  // Indian rupee formatting ("Rs. 1,23,456"). Returns "" for missing /
+  // non-numeric / Unknown / N/A inputs so callers can skip the row.
+  // Backend stores the raw price; the markup lives on the frontend so
+  // it can be tuned per-promo without touching the catalog.
+  function auraPrice(rawPrice) {{
+    if (rawPrice === null || rawPrice === undefined) return "";
+    var s = String(rawPrice).trim();
+    if (!s) return "";
+    var low = s.toLowerCase();
+    if (low === "n/a" || low === "unknown" || low === "none" || low === "null") return "";
+    var n = parseFloat(s.replace(/[^0-9.]/g, ""));
+    if (!isFinite(n) || n <= 0) return "";
+    var marked = Math.round(n * 1.2);
+    var formatted;
+    try {{ formatted = marked.toLocaleString("en-IN"); }}
+    catch (_) {{ formatted = String(marked).replace(/\B(?=(\d{{3}})+(?!\d))/g, ","); }}
+    return "Rs. " + formatted;
+  }}
+
   function escapeHtml(value) {{
     return String(value || "")
       .replaceAll("&", "&amp;")
@@ -2909,6 +3016,7 @@ def get_web_ui_html(
           heroImg.src = img.src;
           thumbs.querySelectorAll("img").forEach(function(t) {{ t.classList.remove("active"); }});
           thumb.classList.add("active");
+          renderDetailPanel(idx);
         }});
         thumbs.appendChild(thumb);
       }});
@@ -2943,56 +3051,138 @@ def get_web_ui_html(
     fbWrap.appendChild(likeBtn); fbWrap.appendChild(hideBtn);
     headerTop.appendChild(fbWrap);
     header.appendChild(headerTop);
+    // Reasoning paragraph moved into the right detail panel (outfit
+    // mode) so the header stays a compact identifier.
 
-    // Summary row
-    var summaryCard = document.createElement("div");
-    summaryCard.className = "outfit-summary";
-    summaryCard.innerHTML = '<p class="outfit-summary-text">' + escapeHtml(summaryText) + '</p>';
-    header.appendChild(summaryCard);
-
-    // ── Col 3: Info panel (products + radars only) ──
+    // ── Col 3: Detail panel — context-sync'd with the active image.
+    // When the user clicks a garment thumbnail the panel shows that
+    // garment's title/price/description/sizes/Buy. When the try-on
+    // image is active the panel shows the outfit-level summary with a
+    // row per garment.
     var info = document.createElement("div");
     info.className = "outfit-info";
 
-    // Product specifications — outfit check shows only item names, no price/CTA
-    for (var pi = 0; pi < items.length; pi++) {{
-      var item = items[pi];
-      var prod = document.createElement("div");
-      prod.className = "outfit-product";
-      var pTitle = item.title || item.product_id || "Untitled";
-      if (isOutfitCheckCard) {{
-        prod.innerHTML = '<span class="outfit-product-title">' + escapeHtml(pTitle) + '</span>';
-        info.appendChild(prod);
-        continue;
-      }}
-      var url = item.product_url || item.url || "";
-      var priceStr = String(item.price || "").trim();
-      var hasPrice = priceStr && priceStr !== "0" && priceStr.toLowerCase() !== "n/a";
-      var hasBuyLink = !!url;
-      var itemSource = normalizeSourceToken(item.source);
-      var isWardrobe = itemSource === "wardrobe";
-      var html = '';
-      html += '<span class="outfit-product-title">' + escapeHtml(pTitle) + '</span>';
-      if (isWardrobe) {{
-        // no price row for wardrobe items
-      }} else if (hasPrice) {{
-        // Clean price: strip "Rs." prefix, remove trailing ".0", add comma separator
-        var cleanPrice = priceStr.replace(/^Rs\.?\s*/i, "").replace(/\.0+$/, "");
-        cleanPrice = cleanPrice.replace(/\B(?=(\d{{3}})+(?!\d))/g, ",");
-        html += '<span class="product-price">Rs. ' + escapeHtml(cleanPrice) + '</span>';
-      }}
-      var productId = item.product_id || "";
-      if (!isWardrobe) {{
-        html += '<div class="product-cta">';
-        if (hasBuyLink) html += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer" class="btn-buy">Buy now</a>';
-        html += '<button type="button" class="btn-wishlist" data-product-id="' + escapeHtml(productId) + '" title="Save">Save</button>';
-        html += '</div>';
-      }}
-      prod.innerHTML = html;
-      info.appendChild(prod);
+    var SIZE_OPTIONS = ["XS", "S", "M", "L", "XL"];
+    function sizeChipsHtml() {{
+      return SIZE_OPTIONS.map(function(s) {{
+        return '<button class="size-chip" type="button" data-size="' + s + '">' + s + '</button>';
+      }}).join('');
+    }}
+    function bindSizeToggles(scopeEl) {{
+      scopeEl.querySelectorAll('.detail-sizes, .detail-item-sizes').forEach(function(group) {{
+        group.querySelectorAll('.size-chip').forEach(function(chip) {{
+          chip.addEventListener('click', function() {{
+            group.querySelectorAll('.size-chip').forEach(function(o) {{ o.classList.remove('selected'); }});
+            chip.classList.add('selected');
+          }});
+        }});
+      }});
     }}
 
-    // Wishlist button handler (event delegation)
+    function renderGarmentDetail(item) {{
+      var wrap = document.createElement("div");
+      wrap.className = "detail-panel detail-garment";
+      var title = String(item.title || item.product_id || "Untitled");
+      var description = String(item.description || "").trim();
+      var priceStr = auraPrice(item.price);
+      var url = item.product_url || item.url || "";
+      var productId = item.product_id || "";
+      var sourceIsWardrobe = normalizeSourceToken(item.source) === "wardrobe";
+
+      var html = '<div class="detail-title">' + escapeHtml(title) + '</div>';
+      if (priceStr && !sourceIsWardrobe) {{
+        html += '<div class="detail-price">' + escapeHtml(priceStr) + '</div>';
+      }}
+      if (description) {{
+        html += '<p class="detail-description">' + escapeHtml(description) + '</p>';
+      }}
+      if (!sourceIsWardrobe) {{
+        html += '<div class="detail-sizes">' + sizeChipsHtml() + '</div>';
+        html += '<div class="detail-cta">';
+        if (url) {{
+          html += '<a class="btn-buy-primary" href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer">Buy Now</a>';
+        }} else {{
+          html += '<button class="btn-buy-primary" type="button" disabled title="No buy link available">Buy Now</button>';
+        }}
+        if (productId) {{
+          html += '<button type="button" class="detail-save btn-wishlist" data-product-id="' + escapeHtml(productId) + '" title="Save">Save</button>';
+        }}
+        html += '</div>';
+      }}
+      wrap.innerHTML = html;
+      bindSizeToggles(wrap);
+      return wrap;
+    }}
+
+    function renderOutfitDetail() {{
+      var wrap = document.createElement("div");
+      wrap.className = "detail-panel detail-outfit";
+      var title = String(outfit.title || "Styled Look");
+      var reasoning = String(outfit.reasoning || summaryText || "").trim();
+
+      var html = '<div class="detail-title">' + escapeHtml(title) + '</div>';
+      if (reasoning) {{
+        html += '<p class="detail-description">' + escapeHtml(reasoning) + '</p>';
+      }}
+      html += '<div class="detail-items">';
+      items.forEach(function(it) {{
+        var itTitle = String(it.title || it.product_id || "Untitled");
+        var itPrice = auraPrice(it.price);
+        var sourceIsWardrobe = normalizeSourceToken(it.source) === "wardrobe";
+        html += '<div class="detail-item-row">';
+        html += '<div class="detail-item-title">' + escapeHtml(itTitle) + '</div>';
+        html += '<div class="detail-item-meta">';
+        if (sourceIsWardrobe) {{
+          html += '<span class="detail-item-price wardrobe">From your wardrobe</span>';
+        }} else if (itPrice) {{
+          html += '<span class="detail-item-price">' + escapeHtml(itPrice) + '</span>';
+        }}
+        html += '<div class="detail-item-sizes">' + sizeChipsHtml() + '</div>';
+        html += '</div>';
+        html += '</div>';
+      }});
+      html += '</div>';
+      // "Buy Outfit" is intentionally disabled — multi-item checkout is
+      // not wired yet. Per-item Buy Now remains available via the
+      // garment-mode panel (thumbnail click).
+      html += '<button type="button" class="btn-buy-primary buy-outfit-btn" disabled title="Coming soon">Buy Outfit</button>';
+      wrap.innerHTML = html;
+      bindSizeToggles(wrap);
+      return wrap;
+    }}
+
+    function renderOutfitCheckPanel() {{
+      // Outfit-check intent: keep the lean item-name list — no price,
+      // no detail panel chrome. The check flow is its own thing.
+      var frag = document.createDocumentFragment();
+      items.forEach(function(item) {{
+        var prod = document.createElement("div");
+        prod.className = "outfit-product";
+        var pTitle = item.title || item.product_id || "Untitled";
+        prod.innerHTML = '<span class="outfit-product-title">' + escapeHtml(pTitle) + '</span>';
+        frag.appendChild(prod);
+      }});
+      return frag;
+    }}
+
+    function renderDetailPanel(idx) {{
+      info.innerHTML = "";
+      if (isOutfitCheckCard) {{
+        info.appendChild(renderOutfitCheckPanel());
+        return;
+      }}
+      var isTryon = !!outfit.tryon_image && idx === images.length - 1;
+      if (isTryon || !items[idx]) {{
+        info.appendChild(renderOutfitDetail());
+      }} else {{
+        info.appendChild(renderGarmentDetail(items[idx]));
+      }}
+    }}
+
+    renderDetailPanel(defaultIdx);
+
+    // Wishlist button handler (event delegation — re-binds across re-renders
+    // because the listener is on the static parent ``info``).
     info.addEventListener("click", function(e) {{
       var wishBtn = e.target.closest(".btn-wishlist");
       if (!wishBtn || wishBtn.classList.contains("wishlisted")) return;
@@ -3011,182 +3201,6 @@ def get_web_ui_html(
         }});
     }});
 
-    // 4. Profile section. PR V2 (May 5 2026): single-state Rater radar.
-    // The legacy dual-state (visual_evaluator on-demand → 17-axis polar)
-    // was removed alongside the visual_evaluator agent. The Rater's 5
-    // sub-scores feed the radar directly; complete (single-item) outfits
-    // get a 4-axis quadrilateral; fashion_score is the centre badge.
-    var profileWrap = document.createElement("div");
-    profileWrap.className = "outfit-profile-wrap";
-    info.appendChild(profileWrap);
-
-    function renderCompactProfile() {{
-      profileWrap.innerHTML = "";
-      var rationale = String(outfit.reasoning || "").trim();
-      if (rationale) {{
-        var ration = document.createElement("p");
-        ration.className = "compact-rationale";
-        ration.textContent = rationale;
-        profileWrap.appendChild(ration);
-      }}
-
-      // Six rater dims feed the radar: Occasion, Body, Color, Pairing,
-      // Formality, Statement (Pairing scoped to fit + fabric only).
-      // For `complete` (single-item) outfits Pairing is null and the
-      // axis drops → 5-axis pentagon. Values are 0/50/100 (rescaled
-      // from the rater's 1/2/3 sub-scores).
-      var allAxes = [
-        {{ key: "occasion_pct",          label: "Occasion" }},
-        {{ key: "body_harmony_pct",      label: "Body" }},
-        {{ key: "color_suitability_pct", label: "Color" }},
-        {{ key: "pairing_pct",           label: "Pairing" }},
-        {{ key: "formality_pct",         label: "Formality" }},
-        {{ key: "statement_pct",         label: "Statement" }},
-      ];
-      var axes = allAxes.filter(function(a) {{
-        var v = outfit[a.key];
-        return v !== null && v !== undefined && isFinite(parseInt(v, 10));
-      }}).map(function(a) {{
-        var v = parseInt(outfit[a.key], 10);
-        return {{ key: a.key, label: a.label, value: Math.max(0, Math.min(100, v)) }};
-      }});
-      if (axes.length < 3) {{
-        // Degenerate case (no Rater data at all). Skip the radar; fall
-        // back to a "no profile data" hint so the card doesn't break.
-        var hint = document.createElement("p");
-        hint.className = "compact-rationale";
-        hint.textContent = "Profile not available for this outfit.";
-        profileWrap.appendChild(hint);
-        return;
-      }}
-
-      var size = 220;
-      var cx = size / 2, cy = size / 2;
-      var maxR = size / 2 - 28;  // leave room for axis labels around the edge
-      var n = axes.length;
-      var svgNs = "http://www.w3.org/2000/svg";
-      var svg = document.createElementNS(svgNs, "svg");
-      // R7 (May 5 2026): the longest axis labels at 6 dims are
-      // "Formality" / "Statement" (9 chars ≈ 60px wide). The
-      // previous viewBox of 0..size was clipping them at the right
-      // edge ("Body" → "Bo", "Pairing" → "ng" in the screenshot
-      // that triggered this redesign). Pad the viewBox horizontally
-      // by 36px on each side so labels render fully without
-      // shrinking the radar polygon itself.
-      var hPad = 36;
-      svg.setAttribute("viewBox", -hPad + " 0 " + (size + 2 * hPad) + " " + size);
-      svg.setAttribute("width", size + 2 * hPad);
-      svg.setAttribute("height", size);
-      svg.setAttribute("class", "rater-radar");
-      var accentRgb = (getComputedStyle(document.documentElement).getPropertyValue("--accent-rgb") || "92, 26, 27").trim();
-
-      // Axis angles — start at 12 o'clock and walk clockwise.
-      function axisXY(idx, radius) {{
-        var theta = -Math.PI / 2 + (2 * Math.PI * idx) / n;
-        return [cx + radius * Math.cos(theta), cy + radius * Math.sin(theta)];
-      }}
-
-      // Concentric grid rings (25 / 50 / 75 / 100).
-      [0.25, 0.5, 0.75, 1.0].forEach(function(frac) {{
-        var pts = [];
-        for (var i = 0; i < n; i++) {{
-          var p = axisXY(i, maxR * frac);
-          pts.push(p[0].toFixed(1) + "," + p[1].toFixed(1));
-        }}
-        var grid = document.createElementNS(svgNs, "polygon");
-        grid.setAttribute("points", pts.join(" "));
-        grid.setAttribute("fill", "none");
-        grid.setAttribute("stroke", "rgba(0,0,0,0.10)");
-        grid.setAttribute("stroke-width", frac === 1.0 ? "1" : "0.6");
-        svg.appendChild(grid);
-      }});
-
-      // Spokes from centre to each axis tip.
-      for (var s = 0; s < n; s++) {{
-        var tip = axisXY(s, maxR);
-        var spoke = document.createElementNS(svgNs, "line");
-        spoke.setAttribute("x1", cx); spoke.setAttribute("y1", cy);
-        spoke.setAttribute("x2", tip[0].toFixed(1)); spoke.setAttribute("y2", tip[1].toFixed(1));
-        spoke.setAttribute("stroke", "rgba(0,0,0,0.10)");
-        spoke.setAttribute("stroke-width", "0.6");
-        svg.appendChild(spoke);
-      }}
-
-      // Score polygon — fill + stroke in accent.
-      var scorePts = [];
-      var dotMeta = [];
-      axes.forEach(function(a, i) {{
-        var p = axisXY(i, maxR * (a.value / 100));
-        scorePts.push(p[0].toFixed(1) + "," + p[1].toFixed(1));
-        dotMeta.push({{ x: p[0], y: p[1], label: a.label, value: a.value }});
-      }});
-      var poly = document.createElementNS(svgNs, "polygon");
-      poly.setAttribute("points", scorePts.join(" "));
-      poly.setAttribute("fill", "rgba(" + accentRgb + ", 0.22)");
-      poly.setAttribute("stroke", "rgb(" + accentRgb + ")");
-      poly.setAttribute("stroke-width", "1.6");
-      svg.appendChild(poly);
-
-      // Axis labels — anchor based on horizontal position to avoid
-      // clipping at the SVG edges. Top/bottom labels stay centered;
-      // labels on the right anchor "start" (text grows rightward but
-      // sits inside the viewBox); labels on the left anchor "end".
-      axes.forEach(function(a, i) {{
-        var theta = -Math.PI / 2 + (2 * Math.PI * i) / n;
-        var labelXY = axisXY(i, maxR + 14);
-        var txt = document.createElementNS(svgNs, "text");
-        txt.setAttribute("x", labelXY[0].toFixed(1));
-        txt.setAttribute("y", (labelXY[1] + 4).toFixed(1));
-        var ca = Math.cos(theta);
-        var anchor = Math.abs(ca) < 0.2 ? "middle" : (ca > 0 ? "start" : "end");
-        txt.setAttribute("text-anchor", anchor);
-        txt.setAttribute("class", "rater-radar-label");
-        txt.textContent = a.label;
-        svg.appendChild(txt);
-      }});
-
-      // Score dots with native title tooltips.
-      dotMeta.forEach(function(d) {{
-        var dot = document.createElementNS(svgNs, "circle");
-        dot.setAttribute("cx", d.x.toFixed(1));
-        dot.setAttribute("cy", d.y.toFixed(1));
-        dot.setAttribute("r", "3");
-        dot.setAttribute("fill", "rgb(" + accentRgb + ")");
-        var t = document.createElementNS(svgNs, "title");
-        t.textContent = d.label + ": " + d.value + "/100";
-        dot.appendChild(t);
-        svg.appendChild(dot);
-      }});
-
-      // Centre score badge — fashion_score (or fall back to match_score
-      // × 100 for legacy paths that don't populate fashion_score_pct).
-      // The fallback only triggers when the field is missing/non-numeric;
-      // a legitimate score of 0 (Rater gave the slate a styling-error
-      // verdict) renders as 0 rather than silently displaying a stale
-      // legacy match_score.
-      var centerScore = parseInt(outfit.fashion_score_pct, 10);
-      if (!isFinite(centerScore)) {{
-        var ms = parseFloat(outfit.match_score);
-        centerScore = isFinite(ms) ? Math.round(ms * 100) : 0;
-      }}
-      centerScore = Math.max(0, Math.min(100, centerScore));
-      var centerNum = document.createElementNS(svgNs, "text");
-      centerNum.setAttribute("x", cx);
-      centerNum.setAttribute("y", cy + 6);
-      centerNum.setAttribute("text-anchor", "middle");
-      centerNum.setAttribute("class", "rater-radar-center");
-      centerNum.textContent = String(centerScore);
-      svg.appendChild(centerNum);
-
-      var radarWrap = document.createElement("div");
-      radarWrap.className = "rater-radar-wrap";
-      radarWrap.appendChild(svg);
-      profileWrap.appendChild(radarWrap);
-    }}
-    // PR V2 (May 5 2026): visual_evaluator removed. The Rater radar
-    // above is the only profile view. The legacy dual-state dispatcher
-    // (renderFullProfile / "Get a deeper read") is deleted.
-    renderCompactProfile();
 
     // ── Feedback wiring: Like + Hide in header ──
     var outfitRank = outfit.rank || 0;
