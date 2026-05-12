@@ -308,6 +308,13 @@ class ComposedOutfit(BaseModel):
     # "Soft Cream Daywear"). Surfaced as the user-facing card title; the
     # orchestrator falls back to "Outfit N" only when this is empty.
     name: str = ""
+    # Per-item one-sentence garment descriptions keyed by item_id. The
+    # Composer writes these so the user-facing product detail panel can
+    # show stylist-flavored copy per garment ("A relaxed linen tee in
+    # warm ivory, breezy enough for daytime."). Empty for older outfits
+    # composed before the field existed; the frontend treats missing
+    # values as "no description".
+    item_descriptions: Dict[str, str] = Field(default_factory=dict)
 
 
 class ComposerResult(BaseModel):
@@ -413,6 +420,11 @@ class OutfitItem(BaseModel):
     occasion_fit: str = ""
     pattern_type: str = ""
     source: str = ""
+    # One-sentence stylist description authored by the Composer when
+    # this item was picked into the outfit. Surfaced in the user-facing
+    # product detail panel. Empty for items from outfits composed
+    # before the field existed.
+    description: str = ""
 
 
 class OutfitCard(BaseModel):

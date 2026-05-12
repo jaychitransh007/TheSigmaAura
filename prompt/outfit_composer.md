@@ -61,9 +61,13 @@ Mix outfits across directions when multiple directions have viable candidates â€
       "composer_id": "C1",
       "direction_id": "A",
       "direction_type": "complete",
-      "item_ids": ["pool_item_id"],
+      "item_ids": ["pool_id_A", "pool_id_B"],
       "name": "Sharp Navy Boardroom",
-      "rationale": "One sentence on why this works."
+      "rationale": "One sentence on why this works.",
+      "item_descriptions": {
+        "pool_id_A": "Tailored navy blazer in worsted wool, structured shoulders, clean notch lapel.",
+        "pool_id_B": "Crisp white poplin shirt with a slim collar, clean and unfussy."
+      }
     }
   ],
   "overall_assessment": "strong | moderate | weak | unsuitable",
@@ -76,6 +80,7 @@ Mix outfits across directions when multiple directions have viable candidates â€
 - `pool_unsuitable: true` ONLY when the entire pool cannot meet basic occasion + formality requirements; in that case return `outfits: []`.
 - `rationale`: one short sentence â€” name the dimension that drove the call (occasion, color, silhouette).
 - `name`: user-facing card title (see **Naming**).
+- `item_descriptions`: object keyed by item_id. For each id in `item_ids` write one sentence (12-25 words) describing the garment itself â€” silhouette, fabric, color, finish â€” stylist voice. Don't reference other items or pairing logic; that's `rationale`'s job. Keys must match item_ids exactly.
 
 ## Naming
 
