@@ -167,13 +167,26 @@ def _build_composer_json_schema(direction_letters: Sequence[str]) -> Dict[str, A
                                 "maxLength": 100,
                             },
                             # One-sentence garment description per item_id.
-                            # Keys MUST match the item_ids array above; the
+                            # OpenAI Structured Outputs forbids dynamic-key
+                            # dicts (additionalProperties must be False at
+                            # every level), so this is modeled as an array
+                            # of {item_id, description} rows. The parser
+                            # below folds it into a Dict[str, str] keyed by
+                            # item_id for the rest of the pipeline. The
                             # frontend surfaces this in the product detail
                             # panel when the user selects a single garment.
                             "item_descriptions": {
-                                "type": "object",
-                                "description": "One-sentence stylist description per item_id (12-25 words). Keys match item_ids exactly.",
-                                "additionalProperties": {"type": "string"},
+                                "type": "array",
+                                "description": "One row per item_id in the item_ids array above (same length, same ordering). Each description is a single sentence (12-25 words) about that garment.",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "required": ["item_id", "description"],
+                                    "properties": {
+                                        "item_id": {"type": "string"},
+                                        "description": {"type": "string"},
+                                    },
+                                },
                             },
                         },
                     },
@@ -771,12 +784,30 @@ class OutfitComposer:
         drop_reasons = []
         for raw_outfit in raw.get("outfits", []):
             try:
+                # item_descriptions ships as a list of {item_id, description}
+                # rows (the Structured Outputs schema forbids dynamic-key
+                # dicts, so we can't accept Dict[item_id, str] directly).
+                # Fold the list back into a Dict[str, str] for downstream
+                # code. Defensive against missing/None fields and against a
+                # legacy dict payload showing up from an older cache.
                 raw_descs = raw_outfit.get("item_descriptions")
-                clean_descs: Dict[str, str] = (
-                    {str(k): str(v).strip() for k, v in raw_descs.items() if v is not None}
-                    if isinstance(raw_descs, dict)
-                    else {}
-                )
+                clean_descs: Dict[str, str] = {}
+                if isinstance(raw_descs, list):
+                    for entry in raw_descs:
+                        if not isinstance(entry, dict):
+                            continue
+                        iid = entry.get("item_id")
+                        desc = entry.get("description")
+                        if iid is None or desc is None:
+                            continue
+                        clean_descs[str(iid)] = str(desc).strip()
+                elif isinstance(raw_descs, dict):
+                    # Legacy shape from older composer payloads.
+                    clean_descs = {
+                        str(k): str(v).strip()
+                        for k, v in raw_descs.items()
+                        if v is not None
+                    }
                 outfit = ComposedOutfit(
                     composer_id=str(raw_outfit.get("composer_id", "")),
                     direction_id=str(raw_outfit.get("direction_id", "")),
