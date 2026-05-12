@@ -166,18 +166,19 @@ def _build_composer_json_schema(direction_letters: Sequence[str]) -> Dict[str, A
                                 "description": "Short stylist-flavored title for the outfit (2-5 words, e.g. 'Sharp Navy Boardroom').",
                                 "maxLength": 100,
                             },
-                            # One-sentence garment description per item_id.
-                            # OpenAI Structured Outputs forbids dynamic-key
-                            # dicts (additionalProperties must be False at
-                            # every level), so this is modeled as an array
-                            # of {item_id, description} rows. The parser
-                            # below folds it into a Dict[str, str] keyed by
-                            # item_id for the rest of the pipeline. The
-                            # frontend surfaces this in the product detail
-                            # panel when the user selects a single garment.
+                            # 2-3 sentence stylist-voice garment description
+                            # per item_id. OpenAI Structured Outputs forbids
+                            # dynamic-key dicts (additionalProperties must be
+                            # False at every level), so this is modeled as
+                            # an array of {item_id, description} rows. The
+                            # parser below folds it into a Dict[str, str]
+                            # keyed by item_id for the rest of the pipeline.
+                            # The frontend surfaces this in the product
+                            # detail panel when the user selects a single
+                            # garment.
                             "item_descriptions": {
                                 "type": "array",
-                                "description": "One row per item_id in the item_ids array above (same length, same ordering). Each description is 2-3 sentences (30-55 words) about that garment — silhouette, fabric, color, finish, hand-feel, how it sits on the body.",
+                                "description": "One row per item_id in the item_ids array above (same length, same order). Each description is 2-3 sentences (30-55 words) in a stylist voice describing the garment itself — silhouette, fabric, color, finish, hand-feel, how it sits on the body. Do not reference other items or pairing logic.",
                                 "items": {
                                     "type": "object",
                                     "additionalProperties": False,
