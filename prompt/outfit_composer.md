@@ -64,10 +64,10 @@ Mix outfits across directions when multiple directions have viable candidates �
       "item_ids": ["pool_id_A", "pool_id_B"],
       "name": "Sharp Navy Boardroom",
       "rationale": "One sentence on why this works.",
-      "item_descriptions": {
-        "pool_id_A": "Tailored navy blazer in worsted wool, structured shoulders, clean notch lapel.",
-        "pool_id_B": "Crisp white poplin shirt with a slim collar, clean and unfussy."
-      }
+      "item_descriptions": [
+        {"item_id": "pool_id_A", "description": "Tailored navy blazer in worsted wool, structured shoulders, clean notch lapel."},
+        {"item_id": "pool_id_B", "description": "Crisp white poplin shirt with a slim collar, clean and unfussy."}
+      ]
     }
   ],
   "overall_assessment": "strong | moderate | weak | unsuitable",
@@ -80,7 +80,7 @@ Mix outfits across directions when multiple directions have viable candidates �
 - `pool_unsuitable: true` ONLY when the entire pool cannot meet basic occasion + formality requirements; in that case return `outfits: []`.
 - `rationale`: one short sentence — name the dimension that drove the call (occasion, color, silhouette).
 - `name`: user-facing card title (see **Naming**).
-- `item_descriptions`: object keyed by item_id. For each id in `item_ids` write one sentence (12-25 words) describing the garment itself — silhouette, fabric, color, finish — stylist voice. Don't reference other items or pairing logic; that's `rationale`'s job. Keys must match item_ids exactly.
+- `item_descriptions`: array of `{item_id, description}` rows, one row per id in `item_ids` (same length, same order). Each `description` is one sentence (12-25 words) describing the garment itself — silhouette, fabric, color, finish — stylist voice. Don't reference other items or pairing logic; that's `rationale`'s job. `item_id` values must match those in `item_ids` exactly.
 
 ## Naming
 
