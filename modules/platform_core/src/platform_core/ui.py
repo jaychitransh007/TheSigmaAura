@@ -3071,7 +3071,8 @@ def get_web_ui_html(
         group.querySelectorAll('.size-chip').forEach(function(chip) {{
           chip.addEventListener('click', function() {{
             var wasSelected = chip.classList.contains('selected');
-            group.querySelectorAll('.size-chip').forEach(function(o) {{ o.classList.remove('selected'); }});
+            var prev = group.querySelector('.size-chip.selected');
+            if (prev) prev.classList.remove('selected');
             if (!wasSelected) chip.classList.add('selected');
           }});
         }});
