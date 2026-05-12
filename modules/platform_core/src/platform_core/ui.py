@@ -547,6 +547,17 @@ def get_web_ui_html(
       margin: 0 auto;
       padding: 0 32px 64px;
     }
+    .outfits-filters-wrap {
+      max-width: 1080px;
+      margin: 0 auto 8px;
+      padding: 0 32px;
+    }
+    .outfits-filters {
+      display: flex; gap: 20px 24px; flex-wrap: wrap;
+      padding-bottom: 14px; margin-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .outfits-filters:last-child { margin-bottom: 4px; }
 
     .welcome-headline {
       font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
@@ -1956,7 +1967,20 @@ def get_web_ui_html(
     # ── Outfits Tab (Phase 15C — intent-organized history) ──
     html += """
 <div class="page-view page-outfits" style="padding: 48px 32px;">
-  <div class="results-header"><div><h2>Outfits</h2><p>Everything we've styled, grouped by what you asked for.</p></div></div>
+  <div class="outfits-filters-wrap">
+    <div class="outfits-filters" id="outfitsIntentFilters" role="tablist" aria-label="Intent">
+      <button class="filter-chip active" data-intent-filter="all">All</button>
+      <button class="filter-chip" data-intent-filter="pairing_request">Pairings</button>
+      <button class="filter-chip" data-intent-filter="occasion_recommendation">Occasions</button>
+      <button class="filter-chip" data-intent-filter="capsule_or_trip_planning">Capsules</button>
+    </div>
+    <div class="outfits-filters" id="outfitsSourceFilters" role="tablist" aria-label="Source">
+      <button class="filter-chip active" data-source-filter="all">All sources</button>
+      <button class="filter-chip" data-source-filter="wardrobe">From wardrobe</button>
+      <button class="filter-chip" data-source-filter="hybrid">Hybrid</button>
+      <button class="filter-chip" data-source-filter="catalog">Shop</button>
+    </div>
+  </div>
   <div id="outfitsContent" class="outfits-content">
     <div class="results-empty">Loading.</div>
   </div>
@@ -4352,11 +4376,53 @@ def get_web_ui_html(
     }}
   }}
 
-  // Outfits tab — themed history (May 1, 2026 Theme Taxonomy)
+  // Outfits tab — themed history with intent/source filters
   if (ACTIVE_VIEW === "outfits") {{
     (async function() {{
       var area = document.getElementById("outfitsContent");
       if (!area) return;
+
+      function normalizeSource(s) {{
+        var v = String(s || "").toLowerCase().trim();
+        if (v === "shop") return "catalog";
+        return v;
+      }}
+
+      function applyOutfitsFilters() {{
+        var iBtn = document.querySelector('#outfitsIntentFilters .filter-chip.active');
+        var sBtn = document.querySelector('#outfitsSourceFilters .filter-chip.active');
+        var activeIntent = (iBtn && iBtn.dataset.intentFilter) || "all";
+        var activeSource = (sBtn && sBtn.dataset.sourceFilter) || "all";
+        area.querySelectorAll('.intent-section').forEach(function(s) {{
+          var sIntent = s.getAttribute('data-intent') || "";
+          var sSource = s.getAttribute('data-source') || "";
+          var intentOk = activeIntent === "all" || sIntent === activeIntent;
+          var sourceOk = activeSource === "all" || sSource === activeSource;
+          s.style.display = (intentOk && sourceOk) ? "" : "none";
+        }});
+        area.querySelectorAll('.theme-block').forEach(function(b) {{
+          var visible = false;
+          b.querySelectorAll('.intent-section').forEach(function(s) {{
+            if (s.style.display !== "none") visible = true;
+          }});
+          b.style.display = visible ? "" : "none";
+        }});
+      }}
+
+      function wireFilterRow(rowId) {{
+        var row = document.getElementById(rowId);
+        if (!row) return;
+        row.addEventListener('click', function(ev) {{
+          var btn = ev.target.closest && ev.target.closest('.filter-chip');
+          if (!btn || !row.contains(btn)) return;
+          row.querySelectorAll('.filter-chip').forEach(function(c) {{ c.classList.remove('active'); }});
+          btn.classList.add('active');
+          applyOutfitsFilters();
+        }});
+      }}
+      wireFilterRow('outfitsIntentFilters');
+      wireFilterRow('outfitsSourceFilters');
+
       try {{
         var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/intent-history?types=occasion_recommendation,pairing_request,capsule_or_trip_planning");
         var data = await res.json();
@@ -4371,6 +4437,8 @@ def get_web_ui_html(
         function renderGroup(g, parent) {{
           var section = document.createElement("div");
           section.setAttribute("data-intent-section", "1");
+          section.setAttribute("data-intent", String(g.intent || ""));
+          section.setAttribute("data-source", normalizeSource(g.source || ""));
           section.className = "intent-section";
 
           var allOutfits = [];
@@ -4390,12 +4458,10 @@ def get_web_ui_html(
           }});
           if (!allOutfits.length) return;
 
-          // Context summary — same format as Home page
+          // Per-session strip: count + relative time only. Intent and
+          // source moved to page-level filters; occasion is the theme
+          // header above.
           var contextParts = [];
-          var occasion = (g.occasion || g.intent || "styled look").replace(/_/g, " ");
-          if (occasion) contextParts.push(occasion);
-          var source = (g.source || "").replace(/_/g, " ");
-          if (source && source !== "auto") contextParts.push(source);
           contextParts.push(allOutfits.length + (allOutfits.length === 1 ? " look" : " looks"));
           contextParts.push(relativeTime(g.updated_at));
           var ctxEl = document.createElement("div");
@@ -4446,6 +4512,7 @@ def get_web_ui_html(
         }} else {{
           fallbackGroups.forEach(function(g) {{ renderGroup(g, area); }});
         }}
+        applyOutfitsFilters();
       }} catch (_) {{
         area.innerHTML = '<div class="results-empty">Couldn\\'t load your outfits.</div>';
       }}
