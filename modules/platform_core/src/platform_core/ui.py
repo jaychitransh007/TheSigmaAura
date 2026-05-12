@@ -354,7 +354,7 @@ def get_web_ui_html(
     }
     .discovery-send:hover { opacity: 0.88; }
     .discovery-send:disabled { opacity: 0.3; cursor: default; }
-    .discovery-send .arrow { display: inline-block; transform: rotate(-90deg); }
+    .discovery-send svg { display: block; }
 
     /* Active result area */
     .discovery-result {
@@ -1898,7 +1898,7 @@ def get_web_ui_html(
   </nav>
   <div class="header-actions">
     <div class="avatar-menu">
-      <button class="avatar-btn" id="avatarBtn" aria-label="User menu">&#128100;</button>
+      <button class="avatar-btn" id="avatarBtn" aria-label="User menu"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>
       <div class="avatar-dropdown" id="avatarDropdown">
         <a href="/?user={safe_user_id}&view=profile">Profile</a>
         <!-- Edit is now inline on the profile page -->
@@ -1941,7 +1941,7 @@ def get_web_ui_html(
         <div class="chip-inner">
           <img id="imageChipImg" src="" alt="Attached" />
           <span class="name" id="imageChipName"></span>
-          <button class="remove" id="imageChipRemove" aria-label="Remove image">&times;</button>
+          <button class="remove" id="imageChipRemove" aria-label="Remove image"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
       </div>
       <div class="discovery-input-wrap">
@@ -1954,7 +1954,7 @@ def get_web_ui_html(
           </div>
         </div>
         <input type="text" class="discovery-input" id="discoveryInput" placeholder="Describe what you need..." aria-label="Describe what you need" />
-        <button class="discovery-send" id="discoverySend" type="button" aria-label="Send"><span class="arrow">&#10148;</span></button>
+        <button class="discovery-send" id="discoverySend" type="button" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
       </div>
     </div>
   </div>
@@ -2035,7 +2035,7 @@ def get_web_ui_html(
     <form id="addItemForm">
       <label for="addItemFile" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:48px 24px;border:1px dashed var(--line-strong);border-radius:var(--radius-md);cursor:pointer;transition:border-color var(--dur-1) var(--ease);min-height:240px;background:var(--surface-sunk);" id="addItemDropzone">
         <img class="modal-preview" id="addItemPreview" style="display:none;max-height:200px;border-radius:var(--radius-sm);" alt="" />
-        <span id="addItemPlaceholder" style="font-size:32px;opacity:0.4;">&#128248;</span>
+        <span id="addItemPlaceholder" style="opacity:0.4;color:var(--ink-3);"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
         <span id="addItemLabel" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.14em;color:var(--ink-3);">Tap to upload or drag a photo</span>
         <input type="file" id="addItemFile" accept="image/*" required style="display:none;" />
       </label>
@@ -2843,7 +2843,7 @@ def get_web_ui_html(
       fetch("/v1/products/" + encodeURIComponent(pid) + "/wishlist?user_id=" + encodeURIComponent(USER_ID) + "&conversation_id=" + encodeURIComponent(conversationId || ""), {{ method: "POST" }})
         .then(function(r) {{
           if (!r.ok) throw new Error("Failed");
-          wishBtn.innerHTML = "&#9829;";
+          wishBtn.innerHTML = "Saved";
           wishBtn.classList.add("wishlisted");
           wishBtn.title = "Wishlisted";
         }})
@@ -3654,7 +3654,7 @@ def get_web_ui_html(
           '<div class="closet-actions">' +
             '<button class="studio-btn primary" type="button" data-wardrobe-prompt="' + escapeHtml("Style my " + title + " from my wardrobe.") + '" data-wardrobe-img="' + escapeHtml(imageUrl || "") + '">Style This</button>' +
             '<button class="studio-btn" type="button" data-action="edit" data-item-id="' + escapeHtml(item.id) + '">Edit</button>' +
-            '<button class="studio-btn danger icon-only" type="button" data-action="delete" data-item-id="' + escapeHtml(item.id) + '">&#128465;</button>' +
+            '<button class="studio-btn danger icon-only" type="button" data-action="delete" data-item-id="' + escapeHtml(item.id) + '" aria-label="Delete piece"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>' +
           '</div>' +
         '</div></article>';
     }}).join("");
@@ -4539,7 +4539,7 @@ def get_web_ui_html(
       var data = await res.json();
       var items = data.items || [];
       if (!items.length) {{
-        grid.innerHTML = '<div class="results-empty">No wishlisted items yet. Tap the heart &#9825; on outfit cards to save garments you like.</div>';
+        grid.innerHTML = '<div class="results-empty">No saved items yet. Tap Save on outfit cards to keep garments you like.</div>';
         return;
       }}
       grid.innerHTML = "";
