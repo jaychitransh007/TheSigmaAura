@@ -1979,7 +1979,6 @@ def get_web_ui_html(
     # ── Checks Tab (Phase 15D) ──
     html += """
 <div class="page-view page-checks" style="padding: 48px 32px;">
-  <div class="results-header"><div><h2>Checks</h2><p>Outfit checks you've run.</p></div></div>
   <div id="checksContent" style="max-width:960px;margin:0 auto;">
     <div class="results-empty">Loading.</div>
   </div>
@@ -1991,7 +1990,6 @@ def get_web_ui_html(
 <div class="page-view page-wardrobe">
   <div class="wardrobe-header">
     <div class="wardrobe-title-block">
-      <h2>Wardrobe</h2>
       <div class="wardrobe-count"><span class="num" id="wStatCount">0</span> pieces</div>
     </div>
     <div class="wardrobe-header-actions">
@@ -2126,10 +2124,6 @@ def get_web_ui_html(
     # ── Wishlist Page ──
     html += """
 <div class="page-view page-wishlist" style="padding: 24px;">
-  <div class="results-header">
-    <h2>My Wishlist</h2>
-    <p>Garments you saved from your styling sessions.</p>
-  </div>
   <div class="closet-grid" id="wishlistGrid" style="gap: 18px; margin-top: 16px;">
     <div class="results-empty">Loading wishlist...</div>
   </div>
