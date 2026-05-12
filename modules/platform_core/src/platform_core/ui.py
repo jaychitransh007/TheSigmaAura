@@ -1428,6 +1428,65 @@ def get_web_ui_html(
     }
     .modal-actions .btn-cancel:hover { border-color: var(--ink); color: var(--ink); }
     .modal-error { color: var(--danger); font-size: 12px; margin-top: 8px; font-style: italic; }
+    /* Italic helper text directly under a modal's h2 — replaces inline modal-subtitle styles. */
+    .modal-subtitle {
+      font-size: 13px;
+      color: var(--ink-3);
+      margin-bottom: 28px;
+      font-style: italic;
+    }
+    /* Dropzone label used by the add-piece modal — replaces a 150-char inline style. */
+    .dropzone-label {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px;
+      padding: 48px 24px;
+      border: 1px dashed var(--line-strong);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: border-color var(--dur-1) var(--ease);
+      min-height: 240px;
+      background: var(--surface-sunk);
+    }
+    .dropzone-label:hover { border-color: var(--ink-3); }
+    .dropzone-hint {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      color: var(--ink-3);
+    }
+    /* Shared "No image" tile placeholder used by wardrobe picker, wishlist picker, and saved cards. */
+    .no-image-placeholder {
+      width: 100%; height: 100%;
+      aspect-ratio: 3/4;
+      background: var(--surface-alt);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 12px;
+    }
+    /* Saved (wishlist) card — distinct from .closet-card (wardrobe item). */
+    .saved-card {
+      border-radius: var(--radius-md);
+      border: 1px solid var(--line);
+      overflow: hidden;
+      background: var(--surface);
+    }
+    .saved-card-image { aspect-ratio: 3/4; overflow: hidden; background: var(--surface-alt); }
+    .saved-card-image img { width: 100%; height: 100%; object-fit: cover; }
+    .saved-card-body {
+      padding: 12px 14px 14px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .saved-card-title { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.35; }
+    .saved-card-price { color: var(--accent); font-weight: 700; font-size: 14px; }
+    .saved-card-meta { font-size: 11px; color: var(--muted); text-transform: capitalize; }
+    .saved-card-buy {
+      display: inline-block; margin-top: 6px;
+      padding: 6px 16px;
+      font-size: 12px; font-weight: 600;
+      color: var(--surface); background: var(--ink);
+      border-radius: 8px; text-decoration: none;
+      text-align: center;
+    }
+    .saved-card-buy:hover { background: var(--ink-2); }
     /* Prompt variant — small alert/confirm dialog. */
     .modal-box.modal-prompt {
       width: min(92vw, 420px);
@@ -2051,12 +2110,12 @@ def get_web_ui_html(
 <div class="modal-overlay drawer-right" id="addItemModal">
   <div class="modal-box">
     <h2>Add a piece</h2>
-    <p style="font-size:13px;color:var(--ink-3);margin-bottom:28px;font-style:italic;">Upload a photo. I'll read it automatically.</p>
+    <p class="modal-subtitle">Upload a photo. I'll read it automatically.</p>
     <form id="addItemForm">
-      <label for="addItemFile" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:48px 24px;border:1px dashed var(--line-strong);border-radius:var(--radius-md);cursor:pointer;transition:border-color var(--dur-1) var(--ease);min-height:240px;background:var(--surface-sunk);" id="addItemDropzone">
+      <label for="addItemFile" class="dropzone-label" id="addItemDropzone">
         <img class="modal-preview" id="addItemPreview" style="display:none;max-height:200px;border-radius:var(--radius-sm);" alt="" />
         <span id="addItemPlaceholder" style="opacity:0.4;color:var(--ink-3);"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
-        <span id="addItemLabel" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.14em;color:var(--ink-3);">Tap to upload or drag a photo</span>
+        <span id="addItemLabel" class="dropzone-hint">Tap to upload or drag a photo</span>
         <input type="file" id="addItemFile" accept="image/*" required style="display:none;" />
       </label>
       <div class="modal-error" id="addItemError" style="text-align:center;"></div>
@@ -2686,7 +2745,7 @@ def get_web_ui_html(
           var imgUrl = wardrobeImageUrl(item);
           var el = document.createElement("div");
           el.className = "modal-item";
-          el.innerHTML = (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || "Item") + '" loading="lazy" />' : '<div style="aspect-ratio:3/4;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;">No image</div>') +
+          el.innerHTML = (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || "Item") + '" loading="lazy" />' : '<div class="no-image-placeholder">No image</div>') +
             '<div class="label">' + escapeHtml(item.title || "Wardrobe Item") + '</div>';
           el.addEventListener("click", function() {{
             // Clear any other attachment type first
@@ -2756,7 +2815,7 @@ def get_web_ui_html(
           var imgUrl = item.image_url || "";
           var el = document.createElement("div");
           el.className = "modal-item";
-          el.innerHTML = (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || "Item") + '" loading="lazy" />' : '<div style="aspect-ratio:3/4;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;">No image</div>') +
+          el.innerHTML = (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || "Item") + '" loading="lazy" />' : '<div class="no-image-placeholder">No image</div>') +
             '<div class="label">' + escapeHtml(item.title || "Wishlist Item") + '</div>' +
             (item.price ? '<div class="label" style="color:var(--accent);font-weight:700;">Rs. ' + escapeHtml(item.price) + '</div>' : '');
           el.addEventListener("click", function() {{
@@ -4650,18 +4709,17 @@ def get_web_ui_html(
       grid.innerHTML = "";
       items.forEach(function(item) {{
         var card = document.createElement("div");
-        card.className = "closet-card";
-        card.style.cssText = "border-radius:var(--radius-md); border:1px solid var(--line); overflow:hidden; background:var(--surface);";
+        card.className = "saved-card";
         var imgUrl = item.image_url || "";
         var priceStr = item.price ? String(item.price).replace(/\\.0$/, "") : "";
-        card.innerHTML = '<div class="closet-image" style="aspect-ratio:3/4; overflow:hidden; background:var(--surface-alt);">' +
-          (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || "Item") + '" loading="lazy" style="width:100%; height:100%; object-fit:cover;" />' : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;">No image</div>') +
+        card.innerHTML = '<div class="saved-card-image">' +
+          (imgUrl ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || "Item") + '" loading="lazy" />' : '<div class="no-image-placeholder">No image</div>') +
         '</div>' +
-        '<div style="padding:12px 14px 14px; display:flex; flex-direction:column; gap:4px;">' +
-          '<div style="font-size:13px; font-weight:600; color:var(--ink); line-height:1.35;">' + escapeHtml(item.title || "Untitled") + '</div>' +
-          (priceStr ? '<div style="color:var(--accent); font-weight:700; font-size:14px;">Rs. ' + escapeHtml(priceStr) + '</div>' : '') +
-          (item.garment_category ? '<div style="font-size:11px; color:var(--muted); text-transform:capitalize;">' + escapeHtml(item.garment_category.replace(/_/g, " ")) + (item.primary_color ? ' &middot; ' + escapeHtml(item.primary_color.replace(/_/g, " ")) : '') + '</div>' : '') +
-          (item.product_url ? '<a href="' + escapeHtml(item.product_url) + '" target="_blank" style="display:inline-block; margin-top:6px; padding:6px 16px; font-size:12px; font-weight:600; color:var(--surface); background:var(--ink); border-radius:8px; text-decoration:none; text-align:center;">Buy Now</a>' : '') +
+        '<div class="saved-card-body">' +
+          '<div class="saved-card-title">' + escapeHtml(item.title || "Untitled") + '</div>' +
+          (priceStr ? '<div class="saved-card-price">Rs. ' + escapeHtml(priceStr) + '</div>' : '') +
+          (item.garment_category ? '<div class="saved-card-meta">' + escapeHtml(item.garment_category.replace(/_/g, " ")) + (item.primary_color ? ' &middot; ' + escapeHtml(item.primary_color.replace(/_/g, " ")) : '') + '</div>' : '') +
+          (item.product_url ? '<a class="saved-card-buy" href="' + escapeHtml(item.product_url) + '" target="_blank">Buy Now</a>' : '') +
         '</div>';
         grid.appendChild(card);
       }});
