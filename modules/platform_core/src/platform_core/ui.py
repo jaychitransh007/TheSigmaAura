@@ -771,7 +771,6 @@ def get_web_ui_html(
       grid-column: 1 / -1;
       padding: 16px 22px 12px;
       display: flex; flex-direction: column; gap: 4px;
-      border-bottom: 1px solid var(--line);
     }
     .outfit-header-top {
       display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
@@ -916,27 +915,47 @@ def get_web_ui_html(
     .btn-wishlist.wishlisted { color: var(--accent); }
     /* ── Detail panel — right column of the outfit card ───────────
        Two modes: garment (single item from a thumbnail click) and
-       outfit (the try-on view). Both share these primitives. */
+       outfit (the try-on view). Both share these primitives.
+       Layout is height-stable: each section has a fixed min-height
+       or line-clamp so longer titles/descriptions don't push the
+       CTA row up or down between cards. */
     .detail-panel {
-      display: flex; flex-direction: column; gap: 16px;
+      display: flex; flex-direction: column;
+      gap: 14px;
       padding: 4px 0;
+      min-height: 420px;  /* keeps the right column tall enough that the CTA row sits at a consistent vertical position across cards */
     }
     .detail-title {
       font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
       font-size: 22px; font-weight: 400; font-style: italic;
       line-height: 1.2;
       color: var(--ink);
+      /* Two-line clamp so a title's character count can't shift everything
+         below it. Truncates with ellipsis past line 2. */
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      min-height: calc(22px * 1.2 * 2);
     }
     .detail-price {
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 16px; font-weight: 600;
-      color: var(--accent);
+      color: var(--ink);
       letter-spacing: 0.02em;
     }
     .detail-description {
       font-size: 13px; line-height: 1.6;
       color: var(--ink-3);
       margin: 0;
+      /* 4-line clamp keeps long composer descriptions from pushing the
+         CTA out of view. Cards with shorter copy reserve the same space
+         via min-height so the buttons stay anchored. */
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      min-height: calc(13px * 1.6 * 4);
     }
     .detail-sizes { display: flex; gap: 6px; flex-wrap: wrap; }
     .size-chip {
@@ -957,10 +976,14 @@ def get_web_ui_html(
     .size-chip.selected {
       background: var(--ink); border-color: var(--ink); color: var(--canvas);
     }
-    .detail-cta { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
+    .detail-cta {
+      display: flex; gap: 10px; align-items: stretch;
+      margin-top: auto;  /* CTA row pinned to the bottom of the panel regardless of content length */
+    }
     .btn-buy-primary {
       flex: 1;
       padding: 12px 20px;
+      min-height: 44px;
       border-radius: var(--radius-md);
       border: 1px solid var(--ink);
       background: var(--ink);
@@ -970,6 +993,8 @@ def get_web_ui_html(
       text-transform: uppercase; letter-spacing: 0.14em;
       cursor: pointer;
       text-decoration: none; text-align: center;
+      display: inline-flex; align-items: center; justify-content: center;
+      box-sizing: border-box;
       transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
     }
     .btn-buy-primary:hover { background: var(--ink-2); border-color: var(--ink-2); }
@@ -980,19 +1005,23 @@ def get_web_ui_html(
       color: var(--ink-4);
       cursor: not-allowed;
     }
+    /* Save → heart icon button. Same height as the Buy CTA so the
+       two read as a single CTA row, regardless of mode. */
     .detail-save {
       appearance: none;
-      padding: 12px 16px;
+      width: 44px; min-width: 44px; height: 44px;
+      flex: 0 0 auto;
+      padding: 0;
       border-radius: var(--radius-md);
       border: 1px solid var(--line-strong);
       background: transparent;
       color: var(--ink-3);
-      font-family: inherit;
-      font-size: 11px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.14em;
       cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      box-sizing: border-box;
       transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
     }
+    .detail-save svg { display: block; }
     .detail-save:hover { border-color: var(--ink); color: var(--ink); }
     .detail-save.wishlisted { color: var(--accent); border-color: var(--accent); }
     .detail-items {
@@ -1013,7 +1042,7 @@ def get_web_ui_html(
     .detail-item-price {
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 12px; font-weight: 500;
-      color: var(--accent);
+      color: var(--ink);
     }
     .detail-item-price.wardrobe {
       color: var(--ink-4);
@@ -1026,7 +1055,7 @@ def get_web_ui_html(
       padding: 3px 8px; min-width: 28px;
       font-size: 9px;
     }
-    .buy-outfit-btn { margin-top: 6px; }
+    .buy-outfit-btn { width: 100%; }
     .outfit-item-source { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
     .chip {
       font-size: 10px; font-weight: 600;
@@ -3105,7 +3134,9 @@ def get_web_ui_html(
           html += '<button class="btn-buy-primary" type="button" disabled title="No buy link available">Buy Now</button>';
         }}
         if (productId) {{
-          html += '<button type="button" class="detail-save btn-wishlist" data-product-id="' + escapeHtml(productId) + '" title="Save">Save</button>';
+          html += '<button type="button" class="detail-save btn-wishlist" data-product-id="' + escapeHtml(productId) + '" title="Save" aria-label="Save">' +
+            '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>' +
+            '</button>';
         }}
         html += '</div>';
       }}
@@ -3194,9 +3225,19 @@ def get_web_ui_html(
       fetch("/v1/products/" + encodeURIComponent(pid) + "/wishlist?user_id=" + encodeURIComponent(USER_ID) + "&conversation_id=" + encodeURIComponent(conversationId || ""), {{ method: "POST" }})
         .then(function(r) {{
           if (!r.ok) throw new Error("Failed");
-          wishBtn.innerHTML = "Saved";
+          // The wishlist button on the detail panel is icon-only (a
+          // heart SVG); on success swap the outline heart for a
+          // filled one. The legacy `.btn-wishlist` on saved-card
+          // tiles still uses text — only swap to "Saved" if there's
+          // no SVG inside (i.e., not an icon-mode button).
+          if (wishBtn.querySelector("svg")) {{
+            wishBtn.innerHTML = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
+          }} else {{
+            wishBtn.innerHTML = "Saved";
+          }}
           wishBtn.classList.add("wishlisted");
-          wishBtn.title = "Wishlisted";
+          wishBtn.title = "Saved";
+          wishBtn.setAttribute("aria-label", "Saved");
         }})
         .catch(function() {{
           wishBtn.disabled = false;
