@@ -3003,6 +3003,14 @@ def get_web_ui_html(
   function buildOutfitCard(outfit, convId, responseMetadata) {{
     var _cardIntent = String(responseMetadata && responseMetadata.primary_intent || "").toLowerCase();
     var isOutfitCheckCard = _cardIntent === "outfit_check" || _cardIntent === "garment_evaluation";
+    // Pairing flow: the user attached a wardrobe/uploaded garment as the
+    // anchor for the request ("what goes with this skirt?"). That anchor
+    // doesn't need its own product detail panel — the user already owns
+    // it. Clicking its thumbnail should show the outfit description
+    // (paired items), and the outfit-mode per-garment listing should
+    // exclude the anchor entirely (wardrobe-source items in a pairing
+    // outfit are the anchor by definition).
+    var isPairingCard = _cardIntent === "pairing_request";
 
     var card = document.createElement("div");
     card.className = "outfit-card";
@@ -3154,8 +3162,15 @@ def get_web_ui_html(
       if (reasoning) {{
         html += '<p class="detail-description">' + escapeHtml(reasoning) + '</p>';
       }}
+      // Pairing cards exclude the user's anchor (wardrobe-source item)
+      // from the per-garment listing — the user already owns it, so
+      // price/size/buy don't apply. Only the recommended pairings are
+      // listed.
+      var listedItems = isPairingCard
+        ? items.filter(function(it) {{ return normalizeSourceToken(it.source) !== "wardrobe"; }})
+        : items;
       html += '<div class="detail-items">';
-      items.forEach(function(it) {{
+      listedItems.forEach(function(it) {{
         var itTitle = String(it.title || it.product_id || "Untitled");
         var itPrice = auraPrice(it.price);
         var sourceIsWardrobe = normalizeSourceToken(it.source) === "wardrobe";
@@ -3214,7 +3229,11 @@ def get_web_ui_html(
       var entry = images[idx];
       var targetItem = entry ? entry.item : null;
       var isTryon = !!outfit.tryon_image && idx === images.length - 1;
-      if (isTryon || !targetItem) {{
+      // In a pairing card the wardrobe-source item is the user's anchor.
+      // Clicking it shouldn't open a product detail page (they already
+      // own it) — route to outfit mode like the try-on thumbnail does.
+      var targetIsAnchor = isPairingCard && targetItem && normalizeSourceToken(targetItem.source) === "wardrobe";
+      if (isTryon || !targetItem || targetIsAnchor) {{
         info.appendChild(renderOutfitDetail());
       }} else {{
         info.appendChild(renderGarmentDetail(targetItem));
