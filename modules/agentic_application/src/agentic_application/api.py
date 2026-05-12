@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 import re
 from threading import Lock, Thread
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from catalog.admin_api import create_catalog_admin_router
@@ -1361,16 +1361,33 @@ def create_app() -> FastAPI:
                     g["first_image"] = first_img
                 g["updated_at"] = str(row.get("created_at") or g["updated_at"])
 
-            result_groups = [
-                IntentHistoryGroup(**g)
-                for g in groups.values()
-            ]
+            # Formality fallback: sessions that did not match any
+            # occasion keyword get bucketed by the rater's
+            # ``formality_pct`` averaged across the session's outfits
+            # — so a stylist-only "what goes with this skirt?" still
+            # lands in a meaningful bucket (Smart Looks / Easy
+            # Everyday / Off-Duty) instead of a generic catch-all.
+            from .services.theme_taxonomy import map_formality_to_bucket
 
-            # May 1, 2026 — Theme Taxonomy: fold flat groups into
-            # theme blocks. Themes ordered by most-recent activity so
-            # whatever the user is currently planning floats to the
-            # top; ties broken by canonical theme order. Empty themes
-            # are dropped so the rendering stays clean.
+            def _avg_formality(turns_list) -> Optional[float]:
+                vals: List[float] = []
+                for t in turns_list:
+                    for o in (t.outfits or []):
+                        v = o.get("formality_pct") if isinstance(o, dict) else None
+                        if isinstance(v, (int, float)) and v >= 0:
+                            vals.append(float(v))
+                return sum(vals) / len(vals) if vals else None
+
+            result_groups: List[IntentHistoryGroup] = []
+            for g in groups.values():
+                if g["theme_key"] == "style_sessions":
+                    g["theme_key"] = map_formality_to_bucket(_avg_formality(g["turns"]))
+                result_groups.append(IntentHistoryGroup(**g))
+
+            # Fold flat groups into theme blocks. Themes ordered by
+            # most-recent activity so whatever the user is currently
+            # planning floats to the top; ties broken by canonical
+            # theme order. Empty themes are dropped.
             from .services.theme_taxonomy import (
                 THEMES, theme_label, theme_description, theme_order,
             )

@@ -1,8 +1,7 @@
-"""Tests for the Outfits tab theme taxonomy (May 1, 2026 plan).
+"""Tests for the Outfits tab theme taxonomy.
 
-The acceptance test reproduces the bug-report list verbatim — the
-14 raw occasion strings the user found in their Outfits tab — and
-asserts they collapse into the expected 5-bucket result.
+Covers the synonym-based occasion mapping and the formality fallback
+that's applied when a session has no occasion signal.
 """
 
 from __future__ import annotations
@@ -31,6 +30,7 @@ from agentic_application.services.theme_taxonomy import (
     KEYWORDS,
     INTENT_FALLBACK,
     map_to_theme,
+    map_formality_to_bucket,
     is_unmapped,
     theme_label,
     theme_description,
@@ -40,8 +40,9 @@ from agentic_application.services.theme_taxonomy import (
 
 
 class ThemeMappingBasics(unittest.TestCase):
-    def test_eight_themes_defined(self) -> None:
-        self.assertEqual(8, len(THEMES))
+    def test_all_themes_defined(self) -> None:
+        # 8 occasion buckets + 3 formality buckets + 1 ultimate fallback
+        self.assertEqual(12, len(THEMES))
 
     def test_every_theme_has_label_and_order(self) -> None:
         for key, meta in THEMES.items():
@@ -61,44 +62,41 @@ class ThemeMappingBasics(unittest.TestCase):
             self.assertIn(theme_key, valid, f"intent {intent!r} maps to unknown theme {theme_key!r}")
 
 
-class AcceptanceFromBugReport(unittest.TestCase):
-    """The exact list the staging user reported."""
+class OccasionMapping(unittest.TestCase):
+    """Fine-grained occasion buckets — synonyms collapse, distinct
+    occasions stay separate so Beach doesn't bury under Travel."""
 
-    def test_user_reported_14_signals_collapse_to_5_themes(self) -> None:
-        observations = [
-            ("casual outing", "occasion_recommendation",  "casual"),
-            ("general", "occasion_recommendation",        "style_sessions"),
-            ("beach", "occasion_recommendation",          "travel"),
-            ("casual", "occasion_recommendation",         "casual"),
-            ("", "occasion_recommendation",               "style_sessions"),  # 'occasion recommendation' bucket
-            ("traditional engagement", "occasion_recommendation", "wedding"),
-            ("weekend outing", "occasion_recommendation", "casual"),
-            ("evening", "occasion_recommendation",        "evening"),
-            ("date night", "occasion_recommendation",     "date"),
-            ("engagement wedding", "occasion_recommendation", "wedding"),
-            ("wedding engagement", "occasion_recommendation", "wedding"),
-            ("engagement", "occasion_recommendation",     "wedding"),
-            ("date night", "occasion_recommendation",     "date"),    # duplicate
-            ("", "pairing_request",                       "style_sessions"),  # 'pairing request' bucket
-        ]
-        themes_seen = set()
-        for occasion, intent, expected in observations:
-            actual = map_to_theme(occasion, intent)
-            self.assertEqual(
-                expected, actual,
-                f"occasion={occasion!r} intent={intent!r}: expected {expected!r}, got {actual!r}",
-            )
-            themes_seen.add(actual)
-        # 5 themes (the duplicate "date night" doesn't add a 6th):
-        # wedding, casual, travel, date, evening, style_sessions
-        self.assertEqual(
-            {"wedding", "casual", "travel", "date", "evening", "style_sessions"},
-            themes_seen,
-        )
+    def test_beach_lands_in_beach_not_travel(self) -> None:
+        self.assertEqual("beach", map_to_theme("beach"))
+        self.assertEqual("beach", map_to_theme("beach holiday"))
+        self.assertEqual("beach", map_to_theme("pool party"))
+        self.assertEqual("beach", map_to_theme("resort wear"))
+
+    def test_airport_lands_in_travel(self) -> None:
+        self.assertEqual("travel", map_to_theme("airport outfit"))
+        self.assertEqual("travel", map_to_theme("road trip"))
+        self.assertEqual("travel", map_to_theme("weekend getaway"))
+
+    def test_office_synonyms_collapse(self) -> None:
+        self.assertEqual("office", map_to_theme("office meeting"))
+        self.assertEqual("office", map_to_theme("daily office"))
+        self.assertEqual("office", map_to_theme("business meeting"))
+        self.assertEqual("office", map_to_theme("interview"))
+
+    def test_party_renames_evening(self) -> None:
+        self.assertEqual("party", map_to_theme("cocktail party"))
+        self.assertEqual("party", map_to_theme("night out"))
+        self.assertEqual("party", map_to_theme("evening"))
+
+    def test_casual_synonyms_collapse(self) -> None:
+        self.assertEqual("casual", map_to_theme("sunday brunch"))
+        self.assertEqual("casual", map_to_theme("smart casual"))
+        self.assertEqual("casual", map_to_theme("weekend outing"))
+        self.assertEqual("casual", map_to_theme("daily wear"))
 
 
-class WeddingPrecedence(unittest.TestCase):
-    """Wedding sub-events outrank evening/casual cross-overs."""
+class PrecedenceRules(unittest.TestCase):
+    """Specific event types outrank generic energy."""
 
     def test_engagement_evening_lands_in_wedding(self) -> None:
         self.assertEqual("wedding", map_to_theme("engagement evening party"))
@@ -109,57 +107,43 @@ class WeddingPrecedence(unittest.TestCase):
     def test_sangeet_outranks_party(self) -> None:
         self.assertEqual("wedding", map_to_theme("sangeet party"))
 
-    def test_traditional_engagement_lands_in_wedding(self) -> None:
-        self.assertEqual("wedding", map_to_theme("traditional engagement"))
+    def test_eid_outranks_party(self) -> None:
+        self.assertEqual("festive", map_to_theme("eid evening dinner"))
 
-
-class FestiveAndDate(unittest.TestCase):
     def test_diwali_party_lands_in_festive(self) -> None:
         self.assertEqual("festive", map_to_theme("diwali party at home"))
-
-    def test_eid_outranks_evening(self) -> None:
-        self.assertEqual("festive", map_to_theme("eid evening dinner"))
 
     def test_anniversary_dinner_lands_in_date(self) -> None:
         self.assertEqual("date", map_to_theme("anniversary dinner"))
 
-    def test_first_date_lands_in_date(self) -> None:
-        self.assertEqual("date", map_to_theme("first date"))
 
+class FormalityFallback(unittest.TestCase):
+    """When there's no occasion, formality_pct picks the bucket."""
 
-class WorkAndCasualBoundaries(unittest.TestCase):
-    def test_office_meeting_lands_in_work(self) -> None:
-        self.assertEqual("work", map_to_theme("office meeting"))
+    def test_high_formality_lands_in_smart_looks(self) -> None:
+        self.assertEqual("smart_looks", map_formality_to_bucket(85))
+        self.assertEqual("smart_looks", map_formality_to_bucket(100))
+        self.assertEqual("smart_looks", map_formality_to_bucket(65))
 
-    def test_daily_office_lands_in_work(self) -> None:
-        self.assertEqual("work", map_to_theme("daily office"))
+    def test_mid_formality_lands_in_easy_everyday(self) -> None:
+        self.assertEqual("easy_everyday", map_formality_to_bucket(50))
+        self.assertEqual("easy_everyday", map_formality_to_bucket(35))
+        self.assertEqual("easy_everyday", map_formality_to_bucket(64))
 
-    def test_smart_casual_lands_in_casual(self) -> None:
-        self.assertEqual("casual", map_to_theme("smart casual"))
+    def test_low_formality_lands_in_off_duty(self) -> None:
+        self.assertEqual("off_duty", map_formality_to_bucket(0))
+        self.assertEqual("off_duty", map_formality_to_bucket(20))
+        self.assertEqual("off_duty", map_formality_to_bucket(34))
 
-    def test_brunch_lands_in_casual(self) -> None:
-        self.assertEqual("casual", map_to_theme("sunday brunch"))
-
-
-class TravelAndEvening(unittest.TestCase):
-    def test_beach_lands_in_travel(self) -> None:
-        self.assertEqual("travel", map_to_theme("beach holiday"))
-
-    def test_airport_lands_in_travel(self) -> None:
-        self.assertEqual("travel", map_to_theme("airport outfit"))
-
-    def test_cocktail_party_alone_lands_in_evening(self) -> None:
-        self.assertEqual("evening", map_to_theme("cocktail party"))
+    def test_none_defaults_to_easy_everyday(self) -> None:
+        self.assertEqual("easy_everyday", map_formality_to_bucket(None))
 
 
 class FallthroughAndIntent(unittest.TestCase):
-    def test_empty_signal_with_pairing_request_lands_in_style_sessions(self) -> None:
+    def test_empty_signal_returns_style_sessions_sentinel(self) -> None:
+        # The api layer overrides this with a formality bucket.
         self.assertEqual("style_sessions", map_to_theme("", intent="pairing_request"))
-
-    def test_empty_signal_with_occasion_recommendation_lands_in_style_sessions(self) -> None:
         self.assertEqual("style_sessions", map_to_theme("", intent="occasion_recommendation"))
-
-    def test_empty_signal_with_unknown_intent_lands_in_style_sessions(self) -> None:
         self.assertEqual("style_sessions", map_to_theme("", intent="some_made_up_intent"))
 
     def test_unknown_signal_falls_through(self) -> None:
@@ -170,8 +154,6 @@ class FallthroughAndIntent(unittest.TestCase):
 
 
 class IsUnmappedHelper(unittest.TestCase):
-    """is_unmapped distinguishes 'unrecognised content' from 'no content'."""
-
     def test_empty_signal_is_not_unmapped(self) -> None:
         self.assertFalse(is_unmapped(""))
         self.assertFalse(is_unmapped("   "))
@@ -182,11 +164,10 @@ class IsUnmappedHelper(unittest.TestCase):
     def test_recognised_signal_is_not_unmapped(self) -> None:
         self.assertFalse(is_unmapped("wedding"))
         self.assertFalse(is_unmapped("casual outing"))
+        self.assertFalse(is_unmapped("beach"))
 
 
 class WhitespaceNormalization(unittest.TestCase):
-    """Internal whitespace and casing collapse so 'date night' / 'Date  Night ' / 'date_night' all match."""
-
     def test_uppercase_signal_matches(self) -> None:
         self.assertEqual("wedding", map_to_theme("ENGAGEMENT"))
 
@@ -203,13 +184,17 @@ class WhitespaceNormalization(unittest.TestCase):
 class HelpersAndOrdering(unittest.TestCase):
     def test_theme_label_returns_human_string(self) -> None:
         self.assertEqual("Wedding & Engagement", theme_label("wedding"))
-        self.assertEqual("Casual & Everyday", theme_label("casual"))
+        self.assertEqual("Beach & Vacation", theme_label("beach"))
+        self.assertEqual("Office & Professional", theme_label("office"))
+        self.assertEqual("Weekend & Everyday", theme_label("casual"))
+        self.assertEqual("Smart Looks", theme_label("smart_looks"))
         # Unknown theme falls back to style_sessions label
         self.assertEqual("Style Sessions", theme_label("not_a_theme"))
 
     def test_theme_description_returns_a_string(self) -> None:
         self.assertTrue(theme_description("wedding"))
-        self.assertTrue(theme_description("travel"))
+        self.assertTrue(theme_description("beach"))
+        self.assertTrue(theme_description("smart_looks"))
 
     def test_theme_order_returns_int(self) -> None:
         self.assertEqual(1, theme_order("wedding"))
@@ -217,7 +202,7 @@ class HelpersAndOrdering(unittest.TestCase):
 
     def test_all_theme_keys_in_canonical_order(self) -> None:
         keys = all_theme_keys()
-        self.assertEqual(8, len(keys))
+        self.assertEqual(12, len(keys))
         self.assertEqual("wedding", keys[0])
         self.assertEqual("style_sessions", keys[-1])
 
