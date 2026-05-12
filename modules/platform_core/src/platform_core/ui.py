@@ -534,22 +534,27 @@ def get_web_ui_html(
     }
 
     /* Outfits tab content container */
+    .page-outfits {
+      padding: 48px 48px 64px;
+      max-width: 1440px;
+      margin: 0 auto;
+      width: 100%;
+    }
     .outfits-content {
       max-width: 1080px;
       margin: 0 auto;
-      padding: 0 32px 64px;
-    }
-    .outfits-filters-wrap {
-      max-width: 1080px;
-      margin: 0 auto 8px;
-      padding: 0 32px;
+      padding: 32px 32px 64px;
     }
     .outfits-filters {
-      display: flex; gap: 20px 24px; flex-wrap: wrap;
-      padding-bottom: 14px; margin-bottom: 14px;
-      border-bottom: 1px solid var(--line);
+      display: flex; gap: 20px 24px; flex-wrap: wrap; margin-bottom: 14px;
+      padding-bottom: 14px; border-bottom: 1px solid var(--line);
     }
-    .outfits-filters:last-child { margin-bottom: 4px; }
+    @media (max-width: 960px) {
+      .page-outfits { padding: 32px 24px; }
+    }
+    @media (max-width: 720px) {
+      .page-outfits { padding: 24px 16px; }
+    }
 
     .welcome-headline {
       font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
@@ -1958,20 +1963,12 @@ def get_web_ui_html(
 
     # ── Outfits Tab (Phase 15C — intent-organized history) ──
     html += """
-<div class="page-view page-outfits" style="padding: 48px 32px;">
-  <div class="outfits-filters-wrap">
-    <div class="outfits-filters" id="outfitsIntentFilters" role="tablist" aria-label="Intent">
-      <button class="filter-chip active" data-intent-filter="all">All</button>
-      <button class="filter-chip" data-intent-filter="pairing_request">Pairings</button>
-      <button class="filter-chip" data-intent-filter="occasion_recommendation">Occasions</button>
-      <button class="filter-chip" data-intent-filter="capsule_or_trip_planning">Capsules</button>
-    </div>
-    <div class="outfits-filters" id="outfitsSourceFilters" role="tablist" aria-label="Source">
-      <button class="filter-chip active" data-source-filter="all">All sources</button>
-      <button class="filter-chip" data-source-filter="wardrobe">From wardrobe</button>
-      <button class="filter-chip" data-source-filter="hybrid">Hybrid</button>
-      <button class="filter-chip" data-source-filter="catalog">Shop</button>
-    </div>
+<div class="page-view page-outfits">
+  <div class="outfits-filters" id="outfitsSourceFilters" role="tablist" aria-label="Source">
+    <button class="filter-chip active" data-source-filter="all">All sources</button>
+    <button class="filter-chip" data-source-filter="wardrobe">From wardrobe</button>
+    <button class="filter-chip" data-source-filter="hybrid">Hybrid</button>
+    <button class="filter-chip" data-source-filter="catalog">Shop</button>
   </div>
   <div id="outfitsContent" class="outfits-content">
     <div class="results-empty">Loading.</div>
@@ -4406,18 +4403,14 @@ def get_web_ui_html(
       }}
 
       function applyOutfitsFilters() {{
-        var iBtn = document.querySelector('#outfitsIntentFilters .filter-chip.active');
         var sBtn = document.querySelector('#outfitsSourceFilters .filter-chip.active');
-        var activeIntent = (iBtn && iBtn.dataset.intentFilter) || "all";
         var activeSource = (sBtn && sBtn.dataset.sourceFilter) || "all";
 
         area.innerHTML = "";
         var anyVisible = false;
         themesData.forEach(function(td) {{
           var visible = td.outfits.filter(function(o) {{
-            var iOk = activeIntent === "all" || o._intent === activeIntent;
-            var sOk = activeSource === "all" || o._source === activeSource;
-            return iOk && sOk;
+            return activeSource === "all" || o._source === activeSource;
           }});
           if (!visible.length) return;
           anyVisible = true;
@@ -4462,7 +4455,6 @@ def get_web_ui_html(
           applyOutfitsFilters();
         }});
       }}
-      wireFilterRow('outfitsIntentFilters');
       wireFilterRow('outfitsSourceFilters');
 
       try {{
