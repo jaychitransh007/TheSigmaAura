@@ -60,7 +60,7 @@ Mix outfits across directions when multiple directions have viable candidates â€
     {
       "composer_id": "C1",
       "direction_id": "A",
-      "direction_type": "complete",
+      "direction_type": "paired",
       "item_ids": ["pool_id_A", "pool_id_B"],
       "name": "Sharp Navy Boardroom",
       "rationale": "One sentence on why this works.",
