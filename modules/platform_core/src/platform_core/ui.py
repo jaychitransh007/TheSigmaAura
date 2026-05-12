@@ -1428,6 +1428,26 @@ def get_web_ui_html(
     }
     .modal-actions .btn-cancel:hover { border-color: var(--ink); color: var(--ink); }
     .modal-error { color: var(--danger); font-size: 12px; margin-top: 8px; font-style: italic; }
+    /* Prompt variant — small alert/confirm dialog. */
+    .modal-box.modal-prompt {
+      width: min(92vw, 420px);
+      padding: 28px 28px 20px;
+    }
+    .modal-box.modal-prompt h2 { font-size: 22px; margin-bottom: 10px; }
+    .modal-prompt-message {
+      font-size: 14px; line-height: 1.5;
+      color: var(--ink-3);
+      margin: 0 0 20px;
+    }
+    .modal-actions .btn-primary.btn-danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: var(--on-accent);
+    }
+    .modal-actions .btn-primary.btn-danger:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
     .modal-preview {
       width: 80px; height: 100px;
       border-radius: var(--radius-sm);
@@ -2318,6 +2338,86 @@ def get_web_ui_html(
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#39;");
   }}
+
+  // Styled replacement for native confirm() / alert(). Builds a small
+  // modal on demand using the existing .modal-overlay / .modal-box
+  // pattern; returns a Promise<boolean> (confirm → true on OK, false on
+  // cancel or backdrop click; alert → resolves true on OK).
+  var auraPrompt = (function() {{
+    function _open(opts) {{
+      return new Promise(function(resolve) {{
+        var overlay = document.createElement("div");
+        overlay.className = "modal-overlay";
+        var box = document.createElement("div");
+        box.className = "modal-box modal-prompt";
+        if (opts.title) {{
+          var h = document.createElement("h2");
+          h.textContent = opts.title;
+          box.appendChild(h);
+        }}
+        if (opts.message) {{
+          var p = document.createElement("p");
+          p.className = "modal-prompt-message";
+          p.textContent = opts.message;
+          box.appendChild(p);
+        }}
+        var actions = document.createElement("div");
+        actions.className = "modal-actions";
+        function close(result) {{
+          overlay.classList.remove("open");
+          setTimeout(function() {{
+            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+          }}, 240);
+          resolve(result);
+        }}
+        if (opts.showCancel) {{
+          var cancelBtn = document.createElement("button");
+          cancelBtn.type = "button";
+          cancelBtn.className = "btn-cancel";
+          cancelBtn.textContent = opts.cancelLabel || "Cancel";
+          cancelBtn.addEventListener("click", function() {{ close(false); }});
+          actions.appendChild(cancelBtn);
+        }}
+        var okBtn = document.createElement("button");
+        okBtn.type = "button";
+        okBtn.className = opts.danger ? "btn-primary btn-danger" : "btn-primary";
+        okBtn.textContent = opts.okLabel || "OK";
+        okBtn.addEventListener("click", function() {{ close(true); }});
+        actions.appendChild(okBtn);
+        box.appendChild(actions);
+        overlay.appendChild(box);
+        overlay.addEventListener("click", function(ev) {{
+          if (ev.target === overlay) close(false);
+        }});
+        document.body.appendChild(overlay);
+        requestAnimationFrame(function() {{
+          overlay.classList.add("open");
+          okBtn.focus();
+        }});
+      }});
+    }}
+    return {{
+      confirm: function(title, message, opts) {{
+        opts = opts || {{}};
+        return _open({{
+          title: title,
+          message: message,
+          okLabel: opts.okLabel || "Confirm",
+          cancelLabel: opts.cancelLabel || "Cancel",
+          danger: !!opts.danger,
+          showCancel: true,
+        }});
+      }},
+      alert: function(title, message) {{
+        return _open({{
+          title: title,
+          message: message,
+          okLabel: "OK",
+          showCancel: false,
+        }});
+      }},
+    }};
+  }})();
 
   function firstImageUrl(item) {{
     var raw = item.image_url || item.primary_image_url || item.images__0__src || item.images_0_src || "";
@@ -3774,13 +3874,18 @@ def get_web_ui_html(
         var itemId = delBtn.getAttribute("data-item-id");
         var item = wardrobeItemsById[itemId];
         var name = (item && item.title) || "this item";
-        if (!confirm("Remove " + name + " from your wardrobe?")) return;
+        var ok = await auraPrompt.confirm(
+          "Remove from wardrobe?",
+          "Remove " + name + " from your wardrobe? You can re-add it later.",
+          {{ okLabel: "Remove", danger: true }}
+        );
+        if (!ok) return;
         try {{
           var res = await fetch("/v1/onboarding/wardrobe/items/" + encodeURIComponent(itemId) + "?user_id=" + encodeURIComponent(USER_ID), {{ method: "DELETE" }});
           if (!res.ok) {{ var err = await res.json(); throw new Error(err.detail || "Delete failed"); }}
           loadWardrobeStudio();
         }} catch(ex) {{
-          alert(ex.message || "Failed to delete item.");
+          auraPrompt.alert("Couldn't remove item", ex.message || "Something went wrong. Try again in a moment.");
         }}
         return;
       }}
@@ -4192,9 +4297,9 @@ def get_web_ui_html(
       fd.append("file", input.files[0]);
       try {{
         var res = await fetch("/v1/onboarding/images/" + category, {{ method: "POST", body: fd }});
-        if (!res.ok) {{ var err = await res.json(); alert(err.detail || "Upload failed"); return; }}
+        if (!res.ok) {{ var err = await res.json(); auraPrompt.alert("Upload failed", err.detail || "We couldn't process that image. Try a different file."); return; }}
         loadProfile();
-      }} catch (ex) {{ alert("Upload failed: " + ex.message); }}
+      }} catch (ex) {{ auraPrompt.alert("Upload failed", ex.message || "We couldn't reach the server. Check your connection and try again."); }}
     }});
   }});
 
