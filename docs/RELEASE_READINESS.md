@@ -168,6 +168,56 @@ These are explicit non-goals — do not block the release on them:
 
 _Migrated from `CURRENT_STATE.md`. The May-1 "Open Items Plan" — every item now ✅ shipped — is preserved here as a record of work landed during the platform pass. For ongoing release readiness criteria see the Gates above._
 
+## May 12, 2026 (late evening) — Card detail panel polish + composer hotfix + docs (PRs #311–#324)
+
+A 14-PR cleanup wave on top of the same-day evening wave. Splits across three substantive arcs (composer hotfix, card UX round 2+3, pairing-anchor behavior) plus review-feedback churn and doc refreshes.
+
+### Composer hotfix — item_descriptions schema reshape (PRs #313–#315)
+
+The day's earlier PR #305 added `item_descriptions` as a dict with dynamic string keys (`additionalProperties: {"type": "string"}`). OpenAI's Structured Outputs rejected this — strict mode forbids `additionalProperties` dicts at every level. **Every composer call had been failing on `main` since #305 merged.**
+
+| PR | Net change |
+|---|---|
+| #313 | Hotfix. Convert `item_descriptions` to an array of `{item_id, description}` rows. Parser folds it back to `Dict[str, str]` for the rest of the pipeline; downstream (orchestrator, response_formatter, frontend) unchanged. Defensive against the legacy dict shape if a cached payload still has it. Prompt example updated to match. |
+| #314 | Budget bump 1600 → 1800 to absorb the schema reshape (CI L0 wasn't a required check, so the hotfix shipped despite a red budget test). |
+| #315 | PEP 8 nit on the budget comment per review. |
+| #316 | Prompt example `direction_type` fixed: "complete" with 2 items is invalid per the file's own rules; changed to "paired". |
+
+### Outfit card UX — round 2 + round 3 (PRs #317, #318, #319, #321, #323)
+
+Five PRs polishing the detail panel the day's earlier #306 introduced.
+
+| PR | Net change |
+|---|---|
+| #317 | Round 2. Detail panel gets `min-height: 420px` + line-clamps on title (2) and description (4) — the CTA row stops jumping vertically across cards. Buy Now and Buy Outfit share `min-height: 44px`. Save text → outline-heart icon (filled on wishlist POST). Prices switch from oxblood `--accent` to neutral `var(--ink)`. Card header drops its `border-bottom` divider. |
+| #318 | Round 3. Buy Outfit was vertical-stretching because `.btn-buy-primary { flex: 1 }` was intended for the garment-mode `.detail-cta` row; in outfit mode the button was a direct child of the column-flex panel. Wrap Buy Outfit + a new Like heart in a `.detail-cta` so flex:1 stays horizontal. Move Like from card header into the outfit-mode CTA row — both modes now share the "Buy CTA + heart" shape. Composer prompt bumped to 2-3 sentences (30-55 words) per item so descriptions actually fill the 4-line clamp. |
+| #319 | Budget bump 1800 → 1900 (CI's char/4 fallback over-counts vs tiktoken). |
+| #321 | Reviewer feedback on #319 — bump to 1950 to restore the 5% headroom rule documented in the audit module. |
+| #323 | Pairing-card anchor handling. In `pairing_request` cards the wardrobe-source item is the user's anchor ("what goes with this skirt?"). Clicking it now routes to outfit mode (the user already owns it; a product detail panel doesn't carry information). Outfit-mode listing filters wardrobe items out for pairing cards — only recommended pairings appear with price + sizes. |
+
+### Composer schema/prompt consistency (PRs #320, #322, #324)
+
+| PR | Net change |
+|---|---|
+| #320 | Schema description in `outfit_composer.py` was still saying "single sentence (12-25 words)" while the prompt had moved to 2-3 sentences. Sync. |
+| #322 | Tightens the JSON schema description further: now mirrors the prompt's stylist-voice directive and explicit no-pairing-logic rule. Clears stale "one-sentence" comments at `outfit_composer.py:169` and `schemas.py:311`. |
+| #324 | The example in `schemas.py`'s doc comment was 27 words, below the 30-55 word range the comment itself documented one line above. Rewrote to 41 words. |
+
+### Docs (PRs #311, #312)
+
+| PR | Net change |
+|---|---|
+| #311 | Three dense PRODUCT.md / DESIGN.md bullets nested into sub-lists per review feedback. Added a "discrepancy with merchant page" note about the 1.2× FE-only price markup. |
+| #312 | PRODUCT.md consistency fixes on the same review pass — `thumbs` → `thumbnails`, `+` → `,` separators, restored `outfit title` / `garment title` fields, "per-garment price" → "per-garment marked-up price" (the markup applies in both modes). |
+
+**State at end of late-evening push:**
+- Composer + frontend are back to producing user-facing outfits end-to-end. Production was broken between #305 (10:30 UTC) and #313 (13:06 UTC); hotfix restored it.
+- Detail panel has stable layout, identical Buy+heart shape in both modes, pairing-anchor routing, and 2-3 sentence per-item descriptions on new outfits going forward.
+- Older cached outfits keep working with empty descriptions (frontend hides the description block when empty).
+- Composer prompt budget = 1950. Composer model + retry path unchanged.
+
+---
+
 ## May 12, 2026 (evening) — Outfits redesign + outfit card rework + UI polish (PRs #298–#309)
 
 A 12-PR sweep across the Outfits tab grouping, the outfit card right column, and broad UI polish. The user-facing rater radar was retired (the rater still runs server-side for ranking/filtering). The composer gained per-item descriptions to feed the new product detail panel.

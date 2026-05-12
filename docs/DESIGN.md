@@ -27,14 +27,17 @@ Key UI patterns implemented:
 - **Wardrobe edit modal**: Full metadata edit form (title, description, category, subtype, colors, pattern, formality, occasion, brand, notes) with image preview. Calls PATCH endpoint.
 - **Wardrobe delete**: Per-card delete button with confirmation dialog. Soft-deletes via is_active=false.
 - **Wardrobe filters**: Search bar (title/description/brand/category), category chips (All, Tops, Bottoms, Shoes, Dresses, Outerwear, Accessories, Occasion-ready), color filter row (11 colors), and localStorage persistence across page loads. The `Occasion-ready` chip now matches against the enrichment metadata tag set (`wedding`, `cocktail_party`, `office`, `semi_formal` + formality `smart_casual` and above) instead of "any non-empty `occasion_fit`".
-- **Outfit PDP card** (May 12 2026): compact header (title + Like/Hide icons) above a 3-column body (thumbnails | hero | **detail panel**).
-  - **Title.** Composer-emitted stylist-flavored name (PR #88, e.g. *"Camel Sand Refined"*, *"Sharp Navy Boardroom"*). The header carries the title + Like/Hide only; the reasoning paragraph moved into the detail panel.
-  - **Detail panel.** Right column is a context-sync'd detail panel whose content tracks the active thumbnail.
-  - **Outfit mode** (try-on thumbnail active, default): outfit title, full `reasoning`, one row per garment with price + XS-XL size chips, disabled "Buy Outfit" button (multi-item checkout not wired yet).
-  - **Garment mode** (garment thumbnail active): garment title, marked-up price (×1.2 applied at render), composer-authored `description`, XS-XL size chips, Buy Now (opens `product_url`), Save (wishlist POST). Wardrobe items show "From your wardrobe" in place of price and hide the Buy/Save CTAs.
-  - **Price markup caveat.** The 1.2× markup is a render-time-only decision; Buy Now opens the merchant's `product_url` where the user will see the raw catalog price. This is intentional — the markup is tuned on the frontend without touching the merchant catalog — but it does mean the in-app price and the destination-page price differ. If that ever surprises users we'll revisit.
+- **Outfit PDP card** (May 12 2026, polished through PRs #306, #317, #318, #323): compact header (title + Hide icon only) above a 3-column body (thumbnails | hero | **detail panel**).
+  - **Title.** Composer-emitted stylist-flavored name (PR #88, e.g. *"Camel Sand Refined"*, *"Sharp Navy Boardroom"*). No border-bottom under the header; the card reads as one unified surface.
+  - **Detail panel.** Right column is a context-sync'd detail panel whose content tracks the active thumbnail. The panel has a `min-height: 420px` and uses line-clamp on title (2 lines) and description (4 lines) so vertical position stays constant across cards — the CTA row never jumps as titles/descriptions vary in length.
+  - **Outfit mode** (try-on thumbnail active, default): outfit title, full `reasoning` (2-3 sentence stylist description), one row per garment with title + marked-up price + XS-XL size chips, CTA row of disabled "Buy Outfit" + Like (heart icon). Like is wired via event delegation on the info container so the state persists across thumbnail switches.
+  - **Garment mode** (garment thumbnail active): garment title, marked-up price (×1.2 applied at render), composer-authored 2-3 sentence `description` (30-55 words, stylist voice), XS-XL size chips, CTA row of Buy Now (opens `product_url`) + Save (heart icon — outline → filled on wishlist POST). Wardrobe items show "From your wardrobe" in place of price and hide the Buy/Save CTAs.
+  - **Pairing-card anchor** (PR #323). For `pairing_request` intent the user attaches a wardrobe/uploaded garment as the anchor ("what goes with this skirt?"). Clicking that anchor thumbnail routes to outfit mode (not garment mode — the user already owns it), and the outfit-mode per-garment listing excludes wardrobe items so only the recommended pairings appear with price + sizes. The anchor still appears in the thumbnail rail and hero so the user sees the full look.
+  - **Prices in neutral ink**, not accent — the price is information, not a promotional signal. Wardrobe-source price column stays muted uppercase.
+  - **Button parity.** Buy Now and Buy Outfit share `min-height: 44px` and live inside `.detail-cta` rows in both modes so the row reads identically (CTA + heart). Buy Outfit is disabled (multi-item checkout not wired yet).
+  - **Price markup caveat.** The 1.2× markup is a render-time-only decision; Buy Now opens the merchant's `product_url` where the user will see the raw catalog price. Intentional — the markup is tuned on the frontend without touching the merchant catalog — but the in-app price and destination-page price differ. Revisit if it surprises users.
   - **Rater retired (PR #306).** User-facing rater radar is gone. The rater still runs server-side for ranking and filtering outfits, but its sub-scores aren't surfaced on the card.
-  - **Hide.** Opens a feedback modal with reaction chips + textarea before removing the card.
+  - **Hide.** Opens a feedback modal with reaction chips + textarea before removing the card. X icon at top-right of the card header.
 - **Follow-up suggestions as labelled groups**: Quick-reply chips rendered under bucket headers (`Improve It`, `Show Alternatives`, `Shop The Gap`), driven by `follow_up_groups` on response metadata. Clicking a follow-up chip adds a new iteration carousel row within the same intent group (iteration stacking).
 - **Wardrobe-first copy**: Wardrobe-first occasion responses name the selected pieces and explain *why* they fit. Hybrid responses name both wardrobe anchors and catalog gap-fillers explicitly.
 - **Wishlist tab** (Saved): grid of wishlisted catalog garments with title, price, Buy Now link. Data from `catalog_interaction_history` hydrated with `catalog_enriched`.
@@ -929,7 +932,7 @@ Chat composer features:
 ## Chat UI: Outfit Card — 3-Column PDP Layout + Feedback CTAs
 
 Status:
-- implemented (rewritten May 12 2026, PR #306)
+- implemented (rewritten May 12 2026 across PRs #306, #317, #318, #323)
 
 Current UI behavior (implemented):
 - one unified PDP-style card per outfit (`.outfit-card` CSS class)
@@ -937,13 +940,21 @@ Current UI behavior (implemented):
   - Col 1: vertical thumbnail rail (product images + try-on, active accent border)
   - Col 2: hero image viewer (full height, default to try-on when present)
   - Col 3: **context-sync'd detail panel** (see modes below)
-- compact card header above all three columns: outfit title + Like/Hide icons only (the long reasoning paragraph moved into the detail panel's outfit mode)
+- compact card header above all three columns: outfit title + Hide (X) only. No border-bottom under the header. Like moved into outfit-mode CTA row (see "Feedback").
 - mobile (`max-width: 900px`): hero image → horizontal thumbnail strip → detail panel
 
-Detail panel modes (PR #306):
-- **Outfit mode** (try-on thumbnail active — the default): outfit title, full `reasoning`, one row per garment with title + price + XS-XL size chips, and a disabled "Buy Outfit" button (multi-item checkout not wired yet). Title and reasoning come from the composer.
-- **Garment mode** (any garment thumbnail active): garment title, marked-up price, composer-authored per-item `description`, XS-XL size chips, Buy Now (opens `product_url` in new tab), Save (wishlist POST). Wardrobe items show "From your wardrobe" in place of price and hide the Buy/Save CTAs.
-- The two modes share `.detail-panel`, `.detail-title`, `.detail-price`, `.detail-description`, `.detail-sizes`, `.size-chip`, `.btn-buy-primary`, `.detail-save` primitives.
+Detail panel modes (PR #306, polished in #317 / #318):
+- **Outfit mode** (try-on thumbnail active — the default, or anchor thumbnail in a pairing card per #323): outfit title, full `reasoning`, one row per garment with title + marked-up price + XS-XL size chips. CTA row of disabled "Buy Outfit" + Like (heart icon). Title and reasoning come from the composer.
+- **Garment mode** (any non-anchor garment thumbnail active): garment title, marked-up price, composer-authored per-item `description` (2-3 sentences, 30-55 words, stylist voice), XS-XL size chips. CTA row of Buy Now (opens `product_url` in new tab) + Save (heart icon — wishlist POST). Wardrobe items show "From your wardrobe" in place of price and hide the Buy/Save CTAs.
+- **Pairing-anchor routing** (#323): in `pairing_request` cards the wardrobe-source item is the user's anchor. Clicking it routes to outfit mode, and the outfit-mode listing filters wardrobe items out so only the recommended pairings appear with price + sizes. The anchor stays visible in the thumbnail rail + hero.
+- Both modes share `.detail-panel`, `.detail-title`, `.detail-price`, `.detail-description`, `.detail-sizes`, `.size-chip`, `.btn-buy-primary`, `.detail-save` primitives.
+
+Stable layout (#317):
+- `.detail-panel { min-height: 420px; display: flex; flex-direction: column; }` — the right column keeps a fixed minimum height so the CTA row doesn't shift between cards.
+- `.detail-title` uses a 2-line clamp with matching `min-height`; `.detail-description` uses a 4-line clamp with matching `min-height`. Both ellipsis-truncate on overflow so longer copy can't push the CTA out.
+- `.detail-cta { margin-top: auto; }` in garment mode pins the CTA row to the panel bottom. In outfit mode the CTA row sits inside a `.detail-cta` wrapper too (so `.btn-buy-primary`'s `flex: 1` grows horizontally, not vertically — that was the height bug fixed in PR #318).
+- `.btn-buy-primary { min-height: 44px }` and the heart/save button is a fixed 44×44 icon button so Buy + heart line up identically in both modes.
+- Prices render in `var(--ink)` (neutral espresso), not the oxblood `--accent` — price is information, not a promotional signal. Wardrobe-source prices stay muted uppercase.
 
 Price markup:
 - Frontend applies a flat **1.2× markup** at render time via `auraPrice(rawPrice)` (`Rs. 1,23,456`, en-IN locale). Backend stores raw catalog price; the markup lives on the FE so it can be tuned per-promo without touching the catalog.
@@ -954,7 +965,7 @@ Size chips:
 - XS / S / M / L / XL — visual-only toggle (no backend wiring yet). Single-select within a chip group. Clicking the selected chip again deselects it.
 
 Per-item description source:
-- The composer (`prompt/outfit_composer.md`) writes one sentence per garment into `item_descriptions: {item_id: str}`. Threaded through ComposedOutfit → orchestrator → response_formatter into `OutfitItem.description`. Older cached outfits composed before May 12 2026 have empty descriptions; the panel hides the description block in that case.
+- The composer (`prompt/outfit_composer.md`) writes **2-3 sentences (30-55 words)** per garment into `item_descriptions: [{item_id, description}]` (an array, not a dict — OpenAI Structured Outputs forbids dynamic-key dicts; the array reshape shipped as hotfix #313). The orchestrator folds it back into `Dict[str, str]` for the rest of the pipeline. Threaded through ComposedOutfit → orchestrator → response_formatter into `OutfitItem.description`. Older cached outfits composed before May 12 2026 have empty descriptions; the panel hides the description block in that case.
 
 Rater visibility:
 - **The user-facing rater radar was retired in PR #306.** The rater still runs server-side for ranking and filtering — `fashion_score_pct`, `formality_pct`, `statement_pct`, etc. all still populate on `EvaluatedRecommendation` — but none of those values are surfaced on the card today.
@@ -965,9 +976,9 @@ Thumbnail ordering:
 - default hero: try-on when present, otherwise first garment
 - image entries carry an `item` reference so the detail panel can map back to the right garment when some items have no image (`images.length < items.length`)
 
-Feedback behavior:
-- `Like` — sends `event_type: "like"` immediately via POST to `/v1/conversations/{id}/feedback`
-- `Hide` — opens a feedback modal with reaction chips + textarea before removing the card from the carousel
+Feedback behavior (Like moved out of card header per #318):
+- `Like` lives in the outfit-mode CTA row (heart icon next to the disabled "Buy Outfit"). Wired via event delegation on the info container — state persists across thumbnail switches; click fills the heart and stamps `outfit._liked = true` on the in-memory outfit so re-renders keep it lit. Sends `event_type: "like"` via POST to `/v1/conversations/{id}/feedback`.
+- `Hide` stays at the card header (X icon). Opens a feedback modal with reaction chips + textarea before removing the card from the carousel.
 - correlation: `conversation_id` + `turn_id` + `outfit_rank`
 
 Native confirm/alert replaced (PR #303):
