@@ -65,8 +65,8 @@ Mix outfits across directions when multiple directions have viable candidates �
       "name": "Sharp Navy Boardroom",
       "rationale": "One sentence on why this works.",
       "item_descriptions": [
-        {"item_id": "pool_id_A", "description": "Tailored navy blazer in worsted wool, structured shoulders, clean notch lapel."},
-        {"item_id": "pool_id_B", "description": "Crisp white poplin shirt with a slim collar, clean and unfussy."}
+        {"item_id": "pool_id_A", "description": "A tailored navy blazer cut in dense worsted wool, structured shoulders and a clean notch lapel. The hand feels weighty without being stiff. Pairs cleanly under outerwear or as the lead piece for a sharp evening read."},
+        {"item_id": "pool_id_B", "description": "A crisp white poplin shirt with a slim collar and a slightly tapered body. The cotton holds its crease and the cuff sits flush under a jacket sleeve. Quiet enough to let the blazer lead."}
       ]
     }
   ],
@@ -80,7 +80,7 @@ Mix outfits across directions when multiple directions have viable candidates �
 - `pool_unsuitable: true` ONLY when the entire pool cannot meet basic occasion + formality requirements; in that case return `outfits: []`.
 - `rationale`: one short sentence — name the dimension that drove the call (occasion, color, silhouette).
 - `name`: user-facing card title (see **Naming**).
-- `item_descriptions`: array of `{item_id, description}` rows, one row per id in `item_ids` (same length, same order). Each `description` is one sentence (12-25 words) describing the garment itself — silhouette, fabric, color, finish — stylist voice. Don't reference other items or pairing logic; that's `rationale`'s job. `item_id` values must match those in `item_ids` exactly.
+- `item_descriptions`: array of `{item_id, description}` rows, one row per id in `item_ids` (same length, same order). Each `description` is 2–3 sentences (30–55 words) describing the garment itself — silhouette, fabric, color, finish, hand-feel, how it sits on the body — stylist voice. Lead with the most distinctive attribute; the second sentence adds texture or fit detail. Don't reference other items or pairing logic; that's `rationale`'s job. `item_id` values must match those in `item_ids` exactly.
 
 ## Naming
 

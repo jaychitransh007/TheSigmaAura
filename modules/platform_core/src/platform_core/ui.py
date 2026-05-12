@@ -1055,7 +1055,10 @@ def get_web_ui_html(
       padding: 3px 8px; min-width: 28px;
       font-size: 9px;
     }
-    .buy-outfit-btn { width: 100%; }
+    /* Buy Outfit + Like buttons sit in a shared .detail-cta row in
+       outfit mode (same as garment mode), so the row's flex layout
+       keeps the buttons at natural heights and gives Buy Outfit the
+       horizontal grow rather than vertical stretch in the column. */
     .outfit-item-source { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
     .chip {
       font-size: 10px; font-weight: 600;
@@ -3063,19 +3066,15 @@ def get_web_ui_html(
     titleEl.className = "outfit-title";
     titleEl.textContent = outfit.title || "Styled Look";
     headerTop.appendChild(titleEl);
+    // Hide stays at the top-right of the card header (X icon); Like
+    // (heart) moves into the outfit-mode detail-panel CTA row so each
+    // panel mode has the same "Buy CTA + heart" shape (garment mode:
+    // Buy Now + Save-heart; outfit mode: Buy Outfit + Like-heart).
     var fbWrap = document.createElement("div");
     fbWrap.className = "outfit-feedback";
-    var isLiked = !!outfit._liked;
-    var likeBtn = document.createElement("button"); likeBtn.className = "fb-icon-btn fb-like"; likeBtn.title = "Like";
-    if (isLiked) {{
-      likeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
-      likeBtn.style.color = "var(--accent)";
-    }} else {{
-      likeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
-    }}
     var hideBtn = document.createElement("button"); hideBtn.className = "fb-icon-btn fb-hide"; hideBtn.title = "Hide";
-    hideBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    fbWrap.appendChild(likeBtn); fbWrap.appendChild(hideBtn);
+    hideBtn.innerHTML = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    fbWrap.appendChild(hideBtn);
     headerTop.appendChild(fbWrap);
     header.appendChild(headerTop);
     // Reasoning paragraph moved into the right detail panel (outfit
@@ -3173,10 +3172,20 @@ def get_web_ui_html(
         html += '</div>';
       }});
       html += '</div>';
-      // "Buy Outfit" is intentionally disabled — multi-item checkout is
-      // not wired yet. Per-item Buy Now remains available via the
-      // garment-mode panel (thumbnail click).
+      // CTA row: Buy Outfit + Like (heart) — mirrors garment mode's
+      // Buy Now + Save shape. Wrapped in .detail-cta so .btn-buy-
+      // primary's flex:1 expands horizontally rather than stretching
+      // vertically in the column-flex panel. Buy Outfit is disabled
+      // (multi-item checkout not wired yet).
+      var isLiked = !!outfit._liked;
+      var heartFill = isLiked ? 'var(--accent)' : 'none';
+      var heartStroke = isLiked ? 'var(--accent)' : 'currentColor';
+      html += '<div class="detail-cta">';
       html += '<button type="button" class="btn-buy-primary buy-outfit-btn" disabled title="Coming soon">Buy Outfit</button>';
+      html += '<button type="button" class="detail-save outfit-like-btn' + (isLiked ? ' wishlisted' : '') + '" data-action="like-outfit" title="' + (isLiked ? 'Liked' : 'Like') + '" aria-label="' + (isLiked ? 'Liked' : 'Like') + '">' +
+        '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="' + heartFill + '" stroke="' + heartStroke + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>' +
+        '</button>';
+      html += '</div>';
       wrap.innerHTML = html;
       bindSizeToggles(wrap);
       return wrap;
@@ -3245,19 +3254,29 @@ def get_web_ui_html(
     }});
 
 
-    // ── Feedback wiring: Like + Hide in header ──
+    // ── Feedback wiring ──
+    // Like moved into the outfit-mode detail panel (PR follows-up
+    // card-polish-round-2). Wired via delegation on info so it
+    // survives re-renders when the user clicks different thumbnails.
+    // Hide stays at the card header.
     var outfitRank = outfit.rank || 0;
     var itemIds = items.map(function(i) {{ return i.product_id || ""; }}).filter(Boolean);
     var outfitTurnId = outfit._turn_id || "";
     var outfitConvId = outfit._conv_id || convId;
 
-    // Like — one-tap, heart fills
-    likeBtn.onclick = function(e) {{
-      e.stopPropagation();
-      likeBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
-      likeBtn.style.color = "var(--accent)";
+    info.addEventListener("click", function(e) {{
+      var btn = e.target.closest('[data-action="like-outfit"]');
+      if (!btn) return;
+      if (btn.classList.contains("wishlisted")) return;
+      // Fill the heart immediately for snappy feedback; record state
+      // on the outfit so re-renders (thumbnail switches) keep it lit.
+      btn.innerHTML = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="var(--accent)" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>';
+      btn.classList.add("wishlisted");
+      btn.title = "Liked";
+      btn.setAttribute("aria-label", "Liked");
+      outfit._liked = true;
       sendFeedback(outfitConvId, outfitRank, "like", "", itemIds, null, null, null, outfitTurnId);
-    }};
+    }});
 
     // Hide — opens feedback modal, then removes card on submit
     var fbOverlay = document.createElement("div");
