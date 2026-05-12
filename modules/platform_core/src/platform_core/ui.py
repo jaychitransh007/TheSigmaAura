@@ -417,40 +417,32 @@ def get_web_ui_html(
     }
     .intent-section { margin-bottom: 48px; }
 
-    /* May 1, 2026 — Outfits tab theme blocks. */
+    /* Outfits tab theme blocks. */
     .theme-block {
-      margin-bottom: 64px;
+      margin-bottom: 40px;
       max-width: 1080px;
       margin-left: auto;
       margin-right: auto;
     }
     .theme-block:last-child { margin-bottom: 24px; }
     .theme-header {
-      padding: 0 4px 18px;
+      padding: 0 4px 10px;
       border-bottom: 1px solid var(--signal);
-      margin-bottom: 32px;
+      margin-bottom: 20px;
     }
     .theme-title {
       font-family: "Fraunces", "Cormorant Garamond", Georgia, serif;
       font-style: italic;
       font-weight: 400;
-      font-size: 36px;
-      line-height: 1.1;
+      font-size: 22px;
+      line-height: 1.15;
       color: var(--ink);
-      margin: 0 0 6px;
-      letter-spacing: -0.005em;
-    }
-    .theme-subtitle {
-      font-family: "JetBrains Mono", ui-monospace, monospace;
-      font-size: 11px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--ink-3);
       margin: 0;
+      letter-spacing: -0.005em;
     }
     .theme-groups { display: flex; flex-direction: column; gap: 32px; }
     @media (max-width: 720px) {
-      .theme-title { font-size: 28px; }
+      .theme-title { font-size: 20px; }
     }
     .check-card {
       border: 1px solid var(--line);
@@ -4388,25 +4380,75 @@ def get_web_ui_html(
         return v;
       }}
 
+      // Themes are flattened to one carousel per theme so the user
+      // scrolls through every look in a single navigable strip rather
+      // than stacking a separate carousel per session.
+      var themesData = [];  // [{{ theme, outfits[] }}]
+
+      function buildThemeOutfits(theme) {{
+        var outfits = [];
+        (theme.groups || []).forEach(function(g) {{
+          (g.turns || []).forEach(function(turn) {{
+            (turn.outfits || []).forEach(function(outfit) {{
+              outfit._turn_context = turn.user_message || "";
+              outfit._turn_id = turn.turn_id || "";
+              outfit._conv_id = turn.conversation_id || g.conversation_id || "";
+              outfit._intent = String(g.intent || "");
+              outfit._source = normalizeSource(g.source || "");
+              outfit._md_answer_source = g.source || "";
+              outfit._md_occasion = g.occasion || "";
+              outfit._md_primary_intent = g.intent || "";
+              outfits.push(outfit);
+            }});
+          }});
+        }});
+        return outfits;
+      }}
+
       function applyOutfitsFilters() {{
         var iBtn = document.querySelector('#outfitsIntentFilters .filter-chip.active');
         var sBtn = document.querySelector('#outfitsSourceFilters .filter-chip.active');
         var activeIntent = (iBtn && iBtn.dataset.intentFilter) || "all";
         var activeSource = (sBtn && sBtn.dataset.sourceFilter) || "all";
-        area.querySelectorAll('.intent-section').forEach(function(s) {{
-          var sIntent = s.getAttribute('data-intent') || "";
-          var sSource = s.getAttribute('data-source') || "";
-          var intentOk = activeIntent === "all" || sIntent === activeIntent;
-          var sourceOk = activeSource === "all" || sSource === activeSource;
-          s.style.display = (intentOk && sourceOk) ? "" : "none";
-        }});
-        area.querySelectorAll('.theme-block').forEach(function(b) {{
-          var visible = false;
-          b.querySelectorAll('.intent-section').forEach(function(s) {{
-            if (s.style.display !== "none") visible = true;
+
+        area.innerHTML = "";
+        var anyVisible = false;
+        themesData.forEach(function(td) {{
+          var visible = td.outfits.filter(function(o) {{
+            var iOk = activeIntent === "all" || o._intent === activeIntent;
+            var sOk = activeSource === "all" || o._source === activeSource;
+            return iOk && sOk;
           }});
-          b.style.display = visible ? "" : "none";
+          if (!visible.length) return;
+          anyVisible = true;
+
+          var themeBlock = document.createElement("div");
+          themeBlock.className = "theme-block";
+          themeBlock.setAttribute("data-theme-key", td.theme.theme_key || "");
+
+          var header = document.createElement("div");
+          header.className = "theme-header";
+          var h2 = document.createElement("h2");
+          h2.className = "theme-title";
+          h2.textContent = td.theme.theme_label || td.theme.theme_key || "";
+          header.appendChild(h2);
+          themeBlock.appendChild(header);
+
+          var carouselWrap = document.createElement("div");
+          carouselWrap.className = "discovery-result";
+          carouselWrap.style.padding = "0 0 16px";
+          var firstMeta = {{
+            answer_source: visible[0]._md_answer_source,
+            occasion: visible[0]._md_occasion,
+            primary_intent: visible[0]._md_primary_intent,
+          }};
+          renderPdpCarousel(visible, visible[0]._conv_id || "", firstMeta, carouselWrap);
+          themeBlock.appendChild(carouselWrap);
+          area.appendChild(themeBlock);
         }});
+        if (!anyVisible) {{
+          area.innerHTML = '<div class="results-empty">No outfits match the current filters.</div>';
+        }}
       }}
 
       function wireFilterRow(rowId) {{
@@ -4427,95 +4469,20 @@ def get_web_ui_html(
         var res = await fetch("/v1/users/" + encodeURIComponent(USER_ID) + "/intent-history?types=occasion_recommendation,pairing_request,capsule_or_trip_planning");
         var data = await res.json();
         var themes = (data && data.themes) || [];
-        var fallbackGroups = (data && data.groups) || [];
-        if (!res.ok || (!themes.length && !fallbackGroups.length)) {{
+        if (!res.ok || !themes.length) {{
           area.innerHTML = '<div class="results-empty">Nothing styled yet.</div>';
           return;
         }}
-        area.innerHTML = "";
-
-        function renderGroup(g, parent) {{
-          var section = document.createElement("div");
-          section.setAttribute("data-intent-section", "1");
-          section.setAttribute("data-intent", String(g.intent || ""));
-          section.setAttribute("data-source", normalizeSource(g.source || ""));
-          section.className = "intent-section";
-
-          var allOutfits = [];
-          var groupMetadata = {{}};
-          (g.turns || []).forEach(function(turn) {{
-            (turn.outfits || []).forEach(function(outfit) {{
-              outfit._turn_context = turn.user_message || "";
-              outfit._turn_id = turn.turn_id || "";
-              outfit._conv_id = turn.conversation_id || "";
-              allOutfits.push(outfit);
-            }});
-            if (!groupMetadata.answer_source && turn.outfits && turn.outfits.length) {{
-              groupMetadata.answer_source = g.source || "";
-              groupMetadata.occasion = g.occasion || "";
-              groupMetadata.primary_intent = g.intent || "";
-            }}
-          }});
-          if (!allOutfits.length) return;
-
-          // Per-session strip: count + relative time only. Intent and
-          // source moved to page-level filters; occasion is the theme
-          // header above.
-          var contextParts = [];
-          contextParts.push(allOutfits.length + (allOutfits.length === 1 ? " look" : " looks"));
-          contextParts.push(relativeTime(g.updated_at));
-          var ctxEl = document.createElement("div");
-          ctxEl.className = "result-context";
-          ctxEl.textContent = contextParts.join(" \u00B7 ");
-          section.appendChild(ctxEl);
-
-          var carouselWrap = document.createElement("div");
-          carouselWrap.className = "discovery-result";
-          carouselWrap.style.padding = "0 0 16px";
-          renderPdpCarousel(allOutfits, g.conversation_id, groupMetadata, carouselWrap);
-          section.appendChild(carouselWrap);
-          parent.appendChild(section);
-        }}
-
-        if (themes.length) {{
-          // May 1, 2026 — theme-folded rendering: one section per theme,
-          // groups nested inside. Backwards-compatible: if the server
-          // returns no themes (older build), fall back to flat groups.
-          themes.forEach(function(theme) {{
-            if (!theme.groups || !theme.groups.length) return;
-            var themeBlock = document.createElement("div");
-            themeBlock.className = "theme-block";
-            themeBlock.setAttribute("data-theme-key", theme.theme_key || "");
-
-            var header = document.createElement("div");
-            header.className = "theme-header";
-            var h2 = document.createElement("h2");
-            h2.className = "theme-title";
-            h2.textContent = theme.theme_label || theme.theme_key || "";
-            header.appendChild(h2);
-            var sub = document.createElement("p");
-            sub.className = "theme-subtitle";
-            var lookCount = theme.total_outfit_count || 0;
-            var groupCount = theme.group_count || (theme.groups || []).length;
-            sub.textContent =
-              lookCount + (lookCount === 1 ? " look across " : " looks across ") +
-              groupCount + (groupCount === 1 ? " session" : " sessions");
-            header.appendChild(sub);
-            themeBlock.appendChild(header);
-
-            var groupsWrap = document.createElement("div");
-            groupsWrap.className = "theme-groups";
-            (theme.groups || []).forEach(function(g) {{ renderGroup(g, groupsWrap); }});
-            themeBlock.appendChild(groupsWrap);
-            area.appendChild(themeBlock);
-          }});
-        }} else {{
-          fallbackGroups.forEach(function(g) {{ renderGroup(g, area); }});
-        }}
+        themes.forEach(function(theme) {{
+          if (!theme.groups || !theme.groups.length) return;
+          var outfits = buildThemeOutfits(theme);
+          if (outfits.length) themesData.push({{ theme: theme, outfits: outfits }});
+        }});
         applyOutfitsFilters();
       }} catch (_) {{
         area.innerHTML = '<div class="results-empty">Couldn\\'t load your outfits.</div>';
       }}
+
     }})();
   }}
 
