@@ -3857,7 +3857,10 @@ def get_web_ui_html(
   // 2. Otherwise tokenize on whitespace / hyphens / underscores and
   //    exact-match against the shoe-token set. Catches multi-word
   //    values like "running shoes", "chelsea boots".
-  var CANONICAL_NON_SHOE_CATEGORIES = ["top", "bottom", "outerwear", "one_piece", "set"];
+  // Both ``one_piece`` and ``one piece`` — wardrobe rows surface in
+  // both shapes depending on how they were enriched. Mirrors the
+  // backend ``_CANONICAL_NON_SHOE_CATEGORIES``.
+  var CANONICAL_NON_SHOE_CATEGORIES = ["top", "bottom", "outerwear", "one_piece", "one piece", "set"];
   var SHOE_TOKENS = ["shoe", "shoes", "heel", "heels", "boot", "boots", "loafer", "loafers", "sandal", "sandals", "sneaker", "sneakers", "footwear", "pump", "pumps", "mojari", "kolhapuri", "juti"];
   function wardrobeIsShoe(item) {{
     var category = String(item.garment_category || "").trim().toLowerCase();

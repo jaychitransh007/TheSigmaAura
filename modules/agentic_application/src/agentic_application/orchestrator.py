@@ -1979,9 +1979,9 @@ class AgenticOrchestrator:
         # rank as supplementary picks (e.g. ``role_of(target)=="one_piece"``
         # + ``role_of(item)=="other"`` gives +2 score in pairing fallbacks).
         # Hiding-only-in-UI isn't enough; the planner must not see them.
-        _original_wardrobe_count = len(user_context.wardrobe_items or [])
+        _original_wardrobe_count = len(user_context.wardrobe_items)
         user_context.wardrobe_items = [
-            item for item in (user_context.wardrobe_items or [])
+            item for item in user_context.wardrobe_items
             if not self._is_shoe_anchor(item)
         ]
         if _original_wardrobe_count != len(user_context.wardrobe_items):
@@ -3862,8 +3862,13 @@ class AgenticOrchestrator:
     # When an item carries one of these, trust it — a row with
     # ``garment_category="bottom"`` and ``garment_subtype="boot_cut_jeans"``
     # is jeans, not footwear, even though "boot" appears in the subtype.
+    # Includes both ``one_piece`` (Pydantic / vision-schema canonical)
+    # and ``one piece`` (the space-separated variant that wardrobe
+    # enrichment + user.service.resolve_wardrobe_role accept). Keeping
+    # both means the canonical-category guard fires on either shape
+    # rather than falling through to the tokenization loop.
     _CANONICAL_NON_SHOE_CATEGORIES = frozenset({
-        "top", "bottom", "outerwear", "one_piece", "set",
+        "top", "bottom", "outerwear", "one_piece", "one piece", "set",
     })
 
     @classmethod
