@@ -38,18 +38,7 @@ def _load_prompt() -> str:
     raise FileNotFoundError("Could not locate prompt/copilot_planner.md")
 
 
-# Mirrors outfit_architect.PROMPT_VERSION — short SHA1 of the prompt
-# text so the planner cache (May 11 2026 follow-up) automatically
-# invalidates when the prompt changes. The planner has no modular
-# fragment system the architect has (`anchor.md` / `followup.md`),
-# so just the base prompt feeds the hash.
 import hashlib as _hashlib
-
-def _compute_prompt_version() -> str:
-    return _hashlib.sha1(_load_prompt().encode("utf-8")).hexdigest()[:8]
-
-
-PROMPT_VERSION = _compute_prompt_version()
 
 
 def _load_known_occasions() -> tuple[str, ...]:
@@ -88,6 +77,33 @@ def _load_known_occasions() -> tuple[str, ...]:
 
 
 KNOWN_OCCASIONS: tuple[str, ...] = _load_known_occasions()
+
+
+# Mirrors outfit_architect.PROMPT_VERSION — short SHA1 over every input
+# that shapes planner behavior so the planner cache (May 11 2026
+# follow-up) invalidates when any of them change. Two inputs feed the
+# hash today:
+#   1. the prompt text in ``prompt/copilot_planner.md``
+#   2. the canonical occasion keys from ``knowledge/style_graph/occasion.yaml``
+#      — these populate the strict JSON Schema enum on ``occasion_signal``
+#      (PR #326), so adding/removing a key changes the planner's output
+#      space. Without folding them in, a YAML edit would leave the cache
+#      serving plans that don't know the new vocabulary.
+# The planner has no modular fragment system the architect has
+# (`anchor.md` / `followup.md`), so the prompt file + occasion list is
+# the full input surface.
+def _compute_prompt_version() -> str:
+    hasher = _hashlib.sha1()
+    hasher.update(_load_prompt().encode("utf-8"))
+    # `\n` separator keeps the hash stable across tuple ordering
+    # (KNOWN_OCCASIONS is already sorted) and avoids accidental
+    # collisions where two keys could concatenate into a third.
+    hasher.update(b"\n--occasions--\n")
+    hasher.update("\n".join(KNOWN_OCCASIONS).encode("utf-8"))
+    return hasher.hexdigest()[:8]
+
+
+PROMPT_VERSION = _compute_prompt_version()
 
 
 def _occasion_signal_schema() -> Dict[str, Any]:
