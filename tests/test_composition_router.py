@@ -186,28 +186,25 @@ class EligibilityGateTests(unittest.TestCase):
             self.assertTrue(ok, f"category={category!r} should be eligible")
             self.assertIsNone(reason)
 
-    def test_pool_injected_anchor_eligible_when_flag_on(self):
-        """T3 (May 8 follow-up): when ``allow_pool_anchor=True``
-        (env-mapped to ``AURA_ENGINE_ALLOW_POOL_ANCHOR``), top/bottom
-        anchors become eligible. The engine's tuple iterator handles
-        the 1-item-per-role pool naturally — the user's anchor occupies
-        its role's only slot, complementary candidates fill the other
-        role. Flag default False keeps the legacy behavior."""
+    def test_pool_injected_anchor_always_falls_through(self):
+        """The T3 ``allow_pool_anchor`` experiment surfaced a structural
+        bug: the engine emitted "paired" directions with identical
+        top-only ``hard_attrs`` on both queries, leaving the bottom
+        query matching nothing. Pool-injected anchors now always fall
+        through regardless of the flag — the LLM architect (with the
+        anchor prompt fragments) handles them. The flag stays in the
+        signature for the composer_router's separate path."""
         for category in ("top", "shirt", "blouse", "bottom", "trouser", "pant", "jeans", "skirt"):
-            # Default: still ineligible
-            ok, reason = is_engine_eligible(
-                _ctx(anchor_garment={"product_id": "p1", "garment_category": category}),
-            )
-            self.assertFalse(ok, f"category={category!r} should be ineligible by default")
-            self.assertEqual(reason, "anchor_pool_injected")
-
-            # Flag on: eligible
-            ok, reason = is_engine_eligible(
-                _ctx(anchor_garment={"product_id": "p1", "garment_category": category}),
-                allow_pool_anchor=True,
-            )
-            self.assertTrue(ok, f"category={category!r} should be eligible with flag on")
-            self.assertIsNone(reason)
+            for flag in (False, True):
+                ok, reason = is_engine_eligible(
+                    _ctx(anchor_garment={"product_id": "p1", "garment_category": category}),
+                    allow_pool_anchor=flag,
+                )
+                self.assertFalse(
+                    ok,
+                    f"category={category!r} flag={flag} should be ineligible",
+                )
+                self.assertEqual(reason, "anchor_pool_injected")
 
     def test_followup_blocks(self):
         ok, reason = is_engine_eligible(_ctx(is_followup=True))

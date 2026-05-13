@@ -58,7 +58,7 @@ The value is products per query (each direction has 1-3 queries depending on its
 | Variety request (3 directions) | 3 | 20 | Each direction brings its own variety; per-query bumped to keep palette-matched count up |
 | Follow-up `more_options` (3 directions) | 3 | 20 | Same as variety — pool depth comes from direction count |
 | Other single-direction follow-ups (`change_color`, `increase_boldness`, etc.) | 1 | 30 | Same as default single-direction logic |
-| Anchor garment | 1 | 8 | Anchor itself constrains the search; 8 candidates per complementary role is enough for the composer's 3-4 picks (composer prompt cap, May 8 follow-up). Was 20 — surfaced as composer/rater latency on pairing turns. |
+| Anchor garment | 1 | 20 | Anchor side is fixed, so only the complementary role varies — at 8 the Rater saw ~8 outfits vs. ~25 on complete-outfit turns (5×5), and the Composer routinely declared the pool unsuitable. Back to 20 for parity (anchor × 20 complements ≈ 20 outfits to rate). Cut to 8 in the May 8 latency push without measuring composer pool-unsuitable rate; that turned out to be the dominant failure mode on pairing turns. |
 | Specific single-garment ("show me shirts") | 1 | 12 | User named the type; narrower retrieval still works but bumped to compensate for embedding-space palette dilution |
 
 Do NOT inflate beyond these — they're already calibrated for the Composer's prompt size.
