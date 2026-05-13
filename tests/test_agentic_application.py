@@ -3764,6 +3764,51 @@ class CopilotPlannerTests(unittest.TestCase):
         self.assertEqual([], result["outfits"])
         self.assertEqual("shoe_anchor_unsupported", result["metadata"]["answer_source"])
 
+    def test_is_shoe_anchor_tokenizes_multi_word_subtypes(self):
+        """Multi-word shoe subtypes (``"running shoes"``, ``"chelsea boots"``)
+        must trigger the intercept. The first version did exact-match
+        against the token set which missed these. Tokenize on whitespace
+        / hyphen / underscore before matching."""
+        from agentic_application.orchestrator import AgenticOrchestrator
+        for subtype in ("running shoes", "chelsea boots", "ankle boot",
+                         "high heels", "leather loafer", "running-shoes",
+                         "chelsea_boots", "platform pumps"):
+            self.assertTrue(
+                AgenticOrchestrator._is_shoe_anchor({"garment_subtype": subtype}),
+                f"subtype={subtype!r} should be classified as a shoe anchor",
+            )
+
+    def test_is_shoe_anchor_trusts_canonical_garment_category(self):
+        """Items with a canonical non-shoe ``garment_category`` are never
+        shoes, even if the subtype contains shoe-like tokens. Guards
+        against the "boot-cut jeans" false positive: a bottom whose
+        subtype string contains "boot"."""
+        from agentic_application.orchestrator import AgenticOrchestrator
+        # Bottom with shoe-like subtype: NOT a shoe.
+        for category, subtype in (
+            ("bottom", "boot_cut_jeans"),
+            ("bottom", "boot-cut jeans"),
+            ("top", "pump_sleeve_blouse"),
+            ("outerwear", "shearling_boot_collar_coat"),
+            ("one_piece", "loafer_print_dress"),
+        ):
+            self.assertFalse(
+                AgenticOrchestrator._is_shoe_anchor({
+                    "garment_category": category,
+                    "garment_subtype": subtype,
+                }),
+                f"category={category!r} subtype={subtype!r} should NOT be a shoe",
+            )
+        # Empty / unknown category: shoe-like subtype still triggers.
+        self.assertTrue(AgenticOrchestrator._is_shoe_anchor({
+            "garment_category": "",
+            "garment_subtype": "running shoes",
+        }))
+        self.assertTrue(AgenticOrchestrator._is_shoe_anchor({
+            "garment_category": "accessory",
+            "garment_subtype": "sneaker",
+        }))
+
     def test_catalog_garment_image_pairing_runs_full_pipeline(self):
         """Catalog image pairing now runs full pipeline (architect → search → evaluate → tryon)."""
         from agentic_application.schemas import (

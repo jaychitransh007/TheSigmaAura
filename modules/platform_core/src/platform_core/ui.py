@@ -3848,11 +3848,25 @@ def get_web_ui_html(
   // Shoes / footwear aren't supported by the system yet — hide them
   // from the wardrobe view regardless of which filter chip is active.
   // Keeps the data in the DB but the user never sees a shoe entry.
+  //
+  // Detection mirrors the backend ``Orchestrator._is_shoe_anchor``:
+  // 1. If garment_category is a canonical non-shoe role
+  //    (top / bottom / outerwear / one_piece / set), trust it. This
+  //    avoids hiding "boot-cut jeans" or similar — the subtype
+  //    contains "boot" but the row is a bottom.
+  // 2. Otherwise tokenize on whitespace / hyphens / underscores and
+  //    exact-match against the shoe-token set. Catches multi-word
+  //    values like "running shoes", "chelsea boots".
+  var CANONICAL_NON_SHOE_CATEGORIES = ["top", "bottom", "outerwear", "one_piece", "set"];
+  var SHOE_TOKENS = ["shoe", "shoes", "heel", "heels", "boot", "boots", "loafer", "loafers", "sandal", "sandals", "sneaker", "sneakers", "footwear", "pump", "pumps", "mojari", "kolhapuri", "juti"];
   function wardrobeIsShoe(item) {{
-    var category = String(item.garment_category || "").toLowerCase();
-    var subtype = String(item.garment_subtype || "").toLowerCase();
-    var shoeTokens = ["shoe", "heel", "boot", "loafer", "sandal", "sneaker", "footwear", "pump", "mojari", "kolhapuri", "juti"];
-    return shoeTokens.some(function(t) {{ return category.indexOf(t) !== -1 || subtype.indexOf(t) !== -1; }});
+    var category = String(item.garment_category || "").trim().toLowerCase();
+    if (CANONICAL_NON_SHOE_CATEGORIES.indexOf(category) !== -1) return false;
+    function hasShoeToken(value) {{
+      var tokens = String(value || "").toLowerCase().split(/[\\s\\-_]+/).filter(Boolean);
+      return tokens.some(function(t) {{ return SHOE_TOKENS.indexOf(t) !== -1; }});
+    }}
+    return hasShoeToken(category) || hasShoeToken(item.garment_subtype);
   }}
 
   function wardrobeFilterMatches(item, filter) {{
