@@ -49,7 +49,9 @@ _BUDGETS: dict[str, int] = {
     "outfit_composer.md": 1950,
     "outfit_rater.md": 2600,
     "outfit_decomposition.md": 800,
-    "copilot_planner.md": 6000,  # +500 for anchor_garment field (PR #287 follow-up)
+    # +500 for anchor_garment field (PR #287 follow-up)
+    # +300 for canonical occasion_signal list (PR #326)
+    "copilot_planner.md": 6300,
     "style_advisor.md": 3300,
     "virtual_tryon.md": 400,
     "body_type_analysis.md": 3000,
