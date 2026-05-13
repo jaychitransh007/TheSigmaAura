@@ -154,6 +154,120 @@ class _NoOpTrace:
 _NO_OP_TRACE = _NoOpTrace()
 
 
+# Attribute values that mean "no opinion" — exclude from synthesized
+# descriptions so we don't render filler text.
+_NULLISH_ATTR_VALUES = frozenset({
+    "", "none", "null", "unknown", "n/a", "n_a", "unspecified", "regular",
+})
+
+# Subtypes that are grammatically plural ("jeans", not "a jeans"). The
+# description drops the indefinite article and capitalises the first
+# descriptor instead.
+_PLURAL_GARMENT_SUBTYPES = frozenset({
+    "jeans", "pants", "trousers", "shorts", "leggings", "joggers",
+    "dungarees", "track pants", "palazzo pants",
+})
+
+
+def _norm_attr(value: Any) -> str:
+    """Lowercase + strip + replace underscores with spaces. Returns ""
+    for null-sentinel values."""
+    text = str(value or "").strip().lower()
+    if text in _NULLISH_ATTR_VALUES:
+        return ""
+    return text.replace("_", " ")
+
+
+def _indefinite_article(noun_phrase: str) -> str:
+    """Pick 'a' or 'an' for a leading noun phrase. Simple vowel check."""
+    if not noun_phrase:
+        return "a"
+    return "an" if noun_phrase[0] in "aeiou" else "a"
+
+
+def _format_silhouette_term(silhouette: str) -> str:
+    """Pretty-print catalog silhouette values for user-facing copy.
+
+    The catalog stores ``"a_line"`` (snake_case) which our default
+    normaliser turns into ``"a line"``. That reads awkwardly in
+    "with a a line silhouette" — restore the proper styling term.
+    """
+    if silhouette in ("a line", "a-line"):
+        return "A-line"
+    return silhouette
+
+
+def synthesize_item_description(item_attrs: Dict[str, Any]) -> str:
+    """Deterministic template that builds a stylist-flavored item
+    description from catalog attributes.
+
+    Used as a fallback for paths that don't hit the LLM composer
+    (composer-engine path, wardrobe-first hybrid catalog fillers) so
+    the product detail panel always has copy to show. The LLM
+    composer's ``item_descriptions`` override this when present.
+
+    Quality target: better than blank, lower than the LLM composer.
+    Surfaces the attributes the user cares about (color, fit, pattern,
+    silhouette, formality / occasion) without inventing details the
+    catalog row doesn't carry.
+
+    Returns "" only if there's literally nothing to say (no subtype,
+    no descriptors). Callers should never see "" in practice — every
+    catalog row has at least a garment_category.
+    """
+    color = _norm_attr(item_attrs.get("primary_color"))
+    fit = _norm_attr(item_attrs.get("fit_type"))
+    pattern = _norm_attr(item_attrs.get("pattern_type"))
+    silhouette = _format_silhouette_term(_norm_attr(item_attrs.get("silhouette_type")))
+    subtype = (
+        _norm_attr(item_attrs.get("garment_subtype"))
+        or _norm_attr(item_attrs.get("garment_category"))
+    )
+    occasion = _norm_attr(item_attrs.get("occasion_fit"))
+    formality = _norm_attr(item_attrs.get("formality_level"))
+
+    # Sentence 1: descriptors + subtype, optional silhouette qualifier.
+    # Drop "solid" since it adds no signal vs. omitting.
+    descriptors: List[str] = []
+    if fit:
+        descriptors.append(fit)
+    if color:
+        descriptors.append(color)
+    if pattern and pattern != "solid":
+        descriptors.append(pattern)
+
+    if not subtype and not descriptors:
+        return ""
+
+    parts = descriptors + ([subtype] if subtype else [])
+    noun_phrase = " ".join(parts).strip()
+
+    # Plural subtypes ("jeans", "trousers") read wrong with an
+    # indefinite article. Capitalise the first word instead.
+    if subtype in _PLURAL_GARMENT_SUBTYPES:
+        sentence_1 = noun_phrase[0].upper() + noun_phrase[1:] if noun_phrase else ""
+    elif noun_phrase:
+        sentence_1 = f"{_indefinite_article(noun_phrase).capitalize()} {noun_phrase}"
+    else:
+        sentence_1 = ""
+
+    if silhouette and silhouette.lower() != subtype:
+        sentence_1 += f" with {_indefinite_article(silhouette.lower())} {silhouette} silhouette"
+    if sentence_1:
+        sentence_1 += "."
+
+    # Sentence 2: occasion / formality register. Skip if both empty.
+    sentence_2 = ""
+    if occasion:
+        sentence_2 = f"Sits comfortably in {occasion} contexts."
+    elif formality:
+        sentence_2 = f"Reads as {formality}."
+
+    if not sentence_1:
+        return sentence_2
+    return f"{sentence_1} {sentence_2}".strip() if sentence_2 else sentence_1
+
+
 def _build_candidate_item(product: "RetrievedProduct", role: str = "") -> Dict[str, Any]:
     """Compact dict per item for an OutfitCandidate, fed to the visual
     evaluator and the response formatter.
@@ -223,6 +337,15 @@ def _build_candidate_item(product: "RetrievedProduct", role: str = "") -> Dict[s
         item["is_anchor"] = True
     if role:
         item["role"] = role
+    # Default description from catalog attributes. The composer-engine
+    # path doesn't emit ``item_descriptions``; without this fallback,
+    # the product detail panel renders empty for those turns. The LLM
+    # composer's stylist-voice descriptions still override this when
+    # the LLM path runs — see ``_handle_planner_pipeline`` where
+    # ``composed.item_descriptions.get(iid)`` re-stamps ``description``.
+    description = synthesize_item_description(item)
+    if description:
+        item["description"] = description
     return item
 
 
@@ -876,7 +999,7 @@ class AgenticOrchestrator:
         return list(self._catalog_rows)
 
     def _catalog_row_to_outfit_item(self, row: Dict[str, Any], *, role: str = "") -> Dict[str, Any]:
-        return {
+        item: Dict[str, Any] = {
             "product_id": str(row.get("product_id") or ""),
             "similarity": 0.0,
             "title": str(row.get("title") or row.get("product_id") or "Catalog option"),
@@ -895,6 +1018,10 @@ class AgenticOrchestrator:
             "silhouette_type": str(row.get("silhouette_type") or ""),
             "source": "catalog",
         }
+        description = synthesize_item_description(item)
+        if description:
+            item["description"] = description
+        return item
 
     def _select_catalog_items(
         self,

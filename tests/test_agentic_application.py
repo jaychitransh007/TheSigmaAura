@@ -272,6 +272,94 @@ def _make_planner_mock(
     return planner_mock
 
 
+class SynthesizeItemDescriptionTests(unittest.TestCase):
+    """``synthesize_item_description`` builds the per-item detail-panel
+    copy when the LLM composer didn't produce one (engine path,
+    wardrobe-first hybrid catalog fillers)."""
+
+    def test_full_attribute_set(self):
+        from agentic_application.orchestrator import synthesize_item_description
+        out = synthesize_item_description({
+            "primary_color": "navy",
+            "fit_type": "slim",
+            "pattern_type": "solid",
+            "silhouette_type": "fitted",
+            "garment_subtype": "shirt",
+            "occasion_fit": "smart_casual",
+        })
+        # Article + descriptors + subtype + silhouette + occasion sentence.
+        self.assertEqual(
+            out,
+            "A slim navy shirt with a fitted silhouette. Sits comfortably in smart casual contexts.",
+        )
+
+    def test_a_line_silhouette_renders_with_proper_article(self):
+        """``a_line`` normalises to "a line" which would produce
+        "with a a line silhouette" — we pretty-print to A-line."""
+        from agentic_application.orchestrator import synthesize_item_description
+        out = synthesize_item_description({
+            "primary_color": "cream",
+            "garment_subtype": "skirt",
+            "silhouette_type": "a_line",
+        })
+        self.assertIn("with an A-line silhouette", out)
+
+    def test_plural_subtypes_drop_article(self):
+        """"A jeans." reads wrong — plural subtypes get capitalised
+        without an indefinite article."""
+        from agentic_application.orchestrator import synthesize_item_description
+        for subtype in ("jeans", "trousers", "shorts", "leggings"):
+            out = synthesize_item_description({
+                "garment_subtype": subtype,
+                "primary_color": "indigo",
+                "fit_type": "slim",
+            })
+            self.assertFalse(out.startswith("A "), f"{subtype!r}: {out!r}")
+            self.assertFalse(out.startswith("An "), f"{subtype!r}: {out!r}")
+            # Sentence still capitalised.
+            self.assertTrue(out[0].isupper(), f"{subtype!r}: {out!r}")
+
+    def test_solid_pattern_dropped(self):
+        from agentic_application.orchestrator import synthesize_item_description
+        out = synthesize_item_description({
+            "primary_color": "navy",
+            "pattern_type": "solid",
+            "garment_subtype": "shirt",
+        })
+        self.assertNotIn("solid", out.lower())
+
+    def test_formality_used_when_occasion_missing(self):
+        from agentic_application.orchestrator import synthesize_item_description
+        out = synthesize_item_description({
+            "primary_color": "olive",
+            "garment_subtype": "tunic",
+            "formality_level": "smart_casual",
+        })
+        self.assertIn("smart casual", out)
+        # Tail says "Reads as ..." when only formality is present.
+        self.assertIn("Reads as", out)
+
+    def test_empty_attrs_returns_empty_string(self):
+        from agentic_application.orchestrator import synthesize_item_description
+        self.assertEqual(synthesize_item_description({}), "")
+        self.assertEqual(
+            synthesize_item_description({"garment_category": "", "primary_color": ""}),
+            "",
+        )
+
+    def test_null_sentinels_treated_as_missing(self):
+        from agentic_application.orchestrator import synthesize_item_description
+        out = synthesize_item_description({
+            "garment_subtype": "shirt",
+            "primary_color": "Unknown",
+            "fit_type": "regular",
+            "pattern_type": "None",
+        })
+        # None of the null sentinels appear in the output.
+        self.assertEqual(out.lower().count("unknown"), 0)
+        self.assertEqual(out.lower().count("regular"), 0)
+
+
 class AgenticApplicationTests(unittest.TestCase):
     @staticmethod
     def _png_data_url(*, color: tuple[int, int, int], size: tuple[int, int] = (512, 768)) -> tuple[str, str]:
