@@ -1072,6 +1072,16 @@ class AgenticOrchestrator:
         description = synthesize_item_description(item)
         if description:
             item["description"] = description
+            # Wardrobe-first hybrid catalog fillers never go through
+            # the LLM composer, so the only possible source is the
+            # synthesized template. Counter parity with the
+            # catalog-pipeline path so the dashboards see every shipped
+            # item once.
+            try:
+                from platform_core.metrics import observe_item_description_source
+                observe_item_description_source(source="synthesized")
+            except Exception:  # noqa: BLE001
+                pass
         return item
 
     def _select_catalog_items(
@@ -2035,12 +2045,18 @@ class AgenticOrchestrator:
             item for item in user_context.wardrobe_items
             if not self._is_shoe_anchor(item)
         ]
-        if _original_wardrobe_count != len(user_context.wardrobe_items):
+        _filtered_shoe_count = _original_wardrobe_count - len(user_context.wardrobe_items)
+        if _filtered_shoe_count:
             _log.info(
                 "Filtered %d shoe item(s) from wardrobe for planning (kept %d)",
-                _original_wardrobe_count - len(user_context.wardrobe_items),
+                _filtered_shoe_count,
                 len(user_context.wardrobe_items),
             )
+        try:
+            from platform_core.metrics import observe_wardrobe_shoe_filter
+            observe_wardrobe_shoe_filter(filtered_count=_filtered_shoe_count)
+        except Exception:  # noqa: BLE001 — metrics must never break the pipeline
+            pass
         emit("user_context", "completed", ctx={"richness": user_context.profile_richness})
         trace_end("user_context", output_summary=f"richness={user_context.profile_richness}")
 
@@ -3763,6 +3779,8 @@ class AgenticOrchestrator:
         top_match_score: float,
         candidates_seen: int,
         hard_filters: Dict[str, Any],
+        retrieval_relaxation_outcome: str = "",
+        retrieval_total_products: int = 0,
     ) -> Dict[str, Any]:
         """Honest no-match response when the catalog pipeline has no
         outfit whose Rater ``fashion_score`` clears the confidence
@@ -3816,6 +3834,15 @@ class AgenticOrchestrator:
                 "low_confidence_top_match_score": float(top_match_score),
                 "low_confidence_threshold": _RECOMMENDATION_CONFIDENCE_THRESHOLD,
                 "low_confidence_candidates_seen": int(candidates_seen),
+                # PR #339 follow-up: surface relaxation state so the
+                # 0-product-retrieval dashboard can distinguish "tried
+                # everything, catalog is genuinely thin" from "composer
+                # rejected a populated pool". Empty string when this
+                # path didn't go through retrieval (composer-empty
+                # branch, etc.); otherwise one of the canonical outcomes
+                # in ``observe_retrieval_relaxation``.
+                "retrieval_relaxation_outcome": str(retrieval_relaxation_outcome or ""),
+                "retrieval_total_products": int(retrieval_total_products or 0),
             },
         )
         self.repo.finalize_turn(
@@ -3871,6 +3898,8 @@ class AgenticOrchestrator:
                 "low_confidence_top_match_score": float(top_match_score),
                 "low_confidence_threshold": _RECOMMENDATION_CONFIDENCE_THRESHOLD,
                 "low_confidence_candidates_seen": int(candidates_seen),
+                "retrieval_relaxation_outcome": str(retrieval_relaxation_outcome or ""),
+                "retrieval_total_products": int(retrieval_total_products or 0),
             },
         )
         return {
@@ -7386,6 +7415,8 @@ class AgenticOrchestrator:
                     top_match_score=0.0,
                     candidates_seen=0,
                     hard_filters=hard_filters,
+                    retrieval_relaxation_outcome=relaxation_outcome,
+                    retrieval_total_products=total_products,
                 )
 
             # --- Rater pass ------------------------------------------
@@ -7502,8 +7533,24 @@ class AgenticOrchestrator:
                         continue
                     item = _build_candidate_item(product, role=_role_for_position(composed, items))
                     item_desc = composed.item_descriptions.get(iid, "")
+                    # Record which source ultimately wins for this item.
+                    # ``_build_candidate_item`` stamps a synthesized
+                    # default; the LLM composer's per-item description
+                    # overrides when present. Counter ticks per item
+                    # so dashboards can compute the LLM-vs-synthesized
+                    # ratio across the live mix.
                     if item_desc:
                         item["description"] = item_desc
+                        _desc_source = "llm"
+                    elif item.get("description"):
+                        _desc_source = "synthesized"
+                    else:
+                        _desc_source = "none"
+                    try:
+                        from platform_core.metrics import observe_item_description_source
+                        observe_item_description_source(source=_desc_source)
+                    except Exception:  # noqa: BLE001 — metrics never break pipeline
+                        pass
                     items.append(item)
                 if not items:
                     continue
@@ -7558,6 +7605,8 @@ class AgenticOrchestrator:
                     top_match_score=top_score / 100.0,
                     candidates_seen=len(candidates),
                     hard_filters=hard_filters,
+                    retrieval_relaxation_outcome=relaxation_outcome,
+                    retrieval_total_products=total_products,
                 )
 
             person_image_path = self.onboarding_gateway.get_person_image_path(external_user_id)
@@ -7749,6 +7798,8 @@ class AgenticOrchestrator:
                     top_match_score=top_match_score_seen,
                     candidates_seen=len(candidates),
                     hard_filters=hard_filters,
+                    retrieval_relaxation_outcome=relaxation_outcome,
+                    retrieval_total_products=total_products,
                 )
             evaluated = confident_evaluated
 

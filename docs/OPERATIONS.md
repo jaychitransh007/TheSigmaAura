@@ -105,6 +105,12 @@ Post-#82 the dominant rows should be:
   (PR #82). Now an opt-in slice, not the default.
 - `wardrobe_unavailable` — explicit wardrobe ask + insufficient coverage
   → the gap fallback message. New row introduced by PR #82.
+- `shoe_anchor_unsupported` — user uploaded a shoe / heel / sandal as
+  the chat anchor. The system doesn't style around shoes yet (PR #330),
+  so we short-circuit with an honest "not supported yet" message rather
+  than try to build an outfit. **Treat this as customer-demand signal,
+  not as an error.** Sustained non-zero counts argue for prioritising
+  shoe support.
 
 If `wardrobe_first*` is still >40% post-#82, the planner is mis-extracting
 `source_preference` (regression in `prompt/copilot_planner.md`).
@@ -225,7 +231,8 @@ WHERE event_type = 'turn_completed'
       'wardrobe_first_hybrid',
       'wardrobe_first_pairing',
       'wardrobe_first_pairing_hybrid',
-      'wardrobe_unavailable'
+      'wardrobe_unavailable',
+      'shoe_anchor_unsupported'
   )
 GROUP BY 1
 ORDER BY turns DESC;
@@ -909,6 +916,17 @@ cache, ~10–30% LLM (cold-start + fall-through). The exact mix
 depends on canonicalize hit rate and the eligibility-skip share.
 LLM-row latency p50 ~12s; engine + cache rows ≤ 3s.
 
+**Expected shift — PR #328 (May 13 2026):** top/bottom anchor turns
+(pairing requests where the user uploaded a top/bottom) now always
+fall through to the LLM architect regardless of
+`AURA_ENGINE_ALLOW_POOL_ANCHOR`. The flag's experimental engine path
+emitted broken cross-role queries with top-only `hard_attrs` on both
+queries; ineligible by construction. If overall engine share dropped
+roughly in line with the pairing-anchor traffic share after May 13,
+that's the expected behavior, not a regression. Drill into
+`aura_composition_router_decision_total{fallback_reason="anchor_pool_injected"}`
+to confirm.
+
 **Degraded:** engine share <20% with flag on means canonicalize is
 failing too often or fall-through criteria are too tight. Drill
 into `panel_22` (yaml_gap distribution) and the
@@ -1521,6 +1539,75 @@ the per-merchant source CSV's `title` column header is intact).
 `deleted_from_source_rows` is informational — those rows are
 correctly tagged and should not appear in recommendations
 (verified by Panel 4 / pipeline health).
+
+---
+
+## Panel 36 — Retrieval Empty After Relaxation
+
+**Question:** how often does catalog_search return zero products even
+after exhausting the auto-relaxation sequence? A non-zero count on
+this panel means the system tried every relaxation level and still
+came back empty — either a real catalog gap for the user's request,
+or a silent retrieval-layer failure (the failure mode the May 13 RPC
+overload bug exploited for ~24h before forensics caught it).
+
+**Context:** PR #329 dropped a duplicate `match_catalog_item_embeddings`
+overload that was returning PGRST203 ambiguity errors on every 3-arg
+call. The application caught the exception and proceeded with `matches=[]`,
+which the orchestrator surfaced as a low-confidence fallback. The bug
+was invisible until forensics — every existing panel saw "low-confidence
+response shipped" rather than "retrieval failed silently". This panel
+is the new SRE-level guard against the next such regression.
+
+PR #339 (this PR) persists `retrieval_relaxation_outcome` and
+`retrieval_total_products` in `metadata_json` on every catalog-pipeline
+turn, so the panel can distinguish "tried everything, catalog is thin"
+from "composer rejected a populated pool".
+
+```sql
+-- retrieval_empty_after_relaxation_last_7d
+SELECT
+    date_trunc('day', created_at) AS day,
+    COUNT(*) AS turns,
+    COUNT(*) FILTER (
+        WHERE metadata_json->>'retrieval_relaxation_outcome' = 'exhausted'
+          AND (metadata_json->>'retrieval_total_products')::int = 0
+    ) AS retrieval_empty_after_relaxation,
+    COUNT(*) FILTER (
+        WHERE metadata_json->>'answer_source' = 'catalog_low_confidence'
+    ) AS low_conf_total,
+    round(
+        100.0 * COUNT(*) FILTER (
+            WHERE metadata_json->>'retrieval_relaxation_outcome' = 'exhausted'
+              AND (metadata_json->>'retrieval_total_products')::int = 0
+        )::numeric
+        / nullif(COUNT(*), 0),
+        3
+    ) AS empty_after_relax_pct
+FROM dependency_validation_events
+WHERE event_type = 'turn_completed'
+  AND primary_intent IN ('occasion_recommendation', 'pairing_request')
+  AND created_at >= now() - interval '7 days'
+GROUP BY 1
+ORDER BY 1 DESC;
+```
+
+**Healthy:** `retrieval_empty_after_relaxation` is consistently 0.
+Some `catalog_low_confidence` is expected (the rater can refuse
+populated pools), but the catalog should always return *something*
+when filters are fully dropped.
+
+**Degraded:** sustained `empty_after_relax_pct > 1%` means either
+the catalog has a structural gap (no inventory at the user's gender
+expression × occasion intersection — investigate via Panel 6 source
+mix and the catalog inventory snapshot) or the retrieval RPC is
+silently erroring again (check application logs for PGRST200/PGRST202/
+PGRST203 patterns).
+
+**Unhealthy:** sudden spike on a single day with no recent catalog
+ingestion changes — almost always a database-state regression like
+PR #329's overload. Cross-reference with recent Supabase migration
+runs and check for ambiguous-function errors in the application log.
 
 ---
 

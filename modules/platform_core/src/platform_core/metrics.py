@@ -742,3 +742,60 @@ def observe_planner_anchor_confidence(confidence: Optional[float]) -> None:
         aura_planner_anchor_confidence.observe(float(confidence))
     except Exception:  # noqa: BLE001
         pass
+
+
+# PR #330 follow-up — wardrobe shoe-filter counter. Ticks once per turn
+# with the count of shoe items stripped from the user's wardrobe before
+# planning. Shoes aren't styled by the system (no pairing rules, no
+# catalog coverage), so they're filtered at process_turn entry. This
+# counter answers two questions: (1) what fraction of users have shoes
+# saved? (signal for whether shoe support is worth building), and (2)
+# is the filter actually doing anything? (sudden zero = regression).
+# Cardinality: unbounded label values are NOT used — the count is
+# observed into a histogram. Bucketed to capture 0 / 1-2 / 3-5 / 6+
+# patterns without label cardinality.
+aura_wardrobe_shoe_filter_count = Histogram(
+    "aura_wardrobe_shoe_filter_count",
+    "Number of shoe items filtered from the wardrobe per turn (0 when no shoes).",
+    buckets=(0, 1, 2, 3, 5, 10, 20),
+)
+
+
+def observe_wardrobe_shoe_filter(*, filtered_count: int) -> None:
+    """Record how many shoe items were filtered from the wardrobe on
+    this turn. Always called once per turn, including 0 (which is the
+    common case — most users don't have shoes saved).
+    """
+    try:
+        aura_wardrobe_shoe_filter_count.observe(max(0, int(filtered_count or 0)))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# PR #333 follow-up — item description source counter. Ticks once per
+# item shipped on an outfit card, labelled by where the description
+# came from: ``llm`` (composer emitted ``item_descriptions``) or
+# ``synthesized`` (deterministic template from catalog attributes).
+# The split tracks how often the LLM composer ran vs. the engine
+# path — a quality signal because synthesized copy is uniform-tone
+# templated, whereas LLM copy is stylist-voice. If the ratio shifts
+# unexpectedly toward "synthesized" we're shipping more uniform-tone
+# cards than expected. Cardinality: 2 series.
+aura_item_description_source_total = Counter(
+    "aura_item_description_source_total",
+    "Items shipped per turn labelled by description source (llm | synthesized).",
+    labelnames=("source",),
+)
+
+
+def observe_item_description_source(*, source: str) -> None:
+    """Tick the description-source counter for one item. ``source`` is
+    one of ``"llm"`` | ``"synthesized"``. Unknown values still pass
+    through under their literal label so a future source addition
+    doesn't silently drop on the floor."""
+    try:
+        aura_item_description_source_total.labels(
+            source=source or "unknown",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
