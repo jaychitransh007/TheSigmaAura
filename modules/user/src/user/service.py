@@ -36,13 +36,18 @@ _CONVERT_TO_JPEG_EXTENSIONS = frozenset((".heic", ".heif", ".avif"))
 # ── Wardrobe role resolution (single source of truth) ────────────────
 #
 # Maps a wardrobe item to one of the outfit-slot roles: one_piece, top,
-# outerwear, bottom, shoe, other. Three call sites depended on this
+# outerwear, bottom, other. Three call sites depended on this
 # logic (OnboardingService._wardrobe_role_of, AgenticOrchestrator's
 # method of the same name, and the local role_of inside
 # _select_wardrobe_occasion_outfit) and the duplicates had drifted —
 # different subtype sets, different separator handling. Consolidated
 # here so they can't drift again. See PR #275 review for the drift
 # audit.
+#
+# Shoes / footwear are intentionally NOT modeled here — the system
+# doesn't support styling around footwear yet. Wardrobe items that
+# look like shoes fall through to "other" and are excluded from
+# pairing / occasion selection.
 #
 # Tokens in the canonical sets are space-delimited; _normalize_role_token
 # rewrites hyphens and underscores to spaces so callers don't have to
@@ -64,10 +69,6 @@ _ROLE_OUTERWEAR_SUBTYPES = frozenset({
 _ROLE_BOTTOM_SUBTYPES = frozenset({
     "trouser", "trousers", "pants", "jeans", "palazzo", "skirt",
     "shorts", "track pants", "leggings", "dungarees",
-})
-_ROLE_SHOE_SUBTYPES = frozenset({
-    "shoe", "shoes", "sneaker", "sneakers", "loafer", "loafers",
-    "heel", "heels", "boot", "boots", "sandal", "sandals",
 })
 
 
@@ -122,8 +123,6 @@ def resolve_wardrobe_role(item: dict[str, Any]) -> str:
         return "outerwear"
     if candidates & _ROLE_BOTTOM_SUBTYPES:
         return "bottom"
-    if candidates & _ROLE_SHOE_SUBTYPES:
-        return "shoe"
     return "other"
 
 
@@ -914,7 +913,6 @@ class OnboardingService:
         role_counts = {
             "top": 0,
             "bottom": 0,
-            "shoe": 0,
             "outerwear": 0,
             "one_piece": 0,
         }
@@ -926,12 +924,15 @@ class OnboardingService:
             for key in self._occasion_keys_of(item):
                 occasion_counts[key] += 1
 
+        # Shoe role removed (system doesn't support footwear yet). The
+        # 12 points it used to contribute were redistributed: +4 each to
+        # top and bottom (the two staples), +2 each to outerwear and
+        # one_piece. Max stays ~100.
         weighted_score = (
-            min(role_counts["top"], 3) * 18
-            + min(role_counts["bottom"], 2) * 18
-            + min(role_counts["shoe"], 2) * 12
-            + min(role_counts["outerwear"], 2) * 10
-            + min(role_counts["one_piece"], 1) * 8
+            min(role_counts["top"], 3) * 22
+            + min(role_counts["bottom"], 2) * 22
+            + min(role_counts["outerwear"], 2) * 12
+            + min(role_counts["one_piece"], 1) * 10
             + sum(8 for count in occasion_counts.values() if count > 0)
         )
         completeness_score_pct = min(int(weighted_score), 100)
@@ -939,7 +940,6 @@ class OnboardingService:
         role_labels = {
             "top": "tops",
             "bottom": "bottoms",
-            "shoe": "shoe options",
             "outerwear": "layers",
             "one_piece": "one-piece looks",
         }
@@ -948,8 +948,6 @@ class OnboardingService:
         gap_items: list[str] = []
         if role_counts["bottom"] == 0:
             gap_items.append("a versatile trouser or skirt")
-        if role_counts["shoe"] == 0:
-            gap_items.append("a reliable everyday shoe")
         if role_counts["outerwear"] == 0:
             gap_items.append("a layering piece like a blazer or jacket")
         if role_counts["top"] < 2:

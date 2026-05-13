@@ -2,7 +2,7 @@
 
 `anchor_garment` is set: the user already owns this piece and wants an outfit AROUND it. The anchor will be included in the final outfit automatically — your queries search for the COMPLEMENTARY pieces.
 
-1. **Do NOT generate a query for the anchor's `garment_category` role.** Anchor is `top` → search only `bottom`, `shoe`, `outerwear`. Never another top.
+1. **Do NOT generate a query for the anchor's `garment_category` role.** Anchor is `top` → search only `bottom` and `outerwear`. Never another top.
 2. **Use anchor attributes to guide complementary searches.** Match `formality_level`, coordinate with `primary_color` (use the user's palette), balance `pattern_type` (patterned anchor → pair with solids).
 3. **Direction structure depends on what the anchor fills:**
    - Anchor is `top` → `paired` directions with `bottom` queries, or `three_piece` with `bottom` + `outerwear`. NEVER `complete`.

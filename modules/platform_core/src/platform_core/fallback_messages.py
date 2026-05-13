@@ -10,7 +10,7 @@ def graceful_policy_message(reason_code: str, *, default: str = "") -> str:
     if reason == "unsafe_image":
         return "Unsafe or graphic images are not allowed. Send a normal outfit or product image instead."
     if reason == "restricted_category_upload":
-        return "Items like lingerie or underwear are not supported here. Send outerwear, tops, bottoms, dresses, shoes, or accessories instead."
+        return "Items like lingerie or underwear are not supported here. Send outerwear, tops, bottoms, or dresses instead."
     if reason == "missing_person_image":
         return "I need your onboarding full-body photo before I can generate a try-on. Complete that step on web, then try again."
     if reason in {

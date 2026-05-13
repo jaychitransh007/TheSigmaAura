@@ -1011,11 +1011,6 @@ class AgenticOrchestrator:
             "outfit with this",
             "wear with this",
             "style this",
-            "what shoes would work best with this",
-            "what shoes work best with this",
-            "which shoes would work best with this",
-            "what shoes with this",
-            "which shoes with this",
             "with this shirt",
             "with this piece",
             "with this garment",
@@ -3071,7 +3066,7 @@ class AgenticOrchestrator:
         wardrobe_gap_analysis = self._build_wardrobe_gap_analysis(
             wardrobe_items=wardrobe_items,
             occasion=occasion,
-            required_roles=["top", "bottom", "shoe"],
+            required_roles=["top", "bottom"],
         )
 
         outfit, wardrobe_match_confidence = self._select_wardrobe_occasion_outfit(
@@ -3106,7 +3101,6 @@ class AgenticOrchestrator:
         missing_required_roles = [
             role for role in required_roles_for_complete if role not in outfit_roles
         ]
-        has_shoe = "shoe" in outfit_roles
         wardrobe_completeness_pct = int(wardrobe_gap_analysis.get("completeness_score_pct") or 0)
         wardrobe_is_complete = (
             (has_one_piece or not missing_required_roles)
@@ -3120,12 +3114,10 @@ class AgenticOrchestrator:
             # Try hybrid: pivot to catalog to fill the missing roles instead of
             # claiming a one-item wardrobe answer is the full result.
             fill_roles = list(missing_required_roles)
-            if not has_shoe and "shoe" not in fill_roles:
-                fill_roles.append("shoe")
             if not fill_roles:
                 # Wardrobe gave us *something* but coverage is still thin —
                 # fall back to filling the second core role from catalog.
-                fill_roles = ["bottom" if "top" in outfit_roles else "top", "shoe"]
+                fill_roles = ["bottom" if "top" in outfit_roles else "top"]
             catalog_gap_fillers = self._select_catalog_items(
                 desired_roles=fill_roles,
                 occasion=occasion,
@@ -3421,7 +3413,7 @@ class AgenticOrchestrator:
         wardrobe_gap_analysis = self._build_wardrobe_gap_analysis(
             wardrobe_items=wardrobe_items,
             occasion=occasion,
-            required_roles=["top", "bottom", "shoe"],
+            required_roles=["top", "bottom"],
         )
         # Coverage may have been computed by `_build_wardrobe_first_occasion_response`
         # right before this fallback fires — accept it via `precomputed_coverage`
@@ -3711,6 +3703,114 @@ class AgenticOrchestrator:
             "metadata": metadata,
         }
 
+    # Tokens that mark a wardrobe / catalog item as a shoe. Checked
+    # against ``garment_category`` and ``garment_subtype`` only — both
+    # fields are vocabulary-bound by the wardrobe enrichment stage, so
+    # exact-token matching is safe. Avoid substring tests against
+    # free-text title fields ("boot-cut jeans" would false-positive).
+    _SHOE_ANCHOR_TOKENS = frozenset({
+        "shoe", "shoes", "sneaker", "sneakers", "heel", "heels",
+        "loafer", "loafers", "boot", "boots", "sandal", "sandals",
+        "footwear", "pump", "pumps", "mojari", "kolhapuri", "juti",
+    })
+
+    @classmethod
+    def _is_shoe_anchor(cls, anchor: Optional[Dict[str, Any]]) -> bool:
+        """True when the anchor's category/subtype identifies a shoe.
+
+        Shoes aren't supported by the system yet (no styling rules, no
+        pairing logic, no catalog coverage). Pairing turns with a shoe
+        anchor short-circuit to a friendly "not supported" response
+        rather than try to build an outfit around them.
+        """
+        if not anchor:
+            return False
+        for key in ("garment_category", "garment_subtype"):
+            value = str(anchor.get(key) or "").strip().lower()
+            if value and value in cls._SHOE_ANCHOR_TOKENS:
+                return True
+        return False
+
+    def _build_shoe_anchor_unsupported_response(
+        self,
+        *,
+        external_user_id: str,
+        message: str,
+        conversation_id: str,
+        turn_id: str,
+        channel: str,
+        intent: IntentClassification,
+        previous_context: Dict[str, Any],
+        live_context: LiveContext,
+        conversation_memory: Dict[str, Any],
+        profile_confidence: ProfileConfidence,
+    ) -> Dict[str, Any]:
+        """Honest response when the user uploads a shoe as a pairing anchor.
+
+        Shoes are out of scope today — the system has no shoe pairing
+        rules, no shoe occasion logic, and no shoe catalog coverage.
+        Tell the user instead of silently building wrong outfits.
+        """
+        assistant_message = (
+            "Styling around shoes isn't supported yet. "
+            "Try a top, bottom, dress, or outerwear piece instead — "
+            "I can build a full look around any of those."
+        )
+        metadata = self._build_response_metadata(
+            channel=channel,
+            intent=intent,
+            profile_confidence=profile_confidence,
+            extra={
+                "answer_source": "shoe_anchor_unsupported",
+            },
+        )
+        self.repo.finalize_turn(
+            turn_id=turn_id,
+            assistant_message=assistant_message,
+            resolved_context={
+                "request_summary": message.strip(),
+                "live_context": live_context.model_dump(),
+                "conversation_memory": conversation_memory,
+                "intent_classification": intent.model_dump(),
+                "profile_confidence": profile_confidence.model_dump(),
+                "response_metadata": metadata,
+                "handler": "shoe_anchor_unsupported",
+                "channel": channel,
+            },
+        )
+        self.repo.update_conversation_context(
+            conversation_id=conversation_id,
+            session_context={
+                **previous_context,
+                "memory": conversation_memory,
+                "last_live_context": live_context.model_dump(),
+                "last_response_metadata": metadata,
+                "last_assistant_message": assistant_message,
+                "last_user_message": message,
+                "last_channel": channel,
+                "last_intent": intent.primary_intent,
+                "consecutive_gate_blocks": 0,
+            },
+        )
+        return {
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "assistant_message": assistant_message,
+            "response_type": "advisory",
+            "resolved_context": {
+                "request_summary": message.strip(),
+                "live_context": live_context.model_dump(),
+            },
+            "filters_applied": {},
+            "outfits": [],
+            "follow_up_suggestions": [
+                "Pair a top instead",
+                "Pair a dress instead",
+                "Show me outfits for an occasion",
+            ],
+            "metadata": metadata,
+        }
+
     def _build_wardrobe_first_pairing_response(
         self,
         *,
@@ -3736,7 +3836,7 @@ class AgenticOrchestrator:
         wardrobe_gap_analysis = self._build_wardrobe_gap_analysis(
             wardrobe_items=wardrobe_items,
             occasion=str(live_context.occasion_signal or ""),
-            required_roles=["top", "bottom", "shoe"],
+            required_roles=["top", "bottom"],
         )
 
         target_text = str(target_piece or message or "").strip().lower()
@@ -3760,11 +3860,10 @@ class AgenticOrchestrator:
         outfit_items = [target_outfit_item, *pairing_items]
         target_role = self._wardrobe_role_of(target_item)
         desired_catalog_roles = {
-            "top": ["bottom", "shoe"],
-            "outerwear": ["bottom", "shoe"],
-            "bottom": ["top", "shoe"],
-            "one_piece": ["shoe", "outerwear"],
-            "shoe": ["top", "bottom"],
+            "top": ["bottom"],
+            "outerwear": ["bottom"],
+            "bottom": ["top"],
+            "one_piece": ["outerwear"],
         }.get(target_role, ["top", "bottom"])
         if wardrobe_gap_analysis.get("gap_items"):
             desired_catalog_roles = _dedupe_values(
@@ -4045,11 +4144,10 @@ class AgenticOrchestrator:
 
         target_role = self._wardrobe_role_of(item)
         desired_catalog_roles = {
-            "top": ["bottom", "shoe"],
-            "outerwear": ["bottom", "shoe"],
-            "bottom": ["top", "shoe"],
-            "one_piece": ["shoe", "outerwear"],
-            "shoe": ["top", "bottom"],
+            "top": ["bottom"],
+            "outerwear": ["bottom"],
+            "bottom": ["top"],
+            "one_piece": ["outerwear"],
         }.get(target_role, ["top", "bottom"])
         catalog_items = self._select_catalog_items(
             desired_roles=desired_catalog_roles,
@@ -4230,8 +4328,6 @@ class AgenticOrchestrator:
                 return "top"
             if category in {"bottom", "trousers", "pants", "jeans", "skirt"}:
                 return "bottom"
-            if category in {"shoe", "shoes", "sneaker", "heels", "loafer"}:
-                return "shoe"
             return "other"
 
         target_role = role_of(target_item)
@@ -4246,7 +4342,7 @@ class AgenticOrchestrator:
                 value += 4
             elif target_role == "bottom" and item_role == "top":
                 value += 4
-            elif target_role == "one_piece" and item_role in {"shoe", "other"}:
+            elif target_role == "one_piece" and item_role == "other":
                 value += 2
             elif item_role != target_role and item_category != target_category:
                 value += 1
@@ -4439,7 +4535,7 @@ class AgenticOrchestrator:
         occasion: str = "",
         required_roles: List[str] | None = None,
     ) -> Dict[str, Any]:
-        role_counts = {"top": 0, "bottom": 0, "shoe": 0, "outerwear": 0, "one_piece": 0}
+        role_counts = {"top": 0, "bottom": 0, "outerwear": 0, "one_piece": 0}
         occasion_matches = 0
         normalized_occasion = self._normalize_text_token(occasion)
         for item in wardrobe_items:
@@ -4454,7 +4550,6 @@ class AgenticOrchestrator:
         role_labels = {
             "top": "an easy top",
             "bottom": "a versatile bottom",
-            "shoe": "a flexible shoe option",
             "outerwear": "a layering piece",
             "one_piece": "a one-piece look",
         }
@@ -4464,11 +4559,10 @@ class AgenticOrchestrator:
 
         completeness_pct = min(
             100,
-            role_counts["top"] * 22
-            + role_counts["bottom"] * 22
-            + role_counts["shoe"] * 18
-            + role_counts["outerwear"] * 14
-            + role_counts["one_piece"] * 12,
+            role_counts["top"] * 26
+            + role_counts["bottom"] * 26
+            + role_counts["outerwear"] * 16
+            + role_counts["one_piece"] * 14,
         )
         summary = "Wardrobe coverage is strong."
         if gap_items:
@@ -4857,7 +4951,7 @@ class AgenticOrchestrator:
                     )
                     parts.append(
                         f"Keep {mc} to one anchor piece (like a trouser or jacket) rather than head-to-toe,"
-                        f" and let your {seasonal} warmth come through in the other layers, accessories, or shoes."
+                        f" and let your {seasonal} warmth come through in the other layers and accessories."
                     )
                 elif seasonal and not is_warm_season and mc in self._WARM_NEUTRAL_COLORS:
                     parts.append(
@@ -5815,6 +5909,29 @@ class AgenticOrchestrator:
             anchor["source"] = anchor.get("source") or "wardrobe"
             initial_live_context.anchor_garment = anchor
             _log.info("Anchor garment set: title=%s cat=%s", anchor.get("title"), anchor.get("garment_category"))
+            # Shoes are out of scope (no pairing rules, no catalog coverage)
+            # — short-circuit with an honest "not supported" message rather
+            # than try to build an outfit around a shoe.
+            if self._is_shoe_anchor(anchor):
+                conversation_memory = build_conversation_memory(
+                    previous_context,
+                    initial_live_context,
+                    current_intent=plan_result.intent,
+                    channel=channel,
+                    wardrobe_item_count=len(user_context.wardrobe_items),
+                )
+                return self._build_shoe_anchor_unsupported_response(
+                    external_user_id=external_user_id,
+                    message=message,
+                    conversation_id=conversation_id,
+                    turn_id=turn_id,
+                    channel=channel,
+                    intent=intent,
+                    previous_context=previous_context,
+                    live_context=initial_live_context,
+                    conversation_memory=conversation_memory.model_dump(),
+                    profile_confidence=profile_confidence,
+                )
         conversation_memory = build_conversation_memory(
             previous_context,
             initial_live_context,
@@ -8191,9 +8308,9 @@ class AgenticOrchestrator:
 
         Counts compatible wardrobe items by complementary category and
         formality level. The signal is intentionally coarse:
-            - tops pair with bottoms and shoes
-            - bottoms pair with tops and shoes
-            - dresses / one-pieces pair with shoes and outerwear
+            - tops pair with bottoms
+            - bottoms pair with tops
+            - dresses / one-pieces pair with outerwear
             - outerwear pairs with everything
 
         Returns:
@@ -8208,16 +8325,15 @@ class AgenticOrchestrator:
         formality = str(item.get("formality_level") or "").strip().lower()
 
         complement_map: Dict[str, List[str]] = {
-            "top": ["bottom", "shoe"],
-            "shirt": ["bottom", "shoe"],
-            "blouse": ["bottom", "shoe"],
-            "bottom": ["top", "shoe"],
-            "trouser": ["top", "shoe"],
-            "skirt": ["top", "shoe"],
-            "dress": ["shoe", "outerwear"],
-            "one_piece": ["shoe", "outerwear"],
+            "top": ["bottom"],
+            "shirt": ["bottom"],
+            "blouse": ["bottom"],
+            "bottom": ["top"],
+            "trouser": ["top"],
+            "skirt": ["top"],
+            "dress": ["outerwear"],
+            "one_piece": ["outerwear"],
             "outerwear": ["top", "bottom", "dress"],
-            "shoe": ["top", "bottom", "dress"],
         }
         complement_categories = complement_map.get(category, [])
         if not complement_categories:

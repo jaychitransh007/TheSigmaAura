@@ -2168,7 +2168,6 @@ def get_web_ui_html(
     <button class="filter-chip active" data-filter="all">All</button>
     <button class="filter-chip" data-filter="tops">Tops</button>
     <button class="filter-chip" data-filter="bottoms">Bottoms</button>
-    <button class="filter-chip" data-filter="shoes">Shoes</button>
     <button class="filter-chip" data-filter="dresses">Dresses</button>
     <button class="filter-chip" data-filter="outerwear">Outerwear</button>
     <button class="filter-chip" data-filter="accessories">Accessories</button>
@@ -3846,12 +3845,22 @@ def get_web_ui_html(
     "smart_casual", "business_casual", "semi_formal", "formal", "ultra_formal"
   ];
 
+  // Shoes / footwear aren't supported by the system yet — hide them
+  // from the wardrobe view regardless of which filter chip is active.
+  // Keeps the data in the DB but the user never sees a shoe entry.
+  function wardrobeIsShoe(item) {{
+    var category = String(item.garment_category || "").toLowerCase();
+    var subtype = String(item.garment_subtype || "").toLowerCase();
+    var shoeTokens = ["shoe", "heel", "boot", "loafer", "sandal", "sneaker", "footwear", "pump", "mojari", "kolhapuri", "juti"];
+    return shoeTokens.some(function(t) {{ return category.indexOf(t) !== -1 || subtype.indexOf(t) !== -1; }});
+  }}
+
   function wardrobeFilterMatches(item, filter) {{
+    if (wardrobeIsShoe(item)) return false;
     if (filter === "all") return true;
     var category = String(item.garment_category || "").toLowerCase();
     if (filter === "tops") return ["top", "shirt", "blouse", "tee", "tshirt", "sweater", "knit"].some(function(t) {{ return category.indexOf(t) !== -1; }});
     if (filter === "bottoms") return ["pant", "trouser", "jean", "skirt", "short"].some(function(t) {{ return category.indexOf(t) !== -1; }});
-    if (filter === "shoes") return ["shoe", "heel", "boot", "loafer", "sandal", "sneaker"].some(function(t) {{ return category.indexOf(t) !== -1; }});
     if (filter === "dresses") return ["dress", "gown", "romper", "jumpsuit"].some(function(t) {{ return category.indexOf(t) !== -1; }});
     if (filter === "outerwear") return ["jacket", "blazer", "coat", "parka", "hoodie", "cardigan"].some(function(t) {{ return category.indexOf(t) !== -1; }});
     if (filter === "accessories") return ["bag", "belt", "scarf", "watch", "jewelry", "hat", "accessory", "sunglasses", "tie", "bracelet", "necklace", "earring", "ring"].some(function(t) {{ return category.indexOf(t) !== -1; }});
