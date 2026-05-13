@@ -291,31 +291,23 @@ class SupabaseVectorStore:
         query_embedding: List[float],
         match_count: int,
         filters: Dict[str, Any],
-        hard_attrs: Optional[Dict[str, List[str]]] = None,
-        hard_penalty: Optional[float] = None,
     ) -> Any:
         """Execute the pgvector similarity-search RPC.
 
-        ``hard_attrs`` (May 7 2026) carries the engine-resolved per-
-        attribute allowed-value lists from HARD-tier sources. The SQL
-        function adds a per-violation penalty to the cosine distance
-        ORDER BY, so items violating rank lower but aren't excluded —
-        graceful degradation when the catalog is sparse.
-
-        ``hard_penalty`` (May 8 2026) overrides the SQL default
-        (currently 0.30) per call, letting the application tune the
-        violation weight without a migration. ``None`` falls back to
-        the SQL default. Defaults to ``None``/``{}`` for backward
-        compatibility with callers that haven't been updated; the
-        SQL function's defaults then leave cosine the only signal.
+        The May 7 ``hard_attrs``/``hard_penalty`` SQL-level penalty was
+        removed in the May 13 iterative-HNSW rewrite; the matching
+        ``20260513020000_drop_match_embeddings_5arg_overload`` migration
+        drops the 5-arg overload from the database. Hard-attr enforcement
+        now lives entirely in Python
+        (``agents/catalog_search_agent._apply_hard_attr_penalty``), which
+        operates on the rich ``catalog_enriched`` data hydrated after
+        retrieval — the SQL penalty was a no-op for most attribute keys
+        anyway because ``catalog_item_embeddings.metadata_json`` only
+        carries the typed-column subset.
         """
         payload: Dict[str, Any] = {
             "query_embedding": _vector_literal(query_embedding),
             "match_count": match_count,
             "filter": filters,
         }
-        if hard_attrs:
-            payload["hard_attrs"] = hard_attrs
-        if hard_penalty is not None:
-            payload["hard_penalty"] = hard_penalty
         return self._client.rpc("match_catalog_item_embeddings", payload)

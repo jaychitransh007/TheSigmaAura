@@ -39,19 +39,16 @@ class ApplicationCatalogRetrievalGateway:
         query_embedding: List[float],
         match_count: int,
         filters: Dict[str, Any],
-        hard_attrs: Optional[Dict[str, List[str]]] = None,
     ) -> Any:
         _log.info(
             "RetrievalGateway: similarity_search match_count=%d filters=%s "
-            "embedding_dims=%d hard_attrs=%s",
+            "embedding_dims=%d",
             match_count, filters, len(query_embedding),
-            list(hard_attrs.keys()) if hard_attrs else "[]",
         )
         result = self._vector_store.similarity_search(
             query_embedding=query_embedding,
             match_count=match_count,
             filters=filters,
-            hard_attrs=hard_attrs,
         )
         count = len(result) if isinstance(result, list) else 0
         _log.info("RetrievalGateway: similarity_search returned %d matches", count)

@@ -1,10 +1,13 @@
 """Regression tests for ApplicationCatalogRetrievalGateway.
 
-Specifically covers the kwarg surface — catalog_search_agent passes
-``hard_attrs=...`` to the gateway, so the gateway must accept and
-forward it. A previous deploy missed updating this layer (PR #171
-review escape) and engine-served turns errored at retrieval. These
-tests pin the contract.
+Specifically covers the kwarg surface — catalog_search_agent calls
+``gateway.similarity_search(...)`` and the gateway must forward the
+same kwargs to the underlying ``SupabaseVectorStore``. The May 13
+RPC overload bug (PR #329) was caused by the SQL function being
+defined twice; the application-side fix removed ``hard_attrs`` /
+``hard_penalty`` entirely from this layer since the Python re-rank
+already enforces hard_attrs against the rich catalog_enriched data
+after retrieval.
 """
 from __future__ import annotations
 
@@ -30,32 +33,37 @@ class SimilaritySearchKwargsTests(unittest.TestCase):
         gateway._vector_store.similarity_search.return_value = []
         return gateway
 
-    def test_forwards_hard_attrs_to_vector_store(self):
+    def test_forwards_three_args_to_vector_store(self):
         gateway = self._make()
         gateway.similarity_search(
             query_embedding=[0.0] * 1536,
             match_count=5,
             filters={"gender_expression": "feminine"},
-            hard_attrs={"SleeveLength": ["three_quarter", "full"]},
         )
         call = gateway._vector_store.similarity_search.call_args
+        self.assertEqual(call.kwargs.get("match_count"), 5)
         self.assertEqual(
-            call.kwargs.get("hard_attrs"),
-            {"SleeveLength": ["three_quarter", "full"]},
+            call.kwargs.get("filters"),
+            {"gender_expression": "feminine"},
         )
+        # hard_attrs / hard_penalty were removed in PR #329 — the SQL
+        # 5-arg overload was dropped from the DB and Python now owns
+        # hard-attr enforcement. The kwargs must not be forwarded.
+        self.assertNotIn("hard_attrs", call.kwargs)
+        self.assertNotIn("hard_penalty", call.kwargs)
 
-    def test_omitted_hard_attrs_passes_none(self):
-        # Backward-compat path: callers that don't supply hard_attrs
-        # (LLM-architect path, legacy tests) should still work and the
-        # vector_store sees hard_attrs=None.
+    def test_rejects_legacy_hard_attrs_kwarg(self):
+        # Callers that still pass hard_attrs= should now fail loudly
+        # rather than have it silently dropped. This guards against
+        # the next overload-style regression hiding under a no-op kwarg.
         gateway = self._make()
-        gateway.similarity_search(
-            query_embedding=[0.0] * 1536,
-            match_count=5,
-            filters={"gender_expression": "feminine"},
-        )
-        call = gateway._vector_store.similarity_search.call_args
-        self.assertIsNone(call.kwargs.get("hard_attrs"))
+        with self.assertRaises(TypeError):
+            gateway.similarity_search(
+                query_embedding=[0.0] * 1536,
+                match_count=5,
+                filters={"gender_expression": "feminine"},
+                hard_attrs={"SleeveLength": ["three_quarter", "full"]},
+            )
 
 
 if __name__ == "__main__":
