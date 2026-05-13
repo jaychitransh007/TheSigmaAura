@@ -3915,11 +3915,12 @@ class AgenticOrchestrator:
     # is jeans, not footwear, even though "boot" appears in the subtype.
     # Includes all three ``one_piece`` shapes that show up in
     # wardrobe-row payloads — ``one_piece`` (Pydantic / vision-schema
-    # canonical), ``one piece`` (space-separated, the form
-    # ``user.service.resolve_wardrobe_role`` emits), and ``one-piece``
-    # (hyphenated, defensive in case enrichment ever produces it). All
-    # trusted early so the canonical-category guard never falls through
-    # to the tokenization loop on a one-piece dress.
+    # canonical, also what ``user.service.resolve_wardrobe_role``
+    # returns), ``one piece`` (space-separated, a form that resolver
+    # accepts on input), and ``one-piece`` (hyphenated, defensive in
+    # case enrichment ever produces it). All trusted early so the
+    # canonical-category guard never falls through to the tokenization
+    # loop on a one-piece dress.
     _CANONICAL_NON_SHOE_CATEGORIES = frozenset({
         "top", "bottom", "outerwear", "one_piece", "one piece", "one-piece", "set",
     })
