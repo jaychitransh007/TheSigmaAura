@@ -52,6 +52,59 @@ def _compute_prompt_version() -> str:
 PROMPT_VERSION = _compute_prompt_version()
 
 
+def _load_known_occasions() -> tuple[str, ...]:
+    """Canonical occasion keys from ``knowledge/style_graph/occasion.yaml``.
+
+    The planner constrains ``occasion_signal`` to this set so downstream
+    (architect rules, composer router, recipe lookup) always sees a key
+    the YAML knows. Without this the model would emit free-text like
+    "shopping" — clear to humans, but the engine has no rule bound to
+    that string and falls through to a low-confidence response.
+
+    Reads the YAML once at module import (same pattern as
+    ``recipes/grid.py``). Returns an empty tuple if the file is
+    unreadable so the planner schema falls back to a free-string field
+    rather than locking every turn to ``null``.
+    """
+    yaml_path = (
+        Path(__file__).resolve().parents[5]
+        / "knowledge"
+        / "style_graph"
+        / "occasion.yaml"
+    )
+    try:
+        import yaml as _yaml
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            doc = _yaml.safe_load(f) or {}
+        keys = list((doc.get("occasion") or {}).keys())
+        return tuple(sorted(str(k) for k in keys if k))
+    except Exception:  # noqa: BLE001 — planner must not fail to import
+        _log.warning(
+            "copilot_planner: failed to load occasion.yaml at %s — "
+            "occasion_signal enum will be inert",
+            yaml_path,
+        )
+        return ()
+
+
+KNOWN_OCCASIONS: tuple[str, ...] = _load_known_occasions()
+
+
+def _occasion_signal_schema() -> Dict[str, Any]:
+    """Schema fragment for ``occasion_signal``.
+
+    Adds the canonical-key enum when the YAML loaded successfully;
+    otherwise stays as the historical ``string | null`` so a missing
+    YAML doesn't break planner output.
+    """
+    schema: Dict[str, Any] = {"type": ["string", "null"]}
+    if KNOWN_OCCASIONS:
+        # ``null`` must appear in the enum list when the type allows it,
+        # otherwise strict mode rejects null outputs.
+        schema["enum"] = [None, *KNOWN_OCCASIONS]
+    return schema
+
+
 _PLAN_JSON_SCHEMA: Dict[str, Any] = {
     "type": "json_schema",
     "name": "copilot_plan",
@@ -104,7 +157,7 @@ _PLAN_JSON_SCHEMA: Dict[str, Any] = {
                     "extracted_preferences",
                 ],
                 "properties": {
-                    "occasion_signal": {"type": ["string", "null"]},
+                    "occasion_signal": _occasion_signal_schema(),
                     "formality_hint": {"type": ["string", "null"]},
                     "time_hint": {"type": ["string", "null"]},
                     "specific_needs": {
@@ -567,8 +620,15 @@ class CopilotPlanner:
             )
         else:
             anchor_garment = AnchorGarmentHint()
+        raw_occ = resolved_raw.get("occasion_signal")
+        occ_str = str(raw_occ).strip() if raw_occ else ""
+        if occ_str and KNOWN_OCCASIONS and occ_str not in KNOWN_OCCASIONS:
+            # Strict-mode enum should prevent this, but if a non-canonical
+            # value slips through (schema regression, legacy cache hit),
+            # null is safer than propagating a yaml_gap downstream.
+            occ_str = ""
         resolved = CopilotResolvedContext(
-            occasion_signal=resolved_raw.get("occasion_signal"),
+            occasion_signal=occ_str or None,
             formality_hint=resolved_raw.get("formality_hint"),
             time_hint=resolved_raw.get("time_hint"),
             specific_needs=resolved_raw.get("specific_needs") or [],

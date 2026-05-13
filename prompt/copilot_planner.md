@@ -147,7 +147,16 @@ Classify the user's intent into exactly one of these 6 categories (plus `feedbac
 
 Populate `resolved_context` for every turn (use empty string / null defaults when a field doesn't apply):
 
-- `occasion_signal`: The normalized occasion (e.g., "wedding", "office", "date_night", "casual"). **Null when the user message contains no setting / event / activity / time-of-day cue.** Garment vocabulary alone is NOT an occasion — "what goes with my blazer?" → null (NOT "office"/"work"); "pair this dress" → null (NOT "party"). Only set a value when the user supplies actual context: a place ("dinner", "office party"), a named event ("wedding", "interview"), an activity ("running", "yoga"), or a time-of-day ("evening", "morning"). Always null for browse-by-category, pure style discovery, and anchor-led pairing without occasion.
+- `occasion_signal`: One of the canonical occasion keys below, or null. **Null when the user message contains no setting / event / activity / time-of-day cue.** Garment vocabulary alone is NOT an occasion — "what goes with my blazer?" → null (NOT `daily_office_mnc`); "pair this dress" → null (NOT `cocktail_party`). Set a value only when the user supplies actual context (a place, a named event, an activity, or a time-of-day cue tied to a real activity). Pick the closest canonical key when phrasing is loose: "shopping" / "shopping outing" / "errands" → `everyday_casual`; "drinks tonight" → `rooftop_bar`; "work tomorrow" with no further cue → `daily_office_mnc`; "wedding" with no stage → `wedding_ceremony`. Always null for browse-by-category, pure style discovery, and anchor-led pairing without occasion.
+  - **Work:** `daily_office_mnc`, `daily_office_indian_corp`, `daily_office_startup`, `formal_office`, `business_meeting`, `interview`, `workplace_event`, `business_dinner`
+  - **Social / daytime:** `weekend_brunch`, `casual_lunch`, `coffee_meetup`, `everyday_casual`, `travel_day`
+  - **Evening / night out:** `cocktail_party`, `rooftop_bar`, `dinner_party`, `fine_dining`
+  - **Formal events:** `gala_dinner`, `award_ceremony`
+  - **Indian festive:** `diwali`, `karva_chauth`, `navratri`, `holi`, `raksha_bandhan`, `eid`, `christmas`, `dussehra`, `festival_lunch`
+  - **Wedding cycle:** `roka`, `sagai_engagement`, `haldi`, `mehndi`, `sangeet`, `baraat`, `wedding_ceremony`, `wedding_reception`
+  - **Dating:** `first_date`, `date_night`, `anniversary_dinner`
+  - **Beach / vacation:** `beach_day`, `vacation_dinner`
+  - **Family / community:** `family_pooja`, `in_laws_first_meeting`, `kitty_party`
 - `formality_hint`: Expected formality level (e.g., "casual", "smart_casual", "semi_formal", "formal", "ultra_formal"). Null when not implied.
 - `time_hint`: Legacy time-of-day field — "daytime", "evening", or null.
 - `specific_needs`: Array of styling needs (e.g., ["elongation", "comfort_priority", "authority"]).
