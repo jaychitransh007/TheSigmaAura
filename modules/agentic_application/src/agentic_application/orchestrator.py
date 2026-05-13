@@ -1846,6 +1846,23 @@ class AgenticOrchestrator:
             analysis_status=analysis_status,
         )
         validate_minimum_profile(user_context)
+        # Shoes aren't styled by the system (PR #330). Strip them from the
+        # wardrobe before any planning path sees it — otherwise shoe items
+        # fall through to the "other" role in scoring functions and can
+        # rank as supplementary picks (e.g. ``role_of(target)=="one_piece"``
+        # + ``role_of(item)=="other"`` gives +2 score in pairing fallbacks).
+        # Hiding-only-in-UI isn't enough; the planner must not see them.
+        _original_wardrobe_count = len(user_context.wardrobe_items or [])
+        user_context.wardrobe_items = [
+            item for item in (user_context.wardrobe_items or [])
+            if not self._is_shoe_anchor(item)
+        ]
+        if _original_wardrobe_count != len(user_context.wardrobe_items):
+            _log.info(
+                "Filtered %d shoe item(s) from wardrobe for planning (kept %d)",
+                _original_wardrobe_count - len(user_context.wardrobe_items),
+                len(user_context.wardrobe_items),
+            )
         emit("user_context", "completed", ctx={"richness": user_context.profile_richness})
         trace_end("user_context", output_summary=f"richness={user_context.profile_richness}")
 
@@ -3714,6 +3731,14 @@ class AgenticOrchestrator:
         "footwear", "pump", "pumps", "mojari", "kolhapuri", "juti",
     })
 
+    # Canonical ``garment_category`` values (set by wardrobe enrichment).
+    # When an item carries one of these, trust it — a row with
+    # ``garment_category="bottom"`` and ``garment_subtype="boot_cut_jeans"``
+    # is jeans, not footwear, even though "boot" appears in the subtype.
+    _CANONICAL_NON_SHOE_CATEGORIES = frozenset({
+        "top", "bottom", "outerwear", "one_piece", "set",
+    })
+
     @classmethod
     def _is_shoe_anchor(cls, anchor: Optional[Dict[str, Any]]) -> bool:
         """True when the anchor's category/subtype identifies a shoe.
@@ -3722,12 +3747,29 @@ class AgenticOrchestrator:
         pairing logic, no catalog coverage). Pairing turns with a shoe
         anchor short-circuit to a friendly "not supported" response
         rather than try to build an outfit around them.
+
+        Detection rules:
+
+        1. If ``garment_category`` is a canonical non-shoe role
+           (top / bottom / outerwear / one_piece / set), trust it and
+           return False. Avoids the "boot-cut jeans" false positive —
+           the subtype contains "boot" but the row is a bottom.
+        2. Otherwise tokenize ``garment_category`` and ``garment_subtype``
+           on whitespace / hyphens / underscores and exact-match any
+           token against the shoe-token set. Catches multi-word values
+           like ``"running shoes"``, ``"chelsea boots"``, ``"ankle boot"``.
         """
         if not anchor:
             return False
+        category = str(anchor.get("garment_category") or "").strip().lower()
+        if category in cls._CANONICAL_NON_SHOE_CATEGORIES:
+            return False
         for key in ("garment_category", "garment_subtype"):
             value = str(anchor.get(key) or "").strip().lower()
-            if value and value in cls._SHOE_ANCHOR_TOKENS:
+            if not value:
+                continue
+            tokens = value.replace("-", " ").replace("_", " ").split()
+            if any(t in cls._SHOE_ANCHOR_TOKENS for t in tokens):
                 return True
         return False
 
@@ -4557,11 +4599,15 @@ class AgenticOrchestrator:
         if normalized_occasion and occasion_matches == 0:
             gap_items.append(f"a stronger {normalized_occasion.replace('_', ' ')} option")
 
+        # Weights preserve the 88-point max from before the shoe role
+        # was removed (was top×22 + bottom×22 + shoe×18 + outerwear×14
+        # + one_piece×12 = 88). The shoe row's 18 points redistribute as
+        # +6/+6/+4/+2 across top/bottom/outerwear/one_piece.
         completeness_pct = min(
             100,
-            role_counts["top"] * 26
-            + role_counts["bottom"] * 26
-            + role_counts["outerwear"] * 16
+            role_counts["top"] * 28
+            + role_counts["bottom"] * 28
+            + role_counts["outerwear"] * 18
             + role_counts["one_piece"] * 14,
         )
         summary = "Wardrobe coverage is strong."
