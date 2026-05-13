@@ -2041,7 +2041,7 @@ class AgenticOrchestrator:
             previous_occasion=str(previous_context.get("last_occasion") or "") or None,
             has_attached_image=bool(image_data),
             has_person_image=has_person_image,
-            wardrobe_count=len(user_context.wardrobe_items or []),
+            wardrobe_count=len(user_context.wardrobe_items),
             planner_prompt_version=PLANNER_PROMPT_VERSION,
         )
         try:
@@ -2110,7 +2110,7 @@ class AgenticOrchestrator:
                             previous_occasion=str(previous_context.get("last_occasion") or "") or None,
                             has_attached_image=bool(image_data),
                             has_person_image=has_person_image,
-                            wardrobe_count=len(user_context.wardrobe_items or []),
+                            wardrobe_count=len(user_context.wardrobe_items),
                             planner_prompt_version=PLANNER_PROMPT_VERSION,
                             planner_model=_planner_model,
                         ),
@@ -3877,13 +3877,15 @@ class AgenticOrchestrator:
     # When an item carries one of these, trust it — a row with
     # ``garment_category="bottom"`` and ``garment_subtype="boot_cut_jeans"``
     # is jeans, not footwear, even though "boot" appears in the subtype.
-    # Includes both ``one_piece`` (Pydantic / vision-schema canonical)
-    # and ``one piece`` (the space-separated variant that wardrobe
-    # enrichment + user.service.resolve_wardrobe_role accept). Keeping
-    # both means the canonical-category guard fires on either shape
-    # rather than falling through to the tokenization loop.
+    # Includes all three ``one_piece`` shapes that show up in
+    # wardrobe-row payloads — ``one_piece`` (Pydantic / vision-schema
+    # canonical), ``one piece`` (space-separated, the form
+    # ``user.service.resolve_wardrobe_role`` emits), and ``one-piece``
+    # (hyphenated, defensive in case enrichment ever produces it). All
+    # trusted early so the canonical-category guard never falls through
+    # to the tokenization loop on a one-piece dress.
     _CANONICAL_NON_SHOE_CATEGORIES = frozenset({
-        "top", "bottom", "outerwear", "one_piece", "one piece", "set",
+        "top", "bottom", "outerwear", "one_piece", "one piece", "one-piece", "set",
     })
 
     @classmethod
