@@ -238,5 +238,72 @@ class CompositionYamlGapImpactCounterTests(unittest.TestCase):
         observe_composition_yaml_gap_impact(axis="body_shape", impact=-0.1)
 
 
+class WardrobeShoeFilterHistogramTests(unittest.TestCase):
+    """``observe_wardrobe_shoe_filter`` records the per-turn shoe-filter
+    count into a histogram. PR #330 strips shoes from the wardrobe at
+    process_turn entry; this counter answers "how often do users have
+    shoes saved?" — customer-demand signal for whether shoe support is
+    worth building."""
+
+    def test_helper_safe_without_prometheus(self):
+        from platform_core.metrics import observe_wardrobe_shoe_filter
+        observe_wardrobe_shoe_filter(filtered_count=0)
+        observe_wardrobe_shoe_filter(filtered_count=3)
+        observe_wardrobe_shoe_filter(filtered_count=100)
+        observe_wardrobe_shoe_filter(filtered_count=-5)  # negative coerces to 0
+
+    def test_records_when_prometheus_installed(self):
+        if not _prometheus_available():
+            self.skipTest("prometheus_client not installed")
+        from platform_core.metrics import (
+            aura_wardrobe_shoe_filter_count,
+            observe_wardrobe_shoe_filter,
+        )
+        before = aura_wardrobe_shoe_filter_count._sum.get()
+        observe_wardrobe_shoe_filter(filtered_count=2)
+        observe_wardrobe_shoe_filter(filtered_count=0)
+        observe_wardrobe_shoe_filter(filtered_count=5)
+        after = aura_wardrobe_shoe_filter_count._sum.get()
+        self.assertEqual(after - before, 7)
+
+
+class ItemDescriptionSourceCounterTests(unittest.TestCase):
+    """``observe_item_description_source`` ticks per item shipped on an
+    outfit card, labelled by where the description came from. Tracks the
+    LLM-vs-synthesized split — a quality signal because synthesized copy
+    is uniform-tone, LLM copy is stylist-voice."""
+
+    def test_helper_safe_without_prometheus(self):
+        from platform_core.metrics import observe_item_description_source
+        observe_item_description_source(source="llm")
+        observe_item_description_source(source="synthesized")
+        observe_item_description_source(source="none")
+
+    def test_increments_when_prometheus_installed(self):
+        if not _prometheus_available():
+            self.skipTest("prometheus_client not installed")
+        from platform_core.metrics import (
+            aura_item_description_source_total,
+            observe_item_description_source,
+        )
+        before_llm = aura_item_description_source_total.labels(source="llm")._value.get()
+        before_syn = aura_item_description_source_total.labels(source="synthesized")._value.get()
+        observe_item_description_source(source="llm")
+        observe_item_description_source(source="llm")
+        observe_item_description_source(source="synthesized")
+        after_llm = aura_item_description_source_total.labels(source="llm")._value.get()
+        after_syn = aura_item_description_source_total.labels(source="synthesized")._value.get()
+        self.assertEqual(after_llm - before_llm, 2)
+        self.assertEqual(after_syn - before_syn, 1)
+
+    def test_unknown_source_recorded(self):
+        """Future-proofing: any unrecognized source label still records
+        under its literal label so a new source can't silently drop on
+        the floor."""
+        from platform_core.metrics import observe_item_description_source
+        observe_item_description_source(source="future_value")
+        observe_item_description_source(source="")  # coerces to "unknown"
+
+
 if __name__ == "__main__":
     unittest.main()

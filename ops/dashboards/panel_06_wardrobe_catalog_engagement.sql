@@ -19,7 +19,8 @@ WHERE event_type = 'turn_completed'
       'wardrobe_first_hybrid',
       'wardrobe_first_pairing',
       'wardrobe_first_pairing_hybrid',
-      'wardrobe_unavailable'
+      'wardrobe_unavailable',
+      'shoe_anchor_unsupported'
   )
 GROUP BY 1
 ORDER BY turns DESC;
