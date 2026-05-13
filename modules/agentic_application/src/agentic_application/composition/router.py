@@ -197,22 +197,26 @@ def is_engine_eligible(
     UNDER the anchor layer per the architect anchor-prompt §3), so the
     engine handles them cleanly.
 
-    May 8 follow-up T3: pool-injected anchors (top / bottom) become
-    eligible WHEN ``allow_pool_anchor=True`` (env-flagged via
-    ``AURA_ENGINE_ALLOW_POOL_ANCHOR``). Default-off because the
-    engine's tuple scorer evaluates every item including the user's
-    own anchor against profile constraints, and we haven't measured
-    the cascade-to-fallback rate on real traffic. Flip the flag to
-    let the engine try; ``tool_traces.composition_router_decision``
-    (PR #207) records every decision so the cascade rate is visible
-    in dashboards."""
+    Pool-injected anchors (top / bottom) ALWAYS fall through to the
+    LLM architect. The T3 ``allow_pool_anchor`` experiment (May 8 follow-up)
+    was flipped on in staging and surfaced a structural bug: the engine
+    emitted a "paired" direction with two queries (top + bottom) sharing
+    identical ``hard_attrs`` — most of them top-only axes (NecklineType,
+    ShoulderStructure, EmbellishmentZone, ...) that bottom catalog rows
+    are NULL on. The bottom query therefore matched almost nothing, and
+    the composer received a top-heavy pool it couldn't assemble against
+    the user's anchor. The flag is kept in the signature so the composer
+    router (which has different semantics for pool-injected anchors) can
+    keep its experimental path, but the architect router no longer honors
+    it — once the engine learns anchor-aware planning (single role-specific
+    query with role-appropriate attributes), revisit this gate."""
     live = combined_context.live
     anchor = getattr(live, "anchor_garment", None)
     if anchor:
         role_in_pool, _render_role = classify_anchor_role(anchor)
-        if role_in_pool and not allow_pool_anchor:
+        if role_in_pool:
             return False, "anchor_pool_injected"
-        # else: render-prepended (T2) or pool-injected with flag on (T3)
+        # else: render-prepended (T2) — engine handles cleanly
     if getattr(live, "is_followup", False):
         # May 8 2026: engine-friendly follow-ups (formality changes,
         # more_options) get served by the engine. The planner emits an
