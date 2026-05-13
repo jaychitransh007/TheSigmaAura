@@ -41,6 +41,7 @@ class SimilaritySearchKwargsTests(unittest.TestCase):
             filters={"gender_expression": "feminine"},
         )
         call = gateway._vector_store.similarity_search.call_args
+        self.assertEqual(call.kwargs.get("query_embedding"), [0.0] * 1536)
         self.assertEqual(call.kwargs.get("match_count"), 5)
         self.assertEqual(
             call.kwargs.get("filters"),
