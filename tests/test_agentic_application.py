@@ -3915,6 +3915,7 @@ class CopilotPlannerTests(unittest.TestCase):
             ("outerwear", "shearling_boot_collar_coat"),
             ("one_piece", "loafer_print_dress"),
             ("one piece", "loafer_print_dress"),
+            ("one-piece", "loafer_print_dress"),
         ):
             self.assertFalse(
                 AgenticOrchestrator._is_shoe_anchor({
