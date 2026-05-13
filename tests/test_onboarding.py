@@ -563,10 +563,10 @@ class OnboardingTests(unittest.TestCase):
             "count": 2,
             "completeness_score_pct": 68,
             "summary": "Your wardrobe is 68% ready right now.",
-            "category_counts": {"top": 1, "bottom": 1, "shoe": 0, "outerwear": 0, "one_piece": 0},
+            "category_counts": {"top": 1, "bottom": 1, "outerwear": 0, "one_piece": 0},
             "occasion_coverage": [{"key": "office", "label": "Office", "item_count": 2, "covered": True}],
-            "missing_categories": ["shoe options"],
-            "gap_items": ["a reliable everyday shoe"],
+            "missing_categories": ["layers"],
+            "gap_items": ["a layering piece like a blazer or jacket"],
         }
         service.update_wardrobe_item.return_value = {
             "id": "w1",

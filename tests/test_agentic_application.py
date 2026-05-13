@@ -2181,11 +2181,11 @@ class AgenticApplicationTests(unittest.TestCase):
             },
             {
                 "id": "w3",
-                "title": "Tan Loafers",
-                "garment_category": "shoe",
-                "garment_subtype": "loafer",
-                "primary_color": "tan",
-                "occasion_fit": "casual",
+                "title": "Navy Blazer",
+                "garment_category": "outerwear",
+                "garment_subtype": "blazer",
+                "primary_color": "navy",
+                "occasion_fit": "smart_casual",
                 "formality_level": "smart_casual",
             },
         ]
@@ -3662,10 +3662,10 @@ class CopilotPlannerTests(unittest.TestCase):
             },
             {
                 "id": "w2",
-                "title": "Tan Loafers",
-                "garment_category": "shoe",
-                "garment_subtype": "loafer",
-                "primary_color": "tan",
+                "title": "Camel Trousers",
+                "garment_category": "bottom",
+                "garment_subtype": "trouser",
+                "primary_color": "camel",
                 "occasion_fit": "smart_casual",
                 "formality_level": "smart_casual",
             },
@@ -3687,7 +3687,7 @@ class CopilotPlannerTests(unittest.TestCase):
         fake_plan = RecommendationPlan( retrieval_count=12,
             directions=[DirectionSpec(
                 direction_id="A", direction_type="paired", label="Pairing",
-                queries=[QuerySpec(query_id="A1", role="shoe", hard_filters={}, query_document="shoes for date night smart casual")],
+                queries=[QuerySpec(query_id="A1", role="outerwear", hard_filters={}, query_document="layering piece for date night smart casual")],
             )],
             resolved_context=ResolvedContextBlock(occasion_signal="date_night", formality_hint="smart_casual"),
         )
@@ -3710,12 +3710,59 @@ class CopilotPlannerTests(unittest.TestCase):
             result = orchestrator.process_turn(
                 conversation_id="c1",
                 external_user_id="user-1",
-                message="What shoes would work best with this?",
+                message="What goes with this?",
             )
 
         # Architect MUST be called (full pipeline, not short-circuited)
         architect_cls.return_value.plan.assert_called_once()
         self.assertEqual(Intent.PAIRING_REQUEST, result["metadata"]["primary_intent"])
+
+    def test_shoe_anchor_short_circuits_to_not_supported_message(self):
+        """Shoe-category anchors hit the 'not supported yet' intercept
+        instead of running the architect pipeline. The system has no
+        shoe styling rules, no shoe catalog coverage, and the prior
+        engine path produced broken cross-role queries — fail fast with
+        a friendly message rather than silently build a wrong outfit."""
+        from agentic_application.schemas import (
+            CopilotPlanResult, CopilotResolvedContext, CopilotActionParameters,
+        )
+        repo = self._standard_repo()
+        gw = self._standard_onboarding_gateway()
+        gw.save_uploaded_chat_wardrobe_item.return_value = {
+            "id": "w-anchor",
+            "title": "Tan Loafers",
+            "garment_category": "shoe",
+            "garment_subtype": "loafer",
+            "primary_color": "tan",
+            "occasion_fit": "smart_casual",
+        }
+        gw.get_wardrobe_items.return_value = []
+        planner_mock = Mock()
+        planner_mock.plan.return_value = CopilotPlanResult(
+            intent=Intent.PAIRING_REQUEST,
+            intent_confidence=0.95,
+            action=Action.RUN_RECOMMENDATION_PIPELINE,
+            context_sufficient=True,
+            assistant_message="Looking at the loafers.",
+            follow_up_suggestions=[],
+            resolved_context=CopilotResolvedContext(),
+            action_parameters=CopilotActionParameters(),
+        )
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), \
+             patch("agentic_application.orchestrator.OutfitArchitect") as architect_cls, \
+             patch("agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock):
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            result = orchestrator.process_turn(
+                conversation_id="c1", external_user_id="user-1",
+                message="What goes with these loafers?",
+                image_data="data:image/png;base64,AAAA",
+            )
+
+        # Architect must NOT have been called — the intercept fires before the pipeline.
+        architect_cls.return_value.plan.assert_not_called()
+        self.assertIn("Styling around shoes isn't supported yet", result["assistant_message"])
+        self.assertEqual([], result["outfits"])
+        self.assertEqual("shoe_anchor_unsupported", result["metadata"]["answer_source"])
 
     def test_catalog_garment_image_pairing_runs_full_pipeline(self):
         """Catalog image pairing now runs full pipeline (architect → search → evaluate → tryon)."""
@@ -4038,10 +4085,10 @@ class CopilotPlannerTests(unittest.TestCase):
             },
             {
                 "id": "w3",
-                "title": "Tan Loafers",
-                "garment_category": "shoe",
-                "garment_subtype": "loafer",
-                "primary_color": "tan",
+                "title": "Charcoal Cardigan",
+                "garment_category": "outerwear",
+                "garment_subtype": "cardigan",
+                "primary_color": "charcoal",
                 "occasion_fit": "office",
                 "formality_level": "smart_casual",
             },
