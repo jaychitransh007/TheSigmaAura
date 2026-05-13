@@ -256,15 +256,16 @@ class CatalogSearchAgent:
             # below clean items. Without over-fetch, if every cosine
             # top-K item violates, re-ranking can't recover.
             #
-            # Why not enforce hard_attrs in SQL: catalog_item_embeddings.
-            # metadata_json only carries the typed-column subset
-            # (FormalityLevel, GarmentSubtype, etc.) — the rich
-            # attributes (SleeveLength, FabricWeight, ...) live in the
-            # separate catalog_enriched table that we hydrate AFTER
-            # retrieval. The SQL function's hard_attrs param sees keys
-            # that don't exist in metadata_json and counts 0
-            # violations. Re-rank in Python where we already have the
-            # rich enriched_data attached.
+            # Hard-attr enforcement lives entirely in Python (see
+            # ``_apply_hard_attr_penalty`` below). The May 7 SQL-level
+            # penalty was dropped in the May 13 iterative-HNSW rewrite
+            # (and the ``20260513020000`` migration removed the 5-arg
+            # overload from the database) because the rich attributes
+            # (SleeveLength, FabricWeight, ...) live in the separate
+            # ``catalog_enriched`` table hydrated AFTER retrieval —
+            # ``catalog_item_embeddings.metadata_json`` only carried the
+            # typed-column subset, so the SQL penalty counted 0
+            # violations for most keys anyway.
             t0 = time.monotonic()
             matches: list = []
             search_count = (
@@ -278,7 +279,6 @@ class CatalogSearchAgent:
                         query_embedding=embedding,
                         match_count=search_count,
                         filters=filters,
-                        hard_attrs=query.hard_attrs or None,
                     ) or []
                     break
                 except Exception as exc:
