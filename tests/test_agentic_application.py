@@ -326,18 +326,34 @@ class SynthesizeItemDescriptionTests(unittest.TestCase):
             self.assertTrue(out[0].isupper(), f"{subtype!r}: {out!r}")
 
     def test_indefinite_article_phonetic_exceptions(self):
-        """``one piece`` reads as "wun" (consonant onset → "a") and
-        ``hourglass`` has a silent H (vowel onset → "an"). The default
-        leading-vowel rule would get both backwards."""
+        """Three classes of phonetic quirk the default leading-vowel
+        rule gets wrong:
+
+        1. ``"u"`` with a "yoo" consonant sound (university, uniform,
+           user, useful, european) — takes "a" not "an".
+        2. Silent H (hour, honest, heir) — takes "an" not "a".
+        3. ``"one"`` reads as "wun" — takes "a" not "an".
+
+        All routed through the ``_ARTICLE_PREFIX_EXCEPTIONS`` table so
+        adding a new exception is a one-line change.
+        """
         from agentic_application.orchestrator import _indefinite_article
-        self.assertEqual(_indefinite_article("one piece"), "a")
-        self.assertEqual(_indefinite_article("one"), "a")
-        self.assertEqual(_indefinite_article("hourglass"), "an")
-        self.assertEqual(_indefinite_article("hour-long"), "an")
-        # Default rule still applies to everything else.
-        self.assertEqual(_indefinite_article("apple"), "an")
-        self.assertEqual(_indefinite_article("shirt"), "a")
-        self.assertEqual(_indefinite_article("olive"), "an")
+        # "yoo" consonant sounds: take "a"
+        for word in (
+            "university", "universe", "uniform", "unique", "unicorn",
+            "union", "user", "useful", "useless", "european", "one piece", "one",
+        ):
+            self.assertEqual(_indefinite_article(word), "a", word)
+        # Silent H: takes "an"
+        for word in (
+            "hour", "hourglass", "hour-long", "honest", "honor", "honour", "heir",
+        ):
+            self.assertEqual(_indefinite_article(word), "an", word)
+        # Default vowel rule still applies to non-exception inputs
+        for word in ("apple", "olive", "ivory", "indigo", "ankle", "asymmetric"):
+            self.assertEqual(_indefinite_article(word), "an", word)
+        for word in ("shirt", "blouse", "blazer", "skirt", "dress"):
+            self.assertEqual(_indefinite_article(word), "a", word)
 
     def test_one_piece_subject_uses_correct_article(self):
         """End-to-end: a ``one piece`` subtype builds "A red one piece."

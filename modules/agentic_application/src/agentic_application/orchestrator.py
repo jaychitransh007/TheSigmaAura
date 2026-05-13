@@ -178,22 +178,58 @@ def _norm_attr(value: Any) -> str:
     return text.replace("_", " ")
 
 
+# Phonetic exceptions to the leading-vowel rule for ``_indefinite_article``.
+# Mapped by prefix so multi-word inputs (``"one piece"``, ``"hour-long"``,
+# ``"university campus"``) and inflected forms (``"useful"``, ``"useless"``)
+# all hit the same rule. Kept as a set of (prefix, article) pairs rather
+# than an if-cascade so adding a new exception is a one-line change.
+#
+# Reviewer suggested adopting the ``inflect`` library for full English
+# article inflection (https://github.com/jaraco/inflect). We chose an
+# exception set instead because:
+#   1. The input domain is bounded — fashion catalog vocabulary
+#      (colors, fits, patterns, silhouettes, garment subtypes), not
+#      free-form English.
+#   2. The exceptions we actually need are countable on two hands.
+#   3. No new dependency.
+# If the catalog vocabulary ever broadens enough that this set turns
+# into whack-a-mole, swap to ``inflect`` here without touching callers.
+_ARTICLE_PREFIX_EXCEPTIONS: tuple[tuple[str, str], ...] = (
+    # "u" with a "yoo" consonant sound — takes "a" not "an".
+    # "uni*" covers university/universe/uniform/unique/unicorn/union/unite.
+    ("uni", "a"),
+    # "use*" covers user/useful/useless/used.
+    ("use", "a"),
+    # "europe*" covers european.
+    ("europe", "a"),
+    # "one" reads as "wun" → consonant onset, takes "a".
+    ("one", "a"),
+    # Silent H — vowel onset, takes "an".
+    ("hour", "an"),
+    ("honest", "an"),
+    ("honor", "an"),    # also "honour"
+    ("honour", "an"),
+    ("heir", "an"),
+)
+
+
 def _indefinite_article(noun_phrase: str) -> str:
     """Pick 'a' or 'an' for a leading noun phrase.
 
-    Simple leading-vowel check with phonetic exceptions for the words
-    that show up in our catalog vocabulary. ``"one piece"`` sounds
-    like "wun" (consonant onset → "a"), and ``"hourglass"`` has a
-    silent H (vowel onset → "an"). The default vowel check would get
-    both backwards.
+    Leading-vowel rule with a small exception set for English phonetic
+    quirks that show up (or could show up) in our catalog vocabulary —
+    "u"-as-"yoo" words, silent-H words, and "one". See
+    ``_ARTICLE_PREFIX_EXCEPTIONS`` above for the full list and rationale
+    for not pulling in the ``inflect`` library.
     """
     if not noun_phrase:
         return "a"
-    text = noun_phrase.lower()
-    if text.startswith("one"):
+    text = noun_phrase.lower().lstrip()
+    if not text:
         return "a"
-    if text.startswith("hour"):
-        return "an"
+    for prefix, article in _ARTICLE_PREFIX_EXCEPTIONS:
+        if text.startswith(prefix):
+            return article
     return "an" if text[0] in "aeiou" else "a"
 
 
