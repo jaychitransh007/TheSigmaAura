@@ -179,10 +179,22 @@ def _norm_attr(value: Any) -> str:
 
 
 def _indefinite_article(noun_phrase: str) -> str:
-    """Pick 'a' or 'an' for a leading noun phrase. Simple vowel check."""
+    """Pick 'a' or 'an' for a leading noun phrase.
+
+    Simple leading-vowel check with phonetic exceptions for the words
+    that show up in our catalog vocabulary. ``"one piece"`` sounds
+    like "wun" (consonant onset → "a"), and ``"hourglass"`` has a
+    silent H (vowel onset → "an"). The default vowel check would get
+    both backwards.
+    """
     if not noun_phrase:
         return "a"
-    return "an" if noun_phrase[0] in "aeiou" else "a"
+    text = noun_phrase.lower()
+    if text.startswith("one"):
+        return "a"
+    if text.startswith("hour"):
+        return "an"
+    return "an" if text[0] in "aeiou" else "a"
 
 
 def _format_silhouette_term(silhouette: str) -> str:
@@ -242,9 +254,12 @@ def synthesize_item_description(item_attrs: Dict[str, Any]) -> str:
     parts = descriptors + ([subtype] if subtype else [])
     noun_phrase = " ".join(parts).strip()
 
-    # Plural subtypes ("jeans", "trousers") read wrong with an
-    # indefinite article. Capitalise the first word instead.
-    if subtype in _PLURAL_GARMENT_SUBTYPES:
+    # Plural subtypes ("jeans", "cargo pants", "chino trousers") read
+    # wrong with an indefinite article. Check the trailing word so
+    # multi-word subtypes are caught — exact set membership would only
+    # match the bare token ("jeans") and miss "cargo pants" / etc.
+    subtype_tail = subtype.rsplit(" ", 1)[-1] if subtype else ""
+    if subtype_tail in _PLURAL_GARMENT_SUBTYPES:
         sentence_1 = noun_phrase[0].upper() + noun_phrase[1:] if noun_phrase else ""
     elif noun_phrase:
         sentence_1 = f"{_indefinite_article(noun_phrase).capitalize()} {noun_phrase}"

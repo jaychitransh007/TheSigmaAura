@@ -306,9 +306,15 @@ class SynthesizeItemDescriptionTests(unittest.TestCase):
 
     def test_plural_subtypes_drop_article(self):
         """"A jeans." reads wrong — plural subtypes get capitalised
-        without an indefinite article."""
+        without an indefinite article. Multi-word subtypes whose
+        trailing word is plural (``"cargo pants"`` / ``"chino trousers"``
+        / ``"wide-leg trousers"``) are caught by the trailing-word
+        check, not exact set membership."""
         from agentic_application.orchestrator import synthesize_item_description
-        for subtype in ("jeans", "trousers", "shorts", "leggings"):
+        for subtype in (
+            "jeans", "trousers", "shorts", "leggings",
+            "cargo pants", "chino trousers", "wide-leg trousers",
+        ):
             out = synthesize_item_description({
                 "garment_subtype": subtype,
                 "primary_color": "indigo",
@@ -318,6 +324,32 @@ class SynthesizeItemDescriptionTests(unittest.TestCase):
             self.assertFalse(out.startswith("An "), f"{subtype!r}: {out!r}")
             # Sentence still capitalised.
             self.assertTrue(out[0].isupper(), f"{subtype!r}: {out!r}")
+
+    def test_indefinite_article_phonetic_exceptions(self):
+        """``one piece`` reads as "wun" (consonant onset → "a") and
+        ``hourglass`` has a silent H (vowel onset → "an"). The default
+        leading-vowel rule would get both backwards."""
+        from agentic_application.orchestrator import _indefinite_article
+        self.assertEqual(_indefinite_article("one piece"), "a")
+        self.assertEqual(_indefinite_article("one"), "a")
+        self.assertEqual(_indefinite_article("hourglass"), "an")
+        self.assertEqual(_indefinite_article("hour-long"), "an")
+        # Default rule still applies to everything else.
+        self.assertEqual(_indefinite_article("apple"), "an")
+        self.assertEqual(_indefinite_article("shirt"), "a")
+        self.assertEqual(_indefinite_article("olive"), "an")
+
+    def test_one_piece_subject_uses_correct_article(self):
+        """End-to-end: a ``one piece`` subtype builds "A red one piece."
+        — exercises both the article fix and the description path."""
+        from agentic_application.orchestrator import synthesize_item_description
+        out = synthesize_item_description({
+            "garment_subtype": "one piece",
+            "primary_color": "red",
+        })
+        self.assertTrue(out.startswith("A red one piece"), out)
+        self.assertNotIn("An red one piece", out)
+        self.assertNotIn("An one piece", out)
 
     def test_solid_pattern_dropped(self):
         from agentic_application.orchestrator import synthesize_item_description
