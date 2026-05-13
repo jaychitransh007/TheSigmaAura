@@ -3872,13 +3872,17 @@ class CopilotPlannerTests(unittest.TestCase):
         against the "boot-cut jeans" false positive: a bottom whose
         subtype string contains "boot"."""
         from agentic_application.orchestrator import AgenticOrchestrator
-        # Bottom with shoe-like subtype: NOT a shoe.
+        # Bottom with shoe-like subtype: NOT a shoe. Includes the
+        # ``one piece`` space-variant (wardrobe enrichment can emit
+        # either form) to guard against the canonical-category check
+        # silently regressing.
         for category, subtype in (
             ("bottom", "boot_cut_jeans"),
             ("bottom", "boot-cut jeans"),
             ("top", "pump_sleeve_blouse"),
             ("outerwear", "shearling_boot_collar_coat"),
             ("one_piece", "loafer_print_dress"),
+            ("one piece", "loafer_print_dress"),
         ):
             self.assertFalse(
                 AgenticOrchestrator._is_shoe_anchor({
