@@ -195,23 +195,32 @@ def _norm_attr(value: Any) -> str:
 # If the catalog vocabulary ever broadens enough that this set turns
 # into whack-a-mole, swap to ``inflect`` here without touching callers.
 _ARTICLE_PREFIX_EXCEPTIONS: tuple[tuple[str, str], ...] = (
-    # "u" + negation "n" + "i*" — vowel onset, takes "an". Listed
-    # BEFORE the broader "uni" rule so the more-specific prefix wins
+    # "u" + negation "n" + (vowel) — vowel onset, takes "an". Listed
+    # BEFORE the broader "uni" rule so the more-specific prefixes win
     # (iteration walks in order and returns on first match). Covers
-    # ``"uninsulated"`` (jacket shells), ``"uninformed"``,
-    # ``"uninhabited"``, ``"unintended"``, ``"uninspired"``.
+    # the negation-prefix words that share the leading "uni" but read
+    # as "uhn-" not "yoo-":
+    #   - "unin*" — uninsulated (jacket shells), uninformed,
+    #     uninhabited, unintended, uninspired, uninhibited
+    #   - "unim*" — unimportant, unimpressive, unimaginable
+    #   - "unir*" — unironed, unironic
     ("unin", "an"),
+    ("unim", "an"),
+    ("unir", "an"),
     # "u" with a "yoo" consonant sound — takes "a" not "an".
     # "uni*" covers university/universe/uniform/unique/unicorn/union/
     # unite/unisex/unitard.
     ("uni", "a"),
-    # "us[aeu]*" covers usable / user / useful / useless / used /
-    # usual / usually. Three separate prefixes so we don't trip on
-    # ``"us"`` itself (which is a pronoun, not a noun phrase, and
-    # almost certainly never appears as catalog vocabulary anyway).
+    # "us[aeu]*" + "uti*" cover usable / user / useful / useless / used /
+    # usual / usually / utility / utilities / utilitarian. Separate
+    # prefixes so we don't trip on ``"us"`` itself (which is a pronoun,
+    # not a noun phrase, and almost certainly never appears as catalog
+    # vocabulary anyway). ``"uti"`` is included because "utility
+    # jacket" / "utility pants" are common fashion-catalog terms.
     ("usa", "a"),
     ("use", "a"),
     ("usu", "a"),
+    ("uti", "a"),
     # "europe*" covers european.
     ("europe", "a"),
     # "one" reads as "wun" → consonant onset, takes "a".

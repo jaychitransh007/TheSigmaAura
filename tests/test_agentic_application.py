@@ -338,25 +338,31 @@ class SynthesizeItemDescriptionTests(unittest.TestCase):
         adding a new exception is a one-line change.
         """
         from agentic_application.orchestrator import _indefinite_article
-        # "yoo" consonant sounds: take "a". Includes the expanded "us*"
-        # family (``usable``, ``usual``) and the ``unisex`` / ``unitard``
-        # fashion-vocab cases that share the "yoo-nih" sound.
+        # "yoo" consonant sounds: take "a". Includes the "us*" family
+        # (``usable``, ``usual``), the ``unisex`` / ``unitard`` cases
+        # that share the "yoo-nih" sound, and the ``uti*`` group —
+        # ``utility jacket`` / ``utility pants`` are common
+        # fashion-catalog terms.
         for word in (
             "university", "universe", "uniform", "unique", "unicorn",
             "union", "unisex", "unitard",
             "user", "useful", "useless", "used",
             "usable", "usability",
             "usual", "usually",
+            "utility", "utilities", "utilitarian", "utilize",
             "european", "one piece", "one",
         ):
             self.assertEqual(_indefinite_article(word), "a", word)
-        # ``un-`` + ``i*`` negation prefix is NOT "yoo" — it's "uhn-ih"
-        # (vowel onset), takes "an". The more-specific ``unin`` prefix
-        # is listed before the broader ``uni`` rule so it wins. Plausible
-        # catalog vocabulary: an uninsulated shell jacket.
+        # ``un-`` + (vowel) negation prefix is NOT "yoo" — it's "uhn-"
+        # (vowel onset), takes "an". The more-specific negation prefixes
+        # are listed before the broader ``uni`` rule so they win.
+        # Plausible catalog vocabulary: an uninsulated shell jacket,
+        # an unironed shirt.
         for word in (
             "uninsulated", "uninformed", "uninhabited",
             "unintended", "uninspired", "uninhibited",
+            "unimportant", "unimpressive", "unimaginable",
+            "unironed", "unironic",
         ):
             self.assertEqual(_indefinite_article(word), "an", word)
         # Silent H: takes "an"
