@@ -1072,16 +1072,24 @@ class AgenticOrchestrator:
         description = synthesize_item_description(item)
         if description:
             item["description"] = description
-            # Wardrobe-first hybrid catalog fillers never go through
-            # the LLM composer, so the only possible source is the
-            # synthesized template. Counter parity with the
-            # catalog-pipeline path so the dashboards see every shipped
-            # item once.
-            try:
-                from platform_core.metrics import observe_item_description_source
-                observe_item_description_source(source="synthesized")
-            except Exception:  # noqa: BLE001
-                pass
+            _desc_source = "synthesized"
+        else:
+            # Synthesizer returned "" — happens only when the catalog
+            # row has neither a subtype nor any descriptor attributes.
+            # Still tick the counter under ``"none"`` so the dashboards
+            # see every shipped item once (parity with the catalog-
+            # pipeline path, which emits "llm" / "synthesized" / "none"
+            # too). Without this, the source-mix ratio would skew
+            # toward synthesized whenever an attribute-thin row shipped.
+            _desc_source = "none"
+        # Wardrobe-first hybrid catalog fillers never go through the LLM
+        # composer, so the only possible non-none source is the
+        # synthesized template.
+        try:
+            from platform_core.metrics import observe_item_description_source
+            observe_item_description_source(source=_desc_source)
+        except Exception:  # noqa: BLE001
+            pass
         return item
 
     def _select_catalog_items(
