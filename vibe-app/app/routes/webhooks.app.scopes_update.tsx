@@ -13,7 +13,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 id: session.id
             },
             data: {
-                scope: current.toString(),
+                // Shopify session storage expects space-separated scopes.
+                // `Array.toString()` gives commas, which silently breaks
+                // future session validation. Use explicit space join.
+                scope: current.join(" "),
             },
         });
     }
