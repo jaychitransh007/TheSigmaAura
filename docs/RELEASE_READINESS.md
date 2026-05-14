@@ -168,6 +168,76 @@ These are explicit non-goals — do not block the release on them:
 
 _Migrated from `CURRENT_STATE.md`. The May-1 "Open Items Plan" — every item now ✅ shipped — is preserved here as a record of work landed during the platform pass. For ongoing release readiness criteria see the Gates above._
 
+## May 13, 2026 — Pairing pipeline RCA cascade + shoe scope-out + observability (PRs #326–#342)
+
+A 17-PR wave that started from a single user complaint — *"I couldn't find a strong match for shopping just yet"* — and unwound into four nested failure modes plus a scope decision (drop shoes) plus an observability gap-close. The arcs:
+
+1. **Planner normalization** (#326, #327) — the user's "shopping outing" was mapping to `occasion_signal="shopping"`, a value the composition YAML doesn't know, so the architect engine reported a yaml_gap and the composer gave up. Fix: constrain the planner's `occasion_signal` to the 44 canonical keys in `knowledge/style_graph/occasion.yaml` via a strict JSON Schema enum + prompt guidance. The model now picks the closest canonical key for any user phrasing.
+2. **Pairing routing fix** (#328) — the staging `AURA_ENGINE_ALLOW_POOL_ANCHOR=true` flag was sending top/bottom anchor pairings to the architect engine, which emitted "paired" directions with **identical top-coded `hard_attrs` on both the top and bottom query**. The bottom query then matched almost nothing. Hardcoded the eligibility gate to always reject pool-injected anchors regardless of the flag; LLM architect handles all pairings now. Also bumped `retrieval_count` for anchor garments from 8 → 20 so the rater sees parity with complete-outfit turns (5×5=25 vs. 1×20=20).
+3. **Retrieval RPC overload** (#329) — the May 13 iterative-HNSW rewrite created a NEW 3-arg `match_catalog_item_embeddings` signature alongside the May 7 5-arg version without dropping the old one. PostgREST returned PGRST203 ambiguity errors on every call with empty `hard_attrs`; the search agent silently caught the exception and returned 0 products. New migration drops the 5-arg overload; app-side strips `hard_attrs`/`hard_penalty` from the call chain (Python's `_apply_hard_attr_penalty` already owned that work).
+4. **Shoe support scope-out** (#330, #332, #334, #336) — confirmed scope decision: the system doesn't have pairing rules, occasion logic, or catalog coverage for shoes today, so silently producing wrong outfits around them is worse than declining. Strips shoes from `required_roles` / `fill_roles` / complementary-role maps / wardrobe scoring weights / the architect anchor prompt / vision decomposition prompt / planner accessory taxonomy / wardrobe filter UI. Shoe-anchor uploads short-circuit with *"Styling around shoes isn't supported yet — try a top, bottom, dress, or outerwear instead."* Existing wardrobe shoes are filtered globally at `process_turn` entry so they never reach the scoring functions as "other" role items.
+5. **Description synthesis for engine-path outfits** (#333) — the composer engine doesn't emit `item_descriptions`; only the LLM composer does. So outfit cards on engine-path turns shipped with empty description panels. New `synthesize_item_description` template builds a 12-25-word stylist-flavored description from catalog attributes (color, fit, pattern, silhouette, formality, occasion) at item-build time. LLM `item_descriptions` still override when present.
+6. **Observability close-out** (#339) — audit found four gaps where shipped behavior changes lacked metric / panel coverage. New `observe_wardrobe_shoe_filter` histogram + `observe_item_description_source` counter + new Panel 36 ("Retrieval Empty After Relaxation" — the alert that would have caught #329's silent failure on day 1) + Panel 21 annotation explaining the engine→LLM share shift post-#328 + `shoe_anchor_unsupported` added to the answer_source enum in Panel 6.
+
+### Planner normalization (PRs #326, #327)
+
+| PR | Net change |
+|---|---|
+| #326 | `_PLAN_JSON_SCHEMA["occasion_signal"]` becomes `["string", "null"]` with `enum=[None, *KNOWN_OCCASIONS]` where `KNOWN_OCCASIONS` is loaded once at import from `knowledge/style_graph/occasion.yaml` (44 keys). Prompt updated with the canonical list grouped by archetype + concrete mapping cues ("shopping" → `everyday_casual`, "drinks tonight" → `rooftop_bar`, "wedding" with no stage → `wedding_ceremony`). Defensive normalizer in `_parse_result` nulls any non-canonical value that slips through. Prompt budget bumped 6000 → 6300. |
+| #327 | Review follow-up. `PROMPT_VERSION` (planner cache invalidation key) only hashed the `.md` file; folds `KNOWN_OCCASIONS` into the hash so a `knowledge/style_graph/occasion.yaml` edit busts the cache. |
+
+### Pairing routing + retrieval count (PR #328)
+
+| PR | Net change |
+|---|---|
+| #328 | `composition/router.is_engine_eligible` always returns `(False, "anchor_pool_injected")` for top/bottom-category anchors, regardless of `allow_pool_anchor`. The T3 experiment shipped without anchor-aware query generation — the engine emitted broken cross-role `hard_attrs` and was inverting our latency win. LLM architect (with its anchor prompt fragment) handles these turns. Architect prompt's anchor-garment row in the retrieval_count table moved from 8 → 20: anchor fixed + 20 complements ≈ 20 outfits to rate, vs. 8 before which gave a much thinner pool. Composer/rater latency re-measurement post-deploy is the metric to watch. |
+
+### Retrieval RPC overload (PR #329)
+
+| PR | Net change |
+|---|---|
+| #329 | New migration `20260513020000_drop_match_embeddings_5arg_overload.sql` drops the May 7 5-arg `match_catalog_item_embeddings(query_embedding, match_count, filter, hard_attrs, hard_penalty)`. The May 13 iterative-HNSW rewrite created a NEW 3-arg signature alongside it; PostgREST returned PGRST203 on every 3-arg call. Bug ran for ~24h before forensics caught it — the `except` block in `catalog_search_agent` silently returned `matches=[]`. App side strips `hard_attrs`/`hard_penalty` from `vector_store.similarity_search`, the gateway, and the agent's call site. Hard-attr enforcement still lives in Python via `_apply_hard_attr_penalty` against rich `catalog_enriched` data. Test asserts the legacy kwarg now raises `TypeError` — guards against the next overload-style regression. Migration applied to staging by `supabase db push --include-all` against the linked project. |
+| #331 | Review follow-up on #329. Added a missing `query_embedding` assertion to `test_catalog_retrieval_gateway` so the test name (`test_forwards_three_args_to_vector_store`) actually checks all three. |
+
+### Shoes are out of scope (PRs #330, #332, #334, #336, #338)
+
+| PR | Net change |
+|---|---|
+| #330 | Scope decision: the system has no pairing rules / occasion logic / catalog coverage for shoes worth styling around. Strips shoes from `required_roles=["top","bottom","shoe"]` (4 sites in orchestrator → `["top","bottom"]`), `fill_roles` logic, complementary-role maps (3 sites), wardrobe scoring weights, the architect anchor prompt (`bottom, shoe, outerwear` → `bottom, outerwear`), `outfit_decomposition.md` vision prompt (no longer identifies shoes), `copilot_planner.md` accessory taxonomy, `user/service.py` wardrobe profile inference (no `_ROLE_SHOE_SUBTYPES`), `fallback_messages.py` ("shoes" dropped from supported-types list). New `_is_shoe_anchor` + `_build_shoe_anchor_unsupported_response` — anchor-intercept fires right after the anchor is set with: *"Styling around shoes isn't supported yet. Try a top, bottom, dress, or outerwear piece instead — I can build a full look around any of those."* The `ui.py` wardrobe view loses the "Shoes" filter chip and gets a new `wardrobeIsShoe` predicate that hides shoe-category items across every filter (data stays in DB, just not visible). Wardrobe scoring weights redistributed 22/22/18/14/12 → 28/28/18/14 to keep max completeness pct stable. |
+| #332 | Review follow-up. Globally filter wardrobe shoes at `process_turn` entry — otherwise shoe items fell through to the "other" role in scoring functions and could rank as supplementary picks on dress-anchor pairings. Tokenize `_is_shoe_anchor` input on whitespace / hyphen / underscore so multi-word values (`"running shoes"`, `"chelsea boots"`, `"ankle boot"`) are caught. Trust canonical `garment_category` ({top, bottom, outerwear, one_piece, set}) when present to avoid hiding "boot-cut jeans" — the subtype contains "boot" but the row is a bottom. Mirror the same logic in JS `wardrobeIsShoe`. Restore the original 88-point wardrobe-completeness ceiling with weights 28/28/18/14 (the previous redistribution dropped it to 82). |
+| #334 | Review follow-up. Add `"one piece"` (space-separated) to `_CANONICAL_NON_SHOE_CATEGORIES` (Python) and `CANONICAL_NON_SHOE_CATEGORIES` (JS) — wardrobe enrichment + `user.service.resolve_wardrobe_role` accept either shape. Drop remaining `or []` guards on `user_context.wardrobe_items` (default_factory list, always initialized — dead code). |
+| #336 | Review follow-up. Add `"one-piece"` (hyphenated) too for defensive coverage of any future enrichment path. Drop the last two `or []` guards at `wardrobe_count=len(user_context.wardrobe_items or [])` call sites the previous PR missed. |
+| #338 | Review follow-up. Docs-only — `_CANONICAL_NON_SHOE_CATEGORIES` comment said `user.service.resolve_wardrobe_role` "emits" the space-separated form, but it actually *returns* `one_piece` (underscore) and *accepts* the space form on input. |
+
+### Item description synthesis + article phonetics (PRs #333, #335, #337, #340, #342)
+
+| PR | Net change |
+|---|---|
+| #333 | New `synthesize_item_description` builds a 12-25-word stylist-flavored description from catalog attributes (`color`, `fit_type`, `pattern_type`, `silhouette_type`, `garment_subtype`, `formality_level`, `occasion_fit`). Stamped at both item-build sites (`_build_candidate_item` for catalog-pipeline candidates, `_catalog_row_to_outfit_item` for wardrobe-first hybrid fillers). LLM composer's `item_descriptions` still override at orchestrator line 7510 when present. The composer-engine path (which doesn't emit `item_descriptions`) now ships descriptions instead of empty panels. Edge cases handled: `a_line` silhouette pretty-prints to `A-line` ("with an A-line silhouette"); plural subtypes (`jeans`, `trousers`) drop the article and capitalize; `solid` pattern is dropped (no signal vs. omitting); null sentinels excluded. |
+| #335 | Review follow-up. Article exceptions: `_indefinite_article("one piece")` returned `"an"` (default vowel rule) — wrong, "one" reads as "wun". Same for `"hourglass"` (silent H, should be "an" not "a"). Added prefix-exception checks. Also: plural-subtype check now looks at the trailing word so multi-word values (`"cargo pants"`, `"chino trousers"`, `"wide-leg trousers"`) are correctly detected. |
+| #337 | Review follow-up. Refactored the if-cascade into an `_ARTICLE_PREFIX_EXCEPTIONS` tuple so adding a new exception is a one-line change. Reviewer suggested `inflect` library; we documented why we chose an exception set instead (input domain is bounded fashion vocab, no new dependency). Adds the "yoo" consonant class (`uni*`, `use*`, `europe*`) and silent-H class (`hour*`, `honest`, `honor`/`honour`, `heir`). |
+| #340 | Review follow-up. `("unin", "an")` inserted before `("uni", "a")` so `uninsulated` / `uninformed` / `uninhabited` correctly take "an" while `unique` / `unitard` / `unisex` still take "a". `"use"` expanded to `"usa"` / `"use"` / `"usu"` to cover `usable` / `usual`. |
+| #342 | Review follow-up. Adds `("unim", "an")` (`unimportant`, `unimpressive`), `("unir", "an")` (`unironed`, `unironic`), and **`("uti", "a")`** — this last one is the biggest catch: *"utility jacket"* / *"utility pants"* are common fashion vocab and were getting *"an utility jacket"* with the default vowel rule. |
+
+### Observability (PRs #339, #341)
+
+| PR | Net change |
+|---|---|
+| #339 | Audit-driven gap close after the May 13 wave's behavior changes. Adds `observe_wardrobe_shoe_filter(filtered_count=N)` histogram (called once per turn from `process_turn`) — quantifies how often users have shoes saved. Adds `observe_item_description_source(source="llm"\|"synthesized"\|"none")` counter ticked per shipped item — tracks the LLM-vs-synthesized split as a quality signal. New **Panel 36** ("Retrieval Empty After Relaxation") flags turns where `catalog_search` returned 0 products after exhausting the relaxation sequence — exactly the failure mode #329's RPC overload exploited for ~24h. Persists `retrieval_relaxation_outcome` + `retrieval_total_products` in catalog-pipeline metadata so the panel can distinguish "catalog is thin" from "composer rejected a populated pool". `shoe_anchor_unsupported` added to the answer_source enum in Panel 6 (otherwise these turns fell into "unknown" and were invisible). Panel 21 docstring annotation explains the expected engine→LLM share shift on pairing turns post-#328 so the next person reading the dashboard doesn't misread the drop. |
+| #341 | Review follow-up on #339. `_catalog_row_to_outfit_item` now records `"none"` when the synthesizer returns empty (catalog row had no descriptor attributes), matching the catalog-pipeline path. Every shipped item ticks the counter once — the source-mix ratio is no longer biased toward `"synthesized"` for attribute-thin rows. |
+
+**State at end of May 13 push:**
+- Planner normalization closes the `yaml_gap:occasion_signal:*` class of failures. The cache invalidates correctly when `occasion.yaml` changes.
+- Top/bottom anchor pairings always route to the LLM architect with `retrieval_count=20` per role. The `AURA_ENGINE_ALLOW_POOL_ANCHOR` flag is now a no-op for the architect router (still wired for the composer router's separate experimental path).
+- Catalog retrieval is unambiguous — only the fast iterative-HNSW 3-arg `match_catalog_item_embeddings` exists in the DB. Migration applied to staging.
+- Shoes are explicitly out of scope. Existing wardrobe shoes are filtered from planning + hidden in UI; new shoe-anchor uploads get the "not supported yet" message.
+- Outfit cards ship with descriptions in all paths. Engine-path turns get the deterministic synthesizer; LLM-path turns get the stylist-voice copy from the composer.
+- Indefinite-article exception table handles `uni`/`use`/`uti` "yoo" sounds, `unin`/`unim`/`unir` negation carve-outs, silent-H words, and "one piece". Documented inline so the next contributor can decide whether to swap in `inflect` if the catalog vocabulary broadens further.
+- Observability: Panel 36 alerts on the silent retrieval-failure mode; Panel 6 surfaces shoe-anchor demand; new metrics track wardrobe-shoe filter rate and description-source mix.
+- Test suite: 1296 passed, 1 skipped.
+
+---
+
 ## May 12, 2026 (late evening) — Card detail panel polish + composer hotfix + docs (PRs #311–#324)
 
 A 14-PR cleanup wave on top of the same-day evening wave. Splits across three substantive arcs (composer hotfix, card UX round 2+3, pairing-anchor behavior) plus review-feedback churn and doc refreshes.
