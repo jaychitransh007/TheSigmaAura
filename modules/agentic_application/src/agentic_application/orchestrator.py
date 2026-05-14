@@ -195,11 +195,23 @@ def _norm_attr(value: Any) -> str:
 # If the catalog vocabulary ever broadens enough that this set turns
 # into whack-a-mole, swap to ``inflect`` here without touching callers.
 _ARTICLE_PREFIX_EXCEPTIONS: tuple[tuple[str, str], ...] = (
+    # "u" + negation "n" + "i*" — vowel onset, takes "an". Listed
+    # BEFORE the broader "uni" rule so the more-specific prefix wins
+    # (iteration walks in order and returns on first match). Covers
+    # ``"uninsulated"`` (jacket shells), ``"uninformed"``,
+    # ``"uninhabited"``, ``"unintended"``, ``"uninspired"``.
+    ("unin", "an"),
     # "u" with a "yoo" consonant sound — takes "a" not "an".
-    # "uni*" covers university/universe/uniform/unique/unicorn/union/unite.
+    # "uni*" covers university/universe/uniform/unique/unicorn/union/
+    # unite/unisex/unitard.
     ("uni", "a"),
-    # "use*" covers user/useful/useless/used.
+    # "us[aeu]*" covers usable / user / useful / useless / used /
+    # usual / usually. Three separate prefixes so we don't trip on
+    # ``"us"`` itself (which is a pronoun, not a noun phrase, and
+    # almost certainly never appears as catalog vocabulary anyway).
+    ("usa", "a"),
     ("use", "a"),
+    ("usu", "a"),
     # "europe*" covers european.
     ("europe", "a"),
     # "one" reads as "wun" → consonant onset, takes "a".
