@@ -1,0 +1,32 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "937540a1df123dfcd486426ede2b3722"
+name = "Vibe"
+application_url = "https://vibe-app-five.vercel.app"
+embedded = true
+
+[webhooks]
+api_version = "2026-07"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_products"
+
+[auth]
+redirect_urls = [ "https://vibe-app-five.vercel.app/auth/callback" ]
+
+# App Proxy: customer-facing routes under thesigmavibe.shop/apps/vibe/* are
+# forwarded by Shopify to this app's Remix backend at <url>/<path>.
+# Shopify signs every request; the proxy.$.tsx route validates via
+# authenticate.public.appProxy().
+[app_proxy]
+url = "https://vibe-app-five.vercel.app/proxy"
+subpath = "vibe"
+prefix = "apps"
+
+[build]
+# False because we deploy to Vercel directly. `shopify app deploy` pushes
+# the URLs above to Partner Dashboard. If you ever want to use
+# `shopify app dev` for local tunnel-based work again, flip this to true
+# and the CLI will overwrite the URLs on each dev start.
+automatically_update_urls_on_dev = false

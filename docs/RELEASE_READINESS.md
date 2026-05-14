@@ -1,5 +1,15 @@
 # Release Readiness Criteria
 
+Last updated: May 15, 2026.
+
+> **NEW RELEASE TARGET (May 15, 2026).** The 4 gates below describe the readiness criteria for the *legacy standalone Aura web app* (port 8010 server-rendered HTML chat). With the Shopify pivot, the release target has changed:
+>
+> - The customer experience now ships as a **Shopify storefront** (`thesigmavibe.shop`, live) + a **Vibe Shopify App** (Vercel-deployed, validated end-to-end on 2026-05-15).
+> - The standalone web UI is being deprecated. Gates 3 (dependency/retention) and Gate 4 (design polish) targeting `platform_core/ui.py` are no longer the release blocker.
+> - **The new release blockers** are tracked in [`OPEN_TASKS.md`](OPEN_TASKS.md): Phase D customer pages (D.C.2–D.C.7), engine deployment to Fly.io, GDPR webhooks (D.S.4), legal pages (B.4), real-card test order (B.6).
+>
+> See **Recently Shipped — Shopify pivot (May 13–15)** below for what's already in place.
+
 This document defines the concrete checklist that must be green before Aura
 ships beyond the current dev-complete state. It is the single source of
 truth for "are we ready to put a real user in front of this?".
@@ -9,10 +19,44 @@ not advance to the next gate until the previous one is fully green.
 
 The companion artifacts are:
 
+- `docs/OPEN_TASKS.md` — **canonical current state, Phase D plan, locked infrastructure**
 - `docs/OPERATIONS.md` — dashboards and queries that back the metrics gates
 - `ops/scripts/smoke_test_full_flow.sh` — end-to-end smoke test
 - `ops/scripts/validate_dependency_report.py` — dependency report validator
 - `docs/DESIGN_SYSTEM_VALIDATION.md` — manual UI QA checklist
+
+---
+
+## Recently Shipped — Shopify pivot (May 13–15, 2026)
+
+A major architectural pivot from standalone Aura to a Shopify-hosted product. Three deployments planned; two now live.
+
+### Storefront
+- **`thesigmavibe.shop` live** on Shopify (custom domain + `q8pery-95.myshopify.com` canonical, `the-vibe-shop-9376.myshopify.com` alias).
+- **13,177 products imported** via per-vendor CSVs from `scripts/seed_thesigmavibe_catalog/`: templatized descriptions (Option 3 — aspirational + playful, no cheekiness, no LLM), 5 size variants (XS–XL), 20% markup baked in, `vibe.*` metafields capture `tenant_id`/`source_url`/`source_retailer`/`source_product_id`/`enriched_id`.
+- Brand vocabulary: 10 retailers mapped to display names in `brands.py` (Koskii, Showoffff, Taruni, Nicobar, Vastramay, Powerlook, Campus Sutra, Off Duty, Fawn24, Virgio).
+- Razorpay + GST + India shipping + size chart configured.
+- Hero copy locked ("Style that gets you."), hero image generated via Imagen.
+- 1,065 missing-price rows dropped from import.
+
+### Vibe Shopify App
+- **Scaffolded with Shopify Remix + Polaris + App Bridge** template (`vibe-app/` at worktree root).
+- **Deployed to Vercel** at `https://vibe-app-five.vercel.app` (May 15).
+- **OAuth + install flow working** on dev store `vibe-test-nmt8wy3q.myshopify.com`.
+- **App Proxy validated end-to-end** (May 15): `thesigmavibe.shop/apps/vibe/*` renders pages from the Vercel-deployed Remix backend via HMAC-signed Shopify forwarding. `proxy.$.tsx` route + `authenticate.public.appProxy()` validate signatures.
+- **Prisma session store** migrated from SQLite to Postgres on Supabase, isolated in `vibe` schema (engine's `public` schema untouched).
+- Partner org "Vibe" + Partner email `mj.nigam28@gmail.com`. App `client_id = 937540a1df123dfcd486426ede2b3722`.
+
+### Infrastructure decisions locked
+- **No tunnels.** Cloudflare quick-tunnels, ngrok free, localtunnel, Pinggy free all fail in BLR/BOM regions (404 at edge, anti-abuse interstitials breaking server-to-server requests). Solution: deploy directly to Vercel, eliminate tunnels entirely.
+- **Vercel** for Vibe app (free hobby tier). **Fly.io Mumbai** planned for engine (not yet deployed).
+- **`tenant_id` scheme locked**: `t_<base64url(sha256(shop_domain)[:8] || timestamp || random_bytes(8))>`. TheSigmaVibe's id: `t_Oq0BSHnewiEAAAAAagWWlmnV-0sJmcGk`.
+
+### What's next
+- D.C.2: Customer Conversation page (replaces the demo Polaris template inside the app proxy)
+- Engine deployment to Fly.io (so the Vercel-hosted Vibe app can call it without tunnels)
+- A.1 + A.2: catalog_enriched columns (`tenant_id`, `shopify_product_id`, `shopify_variant_ids`, `image_hash`) + backfill
+- B.8: Capture Shopify GIDs back into catalog_enriched (unblocks Add-to-Cart)
 
 ---
 
