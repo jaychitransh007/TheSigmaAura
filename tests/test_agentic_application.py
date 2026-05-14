@@ -338,12 +338,27 @@ class SynthesizeItemDescriptionTests(unittest.TestCase):
         adding a new exception is a one-line change.
         """
         from agentic_application.orchestrator import _indefinite_article
-        # "yoo" consonant sounds: take "a"
+        # "yoo" consonant sounds: take "a". Includes the expanded "us*"
+        # family (``usable``, ``usual``) and the ``unisex`` / ``unitard``
+        # fashion-vocab cases that share the "yoo-nih" sound.
         for word in (
             "university", "universe", "uniform", "unique", "unicorn",
-            "union", "user", "useful", "useless", "european", "one piece", "one",
+            "union", "unisex", "unitard",
+            "user", "useful", "useless", "used",
+            "usable", "usability",
+            "usual", "usually",
+            "european", "one piece", "one",
         ):
             self.assertEqual(_indefinite_article(word), "a", word)
+        # ``un-`` + ``i*`` negation prefix is NOT "yoo" — it's "uhn-ih"
+        # (vowel onset), takes "an". The more-specific ``unin`` prefix
+        # is listed before the broader ``uni`` rule so it wins. Plausible
+        # catalog vocabulary: an uninsulated shell jacket.
+        for word in (
+            "uninsulated", "uninformed", "uninhabited",
+            "unintended", "uninspired", "uninhibited",
+        ):
+            self.assertEqual(_indefinite_article(word), "an", word)
         # Silent H: takes "an"
         for word in (
             "hour", "hourglass", "hour-long", "honest", "honor", "honour", "heir",
