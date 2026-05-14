@@ -1,0 +1,43 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+// Postgres on Supabase. Two URLs:
+// - DATABASE_URL  → pooler (pgbouncer) — used by Vercel runtime
+// - DIRECT_URL    → session pooler — used by `prisma migrate`
+//
+// schemas = ["vibe"] isolates Prisma to the `vibe` Postgres schema so it
+// never sees or attempts to manage the engine's tables in `public`
+// (catalog_enriched, conversations, etc.).
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["vibe"]
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+
+  @@schema("vibe")
+}

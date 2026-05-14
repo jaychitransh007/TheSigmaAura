@@ -1,6 +1,14 @@
 # Intent-Driven Fashion Copilot Architecture
 
-Last updated: May 12, 2026 (header bullets only — body text below is still the older target-state aspiration)
+Last updated: May 15, 2026.
+
+> **NEW DEPLOYMENT CONTEXT (May 15, 2026) — Shopify pivot.** This document still accurately describes the engine's intent taxonomy, agent topology, and turn-execution pipeline (planner → architect → composer → rater → try-on). The internals are unchanged. What's different is *where the engine runs* and *who calls it*:
+>
+> - The engine is the same `platform_core` / `agentic_application` Python service. Still single-tenant on `localhost:8010` for now.
+> - The standalone Aura web UI (`platform_core/ui.py`) is deprecated. The new caller is the **Vibe Shopify App** (Vercel-deployed Remix backend at `vibe-app-five.vercel.app`).
+> - Phase C refactors the engine for multi-tenancy (`tenant_id` on every row, every query, every cache key) and deploys it to Fly.io Mumbai. Deferred until Vibe customer pages validate.
+>
+> See [`OPEN_TASKS.md`](OPEN_TASKS.md) for the canonical current-state and Phase D plan.
 
 > **⚠️ Target-state document — substantially superseded by Phase 12 + Phase 13 + Phase 4 + Phase 5.** This
 > file describes the *aspirational* architecture (web + WhatsApp,

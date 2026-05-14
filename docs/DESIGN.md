@@ -1,6 +1,16 @@
 # Design System And Experience Principles
 
-Last updated: April 11, 2026 — "Confident Luxe" refinement (see § Brand Direction — Confident Luxe). Migration to the refined token set is tracked as Phase 14 in `docs/WORKFLOW_REFERENCE.md` § Phase History; validation criteria are in `docs/DESIGN_SYSTEM_VALIDATION.md`.
+Last updated: May 15, 2026.
+
+> **NEW SURFACE CONTEXT (May 15, 2026) — Shopify pivot.** The design system described here was authored for the legacy standalone Aura web app. With the Shopify pivot, design now applies across **three distinct surfaces** with different constraints:
+>
+> 1. **Shopify storefront** (`thesigmavibe.shop`) — themed Shopify Liquid template, customer-facing. Hero copy locked ("Style that gets you."), hero image generated via Imagen, 4 value-prop card content drafted. The Confident Luxe direction (warm ivory canvas, oxblood accent, champagne signal, Fraunces display, Inter body) carries over and should drive future theme customizations.
+> 2. **Vibe customer pages** (`thesigmavibe.shop/apps/vibe/*`) — Vibe app-proxy-rendered pages, custom UI (NOT Polaris). Match the storefront's brand voice. This is where Confident Luxe lives in code (clay-terracotta, soft cream, serif headlines).
+> 3. **Vibe merchant admin** (Shopify admin sidebar) — **Polaris-based** (Shopify's admin design system). Different visual language by Shopify mandate. Use Polaris components verbatim; no custom theming.
+>
+> The Confident Luxe brand direction (below) applies to surfaces 1 + 2. Surface 3 follows Polaris. Most of the legacy spec content describes the deprecated standalone web app's UI patterns — those translate to surface 2 (customer pages) where applicable. **Authoritative current state: [`OPEN_TASKS.md`](OPEN_TASKS.md).**
+>
+> April 11 baseline: "Confident Luxe" refinement (see § Brand Direction). Migration phase tracked as Phase 14 in `docs/WORKFLOW_REFERENCE.md`.
 
 ## Purpose
 

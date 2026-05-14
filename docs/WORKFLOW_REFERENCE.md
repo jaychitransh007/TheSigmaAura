@@ -1,6 +1,15 @@
 # Workflow Reference — Intent Execution Flows
 
-Last updated: May 12, 2026.
+Last updated: May 15, 2026.
+
+> **DEV WORKFLOW CHANGE (May 15, 2026) — Shopify pivot.** The intent-execution flows below still describe how the **Vibe Engine** (today's `platform_core` / `agentic_application`) processes a turn — that part of the system is unchanged. What's different:
+>
+> - The **caller** of these flows is no longer the standalone Aura web UI (`platform_core/ui.py`, port 8010). It's now the **Vibe Shopify App** on Vercel (`vibe-app-five.vercel.app`) which calls the engine's HTTP API.
+> - The engine is still single-tenant and runs locally on `localhost:8010` for now. Phase C refactors it to multi-tenant + deploys to Fly.io Mumbai.
+> - **For Vibe app dev workflow** (Vercel + Remix + Shopify CLI): see [`OPEN_TASKS.md`](OPEN_TASKS.md) § Locked infrastructure for stack details. Local dev iteration is `cd vibe-app && shopify app dev` (uses ngrok+Pinggy fallbacks if needed) OR `vercel --prod` for deployed iteration. Cloudflare quick-tunnels and most free tunnels fail in BLR/BOM regions — avoid.
+> - **Customer pages** at `thesigmavibe.shop/apps/vibe/*` are served by `vibe-app/app/routes/proxy.$.tsx` (App Proxy + HMAC-validated). Currently a placeholder; D.C.2–D.C.7 replace it with real pages.
+
+
 **Recent (May 11-12):** planner emits structured `anchor_garment: {category, subtype, confidence}` and the orchestrator gates wardrobe-anchor flow on `is_usable(threshold=0.5)` instead of the keyword regex (PRs #287/#292; `extract_garment_hint_from_text` deleted). Wardrobe vision enrichment now runs `gpt-5.2/low` with explicit 55s timeout + `max_retries=0` (PRs #275-#286), with the user-typed message threaded into the vision call for disambiguation. Catalog retrieval (both `orchestrator._get_catalog_rows()` and the catalog search agent) excludes `row_status='deleted_from_source'` rows using `or=(row_status.neq.deleted_from_source,row_status.is.null)` (PRs #288-#291). New metrics: `aura_wardrobe_enrichment_fallback_total{source}`, `aura_catalog_deleted_skipped_total{path}`, `aura_planner_anchor_confidence` (Histogram, 10 buckets); new Panel 35 — Catalog Title/Price Freshness (PRs #295/#296). UI: every turn stays visible as new turns are appended; duplicate stage indicator above the composer removed (PRs #270-#274/#294).
 **Earlier (May 6 post-PR-#101):** rater on a 6-dim 1/2/3 scale; episodic memory at the architect; source_preference→catalog default; composer-emitted card names; threshold 50.
 

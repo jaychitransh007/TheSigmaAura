@@ -1,15 +1,26 @@
 # Application Layer — Implementation Specification
 
-Last updated: May 12, 2026. Recent shipping covered in § Live System Reference (bottom): wardrobe vision enrichment on `gpt-5.2/low` with 55s explicit timeout + `max_retries=0` + user-text threaded to vision (PRs #275-#286), planner emits structured `anchor_garment` (replaces keyword regex; PRs #287/#292), `deleted_from_source` rows filtered from both retrieval paths after one-time catalog title/price recovery (PRs #288-#291), observability waves 1+2 (PRs #295/#296: 3 new metrics + Panel 35), and UI: persistent multi-turn stacking + composer/stage cleanup (PRs #270-#274/#294). Earlier sessions: planner output cache + `recent_user_actions` cap 20→10 (PR #259), composer-side per-rule observability + 4 pairing matchers (PRs #257/#261-#263), composition engine (Phase 4.7), composer engine (Phase 5, behind flag), Phase 3 prompt compression.
+Last updated: May 15, 2026.
+
+> **⚠️ NEW ARCHITECTURAL CONTEXT (May 15, 2026) — Shopify pivot.** Most of this document describes the *legacy standalone Aura web app* whose UI (`platform_core/ui.py`, the 3000-line server-rendered chat) is being deprecated. The runtime ENGINE (planner / architect / composer / rater / try-on, all in `agentic_application/` and `platform_core/`) remains valid — that's what gets refactored to multi-tenant in Phase C and deployed to Fly.io.
+>
+> The new system has three deployments:
+>
+> 1. **Shopify storefront** — `thesigmavibe.shop`, 13,177 products live, India/INR.
+> 2. **Vibe Shopify App** — Remix + Polaris on Vercel (`vibe-app-five.vercel.app`). App Proxy validated end-to-end on 2026-05-15. Customer pages (Conversation / Wardrobe / Looks / Outfit Check) being built; merchant admin still on the Polaris template.
+> 3. **Vibe Engine** — today's `platform_core` Python service. Still single-tenant on `localhost:8010`. Multi-tenancy refactor (Phase C) + Fly.io deployment is deferred until customer pages validate.
+>
+> **For the canonical current-state view: [`OPEN_TASKS.md`](OPEN_TASKS.md)** — has the locked infrastructure table, Phase D plan, and what's done vs pending. The "Live System Reference" section at the bottom of this file describes the legacy engine internals which are still accurate.
 
 > **⚠️ Header sections are partially deprecated; § Live System Reference (bottom) is authoritative.** The opening "Implementation Spec" sections of this document still describe the *legacy* routing layer (`intent_router.py`, `intent_handlers.py`, `context_gate.py`, `context/occasion_resolver.py`) which has been **deleted** from the codebase and replaced by the LLM copilot planner inlined into `process_turn`.
 >
 > **The authoritative "what is running right now" view lives at the bottom of this file in § Live System Reference (May 12, 2026)** — migrated from the now-deleted `CURRENT_STATE.md`. When the legacy header sections disagree with § Live System Reference, the latter wins.
 >
 > Other docs that delegate to this one:
+> - `docs/OPEN_TASKS.md` — **authoritative current-state + Phase D plan**
 > - `docs/PRODUCT.md` — product framing, personas, gap-versus-target
 > - `docs/WORKFLOW_REFERENCE.md` — per-intent execution flows + full Phase History decision log
-> - `docs/RELEASE_READINESS.md` — release gates + Recently Shipped (May 1) record
+> - `docs/RELEASE_READINESS.md` — release gates + Recently Shipped record (incl. Shopify pivot entries)
 > - `docs/OPERATIONS.md` — dashboards, on-call runbook, ops scripts, Supabase sync, run instructions
 
 ## Product Positioning

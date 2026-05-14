@@ -1,5 +1,17 @@
 # Operations: Dashboards & Queries (First-50 Rollout)
 
+Last updated: May 15, 2026.
+
+> **NEW OPS CONTEXT (May 15, 2026) — Shopify pivot.** The SQL panels below were written for the *legacy standalone Aura web app's* monitoring (onboarding funnel, intent dispatch, dependency/retention, etc.). They still query the engine's `public` schema tables and remain valid for engine-side observability. What's new:
+>
+> - **Shopify storefront** (`thesigmavibe.shop`) — operational metrics live in Shopify Admin (orders, conversion, sessions). Not queried via the panels below.
+> - **Vibe Shopify App** (Vercel-deployed) — runtime logs via `vercel logs --follow https://vibe-app-five.vercel.app`. Errors, function timing, cold-start metrics in the Vercel dashboard.
+> - **Session store** — Prisma `Session` table in Supabase `vibe` schema (separate from engine's `public`). Manage via `npx prisma studio` from `vibe-app/` or query: `SELECT * FROM vibe."Session" LIMIT 10;`
+> - **Tunnels for local dev** — confirmed broken in BLR/BOM: Cloudflare quick-tunnels, ngrok free (interstitial), localtunnel (502s), Pinggy free (interstitial). Pinggy free works as a 60-min escape hatch; for sustained work, deploy to Vercel and use the production URL.
+> - **Engine** — still on `localhost:8010` (single-tenant). Phase C deploys to Fly.io Mumbai with secrets via `fly secrets set`.
+>
+> See [`OPEN_TASKS.md`](OPEN_TASKS.md) § Locked infrastructure for the canonical infra table.
+
 This document defines the SQL queries and dashboard panels needed to monitor
 Aura during the first-50 user validation rollout. Every query targets the
 canonical Supabase tables documented in `docs/APPLICATION_SPECS.md` (§ Database

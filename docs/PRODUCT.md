@@ -1,16 +1,16 @@
 # Product Overview
 
-Last updated: May 3, 2026
+Last updated: May 15, 2026
 
-> **What is live today vs. aspirational:** This document describes the
-> **target** product, including personas and surfaces that are not yet
-> built. The currently live surfaces are **web** (onboarding, discovery
-> surface with PDP carousels, intent-organized outfit history, wardrobe,
-> profile, admin catalog) only. WhatsApp inbound is *not* in
-> the live system — the runtime was deliberately removed and is being
-> rebuilt as a separate workstream. Treat every mention of WhatsApp
-> below as roadmap, not production. For the authoritative "what
-> actually works right now" view, see `docs/APPLICATION_SPECS.md` § Live System Reference.
+> **CURRENT SYSTEM (May 15, 2026) — architecture pivot in progress.** Aura is being repackaged from a standalone web app into a **3-piece Shopify-hosted product**:
+>
+> 1. **Storefront** — `thesigmavibe.shop` (live on Shopify). Hosts the 13,177-product catalog (imported from `catalog_enriched` via templatized descriptions + 20% markup CSV). Owns cart, checkout, payments (Razorpay), orders. India / INR only. Manual fulfillment to original retailers.
+> 2. **Vibe (Shopify App)** — deployed to Vercel at `https://vibe-app-five.vercel.app`, installed on dev store `vibe-test-nmt8wy3q.myshopify.com`. App proxy is wired end-to-end (verified 2026-05-15) — `thesigmavibe.shop/apps/vibe/*` renders pages from Vibe's Remix backend. Customer-facing AI features (Conversation, Wardrobe, Looks, Outfit Check) live here. Merchant admin (Polaris) is separate.
+> 3. **Vibe Engine** — today's `platform_core` Python service. Still single-tenant, runs locally on port 8010. Phase C refactors it to multi-tenant (one DB, `tenant_id` on every row) and Fly.io Mumbai deploys it. Deferred until Vibe customer pages validate.
+>
+> **What sections below describe** is the previous *standalone Aura* surface — onboarding, web profile, web wardrobe, web chat. Those are being phased out. The product principles (memory-backed, wardrobe-first, explainable, confidence-visible) carry over and define how Vibe's customer pages should behave. **For the authoritative source-of-truth on the new architecture, see [`OPEN_TASKS.md`](OPEN_TASKS.md) § Locked infrastructure + Phase D plan.**
+>
+> WhatsApp is dropped — not in either the legacy or new system.
 
 ## Purpose
 
