@@ -129,6 +129,8 @@ export async function startTurn(args: {
   imageUrl?: string;
 }): Promise<StartTurnResponse> {
   if (USE_MOCK) {
+    // Encode start timestamp into the job_id so pollTurn can compute
+    // elapsed-time-based stage progression without server-side state.
     return {
       conversation_id: args.conversationId,
       job_id: `mock-job-${Date.now()}`,
@@ -159,52 +161,82 @@ export async function pollTurn(args: {
 // few follow-up chips. Refined further when the real engine lands.
 // ─────────────────────────────────────────────────────────────────────
 
+// Mock turn — simulates a ~5s engine turn with progressive stage events.
+// Each call decodes the start time embedded in the job_id and returns
+// the stages that "would have completed" by now. After ~5s elapsed,
+// returns status="succeeded" with a realistic outfit response.
+//
+// 5s is short enough to not annoy in dev but long enough to demo the
+// StageIndicator and exercise the polling loop. Real engine turns are
+// 30-60s; UI behaves identically — only the wall-clock differs.
+
+const MOCK_STAGE_SCHEDULE: Array<{ atMs: number; stage: string; message: string }> = [
+  { atMs: 800, stage: "planner_complete", message: "Reading your style…" },
+  { atMs: 1800, stage: "architect_complete", message: "Building the outfit shape…" },
+  { atMs: 3000, stage: "composer_complete", message: "Composing the look…" },
+  { atMs: 4000, stage: "rater_complete", message: "Checking the fit…" },
+  { atMs: 5000, stage: "tryon_complete", message: "Rendering try-on…" },
+];
+
 function mockTurnResult(args: { conversationId: string; jobId: string }): TurnStatusResponse {
-  const now = new Date().toISOString();
+  // job_id format: `mock-job-{timestamp_ms}`
+  const startedAt = Number.parseInt(args.jobId.split("-").pop() ?? "0", 10) || Date.now();
+  const elapsed = Math.max(0, Date.now() - startedAt);
+
+  const stages = MOCK_STAGE_SCHEDULE
+    .filter((s) => elapsed >= s.atMs)
+    .map((s) => ({
+      timestamp: new Date(startedAt + s.atMs).toISOString(),
+      stage: s.stage,
+      message: s.message,
+    }));
+
+  const done = elapsed >= MOCK_STAGE_SCHEDULE[MOCK_STAGE_SCHEDULE.length - 1].atMs;
+
   return {
     conversation_id: args.conversationId,
     job_id: args.jobId,
-    status: "succeeded",
-    stages: [
-      { timestamp: now, stage: "planner_complete", message: "Read your style" },
-      { timestamp: now, stage: "architect_complete", message: "Built the outfit shape" },
-      { timestamp: now, stage: "composer_complete", message: "Composed the look" },
-      { timestamp: now, stage: "rater_complete", message: "Checked the fit" },
-      { timestamp: now, stage: "tryon_complete", message: "Rendered try-on" },
-    ],
+    status: done ? "succeeded" : "running",
+    stages,
     error: "",
-    result: {
-      turn_id: `mock-turn-${args.jobId.slice(-6)}`,
-      message: "Here's a look that should work for a relaxed evening out — a fluid silk dress paired with low-heel mules. Easy to dress up or down depending on the spot.",
-      outfits: [
-        {
-          outfit_id: "mock-outfit-1",
-          name: "Champagne Drift",
-          reasoning: "Soft drape carries the evening light, warm tones flatter your palette, the silhouette stays clean without effort.",
-          fashion_score: 87,
-          items: [
-            {
-              garment_id: "mock-garment-1",
-              title: "Champagne Silk Slip Dress",
-              brand: "Nicobar",
-              price: 4188,
-              product_url: "https://thesigmavibe.shop/products/champagne-silk-slip-dress-mock",
-            },
-            {
-              garment_id: "mock-garment-2",
-              title: "Tan Leather Mules",
-              brand: "Off Duty",
-              price: 2388,
-              product_url: "https://thesigmavibe.shop/products/tan-leather-mules-mock",
-            },
-          ],
-        },
-      ],
-      follow_ups: [
-        { label: "Show me something edgier", prompt: "show me something edgier", group: "Show Alternatives" },
-        { label: "What if it rains?", prompt: "what if it rains", group: "Improve It" },
-        { label: "Add a jacket", prompt: "add a jacket to this look", group: "Shop The Gap" },
-      ],
-    },
+    result: done ? mockResultBody(args.jobId) : null,
+  };
+}
+
+function mockResultBody(jobId: string): TurnResult {
+  return {
+    turn_id: `mock-turn-${jobId.slice(-6)}`,
+    message:
+      "Here's a look that should work for a relaxed evening out — a fluid silk dress paired with low-heel mules. Easy to dress up or down depending on the spot.",
+    outfits: [
+      {
+        outfit_id: "mock-outfit-1",
+        name: "Champagne Drift",
+        reasoning:
+          "Soft drape carries the evening light, warm tones flatter your palette, the silhouette stays clean without effort.",
+        fashion_score: 87,
+        items: [
+          {
+            garment_id: "mock-garment-1",
+            title: "Champagne Silk Slip Dress",
+            brand: "Nicobar",
+            price: 4188,
+            product_url: "https://thesigmavibe.shop/products/champagne-silk-slip-dress-mock",
+          },
+          {
+            garment_id: "mock-garment-2",
+            title: "Tan Leather Mules",
+            brand: "Off Duty",
+            price: 2388,
+            product_url: "https://thesigmavibe.shop/products/tan-leather-mules-mock",
+          },
+        ],
+      },
+    ],
+    follow_ups: [
+      { label: "Show me something edgier", prompt: "show me something edgier", group: "Show Alternatives" },
+      { label: "What if it rains?", prompt: "what if it rains", group: "Improve It" },
+      { label: "Add a jacket", prompt: "add a jacket to this look", group: "Shop The Gap" },
+    ],
   };
 }
