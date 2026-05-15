@@ -9,8 +9,8 @@ This file lists what's open **now**. Shipped work history lives in `docs/RELEASE
 The engine, today a single-tenant server-rendered app, is being split into three deployments:
 
 1. **Shopify storefront** — live at `thesigmavibe.shop`. Catalog imported, branded, ready for customers. India / INR only. Manual fulfillment to original retailers.
-2. **Vibe (Shopify App)** — scaffolded with Remix + Polaris + App Bridge, OAuth-installed on a dev store. **Vibe-specific UI not yet built** — still showing Shopify's stock template page.
-3. **Vibe Engine** — multi-tenant API derived from today's `platform_core`. Refactor deferred until Vibe's UX validates on the single-tenant engine.
+2. **Vibe (Shopify App)** — deployed to Vercel at `vibe-app-five.vercel.app`. Customer-facing App Proxy live and HMAC-validated (Hello-from-Vibe placeholder renders at `/apps/vibe/test`). Merchant admin still on the stock Polaris "Generate a product" template — D.M.1 replaces it.
+3. **Vibe Engine** — single-tenant `platform_core` Python service on `localhost:8010`. Multi-tenant refactor (Phase C) + Fly.io deploy deferred until customer pages validate.
 
 ### Locked infrastructure (2026-05-14/15)
 
@@ -84,7 +84,7 @@ Vibe has **two completely separate surfaces** that get built differently:
 | Who | The merchant (you / future installers) | The shopper |
 | URL | `admin.shopify.com/store/.../apps/vibe` | `thesigmavibe.shop/apps/vibe/*` |
 | Purpose | Trust, control, attribution, settings | The actual AI experience |
-| Mechanism | Embedded admin app (already working) | App Proxy (not yet set up) |
+| Mechanism | Embedded admin app (working — stock template) | **App Proxy live** (D.S.1 ✓, placeholder rendering; real pages in D.C.*) |
 | UI library | Polaris | Custom (storefront brand) |
 
 ### Done
@@ -102,12 +102,51 @@ Vibe has **two completely separate surfaces** that get built differently:
 ### D.C — Customer storefront UI (the actual product)
 
 - [ ] **D.C.1.** Theme App Extension — "Style with Vibe" entry-point widget + storefront nav link. The discoverability layer.
-- [ ] **D.C.2.** **Conversation page** — chat input, scroll-back history, product-card rendering. Calls Engine API.
+- [ ] **D.C.2.** **Conversation page** — chat input, scroll-back history, product-card rendering. Calls Engine API. **Sub-plan below.**
 - [ ] **D.C.3.** Wardrobe page (CRUD + filters). Requires D.S.3 (customer auth).
 - [ ] **D.C.4.** Looks page (saved + past recommendations).
 - [ ] **D.C.5.** Outfit Check page (upload outfit → feedback).
 - [ ] **D.C.6.** Try-on integration (Gemini) surfaced inside Conversation + Looks.
 - [ ] **D.C.7.** "Add to Cart" via Shopify Storefront API on every PDP card. **Depends on B.8** (need `shopify_variant_id` per catalog row).
+
+#### D.C.2 sub-plan — Conversation page
+
+**Goal.** Customer visits `thesigmavibe.shop/apps/vibe/style`, types a styling question ("what should I wear to a wedding?"), and sees outfit recommendations from the engine. Replaces the Hello-from-Vibe placeholder.
+
+**Engine API contract** (confirmed against `modules/agentic_application/src/agentic_application/api.py`):
+
+| Step | Endpoint | Purpose |
+|---|---|---|
+| 1 | `POST /v1/conversations/resolve` `{user_id}` | Find or create active conversation for this customer |
+| 2 | `POST /v1/conversations/{id}/turns/start` `{message, image?}` | Kick off a turn (async; returns `job_id`) |
+| 3 | `GET /v1/conversations/{id}/turns/{job_id}/status` | Poll for stage progression + final result |
+
+Engine turn end-to-end takes 30–60s with try-on; up to 90s on cold path. Stage events (`planner_complete`, `architect_complete`, `composer_complete`, `rater_complete`, `tryon_complete`) stream via the poll endpoint.
+
+**Critical dependency.** The Vibe app on Vercel cannot reach the engine on `localhost:8010`. Two paths:
+- (a) **Mock-first dev**: build the entire UI against a typed mock engine response. Real engine integration after Fly.io deploy.
+- (b) **Block on Fly.io**: deploy engine first, then build UI against the real URL.
+
+**Recommended: path (a)** — start UI immediately, engine deploy proceeds in parallel as priority #2.
+
+##### Sub-tasks
+
+- [ ] **D.C.2a — Route restructure** (~30 min). Add `vibe-app/app/routes/proxy.style.tsx` for the Conversation page. Add `proxy._index.tsx` redirecting to `/style`. Keep `proxy.$.tsx` as a 404 fallback. Stub `proxy.wardrobe.tsx`, `proxy.looks.tsx`, `proxy.check.tsx` (each renders a "Coming soon" card — replaced in D.C.3-5).
+- [ ] **D.C.2b — Session model** (~1 hr). Cookie `vibe_session_id` (UUID, set on first visit, httpOnly, Secure, SameSite=Lax, 1-year expiry). On every request, call `POST /v1/conversations/resolve` with `user_id = vibe_session_id` to get the active conversation. Anonymous-only for v1; D.S.3 layers Shopify Customer Account on top later.
+- [ ] **D.C.2c — Engine API client** (~1 hr). New file `vibe-app/app/lib/engine.server.ts`. Typed wrappers for the three endpoints above. Reads `ENGINE_API_URL` env var (set on Vercel post-Fly.io deploy). Mock fallback when `ENGINE_API_URL` is unset OR `VIBE_USE_MOCK=true` — returns a canned response so the UI can be built before the engine is reachable.
+- [ ] **D.C.2d — Conversation UI shell** (~2-3 hrs). Components in `vibe-app/app/components/conversation/`:
+  - `ConversationLayout` — header + message list + composer (fixed-bottom on mobile).
+  - `Message` — user vs assistant bubbles. Custom UI (NOT Polaris).
+  - `Composer` — textarea + send button. Cmd/Ctrl+Enter to send. (Image upload deferred to D.C.5/6.)
+  - `StageIndicator` — visible during turn-in-progress: "Reading your style…" → "Building your outfit…" → "Rendering try-on…" — drives off engine's stage events.
+  - `WelcomeState` — first-visit empty state with 3-4 suggested prompts ("Dress me for a wedding", "What goes with these jeans?", etc.).
+- [ ] **D.C.2e — Product card component** (~2 hrs). `OutfitCard` renders the engine's outfit response: try-on hero image (when available), garment list with title + marked-up price (×1.2 — the engine already returns marked-up; verify) + size chips, Like/Hide actions. "Buy Outfit" and "Add to Cart" both disabled until D.C.7 (depends on B.8 GIDs). Buy Now per-garment opens `product_url` in a new tab (works today).
+- [ ] **D.C.2f — Brand styling + responsive** (~1-2 hrs). Confident Luxe palette (warm ivory canvas `#F7F3EC`, espresso ink `#16110E`, oxblood accent `#5C1A1B`, champagne signal `#C6A15B`). Fraunces for display, Inter for body — load via Google Fonts. Mobile-first; the storefront's responsive frame is Shopify's responsibility but our content must work at 360px wide.
+- [ ] **D.C.2g — Real engine integration** (~1 hr; gated on Fly.io). Set `ENGINE_API_URL` on Vercel, remove `VIBE_USE_MOCK=true`, redeploy, verify end-to-end on `vibe-test-nmt8wy3q.myshopify.com/apps/vibe/style`.
+
+**Total estimate.** ~7–10 hours of focused work. Realistically 2-3 days at the pace we've been moving.
+
+**Out of scope for D.C.2** (deferred to later sub-tasks): image upload, true streaming (we poll, not SSE), conversation history sidebar (multi-thread UX), iteration carousels, follow-up suggestion chips, feedback capture beyond Like/Hide.
 
 ### D.M — Merchant admin UI (trust + control)
 
@@ -150,7 +189,7 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 - [x] **Homepage hero** — "Style that gets you." copy locked, hero image generated, 4 value-prop card content drafted.
 - [x] **Brand vocabulary map** — 10 retailers → display names hardcoded in `scripts/seed_thesigmavibe_catalog/brands.py`.
 - [x] **Catalog price markup** — 20% baked into the CSV build.
-- [x] **Vibe dev infrastructure** — Partner org "Vibe" with `mj.nigam28@gmail.com`, dev store `vibe-test-nmt8wy3q.myshopify.com`, ngrok tunnel working (Cloudflare quick-tunnels confirmed broken in user's region).
+- [x] **Vibe dev infrastructure** — Partner org "Vibe" with `mj.nigam28@gmail.com`, dev store `vibe-test-nmt8wy3q.myshopify.com`. **Tunnels eliminated entirely** by deploying directly to Vercel (Cloudflare quick / ngrok free / localtunnel / Pinggy free all confirmed broken in BLR/BOM regions due to anti-abuse interstitials breaking server-to-server app proxy requests).
 
 ## Reuse (don't build)
 
