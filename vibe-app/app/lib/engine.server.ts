@@ -84,29 +84,76 @@ export const ENGINE_MOCK_ACTIVE = USE_MOCK;
 
 // ─────────────────────────────────────────────────────────────────────
 // Real HTTP client
+//
+// Timeouts (D.C.2g): every engine call uses AbortSignal.timeout to
+// cap the wait. Hobby Vercel functions have a 60s ceiling — we set
+// internal timeouts well below that so a hung engine doesn't burn
+// the function's full budget.
+//
+// Engine endpoints in practice:
+//   - resolve / start-turn / poll-status: short (≪ 1s) — 8s cap is
+//     generous, fails fast if engine is unreachable.
+// Long-running work (the 30-60s turn pipeline) lives behind the
+// async job pattern; we never block on it in a single HTTP call.
 // ─────────────────────────────────────────────────────────────────────
 
+const ENGINE_HTTP_TIMEOUT_MS = 8_000;
+
+class EngineError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "EngineError";
+  }
+}
+
+function fetchTimeout(): AbortSignal {
+  // AbortSignal.timeout is available in Node 18+ / Edge runtimes.
+  return AbortSignal.timeout(ENGINE_HTTP_TIMEOUT_MS);
+}
+
+async function readErrorBody(resp: Response): Promise<string> {
+  try {
+    const text = await resp.text();
+    return text.slice(0, 200);
+  } catch {
+    return "";
+  }
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const resp = await fetch(`${ENGINE_API_URL}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(`${ENGINE_API_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: fetchTimeout(),
+    });
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new EngineError(0, `Engine ${path} unreachable: ${reason}`);
+  }
   if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    throw new Error(`Engine ${path} → ${resp.status}: ${text.slice(0, 200)}`);
+    throw new EngineError(resp.status, `Engine ${path} → ${resp.status}: ${await readErrorBody(resp)}`);
   }
   return (await resp.json()) as T;
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const resp = await fetch(`${ENGINE_API_URL}${path}`);
+  let resp: Response;
+  try {
+    resp = await fetch(`${ENGINE_API_URL}${path}`, { signal: fetchTimeout() });
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new EngineError(0, `Engine ${path} unreachable: ${reason}`);
+  }
   if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    throw new Error(`Engine ${path} → ${resp.status}: ${text.slice(0, 200)}`);
+    throw new EngineError(resp.status, `Engine ${path} → ${resp.status}: ${await readErrorBody(resp)}`);
   }
   return (await resp.json()) as T;
 }
+
+export { EngineError };
 
 // ─────────────────────────────────────────────────────────────────────
 // Public API
@@ -204,6 +251,12 @@ function mockTurnResult(args: { conversationId: string; jobId: string }): TurnSt
 }
 
 function mockResultBody(jobId: string): TurnResult {
+  // Placeholder images from picsum (deterministic per seed) so the
+  // outfit card has something to render. Swapped for real catalog
+  // images when ENGINE_API_URL is set.
+  const pic = (seed: string, w = 400, h = 533) =>
+    `https://picsum.photos/seed/${seed}/${w}/${h}`;
+
   return {
     turn_id: `mock-turn-${jobId.slice(-6)}`,
     message:
@@ -215,6 +268,7 @@ function mockResultBody(jobId: string): TurnResult {
         reasoning:
           "Soft drape carries the evening light, warm tones flatter your palette, the silhouette stays clean without effort.",
         fashion_score: 87,
+        tryon_image_url: pic("vibe-tryon-1", 600, 800),
         items: [
           {
             garment_id: "mock-garment-1",
@@ -222,6 +276,7 @@ function mockResultBody(jobId: string): TurnResult {
             brand: "Nicobar",
             price: 4188,
             product_url: "https://thesigmavibe.shop/products/champagne-silk-slip-dress-mock",
+            image_url: pic("vibe-dress-1"),
           },
           {
             garment_id: "mock-garment-2",
@@ -229,6 +284,7 @@ function mockResultBody(jobId: string): TurnResult {
             brand: "Off Duty",
             price: 2388,
             product_url: "https://thesigmavibe.shop/products/tan-leather-mules-mock",
+            image_url: pic("vibe-mules-1"),
           },
         ],
       },
