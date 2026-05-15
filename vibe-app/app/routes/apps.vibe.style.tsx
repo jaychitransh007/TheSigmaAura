@@ -166,7 +166,7 @@ export default function ConversationPage() {
     // Schedule next poll
     const timer = setTimeout(() => {
       pollFetcher.load(
-        `/proxy/api/poll?conv=${encodeURIComponent(conversationId)}&job=${encodeURIComponent(pending.jobId)}`,
+        `/apps/vibe/api/poll?conv=${encodeURIComponent(conversationId)}&job=${encodeURIComponent(pending.jobId)}`,
       );
     }, 1000);
     return () => clearTimeout(timer);

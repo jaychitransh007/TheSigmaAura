@@ -1,6 +1,7 @@
 // Catchall fallback for unknown /apps/vibe/* paths.
-// Specific routes (proxy._index, proxy.style, proxy.wardrobe,
-// proxy.looks, proxy.check) take precedence; anything else lands here.
+// Specific routes (apps.vibe._index, apps.vibe.style, apps.vibe.wardrobe,
+// apps.vibe.looks, apps.vibe.check) take precedence; anything else
+// lands here.
 //
 // We still validate the App Proxy signature even on the 404 — refuse
 // to render anything for unsigned requests.
