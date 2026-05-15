@@ -25,8 +25,9 @@ The engine, today a single-tenant server-rendered app, is being split into three
 | Partner email | `mj.nigam28@gmail.com` |
 | Vibe app dev store | `vibe-test-nmt8wy3q.myshopify.com` |
 | Vibe app `client_id` | `937540a1df123dfcd486426ede2b3722` |
-| Vibe app hosting | **Vercel — live at `https://vibe-app-five.vercel.app`** (deployed 2026-05-15) |
+| Vibe app hosting | **Vercel — live at `https://vibe-app-five.vercel.app`** (deployed 2026-05-15). **Plan: Hobby (free); functions pinned to `bom1` (Mumbai)** via `vercel.json`. Hobby's 60s function-duration cap is fine because we use async poll (each call ≪ 1s). |
 | Vibe app session store | Postgres `vibe` schema on Supabase (isolated from engine's `public` schema) |
+| Engine ↔ Vibe app co-location | **Both Mumbai** — Vercel `bom1` (Vibe app functions) + Fly.io `bom` (engine, planned). Intra-city RTT ~5–20ms vs cross-region ~200–300ms. Cuts per-turn polling overhead from 3–6s to 75–600ms. |
 | Dev tunnel (legacy) | All free tunnels (Cloudflare quick / ngrok free / localtunnel / Pinggy) failed in BLR/BOM regions due to anti-abuse interstitials breaking server-to-server app proxy requests. **Tunnels eliminated by deploying directly to Vercel.** |
 | Engine hosting (planned) | Fly.io Mumbai — not yet deployed |
 | Markup on imported prices | 20% (1.2× source, rounded to whole rupees) |
@@ -129,11 +130,13 @@ Engine turn end-to-end takes 30–60s with try-on; up to 90s on cold path. Stage
 
 **Recommended: path (a)** — start UI immediately, engine deploy proceeds in parallel as priority #2.
 
+**UI reuse strategy (locked).** Reference-based reuse of `platform_core/ui.py`, not literal port. The legacy code is Python f-strings + vanilla JS — fundamentally incompatible with React/Remix runtime. But the *proven UX patterns* (chat layout, outfit card 3-column structure with detail panel, line-clamp + min-height for vertical stability, stylist-voice stage copy, follow-up bucket headers, welcome state with primary CTA + "More ways to style" toggle) carry over. Workflow: open `platform_core/ui.py` as a spec; write fresh React components matching the markup, copy, and behavior. Reuse design tokens 1:1 (Confident Luxe palette + Fraunces/Inter). Drop everything tied to the legacy runtime (view-class CSS switching, localStorage filter persistence, onboarding flow, profile editing — Shopify owns identity now).
+
 ##### Sub-tasks
 
 - [ ] **D.C.2a — Route restructure** (~30 min). Add `vibe-app/app/routes/proxy.style.tsx` for the Conversation page. Add `proxy._index.tsx` redirecting to `/style`. Keep `proxy.$.tsx` as a 404 fallback. Stub `proxy.wardrobe.tsx`, `proxy.looks.tsx`, `proxy.check.tsx` (each renders a "Coming soon" card — replaced in D.C.3-5).
 - [ ] **D.C.2b — Session model** (~1 hr). Cookie `vibe_session_id` (UUID, set on first visit, httpOnly, Secure, SameSite=Lax, 1-year expiry). On every request, call `POST /v1/conversations/resolve` with `user_id = vibe_session_id` to get the active conversation. Anonymous-only for v1; D.S.3 layers Shopify Customer Account on top later.
-- [ ] **D.C.2c — Engine API client** (~1 hr). New file `vibe-app/app/lib/engine.server.ts`. Typed wrappers for the three endpoints above. Reads `ENGINE_API_URL` env var (set on Vercel post-Fly.io deploy). Mock fallback when `ENGINE_API_URL` is unset OR `VIBE_USE_MOCK=true` — returns a canned response so the UI can be built before the engine is reachable.
+- [ ] **D.C.2c — Engine API client** (~1 hr). New file `vibe-app/app/lib/engine.server.ts`. Typed wrappers for the three endpoints above. Reads `ENGINE_API_URL` env var (set on Vercel post-Fly.io deploy). Mock fallback when `ENGINE_API_URL` is unset OR `VIBE_USE_MOCK=true` — returns a canned response so the UI can be built before the engine is reachable. **Also: pin Vercel functions to `bom1`** by adding `vercel.json` at the app root: `{ "regions": ["bom1"] }`. Co-locates with Fly.io `bom` engine (intra-Mumbai RTT). Hobby plan supports this — no Pro upgrade required.
 - [ ] **D.C.2d — Conversation UI shell** (~2-3 hrs). Components in `vibe-app/app/components/conversation/`:
   - `ConversationLayout` — header + message list + composer (fixed-bottom on mobile).
   - `Message` — user vs assistant bubbles. Custom UI (NOT Polaris).
@@ -199,7 +202,7 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 ## Next priorities (in execution order)
 
 1. **D.C.2 — Conversation page (customer).** The first user-visible Vibe feature. Custom UI (not Polaris), calls the existing Engine API, renders product cards. Anonymous-session for now; logged-in customer support comes with D.S.3. **Note:** engine still on `localhost:8010`; we'll either tunnel app→engine via the Aura dev box's IP, or accelerate Phase C engine deployment to Fly.io.
-2. **Engine deploy to Fly.io Mumbai.** Container the Python engine, set Supabase + OpenAI + Gemini secrets, deploy. ~1–2 hrs. Lets Vibe app on Vercel call the engine without tunnels.
+2. **Engine deploy to Fly.io Mumbai (`bom`).** Container the Python engine, set Supabase + OpenAI + Gemini secrets, `fly launch --region bom`, deploy. ~1–2 hrs. Lets Vibe app on Vercel call the engine without tunnels. Co-located with Vercel `bom1` Vibe app → intra-Mumbai RTT for low per-turn overhead.
 3. **A.1 + A.2 — Schema migration + tenant_id backfill.** ~30 min total. Pure DB work, no dependencies. Unblocks B.8, which unblocks D.C.7 (Add to Cart).
 
 After these three:
