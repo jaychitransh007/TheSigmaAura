@@ -1,0 +1,330 @@
+/* Conversation surface — Confident Luxe brand tokens applied.
+ *
+ * Reference: legacy platform_core/ui.py chat section. Patterns ported:
+ *  - 960px feed max-width
+ *  - borderless stylist bubbles with 2px ink left rule
+ *  - italic Fraunces welcome headline
+ *  - composer with rounded outer surface + inline send button
+ *  - stylist-voice stage message (one-per-poll advance)
+ *
+ * Re-derived in React because the legacy implementation is Python
+ * f-strings + vanilla JS — not portable. Copy and tone are 1:1.
+ */
+
+.conv-page {
+  --canvas: #faf5ee;
+  --surface: #ffffff;
+  --ink: #16110e;
+  --ink-soft: #2d1b14;
+  --ink-muted: #806050;
+  --accent: #b45a3c;
+  --accent-deep: #5c1a1b;
+  --signal: #c6a15b;
+  --rule: #f0e0d0;
+  --rule-soft: #f5ebe0;
+
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  background: var(--canvas);
+  color: var(--ink-soft);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.conv-header {
+  border-bottom: 1px solid var(--rule);
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.conv-header h1 {
+  font-family: "Playfair Display", Georgia, serif;
+  font-style: italic;
+  font-size: 1.4rem;
+  color: var(--accent);
+  margin: 0;
+}
+
+.conv-mock-badge {
+  display: inline-block;
+  background: var(--rule-soft);
+  color: var(--ink-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+
+.conv-feed {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 9rem;
+  box-sizing: border-box;
+}
+
+/* Welcome state ------------------------------------------------- */
+.conv-welcome {
+  text-align: center;
+  padding: 4rem 1rem 2rem;
+}
+
+.conv-welcome-headline {
+  font-family: "Playfair Display", Georgia, serif;
+  font-style: italic;
+  font-size: 2.25rem;
+  color: var(--accent);
+  margin: 0 0 0.5rem;
+}
+
+.conv-welcome-sub {
+  color: var(--ink-muted);
+  font-size: 1rem;
+  margin: 0 0 2rem;
+}
+
+.conv-welcome-cta {
+  display: inline-block;
+  background: var(--accent-deep);
+  color: var(--canvas);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.8rem 1.6rem;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+.conv-welcome-cta:hover {
+  background: var(--accent);
+}
+
+.conv-welcome-secondary {
+  margin-top: 2rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.conv-prompt-chip {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  color: var(--ink-soft);
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.conv-prompt-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Messages ------------------------------------------------------ */
+.conv-message {
+  display: flex;
+  flex-direction: column;
+  max-width: 75%;
+}
+
+.conv-message--user {
+  align-self: flex-end;
+  background: var(--accent-deep);
+  color: var(--canvas);
+  padding: 0.75rem 1rem;
+  border-radius: 18px 18px 4px 18px;
+  line-height: 1.5;
+}
+
+.conv-message--assistant {
+  align-self: flex-start;
+  padding: 0.25rem 0 0.25rem 1rem;
+  border-left: 2px solid var(--ink);
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.conv-message--assistant p {
+  margin: 0 0 0.5rem;
+}
+
+/* Outfit card (D.C.2e will replace with the rich 3-column version) */
+.conv-outfit-card {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-top: 0.75rem;
+  box-shadow: 0 4px 16px rgba(180, 100, 60, 0.06);
+}
+
+.conv-outfit-name {
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 1.15rem;
+  color: var(--accent);
+  margin: 0 0 0.25rem;
+}
+
+.conv-outfit-reasoning {
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.conv-outfit-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.conv-outfit-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.9rem;
+}
+
+.conv-outfit-item:last-child {
+  border-bottom: none;
+}
+
+.conv-outfit-item-brand {
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.conv-outfit-item-price {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Stage indicator ----------------------------------------------- */
+.conv-stage {
+  align-self: flex-start;
+  padding: 0.5rem 0 0.5rem 1rem;
+  border-left: 2px solid var(--signal);
+  color: var(--ink-muted);
+  font-style: italic;
+  font-size: 0.95rem;
+}
+
+.conv-stage::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--signal);
+  border-radius: 50%;
+  margin-right: 0.5rem;
+  animation: conv-pulse 1s ease-in-out infinite;
+  vertical-align: middle;
+}
+
+@keyframes conv-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+/* Composer ------------------------------------------------------ */
+.conv-composer-outer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, var(--canvas) 60%, transparent);
+  padding: 1.5rem 1.5rem 1.5rem;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.conv-composer {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 720px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 24px;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  box-shadow: 0 8px 24px rgba(180, 100, 60, 0.08);
+}
+
+.conv-composer textarea {
+  flex: 1;
+  border: none;
+  resize: none;
+  padding: 0.6rem 0;
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--ink-soft);
+  background: transparent;
+  outline: none;
+  min-height: 1.5rem;
+  max-height: 12rem;
+  line-height: 1.5;
+}
+
+.conv-composer textarea::placeholder {
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.conv-composer-send {
+  background: var(--accent-deep);
+  color: var(--canvas);
+  border: none;
+  border-radius: 999px;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.conv-composer-send:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.conv-composer-send:disabled {
+  background: var(--ink-muted);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Mobile -------------------------------------------------------- */
+@media (max-width: 600px) {
+  .conv-feed {
+    padding: 1.5rem 1rem 8rem;
+  }
+  .conv-welcome-headline {
+    font-size: 1.75rem;
+  }
+  .conv-message {
+    max-width: 88%;
+  }
+}

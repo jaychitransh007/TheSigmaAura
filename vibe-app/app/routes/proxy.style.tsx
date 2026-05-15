@@ -1,42 +1,53 @@
 // Conversation page — primary Vibe customer surface.
 // URL: thesigmavibe.shop/apps/vibe/style
 //
-// This file implements D.C.2a (route exists) + D.C.2b (session cookie)
-// + D.C.2c (engine API client wired). The full conversation UI shell
-// (message list, composer, stage indicator, product cards) lands in
-// D.C.2d on top of this foundation.
+// D.C.2d implementation. Full chat loop with mock engine progression:
+//   - Loader: validate App Proxy, resolve customer session + conversation
+//   - Action: receive message → engine.startTurn() → return job_id
+//   - Client: append user message, kick off polling via useFetcher,
+//     update UI with stages, replace stage with final outfit when done
 //
-// What runs on this page today:
-//   - Validate Shopify App Proxy HMAC signature (rejects unsigned).
-//   - Read or mint the customer's anonymous session id (cookie).
-//   - Call engine.resolveConversation() — returns the customer's
-//     conversation_id (mocked until ENGINE_API_URL is set in Vercel).
-//   - Render a foundation card showing the wired state.
+// Engine API runs in mock mode (5s simulated turn with stage events)
+// until ENGINE_API_URL is set on Vercel post-Fly.io deploy.
 
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs, LinksFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { useFetcher, useLoaderData } from "@remix-run/react";
+import { useEffect, useRef, useState } from "react";
 
-import { VibeShell } from "../components/vibe-shell";
-import { ENGINE_MOCK_ACTIVE, resolveConversation } from "../lib/engine.server";
+import { Composer } from "../components/conversation/composer";
+import { MessageView, type ChatMessage } from "../components/conversation/message";
+import { StageIndicator } from "../components/conversation/stage-indicator";
+import { WelcomeState } from "../components/conversation/welcome-state";
+import conversationStyles from "../components/conversation/styles.css?url";
+import {
+  ENGINE_MOCK_ACTIVE,
+  resolveConversation,
+  startTurn,
+  type TurnStatusResponse,
+} from "../lib/engine.server";
 import { getOrCreateSession } from "../lib/session.server";
 import { authenticate } from "../shopify.server";
+
+export const links: LinksFunction = () => [
+  { rel: "stylesheet", href: conversationStyles },
+];
+
+// ─────────────────────────────────────────────────────────────────────
+// Loader — resolves session + conversation on page load
+// ─────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session: shopSession } = await authenticate.public.appProxy(request);
   const { sessionId, isNew, setCookie } = await getOrCreateSession(request);
-
   const conversation = await resolveConversation(sessionId);
 
   const headers: Record<string, string> = {};
-  if (isNew && setCookie) {
-    headers["Set-Cookie"] = setCookie;
-  }
+  if (isNew && setCookie) headers["Set-Cookie"] = setCookie;
 
   return json(
     {
       sessionId,
-      sessionIsNew: isNew,
       shop: shopSession?.shop ?? null,
       conversationId: conversation.conversation_id,
       mockMode: ENGINE_MOCK_ACTIVE,
@@ -45,40 +56,152 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   );
 };
 
+// ─────────────────────────────────────────────────────────────────────
+// Action — submits a user message, returns the engine job_id
+// ─────────────────────────────────────────────────────────────────────
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  await authenticate.public.appProxy(request);
+
+  const form = await request.formData();
+  const conversationId = String(form.get("conversationId") ?? "").trim();
+  const message = String(form.get("message") ?? "").trim();
+
+  if (!conversationId || !message) {
+    return json(
+      { ok: false, error: "Missing conversationId or message" },
+      { status: 400 },
+    );
+  }
+
+  const turn = await startTurn({ conversationId, message });
+  return json({ ok: true, jobId: turn.job_id, message });
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────────────────
+
+type PendingTurn = {
+  jobId: string;
+  startedAt: number;
+  status: TurnStatusResponse | null;
+};
+
 export default function ConversationPage() {
-  const { sessionId, sessionIsNew, shop, conversationId, mockMode } =
-    useLoaderData<typeof loader>();
+  const { conversationId, mockMode } = useLoaderData<typeof loader>();
+  const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [pending, setPending] = useState<PendingTurn | null>(null);
+
+  const submitFetcher = useFetcher<typeof action>();
+  const pollFetcher = useFetcher<TurnStatusResponse>();
+  const feedRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages or pending state changes.
+  useEffect(() => {
+    const el = feedRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, pending]);
+
+  // When the submit action returns, append the user message + start polling.
+  useEffect(() => {
+    if (submitFetcher.state !== "idle") return;
+    const data = submitFetcher.data;
+    if (!data || !("ok" in data) || !data.ok) return;
+    if (pending && pending.jobId === data.jobId) return; // already tracking
+
+    setMessages((prev) => [...prev, { role: "user", text: data.message }]);
+    setPending({ jobId: data.jobId, startedAt: Date.now(), status: null });
+    setDraft("");
+  }, [submitFetcher.state, submitFetcher.data, pending]);
+
+  // Poll loop — fires every second while pending.
+  useEffect(() => {
+    if (!pending) return;
+    if (pollFetcher.state !== "idle") return;
+
+    const status = pollFetcher.data;
+    if (status && status.job_id === pending.jobId) {
+      // Update with latest status
+      setPending((prev) => (prev ? { ...prev, status } : prev));
+
+      if (status.status === "succeeded" && status.result) {
+        // Turn complete — append assistant message + outfits, clear pending.
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text: status.result!.message,
+            outfits: status.result!.outfits,
+          },
+        ]);
+        setPending(null);
+        return;
+      }
+
+      if (status.status === "failed") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text:
+              status.error ||
+              "Something went wrong. Try again in a moment.",
+          },
+        ]);
+        setPending(null);
+        return;
+      }
+    }
+
+    // Schedule next poll
+    const timer = setTimeout(() => {
+      pollFetcher.load(
+        `/proxy/api/poll?conv=${encodeURIComponent(conversationId)}&job=${encodeURIComponent(pending.jobId)}`,
+      );
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [pending, pollFetcher, conversationId]);
+
+  const handleSubmit = () => {
+    const text = draft.trim();
+    if (!text || pending) return;
+    submitFetcher.submit(
+      { conversationId, message: text },
+      { method: "post" },
+    );
+  };
+
+  const handlePromptPick = (text: string) => {
+    setDraft(text);
+  };
+
+  const showWelcome = messages.length === 0 && !pending;
+  const composerDisabled = pending !== null || submitFetcher.state !== "idle";
 
   return (
-    <VibeShell
-      title={
-        <>
-          Conversation
-          {mockMode && <span className="vibe-mock-badge">Mock</span>}
-        </>
-      }
-      subtitle="The chat UI lands here in D.C.2d. The plumbing below is live."
-    >
-      <p>App Proxy + session + engine wiring all verified.</p>
-      <div className="vibe-meta">
-        <p>
-          Session: <code>{sessionId.slice(0, 12)}…</code>
-          {sessionIsNew && " (new this visit)"}
-        </p>
-        <p>
-          Conversation: <code>{conversationId}</code>
-        </p>
-        <p>
-          Shop: <code>{shop ?? "(unknown)"}</code>
-        </p>
-        {mockMode && (
-          <p>
-            Engine is in <strong>mock mode</strong>. Set{" "}
-            <code>ENGINE_API_URL</code> on Vercel after Fly.io engine deploy
-            to hit the real engine.
-          </p>
-        )}
+    <div className="conv-page">
+      <header className="conv-header">
+        <h1>Vibe{mockMode && <span className="conv-mock-badge"> Mock</span>}</h1>
+      </header>
+
+      <div className="conv-feed" ref={feedRef}>
+        {showWelcome && <WelcomeState onPick={handlePromptPick} />}
+
+        {messages.map((msg, i) => (
+          <MessageView key={i} message={msg} />
+        ))}
+
+        {pending && <StageIndicator stages={pending.status?.stages ?? []} />}
       </div>
-    </VibeShell>
+
+      <Composer
+        value={draft}
+        onChange={setDraft}
+        onSubmit={handleSubmit}
+        disabled={composerDisabled}
+      />
+    </div>
   );
 }
