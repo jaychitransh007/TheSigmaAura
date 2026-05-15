@@ -6,6 +6,12 @@
  *  - italic Fraunces welcome headline
  *  - composer with rounded outer surface + inline send button
  *  - stylist-voice stage message (one-per-poll advance)
+ *  - 3-column outfit card (thumbnails | hero | detail panel) with
+ *    line-clamp + min-height for vertical stability
+ *  - Outfit mode vs Garment mode switching on thumbnail click
+ *  - Buy Outfit disabled (multi-item checkout = D.C.7); Buy Now per-
+ *    garment opens product_url
+ *  - Hide icon at top-right of card header
  *
  * Re-derived in React because the legacy implementation is Python
  * f-strings + vanilla JS — not portable. Copy and tone are 1:1.
@@ -40,11 +46,12 @@
 }
 
 .conv-header h1 {
-  font-family: "Playfair Display", Georgia, serif;
+  font-family: "Fraunces", "Playfair Display", Georgia, serif;
   font-style: italic;
   font-size: 1.4rem;
   color: var(--accent);
   margin: 0;
+  letter-spacing: -0.01em;
 }
 
 .conv-mock-badge {
@@ -57,6 +64,7 @@
   text-transform: uppercase;
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
+  font-style: normal;
 }
 
 .conv-feed {
@@ -78,11 +86,12 @@
 }
 
 .conv-welcome-headline {
-  font-family: "Playfair Display", Georgia, serif;
+  font-family: "Fraunces", "Playfair Display", Georgia, serif;
   font-style: italic;
-  font-size: 2.25rem;
+  font-size: 2.5rem;
   color: var(--accent);
   margin: 0 0 0.5rem;
+  letter-spacing: -0.02em;
 }
 
 .conv-welcome-sub {
@@ -97,16 +106,27 @@
   color: var(--canvas);
   font-weight: 600;
   letter-spacing: 0.02em;
-  padding: 0.8rem 1.6rem;
+  padding: 0.85rem 1.75rem;
   border-radius: 999px;
   border: none;
   cursor: pointer;
   font-size: 0.95rem;
   font-family: inherit;
+  transition: background 0.15s ease;
 }
 
 .conv-welcome-cta:hover {
   background: var(--accent);
+}
+
+.conv-welcome-cta:focus-visible,
+.conv-prompt-chip:focus-visible,
+.conv-composer-send:focus-visible,
+.conv-card-hide:focus-visible,
+.conv-thumb:focus-visible,
+.conv-cta:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
 }
 
 .conv-welcome-secondary {
@@ -126,6 +146,7 @@
   font-size: 0.85rem;
   cursor: pointer;
   font-family: inherit;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
 
 .conv-prompt-chip:hover {
@@ -150,7 +171,8 @@
 }
 
 .conv-message--assistant {
-  align-self: flex-start;
+  align-self: stretch;
+  max-width: 100%;
   padding: 0.25rem 0 0.25rem 1rem;
   border-left: 2px solid var(--ink);
   line-height: 1.6;
@@ -161,32 +183,195 @@
   margin: 0 0 0.5rem;
 }
 
-/* Outfit card (D.C.2e will replace with the rich 3-column version) */
-.conv-outfit-card {
+/* ─────────────────────────────────────────────────────────────────
+   Rich Outfit Card — 3-column body (thumbnails | hero | detail)
+   ─────────────────────────────────────────────────────────────── */
+
+.conv-card {
   background: var(--surface);
-  border-radius: 12px;
-  padding: 1.25rem;
-  margin-top: 0.75rem;
-  box-shadow: 0 4px 16px rgba(180, 100, 60, 0.06);
+  border-radius: 16px;
+  margin-top: 1rem;
+  box-shadow: 0 4px 16px rgba(180, 100, 60, 0.08);
+  overflow: hidden;
 }
 
-.conv-outfit-name {
-  font-family: "Playfair Display", Georgia, serif;
+/* Card header — title + Hide icon. Borderless beneath. */
+.conv-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+}
+
+.conv-card-title {
+  font-family: "Fraunces", "Playfair Display", Georgia, serif;
   font-size: 1.15rem;
   color: var(--accent);
-  margin: 0 0 0.25rem;
+  margin: 0;
+  letter-spacing: -0.01em;
 }
 
-.conv-outfit-reasoning {
+.conv-card-hide {
+  background: transparent;
+  border: none;
+  cursor: pointer;
   color: var(--ink-muted);
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.conv-card-hide:hover {
+  color: var(--accent-deep);
+  background: var(--rule-soft);
+}
+
+.conv-card-body {
+  display: grid;
+  grid-template-columns: 80px 1fr 280px;
+  gap: 1rem;
+  padding: 0 1.25rem 1.25rem;
+}
+
+/* Column 1 — thumbnail rail */
+.conv-thumbs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.conv-thumb {
+  width: 80px;
+  height: 100px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  cursor: pointer;
+  background: var(--rule-soft);
+  padding: 0;
+  position: relative;
+  transition: border-color 0.15s ease;
+}
+
+.conv-thumb.is-active {
+  border-color: var(--accent);
+}
+
+.conv-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.conv-thumb-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 1.5rem;
+  color: var(--ink-muted);
+}
+
+.conv-thumb-label {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  right: 4px;
+  background: rgba(22, 17, 14, 0.7);
+  color: var(--canvas);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 4px;
+  border-radius: 3px;
+  text-align: center;
+}
+
+/* Column 2 — hero image */
+.conv-hero {
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--rule-soft);
+  aspect-ratio: 3 / 4;
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+}
+
+.conv-hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.conv-hero-empty {
+  font-style: italic;
   font-size: 0.9rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+/* Column 3 — detail panel. min-height locks vertical position so
+   the CTA row doesn't jump as titles/descriptions vary in length. */
+.conv-detail {
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+}
+
+.conv-detail-title {
+  font-family: "Fraunces", "Playfair Display", Georgia, serif;
+  font-size: 1.1rem;
+  color: var(--ink);
+  margin: 0 0 0.5rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  letter-spacing: -0.01em;
+}
+
+.conv-detail-desc {
+  font-size: 0.9rem;
+  color: var(--ink-muted);
+  line-height: 1.55;
+  margin: 0 0 1rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.conv-detail-brand {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin: 0 0 0.4rem;
+}
+
+.conv-detail-price {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
   margin: 0 0 1rem;
 }
 
+/* Per-garment listing in outfit mode */
 .conv-outfit-items {
   list-style: none;
   padding: 0;
-  margin: 0;
+  margin: 0 0 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -196,25 +381,143 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  padding: 0.5rem 0;
+  padding: 0.4rem 0;
   border-bottom: 1px solid var(--rule);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .conv-outfit-item:last-child {
   border-bottom: none;
 }
 
+.conv-outfit-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
 .conv-outfit-item-brand {
   color: var(--ink-muted);
-  font-size: 0.8rem;
+  font-size: 0.65rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+}
+
+.conv-outfit-item-title {
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .conv-outfit-item-price {
   font-weight: 600;
   color: var(--ink);
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+}
+
+.conv-outfit-item-wardrobe {
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+}
+
+/* Size chips */
+.conv-sizes {
+  display: flex;
+  gap: 0.3rem;
+  margin: 0 0 1rem;
+  flex-wrap: wrap;
+}
+
+.conv-size-chip {
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  color: var(--ink-soft);
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.conv-size-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.conv-size-chip.is-unavailable {
+  color: var(--ink-muted);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* CTA row — Buy + Like / Save */
+.conv-cta-row {
+  margin-top: auto;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.conv-cta {
+  flex: 1;
+  min-height: 44px;
+  background: var(--accent-deep);
+  color: var(--canvas);
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+  transition: background 0.15s ease;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.conv-cta:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.conv-cta:disabled {
+  background: var(--ink-muted);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.conv-cta-heart {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  transition: color 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.conv-cta-heart:hover {
+  color: var(--accent-deep);
+  border-color: var(--accent);
+}
+
+.conv-cta-heart.is-liked {
+  color: var(--accent-deep);
+  border-color: var(--accent-deep);
 }
 
 /* Stage indicator ----------------------------------------------- */
@@ -303,7 +606,7 @@
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s;
+  transition: background 0.15s ease;
 }
 
 .conv-composer-send:hover:not(:disabled) {
@@ -317,14 +620,49 @@
 }
 
 /* Mobile -------------------------------------------------------- */
-@media (max-width: 600px) {
+@media (max-width: 720px) {
   .conv-feed {
     padding: 1.5rem 1rem 8rem;
   }
   .conv-welcome-headline {
-    font-size: 1.75rem;
+    font-size: 1.9rem;
   }
   .conv-message {
     max-width: 88%;
+  }
+
+  /* Stack outfit card vertically: thumbs row on top, hero, detail */
+  .conv-card-body {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  .conv-thumbs {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .conv-thumb {
+    flex-shrink: 0;
+  }
+  .conv-detail {
+    min-height: auto;
+  }
+}
+
+/* Accessibility — reduced motion ------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .conv-stage::before {
+    animation: none;
+    opacity: 0.7;
+  }
+  .conv-welcome-cta,
+  .conv-prompt-chip,
+  .conv-composer-send,
+  .conv-card-hide,
+  .conv-thumb,
+  .conv-cta,
+  .conv-cta-heart,
+  .conv-size-chip {
+    transition: none;
   }
 }

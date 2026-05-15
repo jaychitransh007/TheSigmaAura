@@ -31,6 +31,14 @@ import { authenticate } from "../shopify.server";
 
 export const links: LinksFunction = () => [
   { rel: "stylesheet", href: conversationStyles },
+  // Fraunces — Confident Luxe display serif (italic 400 + roman 600).
+  // Inter already comes from Shopify's CDN in root.tsx.
+  { rel: "preconnect", href: "https://fonts.googleapis.com" },
+  { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+  {
+    rel: "stylesheet",
+    href: "https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,600;1,400&display=swap",
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────
@@ -190,7 +198,22 @@ export default function ConversationPage() {
         {showWelcome && <WelcomeState onPick={handlePromptPick} />}
 
         {messages.map((msg, i) => (
-          <MessageView key={i} message={msg} />
+          <MessageView
+            key={i}
+            message={msg}
+            onHideOutfit={(outfitId) =>
+              setMessages((prev) =>
+                prev.map((m, mi) =>
+                  mi === i && m.role === "assistant"
+                    ? {
+                        ...m,
+                        outfits: m.outfits?.filter((o) => o.outfit_id !== outfitId),
+                      }
+                    : m,
+                ),
+              )
+            }
+          />
         ))}
 
         {pending && <StageIndicator stages={pending.status?.stages ?? []} />}
