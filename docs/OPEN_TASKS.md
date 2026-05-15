@@ -62,8 +62,8 @@ Opaque, stable, collision-free, 34 chars. The mapping `tenant_id → shop_domain
 - [x] **A.4.** Size-variant scaffolding (XS, S, M, L, XL per product) — baked into the CSV builder.
 - [x] **A.5.** ~~Image migration to Cloudflare R2~~ — **skipped.** Direct retailer URLs work; Shopify CDN ingests on import.
 - [x] **A.6.** Shopify import payload generator — `build_shopify_csv.py` + `split_by_vendor.py`. 9 per-vendor CSVs, 13,177 products, 79,059 rows.
-- [ ] **A.1.** Migration: add `tenant_id`, `shopify_product_id`, `shopify_variant_ids` (jsonb keyed by size), `image_hash` columns to `catalog_enriched`. **Blocks B.8.**
-- [ ] **A.2.** Backfill `tenant_id = 't_Oq0BSHnewiEAAAAAagWWlmnV-0sJmcGk'` on all 13,177 imported rows. Depends on A.1.
+- [x] **A.1.** Migration applied 2026-05-15 via `supabase/migrations/20260515120000_catalog_enriched_shopify_mapping.sql`. `catalog_enriched` now has `tenant_id` (indexed), `shopify_product_id` (indexed where not null), `shopify_variant_ids` (jsonb), `image_hash`.
+- [x] **A.2.** Backfilled `tenant_id = 't_Oq0BSHnewiEAAAAAagWWlmnV-0sJmcGk'` on all **13,177 rows** with non-null price (matches the imported count exactly).
 
 ## Phase B — Shopify store setup
 
@@ -74,7 +74,7 @@ Opaque, stable, collision-free, 34 chars. The mapping `tenant_id → shop_domain
 - [x] **B.7.** Full import of 13,177 products (9 per-vendor CSVs).
 - [ ] **B.4.** Mandatory pages: About · Contact · Shipping Policy · Returns/Refund · Privacy · Terms. **Deferred by user** ("we will get back to this later"). Required before customer-facing launch.
 - [ ] **B.6.** Real-card test order end-to-end. Should happen before storefront sees real customers.
-- [ ] **B.8.** Capture Shopify product/variant GIDs back into `catalog_enriched` (depends on A.1). Reads Shopify Admin API, matches via `vibe.source_product_id` metafield. **Linchpin for "Add to Cart" working from Vibe later.**
+- [ ] **B.8.** Capture Shopify product/variant GIDs back into `catalog_enriched`. **Script ready** at [`scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py`](scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py). User runs once with an Admin API token from the production store (Settings → Apps → Develop apps → custom app, scope `read_products` → install → token). Walks all Shopify products via GraphQL, matches by `vibe.source_product_id` metafield, writes `shopify_product_id` + `shopify_variant_ids` (jsonb keyed by size) back to Supabase. Idempotent — safe to re-run.
 
 ## Phase D — Vibe Shopify App
 
@@ -108,7 +108,7 @@ Vibe has **two completely separate surfaces** that get built differently:
 - [ ] **D.C.4.** Looks page (saved + past recommendations).
 - [ ] **D.C.5.** Outfit Check page (upload outfit → feedback).
 - [ ] **D.C.6.** Try-on integration (Gemini) surfaced inside Conversation + Looks.
-- [ ] **D.C.7.** "Add to Cart" via Shopify Storefront API on every PDP card. **Depends on B.8** (need `shopify_variant_id` per catalog row).
+- [x] **D.C.7.** "Add to Cart" via Shopify Storefront API wired (2026-05-15). Size chips toggle a selected size; Buy Outfit / Buy Now POST to `/cart/add.js` then navigate to `/cart`. [`vibe-app/app/lib/cart.client.ts`](vibe-app/app/lib/cart.client.ts) handles gid→numeric conversion + multi-item add. Mock variant ids detected and surfaced as a friendly inline error instead of hitting `/cart/add.js` with bogus ids. Functional once **B.8** runs and the engine returns real `shopify_variant_ids`.
 
 #### D.C.2 sub-plan — Conversation page
 
