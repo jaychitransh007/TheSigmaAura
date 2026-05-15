@@ -277,6 +277,16 @@ function mockResultBody(jobId: string): TurnResult {
             price: 4188,
             product_url: "https://thesigmavibe.shop/products/champagne-silk-slip-dress-mock",
             image_url: pic("vibe-dress-1"),
+            // Mock variant gids — cart.client.ts detects "mock-" and
+            // refuses the add (real engine response will have proper
+            // gid://shopify/ProductVariant/<numeric> values).
+            shopify_variant_ids: {
+              XS: "gid://shopify/ProductVariant/mock-1-xs",
+              S: "gid://shopify/ProductVariant/mock-1-s",
+              M: "gid://shopify/ProductVariant/mock-1-m",
+              L: "gid://shopify/ProductVariant/mock-1-l",
+              XL: "gid://shopify/ProductVariant/mock-1-xl",
+            },
           },
           {
             garment_id: "mock-garment-2",
@@ -285,6 +295,13 @@ function mockResultBody(jobId: string): TurnResult {
             price: 2388,
             product_url: "https://thesigmavibe.shop/products/tan-leather-mules-mock",
             image_url: pic("vibe-mules-1"),
+            shopify_variant_ids: {
+              XS: "gid://shopify/ProductVariant/mock-2-xs",
+              S: "gid://shopify/ProductVariant/mock-2-s",
+              M: "gid://shopify/ProductVariant/mock-2-m",
+              L: "gid://shopify/ProductVariant/mock-2-l",
+              XL: "gid://shopify/ProductVariant/mock-2-xl",
+            },
           },
         ],
       },

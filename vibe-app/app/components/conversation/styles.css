@@ -458,6 +458,28 @@
   opacity: 0.5;
 }
 
+.conv-size-chip.is-selected {
+  border-color: var(--accent-deep);
+  background: var(--accent-deep);
+  color: var(--canvas);
+}
+
+.conv-size-chip.is-selected:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--canvas);
+}
+
+.conv-cart-error {
+  font-size: 0.8rem;
+  color: var(--accent-deep);
+  background: var(--rule-soft);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
+}
+
 /* CTA row — Buy + Like / Save */
 .conv-cta-row {
   margin-top: auto;
