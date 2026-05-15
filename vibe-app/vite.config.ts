@@ -71,7 +71,13 @@ export default defineConfig({
         v3_fetcherPersist: true,
         v3_relativeSplatPath: true,
         v3_throwAbortReason: true,
-        v3_lazyRouteDiscovery: true,
+        // v3_lazyRouteDiscovery uses runtime fetches to `/__manifest?paths[]=`
+        // against the PAGE's origin. Through App Proxy, that means
+        // thesigmavibe.shop/__manifest → Shopify 404. Disabling it so all
+        // routes are known at hydration time. Our route tree is small
+        // (5 customer pages + 1 resource route), so eager discovery has
+        // no measurable cost.
+        v3_lazyRouteDiscovery: false,
         v3_singleFetch: false,
         v3_routeConfig: true,
       },
