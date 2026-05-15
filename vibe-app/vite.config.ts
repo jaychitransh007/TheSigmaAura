@@ -20,6 +20,19 @@ if (
 const host = new URL(process.env.SHOPIFY_APP_URL || "http://localhost")
   .hostname;
 
+// App Proxy customer pages render at thesigmavibe.shop/apps/vibe/* but the
+// Remix bundles ship from vibe-app-five.vercel.app. If Vite emits relative
+// asset URLs (the default), the browser resolves them against the
+// storefront origin → 404 from Shopify. Setting base to the full
+// SHOPIFY_APP_URL makes Vite emit absolute URLs that the browser fetches
+// straight from Vercel, bypassing the proxy. Falls back to "/" for local
+// dev when SHOPIFY_APP_URL is unset.
+const assetBase = process.env.SHOPIFY_APP_URL
+  ? (process.env.SHOPIFY_APP_URL.endsWith("/")
+      ? process.env.SHOPIFY_APP_URL
+      : `${process.env.SHOPIFY_APP_URL}/`)
+  : "/";
+
 let hmrConfig;
 if (host === "localhost") {
   hmrConfig = {
@@ -38,6 +51,7 @@ if (host === "localhost") {
 }
 
 export default defineConfig({
+  base: assetBase,
   server: {
     allowedHosts: [host],
     cors: {
