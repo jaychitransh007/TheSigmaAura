@@ -1,0 +1,47 @@
+# Engine deploy excludes everything not needed at runtime.
+# Keeps the build context small (faster pushes, smaller images).
+
+# Vibe Shopify app — deployed separately on Vercel, not Fly.io
+vibe-app/
+
+# Test suites — engine binary doesn't need them
+tests/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+
+# Catalog seeding & ops scripts — one-shots, not engine runtime
+scripts/
+ops/
+
+# Supabase tooling — schema lives on the actual DB, no need to ship migrations
+supabase/
+
+# Local data dumps & build artifacts
+data/
+out/
+build/
+dist/
+.venv/
+venv/
+node_modules/
+
+# Secrets / local env — secrets come from `fly secrets`, never the image
+.env
+.env.*
+
+# Editor / VCS noise
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Documentation (engine doesn't read these)
+docs/
+*.md
+README.md
+LICENSE
+
+# Worktree noise
+.claude/

@@ -1,0 +1,53 @@
+# Vibe Engine — Fly.io deployment config.
+#
+# App: vibe-engine.fly.dev (URL becomes ENGINE_API_URL on Vercel)
+# Region: bom (Mumbai) — co-located with Vercel bom1 for intra-city
+#         RTT (~5-20ms) and with the Supabase project (same metro).
+# VM: shared-cpu-1x with 1GB — enough for FastAPI + Python clients +
+#     a small in-memory cache. Bump to 2GB if cache eviction kicks in
+#     under load (rare for the planner/architect cache sizes today).
+
+app = "vibe-engine"
+primary_region = "bom"
+
+[build]
+  # Dockerfile at repo root. fly launch will detect it, but we name it
+  # here so `fly deploy` from any cwd works.
+  dockerfile = "Dockerfile"
+
+[env]
+  PYTHONUNBUFFERED = "1"
+  # AURA_LOG_FORMAT=json → structured logs ship to Fly's log collector
+  # cleanly. configure_logging() reads this.
+  AURA_LOG_FORMAT = "json"
+  # Engine flags — start with both engines OFF in prod; flip via
+  # `fly secrets set AURA_COMPOSITION_ENGINE_ENABLED=true` once we
+  # have telemetry on the deploy. Staging already had them on (see
+  # project_phase_2_4_status.md memory).
+  AURA_COMPOSITION_ENGINE_ENABLED = "false"
+  AURA_COMPOSER_ENGINE_ENABLED = "false"
+  AURA_TRYON_ENABLED = "true"
+
+[http_service]
+  internal_port = 8010
+  force_https = true
+  # min_machines_running=1 keeps one VM always warm. Chat UX suffers
+  # under cold starts (the engine pipeline is already 30-60s; adding a
+  # 5-15s cold start on top is bad). Cost: ~$5/mo for a single
+  # shared-cpu-1x with 1GB always on. Flip to "stop" + min=0 if cost
+  # becomes a concern during early validation.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
