@@ -30,8 +30,14 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 # Runtime files. Tests, data dumps, vibe-app/, scripts/, ops/, supabase/
 # are excluded by .dockerignore — engine doesn't need them.
+#
+# prompt/ holds the 12 agent system prompts (copilot_planner.md,
+# outfit_architect.md, outfit_composer.md, etc.) — required at IMPORT
+# time because each agent module computes PROMPT_VERSION = sha256(prompt)
+# at module load. Missing prompt/ → ImportError on engine startup.
 COPY modules/ ./modules/
 COPY knowledge/ ./knowledge/
+COPY prompt/ ./prompt/
 COPY run_agentic_application.py ./
 
 # Flush stdout so structured logs reach Fly's log collector promptly.
