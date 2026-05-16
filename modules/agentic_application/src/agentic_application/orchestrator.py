@@ -2846,12 +2846,18 @@ class AgenticOrchestrator:
         # Item 5 (May 1, 2026): aura_turn_total counter — labelled by intent
         # / action / response_type. Increments on the happy-path return so
         # alerts can target real outcomes.
+        #
+        # 2026-05-16: channel label added so Vibe storefront turns can be
+        # distinguished from legacy web turns in dashboards. Both happy
+        # paths land here; the gate-blocked early return (web channel
+        # only) does NOT increment this counter — matches prior behaviour.
         try:
             from platform_core.metrics import observe_turn_outcome
             observe_turn_outcome(
                 intent=str((handler_result or {}).get("metadata", {}).get("primary_intent") or plan_result.intent or ""),
                 action=str(plan_result.action or ""),
                 status=str((handler_result or {}).get("response_type") or "ok"),
+                channel=channel,
             )
         except Exception:  # noqa: BLE001
             pass

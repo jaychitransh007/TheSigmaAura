@@ -66,7 +66,11 @@ _EXTERNAL_BUCKETS = (0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0)
 aura_turn_total = Counter(
     "aura_turn_total",
     "Total turns processed by the orchestrator, labelled by outcome.",
-    labelnames=("intent", "action", "status"),
+    # channel: "web" (legacy onboarding-gated) or "vibe_storefront" (Shopify
+    # App Proxy chat that bypasses the gate). Added 2026-05-16 so operators
+    # can slice success rates / response_type mix by channel — until then
+    # vibe_storefront turns were indistinguishable from web in dashboards.
+    labelnames=("intent", "action", "status", "channel"),
 )
 
 aura_turn_duration_seconds = Histogram(
@@ -74,6 +78,19 @@ aura_turn_duration_seconds = Histogram(
     "Per-stage turn latency (seconds).",
     labelnames=("stage",),
     buckets=_PIPELINE_BUCKETS,
+)
+
+# D.S.3b — POST /v1/users/merge audit signal. The merge endpoint
+# mutates conversations + four history tables; without this counter
+# operators have no way to spot failed merges, stuck merges, or no-op
+# merges. Labels:
+#   status="success" — repo.merge_external_user_identity returned
+#   status="noop"    — canonical == alias, short-circuited
+#   status="failed"  — repo raised (Supabase / runtime error)
+aura_user_merge_total = Counter(
+    "aura_user_merge_total",
+    "User-identity merges via /v1/users/merge, labelled by outcome.",
+    labelnames=("status",),
 )
 
 aura_llm_call_total = Counter(
@@ -426,9 +443,36 @@ def observe_external_call(
         pass
 
 
-def observe_turn_outcome(*, intent: str, action: str, status: str) -> None:
+def observe_turn_outcome(
+    *,
+    intent: str,
+    action: str,
+    status: str,
+    channel: str = "web",
+) -> None:
+    """Increment the turn-outcome counter.
+
+    `channel` defaults to "web" so existing legacy callers (and
+    pre-2026-05-16 tests) keep working without modification. The
+    orchestrator passes the real channel (web or vibe_storefront)
+    when invoking via the public process_turn path.
+    """
     try:
-        aura_turn_total.labels(intent=intent or "", action=action or "", status=status).inc()
+        aura_turn_total.labels(
+            intent=intent or "",
+            action=action or "",
+            status=status,
+            channel=channel or "web",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def observe_user_merge(*, status: str) -> None:
+    """Record a user-merge outcome. status ∈ {success, noop, failed}.
+    Idempotent on the Counter side; safe to call from any code path."""
+    try:
+        aura_user_merge_total.labels(status=status or "unknown").inc()
     except Exception:  # noqa: BLE001
         pass
 

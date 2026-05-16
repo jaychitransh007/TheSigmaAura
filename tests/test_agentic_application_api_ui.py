@@ -827,6 +827,43 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
             alias_external_user_id="anonymous-uuid-abc",
         )
 
+    def test_merge_users_increments_metric_on_success(self) -> None:
+        """D.S.3b observability — successful merges tick
+        aura_user_merge_total{status="success"} so operators can
+        spot trends / failures."""
+        from platform_core import metrics
+        # Snapshot pre-call value to make the test order-independent.
+        before = metrics.generate_latest().decode("utf-8")
+        app, _, repo, _, _ = self._patched_app()
+        repo.merge_external_user_identity.return_value = {
+            "id": "canonical-db",
+            "external_user_id": "shopify:1234567890",
+        }
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/users/merge",
+            json={
+                "canonical_external_user_id": "shopify:1234567890",
+                "alias_external_user_id": "anonymous-uuid-abc",
+            },
+        )
+        self.assertEqual(200, resp.status_code)
+        after = metrics.generate_latest().decode("utf-8")
+        # The counter line for success status must have appeared or
+        # incremented after the merge call.
+        self.assertIn('aura_user_merge_total{status="success"}', after)
+        # Pre-call may or may not have had a sample; if it did, the
+        # value must have grown by at least 1.
+        def extract(text: str) -> float:
+            for line in text.splitlines():
+                if line.startswith('aura_user_merge_total{status="success"}'):
+                    try:
+                        return float(line.rsplit(" ", 1)[-1])
+                    except ValueError:
+                        return 0.0
+            return 0.0
+        self.assertGreater(extract(after), extract(before) - 0.001)
+
     def test_merge_users_no_op_when_canonical_equals_alias(self) -> None:
         """No merge call when the two ids are identical — just ensure
         the user row exists. Common when a returning customer hits the

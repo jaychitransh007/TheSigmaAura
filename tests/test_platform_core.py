@@ -685,6 +685,42 @@ class PrometheusMetricsTests(unittest.TestCase):
         # Counter is global — value increases across runs but we just
         # verify the call doesn't raise.
 
+    def test_observe_turn_outcome_accepts_channel_label(self) -> None:
+        """2026-05-16: channel label added so Vibe-storefront turns can
+        be distinguished from legacy web turns."""
+        from platform_core import metrics
+        metrics.observe_turn_outcome(
+            intent="dressme",
+            action="run_recommendation_pipeline",
+            status="recommendation",
+            channel="vibe_storefront",
+        )
+        text = metrics.generate_latest().decode("utf-8")
+        self.assertIn('channel="vibe_storefront"', text)
+
+    def test_observe_turn_outcome_defaults_channel_to_web(self) -> None:
+        """Legacy callers without channel still tick the metric;
+        absence of the kwarg falls back to web."""
+        from platform_core import metrics
+        metrics.observe_turn_outcome(
+            intent="dressme",
+            action="run_recommendation_pipeline",
+            status="recommendation",
+        )
+        text = metrics.generate_latest().decode("utf-8")
+        self.assertIn('channel="web"', text)
+
+    def test_observe_user_merge_increments_counter(self) -> None:
+        from platform_core import metrics
+        metrics.observe_user_merge(status="success")
+        metrics.observe_user_merge(status="noop")
+        metrics.observe_user_merge(status="failed")
+        text = metrics.generate_latest().decode("utf-8")
+        self.assertIn("aura_user_merge_total", text)
+        self.assertIn('status="success"', text)
+        self.assertIn('status="noop"', text)
+        self.assertIn('status="failed"', text)
+
     def test_observe_llm_call_records_latency_and_cost(self) -> None:
         from platform_core import metrics
         metrics.observe_llm_call(
