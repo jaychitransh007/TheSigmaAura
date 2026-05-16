@@ -349,11 +349,16 @@ function PhotoTilePreview({
     if (dragStart.current) {
       const dx = e.clientX - dragStart.current.x;
       const dy = e.clientY - dragStart.current.y;
-      onTransform({
-        ...state,
-        offsetX: dragStart.current.baseX + dx,
-        offsetY: dragStart.current.baseY + dy,
-      });
+      // Skip the commit when nothing moved — a click-down-and-up
+      // with no pan would otherwise call onTransform → setSide →
+      // re-render the whole PhotosCard (both tiles) for no UI change.
+      if (dx !== 0 || dy !== 0) {
+        onTransform({
+          ...state,
+          offsetX: dragStart.current.baseX + dx,
+          offsetY: dragStart.current.baseY + dy,
+        });
+      }
       setDragOffset(null);
     }
     dragStart.current = null;
