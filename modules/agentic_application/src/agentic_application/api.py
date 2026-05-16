@@ -606,9 +606,12 @@ def create_app() -> FastAPI:
         dependency_validation_events from alias to canonical.
 
         Idempotent. If alias doesn't exist the merge is a no-op; if
-        canonical doesn't exist it gets created. We then also ensure
-        an onboarding_profiles row exists for canonical so the
-        downstream image-upload / profile-patch endpoints don't 404.
+        canonical doesn't exist it gets created. Note: this endpoint
+        does NOT touch onboarding_profiles — the Vibe app calls
+        POST /v1/onboarding/profile/ensure separately after merge so
+        the downstream image-upload / profile-patch endpoints don't
+        404. Keeping the two endpoints distinct lets other callers
+        merge users without paying the onboarding-profile cost.
         """
         if payload.canonical_external_user_id == payload.alias_external_user_id:
             # Customer was already keyed off this identity — nothing

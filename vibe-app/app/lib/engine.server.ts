@@ -54,8 +54,12 @@ export type OutfitItem = {
   price?: number;
   product_url?: string;
   image_url?: string;
-  /** Indexes the catalog row for downstream Add-to-Cart wiring (D.C.7). */
-  shopify_variant_ids?: Record<string, string>; // size → variant gid
+  /** Shopify product gid (gid://shopify/Product/<n>). Useful for deep
+   *  linking + analytics; cart adds key on the variant id below. */
+  shopify_product_id?: string;
+  /** Per-size variant gids. Indexes the catalog row for Add-to-Cart
+   *  wiring (D.C.7). Undefined when B.8 hasn't mapped this product. */
+  shopify_variant_ids?: Record<string, string>;
 };
 
 export type Outfit = {
@@ -525,6 +529,7 @@ function normalizeItem(item: RawEngineOutfitItem): OutfitItem {
     price: Number.isFinite(priceNum) ? priceNum : undefined,
     product_url: item.product_url || undefined,
     image_url: item.image_url || undefined,
+    shopify_product_id: item.shopify_product_id || undefined,
     shopify_variant_ids:
       Object.keys(variantIds).length > 0 ? variantIds : undefined,
   };

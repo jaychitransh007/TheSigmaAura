@@ -162,20 +162,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         { status: 400 },
       );
     }
-    const result = await mergeUserIdentity({
-      canonicalExternalUserId: canonical,
-      aliasExternalUserId: sessionId,
-    });
-    // Make sure the now-canonical user has an onboarding_profiles row
-    // — otherwise the customer's first photo upload after login would
-    // 404 just as it does on initial sign-up.
-    await ensureOnboardingProfile(result.canonical_external_user_id);
-    return json<ActionResponse>({
-      ok: true,
-      op: "merge",
-      canonicalExternalUserId: result.canonical_external_user_id,
-      merged: result.merged,
-    });
+    try {
+      const result = await mergeUserIdentity({
+        canonicalExternalUserId: canonical,
+        aliasExternalUserId: sessionId,
+      });
+      // Make sure the now-canonical user has an onboarding_profiles row
+      // — otherwise the customer's first photo upload after login would
+      // 404 just as it does on initial sign-up.
+      await ensureOnboardingProfile(result.canonical_external_user_id);
+      return json<ActionResponse>({
+        ok: true,
+        op: "merge",
+        canonicalExternalUserId: result.canonical_external_user_id,
+        merged: result.merged,
+      });
+    } catch (err) {
+      // Either the engine merge or the ensure-profile call failed.
+      // Surfacing the engine's message gives the client effect
+      // something to render in the init-error slot instead of leaving
+      // the page silently stuck with no feed.
+      const message =
+        err instanceof Error ? err.message : "Failed to merge identity";
+      return json<ActionResponse>({ ok: false, error: message }, { status: 502 });
+    }
   }
 
   if (op === "turn") {
@@ -300,7 +310,15 @@ export default function ConversationPage() {
   // settles so the conversation resolves against the canonical id.
   useEffect(() => {
     let sid = getOrCreateClientSessionId();
-    setIsAuthenticated(readMergedCustomerId().length > 0);
+    // Source of truth for "is this customer signed in right now?" is
+    // the App-Proxy-forwarded loggedInCustomerId from this very
+    // request — not localStorage. A previously-signed-in customer
+    // who has since logged out on the storefront would have a stale
+    // vibe_merged_shopify_customer_id sitting in localStorage, but
+    // Shopify wouldn't forward their id anymore, so the header
+    // should flip back to "Sign in". Read the merged-customer key
+    // only to decide whether we need a merge round-trip.
+    setIsAuthenticated(!!loggedInCustomerId);
 
     const alreadyMergedWith = readMergedCustomerId();
     const needsMerge =
@@ -334,11 +352,18 @@ export default function ConversationPage() {
   }, []);
 
   // After op=merge settles, adopt the canonical id locally and run
-  // op=init against it.
+  // op=init against it. If the merge action returned !ok, surface
+  // the error instead of leaving the page silently stuck — without
+  // this branch the customer would see an empty feed forever after
+  // a 5xx from the engine merge endpoint.
   useEffect(() => {
     if (mergeFetcher.state !== "idle") return;
     const data = mergeFetcher.data;
-    if (!data || !data.ok || data.op !== "merge") return;
+    if (!data || data.op !== "merge") return;
+    if (!data.ok) {
+      setInitError(data.error || "Couldn't sign in just now.");
+      return;
+    }
 
     const canonical = data.canonicalExternalUserId;
     adoptCanonicalSessionId(canonical);
