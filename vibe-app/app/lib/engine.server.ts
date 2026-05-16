@@ -1,9 +1,12 @@
 // Typed client for the Vibe Engine API (today's `platform_core`
 // FastAPI server). Three endpoints in the v1 turn loop:
 //
-//   1. POST /v1/conversations/resolve     {user_id}        → conversation
-//   2. POST /v1/conversations/{id}/turns/start {message}   → job_id
-//   3. GET  /v1/conversations/{id}/turns/{jobId}/status    → stages + result
+//   1. POST /v1/conversations/resolve            {user_id}                → conversation
+//   2. POST /v1/conversations/{id}/turns/start   {user_id, message, ...}  → job_id
+//   3. GET  /v1/conversations/{id}/turns/{jobId}/status                   → stages + result
+//
+// Both POST bodies require `user_id` — the engine's CreateTurnRequest
+// pydantic model has it as a min-length-1 string. Omitting it 422s.
 //
 // Mock mode is on when ENGINE_API_URL is unset OR VIBE_USE_MOCK=true.
 // Lets the Vibe app UI be built and shipped against canned responses
@@ -172,8 +175,9 @@ export async function resolveConversation(userId: string): Promise<ResolveConver
 
 export async function startTurn(args: {
   conversationId: string;
+  userId: string;
   message: string;
-  imageUrl?: string;
+  imageData?: string;
 }): Promise<StartTurnResponse> {
   if (USE_MOCK) {
     // Encode start timestamp into the job_id so pollTurn can compute
@@ -186,7 +190,11 @@ export async function startTurn(args: {
   }
   return postJson<StartTurnResponse>(
     `/v1/conversations/${encodeURIComponent(args.conversationId)}/turns/start`,
-    { message: args.message, image_url: args.imageUrl },
+    {
+      user_id: args.userId,
+      message: args.message,
+      image_data: args.imageData ?? "",
+    },
   );
 }
 
