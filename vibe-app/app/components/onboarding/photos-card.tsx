@@ -50,30 +50,31 @@ export function PhotosCard({
   const [fullBody, setFullBody] = useState<SideState>({ phase: "idle" });
   const [headshot, setHeadshot] = useState<SideState>({ phase: "idle" });
 
-  // Revoke each side's object URL independently when that side
-  // changes OR the card unmounts. Without this the browser keeps the
-  // file's bytes in memory for the page's lifetime — fine in dev, but
-  // accumulates if a customer re-picks a photo.
+  // Revoke each side's object URL when:
+  //   (a) the URL itself changes — the customer picked a new file, so
+  //       the prior object URL is no longer referenced and can go,
+  //   (b) the card unmounts.
   //
-  // The effects MUST be split per-side. A single effect with
-  // [fullBody, headshot] in its deps would fire on every change to
-  // EITHER, and its cleanup (captured at the previous render) would
-  // revoke the other side's URL by accident — e.g. headshot upload
-  // completes → effect re-runs → cleanup revokes the still-displayed
-  // fullBody preview because that's what was in the closure. Each
-  // effect now keys only on its own state and revokes only its own
-  // URL.
-  useEffect(() => {
-    return () => {
-      if (fullBody.phase === "done") URL.revokeObjectURL(fullBody.previewUrl);
-    };
-  }, [fullBody]);
+  // Crucially, NOT on every state change. Zoom / pan / offset updates
+  // produce a new SideState object but the same previewUrl. If the
+  // effect dep is the whole state object, the cleanup captured during
+  // the prior render revokes that same still-displayed URL — the img
+  // breaks the moment the customer clicks `+` to zoom in. Depending
+  // on the URL string itself avoids that.
+  const fullBodyUrl =
+    fullBody.phase === "done" ? fullBody.previewUrl : null;
+  const headshotUrl =
+    headshot.phase === "done" ? headshot.previewUrl : null;
 
   useEffect(() => {
-    return () => {
-      if (headshot.phase === "done") URL.revokeObjectURL(headshot.previewUrl);
-    };
-  }, [headshot]);
+    if (!fullBodyUrl) return;
+    return () => URL.revokeObjectURL(fullBodyUrl);
+  }, [fullBodyUrl]);
+
+  useEffect(() => {
+    if (!headshotUrl) return;
+    return () => URL.revokeObjectURL(headshotUrl);
+  }, [headshotUrl]);
 
   const uploadSide = async (
     category: OnboardingImageCategory,
