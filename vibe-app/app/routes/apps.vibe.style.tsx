@@ -72,8 +72,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   await authenticate.public.appProxy(request);
 
   // Use the server-side session cookie as user_id rather than trusting
-  // a form field — keeps the customer identity tamper-resistant.
-  const { sessionId } = await getOrCreateSession(request);
+  // a form field — keeps the customer identity tamper-resistant. Pass
+  // isNew/setCookie through to the response so a customer whose first
+  // interaction is this POST (e.g. cookies blocked on the GET) still
+  // persists a session for follow-up turns. Matches the loader pattern.
+  const { sessionId, isNew, setCookie } = await getOrCreateSession(request);
 
   const form = await request.formData();
   const conversationId = String(form.get("conversationId") ?? "").trim();
@@ -87,7 +90,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const turn = await startTurn({ conversationId, userId: sessionId, message });
-  return json({ ok: true, jobId: turn.job_id, message });
+  const headers: Record<string, string> = {};
+  if (isNew && setCookie) headers["Set-Cookie"] = setCookie;
+  return json({ ok: true, jobId: turn.job_id, message }, { headers });
 };
 
 // ─────────────────────────────────────────────────────────────────────

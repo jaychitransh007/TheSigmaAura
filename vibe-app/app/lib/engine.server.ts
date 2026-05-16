@@ -193,7 +193,11 @@ export async function startTurn(args: {
     {
       user_id: args.userId,
       message: args.message,
-      image_data: args.imageData ?? "",
+      // Omit when undefined — JSON.stringify drops undefined keys, and
+      // the engine's CreateTurnRequest defaults image_data to "" via
+      // pydantic. Avoids shipping empty strings for fields the caller
+      // didn't set.
+      image_data: args.imageData,
     },
   );
 }
