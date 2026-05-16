@@ -349,10 +349,13 @@ function PhotoTilePreview({
     if (dragStart.current) {
       const dx = e.clientX - dragStart.current.x;
       const dy = e.clientY - dragStart.current.y;
-      // Skip the commit when nothing moved — a click-down-and-up
-      // with no pan would otherwise call onTransform → setSide →
-      // re-render the whole PhotosCard (both tiles) for no UI change.
-      if (dx !== 0 || dy !== 0) {
+      // Skip the commit when the gesture didn't materially move —
+      // a click-down-and-up with no pan would otherwise call
+      // onTransform → setSide → re-render PhotosCard (both tiles)
+      // for no UI change. 0.5px threshold catches sub-pixel jitter
+      // on high-DPI / touch devices where a tap can emit non-zero
+      // deltas even when the customer didn't drag.
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
         onTransform({
           ...state,
           offsetX: dragStart.current.baseX + dx,
