@@ -1,12 +1,13 @@
 # Intent-Driven Fashion Copilot Architecture
 
-Last updated: May 15, 2026.
+Last updated: May 16, 2026.
 
-> **NEW DEPLOYMENT CONTEXT (May 15, 2026) — Shopify pivot.** This document still accurately describes the engine's intent taxonomy, agent topology, and turn-execution pipeline (planner → architect → composer → rater → try-on). The internals are unchanged. What's different is *where the engine runs* and *who calls it*:
+> **DEPLOYMENT CONTEXT (May 16, 2026).** This document still accurately describes the engine's intent taxonomy, agent topology, and turn-execution pipeline (planner → architect → composer → rater → try-on). What's different from earlier drafts:
 >
-> - The engine is the same `platform_core` / `agentic_application` Python service. Still single-tenant on `localhost:8010` for now.
-> - The standalone Aura web UI (`platform_core/ui.py`) is deprecated. The new caller is the **Vibe Shopify App** (Vercel-deployed Remix backend at `vibe-app-five.vercel.app`).
-> - Phase C refactors the engine for multi-tenancy (`tenant_id` on every row, every query, every cache key) and deploys it to Fly.io Mumbai. Deferred until Vibe customer pages validate.
+> - The engine is the `platform_core` / `agentic_application` Python service deployed to **Fly.io Mumbai** (`vibe-engine.fly.dev`, shared-cpu-1x always-on). The legacy single-tenant web UI (`platform_core/ui.py`) is deprecated.
+> - Callers: the **Vibe Shopify App** at `vibe-app-five.vercel.app` proxies customer chat to the engine through the App Proxy. Turns are tagged with `channel="vibe_storefront"`, which bypasses the onboarding gate so anonymous / partial-profile customers can chat. The legacy `web` channel keeps the strict gate path for backward compatibility.
+> - Identity: anonymous customers use a localStorage UUID; signed-in customers merge to `shopify:{customer_id}` via `POST /v1/users/merge` (D.S.3b).
+> - Phase C (multi-tenancy refactor with `tenant_id` on every row / query / cache key) is deferred until Vibe customer pages validate.
 >
 > See [`OPEN_TASKS.md`](OPEN_TASKS.md) for the canonical current-state and Phase D plan.
 

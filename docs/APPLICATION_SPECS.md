@@ -1,16 +1,16 @@
 # Application Layer — Implementation Specification
 
-Last updated: May 15, 2026.
+Last updated: May 16, 2026.
 
-> **⚠️ NEW ARCHITECTURAL CONTEXT (May 15, 2026) — Shopify pivot.** Most of this document describes the *legacy standalone Aura web app* whose UI (`platform_core/ui.py`, the 3000-line server-rendered chat) is being deprecated. The runtime ENGINE (planner / architect / composer / rater / try-on, all in `agentic_application/` and `platform_core/`) remains valid — that's what gets refactored to multi-tenant in Phase C and deployed to Fly.io.
+> **⚠️ ARCHITECTURAL CONTEXT (May 16, 2026).** Most of this document describes the *legacy standalone Aura web app* whose UI (`platform_core/ui.py`, the 3000-line server-rendered chat) is deprecated. The runtime ENGINE (planner / architect / composer / rater / try-on, in `agentic_application/` and `platform_core/`) remains valid and now runs on Fly.io.
 >
-> The new system has three deployments:
+> The current system has three deployments:
 >
 > 1. **Shopify storefront** — `thesigmavibe.shop`, 13,177 products live, India/INR.
-> 2. **Vibe Shopify App** — Remix + Polaris on Vercel (`vibe-app-five.vercel.app`). App Proxy validated end-to-end on 2026-05-15. Customer pages (Conversation / Wardrobe / Looks / Outfit Check) being built; merchant admin still on the Polaris template.
-> 3. **Vibe Engine** — today's `platform_core` Python service. Still single-tenant on `localhost:8010`. Multi-tenancy refactor (Phase C) + Fly.io deployment is deferred until customer pages validate.
+> 2. **Vibe Shopify App** — Remix + Polaris on Vercel (`vibe-app-five.vercel.app`, functions pinned to `bom1`). Conversation page live at `/apps/vibe/style`; in-chat onboarding (photos + gender/DOB + name/height/waist) with full Skip + persistence; Shopify Customer Account merge wired (D.S.3b). Wardrobe / Looks / Outfit Check pages still pending.
+> 3. **Vibe Engine** — `platform_core` Python service on **Fly.io Mumbai** (`vibe-engine.fly.dev`, shared-cpu-1x always-on). `vibe_storefront` channel bypasses the onboarding gate for App Proxy chat; `web` channel keeps the legacy strict path. Identity-merge endpoint `POST /v1/users/merge` reassigns conversation + history rows from the anonymous localStorage UUID to `shopify:{customer_id}` on sign-in. Multi-tenancy refactor (Phase C) deferred until Vibe customer pages validate.
 >
-> **For the canonical current-state view: [`OPEN_TASKS.md`](OPEN_TASKS.md)** — has the locked infrastructure table, Phase D plan, and what's done vs pending. The "Live System Reference" section at the bottom of this file describes the legacy engine internals which are still accurate.
+> **For the canonical current-state view: [`OPEN_TASKS.md`](OPEN_TASKS.md)** — has the locked infrastructure table, Phase D / D.O plans, and what's done vs pending. The "Live System Reference" section at the bottom of this file describes the engine internals which are still accurate.
 
 > **⚠️ Header sections are partially deprecated; § Live System Reference (bottom) is authoritative.** The opening "Implementation Spec" sections of this document still describe the *legacy* routing layer (`intent_router.py`, `intent_handlers.py`, `context_gate.py`, `context/occasion_resolver.py`) which has been **deleted** from the codebase and replaced by the LLM copilot planner inlined into `process_turn`.
 >

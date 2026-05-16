@@ -1,14 +1,18 @@
 # Release Readiness Criteria
 
-Last updated: May 15, 2026.
+Last updated: May 16, 2026.
 
-> **NEW RELEASE TARGET (May 15, 2026).** The 4 gates below describe the readiness criteria for the *legacy standalone Aura web app* (port 8010 server-rendered HTML chat). With the Shopify pivot, the release target has changed:
+> **RELEASE TARGET (May 16, 2026).** The 4 gates below describe the readiness criteria for the *legacy standalone Aura web app* (port 8010 server-rendered HTML chat). The Shopify-hosted system has shipped on top of that:
 >
-> - The customer experience now ships as a **Shopify storefront** (`thesigmavibe.shop`, live) + a **Vibe Shopify App** (Vercel-deployed, validated end-to-end on 2026-05-15).
-> - The standalone web UI is being deprecated. Gates 3 (dependency/retention) and Gate 4 (design polish) targeting `platform_core/ui.py` are no longer the release blocker.
-> - **The new release blockers** are tracked in [`OPEN_TASKS.md`](OPEN_TASKS.md): Phase D customer pages (D.C.2–D.C.7), engine deployment to Fly.io, GDPR webhooks (D.S.4), legal pages (B.4), real-card test order (B.6).
+> - Customer experience ships as a **Shopify storefront** (`thesigmavibe.shop`, live) + a **Vibe Shopify App** (Vercel `bom1`, live at `vibe-app-five.vercel.app`).
+> - **Engine deployed to Fly.io Mumbai** (`vibe-engine.fly.dev`, shared-cpu-1x always-on) — no longer a blocker.
+> - **Conversation page live** at `/apps/vibe/style` with the full in-chat onboarding flow (D.O.1–D.O.3 shipped #367 → #396): branched welcome, parallel photos + gender-DOB cards, HEIC handling, photo zoom/pan, name/height/waist FieldCards, Skip + persistence.
+> - **Shopify Customer Account merge** (D.S.3b) wired via `POST /v1/users/merge`.
+> - **Observability** (#398): `aura_turn_total` labeled by `channel`, new `aura_user_merge_total`.
+> - The standalone web UI is deprecated. Gates 3 (dependency/retention) and Gate 4 (design polish) targeting `platform_core/ui.py` are no longer the release blocker.
+> - **Remaining release blockers** for first-50 rollout, tracked in [`OPEN_TASKS.md`](OPEN_TASKS.md) § Next priorities: **D.M.1** (merchant welcome screen), **D.C.3/D.C.4/D.C.5** (Wardrobe / Looks / Outfit Check), **B.6** (real-card test order), **B.4** (mandatory legal pages), **D.P.1** (install on production — unblocks **B.8** GID capture which activates Add-to-Cart end-to-end), **D.S.4** (remaining GDPR webhooks for App Store listing).
 >
-> See **Recently Shipped — Shopify pivot (May 13–15)** below for what's already in place.
+> See **Recently Shipped — Shopify pivot (May 13–16)** below for what's already in place.
 
 This document defines the concrete checklist that must be green before Aura
 ships beyond the current dev-complete state. It is the single source of
@@ -27,9 +31,9 @@ The companion artifacts are:
 
 ---
 
-## Recently Shipped — Shopify pivot (May 13–15, 2026)
+## Recently Shipped — Shopify pivot (May 13–16, 2026)
 
-A major architectural pivot from standalone Aura to a Shopify-hosted product. Three deployments planned; two now live.
+A major architectural pivot from standalone Aura to a Shopify-hosted product. All three deployments are now live.
 
 ### Storefront
 - **`thesigmavibe.shop` live** on Shopify (custom domain + `q8pery-95.myshopify.com` canonical, `the-vibe-shop-9376.myshopify.com` alias).
@@ -47,16 +51,35 @@ A major architectural pivot from standalone Aura to a Shopify-hosted product. Th
 - **Prisma session store** migrated from SQLite to Postgres on Supabase, isolated in `vibe` schema (engine's `public` schema untouched).
 - Partner org "Vibe" + Partner email `mj.nigam28@gmail.com`. App `client_id = 937540a1df123dfcd486426ede2b3722`.
 
+### Vibe Engine
+- **Deployed to Fly.io Mumbai** (May 15) — `vibe-engine.fly.dev`, shared-cpu-1x 1GB always-on, `/healthz` checked every 30s. Co-located with Vercel `bom1` for intra-Mumbai RTT (~5–20ms).
+- **`vibe_storefront` channel** (May 16, #367) bypasses the onboarding gate so anonymous / partial-profile customers can chat. `web` channel keeps the legacy strict path.
+- **Identity-merge endpoint** `POST /v1/users/merge` (D.S.3b, #375) reassigns conversations + history rows from anonymous UUID to `shopify:{customer_id}` on Shopify Customer Account sign-in.
+- **Onboarding ensure-profile endpoint** `POST /v1/onboarding/profile/ensure` (#372) creates an `onboarding_profiles` row on demand for OTP-less Vibe customers.
+- **Observability** (#398): `aura_turn_total{channel}` and `aura_user_merge_total{status}` Prometheus counters.
+
+### Vibe Shopify App — customer surface
+- **Conversation page** live at `/apps/vibe/style` (D.C.2 a–g, May 15–16) — branched welcome, real engine integration, mock-mode fallback, async-poll turn loop, outfit cards with try-on / Buy CTAs / size chips.
+- **In-chat onboarding** (D.O.1–D.O.3, May 16, #370 → #396):
+  - Photos card (2-up, save + skip) with HEIC client-side transcode + photo zoom/pan inside the card frame.
+  - Gender + DOB card (chip selector + DD/MM/YYYY segmented input, save-only).
+  - Name / height / waist FieldCards (sequential after the initial cards resolve).
+  - Branched welcome (returning customer w/ engine `gender` set → "welcome back"; new → onboarding cards stacked).
+  - localStorage persistence of resolved kinds + current step so reload doesn't lose progress.
+- **Identity** (D.S.3a/3b): localStorage UUID for anonymous, Shopify Customer Account merge on sign-in. Sign-in pill in header.
+- **Add-to-Cart wired** end-to-end (D.C.7 + #374): engine `OutfitItem` now carries `shopify_product_id` + `shopify_variant_ids`. Activates the moment **B.8** runs on a store that has the catalog imported.
+
 ### Infrastructure decisions locked
-- **No tunnels.** Cloudflare quick-tunnels, ngrok free, localtunnel, Pinggy free all fail in BLR/BOM regions (404 at edge, anti-abuse interstitials breaking server-to-server requests). Solution: deploy directly to Vercel, eliminate tunnels entirely.
-- **Vercel** for Vibe app (free hobby tier). **Fly.io Mumbai** planned for engine (not yet deployed).
+- **No tunnels.** Cloudflare quick-tunnels, ngrok free, localtunnel, Pinggy free all fail in BLR/BOM regions. Solution: deploy directly to Vercel + Fly.io.
+- **Vercel Hobby** for Vibe app, functions pinned to `bom1`. **Fly.io Mumbai** for engine.
 - **`tenant_id` scheme locked**: `t_<base64url(sha256(shop_domain)[:8] || timestamp || random_bytes(8))>`. TheSigmaVibe's id: `t_Oq0BSHnewiEAAAAAagWWlmnV-0sJmcGk`.
+- **Meta OAuth dropped** in favour of Shopify Customer Account (D.O.4 deferred indefinitely).
 
 ### What's next
-- D.C.2: Customer Conversation page (replaces the demo Polaris template inside the app proxy)
-- Engine deployment to Fly.io (so the Vercel-hosted Vibe app can call it without tunnels)
-- A.1 + A.2: catalog_enriched columns (`tenant_id`, `shopify_product_id`, `shopify_variant_ids`, `image_hash`) + backfill
-- B.8: Capture Shopify GIDs back into catalog_enriched (unblocks Add-to-Cart)
+- **D.M.1** — merchant welcome/status screen (~1 hr).
+- **D.C.3** — Wardrobe page (newly unblocked by D.S.3b).
+- **D.P.1** — install Vibe on the production store, then run **B.8** to capture Shopify GIDs and activate Add-to-Cart end-to-end against the real 13K catalog.
+- **B.4 / B.6 / D.S.4** — legal pages, real-card test, remaining GDPR webhooks.
 
 ---
 
