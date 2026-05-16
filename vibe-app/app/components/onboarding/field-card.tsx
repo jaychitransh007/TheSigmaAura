@@ -7,7 +7,7 @@
 // The render variant comes from the `kind` prop. The page picks which
 // kind to render based on the current onboarding step.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import type { OnboardingProfileField } from "../../lib/engine.server";
 import { parseActionJson } from "../../lib/fetch.client";
@@ -77,10 +77,18 @@ export function FieldCard({
   const cfg = KIND_CONFIG[kind];
   const [value, setValue] = useState<string>("");
   const [state, setState] = useState<SaveState>({ phase: "idle" });
+  // Synchronous in-flight guard. React state updates are async — two
+  // rapid Enter presses (or held key) can both observe saving===false
+  // before the next render, and both trigger handleSave. The ref
+  // closes that window: flip true at start, bail any concurrent call,
+  // release in finally.
+  const savingRef = useRef(false);
 
   const handleSave = async () => {
     const trimmed = value.trim();
     if (!trimmed) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
     setState({ phase: "saving" });
 
     const form = new FormData();
@@ -110,6 +118,8 @@ export function FieldCard({
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Save failed.";
       setState({ phase: "error", message: msg });
+    } finally {
+      savingRef.current = false;
     }
   };
 
