@@ -263,7 +263,13 @@ export default function ConversationPage() {
       );
     }, 1000);
     return () => clearTimeout(timer);
-  }, [pending, pollFetcher]);
+    // pollFetcher.load is stable across renders (Remix guarantee) so
+    // it's safe to omit from deps. Tracking pollFetcher.{state,data}
+    // explicitly drives re-runs when polling progresses — a bare
+    // `pollFetcher` dep would re-fire on every parent re-render, while
+    // omitting it entirely would stall the loop on the first poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, pollFetcher.state, pollFetcher.data]);
 
   const handleSubmit = () => {
     const text = draft.trim();
