@@ -209,9 +209,120 @@ export async function pollTurn(args: {
   if (USE_MOCK) {
     return mockTurnResult(args);
   }
-  return getJson<TurnStatusResponse>(
+  const raw = await getJson<RawEngineStatusResponse>(
     `/v1/conversations/${encodeURIComponent(args.conversationId)}/turns/${encodeURIComponent(args.jobId)}/status`,
   );
+  return normalizeStatus(raw);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Engine ↔ Vibe response shape normalization
+//
+// The engine (platform_core.api_schemas) returns:
+//   status: "running" | "completed" | "failed"
+//   result.assistant_message
+//   result.outfits: [{ rank, title, reasoning, fashion_score_pct,
+//                      tryon_image, items: [...] }]
+//   result.follow_up_suggestions: string[]
+//
+// The Vibe app's TurnStatusResponse / Outfit / OutfitItem shapes were
+// designed for the customer chat UI (different field names, numeric
+// fashion_score, follow-ups as chips). Normalize at this boundary so
+// route code only ever sees the Vibe shape.
+//
+// shopify_variant_ids isn't in the engine response yet — we'll join
+// against catalog_enriched.shopify_variant_ids in a follow-up. For
+// now the cart CTA stays disabled (mock-prefixed variant ids do the
+// same in dev).
+// ─────────────────────────────────────────────────────────────────────
+
+type RawEngineStatusResponse = {
+  conversation_id: string;
+  job_id: string;
+  status: string;
+  stages?: TurnStage[];
+  error?: string;
+  result?: RawEngineTurnResult | null;
+};
+
+type RawEngineTurnResult = {
+  turn_id?: string;
+  assistant_message?: string;
+  outfits?: RawEngineOutfit[];
+  follow_up_suggestions?: string[];
+};
+
+type RawEngineOutfit = {
+  rank?: number;
+  title?: string;
+  reasoning?: string;
+  fashion_score_pct?: number;
+  tryon_image?: string;
+  items?: RawEngineOutfitItem[];
+};
+
+type RawEngineOutfitItem = {
+  product_id?: string;
+  title?: string;
+  image_url?: string;
+  price?: string;
+  product_url?: string;
+};
+
+function normalizeStatus(raw: RawEngineStatusResponse): TurnStatusResponse {
+  // Engine emits "completed"; Vibe's polling loop watches for "succeeded".
+  // Map at the edge so the rest of the app speaks one vocabulary.
+  const status: TurnStatusResponse["status"] =
+    raw.status === "completed"
+      ? "succeeded"
+      : raw.status === "failed"
+        ? "failed"
+        : "running";
+  return {
+    conversation_id: raw.conversation_id,
+    job_id: raw.job_id,
+    status,
+    stages: raw.stages ?? [],
+    error: raw.error ?? "",
+    result: raw.result ? normalizeResult(raw.result) : null,
+  };
+}
+
+function normalizeResult(raw: RawEngineTurnResult): TurnResult {
+  return {
+    turn_id: raw.turn_id ?? "",
+    message: raw.assistant_message ?? "",
+    outfits: (raw.outfits ?? []).map(normalizeOutfit),
+    follow_ups: (raw.follow_up_suggestions ?? []).map((s) => ({
+      label: s,
+      prompt: s,
+    })),
+  };
+}
+
+function normalizeOutfit(card: RawEngineOutfit): Outfit {
+  return {
+    outfit_id: `outfit-${card.rank ?? 0}`,
+    name: card.title ?? "",
+    reasoning: card.reasoning ?? "",
+    fashion_score: card.fashion_score_pct ?? 0,
+    tryon_image_url: card.tryon_image || undefined,
+    items: (card.items ?? []).map(normalizeItem),
+  };
+}
+
+function normalizeItem(item: RawEngineOutfitItem): OutfitItem {
+  // engine price is a string ("1234") → number for the UI to format.
+  // Falsy parse → undefined so the card omits the price row instead of
+  // showing 0.
+  const priceNum = item.price ? Number.parseFloat(item.price) : NaN;
+  return {
+    garment_id: item.product_id ?? "",
+    title: item.title ?? "",
+    price: Number.isFinite(priceNum) ? priceNum : undefined,
+    product_url: item.product_url || undefined,
+    image_url: item.image_url || undefined,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────
