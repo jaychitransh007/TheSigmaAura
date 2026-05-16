@@ -162,6 +162,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         { status: 400 },
       );
     }
+    // Security: never trust the canonical id from the form. The form
+    // is client-controlled — a hostile request could claim to be
+    // shopify:<someone else's id> and merge the attacker's anonymous
+    // history into the victim's account. The signed App Proxy URL
+    // carries logged_in_customer_id (validated by
+    // authenticate.public.appProxy above); require canonical to match
+    // exactly.
+    const expectedId = new URL(request.url)
+      .searchParams.get("logged_in_customer_id")
+      ?.trim();
+    if (!expectedId || canonical !== `shopify:${expectedId}`) {
+      return json<ActionResponse>(
+        { ok: false, error: "Identity mismatch — refuse to merge" },
+        { status: 403 },
+      );
+    }
     try {
       const result = await mergeUserIdentity({
         canonicalExternalUserId: canonical,
@@ -267,8 +283,12 @@ export default function ConversationPage() {
   const [pending, setPending] = useState<PendingTurn | null>(null);
   // Whether the current identity is bound to a Shopify customer.
   // Drives the header CTA: "Sign in" pill when false, status hint
-  // when true. Hydrated from localStorage on mount.
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // when true. Derived directly from the loader data so it stays in
+  // sync with revalidations and renders correctly during SSR — no
+  // useState/useEffect dance. logged_in_customer_id is the canonical
+  // signal from Shopify's App Proxy on this very request, not stale
+  // localStorage.
+  const isAuthenticated = !!loggedInCustomerId;
 
   const initFetcher = useFetcher<typeof action>();
   const submitFetcher = useFetcher<typeof action>();
@@ -310,16 +330,11 @@ export default function ConversationPage() {
   // settles so the conversation resolves against the canonical id.
   useEffect(() => {
     let sid = getOrCreateClientSessionId();
-    // Source of truth for "is this customer signed in right now?" is
-    // the App-Proxy-forwarded loggedInCustomerId from this very
-    // request — not localStorage. A previously-signed-in customer
-    // who has since logged out on the storefront would have a stale
-    // vibe_merged_shopify_customer_id sitting in localStorage, but
-    // Shopify wouldn't forward their id anymore, so the header
-    // should flip back to "Sign in". Read the merged-customer key
-    // only to decide whether we need a merge round-trip.
-    setIsAuthenticated(!!loggedInCustomerId);
-
+    // isAuthenticated is derived from loggedInCustomerId at render
+    // time (see the const above), so we don't need to sync it here.
+    // The merged-customer key is consulted only to decide whether we
+    // need a merge round-trip — a returning, already-merged customer
+    // skips it entirely.
     const alreadyMergedWith = readMergedCustomerId();
     const needsMerge =
       !!loggedInCustomerId && alreadyMergedWith !== loggedInCustomerId;
@@ -371,7 +386,9 @@ export default function ConversationPage() {
       writeMergedCustomerId(loggedInCustomerId);
     }
     setSessionId(canonical);
-    setIsAuthenticated(true);
+    // isAuthenticated stays derived from loggedInCustomerId — no
+    // setIsAuthenticated needed; we already render as signed-in
+    // because the loader said so.
     initFetcher.submit(
       { op: "init", sessionId: canonical },
       { method: "post" },
