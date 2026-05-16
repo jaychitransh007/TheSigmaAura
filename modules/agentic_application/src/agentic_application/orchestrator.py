@@ -1978,7 +1978,7 @@ class AgenticOrchestrator:
                 status="bypassed_vibe_storefront",
                 message="Vibe storefront channel — gate bypassed.",
                 missing_steps=[],
-                improvement_actions=list(profile_confidence.improvement_actions),
+                improvement_actions=profile_confidence.improvement_actions,
                 profile_confidence=profile_confidence,
             )
         else:

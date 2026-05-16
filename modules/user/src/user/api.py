@@ -116,6 +116,12 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
             out = service.ensure_profile(payload.user_id)
         except (SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+        # Surface the no-repo case as a 503 instead of a success-shaped
+        # response — it means the engine isn't fully wired to Supabase,
+        # which the caller can't recover from and ops needs to see.
+        reason = out.get("reason", "")
+        if reason == "no_repo":
+            raise HTTPException(status_code=503, detail="Onboarding repository not initialized.")
         return ProfileResponse(
             user_id=payload.user_id,
             saved=True,

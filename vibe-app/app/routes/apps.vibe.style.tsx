@@ -107,9 +107,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // the engine's onboarding tables aren't populated by the
     // conversation-resolve path — they were historically populated by
     // OTP verification, which Vibe customers don't go through.
-    // Idempotent: a returning customer's ensure call is a no-op.
-    const conversation = await resolveConversation(sessionId);
-    await ensureOnboardingProfile(sessionId);
+    //
+    // The two engine calls touch independent tables and don't depend
+    // on each other — run them in parallel to save one Mumbai-to-
+    // Mumbai round-trip (~10ms) on every init. Idempotent: a
+    // returning customer's ensure call is a no-op.
+    const [conversation] = await Promise.all([
+      resolveConversation(sessionId),
+      ensureOnboardingProfile(sessionId),
+    ]);
     return json<ActionResponse>({
       ok: true,
       op: "init",

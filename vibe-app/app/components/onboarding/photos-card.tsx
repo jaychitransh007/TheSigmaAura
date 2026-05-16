@@ -10,7 +10,7 @@
 // step advances it's replaced by a static "Photos saved" / "Photos
 // skipped" line (rendered by message.tsx), not by this component.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { OnboardingImageCategory } from "../../lib/engine.server";
 
@@ -35,6 +35,21 @@ export function PhotosCard({
 }) {
   const [fullBody, setFullBody] = useState<SideState>({ phase: "idle" });
   const [headshot, setHeadshot] = useState<SideState>({ phase: "idle" });
+
+  // Revoke the object URLs we mint for thumbnail previews when the
+  // side transitions away from "done" OR the card unmounts. Without
+  // this the browser keeps the file's bytes in memory for the page's
+  // lifetime — fine in dev, but accumulates if a customer re-picks a
+  // photo or navigates back and forth. The effect captures the URL
+  // present at *this* render in its closure; React fires the cleanup
+  // before the next render's body, so a state transition from
+  // done(A) → done(B) revokes A and lets B live until its own cleanup.
+  useEffect(() => {
+    return () => {
+      if (fullBody.phase === "done") URL.revokeObjectURL(fullBody.previewUrl);
+      if (headshot.phase === "done") URL.revokeObjectURL(headshot.previewUrl);
+    };
+  }, [fullBody, headshot]);
 
   const uploadSide = async (
     category: OnboardingImageCategory,
