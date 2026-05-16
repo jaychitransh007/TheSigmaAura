@@ -629,50 +629,52 @@ export default function ConversationPage() {
   //
   // Skipping doesn't save anything — the engine's gate is loosened
   // for vibe_storefront so missing fields only degrade quality.
-  const handleAdvanceOnboarding = (
+  // Pure transformation: resolves the most-recent active card of the
+  // given kind, and (only when no active onboarding cards remain)
+  // appends the next sequential card. Reads only `prev` — never the
+  // ref or localStorage — so it's safe to run twice in StrictMode and
+  // works correctly across rapid successive calls because React
+  // queues functional updaters against the freshest state.
+  const transformAdvance = (
+    prev: ChatMessage[],
     kind: OnboardingMessageKind,
     mode: "completed" | "skipped",
-  ) => {
-    // Compute the next messages array imperatively against the
-    // current closure value of `messages`. Handler is event-driven
-    // (not in render), so stale-closure isn't a real risk: each
-    // resolution is gated by an async save and the next render
-    // commits before the customer can fire another. Pulling side
-    // effects out of the setMessages updater keeps the updater pure
-    // — React may invoke it twice in StrictMode and we don't want
-    // duplicate localStorage writes.
-    const next: ChatMessage[] = [];
-    let resolvedThisCall = false;
-    for (let i = 0; i < messages.length; i++) {
-      const m = messages[i];
+  ): ChatMessage[] => {
+    const next = [...prev];
+    // Reverse search: if multiple active cards of the same kind ever
+    // existed (shouldn't, but defensive), resolve the most-recent.
+    for (let i = next.length - 1; i >= 0; i--) {
+      const m = next[i];
       if (
-        !resolvedThisCall &&
         m.role === "onboarding" &&
         m.status === "active" &&
         m.kind === kind
       ) {
-        next.push({
+        next[i] = {
           ...m,
           status: mode,
           summary:
             mode === "completed"
               ? completedSummary(kind)
               : skippedSummary(kind),
-        });
-        resolvedThisCall = true;
-      } else {
-        next.push(m);
+        };
+        break;
       }
     }
-
     const anyActive = next.some(
       (m) => m.role === "onboarding" && m.status === "active",
     );
-    let advancedToStep: OnboardingStep | null = null;
     if (!anyActive) {
-      const current = onboardingStepRef.current;
-      const newStep = nextStep(current);
-      advancedToStep = newStep;
+      // Derive the next step from the last onboarding message
+      // (resolved or not). This sidesteps the ref entirely, so the
+      // updater stays pure even under rapid successive calls.
+      const lastOnb = [...next]
+        .reverse()
+        .find((m) => m.role === "onboarding");
+      const currentStep: OnboardingStep = lastOnb
+        ? (lastOnb.kind as OnboardingStep)
+        : "welcome";
+      const newStep = nextStep(currentStep);
       if (isCardStep(newStep)) {
         next.push({
           role: "onboarding",
@@ -681,16 +683,58 @@ export default function ConversationPage() {
         });
       }
     }
-
-    setMessages(next);
-    // Side effects — outside any state updater. Idempotent: writing
-    // the same kind/step twice is harmless.
-    markKindResolved(kind);
-    if (advancedToStep) {
-      onboardingStepRef.current = advancedToStep;
-      writeOnboardingStep(advancedToStep);
-    }
+    return next;
   };
+
+  const handleAdvanceOnboarding = (
+    kind: OnboardingMessageKind,
+    mode: "completed" | "skipped",
+  ) => {
+    // Functional updater — atomic against the latest queued state,
+    // safe under rapid successive calls. Side effects (localStorage
+    // writes, ref sync) live in the useEffect below that observes
+    // messages, so the updater stays pure and StrictMode's double
+    // invocation can't duplicate writes.
+    setMessages((prev) => transformAdvance(prev, kind, mode));
+  };
+
+  // Side-effects effect: keep localStorage in sync with the messages
+  // array after every change.
+  //   - markKindResolved for any onboarding message in a terminal
+  //     state. Idempotent on the storage side (Set semantics).
+  //   - writeOnboardingStep tracks "where the customer is" so a
+  //     reload resumes there. Derived from messages: the kind of the
+  //     last emitted onboarding card while any is still active; the
+  //     next step past it once everything's resolved.
+  //
+  // When there are no onboarding cards in the feed at all (returning
+  // customer with the welcome-only seed, or any pre-seed render), we
+  // leave the step alone — the seed effect set it correctly already
+  // and this effect has nothing to derive from.
+  useEffect(() => {
+    for (const m of messages) {
+      if (
+        m.role === "onboarding" &&
+        (m.status === "completed" || m.status === "skipped")
+      ) {
+        markKindResolved(m.kind);
+      }
+    }
+    const lastOnb = [...messages]
+      .reverse()
+      .find((m) => m.role === "onboarding");
+    if (!lastOnb) return;
+    const anyActive = messages.some(
+      (m) => m.role === "onboarding" && m.status === "active",
+    );
+    const step: OnboardingStep = anyActive
+      ? (lastOnb.kind as OnboardingStep)
+      : nextStep(lastOnb.kind as OnboardingStep);
+    if (onboardingStepRef.current !== step) {
+      onboardingStepRef.current = step;
+      writeOnboardingStep(step);
+    }
+  }, [messages]);
 
   // Fire-and-forget analysis trigger after a photo upload. Best-effort:
   // phase1 needs gender + headshot, phase2 needs gender + DOB + both
