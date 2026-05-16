@@ -74,6 +74,12 @@ class OutfitItem(BaseModel):
     fit_type: str = ""
     silhouette_type: str = ""
     source: str = ""
+    # Shopify cart-wiring (populated by B.8's capture_shopify_gids.py
+    # backfill). shopify_variant_ids is keyed by size (XS/S/M/L/XL → gid).
+    # Empty when the row hasn't been mapped yet — Vibe's UI surfaces a
+    # disabled cart CTA in that case rather than POSTing a bogus id.
+    shopify_product_id: str = ""
+    shopify_variant_ids: Dict[str, str] = Field(default_factory=dict)
 
 
 class OutfitCard(BaseModel):

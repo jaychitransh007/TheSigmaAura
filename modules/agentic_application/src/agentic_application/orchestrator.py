@@ -401,6 +401,12 @@ def _build_candidate_item(product: "RetrievedProduct", role: str = "") -> Dict[s
         "volume_profile": str(enriched.get("volume_profile") or metadata.get("VolumeProfile") or ""),
         "fit_type": str(enriched.get("fit_type") or metadata.get("FitType") or ""),
         "silhouette_type": str(enriched.get("silhouette_type") or metadata.get("SilhouetteType") or ""),
+        # Shopify cart-wiring (B.8 populates these from the Admin API).
+        # `_or {}` keeps the value coercible into the OutfitItem schema
+        # when the row hasn't been mapped to a Shopify product yet —
+        # downstream, Vibe surfaces a disabled cart CTA in that case.
+        "shopify_product_id": str(enriched.get("shopify_product_id") or ""),
+        "shopify_variant_ids": enriched.get("shopify_variant_ids") or {},
     }
     explicit_source = str(enriched.get("source") or "").strip().lower()
     if explicit_source in ("wardrobe", "catalog"):
@@ -1091,6 +1097,11 @@ class AgenticOrchestrator:
             "fit_type": str(row.get("fit_type") or ""),
             "silhouette_type": str(row.get("silhouette_type") or ""),
             "source": "catalog",
+            # Shopify cart-wiring (B.8). Empty until capture_shopify_gids
+            # has run against the production store; Vibe's UI surfaces a
+            # disabled cart CTA in that case.
+            "shopify_product_id": str(row.get("shopify_product_id") or ""),
+            "shopify_variant_ids": row.get("shopify_variant_ids") or {},
         }
         description = synthesize_item_description(item)
         if description:

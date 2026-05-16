@@ -391,10 +391,13 @@ export async function startOnboardingAnalysis(args: {
 // fashion_score, follow-ups as chips). Normalize at this boundary so
 // route code only ever sees the Vibe shape.
 //
-// shopify_variant_ids isn't in the engine response yet — we'll join
-// against catalog_enriched.shopify_variant_ids in a follow-up. For
-// now the cart CTA stays disabled (mock-prefixed variant ids do the
-// same in dev).
+// shopify_variant_ids is populated by B.8's capture_shopify_gids.py
+// backfill. The engine carries shopify_product_id + shopify_variant_ids
+// (keyed by size) through OutfitItem; we surface them on Vibe's
+// Outfit.items[] so cart.client.ts can resolve a chosen size to a
+// real variant gid. Items missing the mapping arrive with an empty
+// object and Vibe's UI surfaces a disabled CTA — same behaviour as
+// mock-prefixed dev variants.
 // ─────────────────────────────────────────────────────────────────────
 
 type RawEngineStatusResponse = {
@@ -428,6 +431,8 @@ type RawEngineOutfitItem = {
   image_url?: string;
   price?: string;
   product_url?: string;
+  shopify_product_id?: string;
+  shopify_variant_ids?: Record<string, string>;
 };
 
 function normalizeStatus(raw: RawEngineStatusResponse): TurnStatusResponse {
@@ -484,12 +489,19 @@ function normalizeItem(item: RawEngineOutfitItem): OutfitItem {
   // Falsy parse → undefined so the card omits the price row instead of
   // showing 0.
   const priceNum = item.price ? Number.parseFloat(item.price) : NaN;
+  // shopify_variant_ids is optional — empty when B.8 hasn't mapped
+  // this product yet. Pass through only if non-empty so the cart-CTA
+  // detection (cart.client.ts) can distinguish "real cart available"
+  // from "no mapping" by presence of the field.
+  const variantIds = item.shopify_variant_ids ?? {};
   return {
     garment_id: item.product_id ?? "",
     title: item.title ?? "",
     price: Number.isFinite(priceNum) ? priceNum : undefined,
     product_url: item.product_url || undefined,
     image_url: item.image_url || undefined,
+    shopify_variant_ids:
+      Object.keys(variantIds).length > 0 ? variantIds : undefined,
   };
 }
 
