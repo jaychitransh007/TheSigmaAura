@@ -71,6 +71,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export const action = async ({ request }: ActionFunctionArgs) => {
   await authenticate.public.appProxy(request);
 
+  // Use the server-side session cookie as user_id rather than trusting
+  // a form field — keeps the customer identity tamper-resistant.
+  const { sessionId } = await getOrCreateSession(request);
+
   const form = await request.formData();
   const conversationId = String(form.get("conversationId") ?? "").trim();
   const message = String(form.get("message") ?? "").trim();
@@ -82,7 +86,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
-  const turn = await startTurn({ conversationId, message });
+  const turn = await startTurn({ conversationId, userId: sessionId, message });
   return json({ ok: true, jobId: turn.job_id, message });
 };
 
