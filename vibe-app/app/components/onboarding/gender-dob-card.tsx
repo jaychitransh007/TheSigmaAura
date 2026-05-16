@@ -74,6 +74,12 @@ export function GenderDobCard({
   // where typing one segment + reaching for the next is fiddly.
   const monthRef = useRef<HTMLInputElement>(null);
   const yearRef = useRef<HTMLInputElement>(null);
+  // Synchronous in-flight guard. React state updates are async — two
+  // rapid Enter presses can both observe `saving === false` before
+  // the component re-renders, and both trigger handleSave. The ref
+  // closes that window: flip it true at the start of the save and
+  // bail any concurrent call.
+  const savingRef = useRef(false);
 
   const dobValid = isValidDob(day, month, year);
   const dobPartial = (day !== "" || month !== "" || year !== "") && !dobValid;
@@ -87,6 +93,8 @@ export function GenderDobCard({
 
   const handleSave = async () => {
     if (!canSubmit) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
     setState({ phase: "saving" });
 
     // Build the parallel save list. Only include fields the customer
@@ -138,6 +146,10 @@ export function GenderDobCard({
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Save failed.";
       setState({ phase: "error", message: msg });
+    } finally {
+      // Release the in-flight guard regardless of how we exit. Success
+      // → card unmounts shortly, error → customer can retry.
+      savingRef.current = false;
     }
   };
 
