@@ -98,18 +98,18 @@ Vibe has **two completely separate surfaces** that get built differently:
 - [x] **D.S.1.** **App Proxy configuration** wired end-to-end. `thesigmavibe.shop/apps/vibe/*` (and dev store `vibe-test-nmt8wy3q.myshopify.com/apps/vibe/*`) → Vercel-deployed Remix at `vibe-app-five.vercel.app/apps/vibe/*` (server + client URLs aligned to avoid hydration 404s).
 - [x] **D.S.2.** HMAC signature validation via `authenticate.public.appProxy(request)` on every customer route. Unsigned requests rejected.
 - [x] **D.S.3a.** **Anonymous customer session** (2026-05-16). UUID v4 minted/read from `localStorage["vibe_session_id"]` on the customer's browser via [`vibe-app/app/lib/session.client.ts`](vibe-app/app/lib/session.client.ts) and sent explicitly with every backend request. Cookies don't work through App Proxy — the proxy doesn't reliably round-trip `Set-Cookie` / `Cookie` between the storefront origin and the backend, so every cookie-based identity attempt looked like a fresh customer to the engine. localStorage is the canonical workaround.
-- [ ] **D.S.3b.** **Shopify Customer Account** integration when logged in. Merge anonymous-localStorage identity into the authenticated profile via the engine's `merge_external_user_identity` repo method. Unblocks D.C.3 (Wardrobe).
+- [x] **D.S.3b.** **Shopify Customer Account merge** (2026-05-16). Loader extracts `logged_in_customer_id` from the signed App Proxy URL; on first detection (vs `vibe_merged_shopify_customer_id` in localStorage), the client dispatches `op=merge` which calls the new engine endpoint `POST /v1/users/merge`. The repo's `merge_external_user_identity` reassigns conversations + history rows from the anonymous UUID to `shopify:{id}`, and `ensureOnboardingProfile` is called for canonical. Subsequent engine calls use the canonical id; sign-in pill in the header flips to "Signed in". Limitation: no logout detection yet (deferred).
 - [ ] **D.S.4.** Remaining GDPR webhooks: `customers/data_request`, `customers/redact`, `shop/redact`. (`app/uninstalled` + `app/scopes_update` already wired by the template.)
 
 ### D.C — Customer storefront UI (the actual product)
 
 - [ ] **D.C.1.** Theme App Extension — "Style with Vibe" entry-point widget + storefront nav link. The discoverability layer.
 - [x] **D.C.2.** **Conversation page** — live at `/apps/vibe/style`. Chat input, message feed, stage indicator, outfit cards, real engine integration via async poll. End-to-end verified against deployed Fly.io engine 2026-05-16.
-- [ ] **D.C.3.** Wardrobe page (CRUD + filters). Requires D.S.3 (customer auth).
+- [ ] **D.C.3.** Wardrobe page (CRUD + filters). Unblocked — D.S.3b customer auth shipped 2026-05-16.
 - [ ] **D.C.4.** Looks page (saved + past recommendations).
 - [ ] **D.C.5.** Outfit Check page (upload outfit → feedback).
 - [ ] **D.C.6.** Try-on integration (Gemini) surfaced inside Conversation + Looks.
-- [x] **D.C.7.** "Add to Cart" via Shopify Storefront API wired (2026-05-15). Size chips toggle a selected size; Buy Outfit / Buy Now POST to `/cart/add.js` then navigate to `/cart`. [`vibe-app/app/lib/cart.client.ts`](vibe-app/app/lib/cart.client.ts) handles gid→numeric conversion + multi-item add. Mock variant ids detected and surfaced as a friendly inline error instead of hitting `/cart/add.js` with bogus ids. Functional once **B.8** runs and the engine returns real `shopify_variant_ids`.
+- [x] **D.C.7.** "Add to Cart" via Shopify Storefront API wired (2026-05-15). Size chips toggle a selected size; Buy Outfit / Buy Now POST to `/cart/add.js` then navigate to `/cart`. [`vibe-app/app/lib/cart.client.ts`](vibe-app/app/lib/cart.client.ts) handles gid→numeric conversion + multi-item add. Mock variant ids detected and surfaced as a friendly inline error instead of hitting `/cart/add.js` with bogus ids. **Engine wiring shipped (#374)** — `OutfitItem` now carries `shopify_product_id` + `shopify_variant_ids` end-to-end from `catalog_enriched` → engine response → Vibe `normalizeItem`. Activates the moment **B.8** runs on a store that has the matching catalog imported.
 
 #### D.C.2 sub-plan — Conversation page
 
@@ -162,18 +162,15 @@ Engine turn end-to-end takes 30–60s with try-on; up to 90s on cold path. Stage
 **Sub-tasks**
 
 - [x] **D.O.1.** Engine gate loosened for the `vibe_storefront` channel ([#367](https://github.com/jaychitransh007/TheSigmaAura/pull/367), 2026-05-16). `CreateTurnRequest.channel` pattern widened to `^(web|vibe_storefront)$`; orchestrator bypasses `evaluate_onboarding_gate` + `validate_minimum_profile`; `build_user_context` grows `allow_incomplete_analysis`. Legacy `web` channel keeps the strict gate (regression-tested).
-- [ ] **D.O.2.** **Backend proxy routes** for in-chat onboarding. Three new App Proxy endpoints under `apps.vibe.api.onboarding.*.tsx`:
-  - **Upload image** — multipart POST → engine `POST /v1/onboarding/images/{full_body|headshot}`. Returns analysis-job status so the UI can show a pill while the snapshot runs.
-  - **Save partial profile field** — POST `{field, value}` → engine `PATCH /v1/onboarding/profile/partial`. Single field at a time (name / DOB / gender / height_cm / waist_cm).
-  - **Mark profile complete** — POST → engine `POST /v1/onboarding/profile` with whatever's been collected so far; sets `profile_complete=true` even on partial data (Vibe channel tolerates it).
-  Auth: HMAC via `authenticate.public.appProxy`. Identity: `sessionId` from the form, same pattern as the chat action.
-- [ ] **D.O.3.** **In-chat onboarding UI** in [`vibe-app/app/routes/apps.vibe.style.tsx`](vibe-app/app/routes/apps.vibe.style.tsx) + new components in `app/components/onboarding/`:
-  - `WelcomeMessage` — first assistant message on a fresh `vibe_session_id` ("Hey, I'm Vibe — let's find what works on you.").
-  - `PhotoCard` — single assistant message with two side-by-side cards (Full Body | Headshot). Each card: drag-and-drop or "Choose file", guidelines copy ("plain background, good lighting, fitted clothing, head-to-toe / face-only, one person"), upload progress, **Skip** button.
-  - `MetaLoginCard` — single button + Skip. Deferred to D.O.4; for ship-now, replace with three sequential `FieldCard`s (Name → DOB → Gender).
-  - `FieldCard` — text / date / select prompt with Skip. Reusable for the Meta-fallback fields and the height / waist cards.
-  - Onboarding state machine — current step persisted in `localStorage["vibe_onboarding_step"]` so a page reload resumes mid-flow. Reveals the regular composer once the customer hits Skip or completes the last step.
-- [ ] **D.O.4.** **Meta OAuth integration** (deferred; depends on Meta app review). New routes `auth.meta.start.tsx` + `auth.meta.callback.tsx`. Permissions: `public_profile` (name, default), `user_birthday` + `user_gender` (require Meta app review, ~1–2 weeks). On success: pull name/DOB/gender into the engine profile silently and skip the three manual `FieldCard`s. **Mobile is NOT requested from Meta** — Facebook removed phone access years ago. Replaces the Meta-fallback `FieldCard`s in D.O.3 once approved.
+- [x] **D.O.2.** Backend proxy routes shipped (#370). Three App Proxy endpoints under `apps.vibe.api.onboarding.*.tsx`: image upload (multipart → engine `/v1/onboarding/images/{cat}`), single-field profile patch, analysis-phase trigger. Plus `POST /v1/onboarding/profile/ensure` engine endpoint (#372) that creates the row on demand so Vibe customers (OTP-less) don't 404 on the first save. Helper: `parseActionJson` in [`vibe-app/app/lib/fetch.client.ts`](vibe-app/app/lib/fetch.client.ts) for tolerant body parsing.
+- [x] **D.O.3.** In-chat onboarding UI shipped over several iterations (#370 → #396). Final shape:
+  - **Branched welcome.** Loader fetches engine onboarding status for signed-in customers (1.5s timeout). Profile-available customers see *"welcome back"* + composer; new / anonymous customers see *"styling co-pilot"* + the initial cards stacked.
+  - **Parallel initial cards.** Photos (2-up, save + skip) and gender+DOB (chip selector + DD/MM/YYYY segmented input, save only — no skip) emit side-by-side. Customer resolves them in any order; `name → height → waist` sequence emits only after both initial cards resolve.
+  - **HEIC handling.** Client-side `heic-to` transcode to JPEG so iPhone HEIC previews render; falls back to "Saved — preview unavailable" tile if the library can't decode the variant. Engine still receives the file either way.
+  - **Photo framing.** Per-tile zoom (1×–3×) + drag-to-pan in the preview frame, with pointer-capture, sub-pixel jitter guard, and ref-based synchronous in-flight gate.
+  - **State persistence.** `localStorage` tracks current step (`vibe_onboarding_step`) and resolved kinds (`vibe_onboarding_resolved_kinds`) so a mid-flow reload doesn't re-emit completed cards.
+  - **Functional state updates.** `setMessages` uses pure functional updaters; side effects (localStorage writes, ref sync) live in a dedicated useEffect that observes messages. Single reverse pass for step derivation.
+- [ ] **D.O.4.** **Meta OAuth integration** — **deferred indefinitely** in favour of Shopify Customer Account (D.S.3b, shipped). Customer Account is the same identity used at checkout / order history, so the merge surface is one round-trip; Meta would give name/DOB/gender prefill at the cost of 1-2 weeks of app review with no checkout-side value. Keep this row for posterity; revisit only if guest-checkout adoption is low and we want a faster sign-in path than Customer Account.
 
 ### D.M — Merchant admin UI (trust + control)
 
@@ -225,20 +222,15 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 
 ## Next priorities (in execution order)
 
-1. **D.O.2 — Backend proxy routes for in-chat onboarding.** Image upload + partial-profile save + mark-complete endpoints. ~1 day. Unblocks D.O.3.
-2. **D.O.3 — In-chat onboarding UI.** Welcome + 2-up PhotoCard + 5 FieldCards (Name, DOB, Gender as Meta fallback, Height, Waist) + Skip on each + state-machine localStorage persistence. ~2–3 days.
-3. **B.8 — Capture Shopify GIDs.** Script ready at [`scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py`](scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py); user runs once with an Admin API token. ~3 min. Unblocks real Add-to-Cart against the engine's outfit responses (D.C.7 is wired but waiting on real `shopify_variant_ids`).
-
-After these three:
-4. **D.O.4 — Meta OAuth** (gated on Meta app review for `user_birthday` + `user_gender`, ~1–2 weeks). Replaces three of the FieldCards with a single sign-in button.
-5. **D.S.3b — Shopify Customer Account integration.** Merge anonymous-localStorage identity into the authenticated customer's profile. Unblocks D.C.3 (Wardrobe).
-6. **D.M.1 — Merchant welcome/status screen.** Replace the demo Polaris page with a small "Vibe is active" card. ~1 hr.
-7. **D.C.3 / D.C.4 / D.C.5** — Wardrobe, Looks, Outfit Check pages.
-8. **B.6 — Real-card test order.** Sanity check before broader access.
-9. **B.4 — Mandatory legal pages** (About / Contact / Shipping / Returns / Privacy / Terms). Required before customer-facing launch.
-10. **D.P.1 — Install Vibe on the production store** (`thesigmavibe.shop`).
-11. **D.S.4 — Remaining GDPR webhooks.** Required for public App Store listing.
-12. Eventually: D.M.2–D.M.6 (richer merchant admin), D.P.2–D.P.3 (real-card e2e + listing assets), Phase C (engine multi-tenancy), Phase E (fulfillment SOP).
+1. **D.M.1 — Merchant welcome/status screen.** Replace the demo Polaris "Generate a product" template with a small "Vibe is active / catalog synced / open Vibe →" card. ~1 hr, low risk. First merchant-side polish.
+2. **D.C.3 — Wardrobe page.** CRUD + filters for `user_wardrobe_items`. Newly unblocked by D.S.3b. Biggest customer-facing piece left before launch; gates wardrobe-first recommendations.
+3. **D.C.4 — Looks page.** Saved outfits + past recommendations.
+4. **D.C.5 — Outfit Check page.** Upload outfit → engine feedback.
+5. **B.6 — Real-card test order.** Sanity check before broader access.
+6. **B.4 — Mandatory legal pages** (About / Contact / Shipping / Returns / Privacy / Terms). Required before customer-facing launch.
+7. **D.P.1 — Install Vibe on the production store** (`thesigmavibe.shop`). Unblocks running **B.8** ([`scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py`](scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py), ~3 min) against the real 13K-product catalog, which activates Add-to-Cart end-to-end via the wiring shipped in D.C.7 / #374. (Running B.8 against vibe-test today matches zero rows since the dev store carries only ~60 demo products — defer until D.P.1.)
+8. **D.S.4 — Remaining GDPR webhooks** (`customers/data_request`, `customers/redact`, `shop/redact`). Required for public App Store listing.
+9. Eventually: D.M.2–D.M.6 (richer merchant admin), D.P.2–D.P.3 (real-card e2e + listing assets), Phase C (engine multi-tenancy), Phase E (manual fulfillment SOP).
 
 ---
 
