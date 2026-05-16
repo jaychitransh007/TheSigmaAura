@@ -27,6 +27,8 @@ from platform_core.api_schemas import (
     IntentHistoryResponse,
     IntentHistoryThemeBlock,
     IntentHistoryTurn,
+    MergeUsersRequest,
+    MergeUsersResponse,
     RecentSignal,
     RecentSignalsResponse,
     RenameConversationRequest,
@@ -589,6 +591,50 @@ def create_app() -> FastAPI:
             return ResolveConversationResponse(**out)
         except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/v1/users/merge", response_model=MergeUsersResponse)
+    def merge_users(payload: MergeUsersRequest) -> MergeUsersResponse:
+        """Merge an anonymous external_user_id into an authenticated one.
+
+        D.S.3b — Shopify Customer Account integration. The Vibe app
+        calls this once after a customer logs in: alias is the
+        localStorage UUID the customer chatted under while anonymous;
+        canonical is `shopify:{customer_id}` derived from
+        logged_in_customer_id on the storefront. The repo method
+        reassigns conversations / catalog_interaction_history /
+        confidence_history / policy_event_log /
+        dependency_validation_events from alias to canonical.
+
+        Idempotent. If alias doesn't exist the merge is a no-op; if
+        canonical doesn't exist it gets created. We then also ensure
+        an onboarding_profiles row exists for canonical so the
+        downstream image-upload / profile-patch endpoints don't 404.
+        """
+        if payload.canonical_external_user_id == payload.alias_external_user_id:
+            # Customer was already keyed off this identity — nothing
+            # to merge. Still ensure the user row exists so
+            # subsequent turns don't 404.
+            try:
+                repo.get_or_create_user(payload.canonical_external_user_id)
+            except (SupabaseError, RuntimeError) as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+            return MergeUsersResponse(
+                canonical_external_user_id=payload.canonical_external_user_id,
+                merged=False,
+                message="canonical equals alias — no-op",
+            )
+        try:
+            repo.merge_external_user_identity(
+                canonical_external_user_id=payload.canonical_external_user_id,
+                alias_external_user_id=payload.alias_external_user_id,
+            )
+        except (SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return MergeUsersResponse(
+            canonical_external_user_id=payload.canonical_external_user_id,
+            merged=True,
+            message="merged",
+        )
 
     @app.get("/v1/conversations/{conversation_id}", response_model=ConversationStateResponse)
     def get_conversation(conversation_id: str) -> ConversationStateResponse:

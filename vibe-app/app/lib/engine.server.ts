@@ -187,6 +187,31 @@ export async function ensureOnboardingProfile(userId: string): Promise<void> {
   );
 }
 
+/**
+ * Merge an anonymous identity into an authenticated one. Called by the
+ * Vibe app when a customer signs in via Shopify Customer Account — the
+ * App Proxy starts forwarding logged_in_customer_id and we reattribute
+ * the anonymous localStorage UUID's conversations / history rows to
+ * the Shopify-customer-keyed identity. Idempotent: canonical == alias
+ * short-circuits on the engine side.
+ */
+export async function mergeUserIdentity(args: {
+  canonicalExternalUserId: string;
+  aliasExternalUserId: string;
+}): Promise<{ canonical_external_user_id: string; merged: boolean; message: string }> {
+  if (USE_MOCK) {
+    return {
+      canonical_external_user_id: args.canonicalExternalUserId,
+      merged: args.canonicalExternalUserId !== args.aliasExternalUserId,
+      message: "mock merged",
+    };
+  }
+  return postJson("/v1/users/merge", {
+    canonical_external_user_id: args.canonicalExternalUserId,
+    alias_external_user_id: args.aliasExternalUserId,
+  });
+}
+
 export async function startTurn(args: {
   conversationId: string;
   userId: string;

@@ -801,6 +801,52 @@ class AgenticApplicationApiUiTests(unittest.TestCase):
         self.assertEqual("abc1234", resp.json()["commit"])
         self.assertEqual("staging", resp.json()["env"])
 
+    def test_merge_users_calls_repo_and_returns_canonical(self) -> None:
+        """D.S.3b — POST /v1/users/merge wires the request through to
+        repo.merge_external_user_identity. Used by Vibe when a customer
+        signs in via Shopify Customer Account."""
+        app, _, repo, _, _ = self._patched_app()
+        repo.merge_external_user_identity.return_value = {
+            "id": "canonical-db",
+            "external_user_id": "shopify:1234567890",
+        }
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/users/merge",
+            json={
+                "canonical_external_user_id": "shopify:1234567890",
+                "alias_external_user_id": "anonymous-uuid-abc",
+            },
+        )
+        self.assertEqual(200, resp.status_code)
+        body = resp.json()
+        self.assertTrue(body["merged"])
+        self.assertEqual("shopify:1234567890", body["canonical_external_user_id"])
+        repo.merge_external_user_identity.assert_called_once_with(
+            canonical_external_user_id="shopify:1234567890",
+            alias_external_user_id="anonymous-uuid-abc",
+        )
+
+    def test_merge_users_no_op_when_canonical_equals_alias(self) -> None:
+        """No merge call when the two ids are identical — just ensure
+        the user row exists. Common when a returning customer hits the
+        page already logged in (we still ping merge to be safe)."""
+        app, _, repo, _, _ = self._patched_app()
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/users/merge",
+            json={
+                "canonical_external_user_id": "shopify:1234",
+                "alias_external_user_id": "shopify:1234",
+            },
+        )
+        self.assertEqual(200, resp.status_code)
+        body = resp.json()
+        self.assertFalse(body["merged"])
+        self.assertIn("no-op", body["message"])
+        repo.merge_external_user_identity.assert_not_called()
+        repo.get_or_create_user.assert_called_once_with("shopify:1234")
+
 
 if __name__ == "__main__":
     unittest.main()
