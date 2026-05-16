@@ -36,20 +36,30 @@ export function PhotosCard({
   const [fullBody, setFullBody] = useState<SideState>({ phase: "idle" });
   const [headshot, setHeadshot] = useState<SideState>({ phase: "idle" });
 
-  // Revoke the object URLs we mint for thumbnail previews when the
-  // side transitions away from "done" OR the card unmounts. Without
-  // this the browser keeps the file's bytes in memory for the page's
-  // lifetime — fine in dev, but accumulates if a customer re-picks a
-  // photo or navigates back and forth. The effect captures the URL
-  // present at *this* render in its closure; React fires the cleanup
-  // before the next render's body, so a state transition from
-  // done(A) → done(B) revokes A and lets B live until its own cleanup.
+  // Revoke each side's object URL independently when that side
+  // changes OR the card unmounts. Without this the browser keeps the
+  // file's bytes in memory for the page's lifetime — fine in dev, but
+  // accumulates if a customer re-picks a photo.
+  //
+  // The effects MUST be split per-side. A single effect with
+  // [fullBody, headshot] in its deps would fire on every change to
+  // EITHER, and its cleanup (captured at the previous render) would
+  // revoke the other side's URL by accident — e.g. headshot upload
+  // completes → effect re-runs → cleanup revokes the still-displayed
+  // fullBody preview because that's what was in the closure. Each
+  // effect now keys only on its own state and revokes only its own
+  // URL.
   useEffect(() => {
     return () => {
       if (fullBody.phase === "done") URL.revokeObjectURL(fullBody.previewUrl);
+    };
+  }, [fullBody]);
+
+  useEffect(() => {
+    return () => {
       if (headshot.phase === "done") URL.revokeObjectURL(headshot.previewUrl);
     };
-  }, [fullBody, headshot]);
+  }, [headshot]);
 
   const uploadSide = async (
     category: OnboardingImageCategory,
