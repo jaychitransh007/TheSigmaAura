@@ -27,7 +27,11 @@ import { useFetcher, useLoaderData } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 
 import { Composer } from "../components/conversation/composer";
-import { MessageView, type ChatMessage } from "../components/conversation/message";
+import {
+  MessageView,
+  type ChatMessage,
+  type OnboardingMessageKind,
+} from "../components/conversation/message";
 import { StageIndicator } from "../components/conversation/stage-indicator";
 import { WelcomeState } from "../components/conversation/welcome-state";
 import conversationStyles from "../components/conversation/styles.css?url";
@@ -35,8 +39,16 @@ import {
   ENGINE_MOCK_ACTIVE,
   resolveConversation,
   startTurn,
+  type OnboardingImageCategory,
   type TurnStatusResponse,
 } from "../lib/engine.server";
+import {
+  isCardStep,
+  nextStep,
+  readOnboardingStep,
+  writeOnboardingStep,
+  type OnboardingStep,
+} from "../lib/onboarding.client";
 import { getOrCreateClientSessionId } from "../lib/session.client";
 import { authenticate } from "../shopify.server";
 
@@ -131,6 +143,40 @@ type PendingTurn = {
   status: TurnStatusResponse | null;
 };
 
+function completedSummary(kind: OnboardingMessageKind): string {
+  switch (kind) {
+    case "photos":
+      return "Photos saved";
+    case "name":
+      return "Name saved";
+    case "dob":
+      return "Date of birth saved";
+    case "gender":
+      return "Style direction saved";
+    case "height":
+      return "Height saved";
+    case "waist":
+      return "Waist saved";
+  }
+}
+
+function skippedSummary(kind: OnboardingMessageKind): string {
+  switch (kind) {
+    case "photos":
+      return "Photos skipped";
+    case "name":
+      return "Name skipped";
+    case "dob":
+      return "Date of birth skipped";
+    case "gender":
+      return "Style direction skipped";
+    case "height":
+      return "Height skipped";
+    case "waist":
+      return "Waist skipped";
+  }
+}
+
 export default function ConversationPage() {
   const { mockMode } = useLoaderData<typeof loader>();
   const [sessionId, setSessionId] = useState("");
@@ -156,6 +202,16 @@ export default function ConversationPage() {
   // re-renders. Without this guard, every re-render after success
   // re-appends the assistant message.
   const consumedPollIdRef = useRef<string | null>(null);
+  // Onboarding state machine — canonical current step. Mirrored into
+  // localStorage by writeOnboardingStep so a reload resumes mid-flow.
+  // Lives in a ref (not state) so updating it doesn't trigger an
+  // extra re-render — the messages array is what drives the UI.
+  const onboardingStepRef = useRef<OnboardingStep>("welcome");
+  // Prevents the mount effect from seeding messages twice — useEffect
+  // can re-run when sessionId/conversationId arrive at different
+  // ticks. We only ever want the welcome + first card emitted once
+  // per page life.
+  const seededRef = useRef<boolean>(false);
 
   // Mount: pull session id from localStorage (or mint one) and resolve
   // the conversation. Anchors identity to this browser for the rest of
@@ -183,6 +239,41 @@ export default function ConversationPage() {
       setInitError(data.error || "Couldn't start a conversation.");
     }
   }, [initFetcher.state, initFetcher.data]);
+
+  // Seed the feed with the welcome message + current onboarding card
+  // once we have both sessionId and conversationId. Runs exactly once
+  // per page life (seededRef guards re-entry). A fresh visitor sits at
+  // step="welcome" — we promote them to "photos" so the photo card
+  // appears below the welcome message. Returning visitors mid-flow
+  // resume at whichever step they last reached.
+  useEffect(() => {
+    if (!sessionId || !conversationId) return;
+    if (seededRef.current) return;
+    seededRef.current = true;
+
+    let step = readOnboardingStep();
+    if (step === "welcome") {
+      step = "photos";
+      writeOnboardingStep(step);
+    }
+    onboardingStepRef.current = step;
+
+    const seeded: ChatMessage[] = [
+      {
+        role: "assistant",
+        text:
+          "Hey, I'm Vibe — I'll find what works on you. Want to chat, or shall we set the basics first? Skip anything you'd rather not share.",
+      },
+    ];
+    if (isCardStep(step)) {
+      seeded.push({
+        role: "onboarding",
+        kind: step as OnboardingMessageKind,
+        status: "active",
+      });
+    }
+    setMessages(seeded);
+  }, [sessionId, conversationId]);
 
   // Auto-scroll to bottom when messages or pending state changes.
   useEffect(() => {
@@ -290,8 +381,71 @@ export default function ConversationPage() {
     setDraft(text);
   };
 
+  // Onboarding card → completed / skipped. Closes the active card
+  // (replacing its widget with a short summary line) and emits the
+  // next card if there is one. Skipping doesn't save anything — the
+  // engine's gate is loosened for vibe_storefront so missing fields
+  // only degrade quality, never block.
+  const handleAdvanceOnboarding = (mode: "completed" | "skipped") => {
+    const current = onboardingStepRef.current;
+    const newStep = nextStep(current);
+    onboardingStepRef.current = newStep;
+    writeOnboardingStep(newStep);
+
+    setMessages((prev) => {
+      const next = [...prev];
+      // Mark the most-recent active onboarding card as resolved.
+      for (let i = next.length - 1; i >= 0; i--) {
+        const m = next[i];
+        if (m.role === "onboarding" && m.status === "active") {
+          next[i] = {
+            ...m,
+            status: mode,
+            summary:
+              mode === "completed"
+                ? completedSummary(m.kind)
+                : skippedSummary(m.kind),
+          };
+          break;
+        }
+      }
+      if (isCardStep(newStep)) {
+        next.push({
+          role: "onboarding",
+          kind: newStep as OnboardingMessageKind,
+          status: "active",
+        });
+      }
+      return next;
+    });
+  };
+
+  // Fire-and-forget analysis trigger after a photo upload. Best-effort:
+  // phase1 needs gender + headshot, phase2 needs gender + DOB + both
+  // photos. If the prereq isn't met yet the engine 400s and we ignore.
+  // Once the missing field is later saved, calling again will succeed.
+  // We don't surface failures to the customer — analysis is invisible
+  // background work.
+  const handleOnboardingPhotoUploaded = (category: OnboardingImageCategory) => {
+    if (!sessionId) return;
+    const phase = category === "headshot" ? "phase1" : "phase2";
+    const form = new FormData();
+    form.set("sessionId", sessionId);
+    form.set("phase", phase);
+    fetch("/apps/vibe/api/onboarding/analysis", {
+      method: "POST",
+      body: form,
+    }).catch(() => {
+      // Best-effort.
+    });
+  };
+
   const ready = sessionId !== "" && conversationId !== "";
-  const showWelcome = messages.length === 0 && !pending;
+  // WelcomeState's empty-state CTAs aren't rendered now that the
+  // onboarding flow seeds the feed with its own welcome message + card.
+  // Kept reachable as a fallback for sessions where seeding fails (no
+  // sessionId / conversationId).
+  const showWelcome = ready && messages.length === 0 && !pending;
   const composerDisabled =
     !ready || pending !== null || submitFetcher.state !== "idle";
 
@@ -311,6 +465,9 @@ export default function ConversationPage() {
           <MessageView
             key={i}
             message={msg}
+            sessionId={sessionId}
+            onAdvanceOnboarding={handleAdvanceOnboarding}
+            onOnboardingPhotoUploaded={handleOnboardingPhotoUploaded}
             onHideOutfit={(outfitId) =>
               setMessages((prev) =>
                 prev.map((m, mi) =>
