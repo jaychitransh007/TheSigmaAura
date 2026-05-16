@@ -68,6 +68,7 @@ from .context.user_context_builder import build_user_context, validate_minimum_p
 from .filters import build_global_hard_filters
 from .intent_registry import Action, FollowUpIntent, Intent
 from .onboarding_gate import evaluate as evaluate_onboarding_gate
+from .profile_confidence import evaluate_profile_confidence
 from .recommendation_confidence import evaluate_recommendation_confidence
 from .services.catalog_retrieval_gateway import ApplicationCatalogRetrievalGateway
 from .services.onboarding_gateway import ApplicationUserGateway
@@ -83,6 +84,7 @@ from .schemas import (
     EvaluatedRecommendation,
     IntentClassification,
     LiveContext,
+    OnboardingGateResult,
     OutfitCandidate,
     OutfitCard,
     ProfileConfidence,
@@ -1954,7 +1956,23 @@ class AgenticOrchestrator:
             )
             onboarding_status = _onboarding_future.result()
             analysis_status = _analysis_future.result()
-        onboarding_gate = evaluate_onboarding_gate(onboarding_status, analysis_status)
+        # Vibe storefront customers reach the chat with any combination
+        # of skipped onboarding fields — we collect what we can in-chat
+        # but never block a turn on it. Bypass the gate's allowed=False
+        # path entirely; still compute profile_confidence so the
+        # planner / response builder / telemetry have the score
+        # available. Legacy "web" channel keeps the original gate.
+        if channel == "vibe_storefront":
+            onboarding_gate = OnboardingGateResult(
+                allowed=True,
+                status="bypassed_vibe_storefront",
+                message="Vibe storefront channel — gate bypassed.",
+                profile_confidence=evaluate_profile_confidence(
+                    onboarding_status, analysis_status
+                ),
+            )
+        else:
+            onboarding_gate = evaluate_onboarding_gate(onboarding_status, analysis_status)
         if not onboarding_gate.allowed:
             emit("onboarding_gate", "blocked")
             trace_end("onboarding_gate", output_summary="blocked", status="blocked")
@@ -2057,12 +2075,25 @@ class AgenticOrchestrator:
         # snapshots), adding ~3 redundant Supabase round trips per turn.
         emit("user_context", "started")
         trace_start("user_context", input_summary=f"user={external_user_id}")
+        # Vibe storefront customers may have analysis still running (or
+        # never started — they skipped photos). allow_incomplete_analysis
+        # lets build_user_context return a thin context instead of
+        # raising. Empty gender / SeasonalColorGroup are tolerated
+        # downstream as "minimal" richness — architect drops body
+        # filters, rater drops body_harmony, etc. Legacy "web" channel
+        # keeps the strict path.
         user_context = build_user_context(
             external_user_id,
             onboarding_gateway=self.onboarding_gateway,
             analysis_status=analysis_status,
+            allow_incomplete_analysis=(channel == "vibe_storefront"),
         )
-        validate_minimum_profile(user_context)
+        # validate_minimum_profile is a defensive contract check for the
+        # "web" channel — its turns came through the gate so empty
+        # fields here would mean a bug. Vibe storefront skips it for
+        # the same reasons above.
+        if channel != "vibe_storefront":
+            validate_minimum_profile(user_context)
         # Shoes aren't styled by the system (PR #330). Strip them from the
         # wardrobe before any planning path sees it — otherwise shoe items
         # fall through to the "other" role in scoring functions and can

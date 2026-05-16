@@ -37,7 +37,12 @@ class ResolveConversationResponse(ConversationResponse):
 class CreateTurnRequest(BaseModel):
     user_id: str = Field(min_length=1)
     message: str = Field(min_length=1, max_length=4000)
-    channel: str = Field(default="web", pattern=r"^(web)$")
+    # "web" = legacy onboarding-gated channel (platform_core UI).
+    # "vibe_storefront" = Shopify App Proxy chat; gate is bypassed so
+    # customers can talk to Vibe with any combination of skipped /
+    # missing onboarding fields. Quality degrades gracefully — see
+    # process_turn() for what gets skipped under this channel.
+    channel: str = Field(default="web", pattern=r"^(web|vibe_storefront)$")
     image_data: str = Field(default="", max_length=10_000_000)
     # When the user selects an existing wardrobe item (instead of
     # uploading a new image), the frontend sends the wardrobe item's

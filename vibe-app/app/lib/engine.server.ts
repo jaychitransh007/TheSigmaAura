@@ -193,6 +193,12 @@ export async function startTurn(args: {
     {
       user_id: args.userId,
       message: args.message,
+      // "vibe_storefront" tells the engine to bypass the onboarding
+      // gate and the minimum-profile validator. Customers can chat
+      // with any combination of skipped onboarding fields; quality
+      // degrades gracefully (architect runs in "minimal" richness,
+      // rater drops body_harmony, etc.).
+      channel: "vibe_storefront",
       // Omit when undefined — JSON.stringify drops undefined keys, and
       // the engine's CreateTurnRequest defaults image_data to "" via
       // pydantic. Avoids shipping empty strings for fields the caller

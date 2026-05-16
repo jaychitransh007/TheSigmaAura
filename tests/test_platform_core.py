@@ -30,6 +30,17 @@ class PlatformCoreTests(unittest.TestCase):
         self.assertEqual("Need smart casual office wear", req.message)
         self.assertEqual("web", req.channel)
 
+    def test_turn_request_accepts_vibe_storefront_channel(self) -> None:
+        req = CreateTurnRequest(
+            user_id="u1", message="Dress me for a party", channel="vibe_storefront"
+        )
+        self.assertEqual("vibe_storefront", req.channel)
+
+    def test_turn_request_rejects_unknown_channel(self) -> None:
+        from pydantic import ValidationError
+        with self.assertRaises(ValidationError):
+            CreateTurnRequest(user_id="u1", message="hi", channel="ios")
+
     def test_image_moderation_blocks_explicit_filename_heuristically(self) -> None:
         service = ImageModerationService()
 

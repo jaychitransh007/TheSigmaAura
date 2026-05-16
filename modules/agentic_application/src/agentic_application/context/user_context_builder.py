@@ -43,6 +43,7 @@ def build_user_context(
     *,
     onboarding_gateway: ApplicationUserGateway,
     analysis_status: Optional[Dict[str, Any]] = None,
+    allow_incomplete_analysis: bool = False,
 ) -> UserContext:
     """Load all saved user state into a single UserContext object.
 
@@ -51,9 +52,16 @@ def build_user_context(
     onboarding gate already loads it once at the top of every turn — passing
     it through saves ~3 DB reads (profile + style snapshot + interpretation
     snapshot) at the user_context step. May 5, 2026.
+
+    ``allow_incomplete_analysis`` opts in to building a partial context
+    when the analysis snapshot isn't yet "completed". The Vibe
+    storefront channel uses this — customers can chat with photos
+    still being analyzed (or never uploaded). Profile/attributes/
+    derived fields will be empty dicts in that case; downstream agents
+    treat that as "minimal" richness.
     """
     status = analysis_status if analysis_status is not None else onboarding_gateway.get_analysis_status(user_id)
-    if status.get("status") != "completed":
+    if status.get("status") != "completed" and not allow_incomplete_analysis:
         raise ValueError(
             "User analysis is not complete. Finish onboarding and profile analysis first."
         )
