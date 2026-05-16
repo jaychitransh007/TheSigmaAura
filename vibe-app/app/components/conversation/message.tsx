@@ -11,10 +11,11 @@
 
 import { OutfitCard } from "./outfit-card";
 import { FieldCard, type FieldKind } from "../onboarding/field-card";
+import { GenderDobCard } from "../onboarding/gender-dob-card";
 import { PhotosCard } from "../onboarding/photos-card";
 import type { Outfit, OnboardingImageCategory } from "../../lib/engine.server";
 
-export type OnboardingMessageKind = "photos" | FieldKind;
+export type OnboardingMessageKind = "photos" | "gender-dob" | FieldKind;
 
 export type ChatMessage =
   | { role: "user"; text: string }
@@ -63,6 +64,16 @@ export function MessageView({
             sessionId={sessionId}
             onAdvance={(mode) => onAdvanceOnboarding?.(mode)}
             onUploaded={onOnboardingPhotoUploaded}
+          />
+        </div>
+      );
+    }
+    if (message.kind === "gender-dob") {
+      return (
+        <div className="conv-message conv-message--onboarding">
+          <GenderDobCard
+            sessionId={sessionId}
+            onAdvance={(mode) => onAdvanceOnboarding?.(mode)}
           />
         </div>
       );

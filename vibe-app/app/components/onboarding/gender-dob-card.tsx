@@ -1,0 +1,250 @@
+// Combined gender + date-of-birth onboarding card.
+//
+// Two reasons it's a single card instead of two FieldCards:
+//   1. Customer-facing: pairs naturally — "basics" — and cuts one
+//      back-and-forth from the onboarding sequence.
+//   2. Brand: gender deserves chip-style choice (one click, visible
+//      options) rather than a dropdown; DOB deserves a polished
+//      segmented input rather than the native date control. Once each
+//      had its own non-FieldCard treatment, sharing a card was the
+//      natural shape.
+//
+// Save flow: parallel POSTs to the existing single-field profile
+// endpoint via Promise.all. Skip advances without writing either.
+
+import { useRef, useState } from "react";
+
+import { parseActionJson } from "../../lib/fetch.client";
+
+type SaveState =
+  | { phase: "idle" }
+  | { phase: "saving" }
+  | { phase: "error"; message: string };
+
+// Engine schema accepts these four values for gender; we surface the
+// first three as chips and treat skip as "prefer_not_to_say".
+type Gender = "male" | "female" | "non_binary";
+
+const GENDER_CHIPS: { value: Gender; label: string }[] = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "non_binary", label: "Non-binary" },
+];
+
+const CURRENT_YEAR = new Date().getFullYear();
+
+function isValidDob(day: string, month: string, year: string): boolean {
+  if (!day || !month || !year) return false;
+  const d = Number(day);
+  const m = Number(month);
+  const y = Number(year);
+  if (!Number.isFinite(d) || !Number.isFinite(m) || !Number.isFinite(y)) return false;
+  if (m < 1 || m > 12) return false;
+  if (d < 1 || d > 31) return false;
+  // Reject impossible-future / implausibly-old dates without being
+  // pedantic about leap years — engine validates on save anyway.
+  if (y < 1900 || y > CURRENT_YEAR) return false;
+  // Quick day-per-month sanity check so a customer can't submit
+  // 31 / 02 / 2000.
+  const daysInMonth = new Date(y, m, 0).getDate();
+  return d <= daysInMonth;
+}
+
+function toIsoDate(day: string, month: string, year: string): string {
+  const dd = day.padStart(2, "0");
+  const mm = month.padStart(2, "0");
+  return `${year}-${mm}-${dd}`;
+}
+
+export function GenderDobCard({
+  sessionId,
+  onAdvance,
+}: {
+  sessionId: string;
+  onAdvance: (mode: "completed" | "skipped") => void;
+}) {
+  const [gender, setGender] = useState<Gender | null>(null);
+  const [day, setDay] = useState<string>("");
+  const [month, setMonth] = useState<string>("");
+  const [year, setYear] = useState<string>("");
+  const [state, setState] = useState<SaveState>({ phase: "idle" });
+
+  // Refs let us auto-advance focus DD → MM → YYYY as the customer
+  // fills out segments. Pleasant on desktop, essential on mobile
+  // where typing one segment + reaching for the next is fiddly.
+  const monthRef = useRef<HTMLInputElement>(null);
+  const yearRef = useRef<HTMLInputElement>(null);
+
+  const dobValid = isValidDob(day, month, year);
+  const canSubmit = gender !== null || dobValid;
+
+  const handleSave = async () => {
+    if (!canSubmit) return;
+    setState({ phase: "saving" });
+
+    // Build the parallel save list. Only include fields the customer
+    // actually filled in — saving a half-empty DOB or null gender
+    // would 422 the engine.
+    const saves: Promise<Response>[] = [];
+    if (gender) {
+      const form = new FormData();
+      form.set("sessionId", sessionId);
+      form.set("field", "gender");
+      form.set("value", gender);
+      saves.push(
+        fetch("/apps/vibe/api/onboarding/profile", {
+          method: "POST",
+          body: form,
+        }),
+      );
+    }
+    if (dobValid) {
+      const form = new FormData();
+      form.set("sessionId", sessionId);
+      form.set("field", "date_of_birth");
+      form.set("value", toIsoDate(day, month, year));
+      saves.push(
+        fetch("/apps/vibe/api/onboarding/profile", {
+          method: "POST",
+          body: form,
+        }),
+      );
+    }
+
+    try {
+      const resps = await Promise.all(saves);
+      // Surface the first non-ok response we see — better than
+      // silently advancing with one half saved. parseActionJson never
+      // throws; safe to await in sequence.
+      for (const resp of resps) {
+        const data = await parseActionJson<{ saved: boolean }>(resp);
+        if (!resp.ok || !data.ok) {
+          const msg =
+            "error" in data && data.error
+              ? data.error
+              : `Save failed (${resp.status})`;
+          setState({ phase: "error", message: msg });
+          return;
+        }
+      }
+      onAdvance("completed");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Save failed.";
+      setState({ phase: "error", message: msg });
+    }
+  };
+
+  const saving = state.phase === "saving";
+
+  return (
+    <div className="onb-card">
+      <header className="onb-card__header">
+        <h3>The basics</h3>
+        <p>Both are optional — they help me read proportions and palette.</p>
+      </header>
+
+      <fieldset className="onb-fieldset" aria-labelledby="onb-gender-label">
+        <legend id="onb-gender-label" className="onb-fieldset__legend">
+          How do you dress?
+        </legend>
+        <div className="onb-chips" role="radiogroup" aria-labelledby="onb-gender-label">
+          {GENDER_CHIPS.map((g) => (
+            <button
+              key={g.value}
+              type="button"
+              role="radio"
+              aria-checked={gender === g.value}
+              className={`onb-chip ${gender === g.value ? "onb-chip--on" : ""}`}
+              onClick={() => setGender(g.value)}
+              disabled={saving}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset className="onb-fieldset" aria-labelledby="onb-dob-label">
+        <legend id="onb-dob-label" className="onb-fieldset__legend">
+          When were you born?
+        </legend>
+        <div className="onb-dob">
+          <input
+            type="number"
+            inputMode="numeric"
+            placeholder="DD"
+            className="onb-dob__seg onb-dob__seg--dd"
+            min={1}
+            max={31}
+            value={day}
+            onChange={(e) => {
+              const v = e.target.value.replace(/\D/g, "").slice(0, 2);
+              setDay(v);
+              if (v.length === 2) monthRef.current?.focus();
+            }}
+            disabled={saving}
+            aria-label="Day"
+          />
+          <span className="onb-dob__sep">/</span>
+          <input
+            ref={monthRef}
+            type="number"
+            inputMode="numeric"
+            placeholder="MM"
+            className="onb-dob__seg onb-dob__seg--mm"
+            min={1}
+            max={12}
+            value={month}
+            onChange={(e) => {
+              const v = e.target.value.replace(/\D/g, "").slice(0, 2);
+              setMonth(v);
+              if (v.length === 2) yearRef.current?.focus();
+            }}
+            disabled={saving}
+            aria-label="Month"
+          />
+          <span className="onb-dob__sep">/</span>
+          <input
+            ref={yearRef}
+            type="number"
+            inputMode="numeric"
+            placeholder="YYYY"
+            className="onb-dob__seg onb-dob__seg--yyyy"
+            min={1900}
+            max={CURRENT_YEAR}
+            value={year}
+            onChange={(e) => {
+              const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+              setYear(v);
+            }}
+            disabled={saving}
+            aria-label="Year"
+          />
+        </div>
+      </fieldset>
+
+      {state.phase === "error" && (
+        <div className="onb-field__error">{state.message}</div>
+      )}
+
+      <div className="onb-card__actions">
+        <button
+          type="button"
+          className="onb-card__skip"
+          onClick={() => onAdvance("skipped")}
+          disabled={saving}
+        >
+          Skip
+        </button>
+        <button
+          type="button"
+          className="onb-card__primary"
+          onClick={handleSave}
+          disabled={saving || !canSubmit}
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}

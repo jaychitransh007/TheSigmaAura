@@ -243,12 +243,10 @@ function completedSummary(kind: OnboardingMessageKind): string {
   switch (kind) {
     case "photos":
       return "Photos saved";
+    case "gender-dob":
+      return "Basics saved";
     case "name":
       return "Name saved";
-    case "dob":
-      return "Date of birth saved";
-    case "gender":
-      return "Style direction saved";
     case "height":
       return "Height saved";
     case "waist":
@@ -260,12 +258,10 @@ function skippedSummary(kind: OnboardingMessageKind): string {
   switch (kind) {
     case "photos":
       return "Photos skipped";
+    case "gender-dob":
+      return "Basics skipped";
     case "name":
       return "Name skipped";
-    case "dob":
-      return "Date of birth skipped";
-    case "gender":
-      return "Style direction skipped";
     case "height":
       return "Height skipped";
     case "waist":
