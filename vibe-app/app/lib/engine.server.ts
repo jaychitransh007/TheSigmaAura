@@ -302,9 +302,12 @@ function normalizeResult(raw: RawEngineTurnResult): TurnResult {
 }
 
 function normalizeOutfit(card: RawEngineOutfit, idx: number): Outfit {
-  // Prefer the engine's rank; fall back to array index so two outfits
-  // without ranks (or both at rank 0) don't collide on React keys.
-  const id = typeof card.rank === "number" && card.rank > 0 ? card.rank : idx;
+  // Prefer the engine's rank; fall back to array index. Prefix each
+  // path with a namespace (r/i) so a ranked outfit at rank N can't
+  // collide with an unranked outfit at index N — e.g. `outfit-r1` vs
+  // `outfit-i1`.
+  const hasRank = typeof card.rank === "number" && card.rank > 0;
+  const id = hasRank ? `r${card.rank}` : `i${idx}`;
   return {
     outfit_id: `outfit-${id}`,
     name: card.title ?? "",
