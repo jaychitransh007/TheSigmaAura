@@ -236,6 +236,14 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 
 ## Trigger-driven (no work needed until trigger fires)
 
+### Observability gaps from the 2026-05-16 audit — "useful" tier
+
+The May-16 audit flagged five observability gaps post in-chat-onboarding + Customer-Account-merge launches. The two blockers (channel-labeled `aura_turn_total`, `aura_user_merge_total`) shipped in [#398](https://github.com/jaychitransh007/TheSigmaAura/pull/398). Three remain — all useful for trends but not urgent until the corresponding code path is actually exercised by customers in production.
+
+- **Variant-id coverage histogram.** Tracks what fraction of items in each outfit response carry non-empty `shopify_variant_ids`. **Trigger:** after **D.P.1** + **B.8** run on a real catalog. Until then every response has 0% coverage (vibe-test only has 60 demo products), so the metric would just measure "nothing's wired". **Where:** new `aura_item_variant_id_coverage` histogram (buckets 0/25/50/75/100) in [`modules/platform_core/src/platform_core/metrics.py`](modules/platform_core/src/platform_core/metrics.py); observe per outfit in the orchestrator response builder.
+- **Onboarding-stage reach counter.** `aura_onboarding_stage_reach_total` labeled by `stage` ∈ `{init, photo_uploaded, profile_submitted, complete}`. Lets us spot drop-off through the in-chat flow. **Trigger:** after the first real customer cohort flows through `/apps/vibe/style` on production (D.P.1 + a few live customers). **Where:** new counter in `metrics.py`; increment from the matching App Proxy resource routes (`apps.vibe.api.onboarding.*.tsx`) via a small server-side ping, OR from `process_turn` when the orchestrator first sees a vibe_storefront turn for that user.
+- **`acquisition_source` cross-contamination on merge.** When a vibe_storefront customer signs in via Shopify Customer Account, `repo.merge_external_user_identity` doesn't propagate the alias row's `acquisition_source` to the canonical row. Result: a customer who started as `vibe_storefront` and later signs in shows up in [Panel 01](modules/platform_core/src/platform_core/dashboards/sql/panel_01_acquisition_onboarding_funnel.sql) as `unknown` forever. **Trigger:** when Panel 01 starts seeing unexpectedly high `unknown` after merged customers exist in volume. **Where:** [`modules/platform_core/src/platform_core/repositories.py`](modules/platform_core/src/platform_core/repositories.py) `merge_external_user_identity` — copy alias `acquisition_source` to canonical when canonical's is `unknown` (don't overwrite a real value).
+
 ### Masculine `polo_tshirt` coverage
 
 **Status (verified against staging catalog 2026-05-11 post-re-enrichment):** the gap reported in April 2026 has substantially closed. The catalog now carries:
