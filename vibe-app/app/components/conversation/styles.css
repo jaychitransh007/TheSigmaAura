@@ -300,7 +300,9 @@
   height: 100%;
   object-fit: cover;
   transform-origin: center;
-  transition: transform 80ms linear;
+  /* No transition — direct manipulation (drag-to-pan) should track
+   * the pointer 1:1; a 'rubbery' lag on zoom button presses is also
+   * unhelpful here. */
   pointer-events: none; /* let the frame handle pointer events */
   -webkit-user-drag: none;
 }

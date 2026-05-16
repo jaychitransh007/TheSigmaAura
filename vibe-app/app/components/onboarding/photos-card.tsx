@@ -286,15 +286,23 @@ function PhotoTilePreview({
   onTransform: (next: SideState) => void;
   children: React.ReactNode;
 }) {
-  // Pan drag state — kept local because it's mid-gesture; on
-  // pointerup we commit the final offset back to SideState so it
-  // persists across re-renders.
+  // Pan drag is local-only while the gesture is in flight. We surface
+  // the in-progress offset via a local state slot (so this tile
+  // re-renders smoothly without re-running the whole PhotosCard), and
+  // commit the final offset to the parent SideState on pointerup.
+  // Without this every pointermove would call onTransform → setSide
+  // in the parent → PhotosCard re-renders → both PhotoTiles re-render
+  // 60+ times a second. The img transform read uses dragOffset when
+  // active, falls back to the committed state.{offsetX,offsetY}.
   const dragStart = useRef<{
     x: number;
     y: number;
     baseX: number;
     baseY: number;
   } | null>(null);
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(
+    null,
+  );
 
   const setZoom = (next: number) => {
     onTransform({ ...state, zoom: Math.min(Math.max(next, ZOOM_MIN), ZOOM_MAX) });
@@ -309,7 +317,11 @@ function PhotoTilePreview({
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     // Don't pan with zoom = 1 — there's nothing outside the frame.
     if (state.zoom <= ZOOM_MIN) return;
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+    // currentTarget is the frame we attached the listener to; .target
+    // can resolve to a child if event bubbling kicks in. Capture on
+    // currentTarget so we keep receiving moves even if the pointer
+    // leaves the frame mid-drag.
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     dragStart.current = {
       x: e.clientX,
       y: e.clientY,
@@ -321,18 +333,27 @@ function PhotoTilePreview({
     if (!dragStart.current) return;
     const dx = e.clientX - dragStart.current.x;
     const dy = e.clientY - dragStart.current.y;
-    onTransform({
-      ...state,
-      offsetX: dragStart.current.baseX + dx,
-      offsetY: dragStart.current.baseY + dy,
+    setDragOffset({
+      x: dragStart.current.baseX + dx,
+      y: dragStart.current.baseY + dy,
     });
   };
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    (e.target as Element).releasePointerCapture?.(e.pointerId);
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    if (dragOffset) {
+      onTransform({
+        ...state,
+        offsetX: dragOffset.x,
+        offsetY: dragOffset.y,
+      });
+      setDragOffset(null);
+    }
     dragStart.current = null;
   };
 
-  const transform = `translate3d(${state.offsetX}px, ${state.offsetY}px, 0) scale(${state.zoom})`;
+  const effOffsetX = dragOffset ? dragOffset.x : state.offsetX;
+  const effOffsetY = dragOffset ? dragOffset.y : state.offsetY;
+  const transform = `translate3d(${effOffsetX}px, ${effOffsetY}px, 0) scale(${state.zoom})`;
   const grabCursor = state.zoom > ZOOM_MIN ? "grab" : "default";
 
   return (
