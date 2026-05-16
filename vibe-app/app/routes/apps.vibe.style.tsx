@@ -666,11 +666,10 @@ export default function ConversationPage() {
     );
     if (!anyActive) {
       // Derive the next step from the last onboarding message
-      // (resolved or not). This sidesteps the ref entirely, so the
+      // (resolved or not). findLast walks end→start internally — no
+      // copy + reverse needed. Sidesteps the ref entirely so the
       // updater stays pure even under rapid successive calls.
-      const lastOnb = [...next]
-        .reverse()
-        .find((m) => m.role === "onboarding");
+      const lastOnb = next.findLast((m) => m.role === "onboarding");
       const currentStep: OnboardingStep = lastOnb
         ? (lastOnb.kind as OnboardingStep)
         : "welcome";
@@ -691,42 +690,42 @@ export default function ConversationPage() {
     mode: "completed" | "skipped",
   ) => {
     // Functional updater — atomic against the latest queued state,
-    // safe under rapid successive calls. Side effects (localStorage
-    // writes, ref sync) live in the useEffect below that observes
-    // messages, so the updater stays pure and StrictMode's double
-    // invocation can't duplicate writes.
+    // safe under rapid successive calls. The updater stays pure so
+    // StrictMode's double invocation can't duplicate writes.
     setMessages((prev) => transformAdvance(prev, kind, mode));
+    // Event handlers ARE safe for side effects (StrictMode doesn't
+    // double-invoke them). Record the resolved kind here instead of
+    // looping through every message in a useEffect — saves an O(N)
+    // localStorage scan on every messages change. Idempotent on the
+    // storage side (Set semantics) so a duplicate call from any
+    // future re-fire is harmless.
+    markKindResolved(kind);
   };
 
-  // Side-effects effect: keep localStorage in sync with the messages
-  // array after every change.
-  //   - markKindResolved for any onboarding message in a terminal
-  //     state. Idempotent on the storage side (Set semantics).
-  //   - writeOnboardingStep tracks "where the customer is" so a
-  //     reload resumes there. Derived from messages: the kind of the
-  //     last emitted onboarding card while any is still active; the
-  //     next step past it once everything's resolved.
+  // Side-effects effect: keep the persisted onboarding step in sync
+  // with the messages array. Single reverse pass:
+  //   - first onboarding card we see is the last-emitted (lastOnb).
+  //   - if any onboarding card is active, break early — that's
+  //     enough to know step = lastOnb.kind.
   //
   // When there are no onboarding cards in the feed at all (returning
   // customer with the welcome-only seed, or any pre-seed render), we
   // leave the step alone — the seed effect set it correctly already
-  // and this effect has nothing to derive from.
+  // and this effect has nothing to derive from. markKindResolved
+  // lives in the event handler now — no scan needed here.
   useEffect(() => {
-    for (const m of messages) {
-      if (
-        m.role === "onboarding" &&
-        (m.status === "completed" || m.status === "skipped")
-      ) {
-        markKindResolved(m.kind);
+    let lastOnb: ChatMessage | undefined;
+    let anyActive = false;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role !== "onboarding") continue;
+      if (!lastOnb) lastOnb = m;
+      if (m.status === "active") {
+        anyActive = true;
+        break;
       }
     }
-    const lastOnb = [...messages]
-      .reverse()
-      .find((m) => m.role === "onboarding");
-    if (!lastOnb) return;
-    const anyActive = messages.some(
-      (m) => m.role === "onboarding" && m.status === "active",
-    );
+    if (!lastOnb || lastOnb.role !== "onboarding") return;
     const step: OnboardingStep = anyActive
       ? (lastOnb.kind as OnboardingStep)
       : nextStep(lastOnb.kind as OnboardingStep);
