@@ -1,14 +1,17 @@
 # Operations: Dashboards & Queries (First-50 Rollout)
 
-Last updated: May 15, 2026.
+Last updated: May 16, 2026.
 
-> **NEW OPS CONTEXT (May 15, 2026) — Shopify pivot.** The SQL panels below were written for the *legacy standalone Aura web app's* monitoring (onboarding funnel, intent dispatch, dependency/retention, etc.). They still query the engine's `public` schema tables and remain valid for engine-side observability. What's new:
+> **OPS CONTEXT (May 16, 2026) — Shopify-hosted system.** The SQL panels below query the engine's `public` schema tables and remain valid for engine-side observability of both the legacy web channel and the new `vibe_storefront` channel. What's where:
 >
-> - **Shopify storefront** (`thesigmavibe.shop`) — operational metrics live in Shopify Admin (orders, conversion, sessions). Not queried via the panels below.
-> - **Vibe Shopify App** (Vercel-deployed) — runtime logs via `vercel logs --follow https://vibe-app-five.vercel.app`. Errors, function timing, cold-start metrics in the Vercel dashboard.
-> - **Session store** — Prisma `Session` table in Supabase `vibe` schema (separate from engine's `public`). Manage via `npx prisma studio` from `vibe-app/` or query: `SELECT * FROM vibe."Session" LIMIT 10;`
-> - **Tunnels for local dev** — confirmed broken in BLR/BOM: Cloudflare quick-tunnels, ngrok free (interstitial), localtunnel (502s), Pinggy free (interstitial). Pinggy free works as a 60-min escape hatch; for sustained work, deploy to Vercel and use the production URL.
-> - **Engine** — still on `localhost:8010` (single-tenant). Phase C deploys to Fly.io Mumbai with secrets via `fly secrets set`.
+> - **Shopify storefront** (`thesigmavibe.shop`) — operational metrics in Shopify Admin (orders, conversion, sessions). Not queried via the panels below.
+> - **Vibe Shopify App** (Vercel `bom1`) — runtime logs via `vercel logs --environment production --no-branch -x -n 60`. Errors, function timing, cold-start metrics in the Vercel dashboard.
+> - **Session store** — Prisma `Session` table in Supabase `vibe` schema. Customer identity in the engine is `shopify:{customer_id}` for signed-in customers, raw localStorage UUID for anonymous (see D.S.3a / D.S.3b in `OPEN_TASKS.md`).
+> - **Engine** — **Fly.io Mumbai** (`vibe-engine.fly.dev`, shared-cpu-1x 1GB always-on, `/healthz` every 30s). Logs: `fly logs --app vibe-engine`. Multi-tenant refactor (Phase C) deferred.
+> - **Prometheus metrics** — engine exposes `/metrics`. May-16 additions:
+>   - `aura_turn_total{channel="web|vibe_storefront", intent, action, status}` — slice success rates by channel ([#398](https://github.com/jaychitransh007/TheSigmaAura/pull/398)).
+>   - `aura_user_merge_total{status="success|noop|failed"}` — Shopify Customer Account merge outcomes ([#398](https://github.com/jaychitransh007/TheSigmaAura/pull/398)).
+>   - See `docs/OPEN_TASKS.md` § Trigger-driven for three "useful" observability gaps queued for post-D.P.1.
 >
 > See [`OPEN_TASKS.md`](OPEN_TASKS.md) § Locked infrastructure for the canonical infra table.
 

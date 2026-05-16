@@ -461,7 +461,10 @@ def observe_turn_outcome(
         aura_turn_total.labels(
             intent=intent or "",
             action=action or "",
-            status=status,
+            # `or ""` mirrors the other label fallbacks above —
+            # prometheus_client raises ValueError on a None label
+            # value, which would lose the metric inside our try/except.
+            status=status or "",
             channel=channel or "web",
         ).inc()
     except Exception:  # noqa: BLE001
