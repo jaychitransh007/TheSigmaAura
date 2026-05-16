@@ -263,13 +263,18 @@ export default function ConversationPage() {
       );
     }, 1000);
     return () => clearTimeout(timer);
-    // pollFetcher.load is stable across renders (Remix guarantee) so
-    // it's safe to omit from deps. Tracking pollFetcher.{state,data}
-    // explicitly drives re-runs when polling progresses — a bare
-    // `pollFetcher` dep would re-fire on every parent re-render, while
-    // omitting it entirely would stall the loop on the first poll.
+    // Depend on the identifying fields of `pending`, not the whole
+    // object: the effect itself calls `setPending({ ...prev, status })`
+    // to attach the latest poll response, which produces a NEW pending
+    // object reference. A bare `pending` dep would re-run the effect on
+    // that update, call setPending again, and spin forever — never
+    // letting the 1s setTimeout fire. conversationId/jobId only change
+    // on a brand-new turn, which is exactly when we want to re-arm.
+    // pollFetcher.{state,data} drive re-runs as the poll progresses.
+    // pollFetcher.load is stable (Remix guarantee), so the lint disable
+    // is appropriate.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, pollFetcher.state, pollFetcher.data]);
+  }, [pending?.conversationId, pending?.jobId, pollFetcher.state, pollFetcher.data]);
 
   const handleSubmit = () => {
     const text = draft.trim();
