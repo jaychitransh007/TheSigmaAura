@@ -76,7 +76,14 @@ export function GenderDobCard({
   const yearRef = useRef<HTMLInputElement>(null);
 
   const dobValid = isValidDob(day, month, year);
-  const canSubmit = gender !== null || dobValid;
+  const dobPartial = (day !== "" || month !== "" || year !== "") && !dobValid;
+  // Customer must either:
+  //   - pick at least one signal (gender or a valid DOB), AND
+  //   - not have a partially-filled-or-invalid DOB sitting in the
+  //     form. Without the second clause, "gender chosen but day=32"
+  //     would silently drop the DOB on save — the customer thinks
+  //     they filled both, we'd advance with only gender saved.
+  const canSubmit = (gender !== null || dobValid) && !dobPartial;
 
   const handleSave = async () => {
     if (!canSubmit) return;
@@ -136,6 +143,16 @@ export function GenderDobCard({
 
   const saving = state.phase === "saving";
 
+  // Enter on any DOB segment submits — same pattern as FieldCard's
+  // single-input cards. Guard on canSubmit so a half-filled DOB
+  // doesn't bypass the validation gate.
+  const onSegKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && canSubmit) {
+      e.preventDefault();
+      handleSave();
+    }
+  };
+
   return (
     <div className="onb-card">
       <header className="onb-card__header">
@@ -182,6 +199,7 @@ export function GenderDobCard({
               setDay(v);
               if (v.length === 2) monthRef.current?.focus();
             }}
+            onKeyDown={onSegKeyDown}
             disabled={saving}
             aria-label="Day"
           />
@@ -200,6 +218,7 @@ export function GenderDobCard({
               setMonth(v);
               if (v.length === 2) yearRef.current?.focus();
             }}
+            onKeyDown={onSegKeyDown}
             disabled={saving}
             aria-label="Month"
           />
@@ -217,6 +236,7 @@ export function GenderDobCard({
               const v = e.target.value.replace(/\D/g, "").slice(0, 4);
               setYear(v);
             }}
+            onKeyDown={onSegKeyDown}
             disabled={saving}
             aria-label="Year"
           />
