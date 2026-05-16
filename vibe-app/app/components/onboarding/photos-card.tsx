@@ -39,11 +39,16 @@ const ZOOM_STEP = 0.2;
 
 function isHeic(file: File): boolean {
   const type = file.type.toLowerCase();
-  if (type === "image/heic" || type === "image/heif") return true;
+  // startsWith catches `image/heic-sequence` / `image/heif-sequence`
+  // emitted for iPhone burst / Live Photos in addition to plain
+  // `image/heic` / `image/heif`.
+  if (type.startsWith("image/heic") || type.startsWith("image/heif")) {
+    return true;
+  }
   // Some browsers (and older Chromes) leave file.type empty for
-  // iPhone HEIC; fall back to the extension.
-  const name = file.name.toLowerCase();
-  return name.endsWith(".heic") || name.endsWith(".heif");
+  // iPhone HEIC; fall back to the extension. Regex covers the
+  // sequence-variant extensions too (.heics / .heifs).
+  return /\.(heic|heif|heics|heifs)$/i.test(file.name);
 }
 
 /**
@@ -65,7 +70,11 @@ async function transcodeIfHeic(file: File): Promise<File> {
     quality: 0.85,
   });
   const blob = Array.isArray(out) ? out[0] : out;
-  const newName = file.name.replace(/\.(heic|heif)$/i, ".jpg");
+  // Strip any HEIF-family extension, then unconditionally append .jpg.
+  // Covers the case where isHeic matched via MIME type but the file
+  // had a generic name like "blob" with no extension to swap.
+  const newName =
+    file.name.replace(/\.(heic|heif|heics|heifs)$/i, "") + ".jpg";
   return new File([blob], newName, { type: "image/jpeg" });
 }
 
