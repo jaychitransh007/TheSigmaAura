@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { OnboardingImageCategory } from "../../lib/engine.server";
+import { parseActionJson } from "../../lib/fetch.client";
 
 type SideState =
   | { phase: "idle" }
@@ -63,29 +64,34 @@ type TranscodeOutcome =
  * Prepare a file for upload. Non-HEIC files pass through unchanged
  * (previewable: true — browser can render the bytes directly).
  *
- * HEIC inputs: try to transcode to JPEG via heic2any so the preview
- * renders AND the upload payload is smaller. If conversion fails
- * (encrypted HEIC, multi-frame Live Photo, unsupported variant,
- * corrupt file), fall back to uploading the original HEIC — the
- * engine's Pillow handling will pick it up server-side. In that case
- * previewable=false so the UI can show a "Photo uploaded —
- * preview unavailable" tile instead of a broken-image glyph.
+ * HEIC inputs: try to transcode to JPEG via heic-to (libheif-js
+ * under the hood) so the preview renders AND the upload payload is
+ * smaller. heic-to is more actively maintained than heic2any and
+ * handles more iPhone HEIC variants (encrypted Live Photo bursts,
+ * 10-bit color, HDR gain maps).
  *
- * heic2any is dynamically imported so non-HEIC uploads pay zero
- * bundle cost.
+ * If conversion still fails (some HEIC variants are genuinely
+ * undecodable in-browser — encrypted, corrupt, or libheif-incompatible
+ * encoders), fall back to uploading the original HEIC — the engine's
+ * Pillow handling will pick it up server-side. In that case
+ * previewable=false so the UI can show a "Saved — preview unavailable"
+ * tile instead of a broken-image glyph.
+ *
+ * heic-to is dynamically imported so non-HEIC uploads pay zero
+ * bundle cost (~400KB gzipped libheif WASM stays out of the entry
+ * bundle).
  */
 async function prepareUpload(file: File): Promise<TranscodeOutcome> {
   if (!isHeic(file)) {
     return { ok: true, file, previewable: true };
   }
   try {
-    const { default: heic2any } = await import("heic2any");
-    const out = await heic2any({
+    const { heicTo } = await import("heic-to");
+    const blob = await heicTo({
       blob: file,
-      toType: "image/jpeg",
+      type: "image/jpeg",
       quality: 0.85,
     });
-    const blob = Array.isArray(out) ? out[0] : out;
     // Strip any HEIF-family extension, then unconditionally append .jpg.
     // Covers the case where isHeic matched via MIME type but the file
     // had a generic name like "blob" with no extension to swap.
@@ -97,6 +103,10 @@ async function prepareUpload(file: File): Promise<TranscodeOutcome> {
       previewable: true,
     };
   } catch (err) {
+    // Log the actual library error to the browser console so we have
+    // diagnostics if a customer reports the no-preview fallback — we
+    // can ask them to copy the error and figure out which HEIC
+    // variant is biting (encrypted? 10-bit? sequence?).
     // eslint-disable-next-line no-console
     console.warn("HEIC client-side transcode failed; uploading original:", err);
     return { ok: true, file, previewable: false };
@@ -170,22 +180,10 @@ export function PhotosCard({
         method: "POST",
         body: form,
       });
-      // Don't gate on Content-Type — some intermediaries (App Proxy,
-      // Vercel edge, etc.) can strip or rewrite the header even when
-      // the body is valid JSON. Just try to parse; if parse throws
-      // (e.g. body is HTML), fall back to a friendly status-keyed
-      // error string instead of letting "Unexpected token '<'"
-      // bubble to the customer.
-      let data:
-        | { ok: true; saved: boolean }
-        | { ok: false; error: string };
-      try {
-        data = await resp.json();
-      } catch {
-        data = resp.ok
-          ? { ok: false, error: "Upload returned an unreadable response." }
-          : { ok: false, error: `Upload failed (HTTP ${resp.status})` };
-      }
+      // parseActionJson tolerates non-JSON bodies (HTML error pages,
+      // Content-Type stripped by Shopify App Proxy, etc.) — see the
+      // helper for the full rationale.
+      const data = await parseActionJson<{ saved: boolean }>(resp);
       if (!resp.ok || !data.ok) {
         const msg =
           "error" in data && data.error ? data.error : `Upload failed (${resp.status})`;

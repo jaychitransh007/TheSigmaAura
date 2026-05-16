@@ -10,6 +10,7 @@
 import { useState } from "react";
 
 import type { OnboardingProfileField } from "../../lib/engine.server";
+import { parseActionJson } from "../../lib/fetch.client";
 
 export type FieldKind = "name" | "dob" | "gender" | "height" | "waist";
 
@@ -109,9 +110,11 @@ export function FieldCard({
         method: "POST",
         body: form,
       });
-      const data = (await resp.json()) as
-        | { ok: true; saved: boolean }
-        | { ok: false; error: string };
+      // parseActionJson tolerates non-JSON bodies (HTML error pages,
+      // headers stripped by Shopify App Proxy, etc.) — see the helper
+      // for the full rationale. Without it the customer would see
+      // "Unexpected token '<', '<!doctype '..." on every save.
+      const data = await parseActionJson<{ saved: boolean }>(resp);
       if (!resp.ok || !data.ok) {
         const msg =
           "error" in data && data.error
