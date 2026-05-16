@@ -54,6 +54,10 @@ export type OutfitItem = {
   price?: number;
   product_url?: string;
   image_url?: string;
+  /** Per-garment description surfaced on the PDP detail panel. The engine
+   *  fills this from the catalog's product description (composer/orchestrator
+   *  in modules/agentic_application). Empty for wardrobe items. */
+  description?: string;
   /** Shopify product gid (gid://shopify/Product/<n>). Useful for deep
    *  linking + analytics; cart adds key on the variant id below. */
   shopify_product_id?: string;
@@ -520,6 +524,9 @@ type RawEngineOutfitItem = {
   image_url?: string;
   price?: string;
   product_url?: string;
+  /** Stylist / catalog description authored by the engine. Passed
+   *  through the api_schemas.OutfitCard.items Dict[str, Any] field. */
+  description?: string;
   shopify_product_id?: string;
   shopify_variant_ids?: Record<string, string>;
 };
@@ -568,9 +575,32 @@ function normalizeOutfit(card: RawEngineOutfit, idx: number): Outfit {
     name: card.title ?? "",
     reasoning: card.reasoning ?? "",
     fashion_score: card.fashion_score_pct ?? 0,
-    tryon_image_url: card.tryon_image || undefined,
+    tryon_image_url: rewriteEngineImageUrl(card.tryon_image) || undefined,
     items: (card.items ?? []).map(normalizeItem),
   };
+}
+
+// Engine emits relative URLs of the form
+//   /v1/onboarding/images/local?path=data/tryon/images/<hash>.jpg
+// for try-on renders and any wardrobe item served off the engine's disk.
+// Those paths only resolve against the engine origin; the storefront
+// browser sees them rooted at thesigmavibe.shop and 404s. Route them
+// through the app proxy's tryon-image passthrough (apps.vibe.api.tryon-image.tsx)
+// so the engine origin stays hidden and a single content-addressed
+// path serves everything.
+//
+// Absolute http(s):// URLs (Shopify CDN / catalog product images) and
+// data: URLs (inline try-on payloads, if any) are returned as-is.
+function rewriteEngineImageUrl(raw: string | undefined): string {
+  const url = String(raw ?? "").trim();
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  if (url.startsWith("data:")) return url;
+  const prefix = "/v1/onboarding/images/local?path=";
+  if (url.startsWith(prefix)) {
+    return "/apps/vibe/api/tryon-image?path=" + url.slice(prefix.length);
+  }
+  return url;
 }
 
 function normalizeItem(item: RawEngineOutfitItem): OutfitItem {
@@ -588,7 +618,8 @@ function normalizeItem(item: RawEngineOutfitItem): OutfitItem {
     title: item.title ?? "",
     price: Number.isFinite(priceNum) ? priceNum : undefined,
     product_url: item.product_url || undefined,
-    image_url: item.image_url || undefined,
+    image_url: rewriteEngineImageUrl(item.image_url) || undefined,
+    description: item.description?.trim() || undefined,
     shopify_product_id: item.shopify_product_id || undefined,
     shopify_variant_ids:
       Object.keys(variantIds).length > 0 ? variantIds : undefined,
@@ -670,6 +701,8 @@ function mockResultBody(jobId: string): TurnResult {
             price: 4188,
             product_url: "https://thesigmavibe.shop/products/champagne-silk-slip-dress-mock",
             image_url: pic("vibe-dress-1"),
+            description:
+              "A bias-cut slip in warm champagne silk. The drape catches evening light without shouting; the spaghetti straps keep the neckline open enough for a long chain or layered pendants.",
             // Mock variant gids — cart.client.ts detects "mock-" and
             // refuses the add (real engine response will have proper
             // gid://shopify/ProductVariant/<numeric> values).
@@ -688,6 +721,8 @@ function mockResultBody(jobId: string): TurnResult {
             price: 2388,
             product_url: "https://thesigmavibe.shop/products/tan-leather-mules-mock",
             image_url: pic("vibe-mules-1"),
+            description:
+              "Square-toe leather mules in a soft tan that reads warmer than camel. The slim heel keeps the silhouette long without committing to a stiletto.",
             shopify_variant_ids: {
               XS: "gid://shopify/ProductVariant/mock-2-xs",
               S: "gid://shopify/ProductVariant/mock-2-s",
