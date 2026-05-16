@@ -38,6 +38,7 @@ import conversationStyles from "../components/conversation/styles.css?url";
 import {
   ENGINE_MOCK_ACTIVE,
   ensureOnboardingProfile,
+  getOnboardingStatus,
   mergeUserIdentity,
   resolveConversation,
   startTurn,
@@ -87,9 +88,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const loggedInCustomerId =
     url.searchParams.get("logged_in_customer_id")?.trim() || null;
+
+  // hasProfile drives the welcome-message branch (intro-only vs
+  // intro+onboarding-cards). The signal we trust is `gender` on the
+  // engine's onboarding_profiles row — cheapest, most-load-bearing
+  // attribute and the only one the planner actually requires to make
+  // a non-generic recommendation. We can only check for customers
+  // signed in via Shopify Customer Account because the loader has no
+  // access to the anonymous localStorage session id; anonymous
+  // customers fall through to hasProfile=false (the new-customer
+  // welcome) every time. Acceptable trade-off for v1.
+  let hasProfile = false;
+  if (loggedInCustomerId) {
+    const status = await getOnboardingStatus(`shopify:${loggedInCustomerId}`);
+    hasProfile = Boolean(status?.gender);
+  }
+
   return json({
     mockMode: ENGINE_MOCK_ACTIVE,
     loggedInCustomerId,
+    hasProfile,
   });
 };
 
@@ -269,8 +287,18 @@ function skippedSummary(kind: OnboardingMessageKind): string {
   }
 }
 
+// Welcome-message variants. New customers see B + the initial
+// onboarding cards stacked below it. Returning customers (engine
+// confirms `gender` is set) see A and a clean composer — no cards
+// forced on them.
+const WELCOME_RETURNING =
+  'Hey, welcome back — I\'m Vibe. Try something like "Dress me for tonight" or "I need an outfit for a wedding".';
+const WELCOME_NEW =
+  'Hi — I\'m Vibe, your styling co-pilot. Try something like "Dress me for tonight" — and a couple of basics below help me find what works on you.';
+
 export default function ConversationPage() {
-  const { mockMode, loggedInCustomerId } = useLoaderData<typeof loader>();
+  const { mockMode, loggedInCustomerId, hasProfile } =
+    useLoaderData<typeof loader>();
   const [sessionId, setSessionId] = useState("");
   const [conversationId, setConversationId] = useState("");
   const [initError, setInitError] = useState<string | null>(null);
@@ -405,40 +433,65 @@ export default function ConversationPage() {
     }
   }, [initFetcher.state, initFetcher.data]);
 
-  // Seed the feed with the welcome message + current onboarding card
-  // once we have both sessionId and conversationId. Runs exactly once
-  // per page life (seededRef guards re-entry). A fresh visitor sits at
-  // step="welcome" — we promote them to "photos" so the photo card
-  // appears below the welcome message. Returning visitors mid-flow
-  // resume at whichever step they last reached.
+  // Seed the feed once per page life. Two shapes:
+  //
+  //   hasProfile = true  (returning customer w/ gender on engine row)
+  //     → just the welcome-back message. No cards forced.
+  //     → onboardingStep advances to "done" so no future cards emit.
+  //
+  //   hasProfile = false (new / anonymous / never-completed)
+  //     → welcome message + photos card + gender-DOB card stacked.
+  //     → onboardingStep tracks "gender-dob" (the furthest card we've
+  //       already emitted). When BOTH initial cards resolve,
+  //       handleAdvanceOnboarding promotes to "name" and emits it.
+  //
+  // seededRef prevents double-seeding when sessionId/conversationId
+  // settle on different ticks. Legacy localStorage step values
+  // ("dob"/"gender") are migrated by readOnboardingStep already.
   useEffect(() => {
     if (!sessionId || !conversationId) return;
     if (seededRef.current) return;
     seededRef.current = true;
 
-    let step = readOnboardingStep();
-    if (step === "welcome") {
-      step = "photos";
-      writeOnboardingStep(step);
+    if (hasProfile) {
+      onboardingStepRef.current = "done";
+      writeOnboardingStep("done");
+      setMessages([{ role: "assistant", text: WELCOME_RETURNING }]);
+      return;
     }
-    onboardingStepRef.current = step;
+
+    // New-customer path: respect any progress already saved in
+    // localStorage so a mid-flow reload doesn't re-show resolved
+    // cards. Anything before gender-dob → emit both initial cards.
+    // Past gender-dob → resume at the persisted step.
+    const persisted = readOnboardingStep();
+    const isInitialPhase =
+      persisted === "welcome" || persisted === "photos" || persisted === "gender-dob";
 
     const seeded: ChatMessage[] = [
-      {
-        role: "assistant",
-        text:
-          "Hey, I'm Vibe — I'll find what works on you. Want to chat, or shall we set the basics first? Skip anything you'd rather not share.",
-      },
+      { role: "assistant", text: WELCOME_NEW },
     ];
-    if (isCardStep(step)) {
+
+    if (isInitialPhase) {
+      seeded.push(
+        { role: "onboarding", kind: "photos", status: "active" },
+        { role: "onboarding", kind: "gender-dob", status: "active" },
+      );
+      onboardingStepRef.current = "gender-dob";
+      writeOnboardingStep("gender-dob");
+    } else if (isCardStep(persisted)) {
       seeded.push({
         role: "onboarding",
-        kind: step as OnboardingMessageKind,
+        kind: persisted as OnboardingMessageKind,
         status: "active",
       });
+      onboardingStepRef.current = persisted;
+    } else {
+      onboardingStepRef.current = "done";
     }
+
     setMessages(seeded);
-  }, [sessionId, conversationId]);
+  }, [sessionId, conversationId, hasProfile]);
 
   // Auto-scroll to bottom when messages or pending state changes.
   useEffect(() => {
@@ -546,34 +599,63 @@ export default function ConversationPage() {
     setDraft(text);
   };
 
-  // Onboarding card → completed / skipped. Closes the active card
-  // (replacing its widget with a short summary line) and emits the
-  // next card if there is one. Skipping doesn't save anything — the
-  // engine's gate is loosened for vibe_storefront so missing fields
-  // only degrade quality, never block.
-  const handleAdvanceOnboarding = (mode: "completed" | "skipped") => {
-    const current = onboardingStepRef.current;
-    const newStep = nextStep(current);
-    onboardingStepRef.current = newStep;
-    writeOnboardingStep(newStep);
-
+  // Onboarding card → completed / skipped.
+  //
+  // Two-phase logic:
+  //   1. Mark the matching active card resolved (closes its widget,
+  //      leaves a "Saved" / "Skipped" summary line).
+  //   2. Advance the state machine to the next card ONLY when no
+  //      onboarding cards remain active. This is what lets the
+  //      initial photos + gender-DOB cards live side-by-side without
+  //      racing each other — the customer can resolve them in any
+  //      order; we don't emit `name` until both are done. Sequential
+  //      cards (name → height → waist) trivially satisfy the
+  //      "no other active" check by virtue of being alone.
+  //
+  // Skipping doesn't save anything — the engine's gate is loosened
+  // for vibe_storefront so missing fields only degrade quality.
+  const handleAdvanceOnboarding = (
+    kind: OnboardingMessageKind,
+    mode: "completed" | "skipped",
+  ) => {
     setMessages((prev) => {
       const next = [...prev];
-      // Mark the most-recent active onboarding card as resolved.
+      // Resolve the most-recent active card OF THIS KIND. Walking
+      // from the end matters when multiple cards of the same kind
+      // ever existed (currently impossible, but cheap to be defensive).
       for (let i = next.length - 1; i >= 0; i--) {
         const m = next[i];
-        if (m.role === "onboarding" && m.status === "active") {
+        if (
+          m.role === "onboarding" &&
+          m.status === "active" &&
+          m.kind === kind
+        ) {
           next[i] = {
             ...m,
             status: mode,
             summary:
               mode === "completed"
-                ? completedSummary(m.kind)
-                : skippedSummary(m.kind),
+                ? completedSummary(kind)
+                : skippedSummary(kind),
           };
           break;
         }
       }
+
+      const anyActive = next.some(
+        (m) => m.role === "onboarding" && m.status === "active",
+      );
+      if (anyActive) {
+        // Other initial-phase card still pending — don't advance yet.
+        return next;
+      }
+
+      // All onboarding cards in the feed are resolved. Step to the
+      // next card in the linear sequence and emit it (if any).
+      const current = onboardingStepRef.current;
+      const newStep = nextStep(current);
+      onboardingStepRef.current = newStep;
+      writeOnboardingStep(newStep);
       if (isCardStep(newStep)) {
         next.push({
           role: "onboarding",

@@ -37,7 +37,16 @@ export function MessageView({
 }: {
   message: ChatMessage;
   sessionId: string;
-  onAdvanceOnboarding?: (mode: "completed" | "skipped") => void;
+  /**
+   * Notifies the parent that an onboarding card has resolved. `kind`
+   * is passed explicitly because multiple cards can be active at the
+   * same time (initial parallel photos + gender-DOB) and the parent
+   * needs to know which to mark resolved.
+   */
+  onAdvanceOnboarding?: (
+    kind: OnboardingMessageKind,
+    mode: "completed" | "skipped",
+  ) => void;
   onOnboardingPhotoUploaded?: (category: OnboardingImageCategory) => void;
   onHideOutfit?: (outfitId: string) => void;
 }) {
@@ -62,7 +71,7 @@ export function MessageView({
         <div className="conv-message conv-message--onboarding">
           <PhotosCard
             sessionId={sessionId}
-            onAdvance={(mode) => onAdvanceOnboarding?.(mode)}
+            onAdvance={(mode) => onAdvanceOnboarding?.("photos", mode)}
             onUploaded={onOnboardingPhotoUploaded}
           />
         </div>
@@ -73,17 +82,18 @@ export function MessageView({
         <div className="conv-message conv-message--onboarding">
           <GenderDobCard
             sessionId={sessionId}
-            onAdvance={(mode) => onAdvanceOnboarding?.(mode)}
+            onAdvance={(mode) => onAdvanceOnboarding?.("gender-dob", mode)}
           />
         </div>
       );
     }
+    const fieldKind = message.kind;
     return (
       <div className="conv-message conv-message--onboarding">
         <FieldCard
-          kind={message.kind}
+          kind={fieldKind}
           sessionId={sessionId}
-          onAdvance={(mode) => onAdvanceOnboarding?.(mode)}
+          onAdvance={(mode) => onAdvanceOnboarding?.(fieldKind, mode)}
         />
       </div>
     );
