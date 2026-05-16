@@ -28,6 +28,10 @@ type SideState =
       offsetX: number;
       offsetY: number;
     }
+  // Upload succeeded but the browser can't render the source (HEIC
+  // that heic2any couldn't transcode). Engine still got the file, so
+  // we don't block the customer — just skip the preview/zoom UI.
+  | { phase: "done-no-preview" }
   | { phase: "error"; message: string };
 
 const HEADSHOT_HINT = "Face only, hair away from face";
@@ -51,31 +55,52 @@ function isHeic(file: File): boolean {
   return /\.(heic|heif|heics|heifs)$/i.test(file.name);
 }
 
+type TranscodeOutcome =
+  | { ok: true; file: File; previewable: true }
+  | { ok: true; file: File; previewable: false };
+
 /**
- * Browsers can't render HEIC in an <img> tag (Apple's format; only
- * Safari handles it natively and even then unreliably). For HEIC
- * uploads we transcode to JPEG client-side via heic2any so the
- * preview renders AND the engine receives a smaller, universally
- * decodable file. heic2any is dynamically imported so non-HEIC
- * uploads pay zero bundle cost.
+ * Prepare a file for upload. Non-HEIC files pass through unchanged
+ * (previewable: true — browser can render the bytes directly).
  *
- * Returns the original File untouched for non-HEIC inputs.
+ * HEIC inputs: try to transcode to JPEG via heic2any so the preview
+ * renders AND the upload payload is smaller. If conversion fails
+ * (encrypted HEIC, multi-frame Live Photo, unsupported variant,
+ * corrupt file), fall back to uploading the original HEIC — the
+ * engine's Pillow handling will pick it up server-side. In that case
+ * previewable=false so the UI can show a "Photo uploaded —
+ * preview unavailable" tile instead of a broken-image glyph.
+ *
+ * heic2any is dynamically imported so non-HEIC uploads pay zero
+ * bundle cost.
  */
-async function transcodeIfHeic(file: File): Promise<File> {
-  if (!isHeic(file)) return file;
-  const { default: heic2any } = await import("heic2any");
-  const out = await heic2any({
-    blob: file,
-    toType: "image/jpeg",
-    quality: 0.85,
-  });
-  const blob = Array.isArray(out) ? out[0] : out;
-  // Strip any HEIF-family extension, then unconditionally append .jpg.
-  // Covers the case where isHeic matched via MIME type but the file
-  // had a generic name like "blob" with no extension to swap.
-  const newName =
-    file.name.replace(/\.(heic|heif|heics|heifs)$/i, "") + ".jpg";
-  return new File([blob], newName, { type: "image/jpeg" });
+async function prepareUpload(file: File): Promise<TranscodeOutcome> {
+  if (!isHeic(file)) {
+    return { ok: true, file, previewable: true };
+  }
+  try {
+    const { default: heic2any } = await import("heic2any");
+    const out = await heic2any({
+      blob: file,
+      toType: "image/jpeg",
+      quality: 0.85,
+    });
+    const blob = Array.isArray(out) ? out[0] : out;
+    // Strip any HEIF-family extension, then unconditionally append .jpg.
+    // Covers the case where isHeic matched via MIME type but the file
+    // had a generic name like "blob" with no extension to swap.
+    const newName =
+      file.name.replace(/\.(heic|heif|heics|heifs)$/i, "") + ".jpg";
+    return {
+      ok: true,
+      file: new File([blob], newName, { type: "image/jpeg" }),
+      previewable: true,
+    };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("HEIC client-side transcode failed; uploading original:", err);
+    return { ok: true, file, previewable: false };
+  }
 }
 
 export function PhotosCard({
@@ -132,15 +157,8 @@ export function PhotosCard({
     }
     setSide({ phase: "uploading", pct: 0 });
 
-    let file: File;
-    try {
-      file = await transcodeIfHeic(rawFile);
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Couldn't read that photo format.";
-      setSide({ phase: "error", message: msg });
-      return;
-    }
+    const prepared = await prepareUpload(rawFile);
+    const file = prepared.file;
 
     const form = new FormData();
     form.set("sessionId", sessionId);
@@ -152,37 +170,44 @@ export function PhotosCard({
         method: "POST",
         body: form,
       });
-      // Response.json() throws "Unexpected token '<'..." when the
-      // route ate a 500 and Vercel served an HTML error page. Sniff
-      // the content-type and surface a friendly message instead of
-      // bubbling the SyntaxError to the customer.
-      const isJson = (resp.headers.get("content-type") ?? "").includes(
-        "application/json",
-      );
-      const data = isJson
-        ? ((await resp.json()) as
-            | { ok: true; saved: boolean }
-            | { ok: false; error: string })
-        : { ok: false as const, error: `Upload failed (HTTP ${resp.status})` };
+      // Don't gate on Content-Type — some intermediaries (App Proxy,
+      // Vercel edge, etc.) can strip or rewrite the header even when
+      // the body is valid JSON. Just try to parse; if parse throws
+      // (e.g. body is HTML), fall back to a friendly status-keyed
+      // error string instead of letting "Unexpected token '<'"
+      // bubble to the customer.
+      let data:
+        | { ok: true; saved: boolean }
+        | { ok: false; error: string };
+      try {
+        data = await resp.json();
+      } catch {
+        data = resp.ok
+          ? { ok: false, error: "Upload returned an unreadable response." }
+          : { ok: false, error: `Upload failed (HTTP ${resp.status})` };
+      }
       if (!resp.ok || !data.ok) {
         const msg =
           "error" in data && data.error ? data.error : `Upload failed (${resp.status})`;
         setSide({ phase: "error", message: msg });
         return;
       }
-      // The engine response doesn't include a viewable URL (images are
-      // stored encrypted by the engine). Use the local object URL for
-      // the thumbnail preview — it'll get revoked when the card
-      // unmounts in the parent's advance step. zoom=1 + offset 0
-      // start the customer with the cover-fitted frame; they can
-      // zoom + pan from here to pick a tighter crop for their preview.
-      setSide({
-        phase: "done",
-        previewUrl: URL.createObjectURL(file),
-        zoom: 1,
-        offsetX: 0,
-        offsetY: 0,
-      });
+      // Upload succeeded. If the file isn't previewable (HEIC that
+      // heic2any couldn't transcode), show the "uploaded but no
+      // preview" tile instead of a broken-image glyph. Otherwise mint
+      // an object URL for the cover-fitted preview the customer can
+      // zoom + pan.
+      if (prepared.previewable) {
+        setSide({
+          phase: "done",
+          previewUrl: URL.createObjectURL(file),
+          zoom: 1,
+          offsetX: 0,
+          offsetY: 0,
+        });
+      } else {
+        setSide({ phase: "done-no-preview" });
+      }
       onUploaded?.(category);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Upload failed.";
@@ -190,7 +215,11 @@ export function PhotosCard({
     }
   };
 
-  const bothDone = fullBody.phase === "done" && headshot.phase === "done";
+  // "done-no-preview" counts as done for the purpose of advancing —
+  // the customer's photo IS uploaded, the preview just can't render.
+  const isSideDone = (s: SideState): boolean =>
+    s.phase === "done" || s.phase === "done-no-preview";
+  const bothDone = isSideDone(fullBody) && isSideDone(headshot);
   const anyInFlight =
     fullBody.phase === "uploading" || headshot.phase === "uploading";
 
@@ -238,8 +267,7 @@ export function PhotosCard({
           // both lit when both done. Disabled while uploads run so we
           // don't advance mid-flight.
           disabled={
-            anyInFlight ||
-            (fullBody.phase !== "done" && headshot.phase !== "done")
+            anyInFlight || (!isSideDone(fullBody) && !isSideDone(headshot))
           }
         >
           {bothDone ? "Continue" : "Continue with what I've got"}
@@ -296,6 +324,37 @@ function PhotoTile({
           onChange={handleFile}
         />
       </PhotoTilePreview>
+    );
+  }
+
+  // Uploaded but the browser can't render this file (HEIC that
+  // heic2any couldn't transcode). Show a static "saved" tile with a
+  // Change button so the customer can retry with a different photo.
+  if (state.phase === "done-no-preview") {
+    return (
+      <div className="onb-photo onb-photo--done-no-preview">
+        <div className="onb-photo__inner">
+          <div className="onb-photo__label">{label}</div>
+          <div className="onb-photo__hint">
+            ✓ Saved · preview unavailable
+          </div>
+          <button
+            type="button"
+            className="onb-photo__cta onb-photo__cta--button"
+            onClick={() => inputRef.current?.click()}
+          >
+            Change
+          </button>
+        </div>
+        <input
+          ref={inputRef}
+          id={inputId}
+          type="file"
+          accept="image/*"
+          className="onb-photo__input"
+          onChange={handleFile}
+        />
+      </div>
     );
   }
 

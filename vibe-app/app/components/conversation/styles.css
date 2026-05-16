@@ -244,11 +244,35 @@
   transition: border-color 120ms ease, background 120ms ease;
 }
 
-/* Non-done tiles keep a 3:4 ratio with the dashed-empty look. */
+/* Non-done tiles (idle / uploading / error / done-no-preview) keep
+ * a 3:4 ratio with the dashed-empty look. done-no-preview is similar
+ * to error in shape but with a positive checkmark message. */
 .onb-photo--idle,
 .onb-photo--uploading,
-.onb-photo--error {
+.onb-photo--error,
+.onb-photo--done-no-preview {
   aspect-ratio: 3 / 4;
+}
+
+.onb-photo--done-no-preview {
+  border-style: solid;
+  border-color: var(--ink-muted);
+}
+
+.onb-photo__cta--button {
+  margin-top: 0.6rem;
+  background: none;
+  font-family: inherit;
+  border: 1px solid var(--ink-muted);
+  border-radius: 6px;
+  padding: 0.3rem 0.8rem;
+  color: var(--ink);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.onb-photo__cta--button:hover {
+  background: var(--rule-soft);
 }
 
 .onb-photo:hover {
