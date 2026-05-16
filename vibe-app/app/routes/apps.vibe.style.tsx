@@ -714,7 +714,11 @@ export default function ConversationPage() {
   // and this effect has nothing to derive from. markKindResolved
   // lives in the event handler now — no scan needed here.
   useEffect(() => {
-    let lastOnb: ChatMessage | undefined;
+    // Typing lastOnb as the narrowed onboarding variant lets TS carry
+    // .kind through to the step derivation without a second role
+    // check after the loop. The `continue` guard inside the loop
+    // narrows `m` to the same variant before the assignment.
+    let lastOnb: Extract<ChatMessage, { role: "onboarding" }> | undefined;
     let anyActive = false;
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
@@ -725,7 +729,7 @@ export default function ConversationPage() {
         break;
       }
     }
-    if (!lastOnb || lastOnb.role !== "onboarding") return;
+    if (!lastOnb) return;
     const step: OnboardingStep = anyActive
       ? (lastOnb.kind as OnboardingStep)
       : nextStep(lastOnb.kind as OnboardingStep);
