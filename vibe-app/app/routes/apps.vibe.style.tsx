@@ -26,7 +26,7 @@ import { json } from "@remix-run/node";
 import { useFetcher, useLoaderData } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 
-import { Composer } from "../components/conversation/composer";
+import { Composer, type Attachment } from "../components/conversation/composer";
 import {
   MessageView,
   type ChatMessage,
@@ -227,13 +227,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (op === "turn") {
     const conversationId = String(form.get("conversationId") ?? "").trim();
     const message = String(form.get("message") ?? "").trim();
+    // Image attachments arrive as data URLs. Don't trim — base64 is
+    // whitespace-sensitive and a stray newline at the end of a very
+    // large payload would break the engine's parser.
+    const rawImage = form.get("imageData");
+    const imageData =
+      typeof rawImage === "string" && rawImage.startsWith("data:")
+        ? rawImage
+        : "";
     if (!conversationId || !message) {
       return json<ActionResponse>(
         { ok: false, error: "Missing conversationId or message" },
         { status: 400 },
       );
     }
-    const turn = await startTurn({ conversationId, userId: sessionId, message });
+    const turn = await startTurn({
+      conversationId,
+      userId: sessionId,
+      message,
+      imageData: imageData || undefined,
+    });
     return json<ActionResponse>({
       ok: true,
       op: "turn",
@@ -305,6 +318,11 @@ export default function ConversationPage() {
   const [conversationId, setConversationId] = useState("");
   const [initError, setInitError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [attachment, setAttachment] = useState<Attachment | null>(null);
+  // Short-lived error from the composer's attach button (file too big,
+  // wrong type, unreadable). Distinct from initError, which signals a
+  // hard session-setup failure the customer can't recover from.
+  const [attachError, setAttachError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<PendingTurn | null>(null);
   // Whether the current identity is bound to a Shopify customer.
@@ -601,13 +619,41 @@ export default function ConversationPage() {
   }, [pending?.conversationId, pending?.jobId, pollFetcher.state, pollFetcher.data]);
 
   const handleSubmit = () => {
-    const text = draft.trim();
-    if (!text || pending) return;
+    if (pending) return;
     if (!sessionId || !conversationId) return;
-    submitFetcher.submit(
-      { op: "turn", sessionId, conversationId, message: text },
-      { method: "post" },
-    );
+    const text = draft.trim();
+    // The composer enables Send when either text OR an attachment is
+    // present. Empty + no attachment shouldn't reach here, but guard
+    // anyway so a stray hotkey press doesn't fire a useless turn.
+    if (!text && !attachment) return;
+
+    // Pairing-with-image flow: legacy ui.py defaulted the message to
+    // "What goes with this? Show me pairing options." when the user
+    // attached an image without typing anything. The engine's planner
+    // routes this prompt into pairing_request — mirror that here so
+    // image-only sends produce a useful turn instead of an empty
+    // architect query.
+    const message =
+      text || "What goes with this? Show me pairing options.";
+
+    // FormData (not the plain-object form) — Remix's submit() encodes
+    // plain objects as application/x-www-form-urlencoded, which can
+    // mangle very large data URLs in some hosts' URL parsers. FormData
+    // is sent as multipart/form-data which carries the base64 payload
+    // verbatim. ~13MB max (10MB binary × 1.33 base64 expansion); fits
+    // comfortably within Vercel's request-body cap.
+    const form = new FormData();
+    form.set("op", "turn");
+    form.set("sessionId", sessionId);
+    form.set("conversationId", conversationId);
+    form.set("message", message);
+    if (attachment) form.set("imageData", attachment.dataUrl);
+    submitFetcher.submit(form, { method: "post", encType: "multipart/form-data" });
+
+    // Clear the attachment optimistically — the next turn shouldn't
+    // re-attach the same image, and the user has visual confirmation
+    // (the chip disappears the moment they hit send).
+    setAttachment(null);
   };
 
   const handlePromptPick = (text: string) => {
@@ -797,6 +843,9 @@ export default function ConversationPage() {
         {initError && (
           <div className="conv-init-error">{initError}</div>
         )}
+        {attachError && (
+          <div className="conv-init-error">{attachError}</div>
+        )}
         {showWelcome && <WelcomeState onPick={handlePromptPick} />}
 
         {messages.map((msg, i) => (
@@ -829,6 +878,13 @@ export default function ConversationPage() {
         onChange={setDraft}
         onSubmit={handleSubmit}
         disabled={composerDisabled}
+        attachment={attachment}
+        onAttach={(a) => {
+          setAttachment(a);
+          setAttachError(null);
+        }}
+        onDetach={() => setAttachment(null)}
+        onAttachError={setAttachError}
       />
     </div>
   );

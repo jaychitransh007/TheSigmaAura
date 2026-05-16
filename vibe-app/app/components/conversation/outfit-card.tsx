@@ -314,6 +314,7 @@ function OutfitDetail({ outfit }: { outfit: Outfit }) {
 }
 
 function GarmentDetail({ item }: { item: OutfitItem }) {
+  const description = item.description?.trim();
   return (
     <>
       {item.brand && <div className="conv-detail-brand">{item.brand}</div>}
@@ -325,6 +326,7 @@ function GarmentDetail({ item }: { item: OutfitItem }) {
           {formatRupees(item.price as number)}
         </p>
       )}
+      {description && <p className="conv-detail-desc">{description}</p>}
     </>
   );
 }

@@ -9,7 +9,7 @@
 // Assistant messages can carry outfit cards (D.C.2e — rich 3-column
 // layout with thumbnails / hero / detail panel and mode switching).
 
-import { OutfitCard } from "./outfit-card";
+import { OutfitCarousel } from "./outfit-carousel";
 import { FieldCard, type FieldKind } from "../onboarding/field-card";
 import { GenderDobCard } from "../onboarding/gender-dob-card";
 import { PhotosCard } from "../onboarding/photos-card";
@@ -102,13 +102,9 @@ export function MessageView({
   return (
     <div className="conv-message conv-message--assistant">
       <p>{message.text}</p>
-      {message.outfits?.map((outfit) => (
-        <OutfitCard
-          key={outfit.outfit_id}
-          outfit={outfit}
-          onHide={onHideOutfit ? () => onHideOutfit(outfit.outfit_id) : undefined}
-        />
-      ))}
+      {message.outfits && message.outfits.length > 0 && (
+        <OutfitCarousel outfits={message.outfits} onHide={onHideOutfit} />
+      )}
     </div>
   );
 }
