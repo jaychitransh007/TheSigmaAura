@@ -1,26 +1,81 @@
 // Single message bubble. User messages on the right (accent fill);
 // assistant on the left (borderless with a 2px ink left rule).
+// Onboarding messages are full-width cards (not bubbles) — they carry
+// either an interactive widget (PhotosCard / FieldCard) or a static
+// "Photos saved" / "Skipped" summary line once the step has advanced.
+//
 // Pattern carried over from legacy ui.py chat layout.
 //
 // Assistant messages can carry outfit cards (D.C.2e — rich 3-column
 // layout with thumbnails / hero / detail panel and mode switching).
 
 import { OutfitCard } from "./outfit-card";
-import type { Outfit } from "../../lib/engine.server";
+import { FieldCard, type FieldKind } from "../onboarding/field-card";
+import { PhotosCard } from "../onboarding/photos-card";
+import type { Outfit, OnboardingImageCategory } from "../../lib/engine.server";
+
+export type OnboardingMessageKind = "photos" | FieldKind;
 
 export type ChatMessage =
   | { role: "user"; text: string }
-  | { role: "assistant"; text: string; outfits?: Outfit[] };
+  | { role: "assistant"; text: string; outfits?: Outfit[] }
+  | {
+      role: "onboarding";
+      kind: OnboardingMessageKind;
+      status: "active" | "completed" | "skipped";
+      // Short summary shown when status !== "active" (e.g. "Photos saved").
+      summary?: string;
+    };
 
 export function MessageView({
   message,
+  sessionId,
+  onAdvanceOnboarding,
+  onOnboardingPhotoUploaded,
   onHideOutfit,
 }: {
   message: ChatMessage;
+  sessionId: string;
+  onAdvanceOnboarding?: (mode: "completed" | "skipped") => void;
+  onOnboardingPhotoUploaded?: (category: OnboardingImageCategory) => void;
   onHideOutfit?: (outfitId: string) => void;
 }) {
   if (message.role === "user") {
     return <div className="conv-message conv-message--user">{message.text}</div>;
+  }
+
+  if (message.role === "onboarding") {
+    if (message.status !== "active") {
+      // Static summary line — keeps the feed coherent without
+      // re-rendering the interactive widget after it's been consumed.
+      return (
+        <div
+          className={`conv-message conv-message--onboarding-summary conv-message--onboarding-${message.status}`}
+        >
+          {message.summary ?? (message.status === "skipped" ? "Skipped" : "Saved")}
+        </div>
+      );
+    }
+    if (message.kind === "photos") {
+      return (
+        <div className="conv-message conv-message--onboarding">
+          <PhotosCard
+            sessionId={sessionId}
+            onAdvance={(mode) => onAdvanceOnboarding?.(mode)}
+            onUploaded={onOnboardingPhotoUploaded}
+          />
+        </div>
+      );
+    }
+    return (
+      <div className="conv-message conv-message--onboarding">
+        <FieldCard
+          kind={message.kind}
+          sessionId={sessionId}
+          onAdvance={(mode) => onAdvanceOnboarding?.(mode)}
+        />
+      </div>
+    );
   }
 
   return (

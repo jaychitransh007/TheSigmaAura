@@ -222,6 +222,147 @@ export async function pollTurn(args: {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// In-chat onboarding helpers (D.O.2)
+//
+// Vibe customers can save profile fields and upload photos one-at-a-time
+// from inside the chat. Each helper is a thin pass-through to the
+// existing platform_core onboarding endpoints. Identity is the
+// localStorage session id (D.S.3a), threaded through as user_id.
+//
+// Mock mode is intentionally lax — returns optimistic success so the
+// UI flow can be built / tested before ENGINE_API_URL is set.
+// ─────────────────────────────────────────────────────────────────────
+
+export type OnboardingImageCategory = "full_body" | "headshot";
+export type OnboardingProfileField =
+  | "name"
+  | "date_of_birth"
+  | "gender"
+  | "height_cm"
+  | "waist_cm";
+
+export type OnboardingImageUploadResponse = {
+  user_id: string;
+  category: OnboardingImageCategory;
+  saved: boolean;
+  encrypted_filename?: string;
+  file_path?: string;
+};
+
+export type OnboardingProfileResponse = {
+  user_id: string;
+  saved: boolean;
+  message?: string;
+};
+
+export type OnboardingAnalysisResponse = {
+  user_id: string;
+  analysis_run_id?: string;
+  status: string;
+  message?: string;
+};
+
+export async function uploadOnboardingImage(args: {
+  userId: string;
+  category: OnboardingImageCategory;
+  file: Blob;
+  filename: string;
+}): Promise<OnboardingImageUploadResponse> {
+  if (USE_MOCK) {
+    return {
+      user_id: args.userId,
+      category: args.category,
+      saved: true,
+      encrypted_filename: `mock-${args.category}-${Date.now()}.jpg`,
+      file_path: `mock://${args.userId}/${args.category}`,
+    };
+  }
+  const form = new FormData();
+  form.append("user_id", args.userId);
+  form.append("file", args.file, args.filename);
+
+  let resp: Response;
+  try {
+    resp = await fetch(
+      `${ENGINE_API_URL}/v1/onboarding/images/${encodeURIComponent(args.category)}`,
+      { method: "POST", body: form, signal: fetchTimeout() },
+    );
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new EngineError(0, `Engine onboarding image upload unreachable: ${reason}`);
+  }
+  if (!resp.ok) {
+    throw new EngineError(
+      resp.status,
+      `Engine onboarding image upload → ${resp.status}: ${await readErrorBody(resp)}`,
+    );
+  }
+  return (await resp.json()) as OnboardingImageUploadResponse;
+}
+
+export async function patchOnboardingProfile(args: {
+  userId: string;
+  field: OnboardingProfileField;
+  value: string | number;
+}): Promise<OnboardingProfileResponse> {
+  if (USE_MOCK) {
+    return { user_id: args.userId, saved: true, message: "mock saved" };
+  }
+  // platform_core's PATCH /onboarding/profile/partial accepts a partial
+  // body with any subset of the profile fields. We send exactly one
+  // field per call so the UI can save incrementally as the customer
+  // answers each card.
+  const body: Record<string, unknown> = { user_id: args.userId };
+  body[args.field] = args.value;
+  let resp: Response;
+  try {
+    resp = await fetch(`${ENGINE_API_URL}/v1/onboarding/profile/partial`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: fetchTimeout(),
+    });
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new EngineError(0, `Engine profile patch unreachable: ${reason}`);
+  }
+  if (!resp.ok) {
+    throw new EngineError(
+      resp.status,
+      `Engine profile patch → ${resp.status}: ${await readErrorBody(resp)}`,
+    );
+  }
+  return (await resp.json()) as OnboardingProfileResponse;
+}
+
+/**
+ * Trigger an analysis phase against whatever profile data has been
+ * saved so far. The engine's two phase endpoints have prerequisites
+ * (phase1: gender + headshot, phase2: gender + DOB + both photos);
+ * if the prereq isn't met, the engine 400s and we surface that.
+ * "full" requires onboarding_complete=true which Vibe never sets, so
+ * we don't expose it here.
+ */
+export async function startOnboardingAnalysis(args: {
+  userId: string;
+  phase: "phase1" | "phase2";
+}): Promise<OnboardingAnalysisResponse> {
+  if (USE_MOCK) {
+    return {
+      user_id: args.userId,
+      analysis_run_id: `mock-run-${Date.now()}`,
+      status: `${args.phase}_started`,
+      message: "mock analysis started",
+    };
+  }
+  const path =
+    args.phase === "phase1"
+      ? "/v1/onboarding/analysis/start-phase1"
+      : "/v1/onboarding/analysis/start-phase2";
+  return postJson<OnboardingAnalysisResponse>(path, { user_id: args.userId });
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Engine ↔ Vibe response shape normalization
 //
 // The engine (platform_core.api_schemas) returns:
