@@ -12,7 +12,10 @@ import { useState } from "react";
 import type { OnboardingProfileField } from "../../lib/engine.server";
 import { parseActionJson } from "../../lib/fetch.client";
 
-export type FieldKind = "name" | "dob" | "gender" | "height" | "waist";
+// Gender and DOB are no longer FieldCards — they live in the
+// dedicated GenderDobCard so gender can use chip-style choices and
+// DOB can use a segmented numeric input.
+export type FieldKind = "name" | "height" | "waist";
 
 const KIND_CONFIG: Record<
   FieldKind,
@@ -21,7 +24,7 @@ const KIND_CONFIG: Record<
     title: string;
     blurb: string;
     placeholder: string;
-    inputType: "text" | "date" | "number" | "select";
+    inputType: "text" | "number" | "select";
     options?: { value: string; label: string }[];
     min?: number;
     max?: number;
@@ -34,26 +37,6 @@ const KIND_CONFIG: Record<
     blurb: "Just a first name is fine.",
     placeholder: "Your name",
     inputType: "text",
-  },
-  dob: {
-    field: "date_of_birth",
-    title: "When were you born?",
-    blurb: "Helps me read age-aware proportions.",
-    placeholder: "",
-    inputType: "date",
-  },
-  gender: {
-    field: "gender",
-    title: "How do you dress?",
-    blurb: "Steers the lookbook I build for you.",
-    placeholder: "",
-    inputType: "select",
-    options: [
-      { value: "female", label: "Feminine" },
-      { value: "male", label: "Masculine" },
-      { value: "non_binary", label: "Mix it up" },
-      { value: "prefer_not_to_say", label: "Prefer not to say" },
-    ],
   },
   height: {
     field: "height_cm",

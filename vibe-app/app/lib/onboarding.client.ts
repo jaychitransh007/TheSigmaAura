@@ -18,9 +18,10 @@ const STEP_KEY = "vibe_onboarding_step";
 export type OnboardingStep =
   | "welcome"
   | "photos"
+  // Combined gender + DOB card. Gender is chip-style (Male / Female /
+  // Non-binary), DOB is a DD/MM/YYYY segmented numeric input.
+  | "gender-dob"
   | "name"
-  | "dob"
-  | "gender"
   | "height"
   | "waist"
   | "done";
@@ -28,19 +29,34 @@ export type OnboardingStep =
 const ORDER: readonly OnboardingStep[] = [
   "welcome",
   "photos",
+  "gender-dob",
   "name",
-  "dob",
-  "gender",
   "height",
   "waist",
   "done",
 ] as const;
 
+// Migration map for customers who saw the old per-field cards before
+// the gender+DOB merge. We promote either old step into the combined
+// one so they pick up where they left off without losing progress.
+const LEGACY_STEP_ALIASES: Readonly<Record<string, OnboardingStep>> = {
+  dob: "gender-dob",
+  gender: "gender-dob",
+};
+
 export function readOnboardingStep(): OnboardingStep {
   if (typeof window === "undefined") return "welcome";
   try {
     const raw = window.localStorage.getItem(STEP_KEY);
-    if (raw && (ORDER as readonly string[]).includes(raw)) {
+    if (!raw) return "welcome";
+    if (raw in LEGACY_STEP_ALIASES) {
+      const next = LEGACY_STEP_ALIASES[raw];
+      // Repair localStorage so subsequent reads avoid the legacy
+      // branch entirely.
+      window.localStorage.setItem(STEP_KEY, next);
+      return next;
+    }
+    if ((ORDER as readonly string[]).includes(raw)) {
       return raw as OnboardingStep;
     }
   } catch {

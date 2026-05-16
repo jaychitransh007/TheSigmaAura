@@ -410,6 +410,123 @@
   pointer-events: none;
 }
 
+/* Gender + DOB combined card — chips and segmented date input. */
+
+.onb-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.onb-fieldset__legend {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  padding: 0;
+  margin: 0;
+}
+
+.onb-chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.onb-chip {
+  flex: 1 1 0;
+  min-width: 6rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  background: #ffffff;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.onb-chip:hover:not(:disabled) {
+  border-color: var(--ink-muted);
+}
+
+.onb-chip--on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #faf5ee;
+}
+
+.onb-chip--on:hover:not(:disabled) {
+  border-color: var(--ink);
+}
+
+.onb-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Segmented date input — DD / MM / YYYY. */
+
+.onb-dob {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #ffffff;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  width: max-content;
+  max-width: 100%;
+}
+
+.onb-dob:focus-within {
+  border-color: var(--ink-muted);
+}
+
+.onb-dob__seg {
+  font-family: inherit;
+  font-size: 1rem;
+  text-align: center;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0.15rem 0;
+  /* Hide the native spinner buttons on the number inputs — the
+   * segmented look fights with them. Customers tab between
+   * segments instead. */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.onb-dob__seg::-webkit-outer-spin-button,
+.onb-dob__seg::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.onb-dob__seg:focus {
+  outline: none;
+}
+
+.onb-dob__seg--dd,
+.onb-dob__seg--mm {
+  width: 2.2rem;
+}
+
+.onb-dob__seg--yyyy {
+  width: 3.6rem;
+}
+
+.onb-dob__sep {
+  color: var(--ink-muted);
+  font-weight: 400;
+  user-select: none;
+}
+
 /* Field card input */
 
 .onb-field {
