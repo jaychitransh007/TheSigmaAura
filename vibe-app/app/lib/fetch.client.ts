@@ -24,7 +24,16 @@ export async function parseActionJson<T extends object>(
   resp: Response,
 ): Promise<ActionPayload<T>> {
   try {
-    return (await resp.json()) as ActionPayload<T>;
+    const raw: unknown = await resp.json();
+    // resp.json() succeeds on any valid JSON — including `null`, a
+    // bare boolean, number, string, or array. The caller assumes a
+    // `{ ok, ... }` object shape; `"error" in primitive` would throw
+    // TypeError downstream. Treat anything that isn't a non-null
+    // plain object as an unreadable response.
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new Error("non-object JSON body");
+    }
+    return raw as ActionPayload<T>;
   } catch {
     return {
       ok: false,

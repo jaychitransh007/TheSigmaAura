@@ -167,15 +167,21 @@ export function PhotosCard({
     }
     setSide({ phase: "uploading", pct: 0 });
 
-    const prepared = await prepareUpload(rawFile);
-    const file = prepared.file;
-
-    const form = new FormData();
-    form.set("sessionId", sessionId);
-    form.set("category", category);
-    form.set("file", file);
-
     try {
+      // prepareUpload has its own internal try/catch for transcoding,
+      // but a dynamic import failure (network blip while loading the
+      // heic-to chunk, CSP policy, etc.) would still bubble up.
+      // Keeping it inside the outer try means any failure path lands
+      // in the same setSide({phase:"error"}) instead of leaking an
+      // unhandled rejection.
+      const prepared = await prepareUpload(rawFile);
+      const file = prepared.file;
+
+      const form = new FormData();
+      form.set("sessionId", sessionId);
+      form.set("category", category);
+      form.set("file", file);
+
       const resp = await fetch("/apps/vibe/api/onboarding/image", {
         method: "POST",
         body: form,
