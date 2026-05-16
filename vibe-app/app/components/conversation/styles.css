@@ -69,8 +69,8 @@
 
 .conv-init-error {
   background: var(--rule-soft);
-  color: var(--ink-body);
-  border: 1px solid var(--rule-strong, rgba(0, 0, 0, 0.1));
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
   border-radius: 10px;
   padding: 0.75rem 1rem;
   margin: 1rem 0;
