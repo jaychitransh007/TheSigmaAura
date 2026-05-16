@@ -340,11 +340,19 @@ function PhotoTilePreview({
   };
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.releasePointerCapture?.(e.pointerId);
-    if (dragOffset) {
+    // Compute the final offset from the pointerup event itself, not
+    // from dragOffset state. React state updates are async — on a
+    // fast lift right after pointermove, the most recent setDragOffset
+    // may not have flushed yet, so dragOffset would carry a value
+    // from one frame earlier. The dragStart ref + e.clientX/Y give us
+    // the exact lift position.
+    if (dragStart.current) {
+      const dx = e.clientX - dragStart.current.x;
+      const dy = e.clientY - dragStart.current.y;
       onTransform({
         ...state,
-        offsetX: dragOffset.x,
-        offsetY: dragOffset.y,
+        offsetX: dragStart.current.baseX + dx,
+        offsetY: dragStart.current.baseY + dy,
       });
       setDragOffset(null);
     }
