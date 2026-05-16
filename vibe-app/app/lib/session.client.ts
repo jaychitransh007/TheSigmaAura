@@ -19,6 +19,12 @@
 
 const STORAGE_KEY = "vibe_session_id";
 
+// Tracks which Shopify customer we've already merged with. Set by
+// D.S.3b on first detection of logged_in_customer_id in the App Proxy
+// URL params; consulted on subsequent loads to avoid re-merging the
+// same identity. Empty / absent for guests.
+const MERGED_CUSTOMER_KEY = "vibe_merged_shopify_customer_id";
+
 /**
  * Mint a UUID v4. Prefers `crypto.randomUUID` (Web Crypto, secure
  * contexts only) and falls back to a Math.random-based RFC 4122 v4
@@ -64,5 +70,43 @@ export function getOrCreateClientSessionId(): string {
     // Fall back to an in-memory id for this page session — conversation
     // won't persist across reloads but the chat loop still works.
     return mintUuid();
+  }
+}
+
+/**
+ * After a successful Shopify Customer Account merge (D.S.3b), replace
+ * the anonymous UUID in localStorage with the canonical
+ * `shopify:{customer_id}` identity. Subsequent engine calls use the
+ * canonical id, so the customer's conversation history follows them
+ * across devices once they sign in.
+ */
+export function adoptCanonicalSessionId(canonical: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, canonical);
+  } catch {
+    // No-op if storage is locked.
+  }
+}
+
+/**
+ * Which Shopify customer the current localStorage session has already
+ * been merged with. Empty for guests / unmerged sessions.
+ */
+export function readMergedCustomerId(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(MERGED_CUSTOMER_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function writeMergedCustomerId(customerId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(MERGED_CUSTOMER_KEY, customerId);
+  } catch {
+    // No-op if storage is locked.
   }
 }

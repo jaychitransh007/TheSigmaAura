@@ -38,6 +38,7 @@ import conversationStyles from "../components/conversation/styles.css?url";
 import {
   ENGINE_MOCK_ACTIVE,
   ensureOnboardingProfile,
+  mergeUserIdentity,
   resolveConversation,
   startTurn,
   type OnboardingImageCategory,
@@ -50,7 +51,12 @@ import {
   writeOnboardingStep,
   type OnboardingStep,
 } from "../lib/onboarding.client";
-import { getOrCreateClientSessionId } from "../lib/session.client";
+import {
+  adoptCanonicalSessionId,
+  getOrCreateClientSessionId,
+  readMergedCustomerId,
+  writeMergedCustomerId,
+} from "../lib/session.client";
 import { authenticate } from "../shopify.server";
 
 export const links: LinksFunction = () => [
@@ -66,25 +72,46 @@ export const links: LinksFunction = () => [
 ];
 
 // ─────────────────────────────────────────────────────────────────────
-// Loader — validates proxy, returns mock-mode flag. No identity yet.
+// Loader — validates proxy, returns mock-mode flag + the Shopify
+// customer id if the storefront forwarded one (D.S.3b).
+//
+// Shopify's App Proxy automatically appends `logged_in_customer_id` to
+// the signed query string when the customer is logged in via the
+// storefront's Customer Account flow. We surface it to the client so
+// it can decide whether to merge the anonymous localStorage UUID into
+// the now-authenticated `shopify:{id}` identity. Absent for guests.
 // ─────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.public.appProxy(request);
-  return json({ mockMode: ENGINE_MOCK_ACTIVE });
+  const url = new URL(request.url);
+  const loggedInCustomerId =
+    url.searchParams.get("logged_in_customer_id")?.trim() || null;
+  return json({
+    mockMode: ENGINE_MOCK_ACTIVE,
+    loggedInCustomerId,
+  });
 };
 
 // ─────────────────────────────────────────────────────────────────────
 // Action — dispatches on `op`:
-//   op=init  → resolveConversation(sessionId) → { conversationId }
-//   op=turn  → startTurn(...)                  → { jobId, message }
-// Both ops require sessionId from the form body.
+//   op=init   → resolveConversation(sessionId) → { conversationId }
+//   op=turn   → startTurn(...)                  → { jobId, message }
+//   op=merge  → mergeUserIdentity(canonical, alias) → { canonical }
+//              (D.S.3b: collapse anonymous UUID into shopify:{id})
+// All ops require sessionId from the form body.
 // ─────────────────────────────────────────────────────────────────────
 
 type InitOk = { ok: true; op: "init"; conversationId: string };
 type TurnOk = { ok: true; op: "turn"; jobId: string; message: string };
+type MergeOk = {
+  ok: true;
+  op: "merge";
+  canonicalExternalUserId: string;
+  merged: boolean;
+};
 type ActionFail = { ok: false; error: string };
-type ActionResponse = InitOk | TurnOk | ActionFail;
+type ActionResponse = InitOk | TurnOk | MergeOk | ActionFail;
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   await authenticate.public.appProxy(request);
@@ -120,6 +147,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       ok: true,
       op: "init",
       conversationId: conversation.conversation_id,
+    });
+  }
+
+  if (op === "merge") {
+    // D.S.3b — fold an anonymous-UUID identity into the canonical
+    // Shopify-customer one. `sessionId` is the alias (the old
+    // localStorage UUID); the form also carries the canonical id
+    // (`shopify:{logged_in_customer_id}`).
+    const canonical = String(form.get("canonicalExternalUserId") ?? "").trim();
+    if (!canonical) {
+      return json<ActionResponse>(
+        { ok: false, error: "Missing canonicalExternalUserId" },
+        { status: 400 },
+      );
+    }
+    const result = await mergeUserIdentity({
+      canonicalExternalUserId: canonical,
+      aliasExternalUserId: sessionId,
+    });
+    // Make sure the now-canonical user has an onboarding_profiles row
+    // — otherwise the customer's first photo upload after login would
+    // 404 just as it does on initial sign-up.
+    await ensureOnboardingProfile(result.canonical_external_user_id);
+    return json<ActionResponse>({
+      ok: true,
+      op: "merge",
+      canonicalExternalUserId: result.canonical_external_user_id,
+      merged: result.merged,
     });
   }
 
@@ -193,16 +248,21 @@ function skippedSummary(kind: OnboardingMessageKind): string {
 }
 
 export default function ConversationPage() {
-  const { mockMode } = useLoaderData<typeof loader>();
+  const { mockMode, loggedInCustomerId } = useLoaderData<typeof loader>();
   const [sessionId, setSessionId] = useState("");
   const [conversationId, setConversationId] = useState("");
   const [initError, setInitError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<PendingTurn | null>(null);
+  // Whether the current identity is bound to a Shopify customer.
+  // Drives the header CTA: "Sign in" pill when false, status hint
+  // when true. Hydrated from localStorage on mount.
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const initFetcher = useFetcher<typeof action>();
   const submitFetcher = useFetcher<typeof action>();
+  const mergeFetcher = useFetcher<typeof action>();
   const pollFetcher = useFetcher<TurnStatusResponse>();
   const feedRef = useRef<HTMLDivElement>(null);
   // submitFetcher.data is sticky — Remix keeps the last response around
@@ -231,8 +291,39 @@ export default function ConversationPage() {
   // Mount: pull session id from localStorage (or mint one) and resolve
   // the conversation. Anchors identity to this browser for the rest of
   // the page session.
+  //
+  // D.S.3b: if Shopify forwarded a logged_in_customer_id AND we haven't
+  // already merged into that customer's identity, dispatch op=merge.
+  // The anonymous UUID's conversations/history get folded into
+  // `shopify:{customer_id}` and from here on we use that as the
+  // canonical sessionId. The init request fires only AFTER the merge
+  // settles so the conversation resolves against the canonical id.
   useEffect(() => {
-    const sid = getOrCreateClientSessionId();
+    let sid = getOrCreateClientSessionId();
+    setIsAuthenticated(readMergedCustomerId().length > 0);
+
+    const alreadyMergedWith = readMergedCustomerId();
+    const needsMerge =
+      !!loggedInCustomerId && alreadyMergedWith !== loggedInCustomerId;
+
+    if (needsMerge) {
+      const canonical = `shopify:${loggedInCustomerId}`;
+      mergeFetcher.submit(
+        {
+          op: "merge",
+          sessionId: sid,
+          canonicalExternalUserId: canonical,
+        },
+        { method: "post" },
+      );
+      // Init is deferred to the merge-completed effect below so that
+      // resolveConversation uses the post-merge canonical id.
+      setSessionId(sid); // expose the alias temporarily for the merge call
+      return;
+    }
+
+    // Returning customer who's already merged, OR an anonymous guest.
+    // Just init against whatever's in localStorage.
     setSessionId(sid);
     initFetcher.submit(
       { op: "init", sessionId: sid },
@@ -241,6 +332,27 @@ export default function ConversationPage() {
     // run-once; deps are intentionally empty.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // After op=merge settles, adopt the canonical id locally and run
+  // op=init against it.
+  useEffect(() => {
+    if (mergeFetcher.state !== "idle") return;
+    const data = mergeFetcher.data;
+    if (!data || !data.ok || data.op !== "merge") return;
+
+    const canonical = data.canonicalExternalUserId;
+    adoptCanonicalSessionId(canonical);
+    if (loggedInCustomerId) {
+      writeMergedCustomerId(loggedInCustomerId);
+    }
+    setSessionId(canonical);
+    setIsAuthenticated(true);
+    initFetcher.submit(
+      { op: "init", sessionId: canonical },
+      { method: "post" },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergeFetcher.state, mergeFetcher.data]);
 
   // Capture the init response → conversationId.
   useEffect(() => {
@@ -468,6 +580,25 @@ export default function ConversationPage() {
     <div className="conv-page">
       <header className="conv-header">
         <h1>Vibe{mockMode && <span className="conv-mock-badge"> Mock</span>}</h1>
+        {/* D.S.3b — sign-in affordance. Anonymous customers see a pill
+            that links to the storefront's Customer Account login; the
+            return_url brings them back here, at which point the App
+            Proxy starts forwarding logged_in_customer_id and the mount
+            effect picks up the merge. Authenticated customers see a
+            subtle "Signed in" hint instead (no logout flow yet —
+            Shopify handles that on the storefront). */}
+        {isAuthenticated ? (
+          <span className="conv-auth-pill conv-auth-pill--in" aria-label="Signed in">
+            Signed in
+          </span>
+        ) : (
+          <a
+            className="conv-auth-pill conv-auth-pill--out"
+            href="/account/login?return_url=/apps/vibe/style"
+          >
+            Sign in
+          </a>
+        )}
       </header>
 
       <div className="conv-feed" ref={feedRef}>

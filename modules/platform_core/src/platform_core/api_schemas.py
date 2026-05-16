@@ -23,6 +23,26 @@ class ResolveConversationRequest(BaseModel):
     user_id: str = Field(min_length=1)
 
 
+class MergeUsersRequest(BaseModel):
+    """Merge an anonymous external_user_id into an authenticated one.
+
+    Used by D.S.3b (Shopify Customer Account integration): when a Vibe
+    customer logs in via the storefront's Shopify Customer Account
+    flow, the App Proxy starts forwarding `logged_in_customer_id`.
+    The Vibe app then merges the localStorage-anonymous identity
+    (alias) into the Shopify-customer identity (canonical) so the
+    conversation history / wardrobe / etc. carries over.
+    """
+    canonical_external_user_id: str = Field(min_length=1)
+    alias_external_user_id: str = Field(min_length=1)
+
+
+class MergeUsersResponse(BaseModel):
+    canonical_external_user_id: str
+    merged: bool
+    message: str = ""
+
+
 class ConversationResponse(BaseModel):
     conversation_id: str
     user_id: str
