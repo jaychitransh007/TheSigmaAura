@@ -178,6 +178,42 @@ export async function resolveConversation(userId: string): Promise<ResolveConver
 }
 
 /**
+ * Snapshot of the engine's onboarding_profiles row. Fields are
+ * intentionally loose — we only consume a few for the welcome-message
+ * decision today; the engine returns ~15 columns total. Empty
+ * strings are the engine's "not set" representation for text fields.
+ */
+export type OnboardingStatus = {
+  user_id: string;
+  name: string;
+  date_of_birth: string;
+  gender: string;
+  profile_complete: boolean;
+  onboarding_complete: boolean;
+};
+
+/**
+ * Read the engine's onboarding-profile snapshot for a user.
+ * Returns null when the user has no row (anonymous customer who
+ * hasn't hit /onboarding/profile/ensure yet) or the engine 4xx/5xx's
+ * — callers should treat null as "no profile data available".
+ */
+export async function getOnboardingStatus(
+  userId: string,
+): Promise<OnboardingStatus | null> {
+  if (USE_MOCK) {
+    return null;
+  }
+  try {
+    return await getJson<OnboardingStatus>(
+      `/v1/onboarding/status/${encodeURIComponent(userId)}`,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Idempotently ensure an onboarding_profiles row exists for this user.
  * Vibe customers never go through OTP, so the engine's image upload /
  * profile patch routes would 404 ("User not found") on the very first

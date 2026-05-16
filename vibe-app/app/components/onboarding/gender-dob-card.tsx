@@ -10,7 +10,10 @@
 //      natural shape.
 //
 // Save flow: parallel POSTs to the existing single-field profile
-// endpoint via Promise.all. Skip advances without writing either.
+// endpoint via Promise.all. No skip — gender/DOB are the only two
+// signals the planner can't infer from anything else, so the card
+// stays put until the customer commits at least one (canSubmit
+// gates the Save button until then).
 
 import { useRef, useState } from "react";
 
@@ -262,14 +265,10 @@ export function GenderDobCard({
       )}
 
       <div className="onb-card__actions">
-        <button
-          type="button"
-          className="onb-card__skip"
-          onClick={() => onAdvance("skipped")}
-          disabled={saving}
-        >
-          Skip
-        </button>
+        {/* No Skip button — gender + DOB are the only two
+            confidence-load-bearing fields in onboarding. canSubmit
+            gates the Save button until the customer commits at least
+            one of them. */}
         <button
           type="button"
           className="onb-card__primary"
