@@ -37,6 +37,7 @@ import { WelcomeState } from "../components/conversation/welcome-state";
 import conversationStyles from "../components/conversation/styles.css?url";
 import {
   ENGINE_MOCK_ACTIVE,
+  ensureOnboardingProfile,
   resolveConversation,
   startTurn,
   type OnboardingImageCategory,
@@ -100,7 +101,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (op === "init") {
+    // Resolve (or create) the conversation AND ensure the onboarding-
+    // profile row exists. Without ensureOnboardingProfile, the very
+    // first photo/profile-field save 404s ("User not found") because
+    // the engine's onboarding tables aren't populated by the
+    // conversation-resolve path — they were historically populated by
+    // OTP verification, which Vibe customers don't go through.
+    // Idempotent: a returning customer's ensure call is a no-op.
     const conversation = await resolveConversation(sessionId);
+    await ensureOnboardingProfile(sessionId);
     return json<ActionResponse>({
       ok: true,
       op: "init",

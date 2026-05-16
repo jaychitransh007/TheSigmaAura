@@ -9,7 +9,7 @@ import base64
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 from platform_core.fallback_messages import graceful_policy_message
@@ -355,6 +355,34 @@ class OnboardingService:
 
     def send_otp(self, mobile: str) -> tuple[bool, str]:
         return True, f"OTP sent to {mobile}"
+
+    def ensure_profile(self, user_id: str) -> Dict[str, Any]:
+        """Idempotently ensure an onboarding_profiles row exists for user_id.
+
+        Created for the Vibe Shopify storefront flow, which mints
+        anonymous identities client-side (localStorage UUID) and skips
+        the OTP path entirely. The downstream onboarding endpoints
+        (PATCH /profile/partial, POST /images/{cat}) all 404 if the
+        row is missing, so the Vibe app calls this once during init
+        and proceeds with any subsequent saves.
+
+        The mobile column is UNIQUE and NOT NULL in the migration, so
+        we mint a deterministic placeholder of the form `vibe:{user_id}`.
+        That keeps the constraint happy, makes anonymous Vibe rows
+        greppable in the DB, and leaves room for a future merge when
+        D.S.3b (Shopify Customer Account) lands real identity.
+        """
+        if self._repo is None:
+            return {"user_id": user_id, "created": False, "reason": "no_repo"}
+        existing = self._repo.get_profile_by_user_id(user_id)
+        if existing:
+            return {"user_id": user_id, "created": False, "reason": "exists"}
+        self._repo.create_profile(
+            user_id=user_id,
+            mobile=f"vibe:{user_id}",
+            acquisition_source="vibe_storefront",
+        )
+        return {"user_id": user_id, "created": True, "reason": "created"}
 
     def verify_otp(
         self,

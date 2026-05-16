@@ -11,6 +11,7 @@ from .schemas import (
     AnalysisStartRequest,
     AnalysisStartResponse,
     AnalysisStatusResponse,
+    EnsureProfileRequest,
     ImageCategory,
     ImageUploadResponse,
     OnboardingStatusResponse,
@@ -99,6 +100,27 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         if not ok:
             raise HTTPException(status_code=401, detail=msg)
         return VerifyOtpResponse(verified=True, user_id=user_id, message=msg)
+
+    @router.post("/profile/ensure", response_model=ProfileResponse)
+    def ensure_profile(payload: EnsureProfileRequest) -> ProfileResponse:
+        """Idempotent onboarding-profile row creation for OTP-less flows
+        (Vibe Shopify storefront).
+
+        Vibe customers don't go through OTP — they're anonymous via a
+        localStorage session id (D.S.3a). Without this endpoint the
+        downstream PATCH /profile/partial and POST /images/{cat} calls
+        404 because the row doesn't exist. Idempotent — repeated calls
+        are no-ops past the first.
+        """
+        try:
+            out = service.ensure_profile(payload.user_id)
+        except (SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return ProfileResponse(
+            user_id=payload.user_id,
+            saved=True,
+            message="Profile created" if out.get("created") else "Profile already exists",
+        )
 
     @router.post("/profile", response_model=ProfileResponse)
     def save_profile(payload: ProfileRequest) -> ProfileResponse:
