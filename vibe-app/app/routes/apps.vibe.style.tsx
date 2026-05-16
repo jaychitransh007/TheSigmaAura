@@ -144,6 +144,18 @@ export default function ConversationPage() {
   const submitFetcher = useFetcher<typeof action>();
   const pollFetcher = useFetcher<TurnStatusResponse>();
   const feedRef = useRef<HTMLDivElement>(null);
+  // submitFetcher.data is sticky — Remix keeps the last response around
+  // until the next submit. Without an idempotence guard, the submit
+  // effect re-fires every time `pending` clears (because pending is in
+  // its deps) and re-appends the user message + restarts a duplicate
+  // turn against the same jobId. Track which turn we've already
+  // consumed so the effect short-circuits on the re-run.
+  const consumedTurnIdRef = useRef<string | null>(null);
+  // Same hazard on the poll side: pollFetcher.data keeps the terminal
+  // succeeded response and the effect re-runs whenever the fetcher
+  // re-renders. Without this guard, every re-render after success
+  // re-appends the assistant message.
+  const consumedPollIdRef = useRef<string | null>(null);
 
   // Mount: pull session id from localStorage (or mint one) and resolve
   // the conversation. Anchors identity to this browser for the rest of
@@ -183,7 +195,8 @@ export default function ConversationPage() {
     if (submitFetcher.state !== "idle") return;
     const data = submitFetcher.data;
     if (!data || !data.ok || data.op !== "turn") return;
-    if (pending && pending.jobId === data.jobId) return; // already tracking
+    if (consumedTurnIdRef.current === data.jobId) return;
+    consumedTurnIdRef.current = data.jobId;
 
     setMessages((prev) => [...prev, { role: "user", text: data.message }]);
     setPending({
@@ -193,7 +206,7 @@ export default function ConversationPage() {
       status: null,
     });
     setDraft("");
-  }, [submitFetcher.state, submitFetcher.data, pending, conversationId]);
+  }, [submitFetcher.state, submitFetcher.data, conversationId]);
 
   // Poll loop — fires every second while pending.
   useEffect(() => {
@@ -202,9 +215,20 @@ export default function ConversationPage() {
 
     const status = pollFetcher.data;
     if (status && status.job_id === pending.jobId) {
+      const terminal =
+        status.status === "succeeded" || status.status === "failed";
+      const alreadyConsumed = consumedPollIdRef.current === pending.jobId;
+
+      if (terminal && alreadyConsumed) {
+        // Re-render after we already appended the assistant message
+        // and cleared pending — nothing to do, just don't double-write.
+        return;
+      }
+
       setPending((prev) => (prev ? { ...prev, status } : prev));
 
       if (status.status === "succeeded" && status.result) {
+        consumedPollIdRef.current = pending.jobId;
         setMessages((prev) => [
           ...prev,
           {
@@ -218,6 +242,7 @@ export default function ConversationPage() {
       }
 
       if (status.status === "failed") {
+        consumedPollIdRef.current = pending.jobId;
         setMessages((prev) => [
           ...prev,
           {
