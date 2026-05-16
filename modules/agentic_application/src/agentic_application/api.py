@@ -613,6 +613,10 @@ def create_app() -> FastAPI:
         404. Keeping the two endpoints distinct lets other callers
         merge users without paying the onboarding-profile cost.
         """
+        # Lazy import keeps the metrics module out of the import graph
+        # for environments that don't run the FastAPI app.
+        from platform_core.metrics import observe_user_merge
+
         if payload.canonical_external_user_id == payload.alias_external_user_id:
             # Customer was already keyed off this identity — nothing
             # to merge. Still ensure the user row exists so
@@ -620,7 +624,9 @@ def create_app() -> FastAPI:
             try:
                 repo.get_or_create_user(payload.canonical_external_user_id)
             except (SupabaseError, RuntimeError) as exc:
+                observe_user_merge(status="failed")
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
+            observe_user_merge(status="noop")
             return MergeUsersResponse(
                 canonical_external_user_id=payload.canonical_external_user_id,
                 merged=False,
@@ -632,7 +638,9 @@ def create_app() -> FastAPI:
                 alias_external_user_id=payload.alias_external_user_id,
             )
         except (SupabaseError, RuntimeError) as exc:
+            observe_user_merge(status="failed")
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+        observe_user_merge(status="success")
         return MergeUsersResponse(
             canonical_external_user_id=payload.canonical_external_user_id,
             merged=True,
