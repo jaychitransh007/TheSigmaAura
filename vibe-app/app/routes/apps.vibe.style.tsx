@@ -1,14 +1,25 @@
 // Conversation page — primary Vibe customer surface.
 // URL: thesigmavibe.shop/apps/vibe/style
 //
-// D.C.2d implementation. Full chat loop with mock engine progression:
-//   - Loader: validate App Proxy, resolve customer session + conversation
-//   - Action: receive message → engine.startTurn() → return job_id
-//   - Client: append user message, kick off polling via useFetcher,
-//     update UI with stages, replace stage with final outfit when done
+// Identity: the customer's session id lives in localStorage on the
+// browser (see app/lib/session.client.ts). Cookies don't work through
+// Shopify App Proxy — the proxy doesn't reliably round-trip
+// Set-Cookie / Cookie headers between the storefront origin and the
+// backend domain, so every cookie-based request looked like a fresh
+// customer to the engine. Identity flows explicitly via form fields
+// and query params instead.
+//
+// Lifecycle:
+//   - Loader: validates the App Proxy signature, returns the mock-mode
+//     flag. No conversation resolution — that's deferred to mount.
+//   - Mount: read/mint localStorage session id, POST op=init to the
+//     action to resolve a conversation id, store both in state.
+//   - User message: POST op=turn with {sessionId, conversationId,
+//     message}. Action calls the engine, returns job_id.
+//   - Poll loop: GET /apps/vibe/api/poll?conv=…&job=…
 //
 // Engine API runs in mock mode (5s simulated turn with stage events)
-// until ENGINE_API_URL is set on Vercel post-Fly.io deploy.
+// until ENGINE_API_URL is set on Vercel.
 
 import type { ActionFunctionArgs, LoaderFunctionArgs, LinksFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
@@ -26,7 +37,7 @@ import {
   startTurn,
   type TurnStatusResponse,
 } from "../lib/engine.server";
-import { getOrCreateSession } from "../lib/session.server";
+import { getOrCreateClientSessionId } from "../lib/session.client";
 import { authenticate } from "../shopify.server";
 
 export const links: LinksFunction = () => [
@@ -42,57 +53,71 @@ export const links: LinksFunction = () => [
 ];
 
 // ─────────────────────────────────────────────────────────────────────
-// Loader — resolves session + conversation on page load
+// Loader — validates proxy, returns mock-mode flag. No identity yet.
 // ─────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session: shopSession } = await authenticate.public.appProxy(request);
-  const { sessionId, isNew, setCookie } = await getOrCreateSession(request);
-  const conversation = await resolveConversation(sessionId);
-
-  const headers: Record<string, string> = {};
-  if (isNew && setCookie) headers["Set-Cookie"] = setCookie;
-
-  return json(
-    {
-      sessionId,
-      shop: shopSession?.shop ?? null,
-      conversationId: conversation.conversation_id,
-      mockMode: ENGINE_MOCK_ACTIVE,
-    },
-    { headers },
-  );
+  await authenticate.public.appProxy(request);
+  return json({ mockMode: ENGINE_MOCK_ACTIVE });
 };
 
 // ─────────────────────────────────────────────────────────────────────
-// Action — submits a user message, returns the engine job_id
+// Action — dispatches on `op`:
+//   op=init  → resolveConversation(sessionId) → { conversationId }
+//   op=turn  → startTurn(...)                  → { jobId, message }
+// Both ops require sessionId from the form body.
 // ─────────────────────────────────────────────────────────────────────
+
+type InitOk = { ok: true; op: "init"; conversationId: string };
+type TurnOk = { ok: true; op: "turn"; jobId: string; message: string };
+type ActionFail = { ok: false; error: string };
+type ActionResponse = InitOk | TurnOk | ActionFail;
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   await authenticate.public.appProxy(request);
 
-  // Use the server-side session cookie as user_id rather than trusting
-  // a form field — keeps the customer identity tamper-resistant. Pass
-  // isNew/setCookie through to the response so a customer whose first
-  // interaction is this POST (e.g. cookies blocked on the GET) still
-  // persists a session for follow-up turns. Matches the loader pattern.
-  const { sessionId, isNew, setCookie } = await getOrCreateSession(request);
-
   const form = await request.formData();
-  const conversationId = String(form.get("conversationId") ?? "").trim();
-  const message = String(form.get("message") ?? "").trim();
+  const op = String(form.get("op") ?? "").trim();
+  const sessionId = String(form.get("sessionId") ?? "").trim();
 
-  if (!conversationId || !message) {
-    return json(
-      { ok: false, error: "Missing conversationId or message" },
+  if (!sessionId) {
+    return json<ActionResponse>(
+      { ok: false, error: "Missing sessionId" },
       { status: 400 },
     );
   }
 
-  const turn = await startTurn({ conversationId, userId: sessionId, message });
-  const headers: Record<string, string> = {};
-  if (isNew && setCookie) headers["Set-Cookie"] = setCookie;
-  return json({ ok: true, jobId: turn.job_id, message }, { headers });
+  if (op === "init") {
+    const conversation = await resolveConversation(sessionId);
+    return json<ActionResponse>({
+      ok: true,
+      op: "init",
+      conversationId: conversation.conversation_id,
+    });
+  }
+
+  if (op === "turn") {
+    const conversationId = String(form.get("conversationId") ?? "").trim();
+    const message = String(form.get("message") ?? "").trim();
+    if (!conversationId || !message) {
+      return json<ActionResponse>(
+        { ok: false, error: "Missing conversationId or message" },
+        { status: 400 },
+      );
+    }
+    const turn = await startTurn({ conversationId, userId: sessionId, message });
+    return json<ActionResponse>({
+      ok: true,
+      op: "turn",
+      jobId: turn.job_id,
+      message,
+    });
+  }
+
+  return json<ActionResponse>(
+    { ok: false, error: `Unknown op: ${op}` },
+    { status: 400 },
+  );
 };
 
 // ─────────────────────────────────────────────────────────────────────
@@ -100,20 +125,52 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─────────────────────────────────────────────────────────────────────
 
 type PendingTurn = {
+  conversationId: string; // frozen at start so polling can't drift
   jobId: string;
   startedAt: number;
   status: TurnStatusResponse | null;
 };
 
 export default function ConversationPage() {
-  const { conversationId, mockMode } = useLoaderData<typeof loader>();
+  const { mockMode } = useLoaderData<typeof loader>();
+  const [sessionId, setSessionId] = useState("");
+  const [conversationId, setConversationId] = useState("");
+  const [initError, setInitError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<PendingTurn | null>(null);
 
+  const initFetcher = useFetcher<typeof action>();
   const submitFetcher = useFetcher<typeof action>();
   const pollFetcher = useFetcher<TurnStatusResponse>();
   const feedRef = useRef<HTMLDivElement>(null);
+
+  // Mount: pull session id from localStorage (or mint one) and resolve
+  // the conversation. Anchors identity to this browser for the rest of
+  // the page session.
+  useEffect(() => {
+    const sid = getOrCreateClientSessionId();
+    setSessionId(sid);
+    initFetcher.submit(
+      { op: "init", sessionId: sid },
+      { method: "post" },
+    );
+    // run-once; deps are intentionally empty.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Capture the init response → conversationId.
+  useEffect(() => {
+    if (initFetcher.state !== "idle") return;
+    const data = initFetcher.data;
+    if (!data) return;
+    if (data.ok && data.op === "init") {
+      setConversationId(data.conversationId);
+      setInitError(null);
+    } else if (!data.ok) {
+      setInitError(data.error || "Couldn't start a conversation.");
+    }
+  }, [initFetcher.state, initFetcher.data]);
 
   // Auto-scroll to bottom when messages or pending state changes.
   useEffect(() => {
@@ -125,13 +182,18 @@ export default function ConversationPage() {
   useEffect(() => {
     if (submitFetcher.state !== "idle") return;
     const data = submitFetcher.data;
-    if (!data || !("ok" in data) || !data.ok) return;
+    if (!data || !data.ok || data.op !== "turn") return;
     if (pending && pending.jobId === data.jobId) return; // already tracking
 
     setMessages((prev) => [...prev, { role: "user", text: data.message }]);
-    setPending({ jobId: data.jobId, startedAt: Date.now(), status: null });
+    setPending({
+      conversationId,
+      jobId: data.jobId,
+      startedAt: Date.now(),
+      status: null,
+    });
     setDraft("");
-  }, [submitFetcher.state, submitFetcher.data, pending]);
+  }, [submitFetcher.state, submitFetcher.data, pending, conversationId]);
 
   // Poll loop — fires every second while pending.
   useEffect(() => {
@@ -140,11 +202,9 @@ export default function ConversationPage() {
 
     const status = pollFetcher.data;
     if (status && status.job_id === pending.jobId) {
-      // Update with latest status
       setPending((prev) => (prev ? { ...prev, status } : prev));
 
       if (status.status === "succeeded" && status.result) {
-        // Turn complete — append assistant message + outfits, clear pending.
         setMessages((prev) => [
           ...prev,
           {
@@ -172,20 +232,20 @@ export default function ConversationPage() {
       }
     }
 
-    // Schedule next poll
     const timer = setTimeout(() => {
       pollFetcher.load(
-        `/apps/vibe/api/poll?conv=${encodeURIComponent(conversationId)}&job=${encodeURIComponent(pending.jobId)}`,
+        `/apps/vibe/api/poll?conv=${encodeURIComponent(pending.conversationId)}&job=${encodeURIComponent(pending.jobId)}`,
       );
     }, 1000);
     return () => clearTimeout(timer);
-  }, [pending, pollFetcher, conversationId]);
+  }, [pending, pollFetcher]);
 
   const handleSubmit = () => {
     const text = draft.trim();
     if (!text || pending) return;
+    if (!sessionId || !conversationId) return;
     submitFetcher.submit(
-      { conversationId, message: text },
+      { op: "turn", sessionId, conversationId, message: text },
       { method: "post" },
     );
   };
@@ -194,8 +254,10 @@ export default function ConversationPage() {
     setDraft(text);
   };
 
+  const ready = sessionId !== "" && conversationId !== "";
   const showWelcome = messages.length === 0 && !pending;
-  const composerDisabled = pending !== null || submitFetcher.state !== "idle";
+  const composerDisabled =
+    !ready || pending !== null || submitFetcher.state !== "idle";
 
   return (
     <div className="conv-page">
@@ -204,6 +266,9 @@ export default function ConversationPage() {
       </header>
 
       <div className="conv-feed" ref={feedRef}>
+        {initError && (
+          <div className="conv-init-error">{initError}</div>
+        )}
         {showWelcome && <WelcomeState onPick={handlePromptPick} />}
 
         {messages.map((msg, i) => (
