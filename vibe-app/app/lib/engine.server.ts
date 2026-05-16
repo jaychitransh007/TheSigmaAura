@@ -270,10 +270,11 @@ type RawEngineOutfitItem = {
 };
 
 function normalizeStatus(raw: RawEngineStatusResponse): TurnStatusResponse {
-  // Engine emits "completed"; Vibe's polling loop watches for "succeeded".
-  // Map at the edge so the rest of the app speaks one vocabulary.
+  // Engine emits "completed" today; accept "succeeded" too so a future
+  // engine-side rename to align with our vocabulary won't silently fall
+  // back to "running" and hang the polling loop.
   const status: TurnStatusResponse["status"] =
-    raw.status === "completed"
+    raw.status === "completed" || raw.status === "succeeded"
       ? "succeeded"
       : raw.status === "failed"
         ? "failed"
@@ -292,7 +293,7 @@ function normalizeResult(raw: RawEngineTurnResult): TurnResult {
   return {
     turn_id: raw.turn_id ?? "",
     message: raw.assistant_message ?? "",
-    outfits: (raw.outfits ?? []).map(normalizeOutfit),
+    outfits: (raw.outfits ?? []).map((card, idx) => normalizeOutfit(card, idx)),
     follow_ups: (raw.follow_up_suggestions ?? []).map((s) => ({
       label: s,
       prompt: s,
@@ -300,9 +301,12 @@ function normalizeResult(raw: RawEngineTurnResult): TurnResult {
   };
 }
 
-function normalizeOutfit(card: RawEngineOutfit): Outfit {
+function normalizeOutfit(card: RawEngineOutfit, idx: number): Outfit {
+  // Prefer the engine's rank; fall back to array index so two outfits
+  // without ranks (or both at rank 0) don't collide on React keys.
+  const id = typeof card.rank === "number" && card.rank > 0 ? card.rank : idx;
   return {
-    outfit_id: `outfit-${card.rank ?? 0}`,
+    outfit_id: `outfit-${id}`,
     name: card.title ?? "",
     reasoning: card.reasoning ?? "",
     fashion_score: card.fashion_score_pct ?? 0,
