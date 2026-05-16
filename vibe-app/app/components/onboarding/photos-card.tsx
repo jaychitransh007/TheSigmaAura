@@ -37,6 +37,38 @@ const ZOOM_MIN = 1;
 const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.2;
 
+function isHeic(file: File): boolean {
+  const type = file.type.toLowerCase();
+  if (type === "image/heic" || type === "image/heif") return true;
+  // Some browsers (and older Chromes) leave file.type empty for
+  // iPhone HEIC; fall back to the extension.
+  const name = file.name.toLowerCase();
+  return name.endsWith(".heic") || name.endsWith(".heif");
+}
+
+/**
+ * Browsers can't render HEIC in an <img> tag (Apple's format; only
+ * Safari handles it natively and even then unreliably). For HEIC
+ * uploads we transcode to JPEG client-side via heic2any so the
+ * preview renders AND the engine receives a smaller, universally
+ * decodable file. heic2any is dynamically imported so non-HEIC
+ * uploads pay zero bundle cost.
+ *
+ * Returns the original File untouched for non-HEIC inputs.
+ */
+async function transcodeIfHeic(file: File): Promise<File> {
+  if (!isHeic(file)) return file;
+  const { default: heic2any } = await import("heic2any");
+  const out = await heic2any({
+    blob: file,
+    toType: "image/jpeg",
+    quality: 0.85,
+  });
+  const blob = Array.isArray(out) ? out[0] : out;
+  const newName = file.name.replace(/\.(heic|heif)$/i, ".jpg");
+  return new File([blob], newName, { type: "image/jpeg" });
+}
+
 export function PhotosCard({
   sessionId,
   onAdvance,
@@ -78,15 +110,29 @@ export function PhotosCard({
 
   const uploadSide = async (
     category: OnboardingImageCategory,
-    file: File,
+    rawFile: File,
     setSide: (s: SideState) => void,
   ) => {
-    // Cheap client-side guardrail — engine caps at 10MB.
-    if (file.size > 10 * 1024 * 1024) {
+    // Cheap client-side guardrail — engine caps at 10MB. Check the
+    // ORIGINAL file: HEIC->JPEG transcoding usually shrinks but we
+    // don't want to spend ~3s on a heic2any decode just to learn the
+    // source was 50MB.
+    if (rawFile.size > 10 * 1024 * 1024) {
       setSide({ phase: "error", message: "Image must be under 10MB." });
       return;
     }
     setSide({ phase: "uploading", pct: 0 });
+
+    let file: File;
+    try {
+      file = await transcodeIfHeic(rawFile);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Couldn't read that photo format.";
+      setSide({ phase: "error", message: msg });
+      return;
+    }
+
     const form = new FormData();
     form.set("sessionId", sessionId);
     form.set("category", category);
