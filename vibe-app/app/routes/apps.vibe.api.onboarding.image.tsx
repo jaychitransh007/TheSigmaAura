@@ -72,12 +72,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
     return json({ ok: true, ...result });
   } catch (err) {
+    // Always return JSON. Re-throwing here would let Vercel's default
+    // error page (HTML) propagate to the client, where the photo-card
+    // tries to parse the body as JSON and the customer sees
+    // "Unexpected token '<'". Catch-all returns a friendly error
+    // string instead so the card's error state can render.
     if (err instanceof EngineError) {
       return json(
         { ok: false, error: err.message },
         { status: err.status || 502 },
       );
     }
-    throw err;
+    const message = err instanceof Error ? err.message : "Upload failed";
+    return json({ ok: false, error: message }, { status: 500 });
   }
 };

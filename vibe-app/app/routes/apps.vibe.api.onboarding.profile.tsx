@@ -75,12 +75,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
     return json({ ok: true, ...result });
   } catch (err) {
+    // Always JSON — see image.tsx for the rationale (avoid Vercel HTML
+    // error pages breaking the client's response.json() parse).
     if (err instanceof EngineError) {
       return json(
         { ok: false, error: err.message },
         { status: err.status || 502 },
       );
     }
-    throw err;
+    const message = err instanceof Error ? err.message : "Save failed";
+    return json({ ok: false, error: message }, { status: 500 });
   }
 };
