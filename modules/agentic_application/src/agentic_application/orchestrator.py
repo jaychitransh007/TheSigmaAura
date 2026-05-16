@@ -1963,13 +1963,23 @@ class AgenticOrchestrator:
         # planner / response builder / telemetry have the score
         # available. Legacy "web" channel keeps the original gate.
         if channel == "vibe_storefront":
+            # Match the field-population shape of evaluate_onboarding_gate
+            # so downstream telemetry / UI metadata stays consistent:
+            # missing_steps is empty (nothing blocking), improvement_actions
+            # surfaces the same hints (e.g. "Add a full-body photo")
+            # the standard gate would emit, giving the Vibe UI a way to
+            # nudge confidence-improving inputs even though the gate
+            # itself is bypassed.
+            profile_confidence = evaluate_profile_confidence(
+                onboarding_status, analysis_status
+            )
             onboarding_gate = OnboardingGateResult(
                 allowed=True,
                 status="bypassed_vibe_storefront",
                 message="Vibe storefront channel — gate bypassed.",
-                profile_confidence=evaluate_profile_confidence(
-                    onboarding_status, analysis_status
-                ),
+                missing_steps=[],
+                improvement_actions=list(profile_confidence.improvement_actions),
+                profile_confidence=profile_confidence,
             )
         else:
             onboarding_gate = evaluate_onboarding_gate(onboarding_status, analysis_status)
