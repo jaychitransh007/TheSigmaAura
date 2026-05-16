@@ -57,6 +57,11 @@ class VerifyOtpResponse(BaseModel):
     message: str = ""
 
 
+class EnsureProfileRequest(BaseModel):
+    """OTP-less profile-row creation for the Vibe storefront flow."""
+    user_id: str = Field(min_length=1)
+
+
 class ProfileRequest(BaseModel):
     user_id: str = Field(min_length=1)
     name: str = Field(min_length=1, max_length=100)

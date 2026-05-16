@@ -173,6 +173,20 @@ export async function resolveConversation(userId: string): Promise<ResolveConver
   return postJson<ResolveConversationResponse>("/v1/conversations/resolve", { user_id: userId });
 }
 
+/**
+ * Idempotently ensure an onboarding_profiles row exists for this user.
+ * Vibe customers never go through OTP, so the engine's image upload /
+ * profile patch routes would 404 ("User not found") on the very first
+ * onboarding-card interaction without this. Safe to call repeatedly.
+ */
+export async function ensureOnboardingProfile(userId: string): Promise<void> {
+  if (USE_MOCK) return;
+  await postJson<{ user_id: string; saved: boolean }>(
+    "/v1/onboarding/profile/ensure",
+    { user_id: userId },
+  );
+}
+
 export async function startTurn(args: {
   conversationId: string;
   userId: string;
