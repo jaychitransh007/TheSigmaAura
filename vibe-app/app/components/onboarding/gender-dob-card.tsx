@@ -145,9 +145,11 @@ export function GenderDobCard({
 
   // Enter on any DOB segment submits — same pattern as FieldCard's
   // single-input cards. Guard on canSubmit so a half-filled DOB
-  // doesn't bypass the validation gate.
+  // doesn't bypass the validation gate, AND on !saving so a fast
+  // double-press during the disabled-attribute propagation window
+  // can't queue a second submit.
   const onSegKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && canSubmit) {
+    if (e.key === "Enter" && canSubmit && !saving) {
       e.preventDefault();
       handleSave();
     }
