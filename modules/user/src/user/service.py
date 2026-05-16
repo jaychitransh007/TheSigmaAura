@@ -9,7 +9,7 @@ import base64
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 from platform_core.fallback_messages import graceful_policy_message
@@ -356,7 +356,7 @@ class OnboardingService:
     def send_otp(self, mobile: str) -> tuple[bool, str]:
         return True, f"OTP sent to {mobile}"
 
-    def ensure_profile(self, user_id: str) -> Dict[str, Any]:
+    def ensure_profile(self, user_id: str) -> dict[str, Any]:
         """Idempotently ensure an onboarding_profiles row exists for user_id.
 
         Created for the Vibe Shopify storefront flow, which mints

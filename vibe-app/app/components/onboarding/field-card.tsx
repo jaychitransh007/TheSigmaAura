@@ -128,17 +128,22 @@ export function FieldCard({
   };
 
   const saving = state.phase === "saving";
+  // The card's <h3> is the visual question; wire it as the input's
+  // accessible label so screen readers announce "What should I call
+  // you? — edit text" instead of "edit text" alone.
+  const labelId = `onb-label-${kind}`;
 
   return (
     <div className="onb-card">
       <header className="onb-card__header">
-        <h3>{cfg.title}</h3>
+        <h3 id={labelId}>{cfg.title}</h3>
         <p>{cfg.blurb}</p>
       </header>
 
       <div className="onb-field">
         {cfg.inputType === "select" ? (
           <select
+            aria-labelledby={labelId}
             className="onb-field__input"
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -153,6 +158,7 @@ export function FieldCard({
           </select>
         ) : (
           <input
+            aria-labelledby={labelId}
             type={cfg.inputType}
             className="onb-field__input"
             placeholder={cfg.placeholder}
