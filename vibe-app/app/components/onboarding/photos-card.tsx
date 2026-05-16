@@ -20,12 +20,6 @@ type SideState =
   | { phase: "done"; previewUrl: string }
   | { phase: "error"; message: string };
 
-const GUIDELINES = [
-  "Plain background, good lighting",
-  "Fitted clothing (not loose or baggy)",
-  "One person, looking at the camera",
-];
-
 const HEADSHOT_HINT = "Face only, hair away from face";
 const FULL_BODY_HINT = "Head to feet, arms relaxed at sides";
 
@@ -97,12 +91,6 @@ export function PhotosCard({
           Skip if you'd rather not — we can still chat.
         </p>
       </header>
-
-      <ul className="onb-card__guidelines">
-        {GUIDELINES.map((g) => (
-          <li key={g}>{g}</li>
-        ))}
-      </ul>
 
       <div className="onb-photos">
         <PhotoTile
