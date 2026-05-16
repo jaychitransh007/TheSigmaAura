@@ -324,11 +324,24 @@ export async function uploadOnboardingImage(args: {
   form.append("user_id", args.userId);
   form.append("file", args.file, args.filename);
 
+  // No AbortSignal on uploads. Two reasons:
+  //   1. Phone photos over mobile are routinely 5-10 MB and 8s is
+  //      way too short to ship + ingest one. We don't want to abort
+  //      a happy-path request just because the customer is on 4G.
+  //   2. AbortSignal.timeout interacts badly with @remix-run/web-fetch
+  //      when the request body is a multipart stream — when the timer
+  //      fires mid-upload it tries to cancel a stream that already
+  //      has an active reader (web-streams-polyfill error) which
+  //      crashes the lambda with an unhandled rejection. Vercel then
+  //      serves a generic 500 HTML page, the client tries to parse it
+  //      as JSON, and we get "Unexpected token '<', '<!doctype '...".
+  // Vercel's 60s Hobby-plan function ceiling and Fly's idle timeout
+  // are the outer bounds; that's plenty for a single image upload.
   let resp: Response;
   try {
     resp = await fetch(
       `${ENGINE_API_URL}/v1/onboarding/images/${encodeURIComponent(args.category)}`,
-      { method: "POST", body: form, signal: fetchTimeout() },
+      { method: "POST", body: form },
     );
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);

@@ -236,13 +236,19 @@
 .onb-photo {
   position: relative;
   display: block;
-  aspect-ratio: 3 / 4;
   border: 1.5px dashed var(--rule);
   border-radius: 10px;
   background: var(--rule-soft);
   cursor: pointer;
   overflow: hidden;
   transition: border-color 120ms ease, background 120ms ease;
+}
+
+/* Non-done tiles keep a 3:4 ratio with the dashed-empty look. */
+.onb-photo--idle,
+.onb-photo--uploading,
+.onb-photo--error {
+  aspect-ratio: 3 / 4;
 }
 
 .onb-photo:hover {
@@ -257,6 +263,9 @@
   cursor: default;
   border-style: solid;
   border-color: var(--ink-muted);
+  background: var(--ink);
+  display: flex;
+  flex-direction: column;
 }
 
 .onb-photo--error {
@@ -275,12 +284,66 @@
   gap: 0.35rem;
 }
 
+/* Done state — image frame (clipping container) + preview img. */
+.onb-photo__frame {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  touch-action: none; /* drag-to-pan needs to swallow scroll on mobile */
+  user-select: none;
+}
+
 .onb-photo__preview {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transform-origin: center;
+  transition: transform 80ms linear;
+  pointer-events: none; /* let the frame handle pointer events */
+  -webkit-user-drag: none;
+}
+
+.onb-photo__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--ink);
+  color: #faf5ee;
+}
+
+.onb-photo__ctrl {
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #faf5ee;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+  transition: background 100ms ease, opacity 100ms ease;
+}
+
+.onb-photo__ctrl:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.onb-photo__ctrl:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.onb-photo__ctrl--text {
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  margin-left: auto; /* push Reset/Change to the right side */
+}
+
+.onb-photo__ctrl--text + .onb-photo__ctrl--text {
+  margin-left: 0;
 }
 
 .onb-photo__label {

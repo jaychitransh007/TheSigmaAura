@@ -50,12 +50,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
     return json({ ok: true, ...result });
   } catch (err) {
+    // Always JSON — see image.tsx for the rationale.
     if (err instanceof EngineError) {
       return json(
         { ok: false, error: err.message },
         { status: err.status || 502 },
       );
     }
-    throw err;
+    const message = err instanceof Error ? err.message : "Analysis trigger failed";
+    return json({ ok: false, error: message }, { status: 500 });
   }
 };
