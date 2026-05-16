@@ -197,17 +197,28 @@ export type OnboardingStatus = {
  * Returns null when the user has no row (anonymous customer who
  * hasn't hit /onboarding/profile/ensure yet) or the engine 4xx/5xx's
  * — callers should treat null as "no profile data available".
+ *
+ * `timeoutMs` defaults to a short 1500ms so the loader (which calls
+ * this on every page load for signed-in customers) never blocks
+ * page render on a slow engine. The cost of a false negative is a
+ * customer who sees the new-customer welcome on a flaky network;
+ * their saved profile data is still safe on the engine for the next
+ * page load.
  */
 export async function getOnboardingStatus(
   userId: string,
+  timeoutMs: number = 1500,
 ): Promise<OnboardingStatus | null> {
   if (USE_MOCK) {
     return null;
   }
   try {
-    return await getJson<OnboardingStatus>(
-      `/v1/onboarding/status/${encodeURIComponent(userId)}`,
+    const resp = await fetch(
+      `${ENGINE_API_URL}/v1/onboarding/status/${encodeURIComponent(userId)}`,
+      { signal: AbortSignal.timeout(timeoutMs) },
     );
+    if (!resp.ok) return null;
+    return (await resp.json()) as OnboardingStatus;
   } catch {
     return null;
   }

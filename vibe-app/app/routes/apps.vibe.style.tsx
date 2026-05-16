@@ -47,8 +47,10 @@ import {
 } from "../lib/engine.server";
 import {
   isCardStep,
+  markKindResolved,
   nextStep,
   readOnboardingStep,
+  readResolvedKinds,
   writeOnboardingStep,
   type OnboardingStep,
 } from "../lib/onboarding.client";
@@ -460,26 +462,39 @@ export default function ConversationPage() {
       return;
     }
 
-    // New-customer path: respect any progress already saved in
-    // localStorage so a mid-flow reload doesn't re-show resolved
-    // cards. Anything before gender-dob → emit both initial cards.
-    // Past gender-dob → resume at the persisted step.
+    // New-customer path. Two layers of persistence:
+    //   - vibe_onboarding_step: the furthest *sequence position* the
+    //     customer has reached. Drives where the next card slots in
+    //     once the initial parallel pair clears.
+    //   - vibe_onboarding_resolved_kinds: explicit list of cards
+    //     already saved/skipped. A reload during the parallel
+    //     photos+gender-DOB phase consults this so a completed
+    //     photos card doesn't re-emit.
     const persisted = readOnboardingStep();
+    const resolved = readResolvedKinds();
     const isInitialPhase =
-      persisted === "welcome" || persisted === "photos" || persisted === "gender-dob";
+      persisted === "welcome" ||
+      persisted === "photos" ||
+      persisted === "gender-dob";
 
     const seeded: ChatMessage[] = [
       { role: "assistant", text: WELCOME_NEW },
     ];
 
     if (isInitialPhase) {
-      seeded.push(
-        { role: "onboarding", kind: "photos", status: "active" },
-        { role: "onboarding", kind: "gender-dob", status: "active" },
-      );
+      if (!resolved.has("photos")) {
+        seeded.push({ role: "onboarding", kind: "photos", status: "active" });
+      }
+      if (!resolved.has("gender-dob")) {
+        seeded.push({
+          role: "onboarding",
+          kind: "gender-dob",
+          status: "active",
+        });
+      }
       onboardingStepRef.current = "gender-dob";
       writeOnboardingStep("gender-dob");
-    } else if (isCardStep(persisted)) {
+    } else if (isCardStep(persisted) && !resolved.has(persisted)) {
       seeded.push({
         role: "onboarding",
         kind: persisted as OnboardingMessageKind,
@@ -618,44 +633,46 @@ export default function ConversationPage() {
     kind: OnboardingMessageKind,
     mode: "completed" | "skipped",
   ) => {
-    setMessages((prev) => {
-      const next = [...prev];
-      // Resolve the most-recent active card OF THIS KIND. Walking
-      // from the end matters when multiple cards of the same kind
-      // ever existed (currently impossible, but cheap to be defensive).
-      for (let i = next.length - 1; i >= 0; i--) {
-        const m = next[i];
-        if (
-          m.role === "onboarding" &&
-          m.status === "active" &&
-          m.kind === kind
-        ) {
-          next[i] = {
-            ...m,
-            status: mode,
-            summary:
-              mode === "completed"
-                ? completedSummary(kind)
-                : skippedSummary(kind),
-          };
-          break;
-        }
+    // Compute the next messages array imperatively against the
+    // current closure value of `messages`. Handler is event-driven
+    // (not in render), so stale-closure isn't a real risk: each
+    // resolution is gated by an async save and the next render
+    // commits before the customer can fire another. Pulling side
+    // effects out of the setMessages updater keeps the updater pure
+    // — React may invoke it twice in StrictMode and we don't want
+    // duplicate localStorage writes.
+    const next: ChatMessage[] = [];
+    let resolvedThisCall = false;
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (
+        !resolvedThisCall &&
+        m.role === "onboarding" &&
+        m.status === "active" &&
+        m.kind === kind
+      ) {
+        next.push({
+          ...m,
+          status: mode,
+          summary:
+            mode === "completed"
+              ? completedSummary(kind)
+              : skippedSummary(kind),
+        });
+        resolvedThisCall = true;
+      } else {
+        next.push(m);
       }
+    }
 
-      const anyActive = next.some(
-        (m) => m.role === "onboarding" && m.status === "active",
-      );
-      if (anyActive) {
-        // Other initial-phase card still pending — don't advance yet.
-        return next;
-      }
-
-      // All onboarding cards in the feed are resolved. Step to the
-      // next card in the linear sequence and emit it (if any).
+    const anyActive = next.some(
+      (m) => m.role === "onboarding" && m.status === "active",
+    );
+    let advancedToStep: OnboardingStep | null = null;
+    if (!anyActive) {
       const current = onboardingStepRef.current;
       const newStep = nextStep(current);
-      onboardingStepRef.current = newStep;
-      writeOnboardingStep(newStep);
+      advancedToStep = newStep;
       if (isCardStep(newStep)) {
         next.push({
           role: "onboarding",
@@ -663,8 +680,16 @@ export default function ConversationPage() {
           status: "active",
         });
       }
-      return next;
-    });
+    }
+
+    setMessages(next);
+    // Side effects — outside any state updater. Idempotent: writing
+    // the same kind/step twice is harmless.
+    markKindResolved(kind);
+    if (advancedToStep) {
+      onboardingStepRef.current = advancedToStep;
+      writeOnboardingStep(advancedToStep);
+    }
   };
 
   // Fire-and-forget analysis trigger after a photo upload. Best-effort:

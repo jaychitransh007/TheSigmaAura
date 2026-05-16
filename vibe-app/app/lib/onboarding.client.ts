@@ -14,6 +14,13 @@
 // D.O.3.
 
 const STEP_KEY = "vibe_onboarding_step";
+// Set of onboarding-card kinds the customer has already resolved
+// (completed OR skipped). Stored as a JSON array of strings.
+// Consulted by the seed effect so a mid-flow reload doesn't re-emit
+// resolved cards as active. Without this, a customer who completes
+// the photos card and reloads sees the photos card re-appear,
+// effectively losing the resolution.
+const RESOLVED_KEY = "vibe_onboarding_resolved_kinds";
 
 export type OnboardingStep =
   | "welcome"
@@ -84,4 +91,33 @@ export function nextStep(current: OnboardingStep): OnboardingStep {
 /** True iff this step renders an interactive card in the feed. */
 export function isCardStep(step: OnboardingStep): boolean {
   return step !== "welcome" && step !== "done";
+}
+
+/**
+ * Read the set of onboarding-card kinds that have already been
+ * resolved (saved or skipped) in a prior session. Used by the seed
+ * effect to skip re-emitting them on reload.
+ */
+export function readResolvedKinds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(RESOLVED_KEY);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((v) => typeof v === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+export function markKindResolved(kind: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const current = readResolvedKinds();
+    current.add(kind);
+    window.localStorage.setItem(RESOLVED_KEY, JSON.stringify([...current]));
+  } catch {
+    // Best-effort.
+  }
 }
