@@ -1949,6 +1949,88 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual("ask_clarification", trace_kwargs["action"])
         self.assertEqual("clarification", trace_kwargs["evaluation"]["response_type"])
 
+    def test_vibe_storefront_channel_bypasses_gate_and_min_profile_validation(self) -> None:
+        """channel='vibe_storefront' must let a customer with zero
+        onboarding data through to the planner. Gate normally blocks
+        (no profile_complete, no images, analysis=not_started) AND
+        validate_minimum_profile would normally raise on empty gender /
+        SeasonalColorGroup. Both must be skipped. We assert reach-
+        the-planner by mocking it to raise — a RuntimeError surfacing
+        as response_type='error' proves every pre-planner gate ran
+        without blocking."""
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1", "user_id": "db-user", "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        gw = Mock()
+        # Worst-case onboarding state: nothing uploaded, profile blank,
+        # analysis hasn't started. The legacy "web" channel would
+        # short-circuit here with response_type='clarification'.
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": False,
+            "images_uploaded": [],
+            "onboarding_complete": False,
+        }
+        gw.get_analysis_status.return_value = {
+            "status": "not_started", "profile": {}, "attributes": {}, "derived_interpretations": {},
+        }
+        gw.get_wardrobe_items.return_value = []
+        planner_mock = Mock()
+        planner_mock.plan.side_effect = RuntimeError("planner reached")
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"), patch(
+            "agentic_application.orchestrator.CopilotPlanner", return_value=planner_mock
+        ):
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Dress me for a party",
+                channel="vibe_storefront",
+            )
+
+        # Planner was reached (and threw) — the gate + validator didn't
+        # short-circuit. A clarification response here would mean the
+        # bypass regressed.
+        self.assertEqual("error", result["response_type"])
+        trace_kwargs = repo.insert_turn_trace.call_args.kwargs
+        self.assertEqual("copilot_planner", trace_kwargs["evaluation"]["stage_failed"])
+
+    def test_web_channel_still_blocks_when_onboarding_is_incomplete(self) -> None:
+        """Regression guard: loosening the gate for vibe_storefront
+        must not affect the legacy 'web' channel. Same input as the
+        bypass test but with channel='web' (the default) should still
+        return the clarification response."""
+        repo = Mock()
+        repo.client = Mock()
+        repo.get_or_create_user.return_value = {"id": "db-user"}
+        repo.get_conversation.return_value = {
+            "id": "c1", "user_id": "db-user", "session_context_json": {},
+        }
+        repo.create_turn.return_value = {"id": "t1"}
+        gw = Mock()
+        gw.get_onboarding_status.return_value = {
+            "profile_complete": False,
+            "images_uploaded": [],
+            "onboarding_complete": False,
+        }
+        gw.get_analysis_status.return_value = {"status": "not_started", "profile": {}, "derived_interpretations": {}}
+
+        with patch("agentic_application.orchestrator.ApplicationCatalogRetrievalGateway"):
+            orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=gw, config=Mock())
+            result = orchestrator.process_turn(
+                conversation_id="c1",
+                external_user_id="user-1",
+                message="Dress me for a party",
+                # No explicit channel — defaults to "web".
+            )
+
+        self.assertEqual("clarification", result["response_type"])
+        self.assertTrue(result["metadata"]["onboarding_required"])
+
     def test_orchestrator_planner_failure_persists_trace_with_error_stage(self) -> None:
         """Item 1 (May 1, 2026): when the copilot planner raises, the early
         return must still persist a trace row labelled with the failed stage
