@@ -241,10 +241,35 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         { status: 400 },
       );
     }
+
+    // Pairing-anchor enforcement. The engine's
+    // _message_requests_pairing (orchestrator.py:1221) only flips
+    // intent to PAIRING_REQUEST — and only then injects the uploaded
+    // garment as the outfit's anchor — when the user's prose contains
+    // a recognized pairing phrase ("what goes with this", "build an
+    // outfit around", "pair this", etc.). Customers don't naturally
+    // type those phrases. They upload a black shirt, write "dress me
+    // for date night," and expect the shirt to be in the look — but
+    // without a trigger phrase the engine routes through
+    // occasion_recommendation, treats the anchor as soft context, and
+    // returns three catalog-only outfits with no shirt in sight (we
+    // saw this on turn 094fa18f).
+    //
+    // Append an explicit pairing trigger whenever an image is
+    // attached. "Build an outfit around this attached piece" matches
+    // the wardrobe_pairing_phrases branch unconditionally, so the
+    // override fires even on follow-up turns or vague messages. The
+    // user's bubble in the UI still shows their original text — we
+    // return ``message`` (not engineMessage) below so the augmentation
+    // is invisible.
+    const engineMessage = imageData
+      ? `${message} Build an outfit around this attached piece.`
+      : message;
+
     const turn = await startTurn({
       conversationId,
       userId: sessionId,
-      message,
+      message: engineMessage,
       imageData: imageData || undefined,
     });
     return json<ActionResponse>({
