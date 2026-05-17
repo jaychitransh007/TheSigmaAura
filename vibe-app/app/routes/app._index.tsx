@@ -75,11 +75,6 @@ const SCOPE_DESCRIPTIONS: Record<string, { label: string; reason: string }> = {
     reason:
       "So we can verify the Style-with-Vibe block is live on the active theme.",
   },
-  write_metafields: {
-    label: "Write metafields on orders",
-    reason:
-      "So Vibe-attributed orders get tagged with the outfit that influenced them — powers your analytics.",
-  },
 };
 
 export default function MerchantIndex() {
