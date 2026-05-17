@@ -1,8 +1,11 @@
 from datetime import datetime, timezone
+import logging
 import re
 from threading import Lock, Thread
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+
+_log = logging.getLogger(__name__)
 
 from catalog.admin_api import create_catalog_admin_router
 from catalog.ui import get_catalog_admin_html
@@ -24,6 +27,9 @@ from platform_core.api_schemas import (
     BootstrapBatchResponse,
     BootstrapCompleteRequest,
     CreateTurnRequest,
+    EnrichmentBatchPollItem,
+    EnrichmentPollResponse,
+    EnrichmentSubmitResponse,
     LookupOrCreateTenantRequest,
     TenantStatusResponse,
     DependencyReportResponse,
@@ -57,6 +63,9 @@ from platform_core.repositories import ConversationRepository
 from platform_core.tenants import TenantRepository, resolve_tenant_id_or_default
 
 from .services.catalog_bootstrap_service import CatalogBootstrapService
+from .services.catalog_vision_enrichment_service import (
+    CatalogVisionEnrichmentService,
+)
 from platform_core.image_moderation import ImageModerationService, image_block_message
 from platform_core.restricted_categories import detect_restricted_category
 from platform_core.supabase_rest import SupabaseError, SupabaseRestClient
@@ -313,6 +322,10 @@ def create_app() -> FastAPI:
     # F.2.2 (2026-05-18): install-time catalog sync. Idempotent per-
     # product upsert; embedding generation only on cache miss.
     bootstrap_service = CatalogBootstrapService(client)
+    # F.2.2b (2026-05-18): vision attribute enrichment via OpenAI
+    # Batch API. Submitted opportunistically at bootstrap-complete;
+    # polled either manually or via the F.3 daily cron.
+    vision_enrichment_service = CatalogVisionEnrichmentService(client)
     orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=cfg)
     image_moderation = ImageModerationService()
     dependency_reporting = DependencyReportingService(client)
@@ -759,9 +772,132 @@ def create_app() -> FastAPI:
                 "ready",
                 product_count=int(payload.product_count or 0),
             )
-            return {"ok": True, "tenant_id": tenant_id}
+            # F.2.2b: best-effort vision-enrichment submit. Bootstrap
+            # is "complete" the moment text embeddings land — vision
+            # attributes are an async overlay that arrives within the
+            # Batch API's 24h SLA. Failure to submit here doesn't
+            # fail the bootstrap (caller's status is already flipped
+            # to 'ready'); the daily cron will retry. We catch
+            # everything so an OpenAI outage can't roll back the
+            # ready-state flip.
+            enrich_submitted = False
+            enrich_batch_id = ""
+            enrich_row_count = 0
+            enrich_reason = ""
+            try:
+                submit = vision_enrichment_service.submit_pending_for_tenant(
+                    tenant_id
+                )
+                enrich_submitted = submit.submitted
+                enrich_batch_id = submit.openai_batch_id
+                enrich_row_count = submit.row_count
+                enrich_reason = submit.reason
+            except Exception as exc:  # noqa: BLE001
+                enrich_reason = f"submit error: {type(exc).__name__}: {exc}"
+                _log.warning(
+                    "bootstrap_complete: vision enrichment submit failed tenant=%s err=%s",
+                    tenant_id,
+                    exc,
+                )
+            return {
+                "ok": True,
+                "tenant_id": tenant_id,
+                "enrichment": {
+                    "submitted": enrich_submitted,
+                    "openai_batch_id": enrich_batch_id,
+                    "row_count": enrich_row_count,
+                    "reason": enrich_reason,
+                },
+            }
         except HTTPException:
             raise
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # F.2.2b vision enrichment endpoints. The submit endpoint is a
+    # manual trigger (bootstrap_complete already auto-submits, but
+    # operators may want to retry for a tenant that had OpenAI down
+    # during install). The poll endpoint is what the F.3 daily cron
+    # calls to ingest completed batches.
+
+    @app.post(
+        "/v1/tenants/{tenant_id}/enrichment/submit",
+        response_model=EnrichmentSubmitResponse,
+    )
+    def enrichment_submit(tenant_id: str) -> EnrichmentSubmitResponse:
+        try:
+            if not tenant_repo.get_by_tenant_id(tenant_id):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"tenant_id {tenant_id} not found",
+                )
+            result = vision_enrichment_service.submit_pending_for_tenant(
+                tenant_id
+            )
+            return EnrichmentSubmitResponse(
+                submitted=result.submitted,
+                openai_batch_id=result.openai_batch_id,
+                row_count=result.row_count,
+                reason=result.reason,
+            )
+        except HTTPException:
+            raise
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/v1/tenants/{tenant_id}/enrichment/poll",
+        response_model=EnrichmentPollResponse,
+    )
+    def enrichment_poll(tenant_id: str) -> EnrichmentPollResponse:
+        try:
+            if not tenant_repo.get_by_tenant_id(tenant_id):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"tenant_id {tenant_id} not found",
+                )
+            results = vision_enrichment_service.poll_and_ingest(
+                tenant_id=tenant_id
+            )
+            return EnrichmentPollResponse(
+                batches=[
+                    EnrichmentBatchPollItem(
+                        openai_batch_id=r.openai_batch_id,
+                        final_status=r.final_status,
+                        rows_ingested=r.rows_ingested,
+                        rows_failed=r.rows_failed,
+                    )
+                    for r in results
+                ]
+            )
+        except HTTPException:
+            raise
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/v1/enrichment/poll-all",
+        response_model=EnrichmentPollResponse,
+    )
+    def enrichment_poll_all() -> EnrichmentPollResponse:
+        """Poll EVERY tenant's in-flight enrichment batches.
+
+        Called by the F.3 daily cron. Safe to call manually too —
+        idempotent and fast when there are no in-flight batches.
+        """
+        try:
+            results = vision_enrichment_service.poll_and_ingest()
+            return EnrichmentPollResponse(
+                batches=[
+                    EnrichmentBatchPollItem(
+                        openai_batch_id=r.openai_batch_id,
+                        final_status=r.final_status,
+                        rows_ingested=r.rows_ingested,
+                        rows_failed=r.rows_failed,
+                    )
+                    for r in results
+                ]
+            )
         except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
