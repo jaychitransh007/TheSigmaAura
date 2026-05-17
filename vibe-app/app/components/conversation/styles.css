@@ -1076,12 +1076,6 @@
   color: var(--accent);
 }
 
-.conv-size-chip.is-unavailable {
-  color: var(--ink-muted);
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
 .conv-size-chip.is-selected {
   border-color: var(--accent-deep);
   background: var(--accent-deep);
@@ -1144,6 +1138,26 @@
   background: var(--ink-muted);
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* Secondary CTA — used for the new "Add to Cart" button in PDP / garment
+ * mode. Same height + footprint as .conv-cta so the buttons align in
+ * the row, but inverted colours so "Buy now" stays the visual primary. */
+.conv-cta--secondary {
+  background: var(--surface);
+  color: var(--accent-deep);
+  border: 1px solid var(--accent-deep);
+}
+
+.conv-cta--secondary:hover:not(:disabled) {
+  background: var(--rule-soft);
+}
+
+.conv-cta--secondary:disabled {
+  background: var(--surface);
+  color: var(--ink-muted);
+  border-color: var(--rule);
+  opacity: 0.6;
 }
 
 .conv-cta-heart {

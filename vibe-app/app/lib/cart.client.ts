@@ -17,6 +17,17 @@ export type CartItem = {
   quantity?: number;
 };
 
+/**
+ * Where to send the customer after a successful cart add.
+ *   - "cart"     — `/cart` review page (default; right for Buy outfit
+ *                  where the customer wants to confirm the bundle).
+ *   - "checkout" — straight to `/checkout` (right for Buy now — skip
+ *                  the review step and start paying).
+ *   - "none"     — stay on the current page (right for Add to Cart —
+ *                  customer is still browsing).
+ */
+export type CartNavigation = "cart" | "checkout" | "none";
+
 /** Extract the trailing numeric id from a Shopify gid string. */
 export function gidToNumericId(gid: string): string {
   const tail = gid.split("/").pop() ?? "";
@@ -24,31 +35,50 @@ export function gidToNumericId(gid: string): string {
 }
 
 /** Detect placeholder variant ids from mock engine responses so the
- *  Buy buttons can disable themselves before trying to call /cart/add.js. */
+ *  Buy buttons can fail with a clear message before hitting /cart/add.js. */
 export function isMockVariantId(gid: string): boolean {
   return gid.includes("mock-");
 }
 
+export class CartUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CartUnavailableError";
+  }
+}
+
 /**
- * Add one or more variants to the customer's Shopify cart, then
- * navigate to /cart. Throws on failure so the caller can surface a
- * toast/error inline.
+ * Add one or more variants to the customer's Shopify cart. Optional
+ * post-add navigation (`/cart`, `/checkout`, or stay-on-page).
  *
  * Uses Shopify's classic ajax cart at /cart/add.js with a JSON body
  * that supports multi-item adds in one call (saves N round-trips for
  * Buy Outfit).
+ *
+ * Throws `CartUnavailableError` when the inputs aren't backed by real
+ * Shopify variant ids — the most common case is the catalog mapping
+ * (B.8) hasn't run yet on the merchant's store, so the engine returns
+ * items without `shopify_variant_ids`. Callers should surface the
+ * message inline rather than retry.
  */
-export async function addToCart(items: CartItem[]): Promise<void> {
-  if (items.length === 0) return;
+export async function addToCart(
+  items: CartItem[],
+  opts: { navigate?: CartNavigation } = {},
+): Promise<void> {
+  if (items.length === 0) {
+    throw new CartUnavailableError(
+      "Nothing's linked to checkout for this look yet — the storefront " +
+        "catalog hasn't finished syncing. Try again in a moment.",
+    );
+  }
 
   // Bail out cleanly if anything looks like a mock id — saves a 404 to
   // /cart/add.js that would otherwise confuse the customer.
   for (const item of items) {
     if (isMockVariantId(item.variantId)) {
-      throw new Error(
-        "Real cart is wired but the engine is still in mock mode. " +
-          "Set ENGINE_API_URL on Vercel to point at the deployed engine, " +
-          "then redeploy.",
+      throw new CartUnavailableError(
+        "This piece isn't connected to the storefront catalog yet — " +
+          "Add to Cart will work once the catalog mapping runs.",
       );
     }
   }
@@ -75,7 +105,15 @@ export async function addToCart(items: CartItem[]): Promise<void> {
     throw new Error(`Add to cart failed (${resp.status}): ${text.slice(0, 200)}`);
   }
 
-  // On success, navigate to the cart. Shopify renders the cart in the
-  // storefront theme; from there the customer hits checkout.
-  window.location.href = "/cart";
+  const navigation = opts.navigate ?? "cart";
+  if (navigation === "cart") {
+    window.location.href = "/cart";
+  } else if (navigation === "checkout") {
+    // Shopify routes /checkout through to the active cart's checkout
+    // session — same path the cart-page "Checkout" button hits. Cart
+    // state was just mutated; the redirect picks it up.
+    window.location.href = "/checkout";
+  }
+  // navigation === "none" → caller stays on the chat page; success
+  // feedback is the caller's responsibility (e.g. flash a label).
 }
