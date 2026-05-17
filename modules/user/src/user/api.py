@@ -97,6 +97,22 @@ def _resolve_local_image_file(path_value: str) -> Path | None:
     return None
 
 
+def _upload_size_bytes(file: UploadFile) -> int:
+    """Compute the upload size without materialising the body.
+
+    Prefers starlette's `UploadFile.size` (≥ 0.36, populated from
+    Content-Length). Falls back to `seek(0, 2)` for older starlette —
+    Python 3's `seek` returns the new absolute position so the single
+    call replaces the older seek-then-tell pattern. Cursor is reset to
+    the start so subsequent `.read()` returns the whole body.
+    """
+    size = getattr(file, "size", None)
+    if size is None:
+        size = file.file.seek(0, 2)
+        file.file.seek(0)
+    return size
+
+
 def create_onboarding_router(service: OnboardingService, analysis_service: UserAnalysisService) -> APIRouter:
     router = APIRouter(prefix="/v1/onboarding", tags=["onboarding"])
 
@@ -230,9 +246,15 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
     def normalize_image(file: UploadFile = File(...)) -> Response:
         if not file.content_type or not file.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="File must be an image")
-        data = file.file.read()
-        if len(data) > 15 * 1024 * 1024:
+        # 15MB cap here (vs 10MB elsewhere) is intentional: this endpoint
+        # accepts the customer's raw phone photo *before* cropping —
+        # they haven't picked a region yet — and high-res HEIC/JPEG
+        # sources can run hot. Downstream crops shrink it to fit the
+        # 10MB ceiling used by save_image / save_wardrobe_item.
+        size_bytes = _upload_size_bytes(file)
+        if size_bytes > 15 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="Image must be under 15MB")
+        data = file.file.read()
         try:
             normalized_data, normalized_type, normalized_name = service.normalize_image_for_crop(
                 file_data=data,
@@ -258,16 +280,10 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
             raise HTTPException(status_code=400, detail="File must be an image")
         # Determine size BEFORE reading the body into memory. Reading
         # first then checking length would let a hostile client allocate
-        # an unbounded buffer (FastAPI's SpooledTemporaryFile spools to
-        # disk past ~1MB so the worst case is bounded by disk, not RAM,
-        # but the principle stands — bail before we materialise bytes
-        # we'll throw away). `UploadFile.size` is starlette ≥ 0.36; fall
-        # back to a tell-after-seek-to-end for older versions.
-        size_bytes = getattr(file, "size", None)
-        if size_bytes is None:
-            file.file.seek(0, 2)
-            size_bytes = file.file.tell()
-            file.file.seek(0)
+        # an unbounded buffer. `_upload_size_bytes` prefers starlette's
+        # populated `.size` attribute and falls back to a single seek
+        # for older versions.
+        size_bytes = _upload_size_bytes(file)
         if size_bytes > 10 * 1024 * 1024:
             observe_onboarding_endpoint(endpoint="image_upload", status="bad_request", channel=channel)
             _log_endpoint(endpoint="image_upload", status="bad_request", channel=channel, user_id=user_id, category=category_label, size_bytes=size_bytes, error="too_large")
@@ -374,9 +390,12 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
     ) -> WardrobeItemResponse:
         if not file.content_type or not file.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="File must be an image")
-        data = file.file.read()
-        if len(data) > 10 * 1024 * 1024:
+        # Size-check pre-read for the same reason as upload_image —
+        # don't buffer bytes we're about to reject.
+        size_bytes = _upload_size_bytes(file)
+        if size_bytes > 10 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="Image must be under 10MB")
+        data = file.file.read()
         try:
             out = service.save_wardrobe_item(
                 user_id=user_id,
