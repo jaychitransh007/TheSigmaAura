@@ -52,6 +52,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 
+  // F.2.0 tenant resolution — engine refuses to default for the
+  // vibe_storefront channel. Same pattern as apps.vibe.style action.
+  const shopDomain =
+    new URL(request.url).searchParams.get("shop")?.trim() ?? "";
+
   const form = await request.formData();
   const sessionId = String(form.get("sessionId") ?? "").trim();
   const rawImage = form.get("imageData");
@@ -80,6 +85,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       userId: sessionId,
       message: CHECK_MESSAGE + PAIRING_TRIGGER,
       imageData,
+      shopDomain,
     });
     return json({
       ok: true,
