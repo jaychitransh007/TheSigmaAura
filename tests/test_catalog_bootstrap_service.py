@@ -241,6 +241,153 @@ class HtmlStrippingTests(unittest.TestCase):
         self.assertEqual(_strip_html("   "), "")
 
 
+class CronWalkRevivalTests(unittest.TestCase):
+    """F.3 cron passes ``revive_soft_deleted=True`` so a daily walk
+    that re-sees a previously-deleted product (e.g. when a
+    products/create webhook was dropped past Shopify's 48h retry
+    window) revives the row. The F.4 webhook upsert path uses the
+    default False because its revival is topic-aware."""
+
+    def test_cache_hit_writes_available_for_sale_when_provided(self):
+        """The cron walk hands us available_for_sale derived from
+        variants. The cache-hit patch must persist it so the engine's
+        view reflects the latest inventory state."""
+        embedder = _make_embedder()
+        client = _make_client(existing_product_ids={"pid_1"})
+        service = CatalogBootstrapService(client, embedder=embedder)
+        service.process_products(
+            tenant_id="t_test",
+            products=[{
+                "shopify_product_id": "pid_1",
+                "title": "Black Linen",
+                "description": "",
+                "available_for_sale": False,
+            }],
+        )
+        # The catalog_enriched PATCH must include the new value.
+        ce_updates = [
+            c for c in client.update_one.call_args_list
+            if c.args and c.args[0] == "catalog_enriched"
+        ]
+        self.assertEqual(len(ce_updates), 1)
+        self.assertEqual(
+            ce_updates[0].kwargs["patch"]["available_for_sale"],
+            False,
+        )
+        # And the embeddings table must be mirrored — that's where
+        # the retrieval RPC filters from.
+        cie_updates = [
+            c for c in client.update_one.call_args_list
+            if c.args and c.args[0] == "catalog_item_embeddings"
+        ]
+        self.assertEqual(len(cie_updates), 1)
+        self.assertEqual(
+            cie_updates[0].kwargs["patch"]["available_for_sale"],
+            False,
+        )
+
+    def test_cache_hit_no_available_signal_doesnt_touch_embeddings(self):
+        """Avoid an extra PATCH on the embeddings table for callers
+        that don't carry an availability signal (legacy / minimal
+        callers). Without this we'd round-trip on every cache hit."""
+        embedder = _make_embedder()
+        client = _make_client(existing_product_ids={"pid_1"})
+        service = CatalogBootstrapService(client, embedder=embedder)
+        service.process_products(
+            tenant_id="t_test",
+            products=[{
+                "shopify_product_id": "pid_1",
+                "title": "Black Linen",
+                "description": "",
+                # NOTE: no available_for_sale key
+            }],
+        )
+        cie_updates = [
+            c for c in client.update_one.call_args_list
+            if c.args and c.args[0] == "catalog_item_embeddings"
+        ]
+        self.assertEqual(len(cie_updates), 0)
+
+    def test_revive_soft_deleted_true_clears_deleted_at(self):
+        """The cron-walk revival case: row was soft-deleted (e.g.
+        previous products/delete webhook), but Shopify now shows it
+        in the catalog walk again. Patch must clear deleted_at."""
+        embedder = _make_embedder()
+        client = _make_client(existing_product_ids={"pid_1"})
+        service = CatalogBootstrapService(client, embedder=embedder)
+        service.process_products(
+            tenant_id="t_test",
+            products=[{
+                "shopify_product_id": "pid_1",
+                "title": "Black Linen",
+                "description": "",
+                "available_for_sale": True,
+            }],
+            revive_soft_deleted=True,
+        )
+        ce_updates = [
+            c for c in client.update_one.call_args_list
+            if c.args and c.args[0] == "catalog_enriched"
+        ]
+        self.assertIn("deleted_at", ce_updates[0].kwargs["patch"])
+        self.assertIsNone(ce_updates[0].kwargs["patch"]["deleted_at"])
+
+    def test_revive_soft_deleted_false_preserves_deleted_at(self):
+        """The webhook upsert path leaves revive_soft_deleted=False
+        because products/update arriving after products/delete (out-
+        of-order retry) must NOT resurrect. The patch must NOT
+        touch deleted_at when the flag is False."""
+        embedder = _make_embedder()
+        client = _make_client(existing_product_ids={"pid_1"})
+        service = CatalogBootstrapService(client, embedder=embedder)
+        service.process_products(
+            tenant_id="t_test",
+            products=[{
+                "shopify_product_id": "pid_1",
+                "title": "Black Linen",
+                "description": "",
+                "available_for_sale": True,
+            }],
+            # default revive_soft_deleted=False
+        )
+        ce_updates = [
+            c for c in client.update_one.call_args_list
+            if c.args and c.args[0] == "catalog_enriched"
+        ]
+        self.assertNotIn("deleted_at", ce_updates[0].kwargs["patch"])
+
+    def test_new_product_insert_carries_available_for_sale(self):
+        """Cache-miss path: a freshly-installed catalog with some
+        OOS products shouldn't sit at the column's TRUE default
+        until the next webhook fires. The insert payload must
+        include the signal."""
+        embedder = _make_embedder()
+        client = _make_client(existing_product_ids=set())
+        service = CatalogBootstrapService(client, embedder=embedder)
+        service.process_products(
+            tenant_id="t_test",
+            products=[{
+                "shopify_product_id": "new_oos",
+                "title": "OOS Product",
+                "description": "",
+                "available_for_sale": False,
+            }],
+        )
+        insert_calls = [
+            c.args for c in client.insert_one.call_args_list
+            if c.args and c.args[0] == "catalog_enriched"
+        ]
+        self.assertEqual(len(insert_calls), 1)
+        payload = insert_calls[0][1]
+        self.assertEqual(payload["available_for_sale"], False)
+        # And same for embeddings.
+        emb_inserts = [
+            c.args for c in client.insert_one.call_args_list
+            if c.args and c.args[0] == "catalog_item_embeddings"
+        ]
+        self.assertEqual(emb_inserts[0][1]["available_for_sale"], False)
+
+
 class CostSafetyTest(unittest.TestCase):
     """Belt-and-suspenders: under the realistic re-install case (every
     product in the input batch is already enriched), zero LLM calls

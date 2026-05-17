@@ -103,6 +103,7 @@ class CatalogBootstrapService:
         *,
         tenant_id: str,
         products: List[Dict[str, Any]],
+        revive_soft_deleted: bool = False,
     ) -> Dict[str, Any]:
         """Idempotent batch upsert for a single tenant.
 
@@ -114,6 +115,14 @@ class CatalogBootstrapService:
         Optional fields (carried through to catalog_enriched):
             price, image_url, available_for_sale, shopify_variant_ids,
             vendor, product_url, raw_row_json
+
+        ``revive_soft_deleted`` (default False): when True, a cache-hit
+        on a row that has ``deleted_at`` set will clear it (resurrect
+        the row). The F.3 daily cron passes True so a walk that
+        re-sees a previously-deleted product (e.g. products/create
+        webhook was dropped) corrects the engine state. The webhook
+        path (F.4) passes False because products/update arriving
+        out-of-order after products/delete must NOT revive.
 
         Returns:
             {
@@ -159,12 +168,41 @@ class CatalogBootstrapService:
                     # LLM cost. The mutable fields are the merchant-
                     # facing data that changes day-to-day (price,
                     # stock); the vision attributes stay frozen.
-                    patch = self._mutable_metadata_patch(product)
+                    patch = self._mutable_metadata_patch(
+                        product,
+                        revive_soft_deleted=revive_soft_deleted,
+                    )
                     if patch:
                         self._client.update_one(
                             "catalog_enriched",
                             filters={"id": f"eq.{existing['id']}"},
                             patch=patch,
+                        )
+                    # Mirror availability to the embeddings table —
+                    # the retrieval RPC filters on
+                    # catalog_item_embeddings.available_for_sale so
+                    # the source of truth on catalog_enriched alone
+                    # isn't enough for customer-facing recs. Only
+                    # mirror when the product carried an explicit
+                    # availability signal (the cron walk and F.4
+                    # webhooks both do), otherwise skip to avoid an
+                    # unnecessary PATCH round-trip.
+                    if "available_for_sale" in product:
+                        cie_patch: Dict[str, Any] = {
+                            "available_for_sale": bool(
+                                product.get("available_for_sale", True)
+                            ),
+                        }
+                        self._client.update_one(
+                            "catalog_item_embeddings",
+                            filters={
+                                "tenant_id": f"eq.{tenant_id}",
+                                "product_id": (
+                                    "eq."
+                                    + _tenant_scoped_product_id(tenant_id, shopify_pid)
+                                ),
+                            },
+                            patch=cie_patch,
                         )
                     updated += 1
                     continue
@@ -254,12 +292,25 @@ class CatalogBootstrapService:
         parts = [p for p in (title, vendor, description) if p]
         return "\n".join(parts) if parts else "(no description)"
 
-    def _mutable_metadata_patch(self, product: Dict[str, Any]) -> Dict[str, Any]:
+    def _mutable_metadata_patch(
+        self,
+        product: Dict[str, Any],
+        *,
+        revive_soft_deleted: bool = False,
+    ) -> Dict[str, Any]:
         """Subset of fields that should refresh on every sync.
 
         These are merchant-side data points that change over time
         (price reductions, restocks). Vision attributes are NOT here
         — they're computed once and stable.
+
+        When ``revive_soft_deleted`` is True, the patch also clears
+        ``deleted_at`` so a row that was previously marked deleted
+        (via the F.4 products/delete webhook) but is now visible in
+        the F.3 cron walk gets resurrected. The F.4 webhook upsert
+        path passes False here so that an out-of-order products/update
+        retry after a products/delete doesn't undo the delete; its
+        topic-aware revival lives in CatalogProductSyncService.
         """
         patch: Dict[str, Any] = {}
         if "price" in product and product["price"] is not None:
@@ -268,9 +319,20 @@ class CatalogBootstrapService:
             patch["images_0_src"] = product["image_url"]
         if "shopify_variant_ids" in product and product["shopify_variant_ids"]:
             patch["shopify_variant_ids"] = product["shopify_variant_ids"]
-        # available_for_sale isn't a column on catalog_enriched today —
-        # F.4 (inventory webhooks) adds it. Kept out of the patch until
-        # then to avoid silently dropping the data.
+        # F.4 column. Only write when the caller actually provided a
+        # signal (the cron walk and F.4 webhooks both do); skipping
+        # the write when the column is absent preserves the existing
+        # value rather than overwriting with a guessed default.
+        if "available_for_sale" in product:
+            patch["available_for_sale"] = bool(
+                product.get("available_for_sale", True)
+            )
+        if revive_soft_deleted:
+            # Don't gate on whether the row was actually deleted —
+            # PostgREST is happy to update a NULL column to NULL, and
+            # checking deleted_at first would cost an extra SELECT
+            # per cache-hit row.
+            patch["deleted_at"] = None
         return patch
 
     def _insert_catalog_enriched(
@@ -302,6 +364,14 @@ class CatalogBootstrapService:
             payload["shopify_variant_ids"] = product["shopify_variant_ids"]
         if product.get("raw_row_json"):
             payload["raw_row_json"] = product["raw_row_json"]
+        # F.4 availability — write on insert so a freshly-bootstrapped
+        # row that's actually out-of-stock doesn't sit at the table's
+        # default TRUE until the next webhook fires. Only write when
+        # the caller actually provided a signal.
+        if "available_for_sale" in product:
+            payload["available_for_sale"] = bool(
+                product.get("available_for_sale", True)
+            )
         # product_id is globally UNIQUE under the catalog_enriched
         # schema constraint. Prefix with tenant_id so two tenants
         # legitimately importing the same Shopify GID can't collide
@@ -350,4 +420,11 @@ class CatalogBootstrapService:
         }
         if product.get("price") is not None:
             payload["price"] = product["price"]
+        # F.4 availability mirror — kept on this table because the
+        # retrieval RPC filters on it. Default to True if the caller
+        # didn't pass a signal (matches the column's NOT NULL DEFAULT).
+        if "available_for_sale" in product:
+            payload["available_for_sale"] = bool(
+                product.get("available_for_sale", True)
+            )
         return self._client.insert_one("catalog_item_embeddings", payload)

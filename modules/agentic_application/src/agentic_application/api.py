@@ -759,6 +759,7 @@ def create_app() -> FastAPI:
             result = bootstrap_service.process_products(
                 tenant_id=tenant_id,
                 products=[p.model_dump() for p in payload.products],
+                revive_soft_deleted=bool(payload.revive_soft_deleted),
             )
             return BootstrapBatchResponse(
                 created=int(result.get("created", 0)),
