@@ -182,7 +182,10 @@ class CatalogVisionEnrichmentService:
         # Find pending rows. Excludes already-enriched rows AND rows
         # already claimed by some other batch. Limit prevents one huge
         # tenant from monopolising the org's batch tokens-per-minute.
-        candidates = self._client.select_many(
+        #
+        # Pull a small overshoot so we can drop image-less rows below
+        # without dropping the batch under the row cap.
+        candidates_raw = self._client.select_many(
             "catalog_enriched",
             filters={
                 "tenant_id": f"eq.{tenant_id}",
@@ -192,12 +195,38 @@ class CatalogVisionEnrichmentService:
             columns="id,shopify_product_id,description,images_0_src,title",
             limit=self._max_rows,
         )
+        # Vision needs at least one image — without it the model
+        # returns a row-level error. Submitting an imageless row would
+        # cost a slot, fail, and (because the failure-recovery sweep
+        # frees vision_batch_id) get resubmitted next cycle in an
+        # infinite loop. Filter at submit time so doomed rows never
+        # enter a batch. Operators can clean them up by setting
+        # row_status='error' + a populated error_reason via admin
+        # tooling once we have one.
+        candidates: List[Dict[str, Any]] = []
+        skipped_no_image = 0
+        for row in candidates_raw:
+            img = str(row.get("images_0_src") or "").strip()
+            if not img:
+                skipped_no_image += 1
+                continue
+            candidates.append(row)
+        if skipped_no_image:
+            _log.warning(
+                "CatalogVisionEnrichment: skipped %d rows with empty images_0_src for tenant=%s",
+                skipped_no_image,
+                tenant_id,
+            )
         if not candidates:
             return BatchSubmitResult(
                 submitted=False,
                 openai_batch_id="",
                 row_count=0,
-                reason="no pending rows",
+                reason=(
+                    f"no pending rows ({skipped_no_image} skipped: no image)"
+                    if skipped_no_image
+                    else "no pending rows"
+                ),
             )
 
         # Build the JSONL input file in memory. ``build_request_body``

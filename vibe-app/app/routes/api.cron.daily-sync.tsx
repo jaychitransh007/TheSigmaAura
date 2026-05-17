@@ -32,6 +32,7 @@ import { json } from "@remix-run/node";
 import {
   listTenants,
   pollAllEnrichment,
+  submitPendingEnrichmentAll,
   type TenantListItem,
 } from "../lib/engine.server";
 import { logInfo, logError, logWarn } from "../lib/logger.server";
@@ -56,6 +57,7 @@ type CronResult = {
   tenants_seen: number;
   tenants_synced: number;
   tenants_skipped_for_budget: number;
+  enrichment_submitted: number;
   enrichment_batches_polled: number;
   enrichment_rows_ingested: number;
   errors: Array<{ stage: string; shop: string; error: string }>;
@@ -95,6 +97,7 @@ async function runCron(request: Request) {
     tenants_seen: 0,
     tenants_synced: 0,
     tenants_skipped_for_budget: 0,
+    enrichment_submitted: 0,
     enrichment_batches_polled: 0,
     enrichment_rows_ingested: 0,
     errors: [],
@@ -153,10 +156,38 @@ async function runCron(request: Request) {
     }
   }
 
-  // 3. Poll any in-flight enrichment batches across all tenants. This
+  // 3. Kick off enrichment for tenants that have pending-enrichment
+  //    rows with no batch in-flight. Closes the gap where F.4 product
+  //    webhooks insert new rows but nothing else triggers a submit
+  //    (bootstrap_complete only fires at install). Idempotent per
+  //    tenant — submit short-circuits if an open batch already exists.
+  try {
+    const submitted = await submitPendingEnrichmentAll();
+    result.enrichment_submitted = submitted.submitted;
+    if (submitted.errors.length > 0) {
+      for (const e of submitted.errors) {
+        result.errors.push({
+          stage: "enrichment_submit",
+          shop: e.tenant_id,
+          error: e.error,
+        });
+      }
+    }
+    logInfo("vibe_cron_daily_sync_enrichment_submit", {
+      tenants_seen: submitted.tenants_seen,
+      submitted: submitted.submitted,
+      no_op: submitted.no_op,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    result.errors.push({ stage: "enrichment_submit", shop: "*", error: msg });
+    logError("vibe_cron_daily_sync_enrichment_submit_failed", { err: msg });
+  }
+
+  // 4. Poll any in-flight enrichment batches across all tenants. This
   //    is what ingests vision-attribute results from the OpenAI Batch
-  //    API submissions kicked off by F.2.2b. Safe to call when none
-  //    are in-flight (no-op).
+  //    API submissions kicked off above (or by bootstrap_complete).
+  //    Safe to call when none are in-flight (no-op).
   try {
     const polled = await pollAllEnrichment();
     result.enrichment_batches_polled = polled.length;

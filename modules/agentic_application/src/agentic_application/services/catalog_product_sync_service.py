@@ -86,18 +86,26 @@ class CatalogProductSyncService:
         *,
         tenant_id: str,
         product_payload: Dict[str, Any],
+        topic: str = "",
     ) -> Dict[str, Any]:
         """Handle a products/create or products/update webhook.
 
-        The two topics share logic — Shopify's payload format is
+        The two topics share most logic — Shopify's payload format is
         identical, and our upsert is idempotent. Going through
         ``CatalogBootstrapService.process_products`` handles both
         cache-hit refresh (existing row → metadata patch) and
         cache-miss insert (new row → embedding + insert).
 
+        ``topic`` should be the verbatim Shopify topic ("products/
+        create" or "products/update"); it gates whether to clear a
+        prior soft-deletion. A genuine products/create revives a
+        soft-deleted row (Shopify lets merchants un-delete within
+        30 days); products/update arriving after a products/delete
+        — a retry-order edge case — must NOT revive, otherwise an
+        explicitly-deleted product would silently come back.
+
         Returns the bootstrap_service result dict ({created, updated,
-        failed, errors}) plus the resolved availability flag so the
-        caller can confirm the writes landed.
+        failed, errors}) plus the resolved availability flag.
         """
         if not tenant_id or not tenant_id.strip():
             raise ValueError("apply_create_or_update: tenant_id is required")
@@ -126,19 +134,25 @@ class CatalogProductSyncService:
         available = bool(bootstrap_input.get("available_for_sale", True))
         shopify_pid = str(bootstrap_input["shopify_product_id"])
 
-        # catalog_enriched: source of truth. Set available_for_sale
-        # AND clear any prior deleted_at — a re-creation should revive
-        # a previously soft-deleted row.
+        # catalog_enriched: source of truth. Conditionally clear
+        # deleted_at — only on products/create or when topic is
+        # unknown (defensive default for callers that don't thread
+        # the topic). On products/update, leave deleted_at as-is so
+        # an out-of-order retry can't resurrect an intentionally-
+        # deleted product.
+        ce_patch: Dict[str, Any] = {"available_for_sale": available}
+        normalized_topic = topic.strip().lower()
+        if normalized_topic != "products/update":
+            # products/create → revive. Empty topic → defensive
+            # revive (preserves pre-fix behaviour).
+            ce_patch["deleted_at"] = None
         self._client.update_one(
             "catalog_enriched",
             filters={
                 "tenant_id": f"eq.{tenant_id}",
                 "shopify_product_id": f"eq.{shopify_pid}",
             },
-            patch={
-                "available_for_sale": available,
-                "deleted_at": None,
-            },
+            patch=ce_patch,
         )
         # catalog_item_embeddings: the hot retrieval path uses this.
         self._client.update_one(

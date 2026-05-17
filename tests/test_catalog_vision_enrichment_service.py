@@ -162,6 +162,45 @@ class SubmitIdempotencyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             service.submit_pending_for_tenant("")
 
+    def test_rows_with_empty_image_skipped_at_submit(self):
+        """A row with no images_0_src would fail in the model
+        (vision needs an image) and then get freed by the failure-
+        recovery sweep, only to be resubmitted next cycle. Filter
+        them out at submit time to avoid the infinite retry loop."""
+        client = _make_client(
+            pending_rows=[
+                {"id": 1, "description": "x", "images_0_src": "", "title": "no img"},
+                {"id": 2, "description": "x", "images_0_src": "   ", "title": "ws"},
+                {"id": 3, "description": "x", "images_0_src": "http://i", "title": "ok"},
+            ],
+        )
+        openai_client = _make_openai_mock()
+        service = CatalogVisionEnrichmentService(client, openai_client=openai_client)
+
+        result = service.submit_pending_for_tenant("t_test")
+
+        # Only the row with a real image gets submitted.
+        self.assertTrue(result.submitted)
+        self.assertEqual(result.row_count, 1)
+
+    def test_all_rows_image_less_returns_no_op(self):
+        """If every pending row is image-less, no batch should be
+        created. Otherwise we'd push an empty JSONL file to OpenAI."""
+        client = _make_client(
+            pending_rows=[
+                {"id": 1, "description": "x", "images_0_src": "", "title": "a"},
+                {"id": 2, "description": "x", "images_0_src": "", "title": "b"},
+            ],
+        )
+        openai_client = _make_openai_mock()
+        service = CatalogVisionEnrichmentService(client, openai_client=openai_client)
+
+        result = service.submit_pending_for_tenant("t_test")
+
+        self.assertFalse(result.submitted)
+        openai_client.batches.create.assert_not_called()
+        self.assertIn("no image", result.reason)
+
 
 def _make_openai_for_poll(
     *,
