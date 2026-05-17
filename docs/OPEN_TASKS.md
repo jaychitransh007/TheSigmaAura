@@ -184,14 +184,39 @@ Engine turn end-to-end takes 30–60s with try-on; up to 90s on cold path. Stage
 
 ### D.M — Merchant admin UI (trust + control)
 
-Can ship after D.C lands — merchant doesn't need rich admin until Vibe is real.
+**Re-scoped 2026-05-17.** D.M.2–D.M.6 depend on two new platform phases (F + G below). Each admin page is a thin surface on top of catalog sync (Phase F) + revenue attribution (Phase G). See those phases for the plumbing; this section is the UI.
+
+Can ship after D.C lands AND F.2 + G.1/G.2 are live — the admin pages are mostly empty shells without the underlying data.
 
 - [x] **D.M.1.** Welcome/status screen — replaces the demo "Generate a product" template. Lives at [app/routes/app._index.tsx](../vibe-app/app/routes/app._index.tsx). Shows "Vibe is active" status, links to the customer-facing Conversation / Wardrobe / Looks paths on the merchant's storefront, and pulls the shop domain from the authenticated admin session.
-- [ ] **D.M.2.** Permissions panel — what Vibe accesses (products / orders / customers / themes / customer-account-data) with revoke/re-grant.
-- [ ] **D.M.3.** Storefront placement controls — toggle the Vibe widget on PDP / homepage / nav / etc., customize entry-point copy.
-- [ ] **D.M.4.** Analytics dashboard — conversations, conversion rate, revenue attribution, share-to-save earnings.
-- [ ] **D.M.5.** Settings — feature toggles, brand-voice config.
-- [ ] **D.M.6.** Billing — plan / pricing / usage via Shopify Billing API.
+- [ ] **D.M.2.** **Permissions panel.** Lists every granted scope in plain English ("Read your products → so Vibe can recommend from your catalog"). Per-scope revoke button → triggers an OAuth dance to a reduced scope set with a warning about which features stop working. Last-active timestamp per scope so unused permissions are visible. Becomes load-bearing the moment the scope set grows under **F.1** (six new scopes). Depends on F.1.
+- [ ] **D.M.3.** **Placement + catalog controls.** Two merged surfaces:
+  - **Storefront placement** — toggle the `vibe-storefront` theme app extension blocks on PDP / homepage / nav / customer-account page. Show whether each block is currently in the active theme (needs `read_themes` scope from F.1).
+  - **Catalog scope** — multi-select against the merchant's Shopify collections: which to include / exclude from Vibe's recommendations. Default include-all. Recommendation guardrails (min / max price, brand exclusions).
+
+  Depends on F.1 (`read_themes`) + F.2 (catalog ingestion so the merchant's collections are queryable).
+- [ ] **D.M.4.** **Analytics dashboard.** Four sections:
+  - **Engagement** — conversations / day, unique customers, avg messages per conversation, drop-off funnel through onboarding stages
+  - **Revenue attribution** — Vibe-attributed orders count + GMV, AOV uplift vs non-Vibe orders, % of total store revenue. Attribution window toggle (24h / 7d / 30d).
+  - **Recommendation effectiveness** — which outfits got most Add-to-Carts, which got most Hides, conversion rate per surface (PDP entry vs homepage entry from D.M.3).
+  - **Catalog health** — products covered by Vibe (have embeddings), products OOS vs total recommended count.
+
+  Reuse Panel 18 / 25-27 SQL from the engine's existing dashboards where it overlaps. Depends on F.2 + G (all sub-tasks).
+- [ ] **D.M.5.** **Settings.**
+  - Catalog refresh cadence (webhook-driven default; scheduled bulk for advanced)
+  - Attribution window (24h / 7d / 30d, default 24h — matches D.M.4)
+  - Brand voice — stylist tone knobs (currently locked to "Confident Luxe")
+  - Feature toggles — try-on, outfit-check, in-chat onboarding cards
+  - Notification preferences — new order alerts, weekly analytics digest
+
+  Depends on F.2 + G.2 + the brand-voice abstraction (separate small refactor in the stylist prompts).
+- [ ] **D.M.6.** **Billing.** Shopify Billing API integration. Plans (working draft, **product decision still open**):
+  - Free trial (30 days, all features)
+  - Starter — flat fee for stores under N orders/month
+  - Growth — flat + usage component
+  - Performance — % of Vibe-attributed revenue
+
+  The performance plan only works after G.3 (line-item attribution) is solid — the % is computed over attributed line-item GMV. Depends on G.2 + G.3.
 
 ### D.P — Production rollout
 
@@ -218,6 +243,44 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 - [x] **E.1.** Runbook at [docs/runbooks/E1_manual_fulfillment_sop.md](../docs/runbooks/E1_manual_fulfillment_sop.md). Walks an operator through the eight-step flow: receive Shopify order email → read `vibe.source_product_url` metafield per line item → place order at the source retailer → wait for tracking → fulfill the Shopify order with tracking link → file invoices for GST. Includes customer-comms email templates (out-of-stock, address-check, significant-delay) and explicit "when to graduate this runbook" triggers (>10 orders/day, >2 source retailers per typical order, returns >15%).
 - [ ] **E.2.** *(Optional, defer until pain felt)* Internal dashboard listing open orders + their source URLs.
 
+## Phase F — Catalog sync (per-merchant)
+
+**Goal.** Vibe recommends from the *merchant's actual Shopify catalog*, not from a single hard-coded `catalog_enriched` table. Required for any tenant past TheSigmaVibe and for the D.M.* admin pages to surface real data.
+
+**Locked decisions (2026-05-17):**
+- **Multi-tenancy posture:** *punt Phase C, build Phase F with `tenant_id` columns ready.* Catalog ingestion writes `tenant_id` from the merchant's `shopify_shop_gid`; engine retrieval / RPCs still treat the catalog as one pool for now. Phase C populates tenant scoping into the read path later. Risk: a second tenant's products would mix with TheSigmaVibe's until Phase C lands — acceptable for one-tenant-only.
+- **Scope expansion path:** existing merchants reinstall once. New scopes documented in F.1.
+
+**Sub-tasks**
+
+- [ ] **F.1.** **New scope grant + reinstall flow.** Expand `shopify.app.vibe.toml` scope set:
+  - `read_products` — sync the merchant's catalog
+  - `read_inventory` — filter recommendations by stock
+  - `read_orders` — subscribe to `orders/create` + `orders/paid` for G
+  - `read_customers` — link orders to engine `external_user_id`
+  - `read_themes` — verify Theme App Extension placement (D.M.3)
+  - `write_metafields` — tag Vibe-attributed orders with attribution context
+
+  Drop unused `write_products` to keep the consent screen tight. OAuth re-grant required on existing installs — surface clean copy on the install screen about *what* and *why* for each scope.
+- [ ] **F.2.** **Initial sync job.** On install (or scope re-grant), Vibe walks the merchant's catalog via Admin GraphQL (paginated). For each product, writes to `catalog_enriched` with the merchant's `tenant_id`, runs the existing visual enrichment + embedding generation pipeline (~$0.003/row). Status surfaces on the merchant admin home screen ("Catalog syncing: 230 of 1,840 products…"). Idempotent — safe to re-run; skips already-enriched rows by `shopify_product_id` + content hash.
+- [ ] **F.3.** **Webhook-driven incremental sync.** Subscribe to `products/create`, `products/update`, `products/delete`, `inventory_levels/update`. Each fires a targeted re-enrichment or delete on the affected product. Avoids the slow path of periodic full re-syncs.
+- [ ] **F.4.** **Stock-aware retrieval.** Engine's `match_catalog_item_embeddings` RPC + post-retrieval filter respect `available_for_sale` so the stylist doesn't recommend OOS items. Inventory updates flow in via F.3.
+
+## Phase G — Purchase attribution
+
+**Goal.** Know which orders were driven by a Vibe recommendation and credit revenue accordingly. Powers D.M.4 analytics and D.M.6 performance-billing.
+
+**Locked decisions (2026-05-17):**
+- **Attribution model: last-touch v1.** "Customer chatted with Vibe within the last 24h before checkout → order fully attributed." Multi-touch / assist credit deferred until v1 has data to show whether it matters.
+- **Attribution window:** default 24h; merchant can override to 7d or 30d in D.M.5 settings.
+
+**Sub-tasks**
+
+- [ ] **G.1.** **Order webhook handlers.** New routes under `vibe-app/app/routes/webhooks.orders.*.tsx` for `orders/create` and `orders/paid`. Each validates HMAC via `authenticate.webhook`, persists the order to a new `vibe_orders` Prisma table with the customer's `shopify:{customer_id}`, shop domain, line items, total, currency, timestamps. Returns 200 within the 5s ack budget.
+- [ ] **G.2.** **Attribution engine.** Engine endpoint `POST /v1/users/{ext_id}/attribute-order`. On each order received via G.1, looks up the customer's most recent Vibe session, computes seconds elapsed since session, applies the merchant's attribution window (D.M.5), and writes an `order_attribution` row: `order_id`, `external_user_id`, `tenant_id`, `attributed: bool`, `attribution_session_id`, `attribution_seconds_before`, `outfit_ids_in_session`.
+- [ ] **G.3.** **Line-item attribution.** For each line item on a Vibe-attributed order, check whether its `shopify_product_id` appeared in any outfit recommendation in the attribution session. Record per-line-item `vibe_recommended: bool` + `recommended_in_outfit_id`. Lets D.M.4 split "outfit-driven" from "spillover" revenue.
+- [ ] **G.4.** **Refund handler.** `orders/refunded` webhook adjusts attributed revenue downward when a Vibe-attributed order gets refunded. Edits the `order_attribution` row's refunded amount rather than deleting it (audit trail).
+
 ## Done outside the original task list
 
 - [x] **Homepage hero** — "Style that gets you." copy locked, hero image generated, 4 value-prop card content drafted.
@@ -232,11 +295,28 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 
 ## Next priorities (in execution order)
 
-1. **B.4 legal-page review + publish.** Drafts are ready in [docs/storefront/legal_pages/](../docs/storefront/legal_pages/); counsel reviews, you find-and-replace the `{{ PLACEHOLDER }}` tokens, paste into Shopify admin. Required before customer-facing launch.
-2. **B.6 — Real-card test order.** You do this manually on the live storefront once legal pages are up.
-3. **D.P.1 — Install Vibe on the production store** (`thesigmavibe.shop`). Unblocks running **B.8** ([`scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py`](../scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py), ~3 min) against the real 13K-product catalog, which activates Add-to-Cart end-to-end via the wiring shipped in D.C.7 / #374. The `vibe-storefront` theme app extension (D.C.1 + D.C.8) needs `shopify app deploy` against the prod app, and the merchant needs to add the two blocks to the appropriate theme templates. (Running B.8 against vibe-test today matches zero rows since the dev store carries only ~60 demo products — defer until D.P.1.)
-4. **D.C.9 — Add-to-Cart prod verification.** Spot-check Buy Outfit / Buy Now end-to-end after B.8 lands real variant ids. No code; just confirm the wiring works on real inventory.
-5. Eventually: D.M.2–D.M.6 (richer merchant admin), D.P.2–D.P.3 (real-card e2e + listing assets), Phase C (engine multi-tenancy), E.2 (internal fulfillment dashboard, if volume justifies it). Further try-on surfaces (per-garment, on-demand re-render) only if requested.
+**Launch-blocking chain (your action):**
+
+1. **B.4 legal-page review + publish.** Drafts are ready in [docs/storefront/legal_pages/](../docs/storefront/legal_pages/); counsel reviews, you find-and-replace the `{{ PLACEHOLDER }}` tokens, paste into Shopify admin.
+2. **B.6 — Real-card test order.** Manual.
+3. **D.P.1 — Install Vibe on the production store** (`thesigmavibe.shop`). Unblocks **B.8** + **D.C.9**.
+4. **D.C.9 — Add-to-Cart prod verification** after B.8 lands real variant ids.
+
+**Then — Merchant-admin build (F → G → D.M.*), roughly 8-10 weeks:**
+
+5. **F.1 — Scope expansion + reinstall flow** (2-3 days). Foundation for everything below; existing installs reinstall once with the new scope list.
+6. **F.2 — Initial catalog sync** (1 week). Per-merchant catalog ingestion + visual enrichment + embeddings; sync status surfaces in D.M.1.
+7. **G.1 + G.2 — Order webhooks + attribution engine** (1 week). Unlocks D.M.4 revenue numbers + D.M.6 performance plan billing.
+8. **F.3 — Webhook-driven incremental sync** (3 days). Production-readiness for F.2.
+9. **F.4 — Stock-aware retrieval** (2-3 days). Quality fix.
+10. **G.3 — Line-item attribution** (2-3 days). D.M.4 granularity ("which outfits drove which line items").
+11. **D.M.2 — Permissions panel** (3 days).
+12. **D.M.3 — Placement + catalog controls** (4 days).
+13. **D.M.4 — Analytics dashboard** (2 weeks). The big one.
+14. **D.M.5 — Settings** (3-4 days).
+15. **D.M.6 — Billing** (1 week). **Pricing plan is a product decision still open** — flat-fee first vs % of attributed revenue.
+
+**Later:** D.P.2 / D.P.3 (real-card e2e + App Store listing), Phase C (engine multi-tenancy — required before tenant #2 onboards), G.4 (refund handler), E.2 (internal fulfillment dashboard, if order volume justifies it), further try-on surfaces (per-garment, on-demand re-render) only if requested.
 
 ---
 
