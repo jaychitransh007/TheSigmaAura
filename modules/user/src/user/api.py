@@ -256,12 +256,23 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
             observe_onboarding_endpoint(endpoint="image_upload", status="bad_request", channel=channel)
             _log_endpoint(endpoint="image_upload", status="bad_request", channel=channel, user_id=user_id, category=category_label, error="not_an_image")
             raise HTTPException(status_code=400, detail="File must be an image")
-        data = file.file.read()
-        size_bytes = len(data)
+        # Determine size BEFORE reading the body into memory. Reading
+        # first then checking length would let a hostile client allocate
+        # an unbounded buffer (FastAPI's SpooledTemporaryFile spools to
+        # disk past ~1MB so the worst case is bounded by disk, not RAM,
+        # but the principle stands — bail before we materialise bytes
+        # we'll throw away). `UploadFile.size` is starlette ≥ 0.36; fall
+        # back to a tell-after-seek-to-end for older versions.
+        size_bytes = getattr(file, "size", None)
+        if size_bytes is None:
+            file.file.seek(0, 2)
+            size_bytes = file.file.tell()
+            file.file.seek(0)
         if size_bytes > 10 * 1024 * 1024:
             observe_onboarding_endpoint(endpoint="image_upload", status="bad_request", channel=channel)
             _log_endpoint(endpoint="image_upload", status="bad_request", channel=channel, user_id=user_id, category=category_label, size_bytes=size_bytes, error="too_large")
             raise HTTPException(status_code=400, detail="Image must be under 10MB")
+        data = file.file.read()
         try:
             result = service.save_image(
                 user_id=user_id,
@@ -630,8 +641,12 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         user_id: str,
         channel: str = Query("web", description="Caller channel label for metrics (web / vibe_storefront)."),
     ) -> AnalysisStatusResponse:
+        # `analysis_result` rather than `status` to avoid shadowing the
+        # `status` kwarg threaded into observe_onboarding_endpoint /
+        # _log_endpoint just below — the previous name made
+        # `status.get("status")` parseable but unfriendly to read.
         try:
-            status = analysis_service.get_analysis_status(user_id)
+            analysis_result = analysis_service.get_analysis_status(user_id)
         except (SupabaseError, RuntimeError, ValueError) as exc:
             observe_onboarding_endpoint(endpoint="analysis_status_read", status="failed", channel=channel)
             _log_endpoint(endpoint="analysis_status_read", status="failed", channel=channel, user_id=user_id, error=str(exc))
@@ -646,8 +661,8 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
             status="success",
             channel=channel,
             user_id=user_id,
-            analysis_status=str(status.get("status") or ""),
+            analysis_status=str(analysis_result.get("status") or ""),
         )
-        return AnalysisStatusResponse(**status)
+        return AnalysisStatusResponse(**analysis_result)
 
     return router
