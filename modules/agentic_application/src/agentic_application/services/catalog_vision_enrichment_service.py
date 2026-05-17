@@ -235,7 +235,11 @@ class CatalogVisionEnrichmentService:
         # catalog_enriched column names — we only have one image URL
         # at bootstrap (images_0_src) so images__1__src stays empty.
         jsonl_lines: List[str] = []
-        catalog_ids: List[int] = []
+        # catalog_enriched.id is a UUID, not an integer. Keep it as a
+        # string throughout — both for the IN clause (PostgREST accepts
+        # bare UUIDs in `in.(...)` filters) and for the custom_id round-
+        # trip back from the OpenAI batch output.
+        catalog_ids: List[str] = []
         for idx, row in enumerate(candidates):
             normalised = {
                 "description": str(row.get("description") or ""),
@@ -252,7 +256,7 @@ class CatalogVisionEnrichmentService:
                 "body": build_request_body(normalised, self._config),
             }
             jsonl_lines.append(json.dumps(req, ensure_ascii=True))
-            catalog_ids.append(int(row["id"]))
+            catalog_ids.append(str(row["id"]))
 
         jsonl_bytes = ("\n".join(jsonl_lines) + "\n").encode("utf-8")
 
@@ -306,7 +310,7 @@ class CatalogVisionEnrichmentService:
         # the whole patched set atomically.
         self._client.update_one(
             "catalog_enriched",
-            filters={"id": f"in.({','.join(str(i) for i in catalog_ids)})"},
+            filters={"id": f"in.({','.join(catalog_ids)})"},
             patch={"vision_batch_id": batch_db_id},
         )
 
@@ -463,9 +467,10 @@ class CatalogVisionEnrichmentService:
             if not custom_id.startswith("cat_"):
                 rows_failed += 1
                 continue
-            try:
-                catalog_row_id = int(custom_id[len("cat_"):])
-            except ValueError:
+            # custom_id is `cat_<uuid>` — keep the row id as a string;
+            # catalog_enriched.id is a UUID, not an integer.
+            catalog_row_id = custom_id[len("cat_"):]
+            if not catalog_row_id:
                 rows_failed += 1
                 continue
             payload = _extract_row_payload(item)
