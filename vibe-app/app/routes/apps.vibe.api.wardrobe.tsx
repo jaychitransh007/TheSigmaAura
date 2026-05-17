@@ -24,6 +24,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json({ ok: false, error: "Missing sessionId" }, { status: 400 });
   }
 
+  // IDOR guard for the `shopify:` identity. Anonymous UUIDs are
+  // unguessable per-browser identifiers and don't need verification
+  // (same as the rest of the app). But the `shopify:{customer_id}`
+  // shape is enumerable from the storefront — a hostile request
+  // could craft sessionId=shopify:<someone else's id> and read that
+  // customer's wardrobe. The signed App Proxy URL carries
+  // logged_in_customer_id (validated by authenticate.public.appProxy
+  // above), so we can compare. Mirrors the merge handler in
+  // apps.vibe.style.tsx.
+  if (sessionId.startsWith("shopify:")) {
+    const expectedId = url.searchParams.get("logged_in_customer_id")?.trim();
+    if (!expectedId || sessionId !== `shopify:${expectedId}`) {
+      return json({ ok: false, error: "Identity mismatch" }, { status: 403 });
+    }
+  }
+
   try {
     const items = await getWardrobeItems(sessionId);
     return json({ ok: true, items });
