@@ -3,20 +3,29 @@
 // Reference: legacy platform_core/ui.py PDP card.
 //   - Per-item size chips (Record<garment_id, Size>): customers can be
 //     S in tops and M in bottoms; one global size would silently force
-//     them into the wrong variant on at least one item.
+//     them into the wrong variant on at least one item. Chips are
+//     ALWAYS clickable — variant-id availability is a checkout-time
+//     concern (the friendly error fires there), not a chip-state one.
 //   - Buy Outfit (outfit mode): adds every shoppable item at its picked
-//     size to the Shopify cart, then navigates to /cart. Requires every
-//     shoppable item to have a size selected AND a real variant gid.
-//   - Buy Now (garment mode): adds just the current item at its picked
-//     size. Wardrobe items render a static "From your wardrobe" pill
-//     instead of a Buy button.
-//   - Mock engine responses surface a friendly error toast instead of
-//     hitting /cart/add.js with bogus ids.
+//     size to the Shopify cart, navigates to /cart so the customer
+//     reviews the bundle before paying.
+//   - Garment mode now has THREE CTAs:
+//       Add to Cart — adds the item, stays on chat (flashes "Added ✓")
+//       Buy Now     — adds the item, navigates straight to /checkout
+//       Heart       — like / save
+//     Wardrobe items render a static "From your wardrobe" pill instead.
+//   - Variant-id gaps (catalog mapping B.8 hasn't run) surface as a
+//     friendly inline error from CartUnavailableError, never silent
+//     failures.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { Outfit, OutfitItem } from "../../lib/engine.server";
-import { addToCart } from "../../lib/cart.client";
+import {
+  CartUnavailableError,
+  addToCart,
+  type CartNavigation,
+} from "../../lib/cart.client";
 
 const SIZES = ["XS", "S", "M", "L", "XL"] as const;
 type Size = (typeof SIZES)[number];
@@ -35,13 +44,15 @@ export function OutfitCard({
   const [mode, setMode] = useState<Mode>({ kind: "outfit" });
   const [liked, setLiked] = useState(false);
   // Per-item size selection. Keyed by garment_id because customers
-  // need to pick a size for each Shopify SKU independently — a
-  // shopper who's S in tops can be M in bottoms, and a single global
-  // size would silently force them into the wrong variant on at
-  // least one item.
+  // need to pick a size for each Shopify SKU independently.
   const [selectedSizes, setSelectedSizes] = useState<Record<string, Size>>({});
   const [cartError, setCartError] = useState<string | null>(null);
-  const [cartBusy, setCartBusy] = useState(false);
+  const [cartBusy, setCartBusy] = useState<
+    null | "outfit" | "add-to-cart" | "buy-now"
+  >(null);
+  // Flash for the stay-on-page Add to Cart CTA so the customer has
+  // visual confirmation without us drawing a toast component.
+  const [addedFlash, setAddedFlash] = useState(false);
 
   const tryonImage = outfit.tryon_image_url ?? null;
   const isOutfitMode = mode.kind === "outfit";
@@ -50,60 +61,108 @@ export function OutfitCard({
     ? tryonImage ?? outfit.items[0]?.image_url ?? null
     : mode.item.image_url ?? null;
 
-  const pickSize = (garmentId: string, size: Size) =>
+  const pickSize = (garmentId: string, size: Size) => {
+    // Picking a size clears any prior cart error so the customer
+    // sees a clean slate when they retry.
+    setCartError(null);
     setSelectedSizes((prev) => ({ ...prev, [garmentId]: size }));
+  };
 
-  // Buy availability:
-  //   Outfit mode: every shoppable item needs a size picked AND a
-  //                variant gid for that size. Wardrobe items (price
-  //                null) are excluded — the customer already owns
-  //                them, so no cart add for those.
-  //   Garment mode: just this item's variant gid for its picked size.
+  // Auto-clear the "Added ✓" flash after a moment.
+  useEffect(() => {
+    if (!addedFlash) return;
+    const id = window.setTimeout(() => setAddedFlash(false), 2000);
+    return () => window.clearTimeout(id);
+  }, [addedFlash]);
+
+  // Buy availability. Gated on SIZE PICKED only — variant-id
+  // availability is checkout-time, not button-state. If a variant id
+  // is missing at click time, the cart helper throws
+  // CartUnavailableError and we surface the message inline.
+  //
+  // Wardrobe items (price == null) are excluded — the customer
+  // already owns them, no cart write needed.
   const shoppableItems = outfit.items.filter((it) => !isWardrobe(it));
   const canBuyOutfit =
     isOutfitMode &&
     shoppableItems.length > 0 &&
-    shoppableItems.every((item) => {
-      const size = selectedSizes[item.garment_id];
-      return size != null && item.shopify_variant_ids?.[size] != null;
-    });
+    shoppableItems.every((item) => selectedSizes[item.garment_id] != null);
   const garmentSelected =
     mode.kind === "garment" ? selectedSizes[mode.item.garment_id] : undefined;
   const canBuyGarment =
-    mode.kind === "garment" &&
-    garmentSelected !== undefined &&
-    mode.item.price != null &&
-    mode.item.shopify_variant_ids?.[garmentSelected] != null;
+    mode.kind === "garment" && garmentSelected !== undefined;
 
-  const handleBuy = async () => {
+  // Pull the variant ids for the picked sizes at click time. Missing
+  // ids → the helper raises CartUnavailableError with a friendly
+  // message; UI doesn't have to know about catalog-mapping state.
+  function variantIdsForOutfit(): { variantId: string }[] {
+    if (mode.kind !== "outfit") return [];
+    return shoppableItems
+      .map((it) => {
+        const size = selectedSizes[it.garment_id];
+        const variantId = size ? it.shopify_variant_ids?.[size] : undefined;
+        return variantId ? { variantId } : null;
+      })
+      .filter((x): x is { variantId: string } => x !== null);
+  }
+
+  function variantIdForCurrentGarment(): string | undefined {
+    if (mode.kind !== "garment") return undefined;
+    const size = selectedSizes[mode.item.garment_id];
+    return size ? mode.item.shopify_variant_ids?.[size] : undefined;
+  }
+
+  async function runCart(args: {
+    label: typeof cartBusy;
+    items: { variantId: string }[];
+    navigate: CartNavigation;
+    /** Show "Added ✓" flash on success when we stay on the page. */
+    flashOnSuccess?: boolean;
+  }) {
     setCartError(null);
-    setCartBusy(true);
+    setCartBusy(args.label);
     try {
-      if (mode.kind === "outfit") {
-        const items = shoppableItems
-          .map((it) => {
-            const size = selectedSizes[it.garment_id];
-            const variantId = size
-              ? it.shopify_variant_ids?.[size]
-              : undefined;
-            return variantId ? { variantId } : null;
-          })
-          .filter((x): x is { variantId: string } => x !== null);
-        if (items.length === 0) {
-          setCartBusy(false);
-          return;
-        }
-        await addToCart(items);
-      } else {
-        const size = selectedSizes[mode.item.garment_id];
-        const variantId = size ? mode.item.shopify_variant_ids?.[size] : undefined;
-        if (!variantId) return;
-        await addToCart([{ variantId }]);
-      }
+      await addToCart(args.items, { navigate: args.navigate });
+      if (args.flashOnSuccess) setAddedFlash(true);
     } catch (e) {
-      setCartError(e instanceof Error ? e.message : String(e));
-      setCartBusy(false);
+      if (e instanceof CartUnavailableError) {
+        setCartError(e.message);
+      } else {
+        setCartError(
+          e instanceof Error
+            ? e.message
+            : "Couldn't add to cart — try again in a moment.",
+        );
+      }
+    } finally {
+      setCartBusy(null);
     }
+  }
+
+  const handleBuyOutfit = () =>
+    runCart({
+      label: "outfit",
+      items: variantIdsForOutfit(),
+      navigate: "cart",
+    });
+
+  const handleAddToCart = () => {
+    const variantId = variantIdForCurrentGarment();
+    runCart({
+      label: "add-to-cart",
+      items: variantId ? [{ variantId }] : [],
+      navigate: "none",
+      flashOnSuccess: true,
+    });
+  };
+
+  const handleBuyNow = () => {
+    const variantId = variantIdForCurrentGarment();
+    runCart({
+      label: "buy-now",
+      items: variantId ? [{ variantId }] : [],
+      navigate: "checkout",
+    });
   };
 
   return (
@@ -164,7 +223,6 @@ export function OutfitCard({
                 <SizeChips
                   selected={selectedSizes[mode.item.garment_id] ?? null}
                   onSelect={(size) => pickSize(mode.item.garment_id, size)}
-                  availableSizes={sizesAvailableForItem(mode.item)}
                 />
               )}
             </>
@@ -177,15 +235,11 @@ export function OutfitCard({
               <button
                 type="button"
                 className="conv-cta"
-                onClick={handleBuy}
-                disabled={!canBuyOutfit || cartBusy}
-                title={
-                  !canBuyOutfit
-                    ? "Pick a size for each item"
-                    : ""
-                }
+                onClick={handleBuyOutfit}
+                disabled={!canBuyOutfit || cartBusy !== null}
+                title={!canBuyOutfit ? "Pick a size for each item" : ""}
               >
-                {cartBusy ? "Adding…" : "Buy outfit"}
+                {cartBusy === "outfit" ? "Adding…" : "Buy outfit"}
               </button>
             ) : isWardrobe(mode.item) ? (
               <div
@@ -199,15 +253,30 @@ export function OutfitCard({
                 From your wardrobe
               </div>
             ) : (
-              <button
-                type="button"
-                className="conv-cta"
-                onClick={handleBuy}
-                disabled={!canBuyGarment || cartBusy}
-                title={!garmentSelected ? "Pick a size first" : ""}
-              >
-                {cartBusy ? "Adding…" : "Buy now"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="conv-cta conv-cta--secondary"
+                  onClick={handleAddToCart}
+                  disabled={!canBuyGarment || cartBusy !== null}
+                  title={!canBuyGarment ? "Pick a size first" : ""}
+                >
+                  {cartBusy === "add-to-cart"
+                    ? "Adding…"
+                    : addedFlash
+                      ? "Added ✓"
+                      : "Add to Cart"}
+                </button>
+                <button
+                  type="button"
+                  className="conv-cta"
+                  onClick={handleBuyNow}
+                  disabled={!canBuyGarment || cartBusy !== null}
+                  title={!canBuyGarment ? "Pick a size first" : ""}
+                >
+                  {cartBusy === "buy-now" ? "Loading…" : "Buy now"}
+                </button>
+              </>
             )}
             <HeartButton
               liked={liked}
@@ -223,30 +292,6 @@ export function OutfitCard({
 
 function isWardrobe(item: OutfitItem): boolean {
   return item.price == null;
-}
-
-function sizesAvailableForOutfit(outfit: Outfit): Set<Size> {
-  // A size is available for the outfit only if every shoppable item
-  // has a variant for that size. Wardrobe items are excluded from the
-  // requirement (they're owned, not bought).
-  const shoppable = outfit.items.filter((it) => !isWardrobe(it));
-  if (shoppable.length === 0) return new Set();
-  const out = new Set<Size>();
-  for (const size of SIZES) {
-    if (shoppable.every((it) => it.shopify_variant_ids?.[size])) {
-      out.add(size);
-    }
-  }
-  return out;
-}
-
-function sizesAvailableForItem(item: OutfitItem): Set<Size> {
-  if (isWardrobe(item)) return new Set();
-  const out = new Set<Size>();
-  for (const size of SIZES) {
-    if (item.shopify_variant_ids?.[size]) out.add(size);
-  }
-  return out;
 }
 
 function ThumbnailRail({
@@ -341,7 +386,6 @@ function OutfitDetail({
                   className="conv-outfit-item-sizes"
                   selected={selectedSizes[item.garment_id] ?? null}
                   onSelect={(size) => onPickSize(item.garment_id, size)}
-                  availableSizes={sizesAvailableForItem(item)}
                 />
               )}
             </li>
@@ -380,12 +424,10 @@ function GarmentDetail({ item }: { item: OutfitItem }) {
 function SizeChips({
   selected,
   onSelect,
-  availableSizes,
   className,
 }: {
   selected: Size | null;
   onSelect: (size: Size) => void;
-  availableSizes: Set<Size>;
   /** Override the default wrapper class. Per-item rows pass a smaller
    *  variant; garment-mode panel uses the default `.conv-sizes`. */
   className?: string;
@@ -397,17 +439,13 @@ function SizeChips({
       aria-label="Available sizes"
     >
       {SIZES.map((s) => {
-        const available = availableSizes.has(s);
         const isSelected = selected === s;
         return (
           <button
             key={s}
             type="button"
-            className={`conv-size-chip ${isSelected ? "is-selected" : ""} ${
-              !available ? "is-unavailable" : ""
-            }`}
-            onClick={() => available && onSelect(s)}
-            disabled={!available}
+            className={`conv-size-chip ${isSelected ? "is-selected" : ""}`}
+            onClick={() => onSelect(s)}
             aria-label={`Size ${s}`}
             aria-pressed={isSelected}
           >
