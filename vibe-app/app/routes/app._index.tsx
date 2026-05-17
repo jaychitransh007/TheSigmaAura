@@ -169,6 +169,9 @@ export default function MerchantIndex() {
         {tenant && tenant.bootstrap_status !== "ready" ? (
           <SyncProgressCard tenant={tenant} />
         ) : null}
+        {tenant && tenant.bootstrap_status === "ready" ? (
+          <SyncSuccessBanner />
+        ) : null}
         <Layout>
           <Layout.Section>
             <Card>
@@ -417,6 +420,60 @@ export default function MerchantIndex() {
   );
 }
 
+// sessionStorage key the SyncProgressCard writes on completion and
+// SyncSuccessBanner reads on the post-reload render. sessionStorage
+// (not localStorage) so a fresh tab a week later doesn't surface a
+// stale "synced" toast — the banner is scoped to "this tab visited
+// during this install session".
+const SYNC_SUCCESS_STORAGE_KEY = "vibe_sync_just_completed";
+
+// Post-sync success banner. Renders only when the loader sees the
+// tenant at status='ready' AND sessionStorage has a recent completion
+// record from the SyncProgressCard. The banner is dismissible — once
+// the merchant clicks Dismiss the sessionStorage record is cleared
+// and the banner doesn't render again in this tab.
+function SyncSuccessBanner() {
+  // Initialise null so SSR renders nothing and the post-hydration
+  // useEffect populates the count without a flash of stale content.
+  const [info, setInfo] = useState<{ count: number; at: number } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(SYNC_SUCCESS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { count?: number; at?: number };
+      if (typeof parsed.count === "number" && typeof parsed.at === "number") {
+        setInfo({ count: parsed.count, at: parsed.at });
+      }
+    } catch {
+      // Ignore — malformed storage just means no banner.
+    }
+  }, []);
+
+  if (!info) return null;
+
+  return (
+    <Banner
+      tone="success"
+      title={`Catalog synced — ${info.count} product${info.count === 1 ? "" : "s"} ready`}
+      onDismiss={() => {
+        try {
+          window.sessionStorage.removeItem(SYNC_SUCCESS_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+        setInfo(null);
+      }}
+    >
+      <Text as="p" variant="bodyMd">
+        Vibe is now styling outfits from your catalog. Vision-attribute
+        enrichment (smarter matching) runs in the background and lands within
+        the next few hours.
+      </Text>
+    </Banner>
+  );
+}
+
 // Response envelope from app.api.bootstrap.tsx. Kept in sync with the
 // action's BootstrapTickResponse / BootstrapTickFail union.
 type BootstrapTickAck =
@@ -510,9 +567,26 @@ function SyncProgressCard({ tenant }: { tenant: TenantStatus }) {
         setProcessed(total);
         if (body.done) {
           setDone(true);
-          // Brief pause so the merchant sees the "complete" state
-          // before the loader re-runs and the card vanishes.
-          window.setTimeout(() => window.location.reload(), 1500);
+          // Persist the completion to sessionStorage so the post-reload
+          // home can render a sticky success banner — without this the
+          // SyncProgressCard would just vanish (status='ready' makes it
+          // not render) and the merchant gets no confirmation that the
+          // work actually happened, especially for small catalogs where
+          // the sync runs in seconds.
+          try {
+            window.sessionStorage.setItem(
+              SYNC_SUCCESS_STORAGE_KEY,
+              JSON.stringify({ count: total, at: Date.now() }),
+            );
+          } catch {
+            // sessionStorage can throw in private-browsing modes; we
+            // can live without the banner.
+          }
+          // 4s before reload — long enough that a 60-product sync
+          // (which can take just a few seconds) is visible in the
+          // "complete" state, short enough that the merchant isn't
+          // stuck waiting on a stale UI.
+          window.setTimeout(() => window.location.reload(), 4_000);
           return;
         }
       }
