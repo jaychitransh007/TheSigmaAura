@@ -97,9 +97,15 @@ export function Composer({
     reader.readAsDataURL(file);
   };
 
+  // Structure: one bordered pill (.conv-composer) that contains an
+  // optional chip row above an input row. Putting the chip *inside*
+  // the pill (instead of stacked above as its own card) makes the
+  // composer read as one unit and stops the chip from "flowing out"
+  // visually. Matches the legacy ui.py composer where .image-chip and
+  // the input row live inside a single .composer-outer.
   return (
     <div className="conv-composer-outer">
-      <div className="conv-composer-stack">
+      <div className="conv-composer">
         {attachment && (
           <div className="conv-attach-chip">
             <img src={attachment.dataUrl} alt="" />
@@ -125,7 +131,7 @@ export function Composer({
             </button>
           </div>
         )}
-        <div className="conv-composer">
+        <div className="conv-composer-row">
           <button
             type="button"
             className="conv-composer-attach"

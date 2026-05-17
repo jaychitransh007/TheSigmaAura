@@ -1,22 +1,22 @@
 // Rich outfit card — 3-column layout: thumbnails | hero | detail panel.
 //
-// Reference: legacy platform_core/ui.py PDP card (PRs #306, #317,
-// #318, #323). D.C.2e introduced the structure; D.C.7 wires the
-// cart:
-//   - Size chips toggle a selected size (one per card, shared across
-//     outfit/garment mode — a customer's size is consistent).
-//   - Buy Outfit (outfit mode): adds every item at selectedSize to
-//     the Shopify cart, then navigates to /cart.
-//   - Buy Now (garment mode): adds just the current item at
-//     selectedSize, then navigates to /cart.
-//   - Both require selectedSize AND a valid (non-mock) variant gid.
-//     Mock engine responses surface a friendly error toast instead
-//     of hitting /cart/add.js with bogus ids.
+// Reference: legacy platform_core/ui.py PDP card.
+//   - Per-item size chips (Record<garment_id, Size>): customers can be
+//     S in tops and M in bottoms; one global size would silently force
+//     them into the wrong variant on at least one item.
+//   - Buy Outfit (outfit mode): adds every shoppable item at its picked
+//     size to the Shopify cart, then navigates to /cart. Requires every
+//     shoppable item to have a size selected AND a real variant gid.
+//   - Buy Now (garment mode): adds just the current item at its picked
+//     size. Wardrobe items render a static "From your wardrobe" pill
+//     instead of a Buy button.
+//   - Mock engine responses surface a friendly error toast instead of
+//     hitting /cart/add.js with bogus ids.
 
 import { useState } from "react";
 
 import type { Outfit, OutfitItem } from "../../lib/engine.server";
-import { addToCart, isMockVariantId } from "../../lib/cart.client";
+import { addToCart } from "../../lib/cart.client";
 
 const SIZES = ["XS", "S", "M", "L", "XL"] as const;
 type Size = (typeof SIZES)[number];
@@ -34,7 +34,12 @@ export function OutfitCard({
 }) {
   const [mode, setMode] = useState<Mode>({ kind: "outfit" });
   const [liked, setLiked] = useState(false);
-  const [selectedSize, setSelectedSize] = useState<Size | null>(null);
+  // Per-item size selection. Keyed by garment_id because customers
+  // need to pick a size for each Shopify SKU independently — a
+  // shopper who's S in tops can be M in bottoms, and a single global
+  // size would silently force them into the wrong variant on at
+  // least one item.
+  const [selectedSizes, setSelectedSizes] = useState<Record<string, Size>>({});
   const [cartError, setCartError] = useState<string | null>(null);
   const [cartBusy, setCartBusy] = useState(false);
 
@@ -45,39 +50,53 @@ export function OutfitCard({
     ? tryonImage ?? outfit.items[0]?.image_url ?? null
     : mode.item.image_url ?? null;
 
+  const pickSize = (garmentId: string, size: Size) =>
+    setSelectedSizes((prev) => ({ ...prev, [garmentId]: size }));
+
   // Buy availability:
-  //   Outfit mode: every item must have a variant gid for the selected
-  //                size. (We require all-or-nothing — partial cart adds
-  //                would confuse the customer.)
-  //   Garment mode: just this item's variant gid for the selected size.
+  //   Outfit mode: every shoppable item needs a size picked AND a
+  //                variant gid for that size. Wardrobe items (price
+  //                null) are excluded — the customer already owns
+  //                them, so no cart add for those.
+  //   Garment mode: just this item's variant gid for its picked size.
+  const shoppableItems = outfit.items.filter((it) => !isWardrobe(it));
   const canBuyOutfit =
     isOutfitMode &&
-    selectedSize !== null &&
-    outfit.items.every(
-      (item) =>
-        item.price != null &&
-        item.shopify_variant_ids?.[selectedSize] != null,
-    );
+    shoppableItems.length > 0 &&
+    shoppableItems.every((item) => {
+      const size = selectedSizes[item.garment_id];
+      return size != null && item.shopify_variant_ids?.[size] != null;
+    });
+  const garmentSelected =
+    mode.kind === "garment" ? selectedSizes[mode.item.garment_id] : undefined;
   const canBuyGarment =
-    !isOutfitMode &&
-    selectedSize !== null &&
+    mode.kind === "garment" &&
+    garmentSelected !== undefined &&
     mode.item.price != null &&
-    mode.item.shopify_variant_ids?.[selectedSize] != null;
+    mode.item.shopify_variant_ids?.[garmentSelected] != null;
 
   const handleBuy = async () => {
-    if (!selectedSize) return;
     setCartError(null);
     setCartBusy(true);
     try {
       if (mode.kind === "outfit") {
-        const items = outfit.items
-          .filter((it) => it.shopify_variant_ids?.[selectedSize])
-          .map((it) => ({
-            variantId: it.shopify_variant_ids![selectedSize]!,
-          }));
+        const items = shoppableItems
+          .map((it) => {
+            const size = selectedSizes[it.garment_id];
+            const variantId = size
+              ? it.shopify_variant_ids?.[size]
+              : undefined;
+            return variantId ? { variantId } : null;
+          })
+          .filter((x): x is { variantId: string } => x !== null);
+        if (items.length === 0) {
+          setCartBusy(false);
+          return;
+        }
         await addToCart(items);
       } else {
-        const variantId = mode.item.shopify_variant_ids?.[selectedSize];
+        const size = selectedSizes[mode.item.garment_id];
+        const variantId = size ? mode.item.shopify_variant_ids?.[size] : undefined;
         if (!variantId) return;
         await addToCart([{ variantId }]);
       }
@@ -133,20 +152,23 @@ export function OutfitCard({
 
         <div className="conv-detail">
           {isOutfitMode ? (
-            <OutfitDetail outfit={outfit} />
+            <OutfitDetail
+              outfit={outfit}
+              selectedSizes={selectedSizes}
+              onPickSize={pickSize}
+            />
           ) : (
-            <GarmentDetail item={mode.item} />
+            <>
+              <GarmentDetail item={mode.item} />
+              {!isWardrobe(mode.item) && (
+                <SizeChips
+                  selected={selectedSizes[mode.item.garment_id] ?? null}
+                  onSelect={(size) => pickSize(mode.item.garment_id, size)}
+                  availableSizes={sizesAvailableForItem(mode.item)}
+                />
+              )}
+            </>
           )}
-
-          <SizeChips
-            selected={selectedSize}
-            onSelect={setSelectedSize}
-            availableSizes={
-              isOutfitMode
-                ? sizesAvailableForOutfit(outfit)
-                : sizesAvailableForItem(mode.item)
-            }
-          />
 
           {cartError && <div className="conv-cart-error">{cartError}</div>}
 
@@ -158,10 +180,8 @@ export function OutfitCard({
                 onClick={handleBuy}
                 disabled={!canBuyOutfit || cartBusy}
                 title={
-                  !selectedSize
-                    ? "Pick a size first"
-                    : !canBuyOutfit
-                    ? "One or more items aren't shoppable yet"
+                  !canBuyOutfit
+                    ? "Pick a size for each item"
                     : ""
                 }
               >
@@ -184,7 +204,7 @@ export function OutfitCard({
                 className="conv-cta"
                 onClick={handleBuy}
                 disabled={!canBuyGarment || cartBusy}
-                title={!selectedSize ? "Pick a size first" : ""}
+                title={!garmentSelected ? "Pick a size first" : ""}
               >
                 {cartBusy ? "Adding…" : "Buy now"}
               </button>
@@ -281,7 +301,15 @@ function ThumbnailRail({
   );
 }
 
-function OutfitDetail({ outfit }: { outfit: Outfit }) {
+function OutfitDetail({
+  outfit,
+  selectedSizes,
+  onPickSize,
+}: {
+  outfit: Outfit;
+  selectedSizes: Record<string, Size>;
+  onPickSize: (garmentId: string, size: Size) => void;
+}) {
   return (
     <>
       <h4 className="conv-detail-title">{outfit.name ?? "Your look"}</h4>
@@ -289,25 +317,36 @@ function OutfitDetail({ outfit }: { outfit: Outfit }) {
         <p className="conv-detail-desc">{outfit.reasoning}</p>
       )}
       <ul className="conv-outfit-items">
-        {outfit.items.map((item) => (
-          <li key={item.garment_id} className="conv-outfit-item">
-            <div className="conv-outfit-item-info">
-              {item.brand && (
-                <div className="conv-outfit-item-brand">{item.brand}</div>
+        {outfit.items.map((item) => {
+          const wardrobe = isWardrobe(item);
+          return (
+            <li key={item.garment_id} className="conv-outfit-item">
+              <div className="conv-outfit-item-row">
+                <div className="conv-outfit-item-info">
+                  {item.brand && (
+                    <div className="conv-outfit-item-brand">{item.brand}</div>
+                  )}
+                  <div className="conv-outfit-item-title">{item.title}</div>
+                </div>
+                {wardrobe ? (
+                  <div className="conv-outfit-item-wardrobe">From wardrobe</div>
+                ) : item.price != null ? (
+                  <div className="conv-outfit-item-price">
+                    {formatRupees(item.price)}
+                  </div>
+                ) : null}
+              </div>
+              {!wardrobe && (
+                <SizeChips
+                  className="conv-outfit-item-sizes"
+                  selected={selectedSizes[item.garment_id] ?? null}
+                  onSelect={(size) => onPickSize(item.garment_id, size)}
+                  availableSizes={sizesAvailableForItem(item)}
+                />
               )}
-              <div className="conv-outfit-item-title">{item.title}</div>
-            </div>
-            {item.price != null ? (
-              <div className="conv-outfit-item-price">
-                {formatRupees(item.price)}
-              </div>
-            ) : (
-              <div className="conv-outfit-item-wardrobe">
-                From your wardrobe
-              </div>
-            )}
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </>
   );
@@ -335,13 +374,21 @@ function SizeChips({
   selected,
   onSelect,
   availableSizes,
+  className,
 }: {
   selected: Size | null;
   onSelect: (size: Size) => void;
   availableSizes: Set<Size>;
+  /** Override the default wrapper class. Per-item rows pass a smaller
+   *  variant; garment-mode panel uses the default `.conv-sizes`. */
+  className?: string;
 }) {
   return (
-    <div className="conv-sizes" role="group" aria-label="Available sizes">
+    <div
+      className={className ?? "conv-sizes"}
+      role="group"
+      aria-label="Available sizes"
+    >
       {SIZES.map((s) => {
         const available = availableSizes.has(s);
         const isSelected = selected === s;
