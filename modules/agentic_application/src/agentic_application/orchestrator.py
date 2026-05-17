@@ -1915,37 +1915,19 @@ class AgenticOrchestrator:
             _enrichment_executor.shutdown(wait=False)
             _attachment_source_pending = self._uploaded_image_anchor_source(message=message)
 
-        # ── Carry forward the previous turn's attached item ──────────
-        # When the user didn't upload a new image and didn't select from
-        # wardrobe, but the previous turn had an attached garment (e.g.
-        # the user said "Can I wear this pant?" on Turn 1 and is now
-        # saying "Show me a date-night outfit with these pants" on Turn
-        # 2), use the previous turn's attached item as this turn's
-        # anchor. Without this, follow-up pairing requests lose the
-        # garment context and the architect searches catalog for BOTH
-        # roles instead of anchoring the user's piece.
+        # Carry-forward of the previous turn's attached_item is
+        # intentionally NOT done here. Customer-feedback May 17
+        # 2026 (turn a15648f8): a fresh "Dress me for a date night"
+        # turn picked the previous turn's wardrobe skirt as the
+        # anchor because the carry-forward fired implicitly. The
+        # behaviour was confusing — customers expected each turn to
+        # stand alone unless they explicitly attached something via
+        # the + composer.
         #
-        # Note: when ``image_data`` is set, an enrichment future is
-        # pending and ``attached_item`` is intentionally None at this
-        # point. Skip carry-forward in that case — the fresh upload
-        # will populate ``attached_item`` once the future resolves
-        # (right before _apply_planner_overrides). Carrying forward
-        # would shadow the user's just-uploaded piece.
-        if not attached_item and _enrichment_future is None:
-            prev_attached = previous_context.get("last_attached_item")
-            if prev_attached and isinstance(prev_attached, dict) and prev_attached.get("id"):
-                attached_item = dict(prev_attached)
-                attached_item.setdefault("attachment_source", "previous_turn")
-                attached_item.setdefault("is_garment_photo", True)
-                attached_item.setdefault("garment_present_confidence", 1.0)
-                attached_context = self._attached_item_context(attached_item)
-                if attached_context:
-                    effective_message = f"{message.strip()} {attached_context}".strip()
-                _log.info(
-                    "Loaded attached item from previous turn: %s (id=%s)",
-                    attached_item.get("title"),
-                    attached_item.get("id"),
-                )
+        # Each turn is now independent. To anchor on a wardrobe /
+        # uploaded / wishlist item, the customer attaches it in
+        # THAT turn (Vibe storefront's composer makes this a single
+        # click via the wardrobe / saved pickers).
 
         # --- 0.5 Onboarding Gate ---
         emit("onboarding_gate", "started")
