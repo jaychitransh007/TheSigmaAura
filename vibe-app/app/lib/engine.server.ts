@@ -216,10 +216,30 @@ export type OnboardingStatus = {
 };
 
 /**
- * Read the engine's onboarding-profile snapshot for a user.
- * Returns null when the user has no row (anonymous customer who
- * hasn't hit /onboarding/profile/ensure yet) or the engine 4xx/5xx's
- * — callers should treat null as "no profile data available".
+ * Read the engine's onboarding-profile snapshot for a user. Three
+ * distinct outcomes — the caller needs to tell them apart because the
+ * safe fallback is opposite-signed for the "no row" vs "engine error"
+ * cases:
+ *
+ *   - OnboardingStatus → 2xx with a body. Trust the fields (they may
+ *     all be empty if the row exists but no onboarding has happened
+ *     yet).
+ *   - null              → 404. The user has no onboarding_profiles row
+ *                         yet. This is a new customer — render the
+ *                         onboarding cards.
+ *   - undefined         → engine error (5xx, network, timeout, parse
+ *                         failure). The customer's onboarding state is
+ *                         unknown. Callers should apply a safe-default
+ *                         that doesn't re-prompt an already-onboarded
+ *                         returning customer (i.e. assume hasProfile
+ *                         under uncertainty).
+ *
+ * Conflating null and undefined was the cause of #432's review thread:
+ * a brand-new customer (404) and a customer hitting transient engine
+ * trouble (5xx) were indistinguishable, so we had to pick one fallback
+ * for both. The undefined-on-error split lets the init action apply
+ * its hasProfile=true safety net only when the answer is genuinely
+ * unknown, while still propagating "this is a new user" honestly.
  *
  * Default `timeoutMs` is 1500 because this helper is also called
  * from the page loader on every Shopify-authenticated request, and
@@ -232,33 +252,44 @@ export type OnboardingStatus = {
 export async function getOnboardingStatus(
   userId: string,
   timeoutMs: number = 1500,
-): Promise<OnboardingStatus | null> {
+): Promise<OnboardingStatus | null | undefined> {
   if (USE_MOCK) {
     return null;
   }
+  let resp: Response;
   try {
-    const resp = await fetch(
+    resp = await fetch(
       `${ENGINE_API_URL}/v1/onboarding/status/${encodeURIComponent(userId)}`,
       { signal: AbortSignal.timeout(timeoutMs) },
     );
-    if (!resp.ok) return null;
-    const raw = (await resp.json()) as Partial<OnboardingStatus>;
-    // images_uploaded is a real engine field but normalize defensively so
-    // downstream consumers can always trust `Array.isArray(status.images_uploaded)`.
-    return {
-      user_id: raw.user_id ?? "",
-      name: raw.name ?? "",
-      date_of_birth: raw.date_of_birth ?? "",
-      gender: raw.gender ?? "",
-      profile_complete: Boolean(raw.profile_complete),
-      onboarding_complete: Boolean(raw.onboarding_complete),
-      images_uploaded: Array.isArray(raw.images_uploaded)
-        ? raw.images_uploaded.filter((c): c is string => typeof c === "string")
-        : [],
-    };
   } catch {
-    return null;
+    // Network / timeout / abort — state is unknown, signal error.
+    return undefined;
   }
+  // 404 specifically means "no onboarding_profiles row for this user"
+  // — a confirmed new customer, not an engine problem. Everything else
+  // non-2xx is an error condition the caller should fall back on.
+  if (resp.status === 404) return null;
+  if (!resp.ok) return undefined;
+  let raw: Partial<OnboardingStatus>;
+  try {
+    raw = (await resp.json()) as Partial<OnboardingStatus>;
+  } catch {
+    return undefined;
+  }
+  // images_uploaded is a real engine field but normalize defensively so
+  // downstream consumers can always trust `Array.isArray(status.images_uploaded)`.
+  return {
+    user_id: raw.user_id ?? "",
+    name: raw.name ?? "",
+    date_of_birth: raw.date_of_birth ?? "",
+    gender: raw.gender ?? "",
+    profile_complete: Boolean(raw.profile_complete),
+    onboarding_complete: Boolean(raw.onboarding_complete),
+    images_uploaded: Array.isArray(raw.images_uploaded)
+      ? raw.images_uploaded.filter((c): c is string => typeof c === "string")
+      : [],
+  };
 }
 
 /**

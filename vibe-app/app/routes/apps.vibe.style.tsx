@@ -44,6 +44,7 @@ import {
   resolveConversation,
   startTurn,
   type OnboardingImageCategory,
+  type OnboardingStatus,
   type TurnStatusResponse,
 } from "../lib/engine.server";
 import {
@@ -102,10 +103,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // access to the anonymous localStorage session id; anonymous
   // customers fall through to hasProfile=false (the new-customer
   // welcome) every time. Acceptable trade-off for v1.
+  //
+  // getOnboardingStatus now distinguishes 404 (null, confirmed new
+  // user) from engine error (undefined). For the loader's SSR hint we
+  // mirror the init action's safety net: assume hasProfile=true on
+  // engine error so a returning customer hitting transient trouble
+  // doesn't flash the new-customer welcome before init lands and
+  // overrides this value.
   let hasProfile = false;
   if (loggedInCustomerId) {
     const status = await getOnboardingStatus(`shopify:${loggedInCustomerId}`);
-    hasProfile = Boolean(status?.gender);
+    if (status === undefined) {
+      hasProfile = true;
+    } else if (status === null) {
+      hasProfile = false;
+    } else {
+      hasProfile = Boolean(status.gender);
+    }
   }
 
   return json({
@@ -183,11 +197,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     //   - ensureOnboardingProfile fails → no immediate impact; the
     //     ensure call is idempotent and will retry on the next photo
     //     upload / profile patch
-    //   - getOnboardingStatus fails → status is unknown; default
-    //     hasProfile to true (under-prompt rather than spuriously
-    //     re-onboard a returning customer) and imagesUploaded to
-    //     ["full_body"] (treat photos as present so the recovery
-    //     PhotosCard doesn't fire on engine wobble)
+    //   - getOnboardingStatus → three-way outcome (see helper docs):
+    //       * OnboardingStatus → trust it
+    //       * null  (404)     → confirmed new customer; hasProfile=false
+    //       * undefined (err) → state unknown; safe-default to
+    //                           hasProfile=true + imagesUploaded
+    //                           non-empty so we don't push a returning
+    //                           customer back through onboarding on
+    //                           engine wobble
     //
     // Status call gets ENGINE_HTTP_TIMEOUT_MS (8s) explicitly — the
     // helper's default of 1500ms protects the SSR loader at the cost
@@ -210,22 +227,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    const status =
-      statusRes.status === "fulfilled" ? statusRes.value : null;
+    // statusRes.value is OnboardingStatus | null | undefined; a rejected
+    // settle treats as the same "unknown" case as undefined since
+    // getOnboardingStatus shouldn't throw, but be defensive.
+    const status: OnboardingStatus | null | undefined =
+      statusRes.status === "fulfilled" ? statusRes.value : undefined;
+    // Branch on the three-way outcome. Apply the safety-net fallback
+    // ONLY when status is undefined (engine error), so a confirmed
+    // new customer (null/404) still gets the new-customer flow.
+    const imagesUploaded =
+      status === undefined
+        ? ["full_body"]
+        : status === null
+          ? []
+          : status.images_uploaded;
+    const hasProfile =
+      status === undefined
+        ? true
+        : status === null
+          ? false
+          : Boolean(status.gender);
     return json<ActionResponse>({
       ok: true,
       op: "init",
       conversationId: conversationRes.value.conversation_id,
-      // When status is unknown (engine timeout / 4xx / unreachable):
-      //   - imagesUploaded → ["full_body"]: assume photos present so
-      //     the recovery card doesn't fire spuriously.
-      //   - hasProfile → true: assume onboarded so we don't push
-      //     returning customers into the new-customer flow during
-      //     engine wobble. Under-prompts brand-new customers once
-      //     (they see the cards on the next reload after the engine
-      //     recovers) — better than re-prompting every returner.
-      imagesUploaded: status?.images_uploaded ?? ["full_body"],
-      hasProfile: status === null ? true : Boolean(status.gender),
+      imagesUploaded,
+      hasProfile,
     });
   }
 

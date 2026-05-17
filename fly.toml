@@ -72,10 +72,14 @@ primary_region = "bom"
 # stops the old machine first (volume released) and then starts the
 # new one (volume attaches). Brief downtime during deploys
 # (~10-20s) is fine for the engine — the storefront serves cached
-# pages and new turns retry on the next poll cycle. Apps v2
-# strategies that work with volumes: rolling, immediate (canary +
-# bluegreen need multiple parallel machines and a volume can only
-# attach to one at a time; recreate isn't a v2 option — see #418
-# / #431 review thread May 17 2026).
+# pages and new turns retry on the next poll cycle. Apps v2 deploy
+# strategies and our single-machine + single-volume config:
+#   - immediate → works (the only compatible option here)
+#   - rolling, canary, bluegreen → all need the new machine to start
+#     before the old one stops, but one volume only attaches to one
+#     machine at a time, so they deadlock
+#   - recreate isn't a v2 strategy at all (would-be alternative on
+#     v1 nomad apps; rejected by `fly deploy` here)
+# See #418 / #431 / #433 review thread May 17 2026.
 [deploy]
   strategy = "immediate"
