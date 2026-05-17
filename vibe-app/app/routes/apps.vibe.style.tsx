@@ -227,14 +227,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (op === "turn") {
     const conversationId = String(form.get("conversationId") ?? "").trim();
     const message = String(form.get("message") ?? "").trim();
-    // Image attachments arrive as data URLs. Don't trim — base64 is
-    // whitespace-sensitive and a stray newline at the end of a very
-    // large payload would break the engine's parser.
+    // Three mutually-exclusive attachment shapes — the composer's
+    // discriminated union maps onto exactly one engine field. Only
+    // one of these will be non-empty in practice.
+    //
+    // image_data: data URL from FileReader — base64 is whitespace-
+    // sensitive so we don't trim.
     const rawImage = form.get("imageData");
     const imageData =
       typeof rawImage === "string" && rawImage.startsWith("data:")
         ? rawImage
         : "";
+    const wardrobeItemId = String(form.get("wardrobeItemId") ?? "").trim();
+    const wishlistProductId = String(form.get("wishlistProductId") ?? "").trim();
+    const hasAttachment = !!(imageData || wardrobeItemId || wishlistProductId);
+
     if (!conversationId || !message) {
       return json<ActionResponse>(
         { ok: false, error: "Missing conversationId or message" },
@@ -244,25 +251,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // Pairing-anchor enforcement. The engine's
     // _message_requests_pairing (orchestrator.py:1221) only flips
-    // intent to PAIRING_REQUEST — and only then injects the uploaded
+    // intent to PAIRING_REQUEST — and only then injects the attached
     // garment as the outfit's anchor — when the user's prose contains
     // a recognized pairing phrase ("what goes with this", "build an
     // outfit around", "pair this", etc.). Customers don't naturally
-    // type those phrases. They upload a black shirt, write "dress me
-    // for date night," and expect the shirt to be in the look — but
-    // without a trigger phrase the engine routes through
-    // occasion_recommendation, treats the anchor as soft context, and
-    // returns three catalog-only outfits with no shirt in sight (we
-    // saw this on turn 094fa18f).
+    // type those phrases.
     //
-    // Append an explicit pairing trigger whenever an image is
-    // attached. "Build an outfit around this attached piece" matches
-    // the wardrobe_pairing_phrases branch unconditionally, so the
-    // override fires even on follow-up turns or vague messages. The
+    // Append an explicit pairing trigger whenever ANY attachment is
+    // present (image upload OR wardrobe selection OR wishlist
+    // selection — same intent on the engine side). "Build an outfit
+    // around this attached piece" matches the wardrobe_pairing_phrases
+    // branch unconditionally so the override fires every time. The
     // user's bubble in the UI still shows their original text — we
     // return ``message`` (not engineMessage) below so the augmentation
     // is invisible.
-    const engineMessage = imageData
+    const engineMessage = hasAttachment
       ? `${message} Build an outfit around this attached piece.`
       : message;
 
@@ -271,6 +274,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       userId: sessionId,
       message: engineMessage,
       imageData: imageData || undefined,
+      wardrobeItemId: wardrobeItemId || undefined,
+      wishlistProductId: wishlistProductId || undefined,
     });
     return json<ActionResponse>({
       ok: true,
@@ -685,7 +690,19 @@ export default function ConversationPage() {
     form.set("sessionId", sessionId);
     form.set("conversationId", conversationId);
     form.set("message", message);
-    if (attachment) form.set("imageData", attachment.dataUrl);
+    // Route the attachment to the right engine field by kind. The
+    // server-side action passes one of three mutually-exclusive
+    // anchors to startTurn — image_data / wardrobe_item_id /
+    // wishlist_product_id — exactly matching the engine's CreateTurnRequest.
+    if (attachment) {
+      if (attachment.kind === "image") {
+        form.set("imageData", attachment.dataUrl);
+      } else if (attachment.kind === "wardrobe") {
+        form.set("wardrobeItemId", attachment.itemId);
+      } else if (attachment.kind === "wishlist") {
+        form.set("wishlistProductId", attachment.productId);
+      }
+    }
     // Clear the consumed-turn marker so the next action response — be
     // it a jobId or an error — gets picked up by the effect below.
     // Without this, two submissions in a row that produce the same
@@ -700,12 +717,21 @@ export default function ConversationPage() {
     // than waiting on the round-trip, and surfaces what was sent even
     // if the engine errors. The success effect below only sets pending
     // state — no second append, no duplicate bubble.
+    //
+    // The thumbnail source depends on attachment kind: image uploads
+    // carry a data URL; wardrobe / wishlist selections carry an
+    // engine-side image URL (already routed through the proxy if it
+    // was a local /v1/onboarding/images/local path).
+    const imagePreview =
+      attachment?.kind === "image"
+        ? attachment.dataUrl
+        : attachment?.imageUrl;
     setMessages((prev) => [
       ...prev,
       {
         role: "user",
         text: message,
-        imagePreview: attachment?.dataUrl,
+        imagePreview,
       },
     ]);
 
@@ -933,6 +959,7 @@ export default function ConversationPage() {
       </div>
 
       <Composer
+        sessionId={sessionId}
         value={draft}
         onChange={setDraft}
         onSubmit={handleSubmit}
