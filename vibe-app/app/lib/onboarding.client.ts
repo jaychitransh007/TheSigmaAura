@@ -1,11 +1,11 @@
 // Onboarding state machine — runs client-side on the conversation page.
 //
 // The customer's progress through the in-chat onboarding (welcome →
-// photos → name → DOB → gender → height → waist → done) is persisted
-// in localStorage so a page reload resumes mid-flow. Identity is
-// keyed off the vibe_session_id (D.S.3a) — when that's deleted (e.g.
-// the customer clears site data) the onboarding resets too, which is
-// the correct behaviour for an anonymous shopper.
+// photos → gender-DOB → height → waist → done) is persisted in
+// localStorage so a page reload resumes mid-flow. Identity is keyed
+// off the vibe_session_id (D.S.3a) — when that's deleted (e.g. the
+// customer clears site data) the onboarding resets too, which is the
+// correct behaviour for an anonymous shopper.
 //
 // Skipping advances the step without saving. Completing advances the
 // step AFTER the backend confirms the save (so a transient network
@@ -28,7 +28,6 @@ export type OnboardingStep =
   // Combined gender + DOB card. Gender is chip-style (Male / Female /
   // Non-binary), DOB is a DD/MM/YYYY segmented numeric input.
   | "gender-dob"
-  | "name"
   | "height"
   | "waist"
   | "done";
@@ -37,18 +36,21 @@ const ORDER: readonly OnboardingStep[] = [
   "welcome",
   "photos",
   "gender-dob",
-  "name",
   "height",
   "waist",
   "done",
 ] as const;
 
-// Migration map for customers who saw the old per-field cards before
-// the gender+DOB merge. We promote either old step into the combined
-// one so they pick up where they left off without losing progress.
+// Migration map for customers whose persisted step references a
+// kind no longer in the flow. dob/gender → the combined gender-DOB
+// card. "name" was a dedicated step that we dropped — promote any
+// customer whose persisted step is "name" forward to "height" so
+// they resume at the right place instead of getting stuck on a
+// missing step.
 const LEGACY_STEP_ALIASES: Readonly<Record<string, OnboardingStep>> = {
   dob: "gender-dob",
   gender: "gender-dob",
+  name: "height",
 };
 
 export function readOnboardingStep(): OnboardingStep {
