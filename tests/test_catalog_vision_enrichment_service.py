@@ -183,6 +183,72 @@ class SubmitIdempotencyTests(unittest.TestCase):
         self.assertTrue(result.submitted)
         self.assertEqual(result.row_count, 1)
 
+    def test_uuid_catalog_ids_dont_int_cast(self):
+        """catalog_enriched.id is a UUID column. The service must
+        NOT cast it to int (regression: 2026-05-17 staging found this
+        on the first real Vibe Test bootstrap — int('f1371f36-...')
+        raised ValueError and crashed the entire submit)."""
+        uuid_a = "f1371f36-588e-45aa-80ac-ca9e5a827cd9"
+        uuid_b = "ab123456-cd78-90ef-ab12-cd3456ef7890"
+        client = _make_client(
+            pending_rows=[
+                {"id": uuid_a, "description": "x", "images_0_src": "http://i1", "title": "t"},
+                {"id": uuid_b, "description": "y", "images_0_src": "http://i2", "title": "t"},
+            ],
+        )
+        openai_client = _make_openai_mock(batch_id="batch_uuid")
+        service = CatalogVisionEnrichmentService(client, openai_client=openai_client)
+
+        result = service.submit_pending_for_tenant("t_test")
+
+        self.assertTrue(result.submitted)
+        self.assertEqual(result.row_count, 2)
+        # The IN clause must contain the UUID strings verbatim — not
+        # an int conversion, not just the first 8 chars, not anything
+        # weird.
+        claim_call = next(
+            c for c in client.update_one.call_args_list
+            if c.kwargs.get("patch", {}).get("vision_batch_id") == 7
+        )
+        in_filter = claim_call.kwargs["filters"]["id"]
+        self.assertIn(uuid_a, in_filter)
+        self.assertIn(uuid_b, in_filter)
+
+    def test_ingest_uuid_custom_id_doesnt_int_cast(self):
+        """Same regression as above but on the ingest side: the
+        batch's custom_id round-trips back as `cat_<uuid>` and must
+        NOT be parsed as an int."""
+        uuid_str = "f1371f36-588e-45aa-80ac-ca9e5a827cd9"
+        output_jsonl = json.dumps({
+            "custom_id": f"cat_{uuid_str}",
+            "response": {
+                "body": {
+                    "output_text": json.dumps({
+                        "GarmentCategory": "Blouse",
+                        "GarmentCategory_confidence": 0.9,
+                    }),
+                }
+            }
+        })
+        client = _make_poll_client(in_flight=[
+            {"id": 5, "tenant_id": "t_test", "openai_batch_id": "batch_uuid", "row_count": 1},
+        ])
+        openai_client = _make_openai_for_poll(
+            status="completed", output_text=output_jsonl,
+        )
+        service = CatalogVisionEnrichmentService(client, openai_client=openai_client)
+
+        results = service.poll_and_ingest()
+
+        self.assertEqual(results[0].rows_ingested, 1)
+        # The row update should target the UUID string directly.
+        row_update = next(
+            c for c in client.update_one.call_args_list
+            if c.args and c.args[0] == "catalog_enriched"
+            and c.kwargs.get("patch", {}).get("row_status") == "ok"
+        )
+        self.assertEqual(row_update.kwargs["filters"]["id"], f"eq.{uuid_str}")
+
     def test_all_rows_image_less_returns_no_op(self):
         """If every pending row is image-less, no batch should be
         created. Otherwise we'd push an empty JSONL file to OpenAI."""
