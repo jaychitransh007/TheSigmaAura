@@ -173,15 +173,14 @@ export function GenderDobCard({
   return (
     <div className="onb-card">
       <header className="onb-card__header">
-        <h3>The basics</h3>
-        <p>Both are optional — they help me read proportions and palette.</p>
+        <h3>Let us learn more about you!</h3>
       </header>
 
       <fieldset className="onb-fieldset" aria-labelledby="onb-gender-label">
         <legend id="onb-gender-label" className="onb-fieldset__legend">
-          How do you dress?
+          Who do you identify as?
         </legend>
-        <div className="onb-chips" role="radiogroup" aria-labelledby="onb-gender-label">
+        <div className="onb-chips onb-chips--stacked" role="radiogroup" aria-labelledby="onb-gender-label">
           {GENDER_CHIPS.map((g) => (
             <button
               key={g.value}
@@ -200,7 +199,7 @@ export function GenderDobCard({
 
       <fieldset className="onb-fieldset" aria-labelledby="onb-dob-label">
         <legend id="onb-dob-label" className="onb-fieldset__legend">
-          When were you born?
+          Date of birth
         </legend>
         <div className="onb-dob">
           <input
