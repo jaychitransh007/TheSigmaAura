@@ -137,15 +137,14 @@ export function Composer({
             aria-label="Attach image"
             title="Attach image"
           >
-            {/* Plain "+" — matches the legacy plusBtn affordance */}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 5v14M5 12h14"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
+            {/* Text "+" instead of an SVG. An SVG is geometrically
+                centered and doesn't share the input text's baseline,
+                so an SVG + and the placeholder always look misaligned
+                by a few pixels — the customer caught this across
+                three iterations. A text character inherits the input's
+                font metrics so the browser aligns the two baselines
+                for free. Legacy ui.py .plus-btn uses the same trick. */}
+            +
           </button>
           <input
             ref={fileInputRef}
