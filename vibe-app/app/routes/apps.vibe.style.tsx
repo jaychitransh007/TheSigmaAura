@@ -557,15 +557,28 @@ export default function ConversationPage() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, pending]);
 
-  // When the submit action returns, append the user message + start polling.
+  // When the submit action returns, start polling. The user message
+  // bubble was already appended optimistically in handleSubmit — we
+  // only need the job id here to arm the poll loop.
   useEffect(() => {
     if (submitFetcher.state !== "idle") return;
     const data = submitFetcher.data;
-    if (!data || !data.ok || data.op !== "turn") return;
+    if (!data) return;
+    // Action failed: append an assistant error so the conversation
+    // doesn't dead-end on a lone user bubble.
+    if (!data.ok) {
+      if (consumedTurnIdRef.current === `err:${data.error}`) return;
+      consumedTurnIdRef.current = `err:${data.error}`;
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: data.error || "Couldn't send that — try again." },
+      ]);
+      return;
+    }
+    if (data.op !== "turn") return;
     if (consumedTurnIdRef.current === data.jobId) return;
     consumedTurnIdRef.current = data.jobId;
 
-    setMessages((prev) => [...prev, { role: "user", text: data.message }]);
     setPending({
       conversationId,
       jobId: data.jobId,
@@ -673,7 +686,28 @@ export default function ConversationPage() {
     form.set("conversationId", conversationId);
     form.set("message", message);
     if (attachment) form.set("imageData", attachment.dataUrl);
+    // Clear the consumed-turn marker so the next action response — be
+    // it a jobId or an error — gets picked up by the effect below.
+    // Without this, two submissions in a row that produce the same
+    // stable response (e.g. same error twice) would silently skip the
+    // second one because the ref still matches.
+    consumedTurnIdRef.current = null;
     submitFetcher.submit(form, { method: "post", encType: "multipart/form-data" });
+
+    // Optimistic user-message append. We render the customer's bubble
+    // (with attached-image thumbnail, if any) as soon as they hit send,
+    // BEFORE the action returns the job id. Reads more responsively
+    // than waiting on the round-trip, and surfaces what was sent even
+    // if the engine errors. The success effect below only sets pending
+    // state — no second append, no duplicate bubble.
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        text: message,
+        imagePreview: attachment?.dataUrl,
+      },
+    ]);
 
     // Clear the attachment optimistically — the next turn shouldn't
     // re-attach the same image, and the user has visual confirmation

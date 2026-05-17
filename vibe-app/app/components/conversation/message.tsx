@@ -18,7 +18,15 @@ import type { Outfit, OnboardingImageCategory } from "../../lib/engine.server";
 export type OnboardingMessageKind = "photos" | "gender-dob" | FieldKind;
 
 export type ChatMessage =
-  | { role: "user"; text: string }
+  | {
+      role: "user";
+      text: string;
+      /** Data URL of an image the customer attached to this turn. When
+       *  present we render it inline above the text so the conversation
+       *  history reads accurately (legacy ui.py did this in its
+       *  query-preview block). */
+      imagePreview?: string;
+    }
   | { role: "assistant"; text: string; outfits?: Outfit[] }
   | {
       role: "onboarding";
@@ -51,7 +59,18 @@ export function MessageView({
   onHideOutfit?: (outfitId: string) => void;
 }) {
   if (message.role === "user") {
-    return <div className="conv-message conv-message--user">{message.text}</div>;
+    return (
+      <div className="conv-message conv-message--user">
+        {message.imagePreview && (
+          <img
+            className="conv-message-attachment"
+            src={message.imagePreview}
+            alt="Attached"
+          />
+        )}
+        <span className="conv-message-text">{message.text}</span>
+      </div>
+    );
   }
 
   if (message.role === "onboarding") {
