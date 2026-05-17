@@ -27,7 +27,13 @@ function useFetchOnMount<T>(url: string): FetchState<T> {
     // session, where the canonical id swaps and the URL recomputes —
     // without this reset we'd render the anonymous user's wardrobe
     // until the canonical-user fetch returned.
-    setState({ phase: "loading" });
+    //
+    // Functional update form so we skip the redundant re-render on
+    // initial mount: useState already seeded state as `loading`, so
+    // returning prev unchanged tells React there's nothing to commit.
+    // On URL change after a ready/error result, the new loading
+    // object replaces the prior state and the picker repaints.
+    setState((prev) => (prev.phase === "loading" ? prev : { phase: "loading" }));
     // AbortController, not a captured `cancelled` flag — the latter
     // would suppress state updates after unmount but still let the
     // network request finish, wasting bandwidth when the customer
