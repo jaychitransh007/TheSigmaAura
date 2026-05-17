@@ -939,3 +939,105 @@ def observe_item_description_source(*, source: str) -> None:
         ).inc()
     except Exception:  # noqa: BLE001
         pass
+
+
+# F.2.x / cart-wiring guard — PR #474 follow-up. response_formatter's
+# _build_item_card silently dropped shopify_variant_ids until the
+# explicit pass-through fix. This counter ticks when a catalog item
+# leaves the engine with an empty variant map — operators alert on a
+# non-zero rate to catch this class of bug (silent field drop on the
+# response boundary) the moment it reappears. Wardrobe items
+# legitimately have no variant map and are tracked under their own
+# label rather than excluded so the absence-vs-zero distinction stays
+# visible.
+aura_outfit_item_variant_ids_missing_total = Counter(
+    "aura_outfit_item_variant_ids_missing_total",
+    "Outfit items shipped with empty shopify_variant_ids — should stay at zero rate for catalog items.",
+    labelnames=("source",),
+)
+
+
+def observe_outfit_item_variant_ids_missing(*, source: str) -> None:
+    """Tick when an outfit item ships with no variant gids.
+
+    ``source="catalog"`` is the alert-worthy case; ``"wardrobe"`` items
+    don't carry variant maps and tick under their own label so dashboards
+    can sanity-check the wardrobe/catalog mix rather than alert on it.
+    """
+    try:
+        aura_outfit_item_variant_ids_missing_total.labels(
+            source=source or "unknown",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# F.2.2 install-time bootstrap progress. One tick per
+# /v1/tenants/{tid}/bootstrap-batch invocation, labelled with outcome
+# so operators can spot batch failures or zero-progress ticks during
+# an install. ``status`` values: ``"ok"`` (some products created or
+# updated), ``"empty"`` (zero products in the page — benign on the
+# final tick), ``"failed"`` (engine raised). tenant_id deliberately
+# NOT a label (too high cardinality for Prometheus); logs carry
+# tenant_id for per-tenant slicing.
+aura_bootstrap_batch_total = Counter(
+    "aura_bootstrap_batch_total",
+    "Catalog bootstrap-batch ticks, labelled by outcome.",
+    labelnames=("status",),
+)
+
+aura_bootstrap_batch_products = Histogram(
+    "aura_bootstrap_batch_products",
+    "Products processed per bootstrap-batch tick, split by outcome.",
+    labelnames=("outcome",),  # created | updated | failed
+    buckets=(0, 1, 5, 10, 25, 50, 100, 250, 500, 1000),
+)
+
+
+def observe_bootstrap_batch(
+    *,
+    status: str,
+    created: int = 0,
+    updated: int = 0,
+    failed: int = 0,
+) -> None:
+    """Tick the bootstrap-batch counter + record per-outcome row
+    histograms for one tick. Called from the engine's bootstrap-batch
+    endpoint after the service returns.
+    """
+    try:
+        aura_bootstrap_batch_total.labels(status=status or "unknown").inc()
+        aura_bootstrap_batch_products.labels(outcome="created").observe(max(0, int(created)))
+        aura_bootstrap_batch_products.labels(outcome="updated").observe(max(0, int(updated)))
+        aura_bootstrap_batch_products.labels(outcome="failed").observe(max(0, int(failed)))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# F.4 product webhooks — track delivery volume + outcome so a sudden
+# spike (merchant bulk-edit) or drop (Shopify retry exhaustion) is
+# visible without grepping logs. Labels stay low-cardinality: topic +
+# status. Per-tenant slicing lives in structured logs (tenant_id is
+# unbounded so it doesn't belong on a Prometheus label).
+aura_product_webhook_total = Counter(
+    "aura_product_webhook_total",
+    "Product webhook events received and processed by the engine.",
+    labelnames=("topic", "status"),  # topic: create|update|delete  status: ok|failed|no_op
+)
+
+
+def observe_product_webhook(*, topic: str, status: str) -> None:
+    """Tick the product-webhook counter for one received webhook.
+
+    ``topic`` is one of ``"create"`` / ``"update"`` / ``"delete"``;
+    ``status`` is ``"ok"`` (engine wrote successfully), ``"failed"``
+    (engine raised), or ``"no_op"`` (payload had nothing actionable,
+    e.g. missing shopify_product_id).
+    """
+    try:
+        aura_product_webhook_total.labels(
+            topic=topic or "unknown",
+            status=status or "unknown",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass

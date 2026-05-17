@@ -110,8 +110,24 @@ class CatalogProductSyncService:
         if not tenant_id or not tenant_id.strip():
             raise ValueError("apply_create_or_update: tenant_id is required")
 
+        # Normalise topic to the metric-label form (drops "products/"
+        # prefix). Empty / unrecognised → "upsert" so metrics don't
+        # explode on a future topic addition.
+        topic_label = topic.strip().lower().replace("products/", "")
+        if topic_label not in ("create", "update"):
+            topic_label = "upsert"
+
         bootstrap_input = self._payload_to_bootstrap_input(product_payload)
         if not bootstrap_input:
+            _log.warning(
+                "CatalogProductSync: webhook no-op tenant=%s topic=%s reason=no_shopify_product_id",
+                tenant_id, topic or "(unset)",
+            )
+            try:
+                from platform_core.metrics import observe_product_webhook
+                observe_product_webhook(topic=topic_label, status="no_op")
+            except Exception:  # noqa: BLE001
+                pass
             return {
                 "created": 0,
                 "updated": 0,
@@ -164,6 +180,21 @@ class CatalogProductSyncService:
             patch={"available_for_sale": available},
         )
 
+        _log.info(
+            "CatalogProductSync: webhook upsert tenant=%s topic=%s shopify_product_id=%s "
+            "created=%d updated=%d failed=%d available=%s",
+            tenant_id, topic or "(unset)", shopify_pid,
+            int(bootstrap_result.get("created", 0) or 0),
+            int(bootstrap_result.get("updated", 0) or 0),
+            int(bootstrap_result.get("failed", 0) or 0),
+            available,
+        )
+        try:
+            from platform_core.metrics import observe_product_webhook
+            observe_product_webhook(topic=topic_label, status="ok")
+        except Exception:  # noqa: BLE001
+            pass
+
         return {
             **bootstrap_result,
             "available_for_sale": available,
@@ -191,6 +222,15 @@ class CatalogProductSyncService:
             raise ValueError("apply_delete: tenant_id is required")
         shopify_pid = str(shopify_product_id or "").strip()
         if not shopify_pid:
+            _log.warning(
+                "CatalogProductSync: webhook delete no-op tenant=%s reason=missing_shopify_product_id",
+                tenant_id,
+            )
+            try:
+                from platform_core.metrics import observe_product_webhook
+                observe_product_webhook(topic="delete", status="no_op")
+            except Exception:  # noqa: BLE001
+                pass
             return {"deleted": False, "reason": "missing shopify_product_id"}
 
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -215,6 +255,15 @@ class CatalogProductSyncService:
             },
             patch={"available_for_sale": False},
         )
+        _log.info(
+            "CatalogProductSync: webhook delete tenant=%s shopify_product_id=%s deleted=%s",
+            tenant_id, shopify_pid, bool(cat_row),
+        )
+        try:
+            from platform_core.metrics import observe_product_webhook
+            observe_product_webhook(topic="delete", status="ok")
+        except Exception:  # noqa: BLE001
+            pass
         return {
             "deleted": bool(cat_row),
             "shopify_product_id": shopify_pid,

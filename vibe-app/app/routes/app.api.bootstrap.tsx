@@ -28,6 +28,7 @@ import {
   postBootstrapComplete,
   type BootstrapProductInput,
 } from "../lib/engine.server";
+import { logInfo, logWarn, logError } from "../lib/logger.server";
 import { authenticate } from "../shopify.server";
 
 // Products per Admin GraphQL page. Sized so a fresh-install batch
@@ -280,10 +281,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     batchResult = await postBootstrapBatch({ tenantId, products });
   } catch (err) {
+    const msg = err instanceof EngineError ? err.message : String(err);
+    logError("vibe_bootstrap_tick_failed", {
+      shop: session.shop,
+      tenant_id: tenantId,
+      products_in_page: products.length,
+      cursor_in: after,
+      err: msg,
+    });
     return json<BootstrapTickFail>(
       {
         ok: false,
-        error: err instanceof EngineError ? err.message : String(err),
+        error: msg,
       },
       { status: 502 },
     );
@@ -299,26 +308,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } catch (err) {
       // Don't fail the tick — the batch did land. The complete call
       // can be retried by reloading the admin home. Log and continue.
-      console.error(
-        "[vibe] bootstrap complete failed:",
-        err instanceof Error ? err.message : err,
-      );
+      logWarn("vibe_bootstrap_complete_failed", {
+        shop: session.shop,
+        tenant_id: tenantId,
+        final_count: newAccumulated,
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
-  // Hint for the operator — surface session.shop in the response so
-  // debugging logs in Vercel show which store the tick was for.
-  console.info(
-    "[vibe] bootstrap tick shop=%s tenant=%s processed=%d accumulated=%d created=%d updated=%d failed=%d done=%s",
-    session.shop,
-    tenantId,
-    products.length,
-    newAccumulated,
-    batchResult.created,
-    batchResult.updated,
-    batchResult.failed,
-    !hasNext,
-  );
+  // Structured tick log — operators can grep `vibe_bootstrap_tick` to
+  // walk an install end-to-end and tell "slow but working" from
+  // "stuck on tick N". Includes shop AND tenant so single-tenant and
+  // multi-tenant dashboards both work.
+  logInfo("vibe_bootstrap_tick", {
+    shop: session.shop,
+    tenant_id: tenantId,
+    products_in_page: products.length,
+    accumulated: newAccumulated,
+    created: batchResult.created,
+    updated: batchResult.updated,
+    failed: batchResult.failed,
+    has_next: hasNext,
+    done: !hasNext,
+  });
 
   return json<BootstrapTickResponse>({
     ok: true,
