@@ -221,16 +221,19 @@ export type OnboardingStatus = {
  * hasn't hit /onboarding/profile/ensure yet) or the engine 4xx/5xx's
  * — callers should treat null as "no profile data available".
  *
- * `timeoutMs` defaults to a short 1500ms so the loader (which calls
- * this on every page load for signed-in customers) never blocks
- * page render on a slow engine. The cost of a false negative is a
- * customer who sees the new-customer welcome on a flaky network;
- * their saved profile data is still safe on the engine for the next
- * page load.
+ * Default timeout is the global ENGINE_HTTP_TIMEOUT_MS (8s) — same as
+ * resolveConversation / ensureOnboardingProfile / startTurn. The
+ * earlier 1500ms ceiling came from a loader-only world where short
+ * timeouts mattered for SSR; today this is called from the init
+ * action alongside two other engine helpers via Promise.all, and
+ * under engine contention the tight budget caused the status call
+ * to abort while the other two succeeded — leaving init responses
+ * with hasProfile=false for returning customers whose engine row
+ * was actually populated.
  */
 export async function getOnboardingStatus(
   userId: string,
-  timeoutMs: number = 1500,
+  timeoutMs: number = ENGINE_HTTP_TIMEOUT_MS,
 ): Promise<OnboardingStatus | null> {
   if (USE_MOCK) {
     return null;
