@@ -321,8 +321,6 @@ function completedSummary(kind: OnboardingMessageKind): string {
       return "Photos saved";
     case "gender-dob":
       return "Basics saved";
-    case "name":
-      return "Name saved";
     case "height":
       return "Height saved";
     case "waist":
@@ -336,8 +334,6 @@ function skippedSummary(kind: OnboardingMessageKind): string {
       return "Photos skipped";
     case "gender-dob":
       return "Basics skipped";
-    case "name":
-      return "Name skipped";
     case "height":
       return "Height skipped";
     case "waist":

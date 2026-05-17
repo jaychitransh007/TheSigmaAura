@@ -1,8 +1,7 @@
-// Onboarding field card — one question per card (name / DOB / gender /
-// height / waist). Each card has a single input, a Save button, and a
-// Skip button. On save the value is POSTed to
-// /apps/vibe/api/onboarding/profile (one field per call); on skip we
-// advance without writing.
+// Onboarding field card — one question per card (height / waist).
+// Each card has a single input, a Save button, and a Skip button. On
+// save the value is POSTed to /apps/vibe/api/onboarding/profile (one
+// field per call); on skip we advance without writing.
 //
 // The render variant comes from the `kind` prop. The page picks which
 // kind to render based on the current onboarding step.
@@ -12,10 +11,11 @@ import { useRef, useState } from "react";
 import type { OnboardingProfileField } from "../../lib/engine.server";
 import { parseActionJson } from "../../lib/fetch.client";
 
-// Gender and DOB are no longer FieldCards — they live in the
-// dedicated GenderDobCard so gender can use chip-style choices and
-// DOB can use a segmented numeric input.
-export type FieldKind = "name" | "height" | "waist";
+// Gender + DOB live in GenderDobCard (chip + segmented input). Name
+// was dropped from onboarding entirely — the planner doesn't read it
+// and the chat doesn't refer to the customer by name, so asking for
+// it was UX friction with no payoff.
+export type FieldKind = "height" | "waist";
 
 const KIND_CONFIG: Record<
   FieldKind,
@@ -31,13 +31,6 @@ const KIND_CONFIG: Record<
     step?: number;
   }
 > = {
-  name: {
-    field: "name",
-    title: "What should I call you?",
-    blurb: "Just a first name is fine.",
-    placeholder: "Your name",
-    inputType: "text",
-  },
   height: {
     field: "height_cm",
     title: "How tall are you?",
