@@ -51,6 +51,7 @@ import {
   nextStep,
   readOnboardingStep,
   readResolvedKinds,
+  unmarkKindResolved,
   writeOnboardingStep,
   type OnboardingStep,
 } from "../lib/onboarding.client";
@@ -122,7 +123,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 // All ops require sessionId from the form body.
 // ─────────────────────────────────────────────────────────────────────
 
-type InitOk = { ok: true; op: "init"; conversationId: string };
+type InitOk = {
+  ok: true;
+  op: "init";
+  conversationId: string;
+  /** Categories the engine has on file for this user
+   *  ("full_body" / "headshot"). The seed effect re-injects the
+   *  PhotosCard when the customer's localStorage step is past
+   *  "photos" but the engine reports no full_body photo — covers
+   *  cases where photos were lost (volume rebuild, manual delete,
+   *  etc.) so try-on can recover automatically. */
+  imagesUploaded: string[];
+};
 type TurnOk = { ok: true; op: "turn"; jobId: string; message: string };
 type MergeOk = {
   ok: true;
@@ -148,25 +160,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (op === "init") {
-    // Resolve (or create) the conversation AND ensure the onboarding-
-    // profile row exists. Without ensureOnboardingProfile, the very
-    // first photo/profile-field save 404s ("User not found") because
-    // the engine's onboarding tables aren't populated by the
-    // conversation-resolve path — they were historically populated by
-    // OTP verification, which Vibe customers don't go through.
+    // Resolve (or create) the conversation, ensure the onboarding-
+    // profile row exists, AND read the photo-presence list. The three
+    // engine calls touch independent tables — run them in parallel to
+    // save the Mumbai-to-Mumbai round-trips on every init. All three
+    // are idempotent for returning customers.
     //
-    // The two engine calls touch independent tables and don't depend
-    // on each other — run them in parallel to save one Mumbai-to-
-    // Mumbai round-trip (~10ms) on every init. Idempotent: a
-    // returning customer's ensure call is a no-op.
-    const [conversation] = await Promise.all([
+    // imagesUploaded flows to the client so the seed effect can
+    // detect customers whose photo records vanished (volume rebuild,
+    // manual cleanup) and re-inject the PhotosCard regardless of the
+    // localStorage onboarding-step pointer.
+    const [conversation, , status] = await Promise.all([
       resolveConversation(sessionId),
       ensureOnboardingProfile(sessionId),
+      getOnboardingStatus(sessionId),
     ]);
     return json<ActionResponse>({
       ok: true,
       op: "init",
       conversationId: conversation.conversation_id,
+      imagesUploaded: status?.images_uploaded ?? [],
     });
   }
 
@@ -341,11 +354,29 @@ const WELCOME_RETURNING =
 const WELCOME_NEW =
   'Hi — I\'m Vibe, your styling co-pilot. Try something like "Dress me for tonight" — and a couple of basics below help me find what works on you.';
 
+// Steps the seed effect treats as "the customer is still in the
+// initial parallel onboarding phase" — photos + gender-DOB rendered
+// side-by-side. Anything past this and the customer has either
+// completed one of the initial cards or moved on to the sequential
+// follow-up cards (name → height → waist → done).
+const INITIAL_PHASE: ReadonlySet<OnboardingStep> = new Set<OnboardingStep>([
+  "welcome",
+  "photos",
+  "gender-dob",
+]);
+
 export default function ConversationPage() {
   const { mockMode, loggedInCustomerId, hasProfile } =
     useLoaderData<typeof loader>();
   const [sessionId, setSessionId] = useState("");
   const [conversationId, setConversationId] = useState("");
+  // Engine's photo-presence snapshot at session init. The seed effect
+  // uses this to re-inject the PhotosCard when the customer's
+  // onboarding-step localStorage says "past photos" but the engine
+  // has no full_body row on file (volume rebuild / manual delete / etc).
+  // `null` while the init request is in flight — distinguishes from
+  // "loaded and empty".
+  const [imagesUploaded, setImagesUploaded] = useState<string[] | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<Attachment | null>(null);
@@ -477,36 +508,61 @@ export default function ConversationPage() {
     if (!data) return;
     if (data.ok && data.op === "init") {
       setConversationId(data.conversationId);
+      setImagesUploaded(data.imagesUploaded ?? []);
       setInitError(null);
     } else if (!data.ok) {
       setInitError(data.error || "Couldn't start a conversation.");
     }
   }, [initFetcher.state, initFetcher.data]);
 
-  // Seed the feed once per page life. Two shapes:
+  // Seed the feed once per page life. Three shapes:
   //
-  //   hasProfile = true  (returning customer w/ gender on engine row)
-  //     → just the welcome-back message. No cards forced.
-  //     → onboardingStep advances to "done" so no future cards emit.
+  //   hasProfile = true, photos on file
+  //     → welcome-back message only. Step advances to "done".
   //
-  //   hasProfile = false (new / anonymous / never-completed)
-  //     → welcome message + photos card + gender-DOB card stacked.
-  //     → onboardingStep tracks "gender-dob" (the furthest card we've
-  //       already emitted). When BOTH initial cards resolve,
-  //       handleAdvanceOnboarding promotes to "name" and emits it.
+  //   hasProfile = true, photos missing on engine
+  //     → welcome-back + PhotosCard. Engine reported no full_body
+  //       row (volume rebuild / manual delete) so we override
+  //       localStorage's "past photos" pointer and re-emit the card.
+  //       Step rolls back to "photos" so onAdvance promotes correctly.
   //
-  // seededRef prevents double-seeding when sessionId/conversationId
-  // settle on different ticks. Legacy localStorage step values
-  // ("dob"/"gender") are migrated by readOnboardingStep already.
+  //   hasProfile = false
+  //     → existing new-customer flow (welcome + photos + gender-DOB
+  //       stacked, or resume mid-flow from persisted step).
+  //
+  // Waits until imagesUploaded is non-null — the init response hasn't
+  // landed yet otherwise and we'd seed against a stale guess. seededRef
+  // prevents double-seeding when sessionId/conversationId/imagesUploaded
+  // settle on different ticks.
   useEffect(() => {
     if (!sessionId || !conversationId) return;
+    if (imagesUploaded === null) return;
     if (seededRef.current) return;
     seededRef.current = true;
 
+    const needsPhotos = !imagesUploaded.includes("full_body");
+
+    // If the engine reports the photo missing, clear any stale
+    // "photos" resolution from localStorage so the seed branches
+    // below re-emit the card. Otherwise resolved.has("photos") would
+    // suppress the new-customer-path emission below.
+    if (needsPhotos) {
+      unmarkKindResolved("photos");
+    }
+
     if (hasProfile) {
-      onboardingStepRef.current = "done";
-      writeOnboardingStep("done");
-      setMessages([{ role: "assistant", text: WELCOME_RETURNING }]);
+      const seeded: ChatMessage[] = [
+        { role: "assistant", text: WELCOME_RETURNING },
+      ];
+      if (needsPhotos) {
+        seeded.push({ role: "onboarding", kind: "photos", status: "active" });
+        onboardingStepRef.current = "photos";
+        writeOnboardingStep("photos");
+      } else {
+        onboardingStepRef.current = "done";
+        writeOnboardingStep("done");
+      }
+      setMessages(seeded);
       return;
     }
 
@@ -517,13 +573,18 @@ export default function ConversationPage() {
     //   - vibe_onboarding_resolved_kinds: explicit list of cards
     //     already saved/skipped. A reload during the parallel
     //     photos+gender-DOB phase consults this so a completed
-    //     photos card doesn't re-emit.
-    const persisted = readOnboardingStep();
+    //     photos card doesn't re-emit (unless the engine just told
+    //     us the photo went missing — handled above).
+    let persisted = readOnboardingStep();
+    // If the engine reports photos missing but localStorage already
+    // advanced past them, roll the cursor back so the initial-phase
+    // branch fires and emits the card.
+    if (needsPhotos && !INITIAL_PHASE.has(persisted)) {
+      persisted = "photos";
+      writeOnboardingStep(persisted);
+    }
     const resolved = readResolvedKinds();
-    const isInitialPhase =
-      persisted === "welcome" ||
-      persisted === "photos" ||
-      persisted === "gender-dob";
+    const isInitialPhase = INITIAL_PHASE.has(persisted);
 
     const seeded: ChatMessage[] = [
       { role: "assistant", text: WELCOME_NEW },
@@ -554,7 +615,7 @@ export default function ConversationPage() {
     }
 
     setMessages(seeded);
-  }, [sessionId, conversationId, hasProfile]);
+  }, [sessionId, conversationId, hasProfile, imagesUploaded]);
 
   // Auto-scroll to bottom when messages or pending state changes.
   useEffect(() => {

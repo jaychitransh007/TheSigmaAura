@@ -206,6 +206,13 @@ export type OnboardingStatus = {
   gender: string;
   profile_complete: boolean;
   onboarding_complete: boolean;
+  /** Engine-side list of onboarding photo categories that have rows in
+   *  `onboarding_images`. The seed effect uses this to detect customers
+   *  whose photo records vanished from the DB (e.g. a Fly volume
+   *  rebuild) — those should see the PhotosCard re-injected even
+   *  though their localStorage step is past "photos". Values are
+   *  "full_body" / "headshot". Empty array if no photos uploaded. */
+  images_uploaded: string[];
 };
 
 /**
@@ -234,7 +241,20 @@ export async function getOnboardingStatus(
       { signal: AbortSignal.timeout(timeoutMs) },
     );
     if (!resp.ok) return null;
-    return (await resp.json()) as OnboardingStatus;
+    const raw = (await resp.json()) as Partial<OnboardingStatus>;
+    // images_uploaded is a real engine field but normalize defensively so
+    // downstream consumers can always trust `Array.isArray(status.images_uploaded)`.
+    return {
+      user_id: raw.user_id ?? "",
+      name: raw.name ?? "",
+      date_of_birth: raw.date_of_birth ?? "",
+      gender: raw.gender ?? "",
+      profile_complete: Boolean(raw.profile_complete),
+      onboarding_complete: Boolean(raw.onboarding_complete),
+      images_uploaded: Array.isArray(raw.images_uploaded)
+        ? raw.images_uploaded.filter((c): c is string => typeof c === "string")
+        : [],
+    };
   } catch {
     return null;
   }

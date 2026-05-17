@@ -121,3 +121,20 @@ export function markKindResolved(kind: string): void {
     // Best-effort.
   }
 }
+
+/**
+ * Clear a single resolved-kind entry. Used when the engine reports
+ * that a previously-resolved card is invalid again (e.g. the photo
+ * file vanished server-side); the seed effect needs to re-emit the
+ * card and shouldn't be blocked by the historical resolution.
+ */
+export function unmarkKindResolved(kind: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const current = readResolvedKinds();
+    if (!current.delete(kind)) return;
+    window.localStorage.setItem(RESOLVED_KEY, JSON.stringify([...current]));
+  } catch {
+    // Best-effort.
+  }
+}
