@@ -10,6 +10,19 @@ embedded = true
 # when the installed @shopify/shopify-api package supports a newer version.
 api_version = "2026-04"
 
+# GDPR / privacy-compliance webhooks (D.S.4) — mandatory for App Store
+# distribution. Shopify fires these whenever a customer requests data
+# export / deletion, or when a shop has been uninstalled long enough
+# (~48h) that we must wipe its data. Each URL hits a corresponding
+# Remix route under app/routes/webhooks.*.tsx; handlers validate HMAC
+# via `authenticate.webhook` and respond 200 within the 5s budget.
+# The actual data work runs out-of-band (logged for now; engine
+# pipeline lands separately — see OPEN_TASKS.md "GDPR data pipeline").
+[webhooks.privacy_compliance]
+customer_data_request_url = "https://vibe-app-five.vercel.app/webhooks/customers/data_request"
+customer_deletion_url = "https://vibe-app-five.vercel.app/webhooks/customers/redact"
+shop_deletion_url = "https://vibe-app-five.vercel.app/webhooks/shop/redact"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "write_products"
