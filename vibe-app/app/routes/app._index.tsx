@@ -259,13 +259,37 @@ export default function MerchantIndex() {
                             const result = await bridge.scopes.request(
                               missingDocumentedScopes,
                             );
+                            console.info("[vibe] scopes.request requested:", missingDocumentedScopes);
                             console.info("[vibe] scopes.request result:", result);
+                            const granted =
+                              (result as { granted?: string[] } | undefined)
+                                ?.granted ?? [];
+                            if (granted.length === 0) {
+                              // scopes.request resolved but nothing was
+                              // actually granted. Most likely cause is
+                              // App Bridge thinks the scopes are already
+                              // available at the Partner Dashboard level
+                              // (vibe-7 lists them) and skipped the
+                              // dialog — but our Prisma session row
+                              // hasn't picked up the new access token.
+                              //
+                              // Fall back to the OAuth install URL,
+                              // which forces a fresh token exchange and
+                              // writes the new scope set into Prisma.
+                              bridge.toast?.show(
+                                "Reauthorizing via OAuth — popup may open…",
+                              );
+                              window.open(
+                                `/auth/login?shop=${encodeURIComponent(
+                                  shop,
+                                )}`,
+                                "_top",
+                              );
+                              return;
+                            }
                             bridge.toast?.show(
-                              "Permissions granted — reloading…",
+                              `Granted ${granted.length} permission${granted.length === 1 ? "" : "s"} — reloading…`,
                             );
-                            // Give Shopify a beat to persist the new
-                            // grant in the session token, then reload
-                            // so the page reflects the new state.
                             window.setTimeout(
                               () => window.location.reload(),
                               500,
