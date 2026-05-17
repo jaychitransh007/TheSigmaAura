@@ -1,0 +1,20 @@
+# Theme App Extension — adds storefront blocks merchants drop into
+# their theme without editing Liquid manually.
+#
+# Two blocks live in `blocks/`:
+#   1. style-with-vibe — discoverability entry-point (D.C.1). Drop into
+#      header / homepage / PDP / nav. Links to /apps/vibe/style.
+#   2. saved-with-vibe — customer-account-page surface (D.C.8). Reads
+#      /apps/vibe/api/wishlist and renders saved items inline so the
+#      customer sees their Vibe-hearted products from `/account` without
+#      ever opening the chat.
+#
+# Both blocks are wrapped in the same extension so they share a single
+# Shopify review cycle. Shared assets live in `assets/`.
+
+api_version = "2026-04"
+
+[[extensions]]
+name = "Vibe Storefront"
+handle = "vibe-storefront"
+type = "theme"

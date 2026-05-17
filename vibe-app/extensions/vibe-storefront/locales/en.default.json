@@ -1,0 +1,35 @@
+{
+  "style_with_vibe": {
+    "name": "Style with Vibe",
+    "default_label": "Style with Vibe",
+    "default_subtitle": "Your AI stylist — built around what you already own.",
+    "settings": {
+      "label": "Button label",
+      "subtitle": "Subtitle (optional)",
+      "size": "Size",
+      "size_small": "Small",
+      "size_medium": "Medium",
+      "size_large": "Large",
+      "alignment": "Alignment",
+      "align_start": "Left",
+      "align_center": "Center",
+      "align_end": "Right"
+    }
+  },
+  "saved_with_vibe": {
+    "name": "Saved with Vibe",
+    "default_heading": "Saved with Vibe",
+    "default_signed_out_copy": "Sign in to see the pieces you've saved with Vibe.",
+    "default_empty_copy": "Nothing saved yet.",
+    "default_empty_cta": "Chat with Vibe",
+    "loading": "Loading your saved items…",
+    "error": "Couldn't load your saved items right now — try again in a moment.",
+    "settings": {
+      "heading": "Heading",
+      "signed_out_copy": "Signed-out message",
+      "empty_copy": "Empty-state message",
+      "empty_cta_label": "Empty-state CTA label",
+      "max_items": "Max items to show"
+    }
+  }
+}

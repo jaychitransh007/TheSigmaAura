@@ -1,0 +1,107 @@
+{%- comment -%}
+  D.C.8 — "Saved with Vibe" customer-account-page block.
+
+  Surfaces the customer's Vibe-hearted products on the classic customer
+  account page (`templates/customers/account.liquid`). The merchant
+  adds this block to the account template; the block reads the
+  signed-in customer's id and fetches /apps/vibe/api/wishlist via
+  Shopify's App Proxy.
+
+  Identity flow:
+    1. {% if customer %} gate — bail to the signed-out copy if guest.
+    2. data-customer-id attr → JS posts `sessionId=shopify:<id>`.
+    3. Shopify App Proxy auto-appends `logged_in_customer_id=<id>` and
+       HMAC-signs the URL before forwarding to the Vibe backend.
+    4. Vibe loader's IDOR check matches sessionId vs the signed
+       customer id (apps.vibe.api.wishlist.tsx:30).
+
+  The block degrades gracefully:
+    - guest customer → signed-out card with CTA to chat
+    - empty wishlist → empty-state card with CTA
+    - engine error    → calm error card; the rest of the account page
+                        keeps rendering.
+{%- endcomment -%}
+
+{{ 'vibe-blocks.css' | asset_url | stylesheet_tag }}
+
+{%- liquid
+  assign heading = block.settings.heading | default: 'Saved with Vibe'
+  assign signed_out_copy = block.settings.signed_out_copy | default: "Sign in to see the pieces you've saved with Vibe."
+  assign empty_copy = block.settings.empty_copy | default: 'Nothing saved yet.'
+  assign empty_cta_label = block.settings.empty_cta_label | default: 'Chat with Vibe'
+  assign max_items = block.settings.max_items | default: 12
+-%}
+
+<div class="vibe-saved-block" {{ block.shopify_attributes }}>
+  <h2 class="vibe-saved-heading">{{ heading | escape }}</h2>
+
+  {%- if customer -%}
+    <div
+      class="vibe-saved-grid"
+      data-vibe-saved-grid
+      data-customer-id="{{ customer.id }}"
+      data-max-items="{{ max_items }}"
+      data-empty-copy="{{ empty_copy | escape }}"
+      data-empty-cta-label="{{ empty_cta_label | escape }}"
+      data-loading-copy="{{ 'Loading your saved items…' | escape }}"
+      data-error-copy="{{ "Couldn't load your saved items right now — try again in a moment." | escape }}"
+    >
+      {%- comment -%}
+        Server-rendered loading state so the customer doesn't see a
+        flash of empty space while the fetch resolves. JS replaces
+        this with items / empty-state / error as the request lands.
+      {%- endcomment -%}
+      <div class="vibe-saved-state">Loading your saved items…</div>
+    </div>
+  {%- else -%}
+    <div class="vibe-saved-state">
+      <p style="margin:0;">{{ signed_out_copy | escape }}</p>
+      <a class="vibe-saved-cta" href="/account/login">Sign in</a>
+    </div>
+  {%- endif -%}
+</div>
+
+<script src="{{ 'saved-with-vibe.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "t:saved_with_vibe.name",
+  "target": "section",
+  "templates": ["customers/account", "customers/order"],
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "t:saved_with_vibe.settings.heading",
+      "default": "Saved with Vibe"
+    },
+    {
+      "type": "text",
+      "id": "signed_out_copy",
+      "label": "t:saved_with_vibe.settings.signed_out_copy",
+      "default": "Sign in to see the pieces you've saved with Vibe."
+    },
+    {
+      "type": "text",
+      "id": "empty_copy",
+      "label": "t:saved_with_vibe.settings.empty_copy",
+      "default": "Nothing saved yet."
+    },
+    {
+      "type": "text",
+      "id": "empty_cta_label",
+      "label": "t:saved_with_vibe.settings.empty_cta_label",
+      "default": "Chat with Vibe"
+    },
+    {
+      "type": "range",
+      "id": "max_items",
+      "label": "t:saved_with_vibe.settings.max_items",
+      "min": 4,
+      "max": 24,
+      "step": 4,
+      "default": 12
+    }
+  ]
+}
+{% endschema %}

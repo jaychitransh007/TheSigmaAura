@@ -1,0 +1,83 @@
+{%- comment -%}
+  D.C.1 — "Style with Vibe" entry-point block.
+
+  Theme app block merchants drop into any section to send customers to
+  the Vibe conversation page (/apps/vibe/style — App Proxy → Vibe app
+  Conversation route). Discoverability layer for the storefront: lives
+  in the header, on the homepage hero, as a PDP companion, or anywhere
+  else the merchant wants to surface the stylist.
+
+  The href is a relative storefront path so the customer stays on the
+  shop's domain; Shopify's App Proxy handles the rest.
+{%- endcomment -%}
+
+{{ 'vibe-blocks.css' | asset_url | stylesheet_tag }}
+
+{%- liquid
+  assign size_class = 'vibe-cta-button--' | append: block.settings.size
+  assign align_class = 'vibe-cta-block--align-' | append: block.settings.alignment
+  assign label = block.settings.label | default: 'Style with Vibe'
+  assign subtitle = block.settings.subtitle
+-%}
+
+<div class="vibe-cta-block {{ align_class }}" {{ block.shopify_attributes }}>
+  <a href="/apps/vibe/style" class="vibe-cta-button {{ size_class }}" rel="nofollow">
+    {%- comment -%}
+      Inline sparkle icon — drawn with currentColor so it inherits the
+      button's text colour. Decorative; aria-hidden so screen readers
+      skip it.
+    {%- endcomment -%}
+    <svg class="vibe-cta-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+      <path d="M12 3l1.6 4.6L18.2 9.2 13.6 10.8 12 15.4l-1.6-4.6L5.8 9.2l4.6-1.6L12 3z" fill="currentColor"/>
+      <path d="M19 14l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7L19 14z" fill="currentColor" opacity="0.7"/>
+    </svg>
+    <span>{{ label | escape }}</span>
+  </a>
+
+  {%- if subtitle != blank -%}
+    <p class="vibe-cta-subtitle">{{ subtitle | escape }}</p>
+  {%- endif -%}
+</div>
+
+{% schema %}
+{
+  "name": "t:style_with_vibe.name",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "label",
+      "label": "t:style_with_vibe.settings.label",
+      "default": "Style with Vibe"
+    },
+    {
+      "type": "text",
+      "id": "subtitle",
+      "label": "t:style_with_vibe.settings.subtitle",
+      "default": "Your AI stylist — built around what you already own."
+    },
+    {
+      "type": "select",
+      "id": "size",
+      "label": "t:style_with_vibe.settings.size",
+      "options": [
+        { "value": "small", "label": "t:style_with_vibe.settings.size_small" },
+        { "value": "medium", "label": "t:style_with_vibe.settings.size_medium" },
+        { "value": "large", "label": "t:style_with_vibe.settings.size_large" }
+      ],
+      "default": "medium"
+    },
+    {
+      "type": "select",
+      "id": "alignment",
+      "label": "t:style_with_vibe.settings.alignment",
+      "options": [
+        { "value": "start", "label": "t:style_with_vibe.settings.align_start" },
+        { "value": "center", "label": "t:style_with_vibe.settings.align_center" },
+        { "value": "end", "label": "t:style_with_vibe.settings.align_end" }
+      ],
+      "default": "center"
+    }
+  ]
+}
+{% endschema %}

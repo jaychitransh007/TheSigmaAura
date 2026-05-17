@@ -103,13 +103,18 @@ Vibe has **two completely separate surfaces** that get built differently:
 
 ### D.C — Customer storefront UI (the actual product)
 
-- [ ] **D.C.1.** Theme App Extension — "Style with Vibe" entry-point widget + storefront nav link. The discoverability layer.
+- [x] **D.C.1.** Theme App Extension — "Style with Vibe" entry-point widget. Block lives at [extensions/vibe-storefront/blocks/style-with-vibe.liquid](../vibe-app/extensions/vibe-storefront/blocks/style-with-vibe.liquid). Merchant drops the block into any section (header / homepage / PDP / nav); customer clicks it and lands on `/apps/vibe/style` via the App Proxy. Theme editor exposes label, optional subtitle, size, and alignment settings. Shipped as part of the bundled `vibe-storefront` theme app extension (see toml at [shopify.extension.toml](../vibe-app/extensions/vibe-storefront/shopify.extension.toml)).
 - [x] **D.C.2.** **Conversation page** — live at `/apps/vibe/style`. Chat input, message feed, stage indicator, outfit cards, real engine integration via async poll. End-to-end verified against deployed Fly.io engine 2026-05-16.
-- [ ] **D.C.3.** Wardrobe page (CRUD + filters). Unblocked — D.S.3b customer auth shipped 2026-05-16.
-- [ ] **D.C.4.** Looks page (saved + past recommendations).
+- [x] **D.C.3.** Wardrobe page (CRUD + filters). Lives at [apps.vibe.wardrobe.tsx](../vibe-app/app/routes/apps.vibe.wardrobe.tsx). Tile grid (`vibe-tile-grid`), category filter chips driven by the items themselves, add-piece modal with file picker + live preview, optimistic delete with hover-revealed icon. Reads/writes via the existing [apps.vibe.api.wardrobe.tsx](../vibe-app/app/routes/apps.vibe.api.wardrobe.tsx) (extended with `POST` multipart add + `DELETE` action). Engine helpers `saveWardrobeItem` + `deleteWardrobeItem` added to [engine.server.ts](../vibe-app/app/lib/engine.server.ts). Brand surface comes from a shared [vibe-page-shell.tsx](../vibe-app/app/components/vibe-page-shell.tsx) + [wardrobe/styles.css](../vibe-app/app/components/wardrobe/styles.css).
+- [x] **D.C.4.** Looks page (saved + past recommendations). Two tabs — Saved (hearted outfits, deletable) and Recent (last N styled turns, read-only). Both render the same tile grid, tile-click deep-links into `/apps/vibe/style?conversation=<id>&turn=<id>` (scroll restoration TBD). Lives at [apps.vibe.looks.tsx](../vibe-app/app/routes/apps.vibe.looks.tsx), resource route [apps.vibe.api.looks.tsx](../vibe-app/app/routes/apps.vibe.api.looks.tsx) does a parallel `Promise.allSettled` against engine `/saved-looks` + `/results` so a failure in one tab doesn't blank the other.
 - [ ] **D.C.5.** Outfit Check page (upload outfit → feedback).
 - [ ] **D.C.6.** Try-on integration (Gemini) surfaced inside Conversation + Looks.
 - [x] **D.C.7.** "Add to Cart" via Shopify Storefront API wired (2026-05-15). Size chips toggle a selected size; Buy Outfit / Buy Now POST to `/cart/add.js` then navigate to `/cart`. [`vibe-app/app/lib/cart.client.ts`](../vibe-app/app/lib/cart.client.ts) handles gid→numeric conversion + multi-item add. Mock variant ids detected and surfaced as a friendly inline error instead of hitting `/cart/add.js` with bogus ids. **Engine wiring shipped (#374)** — `OutfitItem` now carries `shopify_product_id` + `shopify_variant_ids` end-to-end from `catalog_enriched` → engine response → Vibe `normalizeItem`. Activates the moment **B.8** runs on a store that has the matching catalog imported.
+- [x] **D.C.8.** **Wishlist bridge from Vibe → store.** Block at [extensions/vibe-storefront/blocks/saved-with-vibe.liquid](../vibe-app/extensions/vibe-storefront/blocks/saved-with-vibe.liquid) is constrained to `templates/customers/account` + `customers/order` so a merchant can drop it onto the classic customer-account page. Renders a server-side loading card, then [assets/saved-with-vibe.js](../vibe-app/extensions/vibe-storefront/assets/saved-with-vibe.js) fetches `/apps/vibe/api/wishlist?sessionId=shopify:{customer.id}` — Shopify's App Proxy auto-appends `logged_in_customer_id` + HMAC-signs before forwarding, so the existing IDOR guard in [apps.vibe.api.wishlist.tsx:30](../vibe-app/app/routes/apps.vibe.api.wishlist.tsx:30) covers identity. Three render states (loading / empty / error) all use the same calm card so the layout doesn't reflow as data lands.
+  - **Source of truth:** engine `wishlist_items` table. No new schema, no Shopify metafield writes — Vibe owns the model end-to-end.
+  - **Limitation:** classic accounts only. Stores migrated to Shopify's new Customer Accounts (`shopify.com/<store>/account`, JSX-based UI Extensions) won't see this block — those need a Customer Account UI Extension, a separate package. Revisit if any tenant is fully on new accounts.
+  - **Bundled with D.C.1.** Both blocks live in the single `vibe-storefront` theme app extension so one `shopify app deploy` ships them together and Shopify's review process treats them as one change.
+- [ ] **D.C.9.** **Add-to-Cart prod verification.** Once **B.8** runs against the production store (gated on **D.P.1**), spot-check that Buy Outfit / Buy Now path: real variant ids on `OutfitItem`, `/cart/add.js` succeeds, customer lands on `/cart` with all garments + correct sizes. Today every add hits the mock-id guard because vibe-test has only ~60 demo products. No code change — just a checklist item so the wiring doesn't sit silently broken after the catalog lands.
 
 #### D.C.2 sub-plan — Conversation page
 
@@ -179,7 +184,7 @@ Engine turn end-to-end takes 30–60s with try-on; up to 90s on cold path. Stage
 
 Can ship after D.C lands — merchant doesn't need rich admin until Vibe is real.
 
-- [ ] **D.M.1.** Welcome/status screen — replaces today's "Generate a product" template. Shows "Vibe is active", catalog sync status, "Open Vibe on your storefront →" link.
+- [x] **D.M.1.** Welcome/status screen — replaces the demo "Generate a product" template. Lives at [app/routes/app._index.tsx](../vibe-app/app/routes/app._index.tsx). Shows "Vibe is active" status, links to the customer-facing Conversation / Wardrobe / Looks paths on the merchant's storefront, and pulls the shop domain from the authenticated admin session.
 - [ ] **D.M.2.** Permissions panel — what Vibe accesses (products / orders / customers / themes / customer-account-data) with revoke/re-grant.
 - [ ] **D.M.3.** Storefront placement controls — toggle the Vibe widget on PDP / homepage / nav / etc., customize entry-point copy.
 - [ ] **D.M.4.** Analytics dashboard — conversations, conversion rate, revenue attribution, share-to-save earnings.
@@ -220,20 +225,18 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 
 ## Reuse (don't build)
 
-- **Wishlist:** skip third-party wishlist apps for now. Vibe's Looks page will be the native equivalent. Re-evaluate after D.6 lands.
+- **Wishlist:** skip third-party wishlist apps. Vibe owns the saved-items model end-to-end (engine `wishlist_items` table + Conversation picker), and **D.C.8** bridges it to the storefront customer-account page via a Theme App Extension block. **D.C.4** Looks page remains the richer in-Vibe surface (saved outfits, not just products).
 - **Auto-collections + nav menu** (Women / Men / Festive / Wedding / Workwear): rules already drafted; user to wire when ready. No code work.
 
 ## Next priorities (in execution order)
 
-1. **D.M.1 — Merchant welcome/status screen.** Replace the demo Polaris "Generate a product" template with a small "Vibe is active / catalog synced / open Vibe →" card. ~1 hr, low risk. First merchant-side polish.
-2. **D.C.3 — Wardrobe page.** CRUD + filters for `user_wardrobe_items`. Newly unblocked by D.S.3b. Biggest customer-facing piece left before launch; gates wardrobe-first recommendations.
-3. **D.C.4 — Looks page.** Saved outfits + past recommendations.
-4. **D.C.5 — Outfit Check page.** Upload outfit → engine feedback.
-5. **B.6 — Real-card test order.** Sanity check before broader access.
-6. **B.4 — Mandatory legal pages** (About / Contact / Shipping / Returns / Privacy / Terms). Required before customer-facing launch.
-7. **D.P.1 — Install Vibe on the production store** (`thesigmavibe.shop`). Unblocks running **B.8** ([`scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py`](../scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py), ~3 min) against the real 13K-product catalog, which activates Add-to-Cart end-to-end via the wiring shipped in D.C.7 / #374. (Running B.8 against vibe-test today matches zero rows since the dev store carries only ~60 demo products — defer until D.P.1.)
-8. **D.S.4 — Remaining GDPR webhooks** (`customers/data_request`, `customers/redact`, `shop/redact`). Required for public App Store listing.
-9. Eventually: D.M.2–D.M.6 (richer merchant admin), D.P.2–D.P.3 (real-card e2e + listing assets), Phase C (engine multi-tenancy), Phase E (manual fulfillment SOP).
+1. **D.C.5 — Outfit Check page.** Upload outfit → engine feedback.
+2. **B.6 — Real-card test order.** Sanity check before broader access.
+3. **B.4 — Mandatory legal pages** (About / Contact / Shipping / Returns / Privacy / Terms). Required before customer-facing launch.
+4. **D.P.1 — Install Vibe on the production store** (`thesigmavibe.shop`). Unblocks running **B.8** ([`scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py`](../scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py), ~3 min) against the real 13K-product catalog, which activates Add-to-Cart end-to-end via the wiring shipped in D.C.7 / #374. The `vibe-storefront` theme app extension (D.C.1 + D.C.8) needs `shopify app deploy` against the prod app, and the merchant needs to add the two blocks to the appropriate theme templates. (Running B.8 against vibe-test today matches zero rows since the dev store carries only ~60 demo products — defer until D.P.1.)
+5. **D.C.9 — Add-to-Cart prod verification.** Spot-check Buy Outfit / Buy Now end-to-end after B.8 lands real variant ids. No code; just confirm the wiring works on real inventory.
+6. **D.S.4 — Remaining GDPR webhooks** (`customers/data_request`, `customers/redact`, `shop/redact`). Required for public App Store listing.
+7. Eventually: D.M.2–D.M.6 (richer merchant admin), D.P.2–D.P.3 (real-card e2e + listing assets), Phase C (engine multi-tenancy), Phase E (manual fulfillment SOP).
 
 ---
 
