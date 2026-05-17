@@ -64,3 +64,15 @@ primary_region = "bom"
 [mounts]
   source = "vibe_data"
   destination = "/app/data"
+
+# `recreate` deploy strategy — required when a single machine claims
+# a single volume. The default rolling strategy deadlocks because
+# Fly tries to start the new machine before stopping the old one,
+# but only one machine can mount the volume at a time. With
+# `recreate` the old machine is fully stopped (volume released)
+# before the new machine is created (volume attaches). This means
+# a brief downtime window during deploys (~10-20s) which is fine
+# for the engine — the storefront still serves cached pages and
+# new turns retry on the next poll cycle.
+[deploy]
+  strategy = "recreate"
