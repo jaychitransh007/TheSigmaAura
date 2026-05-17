@@ -1601,3 +1601,44 @@ export async function forwardProductDeleteWebhook(args: {
     { payload: args.payload ?? {} },
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// F.3 — daily catalog sync cron.
+//
+// Vibe-app's Vercel cron route iterates over all tenants daily,
+// catching webhook delivery failures + drift between Shopify state
+// and the engine. Each tenant: walk the Admin GraphQL `products`
+// query with an updatedAtMin filter, forward changed products to
+// the engine, then trigger the enrichment poller to ingest any
+// completed Batch API submissions.
+// ─────────────────────────────────────────────────────────────────────
+
+export type TenantListItem = {
+  tenant_id: string;
+  shopify_shop_domain: string;
+  bootstrap_status: string;
+  product_count: number;
+  last_sync_at: string;
+};
+
+export async function listTenants(): Promise<TenantListItem[]> {
+  if (USE_MOCK) return [];
+  const raw = await getJson<{ tenants?: TenantListItem[] }>("/v1/tenants");
+  return raw.tenants ?? [];
+}
+
+export type EnrichmentPollItem = {
+  openai_batch_id: string;
+  final_status: string;
+  rows_ingested: number;
+  rows_failed: number;
+};
+
+export async function pollAllEnrichment(): Promise<EnrichmentPollItem[]> {
+  if (USE_MOCK) return [];
+  const raw = await postJson<{ batches?: EnrichmentPollItem[] }>(
+    "/v1/enrichment/poll-all",
+    {},
+  );
+  return raw.batches ?? [];
+}

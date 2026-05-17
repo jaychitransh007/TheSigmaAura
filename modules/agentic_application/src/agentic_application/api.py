@@ -34,6 +34,7 @@ from platform_core.api_schemas import (
     ProductWebhookCreateOrUpdateRequest,
     ProductWebhookDeleteResult,
     ProductWebhookResult,
+    TenantListResponse,
     TenantStatusResponse,
     DependencyReportResponse,
     FeedbackRequest,
@@ -739,18 +740,21 @@ def create_app() -> FastAPI:
             # Validate the tenant exists — refusing to ingest data
             # against a tenant_id the install flow hasn't created
             # surfaces config bugs early.
-            if not tenant_repo.get_by_tenant_id(tenant_id):
+            tenant_row = tenant_repo.get_by_tenant_id(tenant_id)
+            if not tenant_row:
                 raise HTTPException(
                     status_code=404,
                     detail=f"tenant_id {tenant_id} not found; install flow must run first",
                 )
 
-            # Mark transitioning to 'syncing' on the first batch. The
-            # SET is idempotent (no-op on subsequent batches) but a
-            # fresh-install caller sees the status flip on the very
-            # first call, which the merchant-admin progress UI keys
-            # off.
-            tenant_repo.set_bootstrap_status(tenant_id, "syncing")
+            # Only flip to 'syncing' on a tenant that's still in the
+            # install flow (pending/failed). For a tenant already at
+            # 'ready' (daily-sync cron re-using this endpoint), leave
+            # the status alone — otherwise the merchant-admin home
+            # would show "syncing" forever every time the cron fires.
+            current_status = str(tenant_row.get("bootstrap_status") or "")
+            if current_status in ("pending", "failed"):
+                tenant_repo.set_bootstrap_status(tenant_id, "syncing")
 
             result = bootstrap_service.process_products(
                 tenant_id=tenant_id,
@@ -979,6 +983,34 @@ def create_app() -> FastAPI:
                         rows_failed=r.rows_failed,
                     )
                     for r in results
+                ]
+            )
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get(
+        "/v1/tenants",
+        response_model=TenantListResponse,
+    )
+    def list_tenants() -> TenantListResponse:
+        """Enumerate installed shops. Used by the F.3 daily-sync
+        cron in vibe-app to iterate over tenants without holding a
+        per-shop session. Filtered to 'ready' tenants only — pending/
+        failed/syncing don't yet have data to incrementally sync.
+        """
+        try:
+            rows = tenant_repo.list_all(bootstrap_status="ready")
+            return TenantListResponse(
+                tenants=[
+                    TenantStatusResponse(
+                        tenant_id=str(r.get("tenant_id") or ""),
+                        shopify_shop_domain=str(r.get("shopify_shop_domain") or ""),
+                        bootstrap_status=str(r.get("bootstrap_status") or ""),
+                        product_count=int(r.get("product_count") or 0),
+                        bootstrap_completed_at=str(r.get("bootstrap_completed_at") or ""),
+                        last_sync_at=str(r.get("last_sync_at") or ""),
+                    )
+                    for r in rows
                 ]
             )
         except (ValueError, SupabaseError, RuntimeError) as exc:

@@ -118,6 +118,13 @@ class TenantStatusResponse(BaseModel):
     last_sync_at: str = ""
 
 
+class TenantListResponse(BaseModel):
+    """Result of GET /v1/tenants, used by the F.3 daily-sync cron
+    to iterate over installed shops."""
+
+    tenants: List[TenantStatusResponse] = Field(default_factory=list)
+
+
 class BootstrapCompleteRequest(BaseModel):
     """Sent by vibe-app once the paginated walk through Shopify
     Admin GraphQL has exhausted. Flips bootstrap_status to 'ready'

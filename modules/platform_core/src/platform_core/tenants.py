@@ -200,6 +200,29 @@ class TenantRepository:
             patch=patch,
         )
 
+    def list_all(
+        self,
+        *,
+        bootstrap_status: Optional[str] = None,
+    ) -> list[Dict[str, Any]]:
+        """Enumerate every tenant row.
+
+        Used by the F.3 daily-sync cron to iterate over installed
+        shops without holding per-shop sessions. Optionally filtered
+        by bootstrap_status (typically 'ready' — there's nothing for
+        the daily sync to do on a tenant that hasn't finished
+        bootstrap yet).
+        """
+        filters: Dict[str, str] = {}
+        if bootstrap_status:
+            filters["bootstrap_status"] = f"eq.{bootstrap_status}"
+        return self._client.select_many(
+            "tenants",
+            filters=filters or None,
+            columns="tenant_id,shopify_shop_domain,bootstrap_status,product_count,last_sync_at",
+            order="last_sync_at.asc.nullsfirst",
+        )
+
 
 def _now_iso() -> str:
     """ISO-8601 UTC string suitable for Postgres timestamptz columns."""
