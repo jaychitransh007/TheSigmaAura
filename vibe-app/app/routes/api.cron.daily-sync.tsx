@@ -373,7 +373,12 @@ async function syncOneTenant(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ products }),
+        // revive_soft_deleted=true so a cache-hit on a row that was
+        // marked deleted (by a products/delete webhook) but now
+        // shows up in the daily walk gets resurrected. Closes the
+        // gap where Shopify drops a products/create retry after the
+        // 48h window.
+        body: JSON.stringify({ products, revive_soft_deleted: true }),
         signal: AbortSignal.timeout(45_000),
       },
     );

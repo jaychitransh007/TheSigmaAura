@@ -97,9 +97,19 @@ class BootstrapBatchRequest(BaseModel):
     """One chunk of products to upsert for a tenant. Sized client-side
     to keep each HTTP call under Vercel's 60s function ceiling — 25-50
     products typical for fresh installs (slowed by embedding generation);
-    100-200 for re-syncs (skip-only, fast)."""
+    100-200 for re-syncs (skip-only, fast).
+
+    ``revive_soft_deleted`` is for the F.3 daily cron: when True, a
+    cache-hit on a row that's currently soft-deleted clears its
+    deleted_at + sets available_for_sale from the incoming product.
+    The install-time bootstrap path leaves this at False — there's no
+    legacy soft-deletes to revive on a fresh install. The F.4 webhook
+    upsert path also leaves it False; webhook revival is topic-aware
+    (only products/create may revive) and lives in
+    CatalogProductSyncService."""
 
     products: List[BootstrapProductInput] = Field(default_factory=list)
+    revive_soft_deleted: bool = False
 
 
 class BootstrapBatchResponse(BaseModel):
