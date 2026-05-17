@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List
 
 from ..intent_registry import FollowUpIntent
@@ -14,6 +15,8 @@ from ..schemas import (
 
 import re
 from platform_core.restricted_categories import detect_restricted_record
+
+_log = logging.getLogger(__name__)
 
 MAX_FORMATTED_OUTFITS = 3
 
@@ -77,6 +80,28 @@ def _build_item_card(item: Dict[str, Any]) -> Dict[str, Any]:
         for size, gid in raw_variant_ids.items():
             if size and gid:
                 variant_ids[str(size)] = str(gid)
+    # Cart-wiring guard (PR #475 follow-up to #474): a catalog item
+    # shipping with an empty variant map means either F.2.2 bootstrap
+    # left this row unmapped, or somewhere along the response pipeline
+    # the field got dropped (the silent-drop pattern that took us a
+    # full session to diagnose last time). Tick a counter labelled by
+    # source so operators alert on the catalog-source rate going
+    # non-zero — wardrobe items legitimately have no variant map.
+    item_source = str(item.get("source", "catalog") or "catalog").lower()
+    if not variant_ids:
+        try:
+            from platform_core.metrics import observe_outfit_item_variant_ids_missing
+            observe_outfit_item_variant_ids_missing(source=item_source)
+        except Exception:  # noqa: BLE001 — metrics never break pipeline
+            pass
+        if item_source == "catalog":
+            _log.warning(
+                "ResponseFormatter: catalog item shipped with empty shopify_variant_ids "
+                "(product_id=%s title=%s) — cart CTA will be disabled on storefront. "
+                "Check that F.2.2 bootstrap captured variants for this product.",
+                str(item.get("product_id", ""))[:80],
+                str(item.get("title", ""))[:60],
+            )
     card: Dict[str, Any] = {
         "product_id": str(item.get("product_id", "")),
         "similarity": float(item.get("similarity", 0.0) or 0.0),

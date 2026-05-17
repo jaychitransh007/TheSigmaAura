@@ -1416,6 +1416,106 @@ class AgenticApplicationTests(unittest.TestCase):
         self.assertEqual(["draped"], summaries[0]["silhouette_types"])
         self.assertEqual("paired", summaries[0]["candidate_type"])
 
+    def test_response_formatter_passes_shopify_variant_ids_through(self) -> None:
+        """Cart-wiring regression guard (PR #474 + #475).
+
+        response_formatter._build_item_card used to enumerate fields
+        explicitly and silently dropped shopify_variant_ids. The fix
+        keeps the field; this test locks that in so a future
+        refactor can't lose it again."""
+        formatter = ResponseFormatter()
+        variants = {
+            "S": "gid://shopify/ProductVariant/111",
+            "M": "gid://shopify/ProductVariant/112",
+            "L": "gid://shopify/ProductVariant/113",
+        }
+        evaluated = [
+            EvaluatedRecommendation(
+                candidate_id="cand-1", rank=1, match_score=0.9,
+                title="Black Linen Shirt",
+                reasoning="ok",
+                item_ids=["gid://shopify/Product/777"],
+            )
+        ]
+        candidates = [
+            OutfitCandidate(
+                candidate_id="cand-1", direction_id="A",
+                candidate_type="complete",
+                items=[
+                    {
+                        "product_id": "gid://shopify/Product/777",
+                        "title": "Black Linen Shirt",
+                        "shopify_product_id": "gid://shopify/Product/777",
+                        "shopify_variant_ids": variants,
+                        "catalog_description": "Soft drape, breathable.",
+                        "source": "catalog",
+                    }
+                ],
+                fashion_score=80,
+            )
+        ]
+        context = CombinedContext(
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="x"),
+        )
+        plan = RecommendationPlan(retrieval_count=8, directions=[])
+
+        response = formatter.format(evaluated, context, plan, candidates)
+
+        item = response.outfits[0].items[0]
+        self.assertEqual(item["shopify_product_id"], "gid://shopify/Product/777")
+        self.assertEqual(item["shopify_variant_ids"], variants)
+        self.assertEqual(item["catalog_description"], "Soft drape, breathable.")
+
+    def test_response_formatter_warns_on_empty_catalog_variants(self) -> None:
+        """Cart-wiring guard: a catalog item shipping with no variant
+        gids should log a warning so operators alert on a silent
+        regression (the PR #474 bug class)."""
+        import logging
+        formatter = ResponseFormatter()
+        evaluated = [
+            EvaluatedRecommendation(
+                candidate_id="cand-1", rank=1, match_score=0.9,
+                title="x", reasoning="x",
+                item_ids=["sku-x"],
+            )
+        ]
+        candidates = [
+            OutfitCandidate(
+                candidate_id="cand-1", direction_id="A",
+                candidate_type="complete",
+                items=[
+                    {
+                        "product_id": "sku-x",
+                        "title": "Item",
+                        "shopify_product_id": "gid://shopify/Product/1",
+                        # NOTE: empty variant map — the regression case
+                        "shopify_variant_ids": {},
+                        "source": "catalog",
+                    }
+                ],
+                fashion_score=80,
+            )
+        ]
+        context = CombinedContext(
+            user=UserContext(user_id="u1", gender="female"),
+            live=LiveContext(user_need="x"),
+        )
+        plan = RecommendationPlan(retrieval_count=8, directions=[])
+
+        with self.assertLogs(
+            "agentic_application.agents.response_formatter", level=logging.WARNING,
+        ) as captured:
+            formatter.format(evaluated, context, plan, candidates)
+        # At least one warning must mention the missing variant map.
+        warned_about_variants = any(
+            "shopify_variant_ids" in line for line in captured.output
+        )
+        self.assertTrue(
+            warned_about_variants,
+            f"Expected a warning about empty variant ids; got: {captured.output}",
+        )
+
     def test_response_formatter_preserves_product_url_and_price(self) -> None:
         formatter = ResponseFormatter()
         evaluated = [

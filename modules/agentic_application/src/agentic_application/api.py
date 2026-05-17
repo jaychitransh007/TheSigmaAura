@@ -761,15 +761,44 @@ def create_app() -> FastAPI:
                 products=[p.model_dump() for p in payload.products],
                 revive_soft_deleted=bool(payload.revive_soft_deleted),
             )
+            created = int(result.get("created", 0))
+            updated = int(result.get("updated", 0))
+            failed = int(result.get("failed", 0))
+            page_size = len(payload.products)
+            tick_status = "empty" if page_size == 0 else (
+                "failed" if failed > 0 and (created + updated) == 0 else "ok"
+            )
+            _log.info(
+                "bootstrap_batch: tenant=%s revive=%s products_in=%d created=%d updated=%d failed=%d status=%s",
+                tenant_id, bool(payload.revive_soft_deleted),
+                page_size, created, updated, failed, tick_status,
+            )
+            try:
+                from platform_core.metrics import observe_bootstrap_batch
+                observe_bootstrap_batch(
+                    status=tick_status,
+                    created=created, updated=updated, failed=failed,
+                )
+            except Exception:  # noqa: BLE001 — metrics never break pipeline
+                pass
             return BootstrapBatchResponse(
-                created=int(result.get("created", 0)),
-                updated=int(result.get("updated", 0)),
-                failed=int(result.get("failed", 0)),
+                created=created,
+                updated=updated,
+                failed=failed,
                 errors=list(result.get("errors", []) or []),
             )
         except HTTPException:
             raise
         except (ValueError, SupabaseError, RuntimeError) as exc:
+            _log.warning(
+                "bootstrap_batch: tenant=%s failed err=%s",
+                tenant_id, exc,
+            )
+            try:
+                from platform_core.metrics import observe_bootstrap_batch
+                observe_bootstrap_batch(status="failed")
+            except Exception:  # noqa: BLE001
+                pass
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/v1/tenants/{tenant_id}/bootstrap-complete")
