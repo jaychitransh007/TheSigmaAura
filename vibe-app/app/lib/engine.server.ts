@@ -380,6 +380,12 @@ export async function startTurn(args: {
   /** Picked from the customer's wishlist (saved catalog products).
    *  Engine resolves to a catalog row and anchors on it. */
   wishlistProductId?: string;
+  /** Shopify *.myshopify.com domain, extracted from the signed App
+   *  Proxy URL params. Required for `vibe_storefront` traffic so the
+   *  engine can resolve the right tenant_id for catalog retrieval —
+   *  the engine refuses to default for this channel (would leak a
+   *  different store's catalog into Vibe answers). */
+  shopDomain: string;
 }): Promise<StartTurnResponse> {
   if (USE_MOCK) {
     // Encode start timestamp into the job_id so pollTurn can compute
@@ -401,6 +407,11 @@ export async function startTurn(args: {
       // degrades gracefully (architect runs in "minimal" richness,
       // rater drops body_harmony, etc.).
       channel: "vibe_storefront",
+      // F.2.0: tenant resolution key. Engine's
+      // resolve_tenant_id_or_default raises on empty shop_domain for
+      // this channel rather than silently defaulting — protects
+      // against accidental cross-tenant catalog leaks.
+      shop_domain: args.shopDomain,
       // Omit when undefined — JSON.stringify drops undefined keys, and
       // the engine's CreateTurnRequest defaults each attachment field
       // to "" via pydantic. Avoids shipping empty strings for fields

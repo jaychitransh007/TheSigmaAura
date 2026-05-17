@@ -173,6 +173,14 @@ type ActionResponse = InitOk | TurnOk | MergeOk | ActionFail;
 export const action = async ({ request }: ActionFunctionArgs) => {
   await authenticate.public.appProxy(request);
 
+  // Shop domain is in the signed App Proxy URL params (HMAC-validated
+  // by authenticate.public.appProxy above). Pull it once here and
+  // thread it into engine calls that need a tenant — the storefront
+  // chat path is where F.2.0 enforces tenant-scoped retrieval, so
+  // missing this silently used to surface as a 500 from the engine.
+  const shopDomain =
+    new URL(request.url).searchParams.get("shop")?.trim() ?? "";
+
   const form = await request.formData();
   const op = String(form.get("op") ?? "").trim();
   const sessionId = String(form.get("sessionId") ?? "").trim();
@@ -436,6 +444,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       imageData: imageData || undefined,
       wardrobeItemId: wardrobeItemId || undefined,
       wishlistProductId: wishlistProductId || undefined,
+      shopDomain,
     });
     return json<ActionResponse>({
       ok: true,
