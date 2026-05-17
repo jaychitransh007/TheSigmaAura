@@ -710,17 +710,24 @@ function normalizeOutfit(card: RawEngineOutfit, idx: number): Outfit {
   };
 }
 
-// Engine emits relative URLs of the form
-//   /v1/onboarding/images/local?path=data/tryon/images/<hash>.jpg
-// for try-on renders and any wardrobe item served off the engine's disk.
-// Those paths only resolve against the engine origin; the storefront
-// browser sees them rooted at thesigmavibe.shop and 404s. Route them
-// through the app proxy's tryon-image passthrough (apps.vibe.api.tryon-image.tsx)
-// so the engine origin stays hidden and a single content-addressed
-// path serves everything.
+// Engine emits image references in three shapes:
+//   1. Absolute http(s):// URLs — Shopify CDN, catalog products. Use
+//      as-is.
+//   2. /v1/onboarding/images/local?path=<...> — try-on renders + some
+//      historical wardrobe paths. Route through the App Proxy
+//      passthrough so the engine origin stays hidden and CORS stays
+//      moot.
+//   3. Raw filesystem paths like `data/onboarding/images/wardrobe/
+//      <hash>.jpg` — the wardrobe + (some) onboarding endpoints
+//      return these directly because the engine's response model
+//      (user/schemas.WardrobeItemResponse) carries the raw path in
+//      `image_path` without prefixing the serving route. Wrap them
+//      in the proxy URL so the browser can fetch them; the engine's
+//      _resolve_local_image_file allowlists data/onboarding/images
+//      and data/tryon/images, both of which we forward.
 //
-// Absolute http(s):// URLs (Shopify CDN / catalog product images) and
-// data: URLs (inline try-on payloads, if any) are returned as-is.
+// Without case 3 the wardrobe picker tiles render with broken-image
+// icons (browser hits thesigmavibe.shop/data/onboarding/images/... → 404).
 function rewriteEngineImageUrl(raw: string | undefined): string {
   const url = String(raw ?? "").trim();
   if (!url) return "";
@@ -729,6 +736,12 @@ function rewriteEngineImageUrl(raw: string | undefined): string {
   const prefix = "/v1/onboarding/images/local?path=";
   if (url.startsWith(prefix)) {
     return "/apps/vibe/api/tryon-image?path=" + url.slice(prefix.length);
+  }
+  // Raw filesystem path served by the engine — must wrap in the
+  // proxy + URL-encode the path so slashes round-trip cleanly through
+  // the searchParams reader on the receiving side.
+  if (url.startsWith("data/")) {
+    return "/apps/vibe/api/tryon-image?path=" + encodeURIComponent(url);
   }
   return url;
 }
