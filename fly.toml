@@ -72,8 +72,10 @@ primary_region = "bom"
 # stops the old machine first (volume released) and then starts the
 # new one (volume attaches). Brief downtime during deploys
 # (~10-20s) is fine for the engine — the storefront serves cached
-# pages and new turns retry on the next poll cycle. Apps v2 valid
-# strategies: canary, rolling, immediate, bluegreen (recreate is
-# not a v2 option — see #418 review fix May 17 2026).
+# pages and new turns retry on the next poll cycle. Apps v2
+# strategies that work with volumes: rolling, immediate (canary +
+# bluegreen need multiple parallel machines and a volume can only
+# attach to one at a time; recreate isn't a v2 option — see #418
+# / #431 review thread May 17 2026).
 [deploy]
   strategy = "immediate"
