@@ -20,6 +20,14 @@ type FetchState<T> =
 function useFetchOnMount<T>(url: string): FetchState<T> {
   const [state, setState] = useState<FetchState<T>>({ phase: "loading" });
   useEffect(() => {
+    // Reset to `loading` on every URL change so the picker doesn't
+    // briefly show stale items from a previous identity. The common
+    // case (sessionId stable for the life of the session) is
+    // unaffected; the load-bearing case is a Shopify-merge mid-
+    // session, where the canonical id swaps and the URL recomputes —
+    // without this reset we'd render the anonymous user's wardrobe
+    // until the canonical-user fetch returned.
+    setState({ phase: "loading" });
     // AbortController, not a captured `cancelled` flag — the latter
     // would suppress state updates after unmount but still let the
     // network request finish, wasting bandwidth when the customer
