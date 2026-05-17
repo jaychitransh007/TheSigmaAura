@@ -170,6 +170,77 @@ class IdempotencyTests(unittest.TestCase):
         self.assertEqual(result, {"created": 0, "updated": 0, "failed": 0, "errors": []})
 
 
+class TenantScopedProductIdTests(unittest.TestCase):
+    """`catalog_enriched.product_id` has a global UNIQUE constraint
+    (verified live against staging). Two tenants legitimately importing
+    the same Shopify GID must NOT collide — prevented by prefixing
+    tenant_id into product_id. The bare shopify_product_id stays in
+    its own column for cart wiring."""
+
+    def test_product_id_is_tenant_prefixed_on_insert(self):
+        embedder = _make_embedder()
+        client = _make_client(existing_product_ids=set())
+        service = CatalogBootstrapService(client, embedder=embedder)
+
+        service.process_products(
+            tenant_id="t_alpha",
+            products=[{
+                "shopify_product_id": "gid://shopify/Product/12345",
+                "title": "Shared GID test",
+                "description": "",
+            }],
+        )
+
+        enriched_inserts = [
+            c for c in client.insert_one.call_args_list
+            if c.args[0] == "catalog_enriched"
+        ]
+        self.assertEqual(len(enriched_inserts), 1)
+        payload = enriched_inserts[0].args[1]
+        self.assertEqual(payload["product_id"], "t_alpha:gid://shopify/Product/12345")
+        self.assertEqual(payload["shopify_product_id"], "gid://shopify/Product/12345")
+        self.assertEqual(payload["tenant_id"], "t_alpha")
+
+        embedding_inserts = [
+            c for c in client.insert_one.call_args_list
+            if c.args[0] == "catalog_item_embeddings"
+        ]
+        self.assertEqual(len(embedding_inserts), 1)
+        emb_payload = embedding_inserts[0].args[1]
+        self.assertEqual(emb_payload["product_id"], "t_alpha:gid://shopify/Product/12345")
+        self.assertEqual(emb_payload["tenant_id"], "t_alpha")
+
+    def test_two_tenants_same_shopify_gid_yield_different_product_ids(self):
+        from agentic_application.services.catalog_bootstrap_service import (
+            _tenant_scoped_product_id,
+        )
+        alpha = _tenant_scoped_product_id("t_alpha", "gid://shopify/Product/99")
+        beta = _tenant_scoped_product_id("t_beta", "gid://shopify/Product/99")
+        self.assertNotEqual(alpha, beta)
+
+
+class HtmlStrippingTests(unittest.TestCase):
+    """Shopify's descriptionHtml is HTML — feeding it raw to the
+    embedder inflates token count and worsens semantic clustering."""
+
+    def test_html_tags_stripped_from_description(self):
+        from agentic_application.services.catalog_bootstrap_service import _strip_html
+
+        raw = "<p>Soft <strong>linen</strong> drape.</p><br/><p>Hits&nbsp;the hip.</p>"
+        self.assertEqual(_strip_html(raw), "Soft linen drape. Hits the hip.")
+
+    def test_html_entities_decoded(self):
+        from agentic_application.services.catalog_bootstrap_service import _strip_html
+
+        self.assertEqual(_strip_html("Tom&#39;s &amp; Jerry"), "Tom's & Jerry")
+
+    def test_empty_input_returns_empty(self):
+        from agentic_application.services.catalog_bootstrap_service import _strip_html
+
+        self.assertEqual(_strip_html(""), "")
+        self.assertEqual(_strip_html("   "), "")
+
+
 class CostSafetyTest(unittest.TestCase):
     """Belt-and-suspenders: under the realistic re-install case (every
     product in the input batch is already enriched), zero LLM calls
