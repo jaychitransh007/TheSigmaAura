@@ -34,14 +34,67 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // session.shop is the canonical *.myshopify.com domain (e.g.
   // `q8pery-95.myshopify.com`). Use it to build the storefront URL
   // *and* the customer-facing /apps/vibe/style link.
-  return json({ shop: session.shop });
+  //
+  // session.scope is the space-separated list of scopes the merchant
+  // actually granted. Surfacing it on the welcome screen serves as a
+  // lightweight permissions transparency layer until D.M.2 lands the
+  // dedicated panel.
+  const grantedScopes = (session.scope ?? "")
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return json({ shop: session.shop, grantedScopes });
+};
+
+// Plain-English description per granted scope so the merchant sees
+// *why* each one is requested, not just the raw API string. Kept in
+// sync with the toml's [access_scopes].scopes list — adding a new
+// scope here without an entry below is a silent regression.
+const SCOPE_DESCRIPTIONS: Record<string, { label: string; reason: string }> = {
+  read_products: {
+    label: "Read your products",
+    reason: "So Vibe can recommend outfits from your actual catalog.",
+  },
+  read_inventory: {
+    label: "Read your inventory",
+    reason: "So Vibe doesn't recommend pieces that are out of stock.",
+  },
+  read_orders: {
+    label: "Read your orders",
+    reason:
+      "So we can attribute purchases back to the Vibe sessions that drove them.",
+  },
+  read_customers: {
+    label: "Read your customers",
+    reason:
+      "So an order's customer can be linked to their chat history with Vibe.",
+  },
+  read_themes: {
+    label: "Read your themes",
+    reason:
+      "So we can verify the Style-with-Vibe block is live on the active theme.",
+  },
+  write_metafields: {
+    label: "Write metafields on orders",
+    reason:
+      "So Vibe-attributed orders get tagged with the outfit that influenced them — powers your analytics.",
+  },
 };
 
 export default function MerchantIndex() {
-  const { shop } = useLoaderData<typeof loader>();
+  const { shop, grantedScopes } = useLoaderData<typeof loader>();
   const storefrontUrl = `https://${shop}`;
   const vibeUrl = `https://${shop}/apps/vibe/style`;
   const productsAdminUrl = `shopify:admin/products`;
+  // Filter to scopes we have documentation for — if Shopify reports a
+  // scope we don't recognise, skip it rather than render an undefined
+  // row. Keeps the panel honest while a new scope is being rolled out
+  // in stages (toml updated, descriptions still pending).
+  const scopeRows = grantedScopes
+    .map((scope) => ({ scope, info: SCOPE_DESCRIPTIONS[scope] }))
+    .filter((row): row is { scope: string; info: { label: string; reason: string } } =>
+      row.info != null,
+    );
 
   return (
     <Page>
@@ -142,11 +195,44 @@ export default function MerchantIndex() {
               <Card>
                 <BlockStack gap="300">
                   <Text as="h3" variant="headingMd">
+                    Permissions
+                  </Text>
+                  <Text as="p" variant="bodyMd" tone="subdued">
+                    What Vibe accesses on your store. Each permission powers
+                    a specific feature — the dedicated controls panel arrives
+                    in the next release.
+                  </Text>
+                  {scopeRows.length === 0 ? (
+                    <Text as="p" variant="bodyMd" tone="subdued">
+                      No permissions information available — re-install the
+                      app from Shopify admin if this looks wrong.
+                    </Text>
+                  ) : (
+                    <BlockStack gap="200">
+                      {scopeRows.map(({ scope, info }) => (
+                        <BlockStack gap="050" key={scope}>
+                          <Text as="span" variant="bodyMd" fontWeight="semibold">
+                            {info.label}
+                          </Text>
+                          <Text as="span" variant="bodySm" tone="subdued">
+                            {info.reason}
+                          </Text>
+                        </BlockStack>
+                      ))}
+                    </BlockStack>
+                  )}
+                </BlockStack>
+              </Card>
+
+              <Card>
+                <BlockStack gap="300">
+                  <Text as="h3" variant="headingMd">
                     Next up
                   </Text>
                   <Text as="p" variant="bodyMd" tone="subdued">
-                    Permissions, storefront placement controls, and the
-                    analytics dashboard land in the next release.
+                    A permissions controls panel, storefront placement
+                    settings, and the analytics dashboard land in upcoming
+                    releases.
                   </Text>
                 </BlockStack>
               </Card>

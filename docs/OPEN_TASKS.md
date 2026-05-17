@@ -253,15 +253,7 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 
 **Sub-tasks**
 
-- [ ] **F.1.** **New scope grant + reinstall flow.** Expand `shopify.app.vibe.toml` scope set:
-  - `read_products` — sync the merchant's catalog
-  - `read_inventory` — filter recommendations by stock
-  - `read_orders` — subscribe to `orders/create` + `orders/paid` for G
-  - `read_customers` — link orders to engine `external_user_id`
-  - `read_themes` — verify Theme App Extension placement (D.M.3)
-  - `write_metafields` — tag Vibe-attributed orders with attribution context
-
-  Drop unused `write_products` to keep the consent screen tight. OAuth re-grant required on existing installs — surface clean copy on the install screen about *what* and *why* for each scope.
+- [x] **F.1.** Scope set expanded in [shopify.app.vibe.toml](../vibe-app/shopify.app.vibe.toml) — six new scopes (`read_products`, `read_inventory`, `read_orders`, `read_customers`, `read_themes`, `write_metafields`); dropped `write_products`. Each scope's *why* surfaces on the merchant welcome screen ([app._index.tsx](../vibe-app/app/routes/app._index.tsx)) via a new Permissions card that reads `session.scope` and maps each granted scope to a plain-English label + reason. **Deploy + re-grant procedure** documented in [docs/runbooks/F1_scope_reinstall.md](../docs/runbooks/F1_scope_reinstall.md). Existing installs (currently just `vibe-test-nmt8wy3q.myshopify.com`) need to re-authorize on next admin load — Shopify surfaces the banner automatically.
 - [ ] **F.2.** **Initial sync job.** On install (or scope re-grant), Vibe walks the merchant's catalog via Admin GraphQL (paginated). For each product, writes to `catalog_enriched` with the merchant's `tenant_id`, runs the existing visual enrichment + embedding generation pipeline (~$0.003/row). Status surfaces on the merchant admin home screen ("Catalog syncing: 230 of 1,840 products…"). Idempotent — safe to re-run; skips already-enriched rows by `shopify_product_id` + content hash.
 - [ ] **F.3.** **Webhook-driven incremental sync.** Subscribe to `products/create`, `products/update`, `products/delete`, `inventory_levels/update`. Each fires a targeted re-enrichment or delete on the affected product. Avoids the slow path of periodic full re-syncs.
 - [ ] **F.4.** **Stock-aware retrieval.** Engine's `match_catalog_item_embeddings` RPC + post-retrieval filter respect `available_for_sale` so the stylist doesn't recommend OOS items. Inventory updates flow in via F.3.
@@ -304,7 +296,7 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 
 **Then — Merchant-admin build (F → G → D.M.*), roughly 8-10 weeks:**
 
-5. **F.1 — Scope expansion + reinstall flow** (2-3 days). Foundation for everything below; existing installs reinstall once with the new scope list.
+5. ~~**F.1 — Scope expansion + reinstall flow**~~ — shipped. Re-grant required on the dev store next time you open Vibe in admin.
 6. **F.2 — Initial catalog sync** (1 week). Per-merchant catalog ingestion + visual enrichment + embeddings; sync status surfaces in D.M.1.
 7. **G.1 + G.2 — Order webhooks + attribution engine** (1 week). Unlocks D.M.4 revenue numbers + D.M.6 performance plan billing.
 8. **F.3 — Webhook-driven incremental sync** (3 days). Production-readiness for F.2.
