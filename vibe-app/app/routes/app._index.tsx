@@ -53,22 +53,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // admin home's SyncProgressCard reads this to decide whether to
   // show the install-progress UI.
   //
-  // Failing loud here is fine — engine being down at admin load is
-  // a real problem and the merchant should see it. Caught with a
-  // null-tenant return so the page can still render the rest of
-  // the welcome screen even if the engine call fails transiently.
+  // Engine wobble must not 500 the whole admin page — the merchant
+  // can still review the rest of the screen during a transient
+  // outage. But we DO need to surface that catalog sync is broken;
+  // a silent null-tenant return would let the merchant believe Vibe
+  // is fully wired when in fact no tenant row exists and customer
+  // queries will fail. Pass `tenantError` to the component so it
+  // can render a visible warning when the lookup fails.
   let tenant: TenantStatus | null = null;
+  let tenantError: string | null = null;
   try {
     tenant = await lookupOrCreateTenant({ shopDomain: session.shop });
   } catch (err) {
+    tenantError = err instanceof Error ? err.message : String(err);
     console.error(
       "[vibe] lookupOrCreateTenant failed for shop=%s:",
       session.shop,
-      err instanceof Error ? err.message : err,
+      tenantError,
     );
   }
 
-  return json({ shop: session.shop, grantedScopes, tenant });
+  return json({ shop: session.shop, grantedScopes, tenant, tenantError });
 };
 
 // Plain-English description per granted scope so the merchant sees
@@ -102,7 +107,8 @@ const SCOPE_DESCRIPTIONS: Record<string, { label: string; reason: string }> = {
 };
 
 export default function MerchantIndex() {
-  const { shop, grantedScopes, tenant } = useLoaderData<typeof loader>();
+  const { shop, grantedScopes, tenant, tenantError } =
+    useLoaderData<typeof loader>();
   // App Bridge handle. `shopify.scopes.request([...])` triggers
   // Shopify's native consent dialog for additional scope grants from
   // inside the embedded admin. Required because we use the new
@@ -139,6 +145,27 @@ export default function MerchantIndex() {
     <Page>
       <TitleBar title="Vibe" />
       <BlockStack gap="500">
+        {tenantError && !tenant ? (
+          <Banner
+            tone="critical"
+            title="Catalog sync unavailable"
+            action={{
+              content: "Retry",
+              onAction: () => window.location.reload(),
+            }}
+          >
+            <BlockStack gap="200">
+              <Text as="p" variant="bodyMd">
+                Vibe couldn't reach its catalog service to look up your store.
+                Customer recommendations may be broken until this is resolved —
+                reload to retry.
+              </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                {tenantError}
+              </Text>
+            </BlockStack>
+          </Banner>
+        ) : null}
         {tenant && tenant.bootstrap_status !== "ready" ? (
           <SyncProgressCard tenant={tenant} />
         ) : null}
@@ -442,8 +469,11 @@ function SyncProgressCard({ tenant }: { tenant: TenantStatus }) {
           resp = await fetch("/app/api/bootstrap", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            // tenant_id is intentionally NOT sent — the action derives
+            // it from session.shop server-side. Sending it from the
+            // client would just create a confusing surface for someone
+            // reading the code; the action ignores any value in the body.
             body: JSON.stringify({
-              tenantId: tenant.tenant_id,
               after: cursor,
               accumulated: total,
             }),
