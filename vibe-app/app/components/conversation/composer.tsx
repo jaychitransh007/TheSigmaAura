@@ -14,7 +14,7 @@
 // and aren't wired yet — image upload is the path that unblocks
 // pairing requests, which is the gap in the current Vibe shell.
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -46,23 +46,20 @@ export function Composer({
    *  or unreadable. The parent surfaces it in the feed's error slot. */
   onAttachError?: (message: string) => void;
 }) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
 
   // Allow send when there's text OR an attachment. Pairing requests
   // commonly come in as image-only ("here, find me something to pair");
   // requiring text would block that flow.
   const canSend = !disabled && (value.trim().length > 0 || attachment !== null);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Enter submits — matches legacy ui.py's <input> composer. We use a
+    // single-line input (not textarea) so the row stays exactly one
+    // line tall and the +/send icons can center-align cleanly against
+    // it without any auto-resize JS or height-matching gymnastics.
+    if (e.key === "Enter") {
       e.preventDefault();
       if (canSend) onSubmit();
     }
@@ -164,17 +161,17 @@ export function Composer({
               e.currentTarget.value = "";
             }}
           />
-          <textarea
-            ref={textareaRef}
+          <input
+            ref={inputRef}
+            type="text"
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
               attachment
-                ? "What goes with this? (optional — Enter to send)"
+                ? "What goes with this? (optional)"
                 : "What's the occasion?"
             }
-            rows={1}
             disabled={disabled}
           />
           <button
