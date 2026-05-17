@@ -1407,3 +1407,135 @@ function mockResultBody(jobId: string): TurnResult {
     ],
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// F.2.2c — install-time catalog bootstrap.
+//
+// Flow on first merchant admin load after install:
+//   1. lookupOrCreateTenant(shop) → tenant_id + bootstrap_status
+//   2. If status != 'ready', kick off a chunk loop:
+//        - Fetch one page of products from Shopify Admin GraphQL
+//        - postBootstrapBatch(tenant_id, products)
+//        - Advance the cursor, repeat
+//   3. postBootstrapComplete(tenant_id, total_count)
+//
+// Browser drives the loop one chunk at a time (each tick is a fresh
+// Vercel function call, well under the 60s ceiling). For a 60-product
+// dev store: ~2 ticks at 30s each (cache miss → batched embedding).
+// For a 13K-product re-install (TheSigmaVibe): ~260 ticks at ~3s each
+// (all cache hits, just metadata refresh).
+// ─────────────────────────────────────────────────────────────────────
+
+export type TenantStatus = {
+  tenant_id: string;
+  shopify_shop_domain: string;
+  bootstrap_status: "pending" | "syncing" | "ready" | "failed" | string;
+  product_count: number;
+  bootstrap_completed_at: string;
+  last_sync_at: string;
+};
+
+export type BootstrapProductInput = {
+  shopify_product_id: string;
+  title?: string;
+  description?: string;
+  vendor?: string;
+  price?: number;
+  image_url?: string;
+  product_url?: string;
+  available_for_sale?: boolean;
+  shopify_variant_ids?: Record<string, string>;
+};
+
+export type BootstrapBatchResult = {
+  created: number;
+  updated: number;
+  failed: number;
+  errors: Array<{ shopify_product_id: string; error: string }>;
+};
+
+export async function lookupOrCreateTenant(args: {
+  shopDomain: string;
+  shopGid?: string;
+}): Promise<TenantStatus> {
+  if (USE_MOCK) {
+    return {
+      tenant_id: "t_mock_" + args.shopDomain.split(".")[0],
+      shopify_shop_domain: args.shopDomain,
+      bootstrap_status: "ready",
+      product_count: 0,
+      bootstrap_completed_at: "",
+      last_sync_at: "",
+    };
+  }
+  const body = {
+    shopify_shop_domain: args.shopDomain,
+    shopify_shop_gid: args.shopGid ?? "",
+  };
+  return postJson<TenantStatus>("/v1/tenants/lookup-or-create", body);
+}
+
+export async function getTenantStatus(tenantId: string): Promise<TenantStatus> {
+  if (USE_MOCK) {
+    return {
+      tenant_id: tenantId,
+      shopify_shop_domain: "mock.myshopify.com",
+      bootstrap_status: "ready",
+      product_count: 0,
+      bootstrap_completed_at: "",
+      last_sync_at: "",
+    };
+  }
+  return getJson<TenantStatus>(`/v1/tenants/${encodeURIComponent(tenantId)}`);
+}
+
+export async function postBootstrapBatch(args: {
+  tenantId: string;
+  products: BootstrapProductInput[];
+}): Promise<BootstrapBatchResult> {
+  if (USE_MOCK) {
+    return {
+      created: args.products.length,
+      updated: 0,
+      failed: 0,
+      errors: [],
+    };
+  }
+  // Embedding generation can take 10-30s for 25-50 products, so
+  // override the default 8s timeout for this call specifically.
+  // Caller is expected to chunk into manageable sizes.
+  let resp: Response;
+  try {
+    resp = await fetch(
+      `${ENGINE_API_URL}/v1/tenants/${encodeURIComponent(args.tenantId)}/bootstrap-batch`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ products: args.products }),
+        // 45s — leaves headroom under Vercel's 60s function ceiling.
+        signal: AbortSignal.timeout(45_000),
+      },
+    );
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new EngineError(0, `Engine bootstrap-batch unreachable: ${reason}`);
+  }
+  if (!resp.ok) {
+    throw new EngineError(
+      resp.status,
+      `Engine bootstrap-batch → ${resp.status}: ${await readErrorBody(resp)}`,
+    );
+  }
+  return (await resp.json()) as BootstrapBatchResult;
+}
+
+export async function postBootstrapComplete(args: {
+  tenantId: string;
+  productCount: number;
+}): Promise<void> {
+  if (USE_MOCK) return;
+  await postJson(
+    `/v1/tenants/${encodeURIComponent(args.tenantId)}/bootstrap-complete`,
+    { product_count: args.productCount },
+  );
+}

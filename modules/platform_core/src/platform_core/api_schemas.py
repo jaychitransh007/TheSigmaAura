@@ -57,6 +57,19 @@ class ResolveConversationResponse(ConversationResponse):
 # --- F.2.2 catalog bootstrap (install-time sync) ---
 
 
+class LookupOrCreateTenantRequest(BaseModel):
+    """Vibe-app's resolution call after Shopify OAuth completes.
+
+    On first install for a shop, this creates the `tenants` row with
+    a fresh opaque tenant_id (F.2.0 scheme). On subsequent calls it
+    returns the existing row idempotently — vibe-app uses this on
+    every admin load so the merchant home can render the bootstrap
+    progress card without hand-rolling tenant lookups.
+    """
+    shopify_shop_domain: str = Field(min_length=1)
+    shopify_shop_gid: str = Field(default="")
+
+
 class BootstrapProductInput(BaseModel):
     """One Shopify product as received from Vibe-app's Admin GraphQL
     walk. Only `shopify_product_id`, `title`, `description` are
