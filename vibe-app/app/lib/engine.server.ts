@@ -742,8 +742,7 @@ function normalizeOutfit(card: RawEngineOutfit, idx: number): Outfit {
 // items explicitly flagged is_anchor by the engine OR items the engine
 // tagged with source="wardrobe" (the user's own piece either way).
 function isAnchorRaw(item: RawEngineOutfitItem): boolean {
-  if (item.is_anchor === true) return true;
-  return (item.source ?? "").toLowerCase() === "wardrobe";
+  return item.is_anchor === true || (item.source ?? "").toLowerCase() === "wardrobe";
 }
 
 // Engine emits image references in three shapes:
@@ -800,7 +799,7 @@ function normalizeItem(item: RawEngineOutfitItem): OutfitItem {
     image_url: rewriteEngineImageUrl(item.image_url) || undefined,
     description: item.description?.trim() || undefined,
     catalog_description: item.catalog_description?.trim() || undefined,
-    is_anchor: item.is_anchor === true ? true : undefined,
+    is_anchor: item.is_anchor || undefined,
     source: item.source || undefined,
     shopify_product_id: item.shopify_product_id || undefined,
     shopify_variant_ids:
