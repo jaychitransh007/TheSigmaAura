@@ -36,6 +36,7 @@ import { StageIndicator } from "../components/conversation/stage-indicator";
 import { WelcomeState } from "../components/conversation/welcome-state";
 import conversationStyles from "../components/conversation/styles.css?url";
 import {
+  ENGINE_HTTP_TIMEOUT_MS,
   ENGINE_MOCK_ACTIVE,
   ensureOnboardingProfile,
   getOnboardingStatus,
@@ -170,32 +171,61 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (op === "init") {
     // Resolve (or create) the conversation, ensure the onboarding-
-    // profile row exists, AND read the photo-presence list. The three
-    // engine calls touch independent tables — run them in parallel to
-    // save the Mumbai-to-Mumbai round-trips on every init. All three
-    // are idempotent for returning customers.
+    // profile row exists, AND read the engine's profile snapshot.
+    // The three engine calls touch independent tables — run them in
+    // parallel to save the Mumbai-to-Mumbai round-trips on every init.
     //
-    // imagesUploaded flows to the client so the seed effect can
-    // detect customers whose photo records vanished (volume rebuild,
-    // manual cleanup) and re-inject the PhotosCard regardless of the
-    // localStorage onboarding-step pointer.
-    const [conversation, , status] = await Promise.all([
+    // Promise.allSettled (not Promise.all) so a transient failure
+    // on any single call doesn't 500 the whole action. The init
+    // response is degraded but usable in every partial-failure mode:
+    //   - resolveConversation fails → no conversationId → client
+    //     surfaces an init error and retries on next page load
+    //   - ensureOnboardingProfile fails → no immediate impact; the
+    //     ensure call is idempotent and will retry on the next photo
+    //     upload / profile patch
+    //   - getOnboardingStatus fails → status is unknown; default
+    //     hasProfile to true (under-prompt rather than spuriously
+    //     re-onboard a returning customer) and imagesUploaded to
+    //     ["full_body"] (treat photos as present so the recovery
+    //     PhotosCard doesn't fire on engine wobble)
+    //
+    // Status call gets ENGINE_HTTP_TIMEOUT_MS (8s) explicitly — the
+    // helper's default of 1500ms protects the SSR loader at the cost
+    // of false negatives under engine contention; the init action has
+    // a more relaxed budget and benefits from the longer ceiling.
+    const [conversationRes, , statusRes] = await Promise.allSettled([
       resolveConversation(sessionId),
       ensureOnboardingProfile(sessionId),
-      getOnboardingStatus(sessionId),
+      getOnboardingStatus(sessionId, ENGINE_HTTP_TIMEOUT_MS),
     ]);
+
+    if (conversationRes.status === "rejected") {
+      const reason =
+        conversationRes.reason instanceof Error
+          ? conversationRes.reason.message
+          : String(conversationRes.reason);
+      return json<ActionResponse>(
+        { ok: false, error: `Couldn't start a conversation: ${reason}` },
+        { status: 502 },
+      );
+    }
+
+    const status =
+      statusRes.status === "fulfilled" ? statusRes.value : null;
     return json<ActionResponse>({
       ok: true,
       op: "init",
-      conversationId: conversation.conversation_id,
-      // Engine unreachable / 4xx → status is null. Default to
-      // ["full_body"] so the client treats the customer as "photos
-      // present, no recovery card needed" during transient downtime.
+      conversationId: conversationRes.value.conversation_id,
+      // When status is unknown (engine timeout / 4xx / unreachable):
+      //   - imagesUploaded → ["full_body"]: assume photos present so
+      //     the recovery card doesn't fire spuriously.
+      //   - hasProfile → true: assume onboarded so we don't push
+      //     returning customers into the new-customer flow during
+      //     engine wobble. Under-prompts brand-new customers once
+      //     (they see the cards on the next reload after the engine
+      //     recovers) — better than re-prompting every returner.
       imagesUploaded: status?.images_uploaded ?? ["full_body"],
-      // `gender` is the cheapest, most load-bearing signal that
-      // onboarding has covered the basics — matches the loader's
-      // shopify-side hasProfile check so both code paths agree.
-      hasProfile: Boolean(status?.gender),
+      hasProfile: status === null ? true : Boolean(status.gender),
     });
   }
 
