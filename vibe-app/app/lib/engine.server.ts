@@ -254,7 +254,24 @@ export async function getOnboardingStatus(
   timeoutMs: number = 1500,
 ): Promise<OnboardingStatus | null | undefined> {
   if (USE_MOCK) {
-    return null;
+    // Simulate a returning customer in mock mode — `gender` is the
+    // hasProfile signal, so a non-empty value keeps the welcome-back
+    // path live without ENGINE_API_URL being set. Pre-#434 this helper
+    // returned null in mock mode, which under the old two-way semantics
+    // mapped to hasProfile=true via the action's old fallback rule. The
+    // three-way return introduced in #434 changed null to mean
+    // "confirmed new customer", so returning a populated status here is
+    // what preserves the previous mock UX. Matches the populated-mock
+    // pattern in getAnalysisStatus / getWardrobeItems / startTurn.
+    return {
+      user_id: userId,
+      name: "",
+      date_of_birth: "1995-01-01",
+      gender: "female",
+      profile_complete: true,
+      onboarding_complete: true,
+      images_uploaded: ["full_body", "headshot"],
+    };
   }
   let resp: Response;
   try {
@@ -271,12 +288,22 @@ export async function getOnboardingStatus(
   // non-2xx is an error condition the caller should fall back on.
   if (resp.status === 404) return null;
   if (!resp.ok) return undefined;
-  let raw: Partial<OnboardingStatus>;
+  let parsed: unknown;
   try {
-    raw = (await resp.json()) as Partial<OnboardingStatus>;
+    parsed = await resp.json();
   } catch {
     return undefined;
   }
+  // `resp.json()` can yield primitives, arrays, or literal `null` — all
+  // valid JSON. Guard against everything that isn't a plain object
+  // before accessing fields, otherwise the property dereference below
+  // would throw a TypeError that bubbles out of the helper as an
+  // unhandled rejection (the SSR loader awaits this without try/catch,
+  // so any throw turns into a 500 on the storefront).
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return undefined;
+  }
+  const raw = parsed as Partial<OnboardingStatus>;
   // images_uploaded is a real engine field but normalize defensively so
   // downstream consumers can always trust `Array.isArray(status.images_uploaded)`.
   return {
