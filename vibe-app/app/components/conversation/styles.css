@@ -1274,13 +1274,17 @@
   background: var(--rule);
 }
 
-/* Input row — attach button + textarea + send. Lives inside the
-   composer pill alongside the optional chip row. */
+/* Input row — attach button + textarea + send sit on one visual line.
+   align-items: flex-end keeps the +/send buttons anchored at the
+   bottom as the textarea auto-grows past one line (iMessage-style).
+   Heights are matched (2rem buttons + ~2rem empty-textarea) so the
+   row reads as a single horizontal bar before the customer types
+   anything — no apparent "second line" with the + dangling below. */
 .conv-composer-row {
   display: flex;
   align-items: flex-end;
-  gap: 0.35rem;
-  padding: 0.25rem 0.25rem 0.25rem 0.5rem;
+  gap: 0.4rem;
+  padding: 0.2rem 0.25rem 0.2rem 0.4rem;
 }
 
 .conv-composer-attach {
@@ -1295,8 +1299,6 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  align-self: flex-end;
-  margin-bottom: 0.25rem;
   transition: color 0.15s ease;
 }
 
@@ -1313,15 +1315,22 @@
   flex: 1;
   border: none;
   resize: none;
-  padding: 0.6rem 0;
+  /* Vertical padding sized so the empty textarea matches the
+     attach + send buttons (2rem). Reduced from 0.6rem to keep the
+     pill compact when the customer hasn't typed yet. */
+  padding: 0.3rem 0;
   font-family: inherit;
-  font-size: 1rem;
+  font-size: 0.95rem;
   color: var(--ink-soft);
   background: transparent;
   outline: none;
-  min-height: 1.5rem;
-  max-height: 12rem;
-  line-height: 1.5;
+  min-height: 1.4rem;
+  max-height: 10rem;
+  line-height: 1.45;
+  /* Hides the slim default scrollbar that pops in when the textarea
+     auto-grows to max-height. Browsers without -webkit get the
+     default scrollbar (acceptable fallback). */
+  scrollbar-width: thin;
 }
 
 .conv-composer textarea::placeholder {
@@ -1334,8 +1343,8 @@
   color: var(--canvas);
   border: none;
   border-radius: 999px;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2rem;
+  height: 2rem;
   display: flex;
   align-items: center;
   justify-content: center;
