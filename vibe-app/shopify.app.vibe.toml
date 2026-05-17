@@ -23,6 +23,22 @@ customer_data_request_url = "https://vibe-app-five.vercel.app/webhooks/customers
 customer_deletion_url = "https://vibe-app-five.vercel.app/webhooks/customers/redact"
 shop_deletion_url = "https://vibe-app-five.vercel.app/webhooks/shop/redact"
 
+# F.4: product lifecycle webhooks. Keep Vibe's catalog in sync with
+# Shopify in near-real-time so recommendations don't surface
+# out-of-stock or deleted items.
+#
+# We forward the raw Shopify payload to the engine (which translates
+# to the internal BootstrapProductInput shape). Handlers stay <5s by
+# offloading the HTTP call to the engine; the engine does the LLM
+# work async via the F.3 daily cron's enrichment poll.
+[[webhooks.subscriptions]]
+topics = [ "products/create", "products/update" ]
+uri = "https://vibe-app-five.vercel.app/webhooks/products/upsert"
+
+[[webhooks.subscriptions]]
+topics = [ "products/delete" ]
+uri = "https://vibe-app-five.vercel.app/webhooks/products/delete"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 #

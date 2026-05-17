@@ -160,6 +160,36 @@ class EnrichmentPollResponse(BaseModel):
     batches: List[EnrichmentBatchPollItem] = Field(default_factory=list)
 
 
+# --- F.4 product webhooks ---
+
+
+class ProductWebhookCreateOrUpdateRequest(BaseModel):
+    """Forwarded from vibe-app's products/{create,update} webhooks.
+
+    The payload field is the raw Shopify REST webhook body. The
+    engine translates this to the shared BootstrapProductInput shape
+    internally — vibe-app stays a thin pass-through so all of the
+    "what counts as a product" logic lives in one place.
+    """
+
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ProductWebhookResult(BaseModel):
+    created: int = 0
+    updated: int = 0
+    failed: int = 0
+    shopify_product_id: str = ""
+    available_for_sale: bool = True
+    reason: str = ""
+
+
+class ProductWebhookDeleteResult(BaseModel):
+    deleted: bool = False
+    shopify_product_id: str = ""
+    reason: str = ""
+
+
 class CreateTurnRequest(BaseModel):
     user_id: str = Field(min_length=1)
     message: str = Field(min_length=1, max_length=4000)

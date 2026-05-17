@@ -31,6 +31,9 @@ from platform_core.api_schemas import (
     EnrichmentPollResponse,
     EnrichmentSubmitResponse,
     LookupOrCreateTenantRequest,
+    ProductWebhookCreateOrUpdateRequest,
+    ProductWebhookDeleteResult,
+    ProductWebhookResult,
     TenantStatusResponse,
     DependencyReportResponse,
     FeedbackRequest,
@@ -63,6 +66,7 @@ from platform_core.repositories import ConversationRepository
 from platform_core.tenants import TenantRepository, resolve_tenant_id_or_default
 
 from .services.catalog_bootstrap_service import CatalogBootstrapService
+from .services.catalog_product_sync_service import CatalogProductSyncService
 from .services.catalog_vision_enrichment_service import (
     CatalogVisionEnrichmentService,
 )
@@ -326,6 +330,13 @@ def create_app() -> FastAPI:
     # Batch API. Submitted opportunistically at bootstrap-complete;
     # polled either manually or via the F.3 daily cron.
     vision_enrichment_service = CatalogVisionEnrichmentService(client)
+    # F.4 (2026-05-18): per-product sync from Shopify products/*
+    # webhooks. Delegates inserts/updates to the bootstrap service so
+    # the embedding/upsert logic lives in one place.
+    product_sync_service = CatalogProductSyncService(
+        client,
+        bootstrap_service=bootstrap_service,
+    )
     orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=cfg)
     image_moderation = ImageModerationService()
     dependency_reporting = DependencyReportingService(client)
@@ -869,6 +880,78 @@ def create_app() -> FastAPI:
                     )
                     for r in results
                 ]
+            )
+        except HTTPException:
+            raise
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # F.4 product webhook endpoints. Vibe-app forwards the raw
+    # Shopify webhook payload here after HMAC verification — this
+    # service owns the translation to our internal product shape and
+    # the catalog_enriched / catalog_item_embeddings updates.
+
+    @app.post(
+        "/v1/tenants/{tenant_id}/products/webhook-upsert",
+        response_model=ProductWebhookResult,
+    )
+    def product_webhook_upsert(
+        tenant_id: str,
+        request: ProductWebhookCreateOrUpdateRequest,
+    ) -> ProductWebhookResult:
+        try:
+            if not tenant_repo.get_by_tenant_id(tenant_id):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"tenant_id {tenant_id} not found",
+                )
+            result = product_sync_service.apply_create_or_update(
+                tenant_id=tenant_id,
+                product_payload=request.payload or {},
+            )
+            return ProductWebhookResult(
+                created=int(result.get("created", 0)),
+                updated=int(result.get("updated", 0)),
+                failed=int(result.get("failed", 0)),
+                shopify_product_id=str(result.get("shopify_product_id", "")),
+                available_for_sale=bool(result.get("available_for_sale", True)),
+                reason=str(result.get("reason", "")),
+            )
+        except HTTPException:
+            raise
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post(
+        "/v1/tenants/{tenant_id}/products/webhook-delete",
+        response_model=ProductWebhookDeleteResult,
+    )
+    def product_webhook_delete(
+        tenant_id: str,
+        request: ProductWebhookCreateOrUpdateRequest,
+    ) -> ProductWebhookDeleteResult:
+        try:
+            if not tenant_repo.get_by_tenant_id(tenant_id):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"tenant_id {tenant_id} not found",
+                )
+            # Shopify products/delete payload is `{id: <numeric>}`.
+            # Normalise to gid format the rest of the engine uses.
+            payload = request.payload or {}
+            pid_raw = payload.get("id")
+            if isinstance(pid_raw, (int, float)):
+                shopify_pid = f"gid://shopify/Product/{int(pid_raw)}"
+            else:
+                shopify_pid = str(pid_raw or "").strip()
+            result = product_sync_service.apply_delete(
+                tenant_id=tenant_id,
+                shopify_product_id=shopify_pid,
+            )
+            return ProductWebhookDeleteResult(
+                deleted=bool(result.get("deleted", False)),
+                shopify_product_id=str(result.get("shopify_product_id", "")),
+                reason=str(result.get("reason", "")),
             )
         except HTTPException:
             raise
