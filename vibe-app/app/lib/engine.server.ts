@@ -898,9 +898,59 @@ export async function pollTurn(args: {
   if (USE_MOCK) {
     return mockTurnResult(args);
   }
-  const raw = await getJson<RawEngineStatusResponse>(
-    `/v1/conversations/${encodeURIComponent(args.conversationId)}/turns/${encodeURIComponent(args.jobId)}/status`,
-  );
+  // Use a generous 20s timeout for the poll specifically. The default
+  // 8s on getJson is fine for tiny status snapshots, but on the tick
+  // where the engine assembles the FINAL result payload (3-5 outfits
+  // × items each, with image URLs, stages, follow-ups) the response
+  // can briefly cross 8s — especially on a Vercel function cold
+  // start. Burning a turn's worth of LLM work because of an 8s vs
+  // 20s wait is the wrong tradeoff.
+  //
+  // The storefront polls every ~2s, so a single 20s-timeout outlier
+  // only delays the next poll, not the result. If the engine
+  // genuinely went away the next poll will surface that.
+  //
+  // On transient aborts, return a "running" placeholder so the
+  // storefront keeps polling instead of throwing the customer into
+  // an error banner. This matches getOnboardingStatus's resilience
+  // pattern (PR #432 — pass through on transient failure rather
+  // than fail-loud on every wobble).
+  const path = `/v1/conversations/${encodeURIComponent(args.conversationId)}/turns/${encodeURIComponent(args.jobId)}/status`;
+  let resp: Response;
+  try {
+    resp = await fetch(`${ENGINE_API_URL}${path}`, {
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (e) {
+    // Network / abort / timeout — return a soft "running" state so
+    // the storefront polls again. A genuinely-broken engine will
+    // surface via the eventual hard error from start-turn or the
+    // poll loop's own watchdog.
+    const reason = e instanceof Error ? e.message : String(e);
+    console.warn("[vibe] pollTurn transient error:", reason);
+    return {
+      conversation_id: args.conversationId,
+      job_id: args.jobId,
+      status: "running",
+      stages: [],
+      result: null,
+      error: "",
+    };
+  }
+  if (!resp.ok) {
+    // Hard error from the engine. Surface via failed status so the
+    // storefront can show its error UI instead of polling forever.
+    const text = await readErrorBody(resp);
+    return {
+      conversation_id: args.conversationId,
+      job_id: args.jobId,
+      status: "failed",
+      stages: [],
+      result: null,
+      error: `Engine ${path} → ${resp.status}: ${text}`,
+    };
+  }
+  const raw = (await resp.json()) as RawEngineStatusResponse;
   return normalizeStatus(raw);
 }
 
