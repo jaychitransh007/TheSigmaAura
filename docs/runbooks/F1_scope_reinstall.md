@@ -11,9 +11,8 @@ Runbook for what happens when [vibe-app/shopify.app.vibe.toml](../../vibe-app/sh
 | `read_orders` | G.1 order webhooks — kicks off purchase attribution |
 | `read_customers` | G.2 link orders to engine `external_user_id` |
 | `read_themes` | D.M.3 verify the Style-with-Vibe theme app extension block is in the active theme |
-| `write_metafields` | G.2 tag Vibe-attributed orders with the influencing outfit's id |
 
-`write_products` (the Shopify CLI bootstrap template's default) was dropped — Vibe never writes to products.
+`write_products` (the Shopify CLI bootstrap template's default) was dropped — Vibe never writes to products. An earlier draft included `write_metafields` for tagging attributed orders, but Shopify doesn't expose that as a granular scope (the alternative `write_orders` is too broad — it would also grant refund + cancel rights). Vibe holds attribution metadata in its own `order_attribution` Prisma table instead.
 
 ## Operator procedure when scopes change
 

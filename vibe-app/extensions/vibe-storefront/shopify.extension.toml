@@ -13,6 +13,7 @@
 # Shopify review cycle. Shared assets live in `assets/`.
 
 api_version = "2026-04"
+uid = "5112cc98-65f2-ca34-805c-1dbfa0c42ff3c1adb949"
 
 [[extensions]]
 name = "Vibe Storefront"

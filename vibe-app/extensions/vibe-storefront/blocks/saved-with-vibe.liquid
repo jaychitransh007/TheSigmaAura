@@ -58,7 +58,7 @@
   {%- else -%}
     <div class="vibe-saved-state">
       <p style="margin:0;">{{ signed_out_copy | escape }}</p>
-      <a class="vibe-saved-cta" href="/account/login">Sign in</a>
+      <a class="vibe-saved-cta" href="{{ routes.account_login_url }}">Sign in</a>
     </div>
   {%- endif -%}
 </div>
