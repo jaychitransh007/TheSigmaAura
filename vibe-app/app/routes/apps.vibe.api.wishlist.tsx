@@ -23,6 +23,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json({ ok: false, error: "Missing sessionId" }, { status: 400 });
   }
 
+  // IDOR guard for the `shopify:` identity — same rationale as the
+  // wardrobe route. Anonymous UUIDs are unguessable; shopify-prefixed
+  // ids are enumerable and need verification against the signed
+  // logged_in_customer_id proxy parameter.
+  if (sessionId.startsWith("shopify:")) {
+    const expectedId = url.searchParams.get("logged_in_customer_id")?.trim();
+    if (!expectedId || sessionId !== `shopify:${expectedId}`) {
+      return json({ ok: false, error: "Identity mismatch" }, { status: 403 });
+    }
+  }
+
   try {
     const items = await getWishlistItems(sessionId);
     return json({ ok: true, items });

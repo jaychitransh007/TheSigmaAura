@@ -20,14 +20,19 @@ type FetchState<T> =
 function useFetchOnMount<T>(url: string): FetchState<T> {
   const [state, setState] = useState<FetchState<T>>({ phase: "loading" });
   useEffect(() => {
-    let cancelled = false;
-    fetch(url, { credentials: "same-origin" })
+    // AbortController, not a captured `cancelled` flag — the latter
+    // would suppress state updates after unmount but still let the
+    // network request finish, wasting bandwidth when the customer
+    // closes the picker quickly. AbortController kills the request
+    // at the transport layer.
+    const controller = new AbortController();
+    fetch(url, { credentials: "same-origin", signal: controller.signal })
       .then(async (resp) => {
         const body = (await resp.json().catch(() => null)) as
           | { ok: true; items: T[] }
           | { ok: false; error?: string }
           | null;
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         if (!resp.ok || !body || body.ok === false) {
           const msg =
             (body && "error" in body && body.error) ||
@@ -38,15 +43,18 @@ function useFetchOnMount<T>(url: string): FetchState<T> {
         setState({ phase: "ready", items: body.items });
       })
       .catch((err) => {
-        if (cancelled) return;
+        // AbortError is the expected outcome on unmount — don't
+        // surface it as a real error. Other failures (network down,
+        // 5xx, etc.) still flow through.
+        if (err && (err.name === "AbortError" || controller.signal.aborted)) {
+          return;
+        }
         setState({
           phase: "error",
           message: err instanceof Error ? err.message : "Fetch failed",
         });
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [url]);
   return state;
 }
@@ -67,13 +75,27 @@ function PickerModal({
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handler);
-    // Lock body scroll so the picker grid can scroll on its own
-    // without scrolling the feed behind it.
+
+    // Lock body scroll so the picker grid scrolls independently of
+    // the feed behind it. Setting overflow:hidden on its own makes
+    // the vertical scrollbar disappear, which on most desktop
+    // browsers visibly shifts the underlying page content rightward
+    // by ~15px. Pad the body by the scrollbar width to keep
+    // everything pinned in place; restore the original inline values
+    // on cleanup so we don't leak styles for any code that touched
+    // them elsewhere.
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
     const prevOverflow = document.body.style.overflow;
+    const prevPaddingRight = document.body.style.paddingRight;
     document.body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
     return () => {
       document.removeEventListener("keydown", handler);
       document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPaddingRight;
     };
   }, [onClose]);
 
