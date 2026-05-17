@@ -42,7 +42,7 @@ logger = logging.getLogger("aura.onboarding")
 
 
 # Per-endpoint upload size caps. Kept as separate constants (vs one
-# shared 10MB) so each route stays independently tunable — `normalize_
+# shared value) so each route stays independently tunable — `normalize_
 # image` accepts the raw uncropped phone photo and downstream crops
 # shrink before hitting the persisted-image caps below.
 MAX_NORMALIZE_IMAGE_SIZE_MB = 15
@@ -257,8 +257,13 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         return ProfileResponse(user_id=payload.user_id, saved=True, message="Profile updated")
 
     @router.post("/images/normalize")
-    def normalize_image(file: UploadFile = File(...)) -> Response:
+    def normalize_image(
+        file: UploadFile = File(...),
+        channel: str = Query("web", description="Caller channel label for metrics (web / vibe_storefront)."),
+    ) -> Response:
         if not file.content_type or not file.content_type.startswith("image/"):
+            observe_onboarding_endpoint(endpoint="image_normalize", status="bad_request", channel=channel)
+            _log_endpoint(endpoint="image_normalize", status="bad_request", channel=channel, error="not_an_image")
             raise HTTPException(status_code=400, detail="File must be an image")
         # 15MB cap here (vs 10MB elsewhere) is intentional: this endpoint
         # accepts the customer's raw phone photo *before* cropping —
@@ -267,6 +272,8 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         # 10MB ceiling used by save_image / save_wardrobe_item.
         size_bytes = _upload_size_bytes(file)
         if size_bytes > MAX_NORMALIZE_IMAGE_SIZE_BYTES:
+            observe_onboarding_endpoint(endpoint="image_normalize", status="bad_request", channel=channel)
+            _log_endpoint(endpoint="image_normalize", status="bad_request", channel=channel, size_bytes=size_bytes, error="too_large")
             raise HTTPException(
                 status_code=400,
                 detail=f"Image must be under {MAX_NORMALIZE_IMAGE_SIZE_MB}MB",
@@ -279,7 +286,11 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
                 content_type=file.content_type,
             )
         except (SupabaseError, RuntimeError, ValueError) as exc:
+            observe_onboarding_endpoint(endpoint="image_normalize", status="failed", channel=channel)
+            _log_endpoint(endpoint="image_normalize", status="failed", channel=channel, size_bytes=size_bytes, error=str(exc))
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        observe_onboarding_endpoint(endpoint="image_normalize", status="success", channel=channel)
+        _log_endpoint(endpoint="image_normalize", status="success", channel=channel, size_bytes=size_bytes)
         headers = {"X-Normalized-Filename": normalized_name}
         return Response(content=normalized_data, media_type=normalized_type, headers=headers)
 
@@ -407,13 +418,18 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         brand: str = Form(""),
         notes: str = Form(""),
         file: UploadFile = File(...),
+        channel: str = Query("web", description="Caller channel label for metrics (web / vibe_storefront)."),
     ) -> WardrobeItemResponse:
         if not file.content_type or not file.content_type.startswith("image/"):
+            observe_onboarding_endpoint(endpoint="wardrobe_item_save", status="bad_request", channel=channel)
+            _log_endpoint(endpoint="wardrobe_item_save", status="bad_request", channel=channel, user_id=user_id, error="not_an_image")
             raise HTTPException(status_code=400, detail="File must be an image")
         # Size-check pre-read for the same reason as upload_image —
         # don't buffer bytes we're about to reject.
         size_bytes = _upload_size_bytes(file)
         if size_bytes > MAX_WARDROBE_ITEM_IMAGE_SIZE_BYTES:
+            observe_onboarding_endpoint(endpoint="wardrobe_item_save", status="bad_request", channel=channel)
+            _log_endpoint(endpoint="wardrobe_item_save", status="bad_request", channel=channel, user_id=user_id, size_bytes=size_bytes, error="too_large")
             raise HTTPException(
                 status_code=400,
                 detail=f"Image must be under {MAX_WARDROBE_ITEM_IMAGE_SIZE_MB}MB",
@@ -439,9 +455,15 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
                 notes=notes,
             )
         except (SupabaseError, RuntimeError, ValueError) as exc:
+            observe_onboarding_endpoint(endpoint="wardrobe_item_save", status="bad_request", channel=channel)
+            _log_endpoint(endpoint="wardrobe_item_save", status="bad_request", channel=channel, user_id=user_id, size_bytes=size_bytes, error=str(exc))
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not out:
+            observe_onboarding_endpoint(endpoint="wardrobe_item_save", status="not_found", channel=channel)
+            _log_endpoint(endpoint="wardrobe_item_save", status="not_found", channel=channel, user_id=user_id, size_bytes=size_bytes)
             raise HTTPException(status_code=404, detail="User not found.")
+        observe_onboarding_endpoint(endpoint="wardrobe_item_save", status="success", channel=channel)
+        _log_endpoint(endpoint="wardrobe_item_save", status="success", channel=channel, user_id=user_id, size_bytes=size_bytes)
         return WardrobeItemResponse(**out)
 
     @router.patch("/wardrobe/items/{wardrobe_item_id}", response_model=WardrobeItemResponse)
