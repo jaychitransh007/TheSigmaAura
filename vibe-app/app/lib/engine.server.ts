@@ -120,7 +120,7 @@ export const ENGINE_MOCK_ACTIVE = USE_MOCK;
 // async job pattern; we never block on it in a single HTTP call.
 // ─────────────────────────────────────────────────────────────────────
 
-const ENGINE_HTTP_TIMEOUT_MS = 8_000;
+export const ENGINE_HTTP_TIMEOUT_MS = 8_000;
 
 class EngineError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -221,19 +221,17 @@ export type OnboardingStatus = {
  * hasn't hit /onboarding/profile/ensure yet) or the engine 4xx/5xx's
  * — callers should treat null as "no profile data available".
  *
- * Default timeout is the global ENGINE_HTTP_TIMEOUT_MS (8s) — same as
- * resolveConversation / ensureOnboardingProfile / startTurn. The
- * earlier 1500ms ceiling came from a loader-only world where short
- * timeouts mattered for SSR; today this is called from the init
- * action alongside two other engine helpers via Promise.all, and
- * under engine contention the tight budget caused the status call
- * to abort while the other two succeeded — leaving init responses
- * with hasProfile=false for returning customers whose engine row
- * was actually populated.
+ * Default `timeoutMs` is 1500 because this helper is also called
+ * from the page loader on every Shopify-authenticated request, and
+ * the loader blocks SSR — an 8s ceiling there would turn into long
+ * blank screens on engine wobble. Callers with a more relaxed time
+ * budget (e.g. the init action's Promise.allSettled fan-out) pass
+ * `ENGINE_HTTP_TIMEOUT_MS` explicitly to avoid the false-negative
+ * that caused the May 17 returning-customer re-onboarding bug.
  */
 export async function getOnboardingStatus(
   userId: string,
-  timeoutMs: number = ENGINE_HTTP_TIMEOUT_MS,
+  timeoutMs: number = 1500,
 ): Promise<OnboardingStatus | null> {
   if (USE_MOCK) {
     return null;
