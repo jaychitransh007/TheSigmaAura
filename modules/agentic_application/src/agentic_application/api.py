@@ -20,7 +20,11 @@ from platform_core.api_schemas import (
     ConversationResponse,
     ConversationStateResponse,
     CreateConversationRequest,
+    BootstrapBatchRequest,
+    BootstrapBatchResponse,
+    BootstrapCompleteRequest,
     CreateTurnRequest,
+    TenantStatusResponse,
     DependencyReportResponse,
     FeedbackRequest,
     IntentHistoryGroup,
@@ -50,6 +54,8 @@ from platform_core.config import load_config
 from platform_core.fallback_messages import graceful_policy_message
 from platform_core.repositories import ConversationRepository
 from platform_core.tenants import TenantRepository, resolve_tenant_id_or_default
+
+from .services.catalog_bootstrap_service import CatalogBootstrapService
 from platform_core.image_moderation import ImageModerationService, image_block_message
 from platform_core.restricted_categories import detect_restricted_category
 from platform_core.supabase_rest import SupabaseError, SupabaseRestClient
@@ -303,6 +309,9 @@ def create_app() -> FastAPI:
     # from incoming requests to the partition key threaded into
     # process_turn → CombinedContext → catalog_search_agent.
     tenant_repo = TenantRepository(client)
+    # F.2.2 (2026-05-18): install-time catalog sync. Idempotent per-
+    # product upsert; embedding generation only on cache miss.
+    bootstrap_service = CatalogBootstrapService(client)
     orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=cfg)
     image_moderation = ImageModerationService()
     dependency_reporting = DependencyReportingService(client)
@@ -651,6 +660,105 @@ def create_app() -> FastAPI:
             merged=True,
             message="merged",
         )
+
+    # ── F.2.2 catalog bootstrap (install-time sync) ──────────────────
+    #
+    # Vibe-app walks the merchant's Shopify Admin GraphQL catalog,
+    # batches products into 25-50 per call, and POSTs each batch to
+    # bootstrap-batch. Engine checks (tenant_id, shopify_product_id)
+    # in catalog_enriched before any LLM call — re-installs and
+    # daily syncs skip everything that's already enriched.
+    #
+    # When pagination exhausts, vibe-app POSTs bootstrap-complete
+    # which flips tenants.bootstrap_status to 'ready' and writes
+    # the final product_count for the merchant-admin progress UI.
+
+    @app.post(
+        "/v1/tenants/{tenant_id}/bootstrap-batch",
+        response_model=BootstrapBatchResponse,
+    )
+    def bootstrap_batch(
+        tenant_id: str,
+        payload: BootstrapBatchRequest,
+    ) -> BootstrapBatchResponse:
+        try:
+            # Validate the tenant exists — refusing to ingest data
+            # against a tenant_id the install flow hasn't created
+            # surfaces config bugs early.
+            if not tenant_repo.get_by_tenant_id(tenant_id):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"tenant_id {tenant_id} not found; install flow must run first",
+                )
+
+            # Mark transitioning to 'syncing' on the first batch. The
+            # SET is idempotent (no-op on subsequent batches) but a
+            # fresh-install caller sees the status flip on the very
+            # first call, which the merchant-admin progress UI keys
+            # off.
+            tenant_repo.set_bootstrap_status(tenant_id, "syncing")
+
+            result = bootstrap_service.process_products(
+                tenant_id=tenant_id,
+                products=[p.model_dump() for p in payload.products],
+            )
+            return BootstrapBatchResponse(
+                created=int(result.get("created", 0)),
+                updated=int(result.get("updated", 0)),
+                failed=int(result.get("failed", 0)),
+                errors=list(result.get("errors", []) or []),
+            )
+        except HTTPException:
+            raise
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/v1/tenants/{tenant_id}/bootstrap-complete")
+    def bootstrap_complete(
+        tenant_id: str,
+        payload: BootstrapCompleteRequest,
+    ) -> Dict[str, Any]:
+        try:
+            if not tenant_repo.get_by_tenant_id(tenant_id):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"tenant_id {tenant_id} not found",
+                )
+            tenant_repo.set_bootstrap_status(
+                tenant_id,
+                "ready",
+                product_count=int(payload.product_count or 0),
+            )
+            return {"ok": True, "tenant_id": tenant_id}
+        except HTTPException:
+            raise
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get(
+        "/v1/tenants/{tenant_id}",
+        response_model=TenantStatusResponse,
+    )
+    def get_tenant(tenant_id: str) -> TenantStatusResponse:
+        try:
+            row = tenant_repo.get_by_tenant_id(tenant_id)
+            if not row:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"tenant_id {tenant_id} not found",
+                )
+            return TenantStatusResponse(
+                tenant_id=str(row.get("tenant_id") or ""),
+                shopify_shop_domain=str(row.get("shopify_shop_domain") or ""),
+                bootstrap_status=str(row.get("bootstrap_status") or ""),
+                product_count=int(row.get("product_count") or 0),
+                bootstrap_completed_at=str(row.get("bootstrap_completed_at") or ""),
+                last_sync_at=str(row.get("last_sync_at") or ""),
+            )
+        except HTTPException:
+            raise
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/v1/conversations/{conversation_id}", response_model=ConversationStateResponse)
     def get_conversation(conversation_id: str) -> ConversationStateResponse:

@@ -54,6 +54,65 @@ class ResolveConversationResponse(ConversationResponse):
     reused_existing: bool = False
 
 
+# --- F.2.2 catalog bootstrap (install-time sync) ---
+
+
+class BootstrapProductInput(BaseModel):
+    """One Shopify product as received from Vibe-app's Admin GraphQL
+    walk. Only `shopify_product_id`, `title`, `description` are
+    strictly required for the existence check + embedding text;
+    everything else is opportunistic metadata that flows into
+    catalog_enriched.
+    """
+
+    shopify_product_id: str = Field(min_length=1)
+    title: str = ""
+    description: str = ""
+    vendor: str = ""
+    price: Optional[float] = None
+    image_url: str = ""
+    product_url: str = ""
+    available_for_sale: bool = True
+    # Variant gids keyed by size — same shape as engine `OutfitItem`.
+    shopify_variant_ids: Dict[str, str] = Field(default_factory=dict)
+    # Raw Shopify GraphQL response for the product, stashed for
+    # future debugging. Optional; vibe-app may omit if size matters.
+    raw_row_json: Optional[Dict[str, Any]] = None
+
+
+class BootstrapBatchRequest(BaseModel):
+    """One chunk of products to upsert for a tenant. Sized client-side
+    to keep each HTTP call under Vercel's 60s function ceiling — 25-50
+    products typical for fresh installs (slowed by embedding generation);
+    100-200 for re-syncs (skip-only, fast)."""
+
+    products: List[BootstrapProductInput] = Field(default_factory=list)
+
+
+class BootstrapBatchResponse(BaseModel):
+    created: int = 0
+    updated: int = 0
+    failed: int = 0
+    errors: List[Dict[str, str]] = Field(default_factory=list)
+
+
+class TenantStatusResponse(BaseModel):
+    tenant_id: str
+    shopify_shop_domain: str
+    bootstrap_status: str
+    product_count: int = 0
+    bootstrap_completed_at: str = ""
+    last_sync_at: str = ""
+
+
+class BootstrapCompleteRequest(BaseModel):
+    """Sent by vibe-app once the paginated walk through Shopify
+    Admin GraphQL has exhausted. Flips bootstrap_status to 'ready'
+    and writes the final product_count."""
+
+    product_count: int = 0
+
+
 class CreateTurnRequest(BaseModel):
     user_id: str = Field(min_length=1)
     message: str = Field(min_length=1, max_length=4000)
