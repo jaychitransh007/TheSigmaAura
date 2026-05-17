@@ -23,6 +23,7 @@ import { json } from "@remix-run/node";
 
 import {
   EngineError,
+  lookupOrCreateTenant,
   postBootstrapBatch,
   postBootstrapComplete,
   type BootstrapProductInput,
@@ -41,8 +42,6 @@ const PRODUCTS_PER_PAGE = 50;
 const VARIANTS_PER_PRODUCT = 20;
 
 type BootstrapTickRequest = {
-  /** `t_<base64url>` from /v1/tenants/lookup-or-create. */
-  tenantId: string;
   /** GraphQL cursor returned by the previous tick. Omitted on the
    *  first tick — Admin GraphQL returns the first page when `after`
    *  is null. */
@@ -85,15 +84,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       { status: 400 },
     );
   }
-  const tenantId = String(body.tenantId || "").trim();
-  if (!tenantId) {
-    return json<BootstrapTickFail>(
-      { ok: false, error: "Missing tenantId" },
-      { status: 400 },
-    );
-  }
   const after = body.after?.trim() ? body.after.trim() : null;
   const accumulated = Math.max(0, Number(body.accumulated || 0));
+
+  // Derive the tenant from the authenticated session, NOT from the
+  // request body. Trusting body.tenantId would let a malicious shop
+  // admin (Shop A) authenticate normally and then POST another
+  // tenant's id (Shop B) — the GraphQL call would return Shop A's
+  // products (session-bound) but the engine would write them to
+  // Shop B's tenant. lookupOrCreateTenant is idempotent so calling
+  // it every tick is cheap (one DB lookup); on first tick after
+  // install it also handles row creation.
+  let tenantId: string;
+  try {
+    const tenant = await lookupOrCreateTenant({ shopDomain: session.shop });
+    tenantId = tenant.tenant_id;
+  } catch (err) {
+    return json<BootstrapTickFail>(
+      {
+        ok: false,
+        error:
+          err instanceof EngineError
+            ? `tenant lookup: ${err.message}`
+            : String(err),
+      },
+      { status: 502 },
+    );
+  }
 
   // Fetch one page of products from Admin GraphQL. `descriptionHtml`
   // is what the embedding text uses (engine strips HTML internally —
@@ -155,8 +172,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }>;
       };
     };
+    errors?: Array<{
+      message?: string;
+      extensions?: { code?: string };
+    }>;
   };
+
+  // Non-2xx response = auth expiry, hard error, or sustained throttle
+  // beyond the Shopify client's internal retry. Surface up to the
+  // browser so it shows the error banner instead of falling through
+  // to the empty-nodes path that would prematurely mark the bootstrap
+  // complete.
+  if (!gqlResp.ok) {
+    return json<BootstrapTickFail>(
+      {
+        ok: false,
+        error: `Shopify Admin GraphQL HTTP ${gqlResp.status}`,
+      },
+      { status: 502 },
+    );
+  }
   const gql = (await gqlResp.json()) as GraphQLResponse;
+  // Top-level GraphQL errors include THROTTLED, INTERNAL_SERVER_ERROR,
+  // ACCESS_DENIED, etc. Shopify returns these with HTTP 200, so they'd
+  // slip past the ok check above. Detecting them here protects the
+  // "no nodes returned" path from being interpreted as a clean end-of-
+  // pagination — which would otherwise flip tenants.bootstrap_status
+  // to 'ready' with an incomplete catalog.
+  if (Array.isArray(gql.errors) && gql.errors.length > 0) {
+    const codes = gql.errors
+      .map((e) => e.extensions?.code || e.message || "unknown")
+      .join(", ");
+    return json<BootstrapTickFail>(
+      { ok: false, error: `Shopify Admin GraphQL errors: ${codes}` },
+      { status: 502 },
+    );
+  }
   const page = gql.data?.products;
   const nodes = page?.nodes ?? [];
   const hasNext = !!page?.pageInfo?.hasNextPage;
