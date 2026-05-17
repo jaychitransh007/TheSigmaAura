@@ -188,7 +188,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       ok: true,
       op: "init",
       conversationId: conversation.conversation_id,
-      imagesUploaded: status?.images_uploaded ?? [],
+      // Engine unreachable / 4xx → status is null. Default to
+      // ["full_body"] so the client treats the customer as "photos
+      // present, no recovery card needed" during transient
+      // downtime. Better to under-prompt a brand-new customer once
+      // (they'll see the card on the next reload) than spuriously
+      // re-prompt every returning customer when the engine wobbles.
+      imagesUploaded: status?.images_uploaded ?? ["full_body"],
       // `gender` is the cheapest, most load-bearing signal that
       // onboarding has covered the basics — matches the loader's
       // shopify-side hasProfile check so both code paths agree.
@@ -674,6 +680,18 @@ export default function ConversationPage() {
     const onbMessages = messages.filter((m) => m.role === "onboarding");
     if (onbMessages.length === 0) return;
     if (onbMessages.some((m) => m.status === "active")) return;
+    // Short-circuit: if the templated follow-up is already somewhere
+    // in the history, skip polling. Defensive against future paths
+    // where seeded messages might rehydrate a completed prompt — and
+    // saves a round-trip on returning sessions.
+    if (
+      messages.some(
+        (m) => m.role === "assistant" && m.text === WHAT_LOOKING_FOR_PROMPT,
+      )
+    ) {
+      setAnalysisPhase("complete");
+      return;
+    }
     const photosCompleted = onbMessages.some(
       (m) => m.kind === "photos" && m.status === "completed",
     );
@@ -719,19 +737,17 @@ export default function ConversationPage() {
   }, [analysisPhase, sessionId]);
 
   // When analysis completes (or is skipped), emit the templated
-  // follow-up prompt. Idempotent — the last-message check prevents
-  // a re-render from appending the prompt twice.
+  // follow-up prompt. Idempotency check scans the WHOLE history,
+  // not just the last message — a customer who sent a turn after
+  // onboarding (assistant prompt → user message → reload) would
+  // otherwise see the prompt appended again.
   useEffect(() => {
     if (analysisPhase !== "complete") return;
     setMessages((prev) => {
-      const last = prev[prev.length - 1];
-      if (
-        last &&
-        last.role === "assistant" &&
-        last.text === WHAT_LOOKING_FOR_PROMPT
-      ) {
-        return prev;
-      }
+      const alreadyEmitted = prev.some(
+        (m) => m.role === "assistant" && m.text === WHAT_LOOKING_FOR_PROMPT,
+      );
+      if (alreadyEmitted) return prev;
       return [
         ...prev,
         { role: "assistant", text: WHAT_LOOKING_FOR_PROMPT },
@@ -979,6 +995,17 @@ export default function ConversationPage() {
       (m) => m.role === "onboarding" && m.status === "active",
     );
     if (!anyActive) {
+      // Returning customer (hasProfile=true) only sees onboarding
+      // cards in the recovery path — e.g. PhotosCard re-injected
+      // because the engine lost the photo. Their gender / DOB /
+      // measurements are already on the engine; promoting through
+      // the full new-customer ladder would force them to re-enter
+      // basics they've already saved. Jump straight to "done" after
+      // they resolve the recovery card.
+      if (hasProfile) {
+        return next;
+      }
+      // New-customer flow: advance to the next sequential card.
       // Derive the next step from the last onboarding message
       // (resolved or not). findLast walks end→start internally — no
       // copy + reverse needed. Sidesteps the ref entirely so the
@@ -1044,14 +1071,20 @@ export default function ConversationPage() {
       }
     }
     if (!lastOnb) return;
+    // Mirror transformAdvance's hasProfile branch: when a returning
+    // customer has resolved the last active onboarding card (the
+    // recovery PhotosCard, typically), persist step as "done" rather
+    // than chaining to the next sequential step.
     const step: OnboardingStep = anyActive
       ? (lastOnb.kind as OnboardingStep)
-      : nextStep(lastOnb.kind as OnboardingStep);
+      : hasProfile
+        ? "done"
+        : nextStep(lastOnb.kind as OnboardingStep);
     if (onboardingStepRef.current !== step) {
       onboardingStepRef.current = step;
       writeOnboardingStep(step);
     }
-  }, [messages]);
+  }, [messages, hasProfile]);
 
   // Fire-and-forget analysis trigger after a photo upload. Best-effort:
   // phase1 needs gender + headshot, phase2 needs gender + DOB + both
