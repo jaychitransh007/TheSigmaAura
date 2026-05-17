@@ -1,7 +1,7 @@
 // Onboarding state machine — runs client-side on the conversation page.
 //
 // The customer's progress through the in-chat onboarding (welcome →
-// photos → gender-DOB → height → waist → done) is persisted in
+// photos → gender-DOB → height-waist → done) is persisted in
 // localStorage so a page reload resumes mid-flow. Identity is keyed
 // off the vibe_session_id (D.S.3a) — when that's deleted (e.g. the
 // customer clears site data) the onboarding resets too, which is the
@@ -28,29 +28,31 @@ export type OnboardingStep =
   // Combined gender + DOB card. Gender is chip-style (Male / Female /
   // Non-binary), DOB is a DD/MM/YYYY segmented numeric input.
   | "gender-dob"
-  | "height"
-  | "waist"
+  // Combined height + waist card. Each measurement is ft + in
+  // segmented numeric inputs, converted to cm before save.
+  | "height-waist"
   | "done";
 
 const ORDER: readonly OnboardingStep[] = [
   "welcome",
   "photos",
   "gender-dob",
-  "height",
-  "waist",
+  "height-waist",
   "done",
 ] as const;
 
 // Migration map for customers whose persisted step references a
-// kind no longer in the flow. dob/gender → the combined gender-DOB
-// card. "name" was a dedicated step that we dropped — promote any
-// customer whose persisted step is "name" forward to "height" so
-// they resume at the right place instead of getting stuck on a
-// missing step.
+// kind no longer in the flow.
+//   - dob / gender → gender-dob (the combined card)
+//   - name → the next sensible step (now height-waist; previously
+//     "height" but that card was rolled into height-waist)
+//   - height / waist → the combined height-waist card
 const LEGACY_STEP_ALIASES: Readonly<Record<string, OnboardingStep>> = {
   dob: "gender-dob",
   gender: "gender-dob",
-  name: "height",
+  name: "height-waist",
+  height: "height-waist",
+  waist: "height-waist",
 };
 
 export function readOnboardingStep(): OnboardingStep {
