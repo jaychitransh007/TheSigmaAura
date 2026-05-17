@@ -1041,16 +1041,17 @@
 
 /* CTA row — Buy + Like / Save */
 .conv-cta-row {
-  /* margin-top: auto pushes the CTA toward the bottom of the detail
-     column so its y-position is consistent across cards regardless
-     of description length / per-item row count. margin-bottom: 1.5rem
-     lifts it slightly above the column floor so the CTA reads as
-     "near the bottom" rather than "flush with the hero image edge".
-     The detail column stretches to the grid row height (= hero image
-     height), so this gives the same visual baseline on outfit mode,
-     garment mode, and short / long descriptions alike. */
+  /* CTA anchored toward the bottom of the detail column for
+     consistent y-position across cards. margin-bottom: 4rem lifts
+     it well above the hero image's bottom edge so the CTA doesn't
+     feel pinned to the floor — there's a comfortable buffer of
+     whitespace below it that mirrors the breathing room the title
+     gets at the top. Bumped from 1.5rem after the customer flagged
+     that the CTA still read as "too much at the bottom". The detail
+     column stretches to the grid row height (= hero image height),
+     so the buffer is the same on every card. */
   margin-top: auto;
-  margin-bottom: 1.5rem;
+  margin-bottom: 4rem;
   display: flex;
   gap: 0.5rem;
   align-items: center;
