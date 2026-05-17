@@ -21,6 +21,7 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 
+import { identityMismatch } from "../lib/auth.server";
 import {
   EngineError,
   resolveConversation,
@@ -40,14 +41,6 @@ const PAIRING_TRIGGER = " Build an outfit around this attached piece.";
 const CHECK_MESSAGE =
   "Give me your honest take on this outfit. What's working, what isn't, " +
   "and what would you change?";
-
-function identityMismatch(url: URL, sessionId: string): boolean {
-  if (!sessionId.startsWith("shopify:")) return false;
-  // Only trust the signed App Proxy URL parameter; body fields are
-  // unsigned (see apps.vibe.api.wardrobe.tsx for the rationale).
-  const expected = url.searchParams.get("logged_in_customer_id")?.trim() || "";
-  return !expected || sessionId !== `shopify:${expected}`;
-}
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   await authenticate.public.appProxy(request);

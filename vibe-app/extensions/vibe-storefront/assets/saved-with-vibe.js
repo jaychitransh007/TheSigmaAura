@@ -52,6 +52,13 @@
     var currencySymbol = (
       grid.getAttribute("data-currency-symbol") || "₹"
     ).trim() || "₹";
+    // Locale comes from Liquid (request.locale.iso_code → shop.locale →
+    // en-IN fallback). Passing it explicitly to toLocaleString keeps
+    // grouping separators consistent with what the storefront uses on
+    // its own price renders — without it the browser default kicks in
+    // and an Indian shopper viewing the page in a US-English browser
+    // would see 100,000 instead of 1,00,000.
+    var locale = (grid.getAttribute("data-locale") || "en-IN").trim() || "en-IN";
 
     renderState(grid, "loading", { loadingCopy: loadingCopy });
 
@@ -83,21 +90,21 @@
           });
           return;
         }
-        renderItems(grid, items.slice(0, maxItems), currencySymbol);
+        renderItems(grid, items.slice(0, maxItems), currencySymbol, locale);
       })
       .catch(function () {
         renderState(grid, "error", { errorCopy: errorCopy });
       });
   }
 
-  function renderItems(grid, items, currencySymbol) {
+  function renderItems(grid, items, currencySymbol, locale) {
     var html = "";
     for (var i = 0; i < items.length; i++) {
       var it = items[i] || {};
       var title = escapeHtml(it.title || "Saved item");
       var brand = it.brand ? escapeHtml(it.brand) : "";
       var image = it.image_url ? escapeHtml(it.image_url) : "";
-      var price = formatPrice(it.price, currencySymbol);
+      var price = formatPrice(it.price, currencySymbol, locale);
       var metaParts = [];
       if (brand) metaParts.push(brand);
       if (price) metaParts.push(price);
@@ -171,20 +178,35 @@
     });
   }
 
-  // Price is a number on the engine side. Currency symbol comes from
-  // the storefront's Liquid context (data-currency-symbol attribute,
-  // populated from cart.currency.symbol with a shop.currency fallback)
-  // so a non-INR storefront renders the right glyph. Checkout owns the
-  // precise formatting + tax, so this is a glance-value, not a
-  // transactional figure.
-  function formatPrice(value, currencySymbol) {
+  // Price is a number on the engine side. Both the currency symbol
+  // AND the locale come from the storefront's Liquid context so the
+  // formatting matches the rest of the storefront on the same page:
+  //   - data-currency-symbol → cart.currency.symbol / shop.currency
+  //   - data-locale          → request.locale.iso_code / shop.locale
+  // The explicit locale matters because Indian thousands grouping
+  // (1,00,000) differs from Western (100,000) — letting the browser
+  // pick the default would produce inconsistent renders for shoppers
+  // viewing an Indian storefront from a non-en-IN browser locale.
+  // Checkout owns the precise formatting + tax, so this is a glance-
+  // value, not a transactional figure.
+  function formatPrice(value, currencySymbol, locale) {
     if (value === null || value === undefined || value === "") return "";
     var n =
       typeof value === "number"
         ? value
         : parseFloat(String(value).replace(/[^0-9.]/g, ""));
     if (!isFinite(n) || n <= 0) return "";
-    return (currencySymbol || "₹") + Math.round(n).toLocaleString();
+    var rounded = Math.round(n);
+    var formatted;
+    try {
+      formatted = rounded.toLocaleString(locale || "en-IN");
+    } catch (_e) {
+      // Bad locale tag (rare) → safe fallback to en-IN, which is the
+      // currently-locked storefront default. Never throw out of price
+      // formatting — the worst case is "₹1234" instead of "₹1,234".
+      formatted = rounded.toLocaleString("en-IN");
+    }
+    return (currencySymbol || "₹") + formatted;
   }
 
   if (document.readyState === "loading") {

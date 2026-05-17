@@ -8,17 +8,14 @@
 // DELETE remove a wardrobe piece (form fields: wardrobeItemId).
 //
 // HMAC signature validated by authenticate.public.appProxy() on every
-// branch. IDOR guard on the `shopify:` identity: anonymous UUIDs are
-// unguessable per-browser ids, but the shopify-prefixed shape is
-// enumerable from the storefront, so we compare it to the
-// `logged_in_customer_id` that Shopify's App Proxy auto-appends and
-// HMAC-signs onto the URL. The body is NEVER trusted for identity —
-// Shopify only signs the URL params, so a body-supplied id would let a
-// hostile client forge any customer id.
+// branch. IDOR guard on the `shopify:` identity comes from the shared
+// `identityMismatch` helper in lib/auth.server.ts — see that file for
+// the full rationale (Shopify-only-signs-the-URL + body-forgeability).
 
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 
+import { identityMismatch } from "../lib/auth.server";
 import {
   EngineError,
   deleteWardrobeItem,
@@ -36,16 +33,6 @@ import { authenticate } from "../shopify.server";
 // HEIC → JPEG before posting (the conversation-side onboarding upload
 // already does this via the heic-to library).
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
-
-function identityMismatch(url: URL, sessionId: string): boolean {
-  if (!sessionId.startsWith("shopify:")) return false;
-  // Only trust the signed App Proxy URL parameter — Shopify appends
-  // `logged_in_customer_id` (and HMAC-signs the full URL) when a
-  // Customer Account is signed in. Body fields are unsigned and would
-  // be trivially forgeable.
-  const expected = url.searchParams.get("logged_in_customer_id")?.trim() || "";
-  return !expected || sessionId !== `shopify:${expected}`;
-}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.public.appProxy(request);

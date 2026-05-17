@@ -14,6 +14,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 
+import { identityMismatch } from "../lib/auth.server";
 import {
   EngineError,
   deleteSavedLook,
@@ -23,16 +24,6 @@ import {
   type SavedLookSummary,
 } from "../lib/engine.server";
 import { authenticate } from "../shopify.server";
-
-function identityMismatch(url: URL, sessionId: string): boolean {
-  if (!sessionId.startsWith("shopify:")) return false;
-  // Only trust the signed App Proxy URL parameter — Shopify appends
-  // `logged_in_customer_id` (and HMAC-signs the full URL) when a
-  // Customer Account is signed in. Body fields are unsigned and would
-  // be trivially forgeable, so they can't be a fallback.
-  const expected = url.searchParams.get("logged_in_customer_id")?.trim() || "";
-  return !expected || sessionId !== `shopify:${expected}`;
-}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.public.appProxy(request);
