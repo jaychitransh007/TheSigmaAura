@@ -272,6 +272,13 @@ export async function startTurn(args: {
   userId: string;
   message: string;
   imageData?: string;
+  /** Picked from the customer's wardrobe via the + popover. Engine's
+   *  CreateTurnRequest looks this up against user_wardrobe_items and
+   *  uses it as the pairing anchor in lieu of an uploaded photo. */
+  wardrobeItemId?: string;
+  /** Picked from the customer's wishlist (saved catalog products).
+   *  Engine resolves to a catalog row and anchors on it. */
+  wishlistProductId?: string;
 }): Promise<StartTurnResponse> {
   if (USE_MOCK) {
     // Encode start timestamp into the job_id so pollTurn can compute
@@ -294,12 +301,135 @@ export async function startTurn(args: {
       // rater drops body_harmony, etc.).
       channel: "vibe_storefront",
       // Omit when undefined — JSON.stringify drops undefined keys, and
-      // the engine's CreateTurnRequest defaults image_data to "" via
-      // pydantic. Avoids shipping empty strings for fields the caller
-      // didn't set.
+      // the engine's CreateTurnRequest defaults each attachment field
+      // to "" via pydantic. Avoids shipping empty strings for fields
+      // the caller didn't set. The three attachment fields are
+      // mutually exclusive on the engine side — only one anchor per
+      // turn — so callers should pass exactly one (or none).
       image_data: args.imageData,
+      wardrobe_item_id: args.wardrobeItemId,
+      wishlist_product_id: args.wishlistProductId,
     },
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Wardrobe + wishlist listings — power the + popover's pickers.
+//
+// These hit the engine's existing GET endpoints (no body, just the
+// user_id in the path). Both surfaces are read-only here; the customer
+// adds to wardrobe via image upload (engine persists asynchronously
+// on every pairing-intent turn — see PR #403) and adds to wishlist via
+// the per-product heart button on outfit cards.
+// ─────────────────────────────────────────────────────────────────────
+
+export type WardrobeItem = {
+  id: string;
+  title: string;
+  image_url: string;
+  garment_category: string;
+  garment_subtype: string;
+  primary_color: string;
+};
+
+export type WishlistItem = {
+  product_id: string;
+  title: string;
+  image_url: string;
+  brand: string;
+  price: number | null;
+};
+
+type RawWardrobeListResponse = {
+  user_id: string;
+  items?: Array<{
+    id?: string;
+    title?: string;
+    image_url?: string;
+    image_path?: string;
+    garment_category?: string;
+    garment_subtype?: string;
+    primary_color?: string;
+  }>;
+};
+
+type RawWishlistListResponse = {
+  user_id: string;
+  items?: Array<{
+    product_id?: string;
+    title?: string;
+    image_url?: string;
+    brand?: string;
+    price?: string | number | null;
+  }>;
+};
+
+export async function getWardrobeItems(userId: string): Promise<WardrobeItem[]> {
+  if (USE_MOCK) {
+    return [
+      {
+        id: "mock-wardrobe-1",
+        title: "Black Linen Shirt",
+        image_url: "https://picsum.photos/seed/vibe-wardrobe-1/300/400",
+        garment_category: "top",
+        garment_subtype: "shirt",
+        primary_color: "black",
+      },
+      {
+        id: "mock-wardrobe-2",
+        title: "Indigo Wide-Leg Jeans",
+        image_url: "https://picsum.photos/seed/vibe-wardrobe-2/300/400",
+        garment_category: "bottom",
+        garment_subtype: "jeans",
+        primary_color: "blue",
+      },
+    ];
+  }
+  const raw = await getJson<RawWardrobeListResponse>(
+    `/v1/onboarding/wardrobe/${encodeURIComponent(userId)}`,
+  );
+  return (raw.items ?? []).map((it) => ({
+    id: String(it.id ?? ""),
+    title: String(it.title ?? "").trim() || "Untitled",
+    // Local engine paths (data/wardrobe/images/...) → proxy through
+    // the App Proxy tryon-image route just like try-on renders.
+    image_url: rewriteEngineImageUrl(it.image_url || it.image_path) || "",
+    garment_category: String(it.garment_category ?? ""),
+    garment_subtype: String(it.garment_subtype ?? ""),
+    primary_color: String(it.primary_color ?? ""),
+  })).filter((it) => it.id !== "");
+}
+
+export async function getWishlistItems(userId: string): Promise<WishlistItem[]> {
+  if (USE_MOCK) {
+    return [
+      {
+        product_id: "mock-wishlist-1",
+        title: "Champagne Silk Slip Dress",
+        image_url: "https://picsum.photos/seed/vibe-wishlist-1/300/400",
+        brand: "Nicobar",
+        price: 4188,
+      },
+    ];
+  }
+  const raw = await getJson<RawWishlistListResponse>(
+    `/v1/users/${encodeURIComponent(userId)}/wishlist`,
+  );
+  return (raw.items ?? []).map((it) => {
+    const priceNum =
+      typeof it.price === "number"
+        ? it.price
+        : typeof it.price === "string"
+          ? Number.parseFloat(it.price)
+          : NaN;
+    return {
+      product_id: String(it.product_id ?? ""),
+      title: String(it.title ?? "").trim() || "Untitled",
+      image_url: rewriteEngineImageUrl(it.image_url) || "",
+      brand: String(it.brand ?? ""),
+      price: Number.isFinite(priceNum) ? priceNum : null,
+    };
+  }).filter((it) => it.product_id !== "");
 }
 
 export async function pollTurn(args: {

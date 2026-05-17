@@ -1382,6 +1382,225 @@
   opacity: 0.5;
 }
 
+/* + popover — anchored to the attach button, opens upward (above the
+   composer pill) since the composer sits at the bottom of the
+   viewport. position:relative on the wrapper so the absolutely-positioned
+   popover anchors correctly. */
+.conv-attach-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.conv-attach-popover {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  min-width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 0.35rem 0;
+  box-shadow: 0 8px 24px rgba(180, 100, 60, 0.12);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+
+.conv-attach-popover button {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.6rem 1rem;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.conv-attach-popover button:hover {
+  background: var(--rule-soft);
+  color: var(--ink);
+}
+
+.conv-attach-popover-icon {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+/* Picker modals — full-viewport overlay with a centered card. The
+   overlay swallows scroll on the feed (composer locks body scroll
+   while open). Grid auto-sizes to a 3-up at most so thumbnails read
+   at a comfortable size on desktop; mobile breakpoint below switches
+   to 2-up. */
+.conv-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(22, 17, 14, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.conv-picker-box {
+  width: min(90vw, 720px);
+  max-height: 80vh;
+  background: var(--surface);
+  border-radius: 16px;
+  border: 1px solid var(--rule);
+  box-shadow: 0 20px 60px rgba(22, 17, 14, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.conv-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.conv-picker-title {
+  font-family: "Fraunces", "Playfair Display", Georgia, serif;
+  font-size: 1.25rem;
+  font-style: italic;
+  font-weight: 400;
+  margin: 0;
+  color: var(--ink);
+}
+
+.conv-picker-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.conv-picker-close:hover {
+  color: var(--ink);
+  background: var(--rule-soft);
+}
+
+.conv-picker-search {
+  margin: 0.75rem 1.25rem 0;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  background: var(--rule-soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.conv-picker-search:focus {
+  border-color: var(--ink-muted);
+}
+
+.conv-picker-empty {
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  font-size: 0.9rem;
+  font-style: italic;
+  color: var(--ink-muted);
+}
+
+.conv-picker-grid {
+  list-style: none;
+  margin: 0;
+  padding: 1rem 1.25rem 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.conv-picker-grid li {
+  display: block;
+}
+
+.conv-picker-tile {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.conv-picker-tile img {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  transition: border-color 0.15s ease;
+}
+
+.conv-picker-tile:hover img {
+  border-color: var(--accent);
+}
+
+.conv-picker-tile-empty {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px dashed var(--rule);
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+  background: var(--rule-soft);
+}
+
+.conv-picker-tile-title {
+  font-size: 0.82rem;
+  color: var(--ink);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.conv-picker-tile-brand {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-muted);
+}
+
 /* Mobile -------------------------------------------------------- */
 @media (max-width: 720px) {
   .conv-feed {
@@ -1409,6 +1628,18 @@
   }
   .conv-detail {
     min-height: auto;
+  }
+
+  /* Picker grid: 2-up on phones so each tile stays readable. */
+  .conv-picker-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .conv-picker-overlay {
+    padding: 1rem;
+  }
+  .conv-picker-box {
+    width: 100%;
+    max-height: 92vh;
   }
 }
 
