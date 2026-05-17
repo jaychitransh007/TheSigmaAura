@@ -27,6 +27,7 @@ products per HTTP call.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from catalog.retrieval.config import CatalogEmbeddingConfig
@@ -35,6 +36,40 @@ from catalog.retrieval.embedder import CatalogEmbedder
 from platform_core.supabase_rest import SupabaseRestClient
 
 _log = logging.getLogger(__name__)
+
+
+# Tag stripper for Shopify descriptionHtml. The embedder
+# (text-embedding-3-small) treats `<p>` / `<br>` / etc. as input
+# tokens — passing HTML directly inflates token count and worsens
+# semantic clustering. Crude but sufficient: drop tags, collapse
+# whitespace, decode the handful of HTML entities Shopify emits.
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HTML_ENTITIES = {"&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&nbsp;": " "}
+
+
+def _strip_html(s: str) -> str:
+    if not s:
+        return ""
+    cleaned = _HTML_TAG_RE.sub(" ", s)
+    for k, v in _HTML_ENTITIES.items():
+        cleaned = cleaned.replace(k, v)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _tenant_scoped_product_id(tenant_id: str, shopify_product_id: str) -> str:
+    """Compose the global-unique product_id under the schema's
+    UNIQUE constraint on `catalog_enriched.product_id`.
+
+    The legacy single-tenant world stored product_id as the source
+    retailer's bare id (e.g. "POWERLOOK_47880414134522"). Those have
+    been globally unique by accident — only one tenant ingested them.
+
+    Now that Vibe Test (and future tenants) will share the same table,
+    we MUST prefix product_id by tenant_id so two tenants legitimately
+    importing the same Shopify GID don't collide on insert. The bare
+    shopify_product_id stays in its own column for cart wiring.
+    """
+    return f"{tenant_id}:{shopify_product_id}"
 
 
 class CatalogBootstrapService:
@@ -205,13 +240,16 @@ class CatalogBootstrapService:
     def _build_embedding_text(self, product: Dict[str, Any]) -> str:
         """Build the text fed to the embedder for a new product.
 
-        Title + description is the canonical pattern; F.2.2b will
-        extend this once vision attributes are also available
-        (e.g. interleaving GarmentCategory / NecklineType into the
-        embedding text to bias retrieval).
+        Description arrives as Shopify `descriptionHtml` — strip HTML
+        tags so the embedder isn't tokenising `<p>` / `<br>` /
+        entities. Title + vendor + description joined by newlines.
+
+        F.2.2b will extend this once vision attributes are also
+        available (interleaving GarmentCategory / NecklineType into
+        the embedding text to bias retrieval).
         """
         title = str(product.get("title") or "").strip()
-        description = str(product.get("description") or "").strip()
+        description = _strip_html(str(product.get("description") or ""))
         vendor = str(product.get("vendor") or "").strip()
         parts = [p for p in (title, vendor, description) if p]
         return "\n".join(parts) if parts else "(no description)"
@@ -264,11 +302,12 @@ class CatalogBootstrapService:
             payload["shopify_variant_ids"] = product["shopify_variant_ids"]
         if product.get("raw_row_json"):
             payload["raw_row_json"] = product["raw_row_json"]
-        # product_id is the legacy ingestion-source id; for new
-        # Shopify-sourced products we mirror shopify_product_id into
-        # it so existing joins (catalog_item_embeddings.product_id ↔
-        # catalog_enriched.product_id) still work.
-        payload["product_id"] = shopify_pid
+        # product_id is globally UNIQUE under the catalog_enriched
+        # schema constraint. Prefix with tenant_id so two tenants
+        # legitimately importing the same Shopify GID can't collide
+        # on insert (PG error 23505 otherwise). bare shopify_product_id
+        # stays in its own column for cart wiring.
+        payload["product_id"] = _tenant_scoped_product_id(tenant_id, shopify_pid)
         return self._client.insert_one("catalog_enriched", payload)
 
     def _insert_catalog_item_embedding(
@@ -292,7 +331,9 @@ class CatalogBootstrapService:
 
         payload: Dict[str, Any] = {
             "tenant_id": tenant_id,
-            "product_id": shopify_pid,
+            # Same tenant-scoped product_id as catalog_enriched so the
+            # hydration join (cie.product_id ↔ ce.product_id) lines up.
+            "product_id": _tenant_scoped_product_id(tenant_id, shopify_pid),
             "catalog_row_id": catalog_row_id,
             "embedding_model": "text-embedding-3-small",
             "embedding_dimensions": 1536,
