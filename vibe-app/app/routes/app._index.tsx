@@ -26,7 +26,7 @@ import {
   Page,
   Text,
 } from "@shopify/polaris";
-import { TitleBar } from "@shopify/app-bridge-react";
+import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
 
@@ -79,6 +79,14 @@ const SCOPE_DESCRIPTIONS: Record<string, { label: string; reason: string }> = {
 
 export default function MerchantIndex() {
   const { shop, grantedScopes } = useLoaderData<typeof loader>();
+  // App Bridge handle. `shopify.scopes.request([...])` triggers
+  // Shopify's native consent dialog for additional scope grants from
+  // inside the embedded admin. Required because we use the new
+  // embedded-auth strategy (`unstable_newEmbeddedAuthStrategy: true`
+  // in shopify.server.ts) which uses token exchange instead of OAuth
+  // redirects — scope drift doesn't trigger an automatic re-auth
+  // banner, so we trigger it manually.
+  const appBridge = useAppBridge();
   const storefrontUrl = `https://${shop}`;
   const vibeUrl = `https://${shop}/apps/vibe/style`;
   const productsAdminUrl = `shopify:admin/products`;
@@ -210,15 +218,29 @@ export default function MerchantIndex() {
                     in the next release.
                   </Text>
                   {needsScopeUpdate ? (
-                    <Banner tone="warning" title="Permissions update available">
+                    <Banner
+                      tone="warning"
+                      title="Permissions update available"
+                      action={{
+                        content: "Update permissions",
+                        onAction: () => {
+                          // App Bridge's scopes.request() opens
+                          // Shopify's native consent dialog for the
+                          // missing scopes. On approval, the iframe
+                          // reloads and the session token reflects
+                          // the new grant.
+                          void appBridge.scopes.request(missingDocumentedScopes);
+                        },
+                      }}
+                    >
                       <BlockStack gap="200">
                         <Text as="p" variant="bodyMd">
                           Vibe needs {missingDocumentedScopes.length} additional
                           permission{missingDocumentedScopes.length === 1 ? "" : "s"}{" "}
                           to unlock catalog sync, purchase attribution, and
-                          placement controls. Re-authorize from the Shopify
-                          banner at the top of this page; once granted, the new
-                          permissions appear below.
+                          placement controls. Click <strong>Update permissions</strong>{" "}
+                          below to grant them — Shopify will show its standard
+                          consent dialog.
                         </Text>
                         <Text as="p" variant="bodySm" tone="subdued">
                           Pending: {missingDocumentedScopes.join(", ")}
