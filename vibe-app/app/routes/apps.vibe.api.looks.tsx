@@ -24,16 +24,13 @@ import {
 } from "../lib/engine.server";
 import { authenticate } from "../shopify.server";
 
-function identityMismatch(
-  url: URL,
-  sessionId: string,
-  bodyCustomerId: string | null,
-): boolean {
+function identityMismatch(url: URL, sessionId: string): boolean {
   if (!sessionId.startsWith("shopify:")) return false;
-  const expected =
-    url.searchParams.get("logged_in_customer_id")?.trim() ||
-    bodyCustomerId?.trim() ||
-    "";
+  // Only trust the signed App Proxy URL parameter — Shopify appends
+  // `logged_in_customer_id` (and HMAC-signs the full URL) when a
+  // Customer Account is signed in. Body fields are unsigned and would
+  // be trivially forgeable, so they can't be a fallback.
+  const expected = url.searchParams.get("logged_in_customer_id")?.trim() || "";
   return !expected || sessionId !== `shopify:${expected}`;
 }
 
@@ -45,7 +42,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (!sessionId) {
     return json({ ok: false, error: "Missing sessionId" }, { status: 400 });
   }
-  if (identityMismatch(url, sessionId, null)) {
+  if (identityMismatch(url, sessionId)) {
     return json({ ok: false, error: "Identity mismatch" }, { status: 403 });
   }
 
@@ -91,7 +88,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const form = await request.formData();
   const sessionId = String(form.get("sessionId") ?? "").trim();
   const savedLookId = String(form.get("savedLookId") ?? "").trim();
-  const loggedInCustomerId = String(form.get("loggedInCustomerId") ?? "").trim();
 
   if (!sessionId || !savedLookId) {
     return json(
@@ -99,7 +95,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       { status: 400 },
     );
   }
-  if (identityMismatch(new URL(request.url), sessionId, loggedInCustomerId)) {
+  if (identityMismatch(new URL(request.url), sessionId)) {
     return json({ ok: false, error: "Identity mismatch" }, { status: 403 });
   }
 

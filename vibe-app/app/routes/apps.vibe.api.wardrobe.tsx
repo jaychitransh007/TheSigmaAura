@@ -10,8 +10,11 @@
 // HMAC signature validated by authenticate.public.appProxy() on every
 // branch. IDOR guard on the `shopify:` identity: anonymous UUIDs are
 // unguessable per-browser ids, but the shopify-prefixed shape is
-// enumerable from the storefront and needs verification against the
-// signed `logged_in_customer_id` proxy parameter.
+// enumerable from the storefront, so we compare it to the
+// `logged_in_customer_id` that Shopify's App Proxy auto-appends and
+// HMAC-signs onto the URL. The body is NEVER trusted for identity —
+// Shopify only signs the URL params, so a body-supplied id would let a
+// hostile client forge any customer id.
 
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
@@ -24,21 +27,23 @@ import {
 } from "../lib/engine.server";
 import { authenticate } from "../shopify.server";
 
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+// Vercel Serverless / Edge Functions enforce a 4.5MB request body cap
+// on Hobby (and lower than that on some routes) — bodies above the
+// platform limit are rejected with HTTP 413 BEFORE this handler runs.
+// We cap a hair under that so the error surfaces as our friendly JSON
+// 400 from app code instead of an opaque platform-level 413. Phone
+// photos routinely exceed 4MB; clients should compress / transcode
+// HEIC → JPEG before posting (the conversation-side onboarding upload
+// already does this via the heic-to library).
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
-function identityMismatch(
-  url: URL,
-  sessionId: string,
-  bodyCustomerId: string | null,
-): boolean {
+function identityMismatch(url: URL, sessionId: string): boolean {
   if (!sessionId.startsWith("shopify:")) return false;
-  // Prefer the query-param customer id (signed by App Proxy on GET);
-  // accept the form-body value on POST/DELETE because Shopify only
-  // signs the URL, not the body. Both must match the sessionId.
-  const expected =
-    url.searchParams.get("logged_in_customer_id")?.trim() ||
-    bodyCustomerId?.trim() ||
-    "";
+  // Only trust the signed App Proxy URL parameter — Shopify appends
+  // `logged_in_customer_id` (and HMAC-signs the full URL) when a
+  // Customer Account is signed in. Body fields are unsigned and would
+  // be trivially forgeable.
+  const expected = url.searchParams.get("logged_in_customer_id")?.trim() || "";
   return !expected || sessionId !== `shopify:${expected}`;
 }
 
@@ -50,7 +55,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (!sessionId) {
     return json({ ok: false, error: "Missing sessionId" }, { status: 400 });
   }
-  if (identityMismatch(url, sessionId, null)) {
+  if (identityMismatch(url, sessionId)) {
     return json({ ok: false, error: "Identity mismatch" }, { status: 403 });
   }
 
@@ -76,14 +81,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const form = await request.formData();
     const sessionId = String(form.get("sessionId") ?? "").trim();
     const wardrobeItemId = String(form.get("wardrobeItemId") ?? "").trim();
-    const loggedInCustomerId = String(form.get("loggedInCustomerId") ?? "").trim();
     if (!sessionId || !wardrobeItemId) {
       return json(
         { ok: false, error: "Missing sessionId or wardrobeItemId" },
         { status: 400 },
       );
     }
-    if (identityMismatch(new URL(request.url), sessionId, loggedInCustomerId)) {
+    if (identityMismatch(new URL(request.url), sessionId)) {
       return json({ ok: false, error: "Identity mismatch" }, { status: 403 });
     }
     try {
@@ -101,10 +105,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
+  if (request.method !== "POST") {
+    return json(
+      { ok: false, error: `Method ${request.method} not supported` },
+      { status: 405 },
+    );
+  }
+
   // POST — multipart add.
   const form = await request.formData();
   const sessionId = String(form.get("sessionId") ?? "").trim();
-  const loggedInCustomerId = String(form.get("loggedInCustomerId") ?? "").trim();
   const title = String(form.get("title") ?? "").trim();
   const garmentCategory = String(form.get("garmentCategory") ?? "").trim();
   const brand = String(form.get("brand") ?? "").trim();
@@ -113,7 +123,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!sessionId) {
     return json({ ok: false, error: "Missing sessionId" }, { status: 400 });
   }
-  if (identityMismatch(new URL(request.url), sessionId, loggedInCustomerId)) {
+  if (identityMismatch(new URL(request.url), sessionId)) {
     return json({ ok: false, error: "Identity mismatch" }, { status: 403 });
   }
   if (!(file instanceof Blob) || file.size === 0) {
@@ -121,7 +131,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   if (file.size > MAX_UPLOAD_BYTES) {
     return json(
-      { ok: false, error: "Image must be under 10MB" },
+      { ok: false, error: "Image must be under 4MB" },
       { status: 400 },
     );
   }

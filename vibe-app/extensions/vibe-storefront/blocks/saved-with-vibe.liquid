@@ -41,6 +41,7 @@
       data-vibe-saved-grid
       data-customer-id="{{ customer.id }}"
       data-max-items="{{ max_items }}"
+      data-currency-symbol="{{ cart.currency.symbol | default: shop.currency | escape }}"
       data-empty-copy="{{ empty_copy | escape }}"
       data-empty-cta-label="{{ empty_cta_label | escape }}"
       data-loading-copy="{{ 'Loading your saved items…' | escape }}"

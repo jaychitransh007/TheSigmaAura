@@ -39,10 +39,12 @@ export const links: LinksFunction = () => [
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.public.appProxy(request);
-  const url = new URL(request.url);
-  const loggedInCustomerId =
-    url.searchParams.get("logged_in_customer_id")?.trim() || null;
-  return json({ loggedInCustomerId });
+  // No identity threading from server → client: Shopify's App Proxy
+  // auto-appends `logged_in_customer_id` to every storefront-origin
+  // request to /apps/vibe/* and HMAC-signs the result, so subsequent
+  // resource-route fetches are independently identity-checked by the
+  // server side without the page echoing anything.
+  return json({});
 };
 
 type Tab = "saved" | "recent";
@@ -58,7 +60,7 @@ type LoadState =
   | { kind: "error"; message: string };
 
 export default function LooksPage() {
-  const { loggedInCustomerId } = useLoaderData<typeof loader>();
+  useLoaderData<typeof loader>();
   const [sessionId, setSessionId] = useState("");
   const [tab, setTab] = useState<Tab>("saved");
   const [state, setState] = useState<LoadState>({ kind: "loading" });
@@ -76,9 +78,6 @@ export default function LooksPage() {
       setState({ kind: "loading" });
       try {
         const params = new URLSearchParams({ sessionId: sid });
-        if (loggedInCustomerId) {
-          params.set("logged_in_customer_id", loggedInCustomerId);
-        }
         const resp = await fetch(`/apps/vibe/api/looks?${params.toString()}`);
         const body = (await resp.json()) as
           | {
@@ -106,7 +105,7 @@ export default function LooksPage() {
         setState({ kind: "error", message });
       }
     },
-    [loggedInCustomerId],
+    [],
   );
 
   useEffect(() => {
@@ -121,7 +120,6 @@ export default function LooksPage() {
       const form = new FormData();
       form.set("sessionId", sessionId);
       form.set("savedLookId", item.saved_look_id);
-      if (loggedInCustomerId) form.set("loggedInCustomerId", loggedInCustomerId);
       const resp = await fetch("/apps/vibe/api/looks", {
         method: "DELETE",
         body: form,
