@@ -467,3 +467,97 @@
   border-bottom-color: var(--accent);
   font-weight: 600;
 }
+
+/* Confirm dialog — same modal shell as Add-a-piece, narrower frame
+ * and a destructive variant for delete-confirm buttons. */
+.vibe-confirm {
+  max-width: 380px;
+}
+
+.vibe-primary-btn--danger {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.vibe-primary-btn--danger:hover {
+  background: #872f2b;
+  border-color: #872f2b;
+}
+
+/* Toast host + toast stack. Fixed bottom-right of the viewport so
+ * customer attention can stay on the page; toasts stack vertically
+ * with the newest at the bottom. Auto-dismiss after 4s (see toast.tsx). */
+.vibe-toast-host {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: min(360px, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+@media (max-width: 480px) {
+  .vibe-toast-host {
+    left: 1rem;
+    right: 1rem;
+    max-width: none;
+  }
+}
+
+.vibe-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: var(--ink);
+  color: #faf5ee;
+  border-radius: 10px;
+  padding: 0.75rem 0.95rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  box-shadow: 0 10px 24px rgba(22, 17, 14, 0.25);
+  pointer-events: auto;
+  animation: vibe-toast-in 180ms ease-out;
+}
+
+@keyframes vibe-toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.vibe-toast--success {
+  background: #2d4a36;
+}
+
+.vibe-toast--error {
+  background: var(--danger);
+}
+
+.vibe-toast--info {
+  background: var(--ink);
+}
+
+.vibe-toast-message {
+  flex: 1;
+  min-width: 0;
+  word-wrap: break-word;
+}
+
+.vibe-toast-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 0.1rem;
+  opacity: 0.7;
+  transition: opacity 120ms ease;
+  flex-shrink: 0;
+}
+
+.vibe-toast-close:hover {
+  opacity: 1;
+}

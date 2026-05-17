@@ -15,11 +15,14 @@ import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 
+import { ConfirmDialog, type ConfirmRequest } from "../components/ui/confirm-dialog";
+import { ToastsProvider, useToasts } from "../components/ui/toast";
 import { VibePageShell } from "../components/vibe-page-shell";
 import wardrobeStyles from "../components/wardrobe/styles.css?url";
 import type {
   PastLookSummary,
   SavedLookSummary,
+  TryonGalleryEntry,
 } from "../lib/engine.server";
 import {
   getOrCreateClientSessionId,
@@ -47,7 +50,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return json({});
 };
 
-type Tab = "saved" | "recent";
+type Tab = "saved" | "recent" | "tryons";
 
 type LoadState =
   | { kind: "loading" }
@@ -55,16 +58,27 @@ type LoadState =
       kind: "ready";
       saved: SavedLookSummary[];
       past: PastLookSummary[];
+      tryons: TryonGalleryEntry[];
       warnings: string[];
     }
   | { kind: "error"; message: string };
 
 export default function LooksPage() {
+  return (
+    <ToastsProvider>
+      <LooksPageInner />
+    </ToastsProvider>
+  );
+}
+
+function LooksPageInner() {
   useLoaderData<typeof loader>();
+  const toasts = useToasts();
   const [sessionId, setSessionId] = useState("");
   const [tab, setTab] = useState<Tab>("saved");
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
 
   useEffect(() => {
     const merged = readMergedCustomerId();
@@ -84,6 +98,7 @@ export default function LooksPage() {
               ok: true;
               savedLooks: SavedLookSummary[];
               pastLooks: PastLookSummary[];
+              tryonGallery: TryonGalleryEntry[];
               errors: string[];
             }
           | { ok: false; error: string };
@@ -98,6 +113,7 @@ export default function LooksPage() {
           kind: "ready",
           saved: body.savedLooks,
           past: body.pastLooks,
+          tryons: body.tryonGallery,
           warnings: body.errors,
         });
       } catch (err) {
@@ -112,9 +128,19 @@ export default function LooksPage() {
     if (sessionId) void loadLooks(sessionId);
   }, [sessionId, loadLooks]);
 
-  async function handleDeleteSaved(item: SavedLookSummary) {
+  function handleDeleteSaved(item: SavedLookSummary) {
     if (!sessionId || !item.saved_look_id) return;
-    if (!window.confirm(`Remove "${item.title}" from saved looks?`)) return;
+    setConfirm({
+      title: "Remove this saved look?",
+      message: `"${item.title}" won't appear in Saved any more. The original conversation stays in Recent.`,
+      confirmLabel: "Remove",
+      destructive: true,
+      onConfirm: () => deleteSavedLookRow(item),
+    });
+  }
+
+  async function deleteSavedLookRow(item: SavedLookSummary) {
+    if (!sessionId || !item.saved_look_id) return;
     setBusyDeleteId(item.saved_look_id);
     try {
       const form = new FormData();
@@ -126,7 +152,11 @@ export default function LooksPage() {
       });
       const body = (await resp.json()) as { ok: boolean; error?: string };
       if (!resp.ok || !body.ok) {
-        alert(body.error || "Couldn't remove that look — try again in a sec.");
+        toasts.push({
+          kind: "error",
+          message:
+            body.error || "Couldn't remove that look — try again in a sec.",
+        });
         return;
       }
       setState((prev) =>
@@ -139,6 +169,10 @@ export default function LooksPage() {
             }
           : prev,
       );
+      toasts.push({
+        kind: "success",
+        message: `Removed "${item.title}" from saved.`,
+      });
     } finally {
       setBusyDeleteId(null);
     }
@@ -146,6 +180,7 @@ export default function LooksPage() {
 
   const savedList = state.kind === "ready" ? state.saved : [];
   const pastList = state.kind === "ready" ? state.past : [];
+  const tryonList = state.kind === "ready" ? state.tryons : [];
 
   return (
     <VibePageShell title="Looks">
@@ -174,6 +209,15 @@ export default function LooksPage() {
         >
           Recent {state.kind === "ready" ? `(${pastList.length})` : ""}
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "tryons"}
+          className={"vibe-tab" + (tab === "tryons" ? " is-active" : "")}
+          onClick={() => setTab("tryons")}
+        >
+          Try-ons {state.kind === "ready" ? `(${tryonList.length})` : ""}
+        </button>
       </div>
 
       {state.kind === "error" ? (
@@ -195,9 +239,15 @@ export default function LooksPage() {
           busyDeleteId={busyDeleteId}
           onDelete={handleDeleteSaved}
         />
-      ) : (
+      ) : tab === "recent" ? (
         <RecentTab items={pastList} loading={state.kind === "loading"} />
+      ) : (
+        <TryonsTab items={tryonList} loading={state.kind === "loading"} />
       )}
+
+      {confirm ? (
+        <ConfirmDialog {...confirm} onClose={() => setConfirm(null)} />
+      ) : null}
     </VibePageShell>
   );
 }
@@ -335,6 +385,76 @@ function RecentTab({
               </p>
             </div>
           </a>
+        );
+      })}
+    </div>
+  );
+}
+
+// Try-on gallery tab (D.C.6). Engine accumulates one render per outfit
+// recommendation; this surface lets the customer scroll back through
+// them. Read-only — try-on renders aren't individually deletable
+// today (they expire when the underlying conversation row archives).
+function TryonsTab({
+  items,
+  loading,
+}: {
+  items: TryonGalleryEntry[];
+  loading: boolean;
+}) {
+  if (loading && items.length === 0) {
+    return <p className="vibe-page-intro">Loading your try-ons…</p>;
+  }
+  if (items.length === 0) {
+    return (
+      <div className="vibe-empty">
+        <h2>No try-ons yet</h2>
+        <p>
+          Every outfit Vibe builds for you comes with a try-on render. They'll
+          start appearing here once you've had a styling conversation.
+        </p>
+        <a className="vibe-primary-btn" href="/apps/vibe/style">
+          Start a conversation
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="vibe-tile-grid">
+      {items.map((entry) => {
+        const sourceLabel =
+          entry.garment_source === "wardrobe"
+            ? "From your wardrobe"
+            : entry.garment_source === "catalog"
+              ? "From the store"
+              : "";
+        return (
+          <div className="vibe-tile" key={entry.id}>
+            <div className="vibe-tile-image">
+              {entry.image_url ? (
+                <img
+                  src={entry.image_url}
+                  alt="Try-on render"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="vibe-tile-image-placeholder">No preview</div>
+              )}
+            </div>
+            <div className="vibe-tile-body">
+              <p className="vibe-tile-title">
+                {entry.garment_ids.length > 0
+                  ? `${entry.garment_ids.length} piece${entry.garment_ids.length === 1 ? "" : "s"}`
+                  : "Try-on"}
+              </p>
+              <p className="vibe-tile-meta">
+                {[sourceLabel, formatRelative(entry.created_at)]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+          </div>
         );
       })}
     </div>

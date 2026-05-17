@@ -657,6 +657,14 @@ export type PastLookSummary = {
   created_at: string;
 };
 
+export type TryonGalleryEntry = {
+  id: string;
+  image_url: string;
+  garment_ids: string[];
+  garment_source: string;
+  created_at: string;
+};
+
 type RawSavedLookRow = {
   id?: string;
   title?: string;
@@ -777,6 +785,58 @@ export async function deleteSavedLook(args: {
       `Engine saved-look delete → ${resp.status}: ${await readErrorBody(resp)}`,
     );
   }
+}
+
+// Try-on gallery (D.C.6). Engine's `/v1/users/{user_id}/tryon-gallery`
+// returns every try-on render the customer has accumulated — Gemini
+// produces one per outfit recommendation, and they persist on the
+// engine's disk + an entry per render in `virtual_tryon_images`.
+//
+// image_url comes back as either an absolute URL or a `/v1/onboarding/
+// images/local?path=…` reference; rewriteEngineImageUrl normalises
+// both into the App Proxy passthrough.
+type RawTryonGalleryResponse = {
+  user_id: string;
+  items?: Array<{
+    id?: string;
+    image_url?: string;
+    garment_ids?: string[];
+    garment_source?: string;
+    created_at?: string;
+  }>;
+};
+
+export async function getTryonGallery(userId: string): Promise<TryonGalleryEntry[]> {
+  if (USE_MOCK) {
+    return [
+      {
+        id: "mock-tryon-1",
+        image_url: "https://picsum.photos/seed/vibe-tryon-mock-1/400/533",
+        garment_ids: ["mock-garment-1", "mock-garment-2"],
+        garment_source: "catalog",
+        created_at: new Date(Date.now() - 86400000).toISOString(),
+      },
+      {
+        id: "mock-tryon-2",
+        image_url: "https://picsum.photos/seed/vibe-tryon-mock-2/400/533",
+        garment_ids: ["mock-garment-3"],
+        garment_source: "wardrobe",
+        created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
+      },
+    ];
+  }
+  const raw = await getJson<RawTryonGalleryResponse>(
+    `/v1/users/${encodeURIComponent(userId)}/tryon-gallery`,
+  );
+  return (raw.items ?? []).map((row) => ({
+    id: String(row.id ?? ""),
+    image_url: rewriteEngineImageUrl(row.image_url) || "",
+    garment_ids: Array.isArray(row.garment_ids)
+      ? row.garment_ids.filter((s): s is string => typeof s === "string")
+      : [],
+    garment_source: String(row.garment_source ?? ""),
+    created_at: String(row.created_at ?? ""),
+  })).filter((it) => it.id !== "");
 }
 
 export async function getPastLooks(userId: string): Promise<PastLookSummary[]> {

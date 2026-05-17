@@ -20,8 +20,10 @@ import {
   deleteSavedLook,
   getPastLooks,
   getSavedLooks,
+  getTryonGallery,
   type PastLookSummary,
   type SavedLookSummary,
+  type TryonGalleryEntry,
 } from "../lib/engine.server";
 import { authenticate } from "../shopify.server";
 
@@ -37,18 +39,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json({ ok: false, error: "Identity mismatch" }, { status: 403 });
   }
 
-  // Run both fetches in parallel — saved + past are independent and
-  // each takes its own engine round-trip. Promise.allSettled keeps a
-  // failure in one from blocking the other.
-  const [saved, past] = await Promise.allSettled([
+  // Run all three fetches in parallel — saved / past / tryon gallery
+  // are independent engine round-trips. Promise.allSettled keeps a
+  // failure in any single one from blanking the other tabs.
+  const [saved, past, tryons] = await Promise.allSettled([
     getSavedLooks(sessionId),
     getPastLooks(sessionId),
+    getTryonGallery(sessionId),
   ]);
 
   const savedLooks: SavedLookSummary[] =
     saved.status === "fulfilled" ? saved.value : [];
   const pastLooks: PastLookSummary[] =
     past.status === "fulfilled" ? past.value : [];
+  const tryonGallery: TryonGalleryEntry[] =
+    tryons.status === "fulfilled" ? tryons.value : [];
 
   const errors: string[] = [];
   if (saved.status === "rejected") {
@@ -57,11 +62,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (past.status === "rejected") {
     errors.push(messageOf(past.reason, "past looks"));
   }
+  if (tryons.status === "rejected") {
+    errors.push(messageOf(tryons.reason, "try-on gallery"));
+  }
 
   return json({
     ok: true,
     savedLooks,
     pastLooks,
+    tryonGallery,
     errors,
   });
 };
