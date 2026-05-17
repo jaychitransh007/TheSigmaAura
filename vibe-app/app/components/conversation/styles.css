@@ -1041,15 +1041,9 @@
 
 /* CTA row — Buy + Like / Save */
 .conv-cta-row {
-  /* CTA anchored toward the bottom of the detail column for
-     consistent y-position across cards. margin-bottom: 4rem lifts
-     it well above the hero image's bottom edge so the CTA doesn't
-     feel pinned to the floor — there's a comfortable buffer of
-     whitespace below it that mirrors the breathing room the title
-     gets at the top. Bumped from 1.5rem after the customer flagged
-     that the CTA still read as "too much at the bottom". The detail
-     column stretches to the grid row height (= hero image height),
-     so the buffer is the same on every card. */
+  /* margin-top:auto anchors the CTA at the bottom of the detail
+     column so y-position is consistent across cards. margin-bottom
+     lifts it off the column floor — see mobile override below. */
   margin-top: auto;
   margin-bottom: 4rem;
   display: flex;
@@ -1636,6 +1630,13 @@
   }
   .conv-detail {
     min-height: auto;
+  }
+  /* On mobile the detail panel stacks below the hero (1-column
+     grid), so anchoring the CTA at the column floor with 4rem of
+     padding burns scarce vertical space. Reduce to 1rem so the
+     CTA hugs the content above it. */
+  .conv-cta-row {
+    margin-bottom: 1rem;
   }
 
   /* Picker grid: 2-up on phones so each tile stays readable. */
