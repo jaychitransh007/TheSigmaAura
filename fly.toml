@@ -65,14 +65,15 @@ primary_region = "bom"
   source = "vibe_data"
   destination = "/app/data"
 
-# `recreate` deploy strategy — required when a single machine claims
+# `immediate` deploy strategy — required when a single machine claims
 # a single volume. The default rolling strategy deadlocks because
 # Fly tries to start the new machine before stopping the old one,
-# but only one machine can mount the volume at a time. With
-# `recreate` the old machine is fully stopped (volume released)
-# before the new machine is created (volume attaches). This means
-# a brief downtime window during deploys (~10-20s) which is fine
-# for the engine — the storefront still serves cached pages and
-# new turns retry on the next poll cycle.
+# but only one machine can mount the volume at a time. `immediate`
+# stops the old machine first (volume released) and then starts the
+# new one (volume attaches). Brief downtime during deploys
+# (~10-20s) is fine for the engine — the storefront serves cached
+# pages and new turns retry on the next poll cycle. Apps v2 valid
+# strategies: canary, rolling, immediate, bluegreen (recreate is
+# not a v2 option — see #418 review fix May 17 2026).
 [deploy]
-  strategy = "recreate"
+  strategy = "immediate"
