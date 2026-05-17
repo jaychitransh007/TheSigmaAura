@@ -912,6 +912,7 @@ def create_app() -> FastAPI:
             result = product_sync_service.apply_create_or_update(
                 tenant_id=tenant_id,
                 product_payload=request.payload or {},
+                topic=request.topic or "",
             )
             return ProductWebhookResult(
                 created=int(result.get("created", 0)),
@@ -987,6 +988,50 @@ def create_app() -> FastAPI:
             )
         except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/v1/enrichment/submit-pending-all")
+    def enrichment_submit_pending_all() -> Dict[str, Any]:
+        """Submit-pending across every ready tenant.
+
+        Closes the F.3 review gap: the F.4 product webhooks insert
+        rows with row_status='pending_enrichment' but no surface
+        triggered a submit for them (bootstrap_complete only fires
+        at install time). Without this call, webhook-added products
+        would stay text-only forever. The daily cron now invokes
+        this BEFORE poll-all so freshly-inserted rows enter the
+        Batch API queue and get ingested on the next day's poll.
+
+        Idempotent: each tenant's submit short-circuits if a batch
+        is already in-flight.
+        """
+        submitted_count = 0
+        no_op_count = 0
+        errors: List[Dict[str, str]] = []
+        try:
+            tenants = tenant_repo.list_all(bootstrap_status="ready")
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        for tenant in tenants:
+            tid = str(tenant.get("tenant_id") or "")
+            if not tid:
+                continue
+            try:
+                result = vision_enrichment_service.submit_pending_for_tenant(tid)
+                if result.submitted:
+                    submitted_count += 1
+                else:
+                    no_op_count += 1
+            except Exception as exc:  # noqa: BLE001
+                errors.append({"tenant_id": tid, "error": str(exc)})
+                _log.warning(
+                    "enrichment_submit_pending_all: tenant=%s err=%s", tid, exc,
+                )
+        return {
+            "tenants_seen": len(tenants),
+            "submitted": submitted_count,
+            "no_op": no_op_count,
+            "errors": errors,
+        }
 
     @app.get(
         "/v1/tenants",

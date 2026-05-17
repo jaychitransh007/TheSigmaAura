@@ -177,9 +177,15 @@ class ProductWebhookCreateOrUpdateRequest(BaseModel):
     engine translates this to the shared BootstrapProductInput shape
     internally — vibe-app stays a thin pass-through so all of the
     "what counts as a product" logic lives in one place.
+
+    ``topic`` is the verbatim Shopify webhook topic (e.g.
+    "products/create"). The engine uses it to gate the soft-delete-
+    revival logic: products/create may revive a soft-deleted row,
+    products/update may not.
     """
 
     payload: Dict[str, Any] = Field(default_factory=dict)
+    topic: str = Field(default="")
 
 
 class ProductWebhookResult(BaseModel):

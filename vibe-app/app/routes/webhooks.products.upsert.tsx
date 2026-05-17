@@ -52,6 +52,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const result = await forwardProductUpsertWebhook({
       tenantId,
       payload,
+      topic,
     });
     logInfo("vibe_product_webhook_upsert", {
       topic,

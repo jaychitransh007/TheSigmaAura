@@ -180,10 +180,52 @@ class UpsertWebhookTests(unittest.TestCase):
         self.assertEqual(len(cie_updates), 1)
         self.assertFalse(ce_updates[0].kwargs["patch"]["available_for_sale"])
         self.assertFalse(cie_updates[0].kwargs["patch"]["available_for_sale"])
-        # And the catalog_enriched update must clear deleted_at — a
-        # products/create on a previously soft-deleted row should
-        # bring it back.
-        self.assertIsNone(ce_updates[0].kwargs["patch"]["deleted_at"])
+
+    def test_products_create_topic_revives_soft_deleted(self):
+        """products/create on a previously-soft-deleted row should
+        clear deleted_at so it comes back to life. Shopify lets
+        merchants un-delete within 30 days."""
+        client, bootstrap = _make_clients()
+        svc = CatalogProductSyncService(client, bootstrap_service=bootstrap)
+        svc.apply_create_or_update(
+            tenant_id="t_test",
+            product_payload={"id": 1234, "title": "x"},
+            topic="products/create",
+        )
+        ce = [c for c in client.update_one.call_args_list if c.args[0] == "catalog_enriched"][0]
+        self.assertIn("deleted_at", ce.kwargs["patch"])
+        self.assertIsNone(ce.kwargs["patch"]["deleted_at"])
+
+    def test_products_update_topic_preserves_soft_delete(self):
+        """products/update arriving after a successful products/delete
+        (out-of-order webhook retry) must NOT clear deleted_at —
+        otherwise an explicitly-deleted product would silently come
+        back. The patch should ONLY touch available_for_sale."""
+        client, bootstrap = _make_clients()
+        svc = CatalogProductSyncService(client, bootstrap_service=bootstrap)
+        svc.apply_create_or_update(
+            tenant_id="t_test",
+            product_payload={"id": 1234, "title": "x"},
+            topic="products/update",
+        )
+        ce = [c for c in client.update_one.call_args_list if c.args[0] == "catalog_enriched"][0]
+        self.assertNotIn("deleted_at", ce.kwargs["patch"])
+        # available_for_sale must still be written.
+        self.assertIn("available_for_sale", ce.kwargs["patch"])
+
+    def test_empty_topic_defaults_to_revive(self):
+        """For backwards-compatibility with callers that don't thread
+        the topic, an empty topic should preserve the pre-fix behavior
+        (revive). Existing callers shouldn't break."""
+        client, bootstrap = _make_clients()
+        svc = CatalogProductSyncService(client, bootstrap_service=bootstrap)
+        svc.apply_create_or_update(
+            tenant_id="t_test",
+            product_payload={"id": 1234, "title": "x"},
+        )
+        ce = [c for c in client.update_one.call_args_list if c.args[0] == "catalog_enriched"][0]
+        self.assertIn("deleted_at", ce.kwargs["patch"])
+        self.assertIsNone(ce.kwargs["patch"]["deleted_at"])
 
     def test_missing_id_payload_is_soft_no_op(self):
         client, bootstrap = _make_clients()

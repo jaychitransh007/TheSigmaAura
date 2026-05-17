@@ -1572,6 +1572,10 @@ export type ProductWebhookDeleteResult = {
 export async function forwardProductUpsertWebhook(args: {
   tenantId: string;
   payload: unknown;
+  /** Shopify webhook topic — "products/create" or "products/update".
+   *  Gates the soft-delete revival logic on the engine side: update
+   *  must NOT revive, create may. */
+  topic: string;
 }): Promise<ProductWebhookUpsertResult> {
   if (USE_MOCK) {
     return {
@@ -1585,7 +1589,7 @@ export async function forwardProductUpsertWebhook(args: {
   }
   return postJson<ProductWebhookUpsertResult>(
     `/v1/tenants/${encodeURIComponent(args.tenantId)}/products/webhook-upsert`,
-    { payload: args.payload ?? {} },
+    { payload: args.payload ?? {}, topic: args.topic },
   );
 }
 
@@ -1641,4 +1645,21 @@ export async function pollAllEnrichment(): Promise<EnrichmentPollItem[]> {
     {},
   );
   return raw.batches ?? [];
+}
+
+export type EnrichmentSubmitAllResult = {
+  tenants_seen: number;
+  submitted: number;
+  no_op: number;
+  errors: Array<{ tenant_id: string; error: string }>;
+};
+
+export async function submitPendingEnrichmentAll(): Promise<EnrichmentSubmitAllResult> {
+  if (USE_MOCK) {
+    return { tenants_seen: 0, submitted: 0, no_op: 0, errors: [] };
+  }
+  return postJson<EnrichmentSubmitAllResult>(
+    "/v1/enrichment/submit-pending-all",
+    {},
+  );
 }
