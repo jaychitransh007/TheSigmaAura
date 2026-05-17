@@ -51,3 +51,16 @@ primary_region = "bom"
 [[vm]]
   size = "shared-cpu-1x"
   memory = "1gb"
+
+# Persistent storage for user uploads + generated images. Without
+# this mount, every `fly deploy` wipes data/ — onboarding photos,
+# uploaded wardrobe items, and cached try-on renders all disappear
+# and subsequent turns fail with FileNotFoundError on the person
+# image. The volume `vibe_data` is provisioned once with
+# `fly volumes create vibe_data --size 1 --region bom`; the
+# destination matches the Dockerfile WORKDIR (/app) + the relative
+# path the engine writes to (data/onboarding/images, data/wardrobe,
+# data/tryon/images).
+[mounts]
+  source = "vibe_data"
+  destination = "/app/data"
