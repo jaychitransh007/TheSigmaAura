@@ -1,12 +1,14 @@
 # Intent-Driven Fashion Copilot Architecture
 
-Last updated: May 16, 2026.
+Last updated: May 17, 2026.
 
-> **DEPLOYMENT CONTEXT (May 16, 2026).** This document still accurately describes the engine's intent taxonomy, agent topology, and turn-execution pipeline (planner → architect → composer → rater → try-on). What's different from earlier drafts:
+> **DEPLOYMENT CONTEXT (May 17, 2026).** This document still accurately describes the engine's intent taxonomy, agent topology, and turn-execution pipeline (planner → architect → composer → rater → try-on). What's different from earlier drafts:
 >
-> - The engine is the `platform_core` / `agentic_application` Python service deployed to **Fly.io Mumbai** (`vibe-engine.fly.dev`, shared-cpu-1x always-on). The legacy single-tenant web UI (`platform_core/ui.py`) is deprecated.
+> - The engine is the `platform_core` / `agentic_application` Python service deployed to **Fly.io Mumbai** (`vibe-engine.fly.dev`, shared-cpu-1x always-on, persistent `vibe_data` volume at `/app/data`, deploy strategy `immediate`). The legacy single-tenant web UI (`platform_core/ui.py`) is deprecated.
 > - Callers: the **Vibe Shopify App** at `vibe-app-five.vercel.app` proxies customer chat to the engine through the App Proxy. Turns are tagged with `channel="vibe_storefront"`, which bypasses the onboarding gate so anonymous / partial-profile customers can chat. The legacy `web` channel keeps the strict gate path for backward compatibility.
 > - Identity: anonymous customers use a localStorage UUID; signed-in customers merge to `shopify:{customer_id}` via `POST /v1/users/merge` (D.S.3b).
+> - Attached-piece routing: the Vibe action auto-appends "Build an outfit around this attached piece" whenever an attachment is present (image upload / wardrobe pick / wishlist pick), which forces the planner into `pairing_request`. Engine-side carry-forward of the previous turn's `attached_item` was removed 2026-05-17 (PR #430), so a fresh turn never silently re-anchors on a stale wardrobe piece.
+> - Observability: all Vibe-callable engine routes (turn loop + 7 onboarding endpoints) emit `channel`-labelled Prometheus counters and structured `event=...` logs as of PR #436. Vibe-side Remix actions emit JSON-to-stdout events (`vibe_init_outcome`, `vibe_merge_outcome`, `vibe_merge_identity_mismatch`, `vibe_turn_pairing_rewrite`) to Vercel Logs.
 > - Phase C (multi-tenancy refactor with `tenant_id` on every row / query / cache key) is deferred until Vibe customer pages validate.
 >
 > See [`OPEN_TASKS.md`](OPEN_TASKS.md) for the canonical current-state and Phase D plan.

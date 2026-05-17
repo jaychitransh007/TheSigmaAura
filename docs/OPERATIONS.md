@@ -1,17 +1,20 @@
 # Operations: Dashboards & Queries (First-50 Rollout)
 
-Last updated: May 16, 2026.
+Last updated: May 17, 2026.
 
-> **OPS CONTEXT (May 16, 2026) — Shopify-hosted system.** The SQL panels below query the engine's `public` schema tables and remain valid for engine-side observability of both the legacy web channel and the new `vibe_storefront` channel. What's where:
+> **OPS CONTEXT (May 17, 2026) — Shopify-hosted system.** The SQL panels below query the engine's `public` schema tables and remain valid for engine-side observability of both the legacy web channel and the new `vibe_storefront` channel. What's where:
 >
 > - **Shopify storefront** (`thesigmavibe.shop`) — operational metrics in Shopify Admin (orders, conversion, sessions). Not queried via the panels below.
-> - **Vibe Shopify App** (Vercel `bom1`) — runtime logs via `vercel logs --environment production --no-branch -x -n 60`. Errors, function timing, cold-start metrics in the Vercel dashboard.
+> - **Vibe Shopify App** (Vercel `bom1`) — runtime logs via `vercel logs --environment production --no-branch -x -n 60`. Errors, function timing, cold-start metrics in the Vercel dashboard. As of 2026-05-17 the Remix actions emit structured JSON events to stdout (captured by Vercel Logs + any drain): `event=vibe_init_outcome` (carries the three-way `getOnboardingStatus` result + ensure-profile outcome + derived `has_profile`), `event=vibe_merge_outcome` (success/failure of `/v1/users/merge`), `event=vibe_merge_identity_mismatch` (warn-level: the 403 IDOR rejection), `event=vibe_turn_pairing_rewrite` (logs whether the silent "Build an outfit around this attached piece" augmentation fired + which attachment kind). Helper: [`vibe-app/app/lib/logger.server.ts`](../vibe-app/app/lib/logger.server.ts).
 > - **Session store** — Prisma `Session` table in Supabase `vibe` schema. Customer identity in the engine is `shopify:{customer_id}` for signed-in customers, raw localStorage UUID for anonymous (see D.S.3a / D.S.3b in `OPEN_TASKS.md`).
-> - **Engine** — **Fly.io Mumbai** (`vibe-engine.fly.dev`, shared-cpu-1x 1GB always-on, `/healthz` every 30s). Logs: `fly logs --app vibe-engine`. Multi-tenant refactor (Phase C) deferred.
-> - **Prometheus metrics** — engine exposes `/metrics`. May-16 additions:
+> - **Engine** — **Fly.io Mumbai** (`vibe-engine.fly.dev`, shared-cpu-1x 1GB always-on, `/healthz` every 30s). Logs: `fly logs --app vibe-engine`. Persistent volume `vibe_data` mounted at `/app/data` so onboarding photos + wardrobe tiles + try-on renders survive deploys; `strategy = "immediate"` is the only Apps v2 strategy compatible with single-machine + single-volume (rolling / canary / bluegreen all deadlock on the volume). Multi-tenant refactor (Phase C) deferred.
+> - **Prometheus metrics** — engine exposes `/metrics`. May-16 + May-17 additions:
 >   - `aura_turn_total{channel="web|vibe_storefront", intent, action, status}` — slice success rates by channel ([#398](https://github.com/jaychitransh007/TheSigmaAura/pull/398)).
 >   - `aura_user_merge_total{status="success|noop|failed"}` — Shopify Customer Account merge outcomes ([#398](https://github.com/jaychitransh007/TheSigmaAura/pull/398)).
->   - See `docs/OPEN_TASKS.md` § Trigger-driven for three "useful" observability gaps queued for post-D.P.1.
+>   - `aura_onboarding_endpoint_total{endpoint, status, channel}` — outcomes for each Vibe onboarding route (`profile_ensure` / `profile_partial` / `image_upload` / `status_read` / `wardrobe_list` / `analysis_start_phase{1,2}` / `analysis_status_read`); `status` ∈ `success|not_found|bad_request|unauthorized|failed` ([#436](https://github.com/jaychitransh007/TheSigmaAura/pull/436)).
+>   - `aura_onboarding_image_bytes{category, channel}` — upload-size distribution for the two onboarding photo categories (`full_body` / `headshot`); buckets 50KB → 10MB ([#436](https://github.com/jaychitransh007/TheSigmaAura/pull/436)).
+>   - Structured logs (engine-side): `event=onboarding_endpoint` lines from `aura.onboarding` logger carry per-user context (`user_id`, `endpoint`, `status`, `channel`, plus route-specific fields like `size_bytes` / `has_row` / `fields`) for grep-by-user debugging.
+>   - See `docs/OPEN_TASKS.md` § Trigger-driven for three "useful" observability gaps queued for post-D.P.1 (variant-id coverage, onboarding-stage reach funnel, acquisition-source merge propagation).
 >
 > See [`OPEN_TASKS.md`](OPEN_TASKS.md) § Locked infrastructure for the canonical infra table.
 
