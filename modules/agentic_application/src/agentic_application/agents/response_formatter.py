@@ -64,7 +64,20 @@ def _browser_safe_image_url(raw: str) -> str:
 
 
 def _build_item_card(item: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+    # Shopify cart-wiring (B.8 → F.2.2). Without these, the storefront's
+    # Buy Now / Add to Cart CTA falls into its "catalog hasn't finished
+    # syncing" disabled state — see cart.client.ts. The bootstrap stores
+    # the per-size variant gid map on catalog_enriched; the orchestrator's
+    # _build_candidate_item already threads it onto the item dict, but
+    # this formatter step rebuilds the dict via an explicit field list
+    # and was silently dropping it.
+    raw_variant_ids = item.get("shopify_variant_ids") or {}
+    variant_ids: Dict[str, str] = {}
+    if isinstance(raw_variant_ids, dict):
+        for size, gid in raw_variant_ids.items():
+            if size and gid:
+                variant_ids[str(size)] = str(gid)
+    card: Dict[str, Any] = {
         "product_id": str(item.get("product_id", "")),
         "similarity": float(item.get("similarity", 0.0) or 0.0),
         "title": str(item.get("title", "")),
@@ -83,7 +96,23 @@ def _build_item_card(item: Dict[str, Any]) -> Dict[str, Any]:
         "silhouette_type": str(item.get("silhouette_type", "")),
         "source": str(item.get("source", "catalog") or "catalog"),
         "description": str(item.get("description", "")),
+        # Cart wiring. Empty dict (default) keeps the existing
+        # disabled-CTA fallback behaviour for rows that genuinely
+        # haven't been mapped to a Shopify product yet.
+        "shopify_product_id": str(item.get("shopify_product_id", "")),
+        "shopify_variant_ids": variant_ids,
+        # Storefront uses catalog_description (the merchant's own
+        # product copy) in preference to the stylist-voice
+        # description for the per-garment PDP view.
+        "catalog_description": str(item.get("catalog_description", "")),
     }
+    # Only set is_anchor when truthy — the prepend-anchor test treats
+    # absence as the canonical signal for "non-anchor item", and the
+    # frontend treats falsy as undefined either way (engine.server.ts
+    # collapses it via `is_anchor || undefined`).
+    if bool(item.get("is_anchor", False)):
+        card["is_anchor"] = True
+    return card
 
 
 def _build_anchor_card(anchor: Dict[str, Any], render_role: str) -> Dict[str, Any]:
