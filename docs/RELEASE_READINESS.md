@@ -1,18 +1,18 @@
 # Release Readiness Criteria
 
-Last updated: May 16, 2026.
+Last updated: May 17, 2026.
 
-> **RELEASE TARGET (May 16, 2026).** The 4 gates below describe the readiness criteria for the *legacy standalone Aura web app* (port 8010 server-rendered HTML chat). The Shopify-hosted system has shipped on top of that:
+> **RELEASE TARGET (May 17, 2026).** The 4 gates below describe the readiness criteria for the *legacy standalone Aura web app* (port 8010 server-rendered HTML chat). The Shopify-hosted system has shipped on top of that:
 >
 > - Customer experience ships as a **Shopify storefront** (`thesigmavibe.shop`, live) + a **Vibe Shopify App** (Vercel `bom1`, live at `vibe-app-five.vercel.app`).
-> - **Engine deployed to Fly.io Mumbai** (`vibe-engine.fly.dev`, shared-cpu-1x always-on) — no longer a blocker.
-> - **Conversation page live** at `/apps/vibe/style` with the full in-chat onboarding flow (D.O.1–D.O.3 shipped #367 → #396): branched welcome, parallel photos + gender-DOB cards, HEIC handling, photo zoom/pan, name/height/waist FieldCards, Skip + persistence.
-> - **Shopify Customer Account merge** (D.S.3b) wired via `POST /v1/users/merge`.
-> - **Observability** (#398): `aura_turn_total` labeled by `channel`, new `aura_user_merge_total`.
+> - **Engine deployed to Fly.io Mumbai** (`vibe-engine.fly.dev`, shared-cpu-1x always-on) with persistent `vibe_data` volume mounted at `/app/data` and `strategy = "immediate"` deploys — no longer a blocker.
+> - **Conversation page live** at `/apps/vibe/style` at full feature parity with the legacy `platform_core/ui.py` reference. In-chat onboarding flow (D.O.1–D.O.3): branched welcome, parallel photos + gender-DOB cards, HEIC handling, photo zoom/pan, combined ft/in height-waist card, post-onboarding analysis indicator + templated "what would you like to wear?" prompt. `name` step dropped 2026-05-17 (#424). Photos-card re-injects when engine reports the full-body image missing (volume-loss recovery, #422). Pairing-trigger auto-augmentation forces attached-piece turns through `pairing_request` (#403).
+> - **Shopify Customer Account merge** (D.S.3b) wired via `POST /v1/users/merge`, IDOR-guarded by the App-Proxy-signed `logged_in_customer_id`.
+> - **Observability** — engine: `aura_turn_total{channel}` (#398), `aura_user_merge_total{status}` (#398), `aura_onboarding_endpoint_total{endpoint, status, channel}` (#436), `aura_onboarding_image_bytes{category, channel}` (#436); structured `event=onboarding_endpoint` logs per request. Vibe: JSON-to-stdout structured logs (`vibe_init_outcome`, `vibe_merge_outcome`, `vibe_merge_identity_mismatch`, `vibe_turn_pairing_rewrite`) via [`vibe-app/app/lib/logger.server.ts`](../vibe-app/app/lib/logger.server.ts).
 > - The standalone web UI is deprecated. Gates 3 (dependency/retention) and Gate 4 (design polish) targeting `platform_core/ui.py` are no longer the release blocker.
 > - **Remaining release blockers** for first-50 rollout, tracked in [`OPEN_TASKS.md`](OPEN_TASKS.md) § Next priorities: **D.M.1** (merchant welcome screen), **D.C.3/D.C.4/D.C.5** (Wardrobe / Looks / Outfit Check), **B.6** (real-card test order), **B.4** (mandatory legal pages), **D.P.1** (install on production — unblocks **B.8** GID capture which activates Add-to-Cart end-to-end), **D.S.4** (remaining GDPR webhooks for App Store listing).
 >
-> See **Recently Shipped — Shopify pivot (May 13–16)** below for what's already in place.
+> See **Recently Shipped — Shopify pivot (May 13–17)** below for what's already in place.
 
 This document defines the concrete checklist that must be green before Aura
 ships beyond the current dev-complete state. It is the single source of
@@ -28,6 +28,43 @@ The companion artifacts are:
 - `ops/scripts/smoke_test_full_flow.sh` — end-to-end smoke test
 - `ops/scripts/validate_dependency_report.py` — dependency report validator
 - `docs/DESIGN_SYSTEM_VALIDATION.md` — manual UI QA checklist
+
+---
+
+## Recently Shipped — May 17, 2026 (Vibe parity, hardening, observability)
+
+A focused day on Vibe feature parity + post-launch hardening + observability gaps after the prior May-16 audit.
+
+### Vibe app — feature parity + UX hardening
+- **Try-on images, garment descriptions, PDP carousel, attachment composer** restored to parity with legacy Aura (PR #402).
+- **Pairing-trigger auto-augmentation** (#403): action appends "Build an outfit around this attached piece" whenever any attachment (image / wardrobe / wishlist) is present, so the engine planner reliably routes attached turns through `pairing_request`. The user's bubble keeps their original prose.
+- **UI polish wave** (PRs #404 / #405 / #406 / #407 / #408 / #411 / #412 / #413 / #414 / #415 / #419 / #420 / #421 / #422): chip-in-pill composer with single-line input, baseline-aligned `+` button, IDOR guards on `shopify:`-prefixed sessions + AbortController for fetch cancellation, scrollbar-shift fix on body scroll lock, picker fetch-state reset on URL change, per-item size chips, catalog descriptions for PDP, anchor item first in lists, consistent CTA placement with mobile override.
+- **Wardrobe + wishlist pickers in `+` popover** (#410), proxying engine-served images through `apps.vibe.api.tryon-image` so raw `data/...` paths render in the browser.
+- **Photos-card re-injection** (#422): when the engine reports no `full_body` row (volume rebuild / manual delete), Vibe re-emits the photos card regardless of the customer's localStorage onboarding step.
+- **In-chat onboarding refinements**: `name` step removed entirely (#424); combined height + waist card with ft/in segmented inputs (#425); post-onboarding analysis-running indicator + templated `WHAT_LOOKING_FOR_PROMPT` once analysis completes (#425).
+- **Anonymous returning customers no longer re-onboarded on reload** (#426): init action now fetches `getOnboardingStatus` for the localStorage UUID directly (the loader could only do that for Shopify-logged-in customers).
+- **Init action resilience** (#432): `Promise.allSettled` fan-out so a transient failure in any single engine call (resolve / ensure-profile / status) degrades gracefully instead of 500ing.
+- **`getOnboardingStatus` three-way return** (#434 / #435): `OnboardingStatus | null | undefined` distinguishes confirmed new customer (404) from engine error; init applies the "assume profile exists" safety net only for the error case. Mock-mode returns a populated `OnboardingStatus` so the welcome-back UX is preserved; literal-null JSON bodies are narrowed before field access.
+
+### Engine + infra
+- **Persistent storage on Fly** (#416): `vibe_data` volume mounted at `/app/data`. Pre-fix, every `fly deploy` wiped onboarding photos / wardrobe / try-on renders. Migration adds `vibe_storefront` to the `source_channel` CHECK constraint (#417 makes each ALTER guard against missing tables for offline migrations).
+- **Deploy strategy** (#418 / #431 / #433): switched to `strategy = "immediate"` — the only Apps v2 strategy compatible with single-machine + single-volume (rolling, canary, bluegreen all deadlock because they need the new machine to claim the volume before the old releases it).
+- **Orchestrator carry-forward removed** (#430): the previous turn's `attached_item` no longer auto-anchors the next turn. Reloading a conversation with no attachment now produces an attachment-free turn instead of silently re-anchoring on a stale wardrobe piece.
+
+### Observability — engine
+- **`aura_onboarding_endpoint_total{endpoint, status, channel}`** (#436): per-route success/failure counter for all seven Vibe onboarding endpoints (`profile_ensure`, `profile_partial`, `image_upload`, `status_read`, `wardrobe_list`, `analysis_start_phase{1,2}`, `analysis_status_read`). All routes now accept `?channel=` (default `web`); the Vibe client threads `vibe_storefront`.
+- **`aura_onboarding_image_bytes{category, channel}`** (#436): upload-size distribution for `full_body` / `headshot` photos. Surfaces regressions in the client-side crop pipeline + creep toward the 10MB cap.
+- **Structured logs**: `event=onboarding_endpoint` lines from the `aura.onboarding` logger carry `user_id` + per-route context (`size_bytes`, `has_row`, `fields`, etc.) for grep-by-user debugging.
+
+### Observability — Vibe app
+- New helper [`vibe-app/app/lib/logger.server.ts`](../vibe-app/app/lib/logger.server.ts) emits JSON-to-stdout (captured by Vercel Logs + any drain; no Sentry/Datadog dep). Events shipped on Remix action paths:
+  - `vibe_init_outcome` — three-way `getOnboardingStatus` result (`ok` / `not_found` / `error`) + ensure-profile outcome + derived `has_profile`. Re-onboarding bugs previously surfaced only via customer reports.
+  - `vibe_merge_outcome` — success/failure of `/v1/users/merge` + ensure-profile-on-canonical.
+  - `vibe_merge_identity_mismatch` (warn) — the 403 IDOR rejection path; security-relevant.
+  - `vibe_turn_pairing_rewrite` — logged on every turn, flags whether the silent message augmentation fired + which attachment kind triggered it.
+
+### What's next
+Unchanged from the May 13–16 list — **D.M.1**, **D.C.3** (Wardrobe), **D.C.4** (Looks), **D.C.5** (Outfit Check), **B.4 / B.6**, **D.P.1** (production install + B.8 GID capture), **D.S.4** (remaining GDPR webhooks).
 
 ---
 
