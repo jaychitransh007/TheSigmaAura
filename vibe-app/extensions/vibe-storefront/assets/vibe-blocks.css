@@ -1,0 +1,217 @@
+/* Theme App Extension styles — Confident Luxe tokens scoped to the
+ * .vibe-block-* wrappers so they don't bleed into the merchant's
+ * theme. Two blocks share this stylesheet: the entry-point CTA and
+ * the customer-account "Saved with Vibe" grid.
+ *
+ * Tokens kept inline (not via :root) so the styles survive themes
+ * that override CSS variables on :root.
+ */
+
+/* ──────────────────────────────────────────────────────────────────
+ * Style-with-Vibe CTA — D.C.1 discoverability entry-point.
+ * ────────────────────────────────────────────────────────────────── */
+
+.vibe-cta-block {
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem 0;
+}
+
+.vibe-cta-block--align-start { align-items: flex-start; text-align: left; }
+.vibe-cta-block--align-center { align-items: center; text-align: center; }
+.vibe-cta-block--align-end { align-items: flex-end; text-align: right; }
+
+.vibe-cta-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: #b45a3c;
+  color: #faf5ee;
+  border: 1px solid #b45a3c;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.65rem 1.25rem;
+  border-radius: 999px;
+  text-decoration: none;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.vibe-cta-button:hover,
+.vibe-cta-button:focus-visible {
+  background: #5c1a1b;
+  border-color: #5c1a1b;
+  transform: translateY(-1px);
+}
+
+.vibe-cta-button:active {
+  transform: translateY(0);
+}
+
+.vibe-cta-button--small { font-size: 0.8rem; padding: 0.45rem 0.95rem; }
+.vibe-cta-button--medium { font-size: 0.95rem; padding: 0.65rem 1.25rem; }
+.vibe-cta-button--large { font-size: 1.1rem; padding: 0.85rem 1.65rem; }
+
+.vibe-cta-icon {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  /* SVG sparkle drawn with currentColor so it inherits the button text colour. */
+}
+
+.vibe-cta-subtitle {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #806050;
+  font-family: "Fraunces", "Playfair Display", Georgia, serif;
+  font-style: italic;
+  max-width: 32ch;
+  line-height: 1.4;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * Saved-with-Vibe grid — D.C.8 customer-account surface.
+ * Mirrors the wardrobe/looks tile grid in the app but rendered from
+ * vanilla JS so it can drop into any classic-account theme.
+ * ────────────────────────────────────────────────────────────────── */
+
+.vibe-saved-block {
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  color: #2d1b14;
+  padding: 1.5rem 0;
+}
+
+.vibe-saved-heading {
+  font-family: "Fraunces", "Playfair Display", Georgia, serif;
+  font-style: italic;
+  font-size: 1.6rem;
+  color: #b45a3c;
+  margin: 0 0 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+.vibe-saved-intro {
+  margin: 0 0 1.25rem;
+  color: #806050;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.vibe-saved-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.vibe-saved-tile {
+  display: block;
+  background: #ffffff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(180, 100, 60, 0.06);
+  text-decoration: none;
+  color: inherit;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.vibe-saved-tile:hover,
+.vibe-saved-tile:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(180, 100, 60, 0.12);
+}
+
+.vibe-saved-image {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: #f5ebe0;
+  overflow: hidden;
+}
+
+.vibe-saved-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.vibe-saved-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #806050;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.vibe-saved-body {
+  padding: 0.65rem 0.75rem 0.9rem;
+}
+
+.vibe-saved-title {
+  margin: 0 0 0.2rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #16110e;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.vibe-saved-meta {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #806050;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Empty / error / loading states share the same calm card styling so
+ * the layout doesn't reflow violently between states. */
+.vibe-saved-state {
+  background: #ffffff;
+  border: 1px dashed #f0e0d0;
+  border-radius: 12px;
+  padding: 2rem 1rem;
+  text-align: center;
+  color: #806050;
+  font-size: 0.9rem;
+}
+
+.vibe-saved-state a {
+  color: #b45a3c;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.vibe-saved-state a:hover {
+  text-decoration: underline;
+}
+
+.vibe-saved-cta {
+  display: inline-block;
+  margin-top: 0.85rem;
+  background: #b45a3c;
+  color: #faf5ee;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  text-decoration: none;
+  transition: background 120ms ease;
+}
+
+.vibe-saved-cta:hover,
+.vibe-saved-cta:focus-visible {
+  background: #5c1a1b;
+}
+
+.vibe-saved-error {
+  color: #a8423c;
+}

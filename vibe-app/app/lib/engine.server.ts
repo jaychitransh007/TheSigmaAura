@@ -501,6 +501,99 @@ export async function getWardrobeItems(userId: string): Promise<WardrobeItem[]> 
   })).filter((it) => it.id !== "");
 }
 
+// Wardrobe write operations (D.C.3). Upload mirrors the onboarding
+// image upload — multipart, no AbortSignal because phone photos over
+// mobile are routinely 5-10 MB. Delete is a quick DELETE with user_id
+// in the query string (engine checks ownership before archiving the
+// row).
+
+export type SaveWardrobeItemArgs = {
+  userId: string;
+  file: Blob;
+  filename: string;
+  title?: string;
+  garmentCategory?: string;
+  brand?: string;
+};
+
+export async function saveWardrobeItem(
+  args: SaveWardrobeItemArgs,
+): Promise<WardrobeItem> {
+  if (USE_MOCK) {
+    return {
+      id: `mock-wardrobe-${Date.now()}`,
+      title: args.title?.trim() || "Untitled piece",
+      image_url: "https://picsum.photos/seed/vibe-new-wardrobe/300/400",
+      garment_category: args.garmentCategory || "",
+      garment_subtype: "",
+      primary_color: "",
+    };
+  }
+  const form = new FormData();
+  form.append("user_id", args.userId);
+  form.append("file", args.file, args.filename);
+  if (args.title) form.append("title", args.title);
+  if (args.garmentCategory) form.append("garment_category", args.garmentCategory);
+  if (args.brand) form.append("brand", args.brand);
+
+  let resp: Response;
+  try {
+    resp = await fetch(
+      `${ENGINE_API_URL}/v1/onboarding/wardrobe/items?channel=${ENGINE_CHANNEL}`,
+      { method: "POST", body: form },
+    );
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new EngineError(0, `Engine wardrobe upload unreachable: ${reason}`);
+  }
+  if (!resp.ok) {
+    throw new EngineError(
+      resp.status,
+      `Engine wardrobe upload → ${resp.status}: ${await readErrorBody(resp)}`,
+    );
+  }
+  const raw = (await resp.json()) as {
+    id?: string;
+    title?: string;
+    image_url?: string;
+    image_path?: string;
+    garment_category?: string;
+    garment_subtype?: string;
+    primary_color?: string;
+  };
+  return {
+    id: String(raw.id ?? ""),
+    title: String(raw.title ?? "").trim() || "Untitled",
+    image_url: rewriteEngineImageUrl(raw.image_url || raw.image_path) || "",
+    garment_category: String(raw.garment_category ?? ""),
+    garment_subtype: String(raw.garment_subtype ?? ""),
+    primary_color: String(raw.primary_color ?? ""),
+  };
+}
+
+export async function deleteWardrobeItem(args: {
+  userId: string;
+  wardrobeItemId: string;
+}): Promise<void> {
+  if (USE_MOCK) return;
+  let resp: Response;
+  const url =
+    `${ENGINE_API_URL}/v1/onboarding/wardrobe/items/${encodeURIComponent(args.wardrobeItemId)}` +
+    `?user_id=${encodeURIComponent(args.userId)}&channel=${ENGINE_CHANNEL}`;
+  try {
+    resp = await fetch(url, { method: "DELETE", signal: fetchTimeout() });
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new EngineError(0, `Engine wardrobe delete unreachable: ${reason}`);
+  }
+  if (!resp.ok) {
+    throw new EngineError(
+      resp.status,
+      `Engine wardrobe delete → ${resp.status}: ${await readErrorBody(resp)}`,
+    );
+  }
+}
+
 export async function getWishlistItems(userId: string): Promise<WishlistItem[]> {
   if (USE_MOCK) {
     return [
@@ -531,6 +624,200 @@ export async function getWishlistItems(userId: string): Promise<WishlistItem[]> 
       price: Number.isFinite(priceNum) ? priceNum : null,
     };
   }).filter((it) => it.product_id !== "");
+}
+
+// Looks page (D.C.4) — saved outfits + recent recommendation history.
+//
+// Saved looks live in saved_looks rows the customer explicitly hearted.
+// snapshot_json carries the full outfit object as it appeared at save
+// time so the tile can render without re-fetching the conversation.
+//
+// Results live in turns the customer received; the engine summarizes
+// each into a ResultListItem with a single preview image (try-on first,
+// first garment fallback).
+
+export type SavedLookSummary = {
+  saved_look_id: string;
+  title: string;
+  preview_image_url: string;
+  turn_id: string;
+  conversation_id: string;
+  item_count: number;
+  created_at: string;
+};
+
+export type PastLookSummary = {
+  turn_id: string;
+  conversation_id: string;
+  user_message: string;
+  assistant_message: string;
+  occasion: string;
+  outfit_count: number;
+  preview_image_url: string;
+  created_at: string;
+};
+
+type RawSavedLookRow = {
+  id?: string;
+  title?: string;
+  item_ids?: string[];
+  snapshot_json?: Record<string, unknown>;
+  turn_id?: string;
+  conversation_id?: string;
+  created_at?: string;
+};
+
+type RawSavedLooksResponse = {
+  user_id: string;
+  saved_looks?: RawSavedLookRow[];
+};
+
+type RawResultsResponse = {
+  user_id: string;
+  results?: Array<{
+    turn_id?: string;
+    conversation_id?: string;
+    user_message?: string;
+    assistant_message?: string;
+    occasion?: string;
+    intent?: string;
+    source?: string;
+    outfit_count?: number;
+    first_outfit_image?: string;
+    created_at?: string;
+  }>;
+};
+
+function previewFromSnapshot(snap: Record<string, unknown> | undefined): string {
+  if (!snap || typeof snap !== "object") return "";
+  // Snapshot shape isn't strict — historical saves carry varying keys.
+  // Probe the obvious places: top-level tryon_image, items[0].image_url,
+  // outfit.items[0].image_url.
+  const direct = readString(snap, "tryon_image") || readString(snap, "image_url");
+  if (direct) return direct;
+  const items = Array.isArray(snap.items) ? snap.items : [];
+  for (const it of items) {
+    if (it && typeof it === "object") {
+      const img = readString(it as Record<string, unknown>, "image_url");
+      if (img) return img;
+    }
+  }
+  const outfit = snap.outfit as Record<string, unknown> | undefined;
+  if (outfit && typeof outfit === "object") {
+    const tryon = readString(outfit, "tryon_image");
+    if (tryon) return tryon;
+    const oitems = Array.isArray(outfit.items) ? outfit.items : [];
+    for (const it of oitems) {
+      if (it && typeof it === "object") {
+        const img = readString(it as Record<string, unknown>, "image_url");
+        if (img) return img;
+      }
+    }
+  }
+  return "";
+}
+
+function readString(obj: Record<string, unknown>, key: string): string {
+  const v = obj[key];
+  return typeof v === "string" ? v.trim() : "";
+}
+
+export async function getSavedLooks(userId: string): Promise<SavedLookSummary[]> {
+  if (USE_MOCK) {
+    return [
+      {
+        saved_look_id: "mock-saved-1",
+        title: "Champagne Drift",
+        preview_image_url: "https://picsum.photos/seed/vibe-saved-1/400/533",
+        turn_id: "mock-turn-1",
+        conversation_id: "mock-conv-1",
+        item_count: 2,
+        created_at: new Date(Date.now() - 86400000).toISOString(),
+      },
+    ];
+  }
+  const raw = await getJson<RawSavedLooksResponse>(
+    `/v1/users/${encodeURIComponent(userId)}/saved-looks`,
+  );
+  return (raw.saved_looks ?? []).map((row) => {
+    const snap = (row.snapshot_json ?? {}) as Record<string, unknown>;
+    const itemCount = Array.isArray(row.item_ids)
+      ? row.item_ids.length
+      : Array.isArray(snap.items)
+        ? (snap.items as unknown[]).length
+        : 0;
+    return {
+      saved_look_id: String(row.id ?? ""),
+      title: String(row.title ?? "").trim() || "Saved look",
+      preview_image_url: rewriteEngineImageUrl(previewFromSnapshot(snap)) || "",
+      turn_id: String(row.turn_id ?? ""),
+      conversation_id: String(row.conversation_id ?? ""),
+      item_count: itemCount,
+      created_at: String(row.created_at ?? ""),
+    };
+  }).filter((it) => it.saved_look_id !== "");
+}
+
+export async function deleteSavedLook(args: {
+  userId: string;
+  savedLookId: string;
+}): Promise<void> {
+  if (USE_MOCK) return;
+  let resp: Response;
+  const url = `${ENGINE_API_URL}/v1/users/${encodeURIComponent(args.userId)}/saved-looks/${encodeURIComponent(args.savedLookId)}`;
+  try {
+    resp = await fetch(url, { method: "DELETE", signal: fetchTimeout() });
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new EngineError(0, `Engine saved-look delete unreachable: ${reason}`);
+  }
+  if (!resp.ok) {
+    throw new EngineError(
+      resp.status,
+      `Engine saved-look delete → ${resp.status}: ${await readErrorBody(resp)}`,
+    );
+  }
+}
+
+export async function getPastLooks(userId: string): Promise<PastLookSummary[]> {
+  if (USE_MOCK) {
+    return [
+      {
+        turn_id: "mock-turn-past-1",
+        conversation_id: "mock-conv-past-1",
+        user_message: "what should I wear to a wedding?",
+        assistant_message:
+          "A bias-cut silk slip in warm champagne keeps it elegant without trying too hard.",
+        occasion: "wedding",
+        outfit_count: 2,
+        preview_image_url: "https://picsum.photos/seed/vibe-past-1/400/533",
+        created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
+      },
+      {
+        turn_id: "mock-turn-past-2",
+        conversation_id: "mock-conv-past-2",
+        user_message: "rainy day outfit",
+        assistant_message: "Layered neutrals with a waterproof outer.",
+        occasion: "everyday",
+        outfit_count: 1,
+        preview_image_url: "https://picsum.photos/seed/vibe-past-2/400/533",
+        created_at: new Date(Date.now() - 7 * 86400000).toISOString(),
+      },
+    ];
+  }
+  const raw = await getJson<RawResultsResponse>(
+    `/v1/users/${encodeURIComponent(userId)}/results`,
+  );
+  return (raw.results ?? []).map((row) => ({
+    turn_id: String(row.turn_id ?? ""),
+    conversation_id: String(row.conversation_id ?? ""),
+    user_message: String(row.user_message ?? "").trim(),
+    assistant_message: String(row.assistant_message ?? "").trim(),
+    occasion: String(row.occasion ?? "").trim(),
+    outfit_count: Number(row.outfit_count ?? 0),
+    preview_image_url: rewriteEngineImageUrl(row.first_outfit_image) || "",
+    created_at: String(row.created_at ?? ""),
+  })).filter((it) => it.turn_id !== "");
 }
 
 export async function pollTurn(args: {
