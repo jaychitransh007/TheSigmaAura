@@ -15,6 +15,7 @@ import { json } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import {
   Badge,
+  Banner,
   BlockStack,
   Box,
   Button,
@@ -86,15 +87,26 @@ export default function MerchantIndex() {
   const storefrontUrl = `https://${shop}`;
   const vibeUrl = `https://${shop}/apps/vibe/style`;
   const productsAdminUrl = `shopify:admin/products`;
-  // Filter to scopes we have documentation for — if Shopify reports a
-  // scope we don't recognise, skip it rather than render an undefined
-  // row. Keeps the panel honest while a new scope is being rolled out
-  // in stages (toml updated, descriptions still pending).
-  const scopeRows = grantedScopes
-    .map((scope) => ({ scope, info: SCOPE_DESCRIPTIONS[scope] }))
-    .filter((row): row is { scope: string; info: { label: string; reason: string } } =>
-      row.info != null,
-    );
+  // Build per-scope rows. If Shopify reports a scope we don't have a
+  // description for, still surface the raw scope name — half-known
+  // info is more honest than an empty card, and it makes drift
+  // visible (e.g. an old `write_products` grant lingering before the
+  // merchant re-authorises with the F.1 scope set).
+  const scopeRows = grantedScopes.map((scope) => ({
+    scope,
+    info: SCOPE_DESCRIPTIONS[scope] ?? {
+      label: scope,
+      reason: "Legacy grant — no longer used; will go away on next re-authorize.",
+    },
+  }));
+  // Detect documented scopes the merchant DOESN'T have. If non-empty,
+  // they're running on a stale scope set and need to re-authorize for
+  // catalog sync / attribution / placement controls to actually work.
+  const grantedSet = new Set(grantedScopes);
+  const missingDocumentedScopes = Object.keys(SCOPE_DESCRIPTIONS).filter(
+    (scope) => !grantedSet.has(scope),
+  );
+  const needsScopeUpdate = missingDocumentedScopes.length > 0;
 
   return (
     <Page>
@@ -202,10 +214,27 @@ export default function MerchantIndex() {
                     a specific feature — the dedicated controls panel arrives
                     in the next release.
                   </Text>
+                  {needsScopeUpdate ? (
+                    <Banner tone="warning" title="Permissions update available">
+                      <BlockStack gap="200">
+                        <Text as="p" variant="bodyMd">
+                          Vibe needs {missingDocumentedScopes.length} additional
+                          permission{missingDocumentedScopes.length === 1 ? "" : "s"}{" "}
+                          to unlock catalog sync, purchase attribution, and
+                          placement controls. Re-authorize from the Shopify
+                          banner at the top of this page; once granted, the new
+                          permissions appear below.
+                        </Text>
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          Pending: {missingDocumentedScopes.join(", ")}
+                        </Text>
+                      </BlockStack>
+                    </Banner>
+                  ) : null}
                   {scopeRows.length === 0 ? (
                     <Text as="p" variant="bodyMd" tone="subdued">
-                      No permissions information available — re-install the
-                      app from Shopify admin if this looks wrong.
+                      No permissions granted yet. Re-install or re-authorize
+                      Vibe from the Shopify admin banner above.
                     </Text>
                   ) : (
                     <BlockStack gap="200">
