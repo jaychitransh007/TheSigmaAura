@@ -15,6 +15,8 @@ import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 
+import { ConfirmDialog, type ConfirmRequest } from "../components/ui/confirm-dialog";
+import { ToastsProvider, useToasts } from "../components/ui/toast";
 import { VibePageShell } from "../components/vibe-page-shell";
 import wardrobeStyles from "../components/wardrobe/styles.css?url";
 import type { WardrobeItem } from "../lib/engine.server";
@@ -68,12 +70,22 @@ type LoadState =
   | { kind: "error"; message: string };
 
 export default function WardrobePage() {
+  return (
+    <ToastsProvider>
+      <WardrobePageInner />
+    </ToastsProvider>
+  );
+}
+
+function WardrobePageInner() {
   useLoaderData<typeof loader>();
+  const toasts = useToasts();
   const [sessionId, setSessionId] = useState("");
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [filter, setFilter] = useState<string>(FILTER_ALL);
   const [addOpen, setAddOpen] = useState(false);
   const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
 
   // Resolve the session id on mount. Prefer the Shopify-customer-keyed
   // id if the customer has merged (D.S.3b); fall back to the anonymous
@@ -134,9 +146,19 @@ export default function WardrobePage() {
     );
   }, [items, filter]);
 
-  async function handleDelete(item: WardrobeItem) {
+  function handleDelete(item: WardrobeItem) {
     if (!sessionId || !item.id) return;
-    if (!window.confirm(`Remove "${item.title}" from your wardrobe?`)) return;
+    setConfirm({
+      title: "Remove this piece?",
+      message: `"${item.title}" will be removed from your wardrobe. Outfits already built around it stay in your Looks.`,
+      confirmLabel: "Remove",
+      destructive: true,
+      onConfirm: () => deleteWardrobeItem(item),
+    });
+  }
+
+  async function deleteWardrobeItem(item: WardrobeItem) {
+    if (!sessionId || !item.id) return;
     setBusyDeleteId(item.id);
     try {
       const form = new FormData();
@@ -148,7 +170,11 @@ export default function WardrobePage() {
       });
       const body = (await resp.json()) as { ok: boolean; error?: string };
       if (!resp.ok || !body.ok) {
-        alert(body.error || "Couldn't remove that piece — try again in a sec.");
+        toasts.push({
+          kind: "error",
+          message:
+            body.error || "Couldn't remove that piece — try again in a sec.",
+        });
         return;
       }
       // Optimistic refresh — drop the item locally, no full reload.
@@ -157,6 +183,7 @@ export default function WardrobePage() {
           ? { kind: "ready", items: prev.items.filter((x) => x.id !== item.id) }
           : prev,
       );
+      toasts.push({ kind: "success", message: `Removed "${item.title}".` });
     } finally {
       setBusyDeleteId(null);
     }
@@ -266,6 +293,10 @@ export default function WardrobePage() {
           onClose={() => setAddOpen(false)}
           onAdded={handleAdded}
         />
+      ) : null}
+
+      {confirm ? (
+        <ConfirmDialog {...confirm} onClose={() => setConfirm(null)} />
       ) : null}
     </VibePageShell>
   );
