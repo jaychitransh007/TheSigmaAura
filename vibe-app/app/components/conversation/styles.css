@@ -1633,8 +1633,8 @@
   }
   /* On mobile the detail panel stacks below the hero (1-column
      grid), so anchoring the CTA at the column floor with 4rem of
-     margin burns scarce vertical space. Reduce to 1rem so the
-     CTA hugs the content above it. */
+     margin burns scarce vertical space. Reduce to 1rem to minimize
+     the gap at the bottom of the card. */
   .conv-cta-row {
     margin-bottom: 1rem;
   }
