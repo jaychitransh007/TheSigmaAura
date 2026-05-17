@@ -436,6 +436,20 @@
   flex-wrap: wrap;
 }
 
+/* Stacked variant — one chip per row. Used by Gender so the three
+   options read as a list of distinct identities rather than a tight
+   pill cluster. */
+.onb-chips--stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.onb-chips--stacked .onb-chip {
+  flex: 0 0 auto;
+  width: 100%;
+  text-align: left;
+}
+
 .onb-chip {
   flex: 1 1 0;
   min-width: 6rem;
