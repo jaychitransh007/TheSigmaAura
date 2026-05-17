@@ -1298,6 +1298,15 @@
   justify-content: center;
   flex-shrink: 0;
   transition: color 0.15s ease;
+  /* Text "+" character — sized to look right next to the placeholder
+     and inherit the input row's baseline. line-height: 1 with the
+     flex centering keeps the glyph at the geometric centre of the
+     button while still aligning with the input text via baseline. */
+  font-family: inherit;
+  font-size: 1.4rem;
+  font-weight: 300;
+  line-height: 1;
+  padding: 0;
 }
 
 .conv-composer-attach:hover:not(:disabled) {
