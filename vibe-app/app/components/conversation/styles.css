@@ -1274,20 +1274,15 @@
   background: var(--rule);
 }
 
-/* Input row — attach button + textarea + send sit on one horizontal
-   line, vertically centered. align-items: center keeps the + and
-   send icons centered against the textarea regardless of its height,
-   which is the inline layout customers expect on a chat composer.
-   The trade-off vs flex-end is that on multi-line typing the buttons
-   move toward the middle of the growing pill instead of staying
-   anchored at the bottom — acceptable given that single-line is the
-   common case and the customer's earlier feedback was specifically
-   that the + button shouldn't drift below the placeholder. */
+/* Input row — attach button + text input + send, vertically centered.
+   The input is single-line and fixed-height (see below), so center
+   alignment puts all three controls on one visual baseline with no
+   height-matching gymnastics. */
 .conv-composer-row {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.2rem 0.25rem 0.2rem 0.4rem;
+  padding: 0.25rem 0.3rem 0.25rem 0.4rem;
 }
 
 .conv-composer-attach {
@@ -1314,29 +1309,27 @@
   cursor: not-allowed;
 }
 
-.conv-composer textarea {
+/* Single-line input — matches legacy ui.py .discovery-input. Fixed
+   2rem height so the composer row is always exactly one line tall,
+   with the + and send icons centering trivially against it.
+   box-sizing: border-box so the height includes the padding (no
+   surprise extra pixels from line-height math). */
+.conv-composer input[type="text"] {
   flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 2rem;
   border: none;
-  resize: none;
-  /* Vertical padding sized so the empty textarea matches the
-     attach + send buttons (2rem). Reduced from 0.6rem to keep the
-     pill compact when the customer hasn't typed yet. */
-  padding: 0.3rem 0;
+  padding: 0 0.25rem;
   font-family: inherit;
   font-size: 0.95rem;
   color: var(--ink-soft);
   background: transparent;
   outline: none;
-  min-height: 1.4rem;
-  max-height: 10rem;
-  line-height: 1.45;
-  /* Hides the slim default scrollbar that pops in when the textarea
-     auto-grows to max-height. Browsers without -webkit get the
-     default scrollbar (acceptable fallback). */
-  scrollbar-width: thin;
+  line-height: 2rem;
 }
 
-.conv-composer textarea::placeholder {
+.conv-composer input[type="text"]::placeholder {
   color: var(--ink-muted);
   font-style: italic;
 }
