@@ -731,6 +731,64 @@ class PrometheusMetricsTests(unittest.TestCase):
             estimated_cost_usd=0.0075,
         )
 
+    def test_observe_onboarding_endpoint_with_channel(self) -> None:
+        """2026-05-17: onboarding endpoints get the same channel slicing
+        as turn_total so Vibe-storefront traffic can be distinguished
+        from agentic / web-direct callers."""
+        from platform_core import metrics
+        metrics.observe_onboarding_endpoint(
+            endpoint="status_read",
+            status="success",
+            channel="vibe_storefront",
+        )
+        text = metrics.generate_latest().decode("utf-8")
+        self.assertIn("aura_onboarding_endpoint_total", text)
+        self.assertIn('endpoint="status_read"', text)
+        self.assertIn('channel="vibe_storefront"', text)
+
+    def test_observe_onboarding_endpoint_defaults_channel_to_web(self) -> None:
+        """Legacy callers without channel still tick the metric;
+        absence of the kwarg falls back to web."""
+        from platform_core import metrics
+        metrics.observe_onboarding_endpoint(endpoint="profile_ensure", status="success")
+        text = metrics.generate_latest().decode("utf-8")
+        # The endpoint+web combination must appear in at least one
+        # sample (other tests may have added more labels — match a
+        # specific row).
+        self.assertIn(
+            'aura_onboarding_endpoint_total{channel="web",endpoint="profile_ensure",status="success"}',
+            text,
+        )
+
+    def test_observe_onboarding_endpoint_tolerates_empty_labels(self) -> None:
+        """None / empty label values must not crash the helper; they
+        coerce to "unknown" / "web" so the registry stays well-formed."""
+        from platform_core import metrics
+        # Should not raise.
+        metrics.observe_onboarding_endpoint(endpoint="", status="", channel="")
+
+    def test_observe_onboarding_image_bytes_records_histogram(self) -> None:
+        from platform_core import metrics
+        metrics.observe_onboarding_image_bytes(
+            category="full_body",
+            size_bytes=750_000,
+            channel="vibe_storefront",
+        )
+        text = metrics.generate_latest().decode("utf-8")
+        self.assertIn("aura_onboarding_image_bytes", text)
+        self.assertIn('category="full_body"', text)
+
+    def test_observe_onboarding_image_bytes_skips_invalid_size(self) -> None:
+        """Negative / zero / non-numeric sizes are dropped — they're
+        garbage signal and would skew the histogram's lower buckets."""
+        from platform_core import metrics
+        # None of these should raise.
+        metrics.observe_onboarding_image_bytes(category="full_body", size_bytes=0)
+        metrics.observe_onboarding_image_bytes(category="full_body", size_bytes=-1)
+        metrics.observe_onboarding_image_bytes(
+            category="full_body", size_bytes="not_a_number",  # type: ignore[arg-type]
+        )
+
     def test_generate_latest_returns_prometheus_text(self) -> None:
         from platform_core import metrics
         # Increment something to ensure the registry has at least one sample.

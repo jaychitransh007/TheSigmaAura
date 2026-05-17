@@ -819,6 +819,99 @@ def observe_wardrobe_shoe_filter(*, filtered_count: int) -> None:
         pass
 
 
+# 2026-05-17 — Vibe onboarding endpoint observability. Until now the
+# in-chat onboarding endpoints (profile/ensure, profile/partial,
+# images/{category}, status/{user_id}, wardrobe/{user_id},
+# analysis/start-phase{1,2}, analysis/{user_id}) emitted zero metrics
+# and zero structured logs. If a customer reports "onboarding broke"
+# in production we have no way to slice request volume, error rate, or
+# 404-vs-error breakdown — the symmetric opposite of the turn loop
+# which is well-instrumented via aura_turn_total.
+#
+# Labels:
+#   endpoint: short stable name for the route (profile_ensure,
+#             profile_partial, image_upload, status_read, wardrobe_list,
+#             analysis_start_phase1, analysis_start_phase2,
+#             analysis_status_read). Cardinality: ~10 series.
+#   status:   coarse outcome — "success" (2xx), "not_found" (404),
+#             "bad_request" (4xx other than 401/404), "unauthorized"
+#             (401/403), "failed" (5xx / unhandled). Five values.
+#   channel:  "web" (default for engine-direct/agentic-app traffic) or
+#             "vibe_storefront" (request was made by the Vibe Shopify
+#             app and the route received ?channel=vibe_storefront).
+#             Same convention as aura_turn_total.channel.
+# Cardinality: ~10 × 5 × 2 = 100 series. Well bounded.
+aura_onboarding_endpoint_total = Counter(
+    "aura_onboarding_endpoint_total",
+    "Vibe onboarding endpoint outcomes per (endpoint, status, channel).",
+    labelnames=("endpoint", "status", "channel"),
+)
+
+
+def observe_onboarding_endpoint(
+    *, endpoint: str, status: str, channel: str = "web",
+) -> None:
+    """Tick the onboarding endpoint outcome counter.
+
+    Call once per request — typically on the success return path AND on
+    the HTTPException-raising paths so the success/failure split is
+    accurate. status should be the coarse outcome label, not the raw
+    HTTP code: pass "success" / "not_found" / "bad_request" /
+    "unauthorized" / "failed". Unknown values still record (no crash)
+    so a future label addition doesn't drop on the floor."""
+    try:
+        aura_onboarding_endpoint_total.labels(
+            endpoint=endpoint or "unknown",
+            status=status or "unknown",
+            channel=channel or "web",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# Companion histogram for /images/{category} uploads. Image size is a
+# meaningful operational signal: if p99 trends toward the 10MB limit,
+# customers are routinely hitting 413s; if p50 drops sharply, the
+# client-side crop pipeline likely regressed. Buckets cover 50KB
+# (tiny / heavily-compressed) to 10MB (the route's hard cap) on a
+# log-ish scale. Cardinality: 2 categories × 2 channels = 4 series.
+aura_onboarding_image_bytes = Histogram(
+    "aura_onboarding_image_bytes",
+    "Onboarding photo upload size in bytes, sliced by category + channel.",
+    labelnames=("category", "channel"),
+    buckets=(
+        50_000,
+        200_000,
+        500_000,
+        1_000_000,
+        2_000_000,
+        5_000_000,
+        10_000_000,
+    ),
+)
+
+
+def observe_onboarding_image_bytes(
+    *, category: str, size_bytes: int, channel: str = "web",
+) -> None:
+    """Record an onboarding image upload's byte size. Negative / zero /
+    non-int sizes are skipped (the upload path validates >0 before we
+    get here, but be defensive)."""
+    try:
+        n = int(size_bytes)
+    except Exception:  # noqa: BLE001
+        return
+    if n <= 0:
+        return
+    try:
+        aura_onboarding_image_bytes.labels(
+            category=category or "unknown",
+            channel=channel or "web",
+        ).observe(n)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # PR #333 follow-up — item description source counter. Ticks once per
 # item shipped on an outfit card, labelled by where the description
 # came from: ``llm`` (composer emitted ``item_descriptions``) or
