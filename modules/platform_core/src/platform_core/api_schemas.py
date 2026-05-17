@@ -126,6 +126,40 @@ class BootstrapCompleteRequest(BaseModel):
     product_count: int = 0
 
 
+# --- F.2.2b vision enrichment ---
+
+
+class EnrichmentSubmitResponse(BaseModel):
+    """Result of submitting pending rows to OpenAI Batch API.
+
+    `submitted=False` is a legitimate no-op response (no pending rows
+    or a batch already in-flight for this tenant) — not an error.
+    """
+
+    submitted: bool
+    openai_batch_id: str = ""
+    row_count: int = 0
+    reason: str = ""
+
+
+class EnrichmentBatchPollItem(BaseModel):
+    openai_batch_id: str
+    final_status: str  # submitted | completed | failed | expired
+    rows_ingested: int = 0
+    rows_failed: int = 0
+
+
+class EnrichmentPollResponse(BaseModel):
+    """Aggregated result of polling in-flight enrichment batches.
+
+    Each item is one batch the poller touched. A `submitted` final
+    status means the batch is still running on OpenAI's side — the
+    poller will pick it up again next call.
+    """
+
+    batches: List[EnrichmentBatchPollItem] = Field(default_factory=list)
+
+
 class CreateTurnRequest(BaseModel):
     user_id: str = Field(min_length=1)
     message: str = Field(min_length=1, max_length=4000)
