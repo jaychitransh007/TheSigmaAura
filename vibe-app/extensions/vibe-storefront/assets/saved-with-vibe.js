@@ -49,6 +49,9 @@
     var errorCopy =
       grid.getAttribute("data-error-copy") ||
       "Couldn't load your saved items right now — try again in a moment.";
+    var currencySymbol = (
+      grid.getAttribute("data-currency-symbol") || "₹"
+    ).trim() || "₹";
 
     renderState(grid, "loading", { loadingCopy: loadingCopy });
 
@@ -80,21 +83,21 @@
           });
           return;
         }
-        renderItems(grid, items.slice(0, maxItems));
+        renderItems(grid, items.slice(0, maxItems), currencySymbol);
       })
       .catch(function () {
         renderState(grid, "error", { errorCopy: errorCopy });
       });
   }
 
-  function renderItems(grid, items) {
+  function renderItems(grid, items, currencySymbol) {
     var html = "";
     for (var i = 0; i < items.length; i++) {
       var it = items[i] || {};
       var title = escapeHtml(it.title || "Saved item");
       var brand = it.brand ? escapeHtml(it.brand) : "";
       var image = it.image_url ? escapeHtml(it.image_url) : "";
-      var price = formatPrice(it.price);
+      var price = formatPrice(it.price, currencySymbol);
       var metaParts = [];
       if (brand) metaParts.push(brand);
       if (price) metaParts.push(price);
@@ -168,17 +171,20 @@
     });
   }
 
-  // Price is stored as a number in INR on the engine side. Display as
-  // ₹<rounded> — checkout owns the precise formatting + GST, so this
-  // is a glance-value, not a transactional figure.
-  function formatPrice(value) {
+  // Price is a number on the engine side. Currency symbol comes from
+  // the storefront's Liquid context (data-currency-symbol attribute,
+  // populated from cart.currency.symbol with a shop.currency fallback)
+  // so a non-INR storefront renders the right glyph. Checkout owns the
+  // precise formatting + tax, so this is a glance-value, not a
+  // transactional figure.
+  function formatPrice(value, currencySymbol) {
     if (value === null || value === undefined || value === "") return "";
     var n =
       typeof value === "number"
         ? value
         : parseFloat(String(value).replace(/[^0-9.]/g, ""));
     if (!isFinite(n) || n <= 0) return "";
-    return "₹" + Math.round(n).toLocaleString("en-IN");
+    return (currencySymbol || "₹") + Math.round(n).toLocaleString();
   }
 
   if (document.readyState === "loading") {

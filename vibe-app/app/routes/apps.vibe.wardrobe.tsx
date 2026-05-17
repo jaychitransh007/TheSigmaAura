@@ -36,10 +36,12 @@ export const links: LinksFunction = () => [
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.public.appProxy(request);
-  const url = new URL(request.url);
-  const loggedInCustomerId =
-    url.searchParams.get("logged_in_customer_id")?.trim() || null;
-  return json({ loggedInCustomerId });
+  // No identity threading from server → client: Shopify's App Proxy
+  // auto-appends `logged_in_customer_id` to every storefront-origin
+  // request to /apps/vibe/* and HMAC-signs the result, so subsequent
+  // resource-route fetches are independently identity-checked by the
+  // server side without the page echoing anything.
+  return json({});
 };
 
 // Category vocab matches the engine's GarmentCategory enum (top,
@@ -66,7 +68,7 @@ type LoadState =
   | { kind: "error"; message: string };
 
 export default function WardrobePage() {
-  const { loggedInCustomerId } = useLoaderData<typeof loader>();
+  useLoaderData<typeof loader>();
   const [sessionId, setSessionId] = useState("");
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [filter, setFilter] = useState<string>(FILTER_ALL);
@@ -88,9 +90,6 @@ export default function WardrobePage() {
       setState({ kind: "loading" });
       try {
         const params = new URLSearchParams({ sessionId: sid });
-        if (loggedInCustomerId) {
-          params.set("logged_in_customer_id", loggedInCustomerId);
-        }
         const resp = await fetch(`/apps/vibe/api/wardrobe?${params.toString()}`);
         const body = (await resp.json()) as
           | { ok: true; items: WardrobeItem[] }
@@ -108,7 +107,7 @@ export default function WardrobePage() {
         setState({ kind: "error", message });
       }
     },
-    [loggedInCustomerId],
+    [],
   );
 
   useEffect(() => {
@@ -143,7 +142,6 @@ export default function WardrobePage() {
       const form = new FormData();
       form.set("sessionId", sessionId);
       form.set("wardrobeItemId", item.id);
-      if (loggedInCustomerId) form.set("loggedInCustomerId", loggedInCustomerId);
       const resp = await fetch("/apps/vibe/api/wardrobe", {
         method: "DELETE",
         body: form,
@@ -265,7 +263,6 @@ export default function WardrobePage() {
       {addOpen ? (
         <AddPieceDialog
           sessionId={sessionId}
-          loggedInCustomerId={loggedInCustomerId}
           onClose={() => setAddOpen(false)}
           onAdded={handleAdded}
         />
@@ -324,12 +321,10 @@ function WardrobeTile({
 // moment a file is chosen so the customer can confirm before uploading.
 function AddPieceDialog({
   sessionId,
-  loggedInCustomerId,
   onClose,
   onAdded,
 }: {
   sessionId: string;
-  loggedInCustomerId: string | null;
   onClose: () => void;
   onAdded: (item: WardrobeItem) => void;
 }) {
@@ -367,7 +362,6 @@ function AddPieceDialog({
     try {
       const form = new FormData();
       form.set("sessionId", sessionId);
-      if (loggedInCustomerId) form.set("loggedInCustomerId", loggedInCustomerId);
       if (title.trim()) form.set("title", title.trim());
       if (category) form.set("garmentCategory", category);
       form.set("file", file, file.name || "wardrobe.jpg");
