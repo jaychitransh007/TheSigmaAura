@@ -134,6 +134,15 @@ type InitOk = {
    *  cases where photos were lost (volume rebuild, manual delete,
    *  etc.) so try-on can recover automatically. */
   imagesUploaded: string[];
+  /** Authoritative "has the customer completed enough onboarding"
+   *  signal for THIS sessionId. The loader's hasProfile only fires
+   *  for Shopify-logged-in customers (it has access to that user
+   *  id), so anonymous returning customers always saw hasProfile=
+   *  false and got re-onboarded every reload. The init action has
+   *  the sessionId, so it queries the engine directly and surfaces
+   *  the answer here. The seed effect prefers this over the
+   *  loader's value when present. */
+  hasProfile: boolean;
 };
 type TurnOk = { ok: true; op: "turn"; jobId: string; message: string };
 type MergeOk = {
@@ -180,6 +189,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       op: "init",
       conversationId: conversation.conversation_id,
       imagesUploaded: status?.images_uploaded ?? [],
+      // `gender` is the cheapest, most load-bearing signal that
+      // onboarding has covered the basics — matches the loader's
+      // shopify-side hasProfile check so both code paths agree.
+      hasProfile: Boolean(status?.gender),
     });
   }
 
@@ -364,7 +377,7 @@ const WHAT_LOOKING_FOR_PROMPT =
   "All set — I've taken a read on your style. What would you like to wear? Try something like \"Dress me for a dinner date\" or \"I need an outfit for a work presentation\".";
 
 export default function ConversationPage() {
-  const { mockMode, loggedInCustomerId, hasProfile } =
+  const { mockMode, loggedInCustomerId, hasProfile: hasProfileFromLoader } =
     useLoaderData<typeof loader>();
   const [sessionId, setSessionId] = useState("");
   const [conversationId, setConversationId] = useState("");
@@ -375,6 +388,19 @@ export default function ConversationPage() {
   // `null` while the init request is in flight — distinguishes from
   // "loaded and empty".
   const [imagesUploaded, setImagesUploaded] = useState<string[] | null>(null);
+  // Authoritative hasProfile snapshot from the init action. Mirrors
+  // the loader's shopify-only check, but works for anonymous
+  // customers too (the loader has no access to the localStorage
+  // sessionId, but the init action does). `null` while the init
+  // request is in flight.
+  const [hasProfileFromInit, setHasProfileFromInit] = useState<boolean | null>(
+    null,
+  );
+  // Effective hasProfile used by the seed effect: prefer init when
+  // it's landed (most accurate, fires for both anonymous and Shopify
+  // identities); fall back to the loader hint (Shopify-only) for the
+  // brief window before init responds.
+  const hasProfile = hasProfileFromInit ?? hasProfileFromLoader;
   const [initError, setInitError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<Attachment | null>(null);
@@ -523,6 +549,7 @@ export default function ConversationPage() {
     if (data.ok && data.op === "init") {
       setConversationId(data.conversationId);
       setImagesUploaded(data.imagesUploaded ?? []);
+      setHasProfileFromInit(Boolean(data.hasProfile));
       setInitError(null);
     } else if (!data.ok) {
       setInitError(data.error || "Couldn't start a conversation.");
