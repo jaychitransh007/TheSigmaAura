@@ -407,6 +407,16 @@ def _build_candidate_item(product: "RetrievedProduct", role: str = "") -> Dict[s
         # downstream, Vibe surfaces a disabled cart CTA in that case.
         "shopify_product_id": str(enriched.get("shopify_product_id") or ""),
         "shopify_variant_ids": enriched.get("shopify_variant_ids") or {},
+        # Raw product description from the Shopify catalog row
+        # (catalog_enriched.description, sourced from the store's
+        # body_html during catalog ingestion). Surfaced separately
+        # from ``description`` so the per-garment PDP can show the
+        # store's own copy while ``description`` keeps the
+        # stylist-voice / attribute-synthesized text for the
+        # outfit-level summary. Empty for wardrobe items (no catalog
+        # row) — Vibe's GarmentDetail falls back to ``description``
+        # in that case.
+        "catalog_description": str(enriched.get("description") or ""),
     }
     explicit_source = str(enriched.get("source") or "").strip().lower()
     if explicit_source in ("wardrobe", "catalog"):

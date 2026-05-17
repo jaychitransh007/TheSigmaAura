@@ -353,7 +353,14 @@ function OutfitDetail({
 }
 
 function GarmentDetail({ item }: { item: OutfitItem }) {
-  const description = item.description?.trim();
+  // PDP description: prefer the store catalog's own copy
+  // (catalog_description, sourced from Shopify's product description)
+  // so the customer reads the merchant's voice. Fall back to the
+  // composer's stylist-voice text when the catalog row has no
+  // description — common for wardrobe items, occasional for catalog
+  // items missing body_html at ingestion time.
+  const description =
+    item.catalog_description?.trim() || item.description?.trim();
   return (
     <>
       {item.brand && <div className="conv-detail-brand">{item.brand}</div>}
