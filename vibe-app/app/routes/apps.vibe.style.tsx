@@ -184,21 +184,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       ensureOnboardingProfile(sessionId),
       getOnboardingStatus(sessionId),
     ]);
+    const imagesUploaded = status?.images_uploaded ?? ["full_body"];
+    const hasProfile = Boolean(status?.gender);
+    // Diagnostic: an existing customer reported re-onboarding on
+    // reload despite the engine having her gender + photos on file.
+    // Log the resolved values so we can correlate the action
+    // response with the engine snapshot in Vercel logs and find
+    // where the signal is being lost.
+    console.log(
+      JSON.stringify({
+        op: "init",
+        sessionId,
+        statusNull: status === null,
+        gender: status?.gender ?? null,
+        imagesUploaded,
+        hasProfile,
+      }),
+    );
     return json<ActionResponse>({
       ok: true,
       op: "init",
       conversationId: conversation.conversation_id,
-      // Engine unreachable / 4xx → status is null. Default to
-      // ["full_body"] so the client treats the customer as "photos
-      // present, no recovery card needed" during transient
-      // downtime. Better to under-prompt a brand-new customer once
-      // (they'll see the card on the next reload) than spuriously
-      // re-prompt every returning customer when the engine wobbles.
-      imagesUploaded: status?.images_uploaded ?? ["full_body"],
-      // `gender` is the cheapest, most load-bearing signal that
-      // onboarding has covered the basics — matches the loader's
-      // shopify-side hasProfile check so both code paths agree.
-      hasProfile: Boolean(status?.gender),
+      imagesUploaded,
+      hasProfile,
     });
   }
 
