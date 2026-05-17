@@ -54,10 +54,22 @@ export type OutfitItem = {
   price?: number;
   product_url?: string;
   image_url?: string;
-  /** Per-garment description surfaced on the PDP detail panel. The engine
-   *  fills this from the catalog's product description (composer/orchestrator
-   *  in modules/agentic_application). Empty for wardrobe items. */
+  /** Stylist-voice description authored by the composer (LLM) or
+   *  attribute-synthesized fallback. Used for the outfit-level
+   *  reasoning paragraph; per-garment PDP prefers catalog_description. */
   description?: string;
+  /** Raw product description sourced from the Shopify catalog row
+   *  (catalog_enriched.description). The per-garment PDP renders this
+   *  in preference to the LLM description so customers see the store's
+   *  own copy. Empty for wardrobe items — GarmentDetail falls back to
+   *  description in that case. */
+  catalog_description?: string;
+  /** True when this item is the customer's own wardrobe garment that
+   *  the engine anchored the outfit around. Drives item ordering
+   *  (anchor first) and the "From wardrobe" pill in the listing. */
+  is_anchor?: boolean;
+  /** "wardrobe" for customer-owned items, "catalog" for store products. */
+  source?: string;
   /** Shopify product gid (gid://shopify/Product/<n>). Useful for deep
    *  linking + analytics; cart adds key on the variant id below. */
   shopify_product_id?: string;
@@ -654,9 +666,10 @@ type RawEngineOutfitItem = {
   image_url?: string;
   price?: string;
   product_url?: string;
-  /** Stylist / catalog description authored by the engine. Passed
-   *  through the api_schemas.OutfitCard.items Dict[str, Any] field. */
   description?: string;
+  catalog_description?: string;
+  is_anchor?: boolean;
+  source?: string;
   shopify_product_id?: string;
   shopify_variant_ids?: Record<string, string>;
 };
@@ -700,14 +713,37 @@ function normalizeOutfit(card: RawEngineOutfit, idx: number): Outfit {
   // `outfit-i1`.
   const hasRank = typeof card.rank === "number" && card.rank > 0;
   const id = hasRank ? `r${card.rank}` : `i${idx}`;
+  // Sort so the customer's own piece (wardrobe / uploaded anchor)
+  // reads first in the per-item listing AND the thumbnail rail —
+  // they're looking at "their" thing first, then the recommended
+  // pairings. Engine returns items in role order (top, bottom,
+  // outerwear...) which doesn't always put the anchor first. Stable
+  // sort: items keep their original relative order within each group.
+  const sortedItems = (card.items ?? [])
+    .map((it, i) => ({ it, i }))
+    .sort((a, b) => {
+      const aAnchor = isAnchorRaw(a.it) ? 0 : 1;
+      const bAnchor = isAnchorRaw(b.it) ? 0 : 1;
+      if (aAnchor !== bAnchor) return aAnchor - bAnchor;
+      return a.i - b.i;
+    })
+    .map(({ it }) => normalizeItem(it));
   return {
     outfit_id: `outfit-${id}`,
     name: card.title ?? "",
     reasoning: card.reasoning ?? "",
     fashion_score: card.fashion_score_pct ?? 0,
     tryon_image_url: rewriteEngineImageUrl(card.tryon_image) || undefined,
-    items: (card.items ?? []).map(normalizeItem),
+    items: sortedItems,
   };
+}
+
+// Anchor detection on the raw item shape (pre-normalize). True for
+// items explicitly flagged is_anchor by the engine OR items the engine
+// tagged with source="wardrobe" (the user's own piece either way).
+function isAnchorRaw(item: RawEngineOutfitItem): boolean {
+  if (item.is_anchor === true) return true;
+  return (item.source ?? "").toLowerCase() === "wardrobe";
 }
 
 // Engine emits image references in three shapes:
@@ -763,6 +799,9 @@ function normalizeItem(item: RawEngineOutfitItem): OutfitItem {
     product_url: item.product_url || undefined,
     image_url: rewriteEngineImageUrl(item.image_url) || undefined,
     description: item.description?.trim() || undefined,
+    catalog_description: item.catalog_description?.trim() || undefined,
+    is_anchor: item.is_anchor === true ? true : undefined,
+    source: item.source || undefined,
     shopify_product_id: item.shopify_product_id || undefined,
     shopify_variant_ids:
       Object.keys(variantIds).length > 0 ? variantIds : undefined,
