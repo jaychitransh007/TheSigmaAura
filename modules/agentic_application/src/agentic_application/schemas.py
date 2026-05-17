@@ -139,6 +139,14 @@ class ConversationMemory(BaseModel):
 
 
 class CombinedContext(BaseModel):
+    # Tenant for this turn (F.2.0, 2026-05-18). Resolved at the API
+    # boundary from the request's shop_domain; falls back to TheSigmaVibe
+    # for legacy `web` channel requests that predate the tenant model.
+    # The catalog_search_agent reads this to scope retrieval — every
+    # similarity_search call passes it through to match_catalog_item_
+    # embeddings_v2 which enforces a tenant predicate on the embeddings
+    # table.
+    tenant_id: str = "t_Oq0BSHnewiEAAAAAagWWlmnV-0sJmcGk"
     user: UserContext
     live: LiveContext
     hard_filters: Dict[str, Any] = Field(default_factory=dict)

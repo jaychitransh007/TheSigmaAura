@@ -36,16 +36,23 @@ class ApplicationCatalogRetrievalGateway:
     def similarity_search(
         self,
         *,
+        tenant_id: str,
         query_embedding: List[float],
         match_count: int,
         filters: Dict[str, Any],
     ) -> Any:
+        """Tenant-scoped catalog retrieval (F.2.1).
+
+        ``tenant_id`` is required and passes straight through to the
+        vector store; the v2 RPC fails loud on empty/missing values.
+        """
         _log.info(
-            "RetrievalGateway: similarity_search match_count=%d filters=%s "
-            "embedding_dims=%d",
-            match_count, filters, len(query_embedding),
+            "RetrievalGateway: similarity_search tenant=%s match_count=%d "
+            "filters=%s embedding_dims=%d",
+            tenant_id, match_count, filters, len(query_embedding),
         )
         result = self._vector_store.similarity_search(
+            tenant_id=tenant_id,
             query_embedding=query_embedding,
             match_count=match_count,
             filters=filters,
@@ -53,7 +60,10 @@ class ApplicationCatalogRetrievalGateway:
         count = len(result) if isinstance(result, list) else 0
         _log.info("RetrievalGateway: similarity_search returned %d matches", count)
         if count == 0:
-            _log.warning("RetrievalGateway: ZERO MATCHES for filters=%s", filters)
+            _log.warning(
+                "RetrievalGateway: ZERO MATCHES for tenant=%s filters=%s",
+                tenant_id, filters,
+            )
         return result
 
     def get_catalog_inventory(self) -> List[Dict[str, Any]]:
