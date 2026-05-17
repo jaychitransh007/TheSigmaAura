@@ -483,6 +483,71 @@
   cursor: not-allowed;
 }
 
+/* Combined height + waist card — two fieldsets side by side on
+   desktop, stacked on mobile. Each fieldset holds two segmented
+   numeric inputs (ft + in) plus a small unit label. Same visual
+   primitives as the .onb-dob segmented input. */
+.onb-measurements {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 540px) {
+  .onb-measurements {
+    grid-template-columns: 1fr;
+  }
+}
+
+.onb-measurement {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #ffffff;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  width: max-content;
+  max-width: 100%;
+}
+
+.onb-measurement:focus-within {
+  border-color: var(--ink-muted);
+}
+
+.onb-measurement__seg {
+  font-family: inherit;
+  font-size: 1rem;
+  text-align: center;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0.15rem 0;
+  width: 2.2rem;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.onb-measurement__seg::-webkit-outer-spin-button,
+.onb-measurement__seg::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.onb-measurement__seg:focus {
+  outline: none;
+}
+
+.onb-measurement__unit {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  margin-right: 0.35rem;
+}
+
+.onb-measurement__unit:last-child {
+  margin-right: 0;
+}
+
 /* Segmented date input — DD / MM / YYYY. */
 
 .onb-dob {

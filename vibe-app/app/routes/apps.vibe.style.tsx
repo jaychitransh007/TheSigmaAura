@@ -321,10 +321,8 @@ function completedSummary(kind: OnboardingMessageKind): string {
       return "Photos saved";
     case "gender-dob":
       return "Basics saved";
-    case "height":
-      return "Height saved";
-    case "waist":
-      return "Waist saved";
+    case "height-waist":
+      return "Measurements saved";
   }
 }
 
@@ -334,10 +332,8 @@ function skippedSummary(kind: OnboardingMessageKind): string {
       return "Photos skipped";
     case "gender-dob":
       return "Basics skipped";
-    case "height":
-      return "Height skipped";
-    case "waist":
-      return "Waist skipped";
+    case "height-waist":
+      return "Measurements skipped";
   }
 }
 
@@ -353,13 +349,19 @@ const WELCOME_NEW =
 // Steps the seed effect treats as "the customer is still in the
 // initial parallel onboarding phase" — photos + gender-DOB rendered
 // side-by-side. Anything past this and the customer has either
-// completed one of the initial cards or moved on to the sequential
-// follow-up cards (name → height → waist → done).
+// completed one of the initial cards or moved on to the height-waist
+// follow-up card.
 const INITIAL_PHASE: ReadonlySet<OnboardingStep> = new Set<OnboardingStep>([
   "welcome",
   "photos",
   "gender-dob",
 ]);
+
+// Templated prompt the assistant sends right after onboarding wraps
+// (and analysis completes, if the customer uploaded photos). Carries
+// a concrete example so the customer knows what to type next.
+const WHAT_LOOKING_FOR_PROMPT =
+  "All set — I've taken a read on your style. What would you like to wear? Try something like \"Dress me for a dinner date\" or \"I need an outfit for a work presentation\".";
 
 export default function ConversationPage() {
   const { mockMode, loggedInCustomerId, hasProfile } =
@@ -380,6 +382,22 @@ export default function ConversationPage() {
   // wrong type, unreadable). Distinct from initError, which signals a
   // hard session-setup failure the customer can't recover from.
   const [attachError, setAttachError] = useState<string | null>(null);
+  // Post-onboarding profile analysis state. The engine kicks off
+  // analysis automatically when the customer uploads each photo
+  // (handleOnboardingPhotoUploaded fires phase1/phase2). We poll the
+  // status endpoint once all onboarding cards have resolved so the
+  // chat can render an "Analyzing your style…" indicator and then
+  // emit the next-action prompt when the engine is done.
+  //   idle      → onboarding still in flight (cards active, or not
+  //              yet completed). No indicator, no follow-up.
+  //   running   → all cards resolved + photos were uploaded. Show
+  //              the analyzing indicator; poll until done.
+  //   complete  → analysis returned a terminal status (or photos
+  //              were skipped, so analysis can't run). Emit the
+  //              templated follow-up prompt and stop here.
+  const [analysisPhase, setAnalysisPhase] = useState<
+    "idle" | "running" | "complete"
+  >("idle");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<PendingTurn | null>(null);
   // Whether the current identity is bound to a Shopify customer.
@@ -612,6 +630,87 @@ export default function ConversationPage() {
 
     setMessages(seeded);
   }, [sessionId, conversationId, hasProfile, imagesUploaded]);
+
+  // Detect "onboarding has wrapped up" and arm the analysis-watching
+  // state machine. Triggers exactly once per page life when:
+  //   - there's at least one onboarding card in the feed (i.e. the
+  //     customer entered the flow on this session)
+  //   - none of those cards are still active
+  //   - the analysis state is still "idle"
+  //
+  // If the customer completed the PhotosCard (status === "completed"
+  // for the photos kind), we poll for analysis. If they skipped
+  // photos, analysis can't run, so we jump straight to "complete"
+  // and emit the follow-up prompt.
+  useEffect(() => {
+    if (analysisPhase !== "idle") return;
+    const onbMessages = messages.filter((m) => m.role === "onboarding");
+    if (onbMessages.length === 0) return;
+    if (onbMessages.some((m) => m.status === "active")) return;
+    const photosCompleted = onbMessages.some(
+      (m) => m.kind === "photos" && m.status === "completed",
+    );
+    setAnalysisPhase(photosCompleted ? "running" : "complete");
+  }, [messages, analysisPhase]);
+
+  // Poll the engine's analysis status until it terminates.
+  // 2s interval — analysis typically completes in 10-20s, so a
+  // handful of polls is plenty. Bails on unmount or phase change.
+  useEffect(() => {
+    if (analysisPhase !== "running") return;
+    if (!sessionId) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const resp = await fetch(
+          `/apps/vibe/api/onboarding/analysis-status?sessionId=${encodeURIComponent(sessionId)}`,
+        );
+        if (cancelled) return;
+        const data = (await resp.json()) as {
+          ok: boolean;
+          status?: string;
+        };
+        if (
+          data.ok &&
+          (data.status === "completed" || data.status === "failed")
+        ) {
+          setAnalysisPhase("complete");
+          return;
+        }
+      } catch {
+        // Transient failure — try again on the next tick.
+      }
+      if (!cancelled) setTimeout(tick, 2000);
+    };
+    // First poll fires after a short delay so the indicator gets a
+    // moment to render rather than blinking on/off on a cache hit.
+    const timer = setTimeout(tick, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [analysisPhase, sessionId]);
+
+  // When analysis completes (or is skipped), emit the templated
+  // follow-up prompt. Idempotent — the last-message check prevents
+  // a re-render from appending the prompt twice.
+  useEffect(() => {
+    if (analysisPhase !== "complete") return;
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (
+        last &&
+        last.role === "assistant" &&
+        last.text === WHAT_LOOKING_FOR_PROMPT
+      ) {
+        return prev;
+      }
+      return [
+        ...prev,
+        { role: "assistant", text: WHAT_LOOKING_FOR_PROMPT },
+      ];
+    });
+  }, [analysisPhase]);
 
   // Auto-scroll to bottom when messages or pending state changes.
   useEffect(() => {
@@ -1013,6 +1112,13 @@ export default function ConversationPage() {
         ))}
 
         {pending && <StageIndicator stages={pending.status?.stages ?? []} />}
+        {/* Post-onboarding analysis indicator. Renders while we poll
+            the engine for the photo-analysis run to finish; replaced
+            by the WHAT_LOOKING_FOR_PROMPT assistant message once the
+            status flips to "completed". */}
+        {analysisPhase === "running" && (
+          <div className="conv-stage">Analyzing your style…</div>
+        )}
       </div>
 
       <Composer

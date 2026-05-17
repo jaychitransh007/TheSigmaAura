@@ -1,8 +1,9 @@
 // Single message bubble. User messages on the right (accent fill);
 // assistant on the left (borderless with a 2px ink left rule).
 // Onboarding messages are full-width cards (not bubbles) — they carry
-// either an interactive widget (PhotosCard / FieldCard) or a static
-// "Photos saved" / "Skipped" summary line once the step has advanced.
+// either an interactive widget (PhotosCard / GenderDobCard /
+// HeightWaistCard) or a static "saved" / "skipped" summary line once
+// the step has advanced.
 //
 // Pattern carried over from legacy ui.py chat layout.
 //
@@ -10,12 +11,12 @@
 // layout with thumbnails / hero / detail panel and mode switching).
 
 import { OutfitCarousel } from "./outfit-carousel";
-import { FieldCard, type FieldKind } from "../onboarding/field-card";
 import { GenderDobCard } from "../onboarding/gender-dob-card";
+import { HeightWaistCard } from "../onboarding/height-waist-card";
 import { PhotosCard } from "../onboarding/photos-card";
 import type { Outfit, OnboardingImageCategory } from "../../lib/engine.server";
 
-export type OnboardingMessageKind = "photos" | "gender-dob" | FieldKind;
+export type OnboardingMessageKind = "photos" | "gender-dob" | "height-waist";
 
 export type ChatMessage =
   | {
@@ -106,13 +107,12 @@ export function MessageView({
         </div>
       );
     }
-    const fieldKind = message.kind;
+    // height-waist (only remaining kind)
     return (
       <div className="conv-message conv-message--onboarding">
-        <FieldCard
-          kind={fieldKind}
+        <HeightWaistCard
           sessionId={sessionId}
-          onAdvance={(mode) => onAdvanceOnboarding?.(fieldKind, mode)}
+          onAdvance={(mode) => onAdvanceOnboarding?.("height-waist", mode)}
         />
       </div>
     );

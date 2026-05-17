@@ -631,6 +631,55 @@ export async function startOnboardingAnalysis(args: {
   return postJson<OnboardingAnalysisResponse>(path, { user_id: args.userId });
 }
 
+export type OnboardingAnalysisStatus = {
+  user_id: string;
+  analysis_run_id: string;
+  /** Engine values: "not_started" | "in_progress" | "running" |
+   *  "completed" | "failed" | "queued". Treat anything but
+   *  "completed" / "failed" as "still working". */
+  status: string;
+  error_message: string;
+};
+
+/**
+ * Read the engine's current onboarding-analysis status. The Vibe app
+ * polls this after photo uploads complete so it can flip the
+ * "Analyzing your style…" stage indicator off and emit the next
+ * conversation prompt once the analysis is done.
+ *
+ * Short timeout (1.5s) so the poll loop doesn't pile up on a slow
+ * engine — a missed poll just retries on the next interval.
+ */
+export async function getAnalysisStatus(
+  userId: string,
+  timeoutMs: number = 1500,
+): Promise<OnboardingAnalysisStatus | null> {
+  if (USE_MOCK) {
+    return {
+      user_id: userId,
+      analysis_run_id: "mock-run",
+      status: "completed",
+      error_message: "",
+    };
+  }
+  try {
+    const resp = await fetch(
+      `${ENGINE_API_URL}/v1/onboarding/analysis/${encodeURIComponent(userId)}`,
+      { signal: AbortSignal.timeout(timeoutMs) },
+    );
+    if (!resp.ok) return null;
+    const raw = (await resp.json()) as Partial<OnboardingAnalysisStatus>;
+    return {
+      user_id: raw.user_id ?? userId,
+      analysis_run_id: raw.analysis_run_id ?? "",
+      status: raw.status ?? "not_started",
+      error_message: raw.error_message ?? "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Engine ↔ Vibe response shape normalization
 //
