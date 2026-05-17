@@ -47,6 +47,7 @@ import {
   type OnboardingStatus,
   type TurnStatusResponse,
 } from "../lib/engine.server";
+import { logInfo, logWarn, logError } from "../lib/logger.server";
 import {
   isCardStep,
   markKindResolved,
@@ -210,7 +211,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // helper's default of 1500ms protects the SSR loader at the cost
     // of false negatives under engine contention; the init action has
     // a more relaxed budget and benefits from the longer ceiling.
-    const [conversationRes, , statusRes] = await Promise.allSettled([
+    const [conversationRes, ensureRes, statusRes] = await Promise.allSettled([
       resolveConversation(sessionId),
       ensureOnboardingProfile(sessionId),
       getOnboardingStatus(sessionId, ENGINE_HTTP_TIMEOUT_MS),
@@ -221,6 +222,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         conversationRes.reason instanceof Error
           ? conversationRes.reason.message
           : String(conversationRes.reason);
+      logError("vibe_init_outcome", {
+        session_id: sessionId,
+        outcome: "conversation_failed",
+        error: reason,
+      });
       return json<ActionResponse>(
         { ok: false, error: `Couldn't start a conversation: ${reason}` },
         { status: 502 },
@@ -247,6 +253,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         : status === null
           ? false
           : Boolean(status.gender);
+    // Log the three-way status outcome and the ensure-profile outcome
+    // so dashboards can tell "new customer detected (not_found)" from
+    // "engine wobble + safety net engaged (error)" and from "everything
+    // worked (ok)". Pre-instrumentation, a returning customer hitting a
+    // 5xx timeout silently flowed through as hasProfile=true with no
+    // ops signal — re-onboarding bugs only surfaced via customer
+    // reports. ensure-profile failure is non-fatal (idempotent retry on
+    // next photo upload / profile patch) but worth flagging because
+    // subsequent /onboarding/* calls 404 until it succeeds.
+    const statusOutcome: "ok" | "not_found" | "error" =
+      status === undefined ? "error" : status === null ? "not_found" : "ok";
+    const ensureOutcome = ensureRes.status === "fulfilled" ? "ok" : "error";
+    logInfo("vibe_init_outcome", {
+      session_id: sessionId,
+      conversation_id: conversationRes.value.conversation_id,
+      status_outcome: statusOutcome,
+      ensure_outcome: ensureOutcome,
+      has_profile: hasProfile,
+      images_uploaded_count: imagesUploaded.length,
+      ensure_error:
+        ensureRes.status === "rejected"
+          ? (ensureRes.reason instanceof Error
+              ? ensureRes.reason.message
+              : String(ensureRes.reason))
+          : undefined,
+    });
     return json<ActionResponse>({
       ok: true,
       op: "init",
@@ -279,6 +311,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       .searchParams.get("logged_in_customer_id")
       ?.trim();
     if (!expectedId || canonical !== `shopify:${expectedId}`) {
+      // Security-relevant: form-supplied canonical id didn't match the
+      // App-Proxy-signed logged_in_customer_id. Could be benign (stale
+      // tab after the customer logged out and back in as someone else)
+      // or hostile (attacker trying to graft their anonymous history
+      // onto someone else's Shopify account). Warn-level so it surfaces
+      // on log drains' default filters without paging.
+      logWarn("vibe_merge_identity_mismatch", {
+        alias_session_id: sessionId,
+        claimed_canonical: canonical,
+        expected_logged_in_customer_id: expectedId ?? "",
+      });
       return json<ActionResponse>(
         { ok: false, error: "Identity mismatch — refuse to merge" },
         { status: 403 },
@@ -293,6 +336,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // — otherwise the customer's first photo upload after login would
       // 404 just as it does on initial sign-up.
       await ensureOnboardingProfile(result.canonical_external_user_id);
+      logInfo("vibe_merge_outcome", {
+        alias_session_id: sessionId,
+        canonical_external_user_id: result.canonical_external_user_id,
+        merged: result.merged,
+      });
       return json<ActionResponse>({
         ok: true,
         op: "merge",
@@ -306,6 +354,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // the page silently stuck with no feed.
       const message =
         err instanceof Error ? err.message : "Failed to merge identity";
+      logError("vibe_merge_outcome", {
+        alias_session_id: sessionId,
+        canonical_external_user_id: canonical,
+        merged: false,
+        error: message,
+      });
       return json<ActionResponse>({ ok: false, error: message }, { status: 502 });
     }
   }
@@ -354,6 +408,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const engineMessage = hasAttachment
       ? `${message} Build an outfit around this attached piece.`
       : message;
+
+    // Log the pairing-rewrite event explicitly so we can answer "did
+    // the silent message augmentation fire?" without scraping the
+    // engine's prompt logs. attachment_kind enables a per-source split
+    // (image upload vs wardrobe pick vs wishlist pick). Log even when
+    // no rewrite happened so the per-turn rate is computable.
+    const attachmentKind: "image" | "wardrobe" | "wishlist" | "none" = imageData
+      ? "image"
+      : wardrobeItemId
+        ? "wardrobe"
+        : wishlistProductId
+          ? "wishlist"
+          : "none";
+    logInfo("vibe_turn_pairing_rewrite", {
+      session_id: sessionId,
+      conversation_id: conversationId,
+      rewrite_applied: hasAttachment,
+      attachment_kind: attachmentKind,
+      original_message_length: message.length,
+    });
 
     const turn = await startTurn({
       conversationId,

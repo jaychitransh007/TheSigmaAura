@@ -122,6 +122,16 @@ export const ENGINE_MOCK_ACTIVE = USE_MOCK;
 
 export const ENGINE_HTTP_TIMEOUT_MS = 8_000;
 
+// Caller-channel tag — appended as `?channel=vibe_storefront` to every
+// engine call that supports it. The engine's onboarding endpoints
+// accept a `channel` query parameter (default "web") which they pass
+// to `observe_onboarding_endpoint(...)` so dashboards can slice
+// Vibe-app traffic from agentic-app / direct-engine traffic. The
+// existing `startTurn` already carries a channel field in the JSON
+// body — this constant is for the GET/POST/PATCH onboarding routes
+// that don't have a body-level channel field.
+const ENGINE_CHANNEL = "vibe_storefront";
+
 class EngineError extends Error {
   constructor(public readonly status: number, message: string) {
     super(message);
@@ -276,7 +286,7 @@ export async function getOnboardingStatus(
   let resp: Response;
   try {
     resp = await fetch(
-      `${ENGINE_API_URL}/v1/onboarding/status/${encodeURIComponent(userId)}`,
+      `${ENGINE_API_URL}/v1/onboarding/status/${encodeURIComponent(userId)}?channel=${ENGINE_CHANNEL}`,
       { signal: AbortSignal.timeout(timeoutMs) },
     );
   } catch {
@@ -328,7 +338,7 @@ export async function getOnboardingStatus(
 export async function ensureOnboardingProfile(userId: string): Promise<void> {
   if (USE_MOCK) return;
   await postJson<{ user_id: string; saved: boolean }>(
-    "/v1/onboarding/profile/ensure",
+    `/v1/onboarding/profile/ensure?channel=${ENGINE_CHANNEL}`,
     { user_id: userId },
   );
 }
@@ -477,7 +487,7 @@ export async function getWardrobeItems(userId: string): Promise<WardrobeItem[]> 
     ];
   }
   const raw = await getJson<RawWardrobeListResponse>(
-    `/v1/onboarding/wardrobe/${encodeURIComponent(userId)}`,
+    `/v1/onboarding/wardrobe/${encodeURIComponent(userId)}?channel=${ENGINE_CHANNEL}`,
   );
   return (raw.items ?? []).map((it) => ({
     id: String(it.id ?? ""),
@@ -612,7 +622,7 @@ export async function uploadOnboardingImage(args: {
   let resp: Response;
   try {
     resp = await fetch(
-      `${ENGINE_API_URL}/v1/onboarding/images/${encodeURIComponent(args.category)}`,
+      `${ENGINE_API_URL}/v1/onboarding/images/${encodeURIComponent(args.category)}?channel=${ENGINE_CHANNEL}`,
       { method: "POST", body: form },
     );
   } catch (e) {
@@ -644,7 +654,7 @@ export async function patchOnboardingProfile(args: {
   body[args.field] = args.value;
   let resp: Response;
   try {
-    resp = await fetch(`${ENGINE_API_URL}/v1/onboarding/profile/partial`, {
+    resp = await fetch(`${ENGINE_API_URL}/v1/onboarding/profile/partial?channel=${ENGINE_CHANNEL}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -685,8 +695,8 @@ export async function startOnboardingAnalysis(args: {
   }
   const path =
     args.phase === "phase1"
-      ? "/v1/onboarding/analysis/start-phase1"
-      : "/v1/onboarding/analysis/start-phase2";
+      ? `/v1/onboarding/analysis/start-phase1?channel=${ENGINE_CHANNEL}`
+      : `/v1/onboarding/analysis/start-phase2?channel=${ENGINE_CHANNEL}`;
   return postJson<OnboardingAnalysisResponse>(path, { user_id: args.userId });
 }
 
@@ -723,7 +733,7 @@ export async function getAnalysisStatus(
   }
   try {
     const resp = await fetch(
-      `${ENGINE_API_URL}/v1/onboarding/analysis/${encodeURIComponent(userId)}`,
+      `${ENGINE_API_URL}/v1/onboarding/analysis/${encodeURIComponent(userId)}?channel=${ENGINE_CHANNEL}`,
       { signal: AbortSignal.timeout(timeoutMs) },
     );
     if (!resp.ok) return null;
