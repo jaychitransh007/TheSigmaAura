@@ -41,6 +41,20 @@ from .analysis import UserAnalysisService
 logger = logging.getLogger("aura.onboarding")
 
 
+# Per-endpoint upload size caps. Kept as separate constants (vs one
+# shared 10MB) so each route stays independently tunable — `normalize_
+# image` accepts the raw uncropped phone photo and downstream crops
+# shrink before hitting the persisted-image caps below.
+MAX_NORMALIZE_IMAGE_SIZE_MB = 15
+MAX_NORMALIZE_IMAGE_SIZE_BYTES = MAX_NORMALIZE_IMAGE_SIZE_MB * 1024 * 1024
+
+MAX_UPLOAD_IMAGE_SIZE_MB = 10
+MAX_UPLOAD_IMAGE_SIZE_BYTES = MAX_UPLOAD_IMAGE_SIZE_MB * 1024 * 1024
+
+MAX_WARDROBE_ITEM_IMAGE_SIZE_MB = 10
+MAX_WARDROBE_ITEM_IMAGE_SIZE_BYTES = MAX_WARDROBE_ITEM_IMAGE_SIZE_MB * 1024 * 1024
+
+
 def _log_endpoint(
     *, endpoint: str, status: str, channel: str, user_id: str = "", **extra: object,
 ) -> None:
@@ -252,8 +266,11 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         # sources can run hot. Downstream crops shrink it to fit the
         # 10MB ceiling used by save_image / save_wardrobe_item.
         size_bytes = _upload_size_bytes(file)
-        if size_bytes > 15 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="Image must be under 15MB")
+        if size_bytes > MAX_NORMALIZE_IMAGE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Image must be under {MAX_NORMALIZE_IMAGE_SIZE_MB}MB",
+            )
         data = file.file.read()
         try:
             normalized_data, normalized_type, normalized_name = service.normalize_image_for_crop(
@@ -284,10 +301,13 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         # populated `.size` attribute and falls back to a single seek
         # for older versions.
         size_bytes = _upload_size_bytes(file)
-        if size_bytes > 10 * 1024 * 1024:
+        if size_bytes > MAX_UPLOAD_IMAGE_SIZE_BYTES:
             observe_onboarding_endpoint(endpoint="image_upload", status="bad_request", channel=channel)
             _log_endpoint(endpoint="image_upload", status="bad_request", channel=channel, user_id=user_id, category=category_label, size_bytes=size_bytes, error="too_large")
-            raise HTTPException(status_code=400, detail="Image must be under 10MB")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Image must be under {MAX_UPLOAD_IMAGE_SIZE_MB}MB",
+            )
         data = file.file.read()
         try:
             result = service.save_image(
@@ -393,8 +413,11 @@ def create_onboarding_router(service: OnboardingService, analysis_service: UserA
         # Size-check pre-read for the same reason as upload_image —
         # don't buffer bytes we're about to reject.
         size_bytes = _upload_size_bytes(file)
-        if size_bytes > 10 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail="Image must be under 10MB")
+        if size_bytes > MAX_WARDROBE_ITEM_IMAGE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Image must be under {MAX_WARDROBE_ITEM_IMAGE_SIZE_MB}MB",
+            )
         data = file.file.read()
         try:
             out = service.save_wardrobe_item(
