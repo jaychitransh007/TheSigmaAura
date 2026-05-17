@@ -195,28 +195,28 @@ Can ship after D.C lands AND F.2 + G.1/G.2 are live — the admin pages are most
   - **Catalog scope** — multi-select against the merchant's Shopify collections: which to include / exclude from Vibe's recommendations. Default include-all. Recommendation guardrails (min / max price, brand exclusions).
 
   Depends on F.1 (`read_themes`) + F.2 (catalog ingestion so the merchant's collections are queryable).
-- [ ] **D.M.4.** **Analytics dashboard.** Four sections:
-  - **Engagement** — conversations / day, unique customers, avg messages per conversation, drop-off funnel through onboarding stages
-  - **Revenue attribution** — Vibe-attributed orders count + GMV, AOV uplift vs non-Vibe orders, % of total store revenue. Attribution window toggle (24h / 7d / 30d).
-  - **Recommendation effectiveness** — which outfits got most Add-to-Carts, which got most Hides, conversion rate per surface (PDP entry vs homepage entry from D.M.3).
-  - **Catalog health** — products covered by Vibe (have embeddings), products OOS vs total recommended count.
+- [ ] **D.M.4.** **Analytics dashboard.** The primary merchant surface — replaces D.M.6 entirely (no billing). Five sections, each backed by a specific data source already in place or coming via Phase F / Phase G:
 
-  Reuse Panel 18 / 25-27 SQL from the engine's existing dashboards where it overlaps. Depends on F.2 + G (all sub-tasks).
+  | Section | Question it answers | Source |
+  |---|---|---|
+  | **Engagement** | How many customers actually used Vibe? Conversations / day, unique customers, avg messages per conversation, drop-off funnel through onboarding stages. | `conversations` + `conversation_turns` + `onboarding_profiles` (existing) |
+  | **Wishlists** | What did customers heart? Total items saved, top-saved products, saves / visitor. | `wishlist_items` (existing — populated by the Like button on outfit cards) |
+  | **Try-ons** | How much Gemini-rendered try-on did we serve? Renders / day, per-customer distribution, fail rate. | `virtual_tryon_images` (existing) |
+  | **Conversions** | Did customers who engaged with Vibe go on to purchase? Vibe-attributed orders count + GMV, AOV uplift vs non-Vibe orders, % of total store revenue. Attribution window toggle (24h / 7d / 30d). | Phase G — `vibe_orders` + `order_attribution` |
+  | **Recommendation effectiveness** | Which outfits / individual pieces actually convert? Add-to-Cart rate per outfit, Hide rate per outfit, line-item conversion ("which outfits drove which buys"). | `catalog_interaction_history` + Phase G line-item attribution |
+
+  Engagement / Wishlists / Try-ons can ship the moment we have a Polaris dashboard frame — the data's already flowing. Conversions + Recommendation effectiveness gate on F.2 + G.1/G.2/G.3.
+
+  Reuse Panel 18 / 25-27 SQL from the engine's existing dashboards where it overlaps. Depends on F.2 + G.1 + G.2 + G.3.
 - [ ] **D.M.5.** **Settings.**
   - Catalog refresh cadence (webhook-driven default; scheduled bulk for advanced)
-  - Attribution window (24h / 7d / 30d, default 24h — matches D.M.4)
+  - Attribution window (24h / 7d / 30d, default 24h — matches D.M.4 conversions section)
   - Brand voice — stylist tone knobs (currently locked to "Confident Luxe")
   - Feature toggles — try-on, outfit-check, in-chat onboarding cards
   - Notification preferences — new order alerts, weekly analytics digest
 
   Depends on F.2 + G.2 + the brand-voice abstraction (separate small refactor in the stylist prompts).
-- [ ] **D.M.6.** **Billing.** Shopify Billing API integration. Plans (working draft, **product decision still open**):
-  - Free trial (30 days, all features)
-  - Starter — flat fee for stores under N orders/month
-  - Growth — flat + usage component
-  - Performance — % of Vibe-attributed revenue
-
-  The performance plan only works after G.3 (line-item attribution) is solid — the % is computed over attributed line-item GMV. Depends on G.2 + G.3.
+- [x] **D.M.6.** ~~Billing~~ — **dropped 2026-05-17.** No usage-based billing for now; D.M.4 analytics is the merchant-value surface. Revisit if/when a pricing model gets locked.
 
 ### D.P — Production rollout
 
@@ -268,7 +268,7 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 
 ## Phase G — Purchase attribution
 
-**Goal.** Know which orders were driven by a Vibe recommendation and credit revenue accordingly. Powers D.M.4 analytics and D.M.6 performance-billing.
+**Goal.** Know which orders were driven by a Vibe recommendation and credit revenue to specific outfits. Powers the Conversions + Recommendation-effectiveness sections of the D.M.4 analytics dashboard. (D.M.6 billing was dropped — analytics is the only consumer.)
 
 **Locked decisions (2026-05-17):**
 - **Attribution model: last-touch v1.** "Customer chatted with Vibe within the last 24h before checkout → order fully attributed." Multi-touch / assist credit deferred until v1 has data to show whether it matters.
@@ -312,11 +312,10 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 10. **G.3 — Line-item attribution** (2-3 days). D.M.4 granularity ("which outfits drove which line items").
 11. **D.M.2 — Permissions panel** (3 days).
 12. **D.M.3 — Placement + catalog controls** (4 days).
-13. **D.M.4 — Analytics dashboard** (2 weeks). The big one.
+13. **D.M.4 — Analytics dashboard** (2 weeks). The merchant-value surface: Engagement, Wishlists, Try-ons, Conversions, Recommendation effectiveness.
 14. **D.M.5 — Settings** (3-4 days).
-15. **D.M.6 — Billing** (1 week). **Pricing plan is a product decision still open** — flat-fee first vs % of attributed revenue.
 
-**Later:** D.P.2 / D.P.3 (real-card e2e + App Store listing), Phase C (engine multi-tenancy — required before tenant #2 onboards), G.4 (refund handler), E.2 (internal fulfillment dashboard, if order volume justifies it), further try-on surfaces (per-garment, on-demand re-render) only if requested.
+**Later:** D.P.2 / D.P.3 (real-card e2e + App Store listing), Phase C (engine multi-tenancy — required before tenant #2 onboards), G.4 (refund handler), E.2 (internal fulfillment dashboard, if order volume justifies it), further try-on surfaces (per-garment, on-demand re-render) only if requested. **D.M.6 billing was dropped — no usage-based pricing for now.**
 
 ---
 
