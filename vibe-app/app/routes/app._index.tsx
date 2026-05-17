@@ -10,6 +10,7 @@
 // Anything richer (D.M.2 permissions, D.M.3 placement, D.M.4 analytics)
 // lands in a separate page; this screen stays focused on "you're live".
 
+import { useEffect, useRef, useState } from "react";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
@@ -28,6 +29,7 @@ import {
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 
+import { lookupOrCreateTenant, type TenantStatus } from "../lib/engine.server";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -44,7 +46,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     .split(/[\s,]+/)
     .map((s) => s.trim())
     .filter(Boolean);
-  return json({ shop: session.shop, grantedScopes });
+
+  // F.2.2c: resolve the shop's tenant_id + bootstrap status from the
+  // engine. First call after install creates the tenants row with
+  // status='pending'; subsequent calls return the existing row. The
+  // admin home's SyncProgressCard reads this to decide whether to
+  // show the install-progress UI.
+  //
+  // Failing loud here is fine — engine being down at admin load is
+  // a real problem and the merchant should see it. Caught with a
+  // null-tenant return so the page can still render the rest of
+  // the welcome screen even if the engine call fails transiently.
+  let tenant: TenantStatus | null = null;
+  try {
+    tenant = await lookupOrCreateTenant({ shopDomain: session.shop });
+  } catch (err) {
+    console.error(
+      "[vibe] lookupOrCreateTenant failed for shop=%s:",
+      session.shop,
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  return json({ shop: session.shop, grantedScopes, tenant });
 };
 
 // Plain-English description per granted scope so the merchant sees
@@ -78,7 +102,7 @@ const SCOPE_DESCRIPTIONS: Record<string, { label: string; reason: string }> = {
 };
 
 export default function MerchantIndex() {
-  const { shop, grantedScopes } = useLoaderData<typeof loader>();
+  const { shop, grantedScopes, tenant } = useLoaderData<typeof loader>();
   // App Bridge handle. `shopify.scopes.request([...])` triggers
   // Shopify's native consent dialog for additional scope grants from
   // inside the embedded admin. Required because we use the new
@@ -115,6 +139,9 @@ export default function MerchantIndex() {
     <Page>
       <TitleBar title="Vibe" />
       <BlockStack gap="500">
+        {tenant && tenant.bootstrap_status !== "ready" ? (
+          <SyncProgressCard tenant={tenant} />
+        ) : null}
         <Layout>
           <Layout.Section>
             <Card>
@@ -360,5 +387,175 @@ export default function MerchantIndex() {
         </Layout>
       </BlockStack>
     </Page>
+  );
+}
+
+// Response envelope from app.api.bootstrap.tsx. Kept in sync with the
+// action's BootstrapTickResponse / BootstrapTickFail union.
+type BootstrapTickAck =
+  | {
+      ok: true;
+      processed: number;
+      accumulated: number;
+      batchResult: { created: number; updated: number; failed: number };
+      nextCursor: string | null;
+      done: boolean;
+    }
+  | { ok: false; error: string };
+
+// Install-time catalog sync progress (F.2.2c). Renders only while the
+// engine reports a non-ready bootstrap_status; reloads the page on
+// completion so the loader picks up `status=ready` and this card goes
+// away.
+//
+// The polling loop runs entirely in the browser — each tick is a
+// fresh POST to /app/api/bootstrap which fetches one Shopify Admin
+// GraphQL page and forwards it to the engine. Driving from the client
+// keeps each function call under Vercel's 60s ceiling even for big
+// catalogs (260 ticks × ~3s for a 13K re-install is acceptable; the
+// merchant just needs to keep the tab open).
+function SyncProgressCard({ tenant }: { tenant: TenantStatus }) {
+  const [processed, setProcessed] = useState(tenant.product_count);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Guard against StrictMode double-mount + tab focus changes re-firing
+  // the effect. Without this, two tick loops can race on the same
+  // cursor space — the engine's idempotency saves correctness but the
+  // duplicate GraphQL calls are wasted.
+  const startedRef = useRef(false);
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    if (tenant.bootstrap_status === "ready" || tenant.bootstrap_status === "failed") {
+      return;
+    }
+    startedRef.current = true;
+    let cancelled = false;
+
+    async function run() {
+      let cursor: string | null = null;
+      let total = tenant.product_count;
+
+      while (!cancelled) {
+        let resp: Response;
+        try {
+          resp = await fetch("/app/api/bootstrap", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tenantId: tenant.tenant_id,
+              after: cursor,
+              accumulated: total,
+            }),
+          });
+        } catch (e) {
+          if (!cancelled) {
+            setError(e instanceof Error ? e.message : String(e));
+          }
+          return;
+        }
+        if (cancelled) return;
+
+        // Parse JSON first — the action returns structured `{ok:false,
+        // error}` envelopes with non-2xx status codes (e.g. 502 on
+        // engine failure), so the body has more signal than the status.
+        let body: BootstrapTickAck;
+        try {
+          body = (await resp.json()) as BootstrapTickAck;
+        } catch {
+          setError(
+            resp.ok
+              ? "Invalid response from sync endpoint"
+              : `Sync failed (HTTP ${resp.status})`,
+          );
+          return;
+        }
+        if (cancelled) return;
+        if (body.ok !== true) {
+          setError(body.error || `Sync failed (HTTP ${resp.status})`);
+          return;
+        }
+        total = body.accumulated;
+        cursor = body.nextCursor;
+        setProcessed(total);
+        if (body.done) {
+          setDone(true);
+          // Brief pause so the merchant sees the "complete" state
+          // before the loader re-runs and the card vanishes.
+          window.setTimeout(() => window.location.reload(), 1500);
+          return;
+        }
+      }
+    }
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [tenant.tenant_id, tenant.product_count, tenant.bootstrap_status]);
+
+  if (tenant.bootstrap_status === "failed") {
+    return (
+      <Banner
+        tone="critical"
+        title="Catalog sync failed"
+        action={{
+          content: "Retry",
+          onAction: () => window.location.reload(),
+        }}
+      >
+        <Text as="p" variant="bodyMd">
+          Vibe couldn't finish syncing your catalog. Reload this page to retry —
+          previously-synced products are kept, so this picks up where it left
+          off.
+        </Text>
+      </Banner>
+    );
+  }
+
+  if (error) {
+    return (
+      <Banner
+        tone="warning"
+        title="Catalog sync interrupted"
+        action={{
+          content: "Retry",
+          onAction: () => window.location.reload(),
+        }}
+      >
+        <BlockStack gap="200">
+          {processed > 0 ? (
+            <Text as="p" variant="bodyMd">
+              {processed} products synced before the error. Retrying continues
+              from there.
+            </Text>
+          ) : null}
+          <Text as="p" variant="bodySm" tone="subdued">
+            {error}
+          </Text>
+        </BlockStack>
+      </Banner>
+    );
+  }
+
+  return (
+    <Banner
+      tone={done ? "success" : "info"}
+      title={done ? "Catalog synced" : "Syncing your catalog"}
+    >
+      <BlockStack gap="200">
+        <Text as="p" variant="bodyMd">
+          {done
+            ? `${processed} products are styling-ready. Reloading…`
+            : `Vibe is reading your products from Shopify. ${processed} processed so far — keep this tab open while we finish.`}
+        </Text>
+        {!done ? (
+          <Text as="p" variant="bodySm" tone="subdued">
+            First-time sync runs the vision pipeline once per product. Roughly
+            30 seconds per 50 products; subsequent re-installs are near-instant.
+          </Text>
+        ) : null}
+      </BlockStack>
+    </Banner>
   );
 }

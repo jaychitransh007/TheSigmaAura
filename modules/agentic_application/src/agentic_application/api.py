@@ -24,6 +24,7 @@ from platform_core.api_schemas import (
     BootstrapBatchResponse,
     BootstrapCompleteRequest,
     CreateTurnRequest,
+    LookupOrCreateTenantRequest,
     TenantStatusResponse,
     DependencyReportResponse,
     FeedbackRequest,
@@ -672,6 +673,35 @@ def create_app() -> FastAPI:
     # When pagination exhausts, vibe-app POSTs bootstrap-complete
     # which flips tenants.bootstrap_status to 'ready' and writes
     # the final product_count for the merchant-admin progress UI.
+
+    @app.post(
+        "/v1/tenants/lookup-or-create",
+        response_model=TenantStatusResponse,
+    )
+    def lookup_or_create_tenant(payload: LookupOrCreateTenantRequest) -> TenantStatusResponse:
+        """Idempotently resolve a Shopify shop domain to its tenant row.
+
+        First call (post-install): creates `tenants` row with a fresh
+        opaque tenant_id, status='pending'. Subsequent calls return
+        the existing row unchanged. Vibe-app hits this on every
+        merchant-admin load so the home screen has a `tenant_id` to
+        thread into bootstrap calls.
+        """
+        try:
+            row = tenant_repo.get_or_create(
+                shop_domain=payload.shopify_shop_domain,
+                shopify_shop_gid=payload.shopify_shop_gid or None,
+            )
+            return TenantStatusResponse(
+                tenant_id=str(row.get("tenant_id") or ""),
+                shopify_shop_domain=str(row.get("shopify_shop_domain") or ""),
+                bootstrap_status=str(row.get("bootstrap_status") or ""),
+                product_count=int(row.get("product_count") or 0),
+                bootstrap_completed_at=str(row.get("bootstrap_completed_at") or ""),
+                last_sync_at=str(row.get("last_sync_at") or ""),
+            )
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post(
         "/v1/tenants/{tenant_id}/bootstrap-batch",
