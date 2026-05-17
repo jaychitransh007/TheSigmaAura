@@ -223,13 +223,62 @@ export default function MerchantIndex() {
                       title="Permissions update available"
                       action={{
                         content: "Update permissions",
-                        onAction: () => {
-                          // App Bridge's scopes.request() opens
-                          // Shopify's native consent dialog for the
-                          // missing scopes. On approval, the iframe
-                          // reloads and the session token reflects
+                        onAction: async () => {
+                          // The runtime App Bridge object has a `.scopes`
+                          // namespace with `request(scopes)` that opens
+                          // Shopify's native consent dialog. The React
+                          // package's type definitions (4.2.10) don't
+                          // expose it yet, so we cast. On approval the
+                          // iframe re-fetches and session.scope reflects
                           // the new grant.
-                          void appBridge.scopes.request(missingDocumentedScopes);
+                          //
+                          // Wrapping in try/catch with toast feedback so
+                          // a misconfigured runtime (older App Bridge
+                          // script, scopes API missing, request denied)
+                          // surfaces visibly instead of silently no-ops.
+                          const bridge = appBridge as unknown as {
+                            scopes?: {
+                              request: (
+                                scopes: string[],
+                              ) => Promise<{ granted?: string[] } | void>;
+                            };
+                            toast?: { show: (msg: string, opts?: { isError?: boolean }) => void };
+                          };
+                          if (!bridge.scopes?.request) {
+                            bridge.toast?.show(
+                              "Update unavailable — open this app in a recent Shopify Admin.",
+                              { isError: true },
+                            );
+                            console.error(
+                              "[vibe] App Bridge scopes.request unavailable; bridge:",
+                              bridge,
+                            );
+                            return;
+                          }
+                          try {
+                            const result = await bridge.scopes.request(
+                              missingDocumentedScopes,
+                            );
+                            console.info("[vibe] scopes.request result:", result);
+                            bridge.toast?.show(
+                              "Permissions granted — reloading…",
+                            );
+                            // Give Shopify a beat to persist the new
+                            // grant in the session token, then reload
+                            // so the page reflects the new state.
+                            window.setTimeout(
+                              () => window.location.reload(),
+                              500,
+                            );
+                          } catch (err) {
+                            const msg =
+                              err instanceof Error ? err.message : String(err);
+                            console.error("[vibe] scopes.request failed:", err);
+                            bridge.toast?.show(
+                              `Couldn't update permissions: ${msg}`,
+                              { isError: true },
+                            );
+                          }
                         },
                       }}
                     >
