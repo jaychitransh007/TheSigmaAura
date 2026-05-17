@@ -1539,3 +1539,65 @@ export async function postBootstrapComplete(args: {
     { product_count: args.productCount },
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// F.4 — Shopify products/* webhook forwarding.
+//
+// Vibe-app receives the raw Shopify webhook (HMAC-validated by
+// `authenticate.webhook`) and forwards the payload here. The engine
+// owns the translation to its internal product shape and the
+// catalog_enriched / catalog_item_embeddings updates.
+//
+// Endpoint contract: pass the FULL Shopify REST product payload as
+// `payload` — the engine reads body.id / variants / image / etc.
+// directly. Don't pre-translate on the vibe-app side; all the
+// "what counts as a product" logic lives in the engine.
+// ─────────────────────────────────────────────────────────────────────
+
+export type ProductWebhookUpsertResult = {
+  created: number;
+  updated: number;
+  failed: number;
+  shopify_product_id: string;
+  available_for_sale: boolean;
+  reason: string;
+};
+
+export type ProductWebhookDeleteResult = {
+  deleted: boolean;
+  shopify_product_id: string;
+  reason: string;
+};
+
+export async function forwardProductUpsertWebhook(args: {
+  tenantId: string;
+  payload: unknown;
+}): Promise<ProductWebhookUpsertResult> {
+  if (USE_MOCK) {
+    return {
+      created: 0,
+      updated: 1,
+      failed: 0,
+      shopify_product_id: "",
+      available_for_sale: true,
+      reason: "mock",
+    };
+  }
+  return postJson<ProductWebhookUpsertResult>(
+    `/v1/tenants/${encodeURIComponent(args.tenantId)}/products/webhook-upsert`,
+    { payload: args.payload ?? {} },
+  );
+}
+
+export async function forwardProductDeleteWebhook(args: {
+  tenantId: string;
+  payload: unknown;
+}): Promise<ProductWebhookDeleteResult> {
+  if (USE_MOCK) {
+    return { deleted: true, shopify_product_id: "", reason: "mock" };
+  }
+  return postJson<ProductWebhookDeleteResult>(
+    `/v1/tenants/${encodeURIComponent(args.tenantId)}/products/webhook-delete`,
+    { payload: args.payload ?? {} },
+  );
+}
