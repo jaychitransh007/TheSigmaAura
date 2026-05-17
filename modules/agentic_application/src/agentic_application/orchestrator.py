@@ -1629,6 +1629,13 @@ class AgenticOrchestrator:
         image_data: str = "",
         wardrobe_item_id: str = "",
         wishlist_product_id: str = "",
+        # F.2.0 (2026-05-18): tenant_id is the partition key for catalog
+        # retrieval. Defaults to TheSigmaVibe so the legacy `web` channel
+        # + existing tests keep working unchanged. API entry points
+        # resolve it from request.shop_domain via TenantRepository and
+        # pass the real id in; only callers that haven't been migrated
+        # land on the default.
+        tenant_id: str = "t_Oq0BSHnewiEAAAAAagWWlmnV-0sJmcGk",
         stage_callback: Optional[Callable[[str, str, str], None]] = None,
     ) -> Dict[str, Any]:
         def emit(stage: str, detail: str = "", ctx: dict | None = None) -> None:
@@ -2713,6 +2720,7 @@ class AgenticOrchestrator:
                 user_context=user_context,
                 conversation_history=conversation_history,
                 profile_confidence=profile_confidence,
+                tenant_id=tenant_id,
 
                 attached_item=attached_item,
                 anchored_item_id=str((attached_item or {}).get("id") or ""),
@@ -6216,6 +6224,9 @@ class AgenticOrchestrator:
         anchored_item_id: str = "",
         force_catalog_followup: bool = False,
         source_preference: str = "",
+        # F.2.0: forwarded by process_turn so the per-turn CombinedContext
+        # carries it through to catalog_search_agent.
+        tenant_id: str = "t_Oq0BSHnewiEAAAAAagWWlmnV-0sJmcGk",
         emit: Any,
         trace_start: Any = None,
         trace_end: Any = None,
@@ -6398,6 +6409,7 @@ class AgenticOrchestrator:
             recent_user_actions = []
 
         combined_context = CombinedContext(
+            tenant_id=tenant_id,
             user=user_context,
             live=initial_live_context,
             hard_filters=hard_filters,

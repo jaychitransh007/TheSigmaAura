@@ -288,26 +288,33 @@ class SupabaseVectorStore:
     def similarity_search(
         self,
         *,
+        tenant_id: str,
         query_embedding: List[float],
         match_count: int,
         filters: Dict[str, Any],
     ) -> Any:
-        """Execute the pgvector similarity-search RPC.
+        """Execute the pgvector similarity-search RPC, scoped to a tenant.
+
+        ``tenant_id`` is required (F.2.1, 2026-05-18). The RPC is
+        ``match_catalog_item_embeddings_v2`` which takes ``p_tenant_id``
+        as its first positional parameter and filters
+        ``catalog_item_embeddings`` accordingly. The old 3-arg RPC
+        stays in the schema during the rollout but no live caller
+        targets it — a follow-up migration drops it once we're
+        confident no path slipped through.
 
         The May 7 ``hard_attrs``/``hard_penalty`` SQL-level penalty was
         removed in the May 13 iterative-HNSW rewrite; the matching
         ``20260513020000_drop_match_embeddings_5arg_overload`` migration
-        drops the 5-arg overload from the database. Hard-attr enforcement
-        now lives entirely in Python
-        (``agents/catalog_search_agent._apply_hard_attr_penalty``), which
-        operates on the rich ``catalog_enriched`` data hydrated after
-        retrieval — the SQL penalty was a no-op for most attribute keys
-        anyway because ``catalog_item_embeddings.metadata_json`` only
-        carries the typed-column subset.
+        drops the 5-arg overload. Hard-attr enforcement now lives in
+        Python (``agents/catalog_search_agent._apply_hard_attr_penalty``).
         """
+        if not tenant_id or not str(tenant_id).strip():
+            raise ValueError("similarity_search: tenant_id is required")
         payload: Dict[str, Any] = {
+            "p_tenant_id": tenant_id,
             "query_embedding": _vector_literal(query_embedding),
             "match_count": match_count,
             "filter": filters,
         }
-        return self._client.rpc("match_catalog_item_embeddings", payload)
+        return self._client.rpc("match_catalog_item_embeddings_v2", payload)

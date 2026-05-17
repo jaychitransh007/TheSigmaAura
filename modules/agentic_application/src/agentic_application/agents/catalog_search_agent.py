@@ -276,6 +276,7 @@ class CatalogSearchAgent:
             for attempt in range(_SEARCH_MAX_RETRIES + 1):
                 try:
                     matches = self._retrieval_gateway.similarity_search(
+                        tenant_id=combined_context.tenant_id,
                         query_embedding=embedding,
                         match_count=search_count,
                         filters=filters,

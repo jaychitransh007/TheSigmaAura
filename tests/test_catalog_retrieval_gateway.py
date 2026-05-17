@@ -33,14 +33,16 @@ class SimilaritySearchKwargsTests(unittest.TestCase):
         gateway._vector_store.similarity_search.return_value = []
         return gateway
 
-    def test_forwards_three_args_to_vector_store(self):
+    def test_forwards_four_args_to_vector_store(self):
         gateway = self._make()
         gateway.similarity_search(
+            tenant_id="t_test_tenant",
             query_embedding=[0.0] * 1536,
             match_count=5,
             filters={"gender_expression": "feminine"},
         )
         call = gateway._vector_store.similarity_search.call_args
+        self.assertEqual(call.kwargs.get("tenant_id"), "t_test_tenant")
         self.assertEqual(call.kwargs.get("query_embedding"), [0.0] * 1536)
         self.assertEqual(call.kwargs.get("match_count"), 5)
         self.assertEqual(
@@ -60,10 +62,23 @@ class SimilaritySearchKwargsTests(unittest.TestCase):
         gateway = self._make()
         with self.assertRaises(TypeError):
             gateway.similarity_search(
+                tenant_id="t_test_tenant",
                 query_embedding=[0.0] * 1536,
                 match_count=5,
                 filters={"gender_expression": "feminine"},
                 hard_attrs={"SleeveLength": ["three_quarter", "full"]},
+            )
+
+    def test_requires_tenant_id_kwarg(self):
+        # F.2.1: tenant_id is the new required first parameter on the
+        # gateway's similarity_search. Forgetting it should TypeError
+        # at call time rather than silently default to a single tenant.
+        gateway = self._make()
+        with self.assertRaises(TypeError):
+            gateway.similarity_search(
+                query_embedding=[0.0] * 1536,
+                match_count=5,
+                filters={},
             )
 
 

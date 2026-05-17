@@ -74,6 +74,14 @@ class CreateTurnRequest(BaseModel):
     # wishlist picker, the frontend sends the product_id here.
     # The orchestrator loads the product from catalog_enriched.
     wishlist_product_id: str = Field(default="")
+    # F.2.0 (2026-05-18): the merchant's *.myshopify.com domain. The
+    # API resolves this to a tenant_id via the `tenants` table before
+    # calling process_turn, so retrieval can be scoped to the right
+    # store's catalog. Optional for backward compat with the legacy
+    # `web` channel which predates the tenant model and falls back to
+    # TheSigmaVibe; vibe_storefront callers MUST send it once F.2.2
+    # (install flow) lands.
+    shop_domain: str = Field(default="")
 
 
 class OutfitItem(BaseModel):

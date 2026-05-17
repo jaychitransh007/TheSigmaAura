@@ -49,6 +49,7 @@ from platform_core.api_schemas import (
 from platform_core.config import load_config
 from platform_core.fallback_messages import graceful_policy_message
 from platform_core.repositories import ConversationRepository
+from platform_core.tenants import TenantRepository, resolve_tenant_id_or_default
 from platform_core.image_moderation import ImageModerationService, image_block_message
 from platform_core.restricted_categories import detect_restricted_category
 from platform_core.supabase_rest import SupabaseError, SupabaseRestClient
@@ -298,6 +299,10 @@ def create_app() -> FastAPI:
     )
     repo = ConversationRepository(client)
     onboarding_gateway = ApplicationUserGateway(client)
+    # F.2.0 (2026-05-18): tenant lookup, used to resolve shop_domain
+    # from incoming requests to the partition key threaded into
+    # process_turn → CombinedContext → catalog_search_agent.
+    tenant_repo = TenantRepository(client)
     orchestrator = AgenticOrchestrator(repo=repo, onboarding_gateway=onboarding_gateway, config=cfg)
     image_moderation = ImageModerationService()
     dependency_reporting = DependencyReportingService(client)
@@ -682,6 +687,11 @@ def create_app() -> FastAPI:
     @app.post("/v1/conversations/{conversation_id}/turns", response_model=TurnResponse)
     def create_turn(conversation_id: str, payload: CreateTurnRequest) -> TurnResponse:
         try:
+            tenant_id = resolve_tenant_id_or_default(
+                tenant_repo,
+                shop_domain=payload.shop_domain,
+                channel=payload.channel,
+            )
             out = orchestrator.process_turn(
                 conversation_id=conversation_id,
                 external_user_id=payload.user_id,
@@ -690,6 +700,7 @@ def create_app() -> FastAPI:
                 image_data=payload.image_data or "",
                 wardrobe_item_id=payload.wardrobe_item_id or "",
                 wishlist_product_id=payload.wishlist_product_id or "",
+                tenant_id=tenant_id,
             )
             return TurnResponse(**out)
         except (ValueError, SupabaseError, RuntimeError) as exc:
@@ -718,6 +729,15 @@ def create_app() -> FastAPI:
                 stages.append(event)
                 job["stages"] = stages
 
+        # Resolve tenant_id outside the job thread so a missing-tenant
+        # error fails the start-request synchronously (better signal
+        # to the client than an opaque background failure).
+        tenant_id = resolve_tenant_id_or_default(
+            tenant_repo,
+            shop_domain=payload.shop_domain,
+            channel=payload.channel,
+        )
+
         def run_job() -> None:
             append_stage("turn_execution", "started")
             try:
@@ -729,6 +749,7 @@ def create_app() -> FastAPI:
                     image_data=payload.image_data or "",
                     wardrobe_item_id=payload.wardrobe_item_id or "",
                     wishlist_product_id=payload.wishlist_product_id or "",
+                    tenant_id=tenant_id,
                     stage_callback=append_stage,
                 )
                 append_stage("turn_execution", "completed")
