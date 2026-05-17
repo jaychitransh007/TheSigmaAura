@@ -370,6 +370,66 @@ class PollIngestTests(unittest.TestCase):
         self.assertEqual(patch["GarmentCategory"], "Blouse")
         self.assertEqual(patch["FabricDrape"], "Fluid")
 
+    def test_completed_batch_mirrors_filter_cols_to_embeddings(self):
+        """The retrieval RPC filters on catalog_item_embeddings's
+        lowercase columns (garment_category, gender_expression, …)
+        — NOT joined from catalog_enriched. Without mirroring those
+        8 columns on ingest, every retrieval filter that names one
+        of them returns zero rows even though the vision data was
+        successfully extracted (regression: 2026-05-18 Vibe Test
+        bootstrap left embeddings.garment_category=NULL on 60 rows
+        and the storefront returned no results)."""
+        output_jsonl = json.dumps({
+            "custom_id": "cat_42",
+            "response": {
+                "body": {
+                    "output_text": json.dumps({
+                        "GarmentCategory": "top",
+                        "GarmentSubtype": "shirt",
+                        "StylingCompleteness": "needs_bottomwear",
+                        "GenderExpression": "feminine",
+                        "FormalityLevel": "smart_casual",
+                        "OccasionFit": "casual",
+                        "TimeOfDay": "day",
+                        "PrimaryColor": "ivory",
+                    })
+                }
+            }
+        })
+        client = _make_poll_client(in_flight=[
+            {"id": 5, "tenant_id": "t_test", "openai_batch_id": "batch_x", "row_count": 1},
+        ])
+        openai_client = _make_openai_for_poll(
+            status="completed", output_text=output_jsonl,
+        )
+        service = CatalogVisionEnrichmentService(client, openai_client=openai_client)
+
+        service.poll_and_ingest()
+
+        # Find the embeddings-table update.
+        emb_updates = [
+            c for c in client.update_one.call_args_list
+            if c.args and c.args[0] == "catalog_item_embeddings"
+            and c.kwargs.get("patch", {}).get("garment_category")
+        ]
+        self.assertEqual(len(emb_updates), 1)
+        patch = emb_updates[0].kwargs["patch"]
+        # All 8 retrieval-filter columns should be mirrored.
+        self.assertEqual(patch["garment_category"], "top")
+        self.assertEqual(patch["garment_subtype"], "shirt")
+        self.assertEqual(patch["styling_completeness"], "needs_bottomwear")
+        self.assertEqual(patch["gender_expression"], "feminine")
+        self.assertEqual(patch["formality_level"], "smart_casual")
+        self.assertEqual(patch["occasion_fit"], "casual")
+        self.assertEqual(patch["time_of_day"], "day")
+        self.assertEqual(patch["primary_color"], "ivory")
+        # And the filter must target catalog_row_id, not id —
+        # catalog_row_id is the join key into catalog_enriched.
+        self.assertEqual(
+            emb_updates[0].kwargs["filters"]["catalog_row_id"],
+            "eq.42",
+        )
+
     def test_only_allowlisted_columns_written(self):
         """Model output containing an unexpected key must NOT cause
         that key to be written to catalog_enriched. Protects us from

@@ -67,11 +67,10 @@ _log = logging.getLogger(__name__)
 # Anything not in this set is treated as not-vision-derived and is
 # never overwritten by the ingest step (so an operator-set field
 # like price, image_url, or shopify_variant_ids isn't clobbered by
-# a batch landing). Sourced from
-# modules/style_engine/configs/config/garment_attributes.json's
-# ATTRIBUTE_SECTIONS via document_builder.py — kept here as a literal
-# allowlist so a typo in the model output can't write to an unexpected
-# column.
+# a batch landing). Cross-checked against
+# modules/style_engine/configs/config/garment_attributes.json — kept
+# here as a literal allowlist so a typo in the model output can't
+# write to an unexpected column.
 _VISION_COLUMNS: Tuple[str, ...] = (
     "GarmentCategory",
     "GarmentSubtype",
@@ -103,11 +102,33 @@ _VISION_COLUMNS: Tuple[str, ...] = (
     "Closure",
     "DesignElements",
     "Embellishments",
-    "Occasion",
+    "OccasionFit",          # NOT "Occasion" — the schema uses OccasionFit
     "FormalityLevel",
     "StyleAesthetic",
     "Season",
+    "StylingCompleteness",  # gates retrieval filter on catalog_item_embeddings
+    "GenderExpression",     # gates retrieval filter on catalog_item_embeddings
+    "TimeOfDay",            # gates retrieval filter on catalog_item_embeddings
 )
+
+# The retrieval RPC (match_catalog_item_embeddings_v2) does NOT join
+# against catalog_enriched — it filters on denormalised columns
+# directly on catalog_item_embeddings. So after writing the
+# PascalCase vision attributes to catalog_enriched, we must ALSO
+# mirror them to the embeddings table under the lowercase names the
+# RPC reads. Sourced from
+# modules/catalog/src/catalog/retrieval/vector_store.py:127 (the
+# original ops-side insert path — same mapping kept in sync here).
+_EMBEDDING_MIRROR_MAP: Dict[str, str] = {
+    "GarmentCategory": "garment_category",
+    "GarmentSubtype": "garment_subtype",
+    "StylingCompleteness": "styling_completeness",
+    "GenderExpression": "gender_expression",
+    "FormalityLevel": "formality_level",
+    "OccasionFit": "occasion_fit",
+    "TimeOfDay": "time_of_day",
+    "PrimaryColor": "primary_color",
+}
 
 
 @dataclass
@@ -498,10 +519,39 @@ class CatalogVisionEnrichmentService:
                     filters={"id": f"eq.{catalog_row_id}"},
                     patch=patch,
                 )
+                # Mirror the retrieval-filter columns to
+                # catalog_item_embeddings under their lowercase
+                # names — the RPC filters on these denormalised
+                # columns directly without a join. Without this
+                # mirror the engine's filter predicates would all
+                # see NULL and return zero rows even though the
+                # vision data was successfully extracted.
+                mirror_patch: Dict[str, Any] = {}
+                for pascal_col, lower_col in _EMBEDDING_MIRROR_MAP.items():
+                    if pascal_col in payload:
+                        mirror_patch[lower_col] = payload[pascal_col]
+                if mirror_patch:
+                    try:
+                        self._client.update_one(
+                            "catalog_item_embeddings",
+                            filters={"catalog_row_id": f"eq.{catalog_row_id}"},
+                            patch=mirror_patch,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        # Don't double-count this as a row failure —
+                        # the catalog_enriched write succeeded, the
+                        # row's data is captured. The mirror miss
+                        # just means retrieval filtering won't work
+                        # for this row until a re-sync.
+                        _log.warning(
+                            "CatalogVisionEnrichment: embedding mirror failed id=%s err=%s",
+                            catalog_row_id,
+                            exc,
+                        )
                 rows_ingested += 1
             except Exception as exc:  # noqa: BLE001
                 _log.warning(
-                    "CatalogVisionEnrichment: row update failed id=%d err=%s",
+                    "CatalogVisionEnrichment: row update failed id=%s err=%s",
                     catalog_row_id,
                     exc,
                 )
