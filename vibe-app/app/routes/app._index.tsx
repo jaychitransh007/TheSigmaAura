@@ -34,6 +34,7 @@ import {
   patchTenantThemeOverrides,
   type TenantStatus,
 } from "../lib/engine.server";
+import { ensureVibeMenuItems } from "../lib/navigation.server";
 import { readMerchantThemeOverrides } from "../lib/theme-settings.server";
 import { authenticate } from "../shopify.server";
 
@@ -107,6 +108,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         err instanceof Error ? err.message : err,
       );
     }
+
+    // PR #481: ensure "Find your Vibe" + "Your Vibes" are in the
+    // merchant's main-menu. Idempotent. Best-effort — silent failure
+    // if write_navigation scope hasn't been granted yet (the
+    // permissions banner above already nudges the merchant to
+    // re-grant).
+    try {
+      const result = await ensureVibeMenuItems(admin);
+      if (result.skipped) {
+        console.info(
+          "[vibe] menu-item injection skipped for shop=%s: %s",
+          session.shop,
+          result.skipped,
+        );
+      } else if (result.added > 0) {
+        console.info(
+          "[vibe] menu-item injection: added=%d alreadyPresent=%d for shop=%s",
+          result.added,
+          result.alreadyPresent,
+          session.shop,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        "[vibe] menu-item injection failed for shop=%s:",
+        session.shop,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   return json({ shop: session.shop, grantedScopes, tenant, tenantError });
@@ -139,6 +169,11 @@ const SCOPE_DESCRIPTIONS: Record<string, { label: string; reason: string }> = {
     label: "Read your themes",
     reason:
       "So we can verify the Style-with-Vibe block is live on the active theme.",
+  },
+  write_navigation: {
+    label: "Update your store navigation",
+    reason:
+      "So we can add 'Find your Vibe' and 'Your Vibes' to your main menu — and remove them when you uninstall.",
   },
 };
 
