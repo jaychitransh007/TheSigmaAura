@@ -67,12 +67,17 @@ type ThemeFileQueryResult = {
 type ShopAndMenuQueryResult = {
   data?: {
     shop?: { name?: string };
-    menu?: {
-      title?: string;
-      items?: Array<{
-        title?: string;
-        url?: string;
-        items?: Array<{ title?: string; url?: string }>;
+    menus?: {
+      edges?: Array<{
+        node?: {
+          handle?: string;
+          title?: string;
+          items?: Array<{
+            title?: string;
+            url?: string;
+            items?: Array<{ title?: string; url?: string }>;
+          }>;
+        };
       }>;
     };
   };
@@ -146,16 +151,24 @@ async function fetchShopAndMenu(
   admin: AdminGraphqlClient,
 ): Promise<{ shopName: string; menuItems: Array<{ title: string; url: string }> }> {
   try {
+    // The 2026-04 Admin API removed `menu(handle:)` — only
+    // `menu(id: ID!)` survives. List the first 50 menus and filter
+    // for handle=="main-menu" in code.
     const resp = await admin.graphql(
       `#graphql
-      query VibeShopAndMenu {
+      query VibeShopAndMenus {
         shop { name }
-        menu(handle: "main-menu") {
-          title
-          items {
-            title
-            url
-            items { title url }
+        menus(first: 50) {
+          edges {
+            node {
+              handle
+              title
+              items {
+                title
+                url
+                items { title url }
+              }
+            }
           }
         }
       }`,
@@ -163,7 +176,9 @@ async function fetchShopAndMenu(
     if (!resp.ok) return { shopName: "", menuItems: [] };
     const gql = (await resp.json()) as ShopAndMenuQueryResult;
     const shopName = String(gql.data?.shop?.name ?? "").trim();
-    const items = gql.data?.menu?.items ?? [];
+    const edges = gql.data?.menus?.edges ?? [];
+    const main = edges.find((e) => e.node?.handle === "main-menu")?.node;
+    const items = main?.items ?? [];
     const menuItems: Array<{ title: string; url: string }> = [];
     for (const it of items) {
       const title = String(it.title ?? "").trim();
