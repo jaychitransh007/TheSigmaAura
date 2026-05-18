@@ -24,7 +24,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs, LinksFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useFetcher, useLoaderData } from "@remix-run/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Composer, type Attachment } from "../components/conversation/composer";
 import {
@@ -645,27 +645,37 @@ export default function ConversationPage() {
   // self-heal recovery. Surfaces HTTP + network failures to the
   // console so they're visible during testing — replacing the
   // original `.catch(() => {})` which swallowed everything.
-  const fireAnalysisTrigger = async (phase: "phase1" | "phase2") => {
-    if (!sessionId) return;
-    const form = new FormData();
-    form.set("sessionId", sessionId);
-    form.set("phase", phase);
-    try {
-      const resp = await fetch("/apps/vibe/api/onboarding/analysis", {
-        method: "POST",
-        body: form,
-      });
-      if (!resp.ok) {
-        const body = await resp.text().catch(() => "");
-        console.warn(
-          `[vibe] analysis trigger ${phase} failed: HTTP ${resp.status}`,
-          body,
-        );
+  //
+  // Wrapped in useCallback so the function reference stays stable
+  // across renders. The polling useEffect captures it via closure
+  // and a re-created function each render would trigger the eslint
+  // exhaustive-deps rule into requiring it in the dep list, which
+  // would re-arm the poll loop on every render. Stability via
+  // useCallback is the React-idiomatic answer.
+  const fireAnalysisTrigger = useCallback(
+    async (phase: "phase1" | "phase2") => {
+      if (!sessionId) return;
+      const form = new FormData();
+      form.set("sessionId", sessionId);
+      form.set("phase", phase);
+      try {
+        const resp = await fetch("/apps/vibe/api/onboarding/analysis", {
+          method: "POST",
+          body: form,
+        });
+        if (!resp.ok) {
+          const body = await resp.text().catch(() => "");
+          console.warn(
+            `[vibe] analysis trigger ${phase} failed: HTTP ${resp.status}`,
+            body,
+          );
+        }
+      } catch (err) {
+        console.warn(`[vibe] analysis trigger ${phase} network error:`, err);
       }
-    } catch (err) {
-      console.warn(`[vibe] analysis trigger ${phase} network error:`, err);
-    }
-  };
+    },
+    [sessionId],
+  );
 
   // Mount: pull session id from localStorage (or mint one) and resolve
   // the conversation. Anchors identity to this browser for the rest of
