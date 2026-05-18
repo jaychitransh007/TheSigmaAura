@@ -151,8 +151,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     // Ensure "Find your Vibe" + "Your Vibes" are in the merchant's
     // main-menu. Idempotent. Best-effort — silent failure if the
-    // write_navigation scope hasn't been granted yet (the
-    // permissions banner above already nudges the merchant to
+    // write_online_store_navigation scope hasn't been granted yet
+    // (the permissions banner above already nudges the merchant to
     // re-grant).
     try {
       const result = await ensureVibeMenuItems(admin);
@@ -210,7 +210,7 @@ const SCOPE_DESCRIPTIONS: Record<string, { label: string; reason: string }> = {
     reason:
       "So we can verify the Style-with-Vibe block is live on the active theme.",
   },
-  write_navigation: {
+  write_online_store_navigation: {
     label: "Update your store navigation",
     reason:
       "So we can add 'Find your Vibe' and 'Your Vibes' to your main menu — and remove them when you uninstall.",

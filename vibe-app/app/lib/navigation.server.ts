@@ -7,8 +7,9 @@
 // Idempotent — checks for existing items by URL before inserting.
 // On uninstall, removes items whose URL matches our Vibe paths.
 //
-// Required scope: `write_navigation`. Without it the menuUpdate
-// mutation returns userErrors; we log + skip rather than fail loudly.
+// Required scope: `write_online_store_navigation` (implies read).
+// Without it the menuUpdate mutation returns userErrors; we log +
+// skip rather than fail loudly.
 
 type AdminGraphqlClient = {
   graphql(query: string, options?: unknown): Promise<Response>;
@@ -107,7 +108,7 @@ export async function ensureVibeMenuItems(admin: AdminGraphqlClient): Promise<{
     return {
       added: 0,
       alreadyPresent: existingUrls.size,
-      skipped: "menuUpdate failed (check write_navigation scope)",
+      skipped: "menuUpdate failed (check write_online_store_navigation scope)",
     };
   }
   return {
