@@ -87,7 +87,11 @@ export function MerchantHeader({
             );
           })}
         </nav>
-        <div className="merchant-header-utils" aria-label="Account and cart">
+        <div
+          className="merchant-header-utils"
+          role="group"
+          aria-label="Account and cart"
+        >
           <a
             href="/search"
             className="merchant-header-util"
@@ -105,7 +109,7 @@ export function MerchantHeader({
           <a
             href="/cart"
             className="merchant-header-util merchant-header-util--cart"
-            aria-label={`Cart, ${cartCount} item${cartCount === 1 ? "" : "s"}`}
+            aria-label={cartCount > 0 ? `Cart (${cartCount})` : "Cart"}
           >
             <CartIcon />
             {cartCount > 0 ? (

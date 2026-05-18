@@ -330,12 +330,19 @@ function toMenuItemInput(item: MenuItem): Record<string, unknown> {
   // Shopify, so we round-trip every existing item with its id.
   //
   // resourceId is mandatory for typed links (COLLECTION_LINK /
-  // PRODUCT_LINK / PAGE_LINK / etc.) and forbidden for FRONTEND_LINK
-  // / HTTP. We pass it whenever non-null so the API validates per-
-  // type rather than us hard-coding the allow-list.
+  // PRODUCT_LINK / PAGE_LINK / etc.) and forbidden for HTTP. We pass
+  // it whenever non-null so the API validates per-type rather than
+  // us hard-coding the allow-list.
+  //
+  // Explicit FRONTEND_LINK → HTTP rewrite: stores fetched before the
+  // 2026-04 cutover (or with cached values) may still surface the
+  // removed enum value on existing items. menuUpdate would reject
+  // the whole mutation if we passed it through.
+  const rawType = item.type;
+  const type = !rawType || rawType === "FRONTEND_LINK" ? "HTTP" : rawType;
   const input: Record<string, unknown> = {
     title: item.title,
-    type: item.type || "HTTP",
+    type,
     items: (item.items ?? []).map(toMenuItemInput),
   };
   if (item.id) input.id = item.id;

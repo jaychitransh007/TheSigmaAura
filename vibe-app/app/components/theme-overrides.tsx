@@ -34,16 +34,28 @@ export function ThemeOverridesStyle({
   if (!overrides) return null;
   const fontBody = (overrides.font_body || "").trim();
   const colorPrimary = (overrides.color_primary || "").trim();
-  if (!fontBody && !colorPrimary) return null;
+  const colorBackground = (overrides.color_background || "").trim();
+  const colorText = (overrides.color_text || "").trim();
+  if (!fontBody && !colorPrimary && !colorBackground && !colorText) {
+    return null;
+  }
 
   // Compose the CSS variable declarations at :root so they cascade
-  // across both .conv-page and .vibe-page surfaces.
+  // across both .conv-page and .vibe-page surfaces. All color values
+  // were validated upstream by pickColor in theme-settings.server.ts
+  // (strict hex / rgb(...) anchors) so the injection here is safe.
   const declarations: string[] = [];
   if (fontBody) {
     declarations.push(`--theme-font-body: ${cssQuote(fontBody)};`);
   }
   if (colorPrimary) {
     declarations.push(`--theme-color-primary: ${colorPrimary};`);
+  }
+  if (colorBackground) {
+    declarations.push(`--theme-color-background: ${colorBackground};`);
+  }
+  if (colorText) {
+    declarations.push(`--theme-color-text: ${colorText};`);
   }
   const css = `:root { ${declarations.join(" ")} }`;
 
