@@ -99,7 +99,7 @@ export function MerchantHeader({
         <div
           className="merchant-header-utils"
           role="group"
-          aria-label="Search, account, and cart"
+          aria-label="User tools"
         >
           <a
             href="/search"
