@@ -50,6 +50,8 @@ import {
   type TurnStatusResponse,
 } from "../lib/engine.server";
 import { logInfo, logWarn, logError } from "../lib/logger.server";
+import { MerchantHeader } from "../components/merchant-header";
+import "../components/merchant-header.css";
 import { ThemeOverridesStyle } from "../components/theme-overrides";
 import {
   isCardStep,
@@ -1279,28 +1281,15 @@ export default function ConversationPage() {
   return (
     <div className="conv-page">
       <ThemeOverridesStyle overrides={themeOverrides} />
-      <header className="conv-header">
-        <h1>Vibe{mockMode && <span className="conv-mock-badge"> Mock</span>}</h1>
-        {/* D.S.3b — sign-in affordance. Anonymous customers see a pill
-            that links to the storefront's Customer Account login; the
-            return_url brings them back here, at which point the App
-            Proxy starts forwarding logged_in_customer_id and the mount
-            effect picks up the merge. Authenticated customers see a
-            subtle "Signed in" hint instead (no logout flow yet —
-            Shopify handles that on the storefront). */}
-        {isAuthenticated ? (
-          <span className="conv-auth-pill conv-auth-pill--in" aria-label="Signed in">
-            Signed in
-          </span>
-        ) : (
-          <a
-            className="conv-auth-pill conv-auth-pill--out"
-            href="/account/login?return_url=/apps/vibe/style"
-          >
-            Sign in
-          </a>
-        )}
-      </header>
+      {/* PR #480: replicated merchant header replaces the AURA-branded
+          conv-header. The customer should never feel they left the
+          store — the header reads as the merchant's, with "Find your
+          Vibe" / "Your Vibes" appearing as menu items that PR 4
+          injects into their main-menu. Mock-mode + sign-in pill were
+          dropped from this surface; Shopify handles login via the
+          merchant's own nav, and mock-mode is a developer affordance
+          surfaced in console / engine.server.ts already. */}
+      <MerchantHeader overrides={themeOverrides} />
 
       <div className="conv-feed" ref={feedRef}>
         {initError && (

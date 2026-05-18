@@ -204,7 +204,12 @@ class TenantRepository:
         for k, v in (overrides or {}).items():
             if v is None:
                 continue
+            # Strip empty strings + empty lists (but keep populated
+            # lists, e.g. main_menu, and keep 0/False if they ever
+            # become valid values).
             if isinstance(v, str) and not v.strip():
+                continue
+            if isinstance(v, list) and len(v) == 0:
                 continue
             cleaned[k] = v
         if cleaned:

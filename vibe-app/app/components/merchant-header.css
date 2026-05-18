@@ -1,0 +1,98 @@
+/* Merchant-header replicated on Vibe pages (PR #480).
+ *
+ * Visual register: hairline-bordered horizontal bar at the very top
+ * of every Vibe page. Brand text on the left, navigation chips in the
+ * middle, no right-side widgets in this MVP (cart badge / customer
+ * login deferred — see PR #480 description). Consumes the same
+ * --theme-color-primary / --theme-font-body CSS vars that PR #478
+ * injected, so when the merchant's theme exposes them the header
+ * picks them up automatically.
+ *
+ * Width matches the page content max-width (960px in conv-page,
+ * wider in vibe-page). The .merchant-header itself stays full-width
+ * so the hairline border runs edge-to-edge.
+ */
+
+.merchant-header {
+  background: var(--canvas, #faf5ee);
+  border-bottom: 1px solid var(--rule, #f0e0d0);
+  font-family: var(--theme-font-body, -apple-system),
+    BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+}
+
+.merchant-header-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.merchant-header-brand {
+  flex: 0 0 auto;
+}
+
+.merchant-header-logo {
+  font-family: "Fraunces", "Playfair Display", Georgia, serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink, #16110e);
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.merchant-header-logo--placeholder {
+  cursor: default;
+}
+
+.merchant-header-nav {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 1.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.merchant-header-nav-link {
+  /* JetBrains Mono on legacy AURA labels reads as "branded chrome";
+   * the merchant header should read as "the merchant's nav". Use
+   * uppercase Inter so it sits comfortably on whatever theme is
+   * underneath. */
+  font-size: 0.74rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft, #2d1b14);
+  text-decoration: none;
+  padding: 0.25rem 0;
+  border-bottom: 2px solid transparent;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.merchant-header-nav-link:hover {
+  color: var(--theme-color-primary, var(--accent, #b45a3c));
+}
+
+.merchant-header-nav-link.is-active {
+  /* Underline a Vibe-owned destination ("Find your Vibe", "Your
+   * Vibes") when the customer is on that page. Color uses the
+   * theme's primary so the active state inherits the merchant's
+   * brand accent. */
+  color: var(--theme-color-primary, var(--accent, #b45a3c));
+  border-bottom-color: var(--theme-color-primary, var(--accent, #b45a3c));
+}
+
+@media (max-width: 640px) {
+  .merchant-header-inner {
+    padding: 0.75rem 1rem;
+    gap: 1.25rem;
+  }
+  .merchant-header-nav {
+    gap: 1rem;
+  }
+  .merchant-header-logo {
+    font-size: 1.15rem;
+  }
+}

@@ -19,6 +19,7 @@ import { ConfirmDialog, type ConfirmRequest } from "../components/ui/confirm-dia
 import { ToastsProvider, useToasts } from "../components/ui/toast";
 import { VibePageShell } from "../components/vibe-page-shell";
 import wardrobeStyles from "../components/wardrobe/styles.css?url";
+import { loadTenantThemeOverrides } from "../lib/customer-loader.server";
 import type {
   PastLookSummary,
   SavedLookSummary,
@@ -42,12 +43,11 @@ export const links: LinksFunction = () => [
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.public.appProxy(request);
-  // No identity threading from server → client: Shopify's App Proxy
-  // auto-appends `logged_in_customer_id` to every storefront-origin
-  // request to /apps/vibe/* and HMAC-signs the result, so subsequent
-  // resource-route fetches are independently identity-checked by the
-  // server side without the page echoing anything.
-  return json({});
+  // PR #480: pull tenant theme overrides so VibePageShell can render
+  // the merchant's replicated header. Best-effort; failure returns
+  // null and Confident Luxe defaults take over.
+  const themeOverrides = await loadTenantThemeOverrides(request);
+  return json({ themeOverrides });
 };
 
 type Tab = "saved" | "recent" | "tryons";
@@ -72,7 +72,7 @@ export default function LooksPage() {
 }
 
 function LooksPageInner() {
-  useLoaderData<typeof loader>();
+  const { themeOverrides } = useLoaderData<typeof loader>();
   const toasts = useToasts();
   const [sessionId, setSessionId] = useState("");
   const [tab, setTab] = useState<Tab>("saved");
@@ -183,7 +183,7 @@ function LooksPageInner() {
   const tryonList = state.kind === "ready" ? state.tryons : [];
 
   return (
-    <VibePageShell title="Looks">
+    <VibePageShell title="Your Vibes" themeOverrides={themeOverrides}>
       <p className="vibe-page-intro">
         Outfits Vibe has built for you. Save the ones worth coming back to —
         the rest stay in your history for a few weeks so you can pick up where
