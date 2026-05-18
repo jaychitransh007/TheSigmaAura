@@ -55,8 +55,14 @@ function themeOverridesDiffer(
     if (Array.isArray(value)) {
       const exArr = Array.isArray(ex) ? ex : [];
       if (exArr.length !== value.length) return true;
+      // Only the `main_menu` field is array-shaped today, and each
+      // item is `{title, url}`. Compare by property so key-order
+      // differences between probe + stored copy don't produce a
+      // spurious "differs" result (JSON.stringify is order-sensitive).
       for (let i = 0; i < value.length; i++) {
-        if (JSON.stringify(value[i]) !== JSON.stringify(exArr[i])) return true;
+        const v = value[i] as { title?: string; url?: string };
+        const e = exArr[i] as { title?: string; url?: string };
+        if (v.title !== e.title || v.url !== e.url) return true;
       }
       continue;
     }
