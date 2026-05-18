@@ -744,8 +744,10 @@ def create_app() -> FastAPI:
         webhook. Empty payload is OK and clears the overrides
         (Vibe will fall back to Confident Luxe defaults).
         """
+        from platform_core.metrics import observe_theme_overrides_patch
         try:
             if not tenant_repo.get_by_tenant_id(tenant_id):
+                observe_theme_overrides_patch(outcome="error")
                 raise HTTPException(
                     status_code=404,
                     detail=f"tenant_id {tenant_id} not found",
@@ -753,6 +755,7 @@ def create_app() -> FastAPI:
             overrides = payload.model_dump()
             tenant_repo.set_theme_overrides(tenant_id, overrides)
             row = tenant_repo.get_by_tenant_id(tenant_id) or {}
+            observe_theme_overrides_patch(outcome="applied")
             return TenantStatusResponse(
                 tenant_id=str(row.get("tenant_id") or ""),
                 shopify_shop_domain=str(row.get("shopify_shop_domain") or ""),
@@ -765,6 +768,7 @@ def create_app() -> FastAPI:
         except HTTPException:
             raise
         except (ValueError, SupabaseError, RuntimeError) as exc:
+            observe_theme_overrides_patch(outcome="error")
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post(

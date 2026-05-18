@@ -11,6 +11,8 @@
 // Without it the menuUpdate mutation returns userErrors; we log +
 // skip rather than fail loudly.
 
+import { logWarn } from "./logger.server";
+
 type AdminGraphqlClient = {
   graphql(query: string, options?: unknown): Promise<Response>;
 };
@@ -191,10 +193,10 @@ async function fetchMainMenu(
       }`,
     );
     if (!listResp.ok) {
-      console.warn(
-        "[vibe] fetchMainMenu index HTTP error status=%d",
-        listResp.status,
-      );
+      logWarn("vibe_navigation_menu_lookup_failed", {
+        stage: "index",
+        status: listResp.status,
+      });
       return null;
     }
     const idx = (await listResp.json()) as MenusIndexResult;
@@ -239,19 +241,19 @@ async function fetchMainMenu(
       { variables: { id } },
     );
     if (!resp.ok) {
-      console.warn(
-        "[vibe] fetchMainMenu detail HTTP error status=%d",
-        resp.status,
-      );
+      logWarn("vibe_navigation_menu_lookup_failed", {
+        stage: "detail",
+        status: resp.status,
+      });
       return null;
     }
     const gql = (await resp.json()) as MenuByIdResult;
     return gql.data?.menu ?? null;
   } catch (err) {
-    console.warn(
-      "[vibe] fetchMainMenu threw: %s",
-      err instanceof Error ? err.message : String(err),
-    );
+    logWarn("vibe_navigation_menu_lookup_failed", {
+      stage: "exception",
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -282,10 +284,10 @@ async function writeMenuItems(
       },
     );
     if (!resp.ok) {
-      console.warn(
-        "[vibe] menuUpdate HTTP error status=%d",
-        resp.status,
-      );
+      logWarn("vibe_navigation_menu_update_failed", {
+        stage: "http",
+        status: resp.status,
+      });
       return false;
     }
     const gql = (await resp.json()) as MenuUpdateResult;
@@ -294,18 +296,18 @@ async function writeMenuItems(
       // Surface user-errors verbatim — usually "resourceId is
       // required for X" or scope/permission failures. Without this
       // the caller just sees skipped=true with no detail.
-      console.warn(
-        "[vibe] menuUpdate userErrors: %s",
-        JSON.stringify(errs),
-      );
+      logWarn("vibe_navigation_menu_update_failed", {
+        stage: "user_errors",
+        user_errors: errs,
+      });
       return false;
     }
     return true;
   } catch (err) {
-    console.warn(
-      "[vibe] menuUpdate threw: %s",
-      err instanceof Error ? err.message : String(err),
-    );
+    logWarn("vibe_navigation_menu_update_failed", {
+      stage: "exception",
+      error: err instanceof Error ? err.message : String(err),
+    });
     return false;
   }
 }
