@@ -631,6 +631,41 @@ export default function ConversationPage() {
   // ticks. We only ever want the welcome + first card emitted once
   // per page life.
   const seededRef = useRef<boolean>(false);
+  // Throttles the poll loop's self-heal trigger. The original
+  // fire-and-forget on photo upload swallows HTTP errors (fetch only
+  // rejects on network failure, and the .catch wrapper hides 4xx/5xx
+  // anyway), so the analysis can quietly never start. The poll loop
+  // re-fires the trigger when it sees `not_started`, but bounded by
+  // this cooldown so a genuinely-failing prereq doesn't thunder at
+  // the engine every 2s.
+  const analysisTriggerCooldownRef = useRef<number>(0);
+
+  // Best-effort POST to the engine's onboarding analysis start
+  // endpoint, shared by the photo-upload handler and the poll loop's
+  // self-heal recovery. Surfaces HTTP + network failures to the
+  // console so they're visible during testing — replacing the
+  // original `.catch(() => {})` which swallowed everything.
+  const fireAnalysisTrigger = async (phase: "phase1" | "phase2") => {
+    if (!sessionId) return;
+    const form = new FormData();
+    form.set("sessionId", sessionId);
+    form.set("phase", phase);
+    try {
+      const resp = await fetch("/apps/vibe/api/onboarding/analysis", {
+        method: "POST",
+        body: form,
+      });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "");
+        console.warn(
+          `[vibe] analysis trigger ${phase} failed: HTTP ${resp.status}`,
+          body,
+        );
+      }
+    } catch (err) {
+      console.warn(`[vibe] analysis trigger ${phase} network error:`, err);
+    }
+  };
 
   // Mount: pull session id from localStorage (or mint one) and resolve
   // the conversation. Anchors identity to this browser for the rest of
@@ -864,6 +899,15 @@ export default function ConversationPage() {
   // Poll the engine's analysis status until it terminates.
   // 2s interval — analysis typically completes in 10-20s, so a
   // handful of polls is plenty. Bails on unmount or phase change.
+  //
+  // Self-heal: if the engine reports `not_started`, it means the
+  // fire-and-forget trigger in handleOnboardingPhotoUploaded never
+  // landed (silent .catch() on HTTP error, or page reload after a
+  // dropped request). Re-fire phase1 + phase2 with an 8s cooldown
+  // so we don't spam a genuinely-failing engine. Engine treats
+  // duplicate starts as idempotent — already-running analyses
+  // aren't restarted.
+  const TRIGGER_RETRY_COOLDOWN_MS = 8000;
   useEffect(() => {
     if (analysisPhase !== "running") return;
     if (!sessionId) return;
@@ -884,6 +928,14 @@ export default function ConversationPage() {
         ) {
           setAnalysisPhase("complete");
           return;
+        }
+        if (data.ok && data.status === "not_started") {
+          const now = Date.now();
+          if (now - analysisTriggerCooldownRef.current > TRIGGER_RETRY_COOLDOWN_MS) {
+            analysisTriggerCooldownRef.current = now;
+            void fireAnalysisTrigger("phase1");
+            void fireAnalysisTrigger("phase2");
+          }
         }
       } catch {
         // Transient failure — try again on the next tick.
@@ -1254,19 +1306,12 @@ export default function ConversationPage() {
   // photos. If the prereq isn't met yet the engine 400s and we ignore.
   // Once the missing field is later saved, calling again will succeed.
   // We don't surface failures to the customer — analysis is invisible
-  // background work.
+  // background work. If the trigger silently fails here (HTTP error,
+  // dropped request), the poll loop's self-heal path re-fires it.
   const handleOnboardingPhotoUploaded = (category: OnboardingImageCategory) => {
     if (!sessionId) return;
     const phase = category === "headshot" ? "phase1" : "phase2";
-    const form = new FormData();
-    form.set("sessionId", sessionId);
-    form.set("phase", phase);
-    fetch("/apps/vibe/api/onboarding/analysis", {
-      method: "POST",
-      body: form,
-    }).catch(() => {
-      // Best-effort.
-    });
+    void fireAnalysisTrigger(phase);
   };
 
   const ready = sessionId !== "" && conversationId !== "";
