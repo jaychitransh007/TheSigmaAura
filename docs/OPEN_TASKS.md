@@ -74,7 +74,7 @@ Opaque, stable, collision-free, 34 chars. The mapping `tenant_id → shop_domain
 - [x] **B.7.** Full import of 13,177 products (9 per-vendor CSVs).
 - [ ] **B.4.** Mandatory pages: About · Contact · Shipping Policy · Returns/Refund · Privacy · Terms. **Drafts ready** at [docs/storefront/legal_pages/](../docs/storefront/legal_pages/) with LEGAL REVIEW REQUIRED banners. Templates use `{{ PLACEHOLDER }}` tokens (entity name, GSTIN, support contacts, DPO, grievance officer, retention windows, arbitration seat) — counsel signs off, find-and-replace tokens, paste into Shopify admin (Online Store → Pages for About + Contact; Settings → Policies for the four policy pages). India-specific drafted against DPDPA 2023, Consumer Protection Act 2019 + E-Commerce Rules 2020, IT Act + IT Rules 2011/2021. Page-by-page caveats called out in [docs/storefront/legal_pages/README.md](../docs/storefront/legal_pages/README.md).
 - [ ] **B.6.** Real-card test order end-to-end. Should happen before storefront sees real customers.
-- [ ] **B.8.** Capture Shopify product/variant GIDs back into `catalog_enriched`. **Script ready** at [`scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py`](../scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py). User runs once with an Admin API token from the production store (Settings → Apps → Develop apps → custom app, scope `read_products` → install → token). Walks all Shopify products via GraphQL, matches by `vibe.source_product_id` metafield, writes `shopify_product_id` + `shopify_variant_ids` (jsonb keyed by size) back to Supabase. Idempotent — safe to re-run.
+- [x] **B.8.** GID capture shipped 2026-05-18 via the handle-suffix variant [`scripts/seed_thesigmavibe_catalog/capture_shopify_gids_by_handle.py`](../scripts/seed_thesigmavibe_catalog/capture_shopify_gids_by_handle.py). **11,977 of 12,199** products linked cleanly. The original [`capture_shopify_gids.py`](../scripts/seed_thesigmavibe_catalog/capture_shopify_gids.py) matches via the `vibe.source_product_id` metafield, but Shopify silently dropped that column during CSV import (definition didn't pre-exist in the store); matched count was 0/12,199. The variant matches on the last 10 chars of the kebab-cased `product_id` that `build_handle` puts at the tail of every Shopify handle. **222 stragglers accepted:** 208 ambiguous (Campus Sutra catalog has duplicate rows: e.g. both `44903385858306` and `CAMPUSSUTRA_44903385858306`) + 14 unmatched (SKU-style suffixes that `handle.rsplit("-", 1)[-1]` misses; a `handle[-10:]` extraction would recover them but the ~$0.67 enrichment cost when they surface via cron/webhook was accepted as a known trade-off). Auth used: Dev-Dashboard custom-distribution app → OAuth flow via [`scripts/seed_thesigmavibe_catalog/oauth_get_token.py`](../scripts/seed_thesigmavibe_catalog/oauth_get_token.py) → `shpca_*` access token (newer prefix than the legacy `shpat_*`). Frozen-catalog policy honoured: PATCH only writes `shopify_product_id` + `shopify_variant_ids`; `row_status` stays `ok` for all 13,177 rows.
 
 ## Phase D — Vibe Shopify App
 
@@ -226,9 +226,9 @@ Can ship after D.C lands AND F.2 + G.1/G.2 are live — the admin pages are most
 
 ### D.P — Production rollout
 
-- [ ] **D.P.1.** Install Vibe on prod store (`thesigmavibe.shop`) as Custom App.
-- [ ] **D.P.2.** End-to-end real-card test: customer arrives → talks to Vibe → adds outfit → checkout → real order → manual fulfillment.
-- [ ] **D.P.3.** Public App Store listing assets: privacy policy, support page, screenshots, demo video.
+- [x] **D.P.1.** Installed Vibe on prod store (`thesigmavibe.shop` / `q8pery-95.myshopify.com`) via Partner-Dashboard custom-distribution on 2026-05-18 evening. Path used: `shopify app deploy` from `vibe-app/` first (pushes the six scopes + F.4 webhook subscriptions to Partner Dashboard), then `install_custom_app` URL approved by the store owner. Tenant row pre-seeded `bootstrap_status='ready'` (migration `20260518000000`) so `SyncProgressCard` correctly short-circuits — no install-time re-bootstrap of the 13,177 pre-existing catalog rows. Frozen-catalog policy honoured (zero LLM calls on existing rows).
+- [ ] **D.P.2.** End-to-end real-card test: customer arrives → talks to Vibe → adds outfit → checkout → real order → manual fulfillment. Overlaps with **B.6** (real-card storefront test) — both could be satisfied by the same purchase run.
+- [ ] **D.P.3.** Public App Store listing assets: privacy policy, support page, screenshots, demo video. Required for Phase B (public listing) — heavyweight, separate from prod install.
 
 ## Phase C — Engine multi-tenancy (partial; full refactor still deferred)
 
@@ -300,11 +300,11 @@ Phase F shipped the **catalog read path** as fully tenant-scoped (every retrieva
 
 **Launch-blocking chain (your action):**
 
-1. **`shopify app deploy` from `vibe-app/`** — pushes the updated `shopify.app.vibe.toml` so Partner Dashboard registers the new `products/{create,update,delete}` webhook subscriptions. Without this F.4 stays inert in production.
-2. **B.4 legal-page review + publish.** Drafts are ready in [docs/storefront/legal_pages/](../docs/storefront/legal_pages/); counsel reviews, you find-and-replace the `{{ PLACEHOLDER }}` tokens, paste into Shopify admin.
-3. **B.6 — Real-card test order.** Manual.
-4. **D.P.1 — Install Vibe on the production store** (`thesigmavibe.shop`). Unblocks **B.8** + **D.C.9**.
-5. **D.C.9 — Add-to-Cart prod verification** after B.8 lands real variant ids.
+1. **B.4 legal-page review + publish.** Drafts are ready in [docs/storefront/legal_pages/](../docs/storefront/legal_pages/); counsel reviews, you find-and-replace the `{{ PLACEHOLDER }}` tokens, paste into Shopify admin.
+2. **B.6 — Real-card test order.** Manual. Doubles as **D.P.2** if executed end-to-end with manual fulfillment.
+3. **D.C.9 — Add-to-Cart prod verification.** One Buy Outfit click on the customer-facing path on `thesigmavibe.shop/apps/vibe/style` to confirm `/cart/add.js` resolves to a real variant id now that B.8's mapping is in place (~98.2% of catalog has `shopify_variant_ids`; the 222 stragglers won't surface as outfits today).
+
+**Done in the May 18 evening push** (covered in [RELEASE_READINESS.md](RELEASE_READINESS.md)): `shopify app deploy`, **D.P.1** (Vibe installed on TheSigmaVibe), **B.8** (11,977/12,199 GIDs captured via the handle-suffix variant), **analysis-trigger self-heal** (PR #500), **onboarding stage-reach + endpoint-failed logs** (PR #501), **tenant lookup + catalog linkage counters** (PR #502), **`acquisition_source` propagation on merge** (PR #503).
 
 **Then — Merchant-admin build (G → D.M.*), now that F.2.x + F.3 + F.4 are shipped:**
 
@@ -325,17 +325,16 @@ Phase F shipped the **catalog read path** as fully tenant-scoped (every retrieva
 
 ### Observability gaps from the 2026-05-16 / 17 / 18 audits
 
-Three audit passes since the in-chat-onboarding launch:
+Four audit passes since the in-chat-onboarding launch:
 
 - **May 16:** turn-channel + user-merge counters shipped in [#398](https://github.com/jaychitransh007/TheSigmaAura/pull/398).
 - **May 17:** onboarding endpoint + image-bytes counters + Vibe-side structured logs shipped in [#436](https://github.com/jaychitransh007/TheSigmaAura/pull/436).
-- **May 18:** F.2.x multi-tenant push audit. Critical gaps shipped in [#475](https://github.com/jaychitransh007/TheSigmaAura/pull/475): cart-wiring assertion (`aura_outfit_item_variant_ids_missing_total{source}` + warning log — would have caught PR #474), bootstrap-batch tick logs + counter (`aura_bootstrap_batch_total{status}` + per-outcome histogram, structured `vibe_bootstrap_tick` logs on the vibe-app side), webhook engine-side tenant context + counter (`aura_product_webhook_total{topic, status}`). Medium gaps shipped in [#476](https://github.com/jaychitransh007/TheSigmaAura/pull/476): enrichment batch lifecycle counters (`aura_enrichment_batch_total{status}` + row-count totals), catalog status-change events (`aura_catalog_status_change_total{action}`).
+- **May 18 morning:** F.2.x multi-tenant push audit. Critical gaps shipped in [#475](https://github.com/jaychitransh007/TheSigmaAura/pull/475): cart-wiring assertion (`aura_outfit_item_variant_ids_missing_total{source}` + warning log — would have caught PR #474), bootstrap-batch tick logs + counter (`aura_bootstrap_batch_total{status}` + per-outcome histogram, structured `vibe_bootstrap_tick` logs on the vibe-app side), webhook engine-side tenant context + counter (`aura_product_webhook_total{topic, status}`). Medium gaps shipped in [#476](https://github.com/jaychitransh007/TheSigmaAura/pull/476): enrichment batch lifecycle counters (`aura_enrichment_batch_total{status}` + row-count totals), catalog status-change events (`aura_catalog_status_change_total{action}`).
+- **May 18 evening:** D.P.1 + B.8 post-deploy audit. Three gaps shipped: `vibe_onboarding_stage_reach` + `vibe_onboarding_endpoint_failed` events on the three onboarding proxy routes ([#501](https://github.com/jaychitransh007/TheSigmaAura/pull/501)); `aura_tenant_lookup_total{outcome}` + `aura_catalog_shopify_linkage_observed_total{bucket}` + structured log `catalog_shopify_linkage_observed` ([#502](https://github.com/jaychitransh007/TheSigmaAura/pull/502)); `acquisition_source` propagation on merge ([#503](https://github.com/jaychitransh007/TheSigmaAura/pull/503)).
 
-The three items below remain open:
+The two items below remain open:
 
 - **Variant-id coverage histogram** (originally May-16). Replaced by the simpler `aura_outfit_item_variant_ids_missing_total{source}` counter shipped in #475 (catalog-source nonzero rate alerts immediately; wardrobe-source rate is the baseline). The histogram form is still useful for "what fraction of items have variants" SLO dashboards — keep as low-priority follow-up.
-- **Onboarding-stage reach counter.** `aura_onboarding_stage_reach_total` labeled by `stage` ∈ `{init, photo_uploaded, profile_submitted, complete}`. Lets us spot drop-off through the in-chat flow. **Trigger:** after the first real customer cohort flows through `/apps/vibe/style` on production (D.P.1 + a few live customers).
-- **`acquisition_source` cross-contamination on merge.** When a vibe_storefront customer signs in via Shopify Customer Account, `repo.merge_external_user_identity` doesn't propagate the alias row's `acquisition_source` to the canonical row. Result: a customer who started as `vibe_storefront` and later signs in shows up in Panel 01 as `unknown` forever. **Trigger:** when Panel 01 starts seeing unexpectedly high `unknown` after merged customers exist in volume.
 - **Tenant-id consistency across `catalog_search_agent` logs** (added May-18). Retrieval gateway already carries `tenant_id`; per-match-loop logs in `_hydrate_matches` don't. **Trigger:** when multi-tenant retrieval debugging requires per-tenant grep within the search-agent log stream (today the gateway log is sufficient).
 
 ### Masculine `polo_tshirt` coverage
