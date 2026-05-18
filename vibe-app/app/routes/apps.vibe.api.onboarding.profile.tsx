@@ -19,6 +19,7 @@ import {
   patchOnboardingProfile,
   type OnboardingProfileField,
 } from "../lib/engine.server";
+import { logInfo, logWarn } from "../lib/logger.server";
 import { authenticate } from "../shopify.server";
 
 const ALLOWED_FIELDS: ReadonlySet<OnboardingProfileField> = new Set([
@@ -73,17 +74,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       field,
       value,
     });
+    logInfo("vibe_onboarding_stage_reach", {
+      stage: "profile_field_saved",
+      field,
+      sessionId,
+    });
     return json({ ok: true, ...result });
   } catch (err) {
     // Always JSON — see image.tsx for the rationale (avoid Vercel HTML
     // error pages breaking the client's response.json() parse).
     if (err instanceof EngineError) {
+      logWarn("vibe_onboarding_endpoint_failed", {
+        endpoint: "profile",
+        field,
+        sessionId,
+        status: err.status || 502,
+        error: err.message,
+      });
       return json(
         { ok: false, error: err.message },
         { status: err.status || 502 },
       );
     }
     const message = err instanceof Error ? err.message : "Save failed";
+    logWarn("vibe_onboarding_endpoint_failed", {
+      endpoint: "profile",
+      field,
+      sessionId,
+      status: 500,
+      error: message,
+    });
     return json({ ok: false, error: message }, { status: 500 });
   }
 };

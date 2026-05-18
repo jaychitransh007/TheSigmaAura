@@ -19,6 +19,7 @@ import {
   uploadOnboardingImage,
   type OnboardingImageCategory,
 } from "../lib/engine.server";
+import { logInfo, logWarn } from "../lib/logger.server";
 import { authenticate } from "../shopify.server";
 
 const ALLOWED_CATEGORIES: ReadonlySet<OnboardingImageCategory> = new Set([
@@ -70,6 +71,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       file,
       filename,
     });
+    logInfo("vibe_onboarding_stage_reach", {
+      stage: "photo_uploaded",
+      category,
+      sessionId,
+    });
     return json({ ok: true, ...result });
   } catch (err) {
     // Always return JSON. Re-throwing here would let Vercel's default
@@ -78,12 +84,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // "Unexpected token '<'". Catch-all returns a friendly error
     // string instead so the card's error state can render.
     if (err instanceof EngineError) {
+      logWarn("vibe_onboarding_endpoint_failed", {
+        endpoint: "image",
+        category,
+        sessionId,
+        status: err.status || 502,
+        error: err.message,
+      });
       return json(
         { ok: false, error: err.message },
         { status: err.status || 502 },
       );
     }
     const message = err instanceof Error ? err.message : "Upload failed";
+    logWarn("vibe_onboarding_endpoint_failed", {
+      endpoint: "image",
+      category,
+      sessionId,
+      status: 500,
+      error: message,
+    });
     return json({ ok: false, error: message }, { status: 500 });
   }
 };

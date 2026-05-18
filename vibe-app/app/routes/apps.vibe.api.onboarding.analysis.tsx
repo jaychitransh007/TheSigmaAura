@@ -21,6 +21,7 @@ import {
   EngineError,
   startOnboardingAnalysis,
 } from "../lib/engine.server";
+import { logInfo, logWarn } from "../lib/logger.server";
 import { authenticate } from "../shopify.server";
 
 const ALLOWED_PHASES = new Set(["phase1", "phase2"] as const);
@@ -48,16 +49,35 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       userId: sessionId,
       phase,
     });
+    logInfo("vibe_onboarding_stage_reach", {
+      stage: "analysis_triggered",
+      phase,
+      sessionId,
+    });
     return json({ ok: true, ...result });
   } catch (err) {
     // Always JSON — see image.tsx for the rationale.
     if (err instanceof EngineError) {
+      logWarn("vibe_onboarding_endpoint_failed", {
+        endpoint: "analysis",
+        phase,
+        sessionId,
+        status: err.status || 502,
+        error: err.message,
+      });
       return json(
         { ok: false, error: err.message },
         { status: err.status || 502 },
       );
     }
     const message = err instanceof Error ? err.message : "Analysis trigger failed";
+    logWarn("vibe_onboarding_endpoint_failed", {
+      endpoint: "analysis",
+      phase,
+      sessionId,
+      status: 500,
+      error: message,
+    });
     return json({ ok: false, error: message }, { status: 500 });
   }
 };
