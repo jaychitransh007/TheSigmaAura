@@ -22,6 +22,15 @@ type MenuItem = {
   title: string;
   url: string;
   type: string;
+  // PR #482 fix: typed menu items (COLLECTION_LINK, PRODUCT_LINK,
+  // PAGE_LINK, BLOG_LINK, ARTICLE_LINK, METAOBJECT, etc.) carry a
+  // resource binding via resourceId. Without round-tripping it, the
+  // menuUpdate mutation either rejects with "resourceId is required"
+  // userErrors OR silently rewrites the items as broken links.
+  // Default Shopify main menus have at least one typed item (Catalog
+  // → COLLECTION_LINK, Contact → PAGE_LINK).
+  resourceId?: string | null;
+  tags?: string[] | null;
   items?: MenuItem[];
 };
 
@@ -159,7 +168,16 @@ async function fetchMainMenu(
             title
             url
             type
-            items { id title url type }
+            resourceId
+            tags
+            items {
+              id
+              title
+              url
+              type
+              resourceId
+              tags
+            }
           }
         }
       }`,
@@ -197,11 +215,31 @@ async function writeMenuItems(
         },
       },
     );
-    if (!resp.ok) return false;
+    if (!resp.ok) {
+      console.warn(
+        "[vibe] menuUpdate HTTP error status=%d",
+        resp.status,
+      );
+      return false;
+    }
     const gql = (await resp.json()) as MenuUpdateResult;
     const errs = gql.data?.menuUpdate?.userErrors ?? [];
-    return errs.length === 0;
-  } catch {
+    if (errs.length > 0) {
+      // Surface user-errors verbatim — usually "resourceId is
+      // required for X" or scope/permission failures. Without this
+      // the caller just sees skipped=true with no detail.
+      console.warn(
+        "[vibe] menuUpdate userErrors: %s",
+        JSON.stringify(errs),
+      );
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(
+      "[vibe] menuUpdate threw: %s",
+      err instanceof Error ? err.message : String(err),
+    );
     return false;
   }
 }
@@ -229,10 +267,18 @@ function stripMenuItemId(item: MenuItem): MenuItem {
 }
 
 function toMenuItemInput(item: MenuItem): Record<string, unknown> {
-  return {
+  // Build the MenuItemCreateInput. resourceId is mandatory for typed
+  // links (COLLECTION_LINK / PRODUCT_LINK / PAGE_LINK / etc.) and
+  // forbidden for FRONTEND_LINK / HTTP. We pass it whenever non-null
+  // so the engine validates per-type rather than us hard-coding the
+  // allow-list.
+  const input: Record<string, unknown> = {
     title: item.title,
-    url: item.url,
     type: item.type || "FRONTEND_LINK",
     items: (item.items ?? []).map(toMenuItemInput),
   };
+  if (item.url) input.url = item.url;
+  if (item.resourceId) input.resourceId = item.resourceId;
+  if (item.tags && item.tags.length > 0) input.tags = item.tags;
+  return input;
 }

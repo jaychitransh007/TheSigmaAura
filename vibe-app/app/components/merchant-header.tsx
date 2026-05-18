@@ -34,8 +34,16 @@ const VIBE_PATHS_ACTIVE_MARKERS: ReadonlyArray<{
 
 export function MerchantHeader({
   overrides,
+  isAuthenticated,
 }: {
   overrides?: TenantThemeOverrides | null;
+  /** When false, render a "Sign in" affordance linking to Shopify's
+   *  Customer Account login flow. The conv-header used to carry this
+   *  before PR #480 replaced it with MerchantHeader; restored in
+   *  PR #483 so anonymous customers landing on a Vibe page aren't
+   *  stuck without a way to log in (some merchant menus don't carry
+   *  an Account link of their own). */
+  isAuthenticated?: boolean;
 }) {
   const location = useLocation();
   const shopName = (overrides?.shop_name || "").trim();
@@ -82,6 +90,20 @@ export function MerchantHeader({
             );
           })}
         </nav>
+        <div className="merchant-header-account">
+          {isAuthenticated ? (
+            <span className="merchant-header-account-pill" aria-label="Signed in">
+              Account
+            </span>
+          ) : (
+            <a
+              className="merchant-header-account-pill merchant-header-account-pill--signin"
+              href="/account/login"
+            >
+              Sign in
+            </a>
+          )}
+        </div>
       </div>
     </header>
   );

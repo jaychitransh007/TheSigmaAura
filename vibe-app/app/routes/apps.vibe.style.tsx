@@ -1289,7 +1289,10 @@ export default function ConversationPage() {
           dropped from this surface; Shopify handles login via the
           merchant's own nav, and mock-mode is a developer affordance
           surfaced in console / engine.server.ts already. */}
-      <MerchantHeader overrides={themeOverrides} />
+      <MerchantHeader
+        overrides={themeOverrides}
+        isAuthenticated={isAuthenticated}
+      />
 
       <div className="conv-feed" ref={feedRef}>
         {initError && (

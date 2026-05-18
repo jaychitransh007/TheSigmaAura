@@ -24,7 +24,7 @@ import { OutfitCard } from "../components/conversation/outfit-card";
 import { VibePageShell } from "../components/vibe-page-shell";
 import checkStyles from "../components/check/styles.css?url";
 import wardrobeStyles from "../components/wardrobe/styles.css?url";
-import { loadTenantThemeOverrides } from "../lib/customer-loader.server";
+import { loadCustomerHeaderData } from "../lib/customer-loader.server";
 import type { Outfit, TurnStatusResponse } from "../lib/engine.server";
 import {
   getOrCreateClientSessionId,
@@ -45,10 +45,10 @@ export const links: LinksFunction = () => [
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.public.appProxy(request);
-  // PR #480: pull tenant theme overrides for the replicated merchant
-  // header. Best-effort; failure returns null.
-  const themeOverrides = await loadTenantThemeOverrides(request);
-  return json({ themeOverrides });
+  // PR #480/#483: pull tenant theme overrides + auth flag for the
+  // replicated merchant header.
+  const headerData = await loadCustomerHeaderData(request);
+  return json(headerData);
 };
 
 type CheckState =
@@ -87,7 +87,7 @@ const POLL_INTERVAL_MS = 1500;
 const MAX_POLL_ATTEMPTS = 80;
 
 export default function CheckPage() {
-  const { themeOverrides } = useLoaderData<typeof loader>();
+  const { themeOverrides, isAuthenticated } = useLoaderData<typeof loader>();
   const [sessionId, setSessionId] = useState("");
   const [state, setState] = useState<CheckState>({ kind: "idle" });
   const [dragOver, setDragOver] = useState(false);
@@ -290,7 +290,11 @@ export default function CheckPage() {
   }
 
   return (
-    <VibePageShell title="Outfit Check" themeOverrides={themeOverrides}>
+    <VibePageShell
+      title="Outfit Check"
+      themeOverrides={themeOverrides}
+      isAuthenticated={isAuthenticated}
+    >
       <p className="vibe-check-intro">
         Upload a photo of what you're wearing. Vibe gives you an honest read —
         what's working, what isn't, and a couple of alternatives if you'd
