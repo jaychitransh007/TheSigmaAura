@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import httpx
 
@@ -160,7 +160,7 @@ class ConversationRepository:
                 return
 
             # (field_name, default_values_treated_as_unset)
-            fields: tuple = (
+            fields: Tuple[Tuple[str, Set[str]], ...] = (
                 ("acquisition_source", {"", "unknown"}),
                 ("acquisition_campaign", {""}),
                 ("referral_code", {""}),
