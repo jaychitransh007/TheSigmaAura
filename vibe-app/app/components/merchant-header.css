@@ -13,10 +13,15 @@
  */
 
 .merchant-header {
-  background: var(--canvas, #faf5ee);
-  border-bottom: 1px solid var(--rule, #f0e0d0);
+  /* Neutral chrome so the header absorbs the merchant's theme rather
+   * than asserting Confident Luxe (which is for the chat body, not
+   * the chrome above it). White / hairline-black defaults match the
+   * most common Shopify storefronts (Dawn, Refresh, Sense). */
+  background: var(--theme-color-background, #ffffff);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   font-family: var(--theme-font-body, -apple-system),
     BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  color: var(--theme-color-text, var(--ink, #16110e));
 }
 
 .merchant-header-inner {
@@ -33,13 +38,15 @@
 }
 
 .merchant-header-logo {
-  font-family: "Fraunces", "Playfair Display", Georgia, serif;
-  font-size: 1.35rem;
+  /* Inherit the merchant's body font (set on .merchant-header) rather
+   * than forcing Fraunces — a serif logo on top of a sans-serif theme
+   * looks alien. Render the shop name as-is (no forced uppercase) so
+   * "Vibe-Test" doesn't read as "VIBE-TEST". */
+  font-size: 1.25rem;
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: var(--ink, #16110e);
+  color: var(--theme-color-text, var(--ink, #16110e));
   text-decoration: none;
-  text-transform: uppercase;
 }
 
 .merchant-header-logo--placeholder {
@@ -55,15 +62,12 @@
 }
 
 .merchant-header-nav-link {
-  /* JetBrains Mono on legacy AURA labels reads as "branded chrome";
-   * the merchant header should read as "the merchant's nav". Use
-   * uppercase Inter so it sits comfortably on whatever theme is
-   * underneath. */
-  font-size: 0.74rem;
+  /* No forced uppercase / wide tracking — the merchant's theme will
+   * apply its own case + spacing via the inherited font. We just
+   * size + weight + give the underline-on-active affordance. */
+  font-size: 0.92rem;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-soft, #2d1b14);
+  color: var(--theme-color-text, var(--ink-soft, #2d1b14));
   text-decoration: none;
   padding: 0.25rem 0;
   border-bottom: 2px solid transparent;
@@ -89,14 +93,12 @@
 }
 
 .merchant-header-account-pill {
-  font-size: 0.72rem;
+  font-size: 0.85rem;
   font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-soft, #2d1b14);
+  color: var(--theme-color-text, var(--ink-soft, #2d1b14));
   text-decoration: none;
-  padding: 0.35rem 0.7rem;
-  border: 1px solid var(--rule, #f0e0d0);
+  padding: 0.35rem 0.85rem;
+  border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 999px;
   transition: border-color 120ms ease, color 120ms ease;
 }
