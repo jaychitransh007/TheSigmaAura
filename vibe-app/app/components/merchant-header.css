@@ -87,25 +87,49 @@
   border-bottom-color: var(--theme-color-primary, var(--accent, #b45a3c));
 }
 
-.merchant-header-account {
+.merchant-header-utils {
   flex: 0 0 auto;
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.merchant-header-account-pill {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--theme-color-text, var(--ink-soft, #2d1b14));
-  text-decoration: none;
-  padding: 0.35rem 0.85rem;
-  border: 1px solid rgba(0, 0, 0, 0.15);
+.merchant-header-util {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: 999px;
-  transition: border-color 120ms ease, color 120ms ease;
+  color: var(--theme-color-text, var(--ink, #16110e));
+  text-decoration: none;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
-.merchant-header-account-pill--signin:hover {
+.merchant-header-util:hover {
+  background: rgba(0, 0, 0, 0.06);
   color: var(--theme-color-primary, var(--accent, #b45a3c));
-  border-color: var(--theme-color-primary, var(--accent, #b45a3c));
+}
+
+.merchant-header-cart-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--theme-color-primary, var(--accent, #b45a3c));
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.05rem;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 @media (max-width: 640px) {
