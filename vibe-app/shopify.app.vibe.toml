@@ -50,16 +50,18 @@ uri = "https://vibe-app-five.vercel.app/webhooks/themes/update"
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 #
-# Five scopes (F.1, 2026-05-17). Each is load-bearing for a specific
-# downstream feature — keep this list minimal so the install consent
-# screen stays trustable:
+# Each scope is load-bearing for a specific downstream feature — keep
+# this list minimal so the install consent screen stays trustable:
 #
-#   read_products    — F.2 catalog sync (Vibe recommends from the
-#                      merchant's actual Shopify catalog)
-#   read_inventory   — F.4 stock-aware retrieval (no OOS recs)
-#   read_orders      — G.1 order webhooks for purchase attribution
-#   read_customers   — G.2 link orders to engine external_user_id
-#   read_themes      — D.M.3 verify Theme App Extension placement
+#   read_products                  — F.2 catalog sync (Vibe recommends
+#                                    from the merchant's actual catalog)
+#   read_inventory                 — F.4 stock-aware retrieval (no OOS recs)
+#   read_orders                    — G.1 order webhooks for purchase attribution
+#   read_customers                 — G.2 link orders to engine external_user_id
+#   read_themes                    — D.M.3 verify Theme App Extension placement
+#   write_online_store_navigation  — inject "Find your Vibe" / "Your Vibes"
+#                                    into the merchant's main menu and remove
+#                                    them on uninstall (implies read access).
 #
 # `write_metafields` is NOT a valid Shopify scope — metafields inherit
 # their parent resource's scope (write_orders would let us tag orders,
@@ -73,7 +75,7 @@ uri = "https://vibe-app-five.vercel.app/webhooks/themes/update"
 # Updating this list forces existing installs to re-grant on next
 # admin load. See docs/runbooks/F1_scope_reinstall.md for the
 # operator-side procedure when this changes.
-scopes = "read_products,read_inventory,read_orders,read_customers,read_themes,write_navigation"
+scopes = "read_products,read_inventory,read_orders,read_customers,read_themes,write_online_store_navigation"
 
 [auth]
 redirect_urls = [ "https://vibe-app-five.vercel.app/auth/callback" ]
