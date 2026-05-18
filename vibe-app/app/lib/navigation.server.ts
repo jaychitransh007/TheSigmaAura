@@ -49,11 +49,17 @@ type MenuListNode = {
   items?: MenuItem[];
 };
 
-type MenusListResult = {
+type MenusIndexResult = {
   data?: {
     menus?: {
-      edges?: Array<{ node?: MenuListNode }>;
+      edges?: Array<{ node?: { id?: string; handle?: string } }>;
     };
+  };
+};
+
+type MenuByIdResult = {
+  data?: {
+    menu?: MenuListNode;
   };
 };
 
@@ -161,18 +167,59 @@ async function fetchMainMenu(
   admin: AdminGraphqlClient,
 ): Promise<MenuListNode | null> {
   // The 2026-04 Admin API removed `menu(handle:)` — it only accepts
-  // `menu(id: ID!)` now. Use the `menus` connection (no per-field
-  // query support is documented) and filter by handle client-side.
+  // `menu(id: ID!)` now. Two-step: list menus (id + handle only) to
+  // find main-menu's id, then fetch its full tree by id. This keeps
+  // the heavy items{...} payload to one menu instead of pulling it
+  // for every menu on the store.
+  //
+  // Three levels of `items` nesting is load-bearing: Shopify menus
+  // can be three deep, and `writeMenuItems` round-trips the full
+  // tree through `menuUpdate`, which replaces the items wholesale.
+  // Fetching fewer levels here would silently delete deeper items
+  // when the merchant's menu is updated.
   try {
+    const listResp = await admin.graphql(
+      `#graphql
+      query VibeMenusIndex {
+        menus(first: 50) {
+          edges { node { id handle } }
+        }
+      }`,
+    );
+    if (!listResp.ok) {
+      console.warn(
+        "[vibe] fetchMainMenu index HTTP error status=%d",
+        listResp.status,
+      );
+      return null;
+    }
+    const idx = (await listResp.json()) as MenusIndexResult;
+    const id = idx.data?.menus?.edges?.find(
+      (e) => e.node?.handle === "main-menu",
+    )?.node?.id;
+    if (!id) return null;
+
     const resp = await admin.graphql(
       `#graphql
-      query VibeMenus {
-        menus(first: 50) {
-          edges {
-            node {
+      query VibeMainMenuDetail($id: ID!) {
+        menu(id: $id) {
+          id
+          handle
+          title
+          items {
+            id
+            title
+            url
+            type
+            resourceId
+            tags
+            items {
               id
-              handle
               title
+              url
+              type
+              resourceId
+              tags
               items {
                 id
                 title
@@ -180,31 +227,22 @@ async function fetchMainMenu(
                 type
                 resourceId
                 tags
-                items {
-                  id
-                  title
-                  url
-                  type
-                  resourceId
-                  tags
-                }
               }
             }
           }
         }
       }`,
+      { variables: { id } },
     );
     if (!resp.ok) {
       console.warn(
-        "[vibe] fetchMainMenu HTTP error status=%d",
+        "[vibe] fetchMainMenu detail HTTP error status=%d",
         resp.status,
       );
       return null;
     }
-    const gql = (await resp.json()) as MenusListResult;
-    const edges = gql.data?.menus?.edges ?? [];
-    const match = edges.find((e) => e.node?.handle === "main-menu");
-    return match?.node ?? null;
+    const gql = (await resp.json()) as MenuByIdResult;
+    return gql.data?.menu ?? null;
   } catch (err) {
     console.warn(
       "[vibe] fetchMainMenu threw: %s",

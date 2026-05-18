@@ -64,21 +64,19 @@ type ThemeFileQueryResult = {
   };
 };
 
-type ShopAndMenuQueryResult = {
+type ShopAndMenusIndexResult = {
   data?: {
     shop?: { name?: string };
     menus?: {
-      edges?: Array<{
-        node?: {
-          handle?: string;
-          title?: string;
-          items?: Array<{
-            title?: string;
-            url?: string;
-            items?: Array<{ title?: string; url?: string }>;
-          }>;
-        };
-      }>;
+      edges?: Array<{ node?: { id?: string; handle?: string } }>;
+    };
+  };
+};
+
+type MenuTopLevelByIdResult = {
+  data?: {
+    menu?: {
+      items?: Array<{ title?: string; url?: string }>;
     };
   };
 };
@@ -151,34 +149,40 @@ async function fetchShopAndMenu(
   admin: AdminGraphqlClient,
 ): Promise<{ shopName: string; menuItems: Array<{ title: string; url: string }> }> {
   try {
-    // The 2026-04 Admin API removed `menu(handle:)` — only
-    // `menu(id: ID!)` survives. List the first 50 menus and filter
-    // for handle=="main-menu" in code.
-    const resp = await admin.graphql(
+    // The 2026-04 Admin API removed `menu(handle:)`. Two-step
+    // lookup: pull shop.name + the menus index (id+handle only) in
+    // one call, then fetch the chosen menu's top-level items by id
+    // in a second call. MerchantHeader only renders the top level —
+    // no nested `items` are fetched, no dropdown is wired.
+    const indexResp = await admin.graphql(
       `#graphql
-      query VibeShopAndMenus {
+      query VibeShopAndMenusIndex {
         shop { name }
         menus(first: 50) {
-          edges {
-            node {
-              handle
-              title
-              items {
-                title
-                url
-                items { title url }
-              }
-            }
-          }
+          edges { node { id handle } }
         }
       }`,
     );
-    if (!resp.ok) return { shopName: "", menuItems: [] };
-    const gql = (await resp.json()) as ShopAndMenuQueryResult;
-    const shopName = String(gql.data?.shop?.name ?? "").trim();
-    const edges = gql.data?.menus?.edges ?? [];
-    const main = edges.find((e) => e.node?.handle === "main-menu")?.node;
-    const items = main?.items ?? [];
+    if (!indexResp.ok) return { shopName: "", menuItems: [] };
+    const idx = (await indexResp.json()) as ShopAndMenusIndexResult;
+    const shopName = String(idx.data?.shop?.name ?? "").trim();
+    const mainId = idx.data?.menus?.edges?.find(
+      (e) => e.node?.handle === "main-menu",
+    )?.node?.id;
+    if (!mainId) return { shopName, menuItems: [] };
+
+    const menuResp = await admin.graphql(
+      `#graphql
+      query VibeMainMenuTopLevel($id: ID!) {
+        menu(id: $id) {
+          items { title url }
+        }
+      }`,
+      { variables: { id: mainId } },
+    );
+    if (!menuResp.ok) return { shopName, menuItems: [] };
+    const detail = (await menuResp.json()) as MenuTopLevelByIdResult;
+    const items = detail.data?.menu?.items ?? [];
     const menuItems: Array<{ title: string; url: string }> = [];
     for (const it of items) {
       const title = String(it.title ?? "").trim();
