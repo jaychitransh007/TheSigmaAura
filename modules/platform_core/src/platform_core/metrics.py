@@ -1114,3 +1114,33 @@ def observe_catalog_status_change(*, action: str) -> None:
         ).inc()
     except Exception:  # noqa: BLE001
         pass
+
+
+# Theme inheritance (F.1.theme + #478/#480 work). Ticks once per
+# PATCH /v1/tenants/{tenant_id}/theme-overrides regardless of trigger
+# (admin home loader on install + every load; themes/update webhook).
+# Pairs with the vibe-app structured-log event
+# `vibe_theme_overrides_refresh` for full-stack tracing.
+aura_theme_overrides_patch_total = Counter(
+    "aura_theme_overrides_patch_total",
+    "Tenant theme-overrides PATCH outcomes (applied | error).",
+    labelnames=("outcome",),
+)
+
+
+def observe_theme_overrides_patch(*, outcome: str) -> None:
+    """Tick the theme-overrides PATCH counter for one tenant write.
+
+    Outcomes:
+      - ``"applied"`` — engine persisted a non-empty override payload.
+        Doesn't differentiate "first capture" from "drift refresh";
+        vibe-app's structured log carries that signal.
+      - ``"error"`` — DB / validation failure path (anything that
+        raises an HTTPException from the handler).
+    """
+    try:
+        aura_theme_overrides_patch_total.labels(
+            outcome=outcome or "unknown",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass

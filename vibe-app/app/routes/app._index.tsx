@@ -39,6 +39,7 @@ import {
   readMerchantThemeOverrides,
   type ShopifyThemeOverrides,
 } from "../lib/theme-settings.server";
+import { logError, logInfo, logWarn } from "../lib/logger.server";
 import { authenticate } from "../shopify.server";
 
 // Return true when the probed overrides carry at least one value that
@@ -107,11 +108,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     tenant = await lookupOrCreateTenant({ shopDomain: session.shop });
   } catch (err) {
     tenantError = err instanceof Error ? err.message : String(err);
-    console.error(
-      "[vibe] lookupOrCreateTenant failed for shop=%s:",
-      session.shop,
-      tenantError,
-    );
+    logError("vibe_tenant_lookup_failed", {
+      shop: session.shop,
+      error: tenantError,
+    });
   }
 
   // Refresh the merchant's theme settings on every admin home load.
@@ -132,23 +132,39 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       const probedAny = Object.values(overrides).some(
         (v) => v && (Array.isArray(v) ? v.length > 0 : String(v).trim()),
       );
-      if (probedAny && themeOverridesDiffer(overrides, tenant.theme_overrides)) {
+      if (!probedAny) {
+        logInfo("vibe_theme_overrides_refresh", {
+          shop: session.shop,
+          outcome: "skipped_empty_probe",
+        });
+      } else if (!themeOverridesDiffer(overrides, tenant.theme_overrides)) {
+        logInfo("vibe_theme_overrides_refresh", {
+          shop: session.shop,
+          outcome: "skipped_unchanged",
+        });
+      } else {
         const updated = await patchTenantThemeOverrides({
           tenantId: tenant.tenant_id,
           overrides,
         });
-        // Re-hydrate the tenant so the page renders with the freshly
-        // captured overrides without waiting for the next request.
         tenant = updated;
+        logInfo("vibe_theme_overrides_refresh", {
+          shop: session.shop,
+          outcome: "applied",
+          has_font: Boolean(overrides.font_body),
+          has_color_primary: Boolean(overrides.color_primary),
+          has_logo: Boolean(overrides.logo_url),
+          menu_items_count: overrides.main_menu.length,
+        });
       }
     } catch (err) {
       // Probe / engine PATCH failure — fall back to whatever's already
       // in `tenant.theme_overrides`. Don't surface to the merchant.
-      console.warn(
-        "[vibe] theme-settings refresh failed for shop=%s:",
-        session.shop,
-        err instanceof Error ? err.message : err,
-      );
+      logWarn("vibe_theme_overrides_refresh", {
+        shop: session.shop,
+        outcome: "failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     // Ensure "Find your Vibe" + "Your Vibes" are in the merchant's
@@ -159,25 +175,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     try {
       const result = await ensureVibeMenuItems(admin);
       if (result.skipped) {
-        console.info(
-          "[vibe] menu-item injection skipped for shop=%s: %s",
-          session.shop,
-          result.skipped,
-        );
+        logWarn("vibe_menu_injection_outcome", {
+          shop: session.shop,
+          outcome: "skipped",
+          reason: result.skipped,
+        });
       } else if (result.added > 0) {
-        console.info(
-          "[vibe] menu-item injection: added=%d alreadyPresent=%d for shop=%s",
-          result.added,
-          result.alreadyPresent,
-          session.shop,
-        );
+        logInfo("vibe_menu_injection_outcome", {
+          shop: session.shop,
+          outcome: "added",
+          added: result.added,
+          already_present: result.alreadyPresent,
+        });
+      } else {
+        // Idempotent no-op — both items already in the menu. Emit at
+        // info so the success-rate dashboard isn't skewed by silent
+        // steady-state passes.
+        logInfo("vibe_menu_injection_outcome", {
+          shop: session.shop,
+          outcome: "already_present",
+          added: 0,
+          already_present: result.alreadyPresent,
+        });
       }
     } catch (err) {
-      console.warn(
-        "[vibe] menu-item injection failed for shop=%s:",
-        session.shop,
-        err instanceof Error ? err.message : err,
-      );
+      logWarn("vibe_menu_injection_outcome", {
+        shop: session.shop,
+        outcome: "failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
