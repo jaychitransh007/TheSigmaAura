@@ -25,9 +25,15 @@
   flex-direction: column;
 }
 
-.vibe-page-header {
-  border-bottom: 1px solid var(--rule);
-  padding: 1rem 1.5rem;
+/* PR #480: vibe-page-header (AURA-branded nav row) replaced by the
+ * MerchantHeader. The page title now sits in vibe-page-title — a thin
+ * row directly below the merchant header that carries the page name
+ * + an optional CTA (e.g. wardrobe's "Add a piece"). */
+.vibe-page-title {
+  max-width: 1180px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 1.5rem 1.5rem 0.5rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -35,37 +41,17 @@
   flex-wrap: wrap;
 }
 
-.vibe-page-header h1 {
+.vibe-page-title h1 {
   font-family: "Fraunces", "Playfair Display", Georgia, serif;
   font-style: italic;
-  font-size: 1.4rem;
+  font-size: 1.6rem;
   color: var(--accent);
   margin: 0;
   letter-spacing: -0.01em;
 }
 
-.vibe-page-nav {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.vibe-page-nav a {
-  font-size: 0.85rem;
-  color: var(--ink-muted);
-  padding: 0.3rem 0.7rem;
-  border-radius: 999px;
-  text-decoration: none;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.vibe-page-nav a:hover {
-  color: var(--ink);
-}
-
-.vibe-page-nav a.is-active {
-  background: var(--ink);
-  color: #faf5ee;
+.vibe-page-title-extras {
+  flex: 0 0 auto;
 }
 
 .vibe-page-body {

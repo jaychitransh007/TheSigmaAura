@@ -18,11 +18,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
+import { useLoaderData } from "@remix-run/react";
 
 import { OutfitCard } from "../components/conversation/outfit-card";
 import { VibePageShell } from "../components/vibe-page-shell";
 import checkStyles from "../components/check/styles.css?url";
 import wardrobeStyles from "../components/wardrobe/styles.css?url";
+import { loadTenantThemeOverrides } from "../lib/customer-loader.server";
 import type { Outfit, TurnStatusResponse } from "../lib/engine.server";
 import {
   getOrCreateClientSessionId,
@@ -43,7 +45,10 @@ export const links: LinksFunction = () => [
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.public.appProxy(request);
-  return json({});
+  // PR #480: pull tenant theme overrides for the replicated merchant
+  // header. Best-effort; failure returns null.
+  const themeOverrides = await loadTenantThemeOverrides(request);
+  return json({ themeOverrides });
 };
 
 type CheckState =
@@ -82,7 +87,7 @@ const POLL_INTERVAL_MS = 1500;
 const MAX_POLL_ATTEMPTS = 80;
 
 export default function CheckPage() {
-  useLoaderData();
+  const { themeOverrides } = useLoaderData<typeof loader>();
   const [sessionId, setSessionId] = useState("");
   const [state, setState] = useState<CheckState>({ kind: "idle" });
   const [dragOver, setDragOver] = useState(false);
@@ -285,7 +290,7 @@ export default function CheckPage() {
   }
 
   return (
-    <VibePageShell title="Outfit Check">
+    <VibePageShell title="Outfit Check" themeOverrides={themeOverrides}>
       <p className="vibe-check-intro">
         Upload a photo of what you're wearing. Vibe gives you an honest read —
         what's working, what isn't, and a couple of alternatives if you'd
@@ -341,11 +346,6 @@ export default function CheckPage() {
   );
 }
 
-// Local stub for useLoaderData since the page only needs to assert the
-// loader's signature without consuming any of its keys.
-function useLoaderData() {
-  return undefined;
-}
 
 function PickerCard({
   dragOver,

@@ -26,6 +26,9 @@ export type ShopifyThemeOverrides = {
   color_background: string;
   color_text: string;
   logo_url: string;
+  // PR #480 additions for MerchantHeader replication.
+  shop_name: string;
+  main_menu: Array<{ title: string; url: string }>;
 };
 
 const EMPTY: ShopifyThemeOverrides = {
@@ -34,6 +37,8 @@ const EMPTY: ShopifyThemeOverrides = {
   color_background: "",
   color_text: "",
   logo_url: "",
+  shop_name: "",
+  main_menu: [],
 };
 
 // Theme settings file body GraphQL response shape (Admin API).
@@ -58,15 +63,41 @@ type ThemeFileQueryResult = {
   };
 };
 
+type ShopAndMenuQueryResult = {
+  data?: {
+    shop?: { name?: string };
+    menu?: {
+      title?: string;
+      items?: Array<{
+        title?: string;
+        url?: string;
+        items?: Array<{ title?: string; url?: string }>;
+      }>;
+    };
+  };
+};
+
 /**
- * Fetch the merchant's active theme settings and probe out the Vibe-
- * relevant overrides. Returns an all-empty object on any failure so
+ * Fetch theme settings + shop name + main menu in a single Admin
+ * GraphQL round-trip. Returns an all-empty object on any failure so
  * the caller can safely PATCH it to the engine (engine treats empty
  * strings as "not provided" and stores NULL).
+ *
+ * The combined fetch is intentional — vibe-app PATCHes the whole
+ * `theme_overrides` payload at once, so reading both in one query
+ * avoids a second round-trip and keeps everything consistent at
+ * write time. Logo URL is left empty in this MVP; the MerchantHeader
+ * falls back to the shop's name as a text logo.
  */
 export async function readMerchantThemeOverrides(
   admin: AdminGraphqlClient,
 ): Promise<ShopifyThemeOverrides> {
+  // Two independent queries because the `themes` query and `menu`
+  // query don't compose well in a single document (menu uses a
+  // handle, themes uses a role filter). Run sequentially; a failure
+  // on the first short-circuits the rest of the probe — Confident
+  // Luxe defaults take over.
+  let themeContent = "";
   try {
     const resp = await admin.graphql(
       `#graphql
@@ -91,18 +122,53 @@ export async function readMerchantThemeOverrides(
         }
       }`,
     );
-    if (!resp.ok) return EMPTY;
-    const gql = (await resp.json()) as ThemeFileQueryResult;
-    const content =
-      gql.data?.themes?.edges?.[0]?.node?.files?.edges?.[0]?.node?.body?.content;
-    if (!content) return EMPTY;
-    return probeThemeSettings(content);
+    if (resp.ok) {
+      const gql = (await resp.json()) as ThemeFileQueryResult;
+      themeContent =
+        gql.data?.themes?.edges?.[0]?.node?.files?.edges?.[0]?.node?.body
+          ?.content ?? "";
+    }
   } catch {
-    // GraphQL failure, JSON parse failure, missing scope — all silent.
-    // The CSS layer falls back to Confident Luxe defaults; nothing
-    // about the storefront breaks because a probe didn't work.
-    return EMPTY;
+    // Continue — we'll still try the menu probe.
   }
+
+  let shopName = "";
+  let menuItems: Array<{ title: string; url: string }> = [];
+  try {
+    const resp = await admin.graphql(
+      `#graphql
+      query VibeShopAndMenu {
+        shop { name }
+        menu(handle: "main-menu") {
+          title
+          items {
+            title
+            url
+            items { title url }
+          }
+        }
+      }`,
+    );
+    if (resp.ok) {
+      const gql = (await resp.json()) as ShopAndMenuQueryResult;
+      shopName = String(gql.data?.shop?.name ?? "").trim();
+      const items = gql.data?.menu?.items ?? [];
+      for (const it of items) {
+        const title = String(it.title ?? "").trim();
+        const url = String(it.url ?? "").trim();
+        if (title && url) menuItems.push({ title, url });
+      }
+    }
+  } catch {
+    // Continue — partial probe is still useful.
+  }
+
+  const themeProbed = themeContent ? probeThemeSettings(themeContent) : EMPTY;
+  return {
+    ...themeProbed,
+    shop_name: shopName,
+    main_menu: menuItems,
+  };
 }
 
 /**
@@ -173,6 +239,12 @@ export function probeThemeSettings(rawJson: string): ShopifyThemeOverrides {
     // a section's settings or as a file under `assets/`. Skipping for
     // MVP; vibe-app can fall back to the shop's name as a text logo.
     logo_url: "",
+    // shop_name + main_menu live outside settings_data.json — they're
+    // populated separately by `readMerchantThemeOverrides` via a
+    // second GraphQL query. probeThemeSettings returns empty for
+    // these so the merged result still type-checks.
+    shop_name: "",
+    main_menu: [],
   };
 }
 

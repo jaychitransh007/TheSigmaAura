@@ -1493,6 +1493,8 @@ export type TenantThemeOverrides = {
   color_background?: string;
   color_text?: string;
   logo_url?: string;
+  shop_name?: string;
+  main_menu?: Array<{ title: string; url: string }>;
   updated_at_iso?: string;
 };
 
@@ -1554,6 +1556,8 @@ export async function patchTenantThemeOverrides(args: {
     color_background?: string;
     color_text?: string;
     logo_url?: string;
+    shop_name?: string;
+    main_menu?: Array<{ title: string; url: string }>;
   };
 }): Promise<TenantStatus> {
   if (USE_MOCK) {

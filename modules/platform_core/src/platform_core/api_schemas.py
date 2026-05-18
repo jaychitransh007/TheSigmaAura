@@ -134,17 +134,27 @@ class TenantStatusResponse(BaseModel):
     theme_overrides: Optional[Dict[str, Any]] = None
 
 
+class MerchantMenuItem(BaseModel):
+    title: str = ""
+    url: str = ""
+
+
 class UpdateThemeOverridesRequest(BaseModel):
-    """Payload for the merchant's theme-settings snapshot captured by
-    vibe-app at install + on every `themes/update` webhook. Fields are
-    optional — caller sends only what it could probe out of the
-    merchant's `config/settings_data.json`."""
+    """Payload for the merchant's theme + storefront-shape snapshot
+    captured by vibe-app at install + on every `themes/update` webhook.
+    All fields optional — caller sends what it could probe.
+
+    `main_menu` + `shop_name` (PR #480) feed the MerchantHeader on
+    customer-facing Vibe pages so the header reads as the merchant's
+    own header rather than an AURA-branded stranger."""
 
     font_body: str = ""
     color_primary: str = ""
     color_background: str = ""
     color_text: str = ""
     logo_url: str = ""
+    shop_name: str = ""
+    main_menu: List[MerchantMenuItem] = Field(default_factory=list)
 
 
 class TenantListResponse(BaseModel):
