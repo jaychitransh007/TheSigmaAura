@@ -73,7 +73,7 @@ uri = "https://vibe-app-five.vercel.app/webhooks/themes/update"
 # Updating this list forces existing installs to re-grant on next
 # admin load. See docs/runbooks/F1_scope_reinstall.md for the
 # operator-side procedure when this changes.
-scopes = "read_products,read_inventory,read_orders,read_customers,read_themes"
+scopes = "read_products,read_inventory,read_orders,read_customers,read_themes,write_navigation"
 
 [auth]
 redirect_urls = [ "https://vibe-app-five.vercel.app/auth/callback" ]
