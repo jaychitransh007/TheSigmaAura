@@ -18,7 +18,11 @@
    * the chrome above it). White / hairline-black defaults match the
    * most common Shopify storefronts (Dawn, Refresh, Sense). */
   background: var(--theme-color-background, #ffffff);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  /* Derive the hairline from currentColor (which is theme-color-text
+   * when the merchant has one set, else our ink default). Dark themes
+   * → light hairline; light themes → dark hairline — visible either
+   * way. color-mix is supported in all evergreen browsers. */
+  border-bottom: 1px solid color-mix(in srgb, currentColor, transparent 92%);
   font-family: var(--theme-font-body, -apple-system),
     BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   color: var(--theme-color-text, var(--ink, #16110e));
@@ -109,7 +113,7 @@
 }
 
 .merchant-header-util:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: color-mix(in srgb, currentColor, transparent 94%);
   color: var(--theme-color-primary, var(--accent, #b45a3c));
 }
 
