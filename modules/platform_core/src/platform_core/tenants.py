@@ -184,6 +184,37 @@ class TenantRepository:
             patch=patch,
         )
 
+    def set_theme_overrides(
+        self,
+        tenant_id: str,
+        overrides: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Replace the tenant's theme_overrides JSONB blob.
+
+        Called from vibe-app on install + on `themes/update` webhooks.
+        Pass an empty dict to clear (Vibe will fall back to Confident
+        Luxe defaults). Empty-string fields are stripped before write
+        so a partial probe doesn't store {"font_body": ""} keys that
+        downstream consumers would mistake for "explicitly set to
+        empty" instead of "not provided".
+        """
+        from datetime import datetime, timezone
+
+        cleaned: Dict[str, Any] = {}
+        for k, v in (overrides or {}).items():
+            if v is None:
+                continue
+            if isinstance(v, str) and not v.strip():
+                continue
+            cleaned[k] = v
+        if cleaned:
+            cleaned["updated_at_iso"] = datetime.now(timezone.utc).isoformat()
+        return self._client.update_one(
+            "tenants",
+            filters={"tenant_id": f"eq.{tenant_id}"},
+            patch={"theme_overrides": cleaned or None},
+        )
+
     def touch_last_sync(
         self,
         tenant_id: str,

@@ -40,14 +40,17 @@ import {
   ENGINE_MOCK_ACTIVE,
   ensureOnboardingProfile,
   getOnboardingStatus,
+  lookupOrCreateTenant,
   mergeUserIdentity,
   resolveConversation,
   startTurn,
   type OnboardingImageCategory,
   type OnboardingStatus,
+  type TenantThemeOverrides,
   type TurnStatusResponse,
 } from "../lib/engine.server";
 import { logInfo, logWarn, logError } from "../lib/logger.server";
+import { ThemeOverridesStyle } from "../components/theme-overrides";
 import {
   isCardStep,
   markKindResolved,
@@ -123,10 +126,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
 
+  // PR #478: theme inheritance — look up the tenant's captured
+  // theme overrides (font + accent color from the merchant's active
+  // Shopify theme) so vibe-page styles can use them as CSS vars.
+  // Best-effort: engine failure → no overrides → Confident Luxe
+  // defaults. Don't 500 the storefront chat on a tenant-lookup hiccup.
+  const shopDomain = url.searchParams.get("shop")?.trim() ?? "";
+  let themeOverrides: TenantThemeOverrides | null = null;
+  if (shopDomain) {
+    try {
+      const tenant = await lookupOrCreateTenant({ shopDomain });
+      themeOverrides = tenant.theme_overrides ?? null;
+    } catch {
+      // Silent — fall back to Confident Luxe defaults.
+    }
+  }
+
   return json({
     mockMode: ENGINE_MOCK_ACTIVE,
     loggedInCustomerId,
     hasProfile,
+    themeOverrides,
   });
 };
 
@@ -520,8 +540,12 @@ const WHAT_LOOKING_FOR_PROMPT =
   "All set — I've taken a read on your style. What would you like to wear? Try something like \"Dress me for a dinner date\" or \"I need an outfit for a work presentation\".";
 
 export default function ConversationPage() {
-  const { mockMode, loggedInCustomerId, hasProfile: hasProfileFromLoader } =
-    useLoaderData<typeof loader>();
+  const {
+    mockMode,
+    loggedInCustomerId,
+    hasProfile: hasProfileFromLoader,
+    themeOverrides,
+  } = useLoaderData<typeof loader>();
   const [sessionId, setSessionId] = useState("");
   const [conversationId, setConversationId] = useState("");
   // Engine's photo-presence snapshot at session init. The seed effect
@@ -1254,6 +1278,7 @@ export default function ConversationPage() {
 
   return (
     <div className="conv-page">
+      <ThemeOverridesStyle overrides={themeOverrides} />
       <header className="conv-header">
         <h1>Vibe{mockMode && <span className="conv-mock-badge"> Mock</span>}</h1>
         {/* D.S.3b — sign-in affordance. Anonymous customers see a pill

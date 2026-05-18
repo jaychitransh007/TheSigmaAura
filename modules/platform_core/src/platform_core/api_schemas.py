@@ -126,6 +126,25 @@ class TenantStatusResponse(BaseModel):
     product_count: int = 0
     bootstrap_completed_at: str = ""
     last_sync_at: str = ""
+    # PR #478: per-tenant theme overrides captured from the merchant's
+    # active Shopify theme settings (font, primary color, logo URL).
+    # NULL/empty dict = no overrides yet → Vibe uses Confident Luxe
+    # defaults. Vibe-app's loader passes this to vibe-page-shell.tsx
+    # which injects values as CSS variables.
+    theme_overrides: Optional[Dict[str, Any]] = None
+
+
+class UpdateThemeOverridesRequest(BaseModel):
+    """Payload for the merchant's theme-settings snapshot captured by
+    vibe-app at install + on every `themes/update` webhook. Fields are
+    optional — caller sends only what it could probe out of the
+    merchant's `config/settings_data.json`."""
+
+    font_body: str = ""
+    color_primary: str = ""
+    color_background: str = ""
+    color_text: str = ""
+    logo_url: str = ""
 
 
 class TenantListResponse(BaseModel):
