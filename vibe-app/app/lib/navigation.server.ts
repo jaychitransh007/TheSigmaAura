@@ -42,13 +42,17 @@ const VIBE_MENU_ITEMS: ReadonlyArray<{ title: string; url: string }> = [
 // urlAlreadyPresent's compare-on-lowercase contract.
 const VIBE_PATH_MARKERS = VIBE_MENU_ITEMS.map((it) => it.url.toLowerCase());
 
-type MenuQueryResult = {
+type MenuListNode = {
+  id?: string;
+  handle?: string;
+  title?: string;
+  items?: MenuItem[];
+};
+
+type MenusListResult = {
   data?: {
-    menu?: {
-      id?: string;
-      handle?: string;
-      title?: string;
-      items?: MenuItem[];
+    menus?: {
+      edges?: Array<{ node?: MenuListNode }>;
     };
   };
 };
@@ -155,29 +159,36 @@ export async function removeVibeMenuItems(admin: AdminGraphqlClient): Promise<{
 
 async function fetchMainMenu(
   admin: AdminGraphqlClient,
-): Promise<{ id?: string; handle?: string; title?: string; items?: MenuItem[] } | null> {
+): Promise<MenuListNode | null> {
+  // The 2026-04 Admin API removed `menu(handle:)` — it only accepts
+  // `menu(id: ID!)` now. Use the `menus` connection (no per-field
+  // query support is documented) and filter by handle client-side.
   try {
     const resp = await admin.graphql(
       `#graphql
-      query VibeMainMenu {
-        menu(handle: "main-menu") {
-          id
-          handle
-          title
-          items {
-            id
-            title
-            url
-            type
-            resourceId
-            tags
-            items {
+      query VibeMenus {
+        menus(first: 50) {
+          edges {
+            node {
               id
+              handle
               title
-              url
-              type
-              resourceId
-              tags
+              items {
+                id
+                title
+                url
+                type
+                resourceId
+                tags
+                items {
+                  id
+                  title
+                  url
+                  type
+                  resourceId
+                  tags
+                }
+              }
             }
           }
         }
@@ -190,8 +201,10 @@ async function fetchMainMenu(
       );
       return null;
     }
-    const gql = (await resp.json()) as MenuQueryResult;
-    return gql.data?.menu ?? null;
+    const gql = (await resp.json()) as MenusListResult;
+    const edges = gql.data?.menus?.edges ?? [];
+    const match = edges.find((e) => e.node?.handle === "main-menu");
+    return match?.node ?? null;
   } catch (err) {
     console.warn(
       "[vibe] fetchMainMenu threw: %s",
