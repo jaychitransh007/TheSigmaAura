@@ -590,6 +590,15 @@ class CatalogVisionEnrichmentService:
             rows_ingested,
             rows_failed,
         )
+        try:
+            from platform_core.metrics import observe_enrichment_batch_outcome
+            observe_enrichment_batch_outcome(
+                status="completed",
+                rows_ingested=rows_ingested,
+                rows_failed=rows_failed,
+            )
+        except Exception:  # noqa: BLE001
+            pass
         return BatchPollResult(
             openai_batch_id=openai_batch_id,
             final_status="completed",
@@ -632,9 +641,15 @@ class CatalogVisionEnrichmentService:
             status,
             error_text,
         )
+        terminal_status = status if status != "cancelled" else "failed"
+        try:
+            from platform_core.metrics import observe_enrichment_batch_outcome
+            observe_enrichment_batch_outcome(status=terminal_status)
+        except Exception:  # noqa: BLE001
+            pass
         return BatchPollResult(
             openai_batch_id=openai_batch_id,
-            final_status=status if status != "cancelled" else "failed",
+            final_status=terminal_status,
         )
 
     @staticmethod
