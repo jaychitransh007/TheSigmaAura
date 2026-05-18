@@ -1144,3 +1144,103 @@ def observe_theme_overrides_patch(*, outcome: str) -> None:
         ).inc()
     except Exception:  # noqa: BLE001
         pass
+
+
+# Tenant lookup-or-create observability. Ticks once per
+# POST /v1/tenants/lookup-or-create (called on every merchant-admin
+# home load + at install). Separates first-install ("created") from
+# idempotent refresh ("existing") so dashboards can see install funnel
+# vs. ongoing traffic.
+aura_tenant_lookup_total = Counter(
+    "aura_tenant_lookup_total",
+    "Tenant lookup-or-create outcomes (created | existing | error).",
+    labelnames=("outcome",),
+)
+
+
+def observe_tenant_lookup(*, outcome: str) -> None:
+    """Tick the tenant lookup counter for one resolve call.
+
+    Outcomes:
+      - ``"created"`` — first time this shop_domain hit the engine;
+        new tenants row inserted with status='pending'.
+      - ``"existing"`` — idempotent re-resolution (re-install, page
+        refresh, theme update webhook). Existing row returned.
+      - ``"error"`` — validation / DB failure path.
+
+    Concurrent first-installs for the same shop_domain may both report
+    "created" due to a benign TOCTOU between the existence check and
+    the actual insert. Over-counts are rare and acceptable for an
+    observability counter.
+    """
+    try:
+        aura_tenant_lookup_total.labels(
+            outcome=outcome or "unknown",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# Catalog Shopify-linkage observability. Ticks once per call to
+# observe_catalog_linkage (currently from bootstrap-complete; future
+# callers will include the F.3 cron). The bucket label coarsens the
+# rate into three states so dashboards can alert on "mostly_unlinked"
+# tenants — fully unlinked rows will fire vision re-enrichment when
+# webhooks / cron next touches them, costing ~$0.003/row.
+aura_catalog_shopify_linkage_observed_total = Counter(
+    "aura_catalog_shopify_linkage_observed_total",
+    "Per-tenant catalog Shopify-mapping rate observations (bucketed).",
+    labelnames=("bucket",),
+)
+
+
+def observe_catalog_linkage(*, tenant_id: str, total_rows: int, linked_rows: int) -> None:
+    """Emit one observation of a tenant's catalog Shopify-linkage rate.
+
+    Captures the % of ``catalog_enriched`` rows for this tenant that
+    have ``shopify_product_id`` populated — the signal that webhook /
+    cron events will hit the bootstrap cache vs. miss → spawn
+    duplicate rows + fire vision enrichment.
+
+    Counter bucket label coarsens the rate:
+      - ``"fully_linked"`` (>=99%): no enrichment risk
+      - ``"partially_linked"`` (>=50% and <99%): some stragglers
+      - ``"mostly_unlinked"`` (<50%): B.8 (GID capture) likely failed
+        or hasn't run; alert worthy
+
+    ``tenant_id`` is emitted in the structured log (not as a Prom
+    label) to avoid high-cardinality blow-up of the metric.
+    """
+    if total_rows < 0:
+        total_rows = 0
+    if linked_rows < 0:
+        linked_rows = 0
+    if linked_rows > total_rows:
+        linked_rows = total_rows
+    rate_pct = (100.0 * linked_rows / total_rows) if total_rows > 0 else 0.0
+    if rate_pct >= 99.0:
+        bucket = "fully_linked"
+    elif rate_pct >= 50.0:
+        bucket = "partially_linked"
+    else:
+        bucket = "mostly_unlinked"
+    try:
+        aura_catalog_shopify_linkage_observed_total.labels(bucket=bucket).inc()
+    except Exception:  # noqa: BLE001
+        pass
+    # Structured log so tenant_id is queryable per-observation.
+    try:
+        import logging
+        logging.getLogger("aura.catalog").info(
+            "catalog_shopify_linkage_observed",
+            extra={
+                "event": "catalog_shopify_linkage_observed",
+                "tenant_id": tenant_id,
+                "total_rows": total_rows,
+                "linked_rows": linked_rows,
+                "linkage_rate_pct": round(rate_pct, 2),
+                "bucket": bucket,
+            },
+        )
+    except Exception:  # noqa: BLE001
+        pass

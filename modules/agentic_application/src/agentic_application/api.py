@@ -713,11 +713,18 @@ def create_app() -> FastAPI:
         merchant-admin load so the home screen has a `tenant_id` to
         thread into bootstrap calls.
         """
+        from platform_core.metrics import observe_tenant_lookup
+        # Probe first so we can attribute "created" vs "existing" to
+        # the counter. get_or_create itself does the same select
+        # internally; the extra query is acceptable on a low-volume
+        # endpoint (one call per admin home load + install).
+        existing = tenant_repo.get_by_shop_domain(payload.shopify_shop_domain)
         try:
             row = tenant_repo.get_or_create(
                 shop_domain=payload.shopify_shop_domain,
                 shopify_shop_gid=payload.shopify_shop_gid or None,
             )
+            observe_tenant_lookup(outcome="existing" if existing else "created")
             return TenantStatusResponse(
                 tenant_id=str(row.get("tenant_id") or ""),
                 shopify_shop_domain=str(row.get("shopify_shop_domain") or ""),
@@ -728,6 +735,7 @@ def create_app() -> FastAPI:
                 theme_overrides=row.get("theme_overrides") or None,
             )
         except (ValueError, SupabaseError, RuntimeError) as exc:
+            observe_tenant_lookup(outcome="error")
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.patch(
@@ -849,6 +857,7 @@ def create_app() -> FastAPI:
         tenant_id: str,
         payload: BootstrapCompleteRequest,
     ) -> Dict[str, Any]:
+        from platform_core.metrics import observe_catalog_linkage
         try:
             if not tenant_repo.get_by_tenant_id(tenant_id):
                 raise HTTPException(
@@ -860,6 +869,33 @@ def create_app() -> FastAPI:
                 "ready",
                 product_count=int(payload.product_count or 0),
             )
+            # Observe how many catalog rows for this tenant have a
+            # populated `shopify_product_id`. Tenants with <99% linkage
+            # are at risk of firing duplicate-row vision enrichment
+            # when webhooks / cron next touches the unlinked products
+            # (~$0.003 per row, gated by the cost-bearing invariant
+            # only after the freshly-inserted duplicates have already
+            # paid the cost). Best-effort — never fail the bootstrap.
+            try:
+                rows = client.select_many(
+                    "catalog_enriched",
+                    filters={"tenant_id": f"eq.{tenant_id}"},
+                    columns="shopify_product_id",
+                    limit=50000,
+                )
+                total = len(rows)
+                linked = sum(1 for r in rows if r.get("shopify_product_id"))
+                observe_catalog_linkage(
+                    tenant_id=tenant_id,
+                    total_rows=total,
+                    linked_rows=linked,
+                )
+            except Exception as link_exc:  # noqa: BLE001
+                _log.warning(
+                    "bootstrap_complete: linkage observe failed tenant=%s err=%s",
+                    tenant_id,
+                    link_exc,
+                )
             # F.2.2b: best-effort vision-enrichment submit. Bootstrap
             # is "complete" the moment text embeddings land — vision
             # attributes are an async overlay that arrives within the
