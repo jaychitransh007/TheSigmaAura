@@ -20,11 +20,15 @@ export function VibePageShell({
   title,
   children,
   themeOverrides,
+  isAuthenticated,
   headerExtras,
 }: {
   title: string;
   children: ReactNode;
   themeOverrides?: TenantThemeOverrides | null;
+  /** Forwarded to MerchantHeader's account pill — "Sign in" when
+   *  false / undefined, "Account" pill when true. */
+  isAuthenticated?: boolean;
   /**
    * Page-specific CTA shown in the title row (e.g. wardrobe's "Add a
    * piece" button). Rendered to the right of the page title, below
@@ -36,7 +40,10 @@ export function VibePageShell({
   return (
     <div className="vibe-page">
       <ThemeOverridesStyle overrides={themeOverrides} />
-      <MerchantHeader overrides={themeOverrides} />
+      <MerchantHeader
+        overrides={themeOverrides}
+        isAuthenticated={isAuthenticated}
+      />
       <div className="vibe-page-title">
         <h1>{title}</h1>
         {headerExtras ? (

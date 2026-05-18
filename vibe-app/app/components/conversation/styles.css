@@ -43,71 +43,9 @@
   flex-direction: column;
 }
 
-.conv-header {
-  border-bottom: 1px solid var(--rule);
-  padding: 1rem 1.5rem;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.conv-header h1 {
-  font-family: "Fraunces", "Playfair Display", Georgia, serif;
-  font-style: italic;
-  font-size: 1.4rem;
-  color: var(--accent);
-  margin: 0;
-  letter-spacing: -0.01em;
-}
-
-.conv-mock-badge {
-  display: inline-block;
-  background: var(--rule-soft);
-  color: var(--ink-muted);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  font-style: normal;
-}
-
-/* D.S.3b auth pill — sits on the right of the header. */
-.conv-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.conv-auth-pill {
-  font-size: 0.8rem;
-  font-weight: 500;
-  padding: 0.3rem 0.85rem;
-  border-radius: 999px;
-  text-decoration: none;
-  transition: background 120ms ease, color 120ms ease;
-  white-space: nowrap;
-}
-
-.conv-auth-pill--out {
-  background: var(--ink);
-  color: #faf5ee;
-  border: 1px solid var(--ink);
-}
-
-.conv-auth-pill--out:hover {
-  background: var(--ink-soft);
-  border-color: var(--ink-soft);
-}
-
-.conv-auth-pill--in {
-  background: transparent;
-  color: var(--ink-muted);
-  border: 1px solid var(--rule);
-  cursor: default;
-}
+/* PR #480 removed .conv-header / .conv-mock-badge / .conv-auth-pill —
+ * the MerchantHeader took over the page top. Sign-in lives on the
+ * merchant-header-account-pill class instead (merchant-header.css). */
 
 .conv-init-error {
   background: var(--rule-soft);
