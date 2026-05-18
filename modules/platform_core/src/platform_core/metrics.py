@@ -1041,3 +1041,76 @@ def observe_product_webhook(*, topic: str, status: str) -> None:
         ).inc()
     except Exception:  # noqa: BLE001
         pass
+
+
+# F.2.2b enrichment batch lifecycle — operators couldn't tell a
+# 500-row batch where 200 silently fail from a 500-row batch where
+# every row landed. ``status`` covers the OpenAI-side outcome;
+# ``aura_enrichment_rows_ingested_total`` and
+# ``aura_enrichment_rows_failed_total`` give the per-batch split so a
+# spike in failed-row rate is visible without log scraping.
+aura_enrichment_batch_total = Counter(
+    "aura_enrichment_batch_total",
+    "OpenAI vision-enrichment batches by terminal status.",
+    labelnames=("status",),  # completed | failed | expired
+)
+
+aura_enrichment_rows_ingested_total = Counter(
+    "aura_enrichment_rows_ingested_total",
+    "Catalog rows successfully written back from completed enrichment batches.",
+)
+
+aura_enrichment_rows_failed_total = Counter(
+    "aura_enrichment_rows_failed_total",
+    "Catalog rows that failed to parse/persist from a completed enrichment batch (model returned error, JSON parse failed, etc.).",
+)
+
+
+def observe_enrichment_batch_outcome(
+    *,
+    status: str,
+    rows_ingested: int = 0,
+    rows_failed: int = 0,
+) -> None:
+    """Tick the batch terminal-state counter + per-row totals on poll
+    + ingest. Called from CatalogVisionEnrichmentService when a batch
+    transitions to a terminal status (completed/failed/expired)."""
+    try:
+        aura_enrichment_batch_total.labels(status=status or "unknown").inc()
+        if rows_ingested:
+            aura_enrichment_rows_ingested_total.inc(max(0, int(rows_ingested)))
+        if rows_failed:
+            aura_enrichment_rows_failed_total.inc(max(0, int(rows_failed)))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# F.4 catalog status-change events — distinguish "merchant pruned 50
+# dead SKUs" (healthy churn) from "connector bug nuked the whole
+# catalog" (red alert). One tick per state transition. Per-tenant
+# slicing lives in structured logs — tenant_id is unbounded for
+# Prometheus labels.
+aura_catalog_status_change_total = Counter(
+    "aura_catalog_status_change_total",
+    "Catalog row status transitions (soft-delete, revive, availability flip).",
+    labelnames=("action",),  # soft_deleted | revived | marked_available | marked_unavailable
+)
+
+
+def observe_catalog_status_change(*, action: str) -> None:
+    """Tick the catalog status-change counter for one transition.
+
+    Actions:
+      - ``"soft_deleted"`` — products/delete webhook landed; row kept
+        but deleted_at set + available_for_sale flipped to false.
+      - ``"revived"`` — products/create webhook on a row that had
+        deleted_at set; cleared + back to available.
+      - ``"marked_available"`` / ``"marked_unavailable"`` — pure
+        availability flip without delete/revive.
+    """
+    try:
+        aura_catalog_status_change_total.labels(
+            action=action or "unknown",
+        ).inc()
+    except Exception:  # noqa: BLE001
+        pass

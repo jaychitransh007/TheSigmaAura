@@ -178,6 +178,20 @@ class CatalogBootstrapService:
                             filters={"id": f"eq.{existing['id']}"},
                             patch=patch,
                         )
+                    # F.3 daily-cron revival event — if the cache-hit
+                    # row was previously soft-deleted and this call
+                    # opted into revival (cron path passes True), tick
+                    # the catalog-status-change counter so dashboards
+                    # can distinguish webhook-driven revives (real-
+                    # time) from cron-walk recovery (drift catch-up).
+                    if revive_soft_deleted and existing.get("deleted_at"):
+                        try:
+                            from platform_core.metrics import (
+                                observe_catalog_status_change,
+                            )
+                            observe_catalog_status_change(action="revived")
+                        except Exception:  # noqa: BLE001
+                            pass
                     # Mirror availability to the embeddings table —
                     # the retrieval RPC filters on
                     # catalog_item_embeddings.available_for_sale so

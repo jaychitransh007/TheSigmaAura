@@ -158,10 +158,30 @@ class CatalogProductSyncService:
         # deleted product.
         ce_patch: Dict[str, Any] = {"available_for_sale": available}
         normalized_topic = topic.strip().lower()
-        if normalized_topic != "products/update":
+        will_revive = normalized_topic != "products/update"
+        if will_revive:
             # products/create → revive. Empty topic → defensive
             # revive (preserves pre-fix behaviour).
             ce_patch["deleted_at"] = None
+        # Pre-check if the row was actually soft-deleted, so the
+        # catalog-status-change counter only ticks "revived" on a
+        # genuine state transition (not on every products/create
+        # for a never-deleted row).
+        was_deleted = False
+        if will_revive:
+            try:
+                existing = self._client.select_one(
+                    "catalog_enriched",
+                    filters={
+                        "tenant_id": f"eq.{tenant_id}",
+                        "shopify_product_id": f"eq.{shopify_pid}",
+                    },
+                )
+                was_deleted = bool(existing and existing.get("deleted_at"))
+            except Exception:  # noqa: BLE001
+                # SELECT failure shouldn't block the UPDATE; counter
+                # just won't tick this time.
+                was_deleted = False
         self._client.update_one(
             "catalog_enriched",
             filters={
@@ -170,6 +190,12 @@ class CatalogProductSyncService:
             },
             patch=ce_patch,
         )
+        if was_deleted:
+            try:
+                from platform_core.metrics import observe_catalog_status_change
+                observe_catalog_status_change(action="revived")
+            except Exception:  # noqa: BLE001
+                pass
         # catalog_item_embeddings: the hot retrieval path uses this.
         self._client.update_one(
             "catalog_item_embeddings",
@@ -260,8 +286,16 @@ class CatalogProductSyncService:
             tenant_id, shopify_pid, bool(cat_row),
         )
         try:
-            from platform_core.metrics import observe_product_webhook
+            from platform_core.metrics import (
+                observe_catalog_status_change,
+                observe_product_webhook,
+            )
             observe_product_webhook(topic="delete", status="ok")
+            if cat_row:
+                # Only tick if the row actually existed and was
+                # transitioned; webhook-for-unknown-shopify-id won't
+                # update any row and shouldn't count as a delete event.
+                observe_catalog_status_change(action="soft_deleted")
         except Exception:  # noqa: BLE001
             pass
         return {
