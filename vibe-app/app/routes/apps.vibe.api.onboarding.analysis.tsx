@@ -21,7 +21,7 @@ import {
   EngineError,
   startOnboardingAnalysis,
 } from "../lib/engine.server";
-import { logInfo, logWarn } from "../lib/logger.server";
+import { logError, logInfo, logWarn } from "../lib/logger.server";
 import { authenticate } from "../shopify.server";
 
 const ALLOWED_PHASES = new Set(["phase1", "phase2"] as const);
@@ -71,12 +71,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
     const message = err instanceof Error ? err.message : "Analysis trigger failed";
-    logWarn("vibe_onboarding_endpoint_failed", {
+    // Unexpected 500 path: route to stderr via logError so error
+    // monitoring picks it up. Include the stack trace because the
+    // catch-all swallows the exception (we return JSON instead of
+    // re-raising to avoid Vercel's HTML error page) — without the
+    // trace, ops can't tell what threw.
+    logError("vibe_onboarding_endpoint_failed", {
       endpoint: "analysis",
       phase,
       sessionId,
       status: 500,
       error: message,
+      stack: err instanceof Error ? err.stack : undefined,
     });
     return json({ ok: false, error: message }, { status: 500 });
   }

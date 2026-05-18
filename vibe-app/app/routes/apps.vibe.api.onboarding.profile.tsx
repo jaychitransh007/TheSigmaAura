@@ -19,7 +19,7 @@ import {
   patchOnboardingProfile,
   type OnboardingProfileField,
 } from "../lib/engine.server";
-import { logInfo, logWarn } from "../lib/logger.server";
+import { logError, logInfo, logWarn } from "../lib/logger.server";
 import { authenticate } from "../shopify.server";
 
 const ALLOWED_FIELDS: ReadonlySet<OnboardingProfileField> = new Set([
@@ -97,12 +97,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
     const message = err instanceof Error ? err.message : "Save failed";
-    logWarn("vibe_onboarding_endpoint_failed", {
+    // Unexpected 500 path: route to stderr via logError so error
+    // monitoring picks it up. Include the stack trace because the
+    // catch-all swallows the exception (we return JSON instead of
+    // re-raising to avoid Vercel's HTML error page) — without the
+    // trace, ops can't tell what threw.
+    logError("vibe_onboarding_endpoint_failed", {
       endpoint: "profile",
       field,
       sessionId,
       status: 500,
       error: message,
+      stack: err instanceof Error ? err.stack : undefined,
     });
     return json({ ok: false, error: message }, { status: 500 });
   }
