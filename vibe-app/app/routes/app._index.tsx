@@ -35,8 +35,35 @@ import {
   type TenantStatus,
 } from "../lib/engine.server";
 import { ensureVibeMenuItems } from "../lib/navigation.server";
-import { readMerchantThemeOverrides } from "../lib/theme-settings.server";
+import {
+  readMerchantThemeOverrides,
+  type ShopifyThemeOverrides,
+} from "../lib/theme-settings.server";
 import { authenticate } from "../shopify.server";
+
+// Return true when the probed overrides carry at least one value that
+// differs from what the engine has stored. Used to avoid no-op PATCHes
+// — the engine bumps updated_at_iso on every write, so an unchanged-
+// content refresh would still hit the DB.
+function themeOverridesDiffer(
+  probed: ShopifyThemeOverrides,
+  existing: TenantStatus["theme_overrides"] | undefined | null,
+): boolean {
+  const existingObj = existing ?? {};
+  for (const [key, value] of Object.entries(probed)) {
+    const ex = (existingObj as Record<string, unknown>)[key];
+    if (Array.isArray(value)) {
+      const exArr = Array.isArray(ex) ? ex : [];
+      if (exArr.length !== value.length) return true;
+      for (let i = 0; i < value.length; i++) {
+        if (JSON.stringify(value[i]) !== JSON.stringify(exArr[i])) return true;
+      }
+      continue;
+    }
+    if (String(value ?? "") !== String(ex ?? "")) return true;
+  }
+  return false;
+}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -79,18 +106,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     );
   }
 
-  // PR #478: trigger a theme-settings read on every merchant admin
-  // home load. Idempotent — engine stores the latest snapshot and
-  // Vibe pages consume from `tenant.theme_overrides`. Best-effort —
-  // a probe failure can't 500 the admin page. The themes/update
-  // webhook handles ongoing updates; this catches first install +
-  // any drift if a webhook was missed.
+  // Refresh the merchant's theme settings on every admin home load.
+  // Idempotent — engine stores the latest snapshot and Vibe pages
+  // consume from `tenant.theme_overrides`. Best-effort — a probe
+  // failure can't 500 the admin page. The themes/update webhook
+  // handles ongoing updates; this catches first install + any drift
+  // if a webhook was missed.
   if (tenant && tenant.tenant_id) {
     try {
       const overrides = await readMerchantThemeOverrides(admin);
-      // Only PATCH if at least one field was populated — skip empty
-      // probes so we don't spam the engine with no-op writes.
-      if (Object.values(overrides).some((v) => v && String(v).trim())) {
+      // Only PATCH if (a) at least one field was populated AND
+      // (b) the probed values actually differ from what the engine
+      // already has. The engine's set_theme_overrides bumps an
+      // updated_at_iso on every write, so an unchanged-content PATCH
+      // is still a DB write — comparing here keeps the admin home
+      // load free of needless engine round-trips.
+      const probedAny = Object.values(overrides).some(
+        (v) => v && (Array.isArray(v) ? v.length > 0 : String(v).trim()),
+      );
+      if (probedAny && themeOverridesDiffer(overrides, tenant.theme_overrides)) {
         const updated = await patchTenantThemeOverrides({
           tenantId: tenant.tenant_id,
           overrides,
@@ -109,9 +143,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       );
     }
 
-    // PR #481: ensure "Find your Vibe" + "Your Vibes" are in the
-    // merchant's main-menu. Idempotent. Best-effort — silent failure
-    // if write_navigation scope hasn't been granted yet (the
+    // Ensure "Find your Vibe" + "Your Vibes" are in the merchant's
+    // main-menu. Idempotent. Best-effort — silent failure if the
+    // write_navigation scope hasn't been granted yet (the
     // permissions banner above already nudges the merchant to
     // re-grant).
     try {

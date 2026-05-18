@@ -60,8 +60,8 @@ export function MessageView({
   onHideOutfit?: (outfitId: string) => void;
 }) {
   if (message.role === "user") {
-    // PR #479: stacked layout — query text on top, attached image
-    // below. Reads like a stylist's brief instead of a chat bubble.
+    // Stacked layout — query text on top, attached image below.
+    // Reads like a stylist's brief instead of a chat bubble.
     return (
       <div className="conv-message conv-message--user">
         <span className="conv-message-text">{message.text}</span>

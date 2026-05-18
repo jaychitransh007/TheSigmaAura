@@ -25,10 +25,9 @@
   flex-direction: column;
 }
 
-/* PR #480: vibe-page-header (AURA-branded nav row) replaced by the
- * MerchantHeader. The page title now sits in vibe-page-title — a thin
- * row directly below the merchant header that carries the page name
- * + an optional CTA (e.g. wardrobe's "Add a piece"). */
+/* The page title sits in vibe-page-title — a thin row directly below
+ * the MerchantHeader that carries the page name + an optional CTA
+ * (e.g. wardrobe's "Add a piece"). */
 .vibe-page-title {
   max-width: 1180px;
   margin: 0 auto;

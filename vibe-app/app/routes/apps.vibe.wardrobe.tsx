@@ -39,8 +39,7 @@ export const links: LinksFunction = () => [
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.public.appProxy(request);
-  // PR #480/#483: pull tenant theme overrides + auth flag for the
-  // replicated merchant header.
+  // Pull tenant theme overrides + auth flag for the merchant header.
   const headerData = await loadCustomerHeaderData(request);
   return json(headerData);
 };

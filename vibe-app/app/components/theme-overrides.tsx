@@ -1,5 +1,5 @@
 // Inject merchant-theme overrides as CSS variables on customer-facing
-// Vibe pages (PR #478).
+// Vibe pages.
 //
 // The Confident Luxe brand stays the structural design system; the
 // merchant's body font + primary accent color override two specific

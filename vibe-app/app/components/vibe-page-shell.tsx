@@ -1,14 +1,13 @@
 // Shared page frame for the customer-facing Vibe pages outside of the
 // Conversation surface (Wardrobe, Looks, Outfit Check).
 //
-// PR #480: the page's AURA-branded header was replaced by the
-// MerchantHeader (replicates the merchant's storefront header). The
+// The MerchantHeader replicates the merchant's storefront header. The
 // in-app section nav (Chat / Wardrobe / Looks / Outfit Check) was
 // dropped — only Conversation + Looks remain in the header navigation
-// via the menu items the merchant added (PR 4 injects "Find your Vibe"
-// + "Your Vibes"). Wardrobe + Outfit Check are reached from within
-// the Conversation flow (+ popover, check-image upload) rather than
-// from a dedicated tab.
+// via the menu items injected into the merchant's main-menu ("Find
+// your Vibe" + "Your Vibes"). Wardrobe + Outfit Check are reached
+// from within the Conversation flow (+ popover, check-image upload)
+// rather than from a dedicated tab.
 
 import type { ReactNode } from "react";
 import type { TenantThemeOverrides } from "../lib/engine.server";

@@ -1,13 +1,10 @@
-// Replicate-the-merchant's-header (PR #480).
-//
-// Customer-facing Vibe pages used to render a separate AURA-branded
-// header — "HOME OUTFITS CHECKS WARDROBE SAVED". User feedback was
-// that the customer should never feel like they left the store. The
-// fix isn't to make the merchant's header literally wrap our pages
-// (that's a multi-week Liquid-rendering refactor), it's to render a
-// React header that LOOKS like theirs: their shop name on the left,
-// their main-menu items in the center, and the merchant's primary
-// color + body font (PR #478) bleeding through via CSS variables.
+// Replicate the merchant's storefront header on customer-facing Vibe
+// pages so the customer never feels they left the store. Not a Liquid
+// wrap of theme.liquid — that's a multi-week refactor — but a React
+// header that consumes the merchant's shop name + main-menu items
+// from theme_overrides, plus the --theme-color-primary +
+// --theme-font-body CSS variables. End result: same visual feel as
+// the host store without leaving the React/Remix stack.
 //
 // The Vibe-owned destinations ("Find your Vibe" → /apps/vibe/style,
 // "Your Vibes" → /apps/vibe/looks) get an active underline when the
@@ -38,11 +35,9 @@ export function MerchantHeader({
 }: {
   overrides?: TenantThemeOverrides | null;
   /** When false, render a "Sign in" affordance linking to Shopify's
-   *  Customer Account login flow. The conv-header used to carry this
-   *  before PR #480 replaced it with MerchantHeader; restored in
-   *  PR #483 so anonymous customers landing on a Vibe page aren't
-   *  stuck without a way to log in (some merchant menus don't carry
-   *  an Account link of their own). */
+   *  Customer Account login flow. Needed because some merchant menus
+   *  don't carry an Account link of their own; anonymous customers
+   *  landing on a Vibe page would otherwise have no way to log in. */
   isAuthenticated?: boolean;
 }) {
   const location = useLocation();
@@ -54,10 +49,9 @@ export function MerchantHeader({
       <div className="merchant-header-inner">
         <div className="merchant-header-brand">
           {/* Text logo as the cheapest reliable inheritance — merchant
-              logo images live in the theme assets, not in the settings
-              we probed (PR #478 left logo_url empty by design).
-              MerchantHeader's logo can grow into a real <img> when the
-              probe captures it. */}
+              logo images live in theme assets, not in the
+              settings_data.json we probe. Can grow into a real <img>
+              once we capture the asset URL too. */}
           {shopName ? (
             <a href="/" className="merchant-header-logo">
               {shopName}
@@ -69,7 +63,7 @@ export function MerchantHeader({
           )}
         </div>
         <nav className="merchant-header-nav" aria-label="Store navigation">
-          {menuItems.map((item) => {
+          {menuItems.map((item, idx) => {
             const urlLower = item.url.toLowerCase();
             const isVibeActive = VIBE_PATHS_ACTIVE_MARKERS.some(
               (m) =>
@@ -77,7 +71,7 @@ export function MerchantHeader({
             );
             return (
               <a
-                key={item.url + item.title}
+                key={`${idx}-${item.url}`}
                 href={item.url}
                 className={
                   isVibeActive

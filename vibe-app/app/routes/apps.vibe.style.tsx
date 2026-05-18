@@ -128,9 +128,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
 
-  // PR #478: theme inheritance — look up the tenant's captured
-  // theme overrides (font + accent color from the merchant's active
-  // Shopify theme) so vibe-page styles can use them as CSS vars.
+  // Look up the tenant's captured theme overrides (font + accent
+  // color + main-menu + shop name from the merchant's active Shopify
+  // theme) so the page styles + MerchantHeader can use them.
   // Best-effort: engine failure → no overrides → Confident Luxe
   // defaults. Don't 500 the storefront chat on a tenant-lookup hiccup.
   const shopDomain = url.searchParams.get("shop")?.trim() ?? "";
@@ -1281,14 +1281,10 @@ export default function ConversationPage() {
   return (
     <div className="conv-page">
       <ThemeOverridesStyle overrides={themeOverrides} />
-      {/* PR #480: replicated merchant header replaces the AURA-branded
-          conv-header. The customer should never feel they left the
-          store — the header reads as the merchant's, with "Find your
-          Vibe" / "Your Vibes" appearing as menu items that PR 4
-          injects into their main-menu. Mock-mode + sign-in pill were
-          dropped from this surface; Shopify handles login via the
-          merchant's own nav, and mock-mode is a developer affordance
-          surfaced in console / engine.server.ts already. */}
+      {/* MerchantHeader replicates the merchant's storefront header so
+          the customer never feels they left the store. "Find your
+          Vibe" / "Your Vibes" appear as menu items injected into the
+          merchant's main-menu. */}
       <MerchantHeader
         overrides={themeOverrides}
         isAuthenticated={isAuthenticated}
