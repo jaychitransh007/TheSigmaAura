@@ -29,11 +29,16 @@ import {
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 
-import { lookupOrCreateTenant, type TenantStatus } from "../lib/engine.server";
+import {
+  lookupOrCreateTenant,
+  patchTenantThemeOverrides,
+  type TenantStatus,
+} from "../lib/engine.server";
+import { readMerchantThemeOverrides } from "../lib/theme-settings.server";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   // session.shop is the canonical *.myshopify.com domain (e.g.
   // `q8pery-95.myshopify.com`). Use it to build the storefront URL
   // *and* the customer-facing /apps/vibe/style link.
@@ -71,6 +76,37 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       session.shop,
       tenantError,
     );
+  }
+
+  // PR #478: trigger a theme-settings read on every merchant admin
+  // home load. Idempotent — engine stores the latest snapshot and
+  // Vibe pages consume from `tenant.theme_overrides`. Best-effort —
+  // a probe failure can't 500 the admin page. The themes/update
+  // webhook handles ongoing updates; this catches first install +
+  // any drift if a webhook was missed.
+  if (tenant && tenant.tenant_id) {
+    try {
+      const overrides = await readMerchantThemeOverrides(admin);
+      // Only PATCH if at least one field was populated — skip empty
+      // probes so we don't spam the engine with no-op writes.
+      if (Object.values(overrides).some((v) => v && String(v).trim())) {
+        const updated = await patchTenantThemeOverrides({
+          tenantId: tenant.tenant_id,
+          overrides,
+        });
+        // Re-hydrate the tenant so the page renders with the freshly
+        // captured overrides without waiting for the next request.
+        tenant = updated;
+      }
+    } catch (err) {
+      // Probe / engine PATCH failure — fall back to whatever's already
+      // in `tenant.theme_overrides`. Don't surface to the merchant.
+      console.warn(
+        "[vibe] theme-settings refresh failed for shop=%s:",
+        session.shop,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   return json({ shop: session.shop, grantedScopes, tenant, tenantError });

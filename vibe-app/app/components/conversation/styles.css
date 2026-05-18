@@ -23,13 +23,19 @@
   --ink: #16110e;
   --ink-soft: #2d1b14;
   --ink-muted: #806050;
-  --accent: #b45a3c;
+  /* --accent is the action color (CTAs, sent bubble background, etc.).
+   * PR #478 lets the merchant's active theme override it via
+   * --theme-color-primary (injected at :root by ThemeOverridesStyle).
+   * Fallback chain: theme primary → Confident Luxe oxblood. */
+  --accent: var(--theme-color-primary, #b45a3c);
   --accent-deep: #5c1a1b;
   --signal: #c6a15b;
   --rule: #f0e0d0;
   --rule-soft: #f5ebe0;
 
-  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  /* Body font likewise inheritable from the merchant theme; falls back
+   * to Inter / system stack when no override is captured. */
+  font-family: var(--theme-font-body, -apple-system), BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   background: var(--canvas);
   color: var(--ink-soft);
   min-height: 100vh;

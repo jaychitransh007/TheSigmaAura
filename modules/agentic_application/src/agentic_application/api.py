@@ -36,6 +36,7 @@ from platform_core.api_schemas import (
     ProductWebhookResult,
     TenantListResponse,
     TenantStatusResponse,
+    UpdateThemeOverridesRequest,
     DependencyReportResponse,
     FeedbackRequest,
     IntentHistoryGroup,
@@ -724,7 +725,45 @@ def create_app() -> FastAPI:
                 product_count=int(row.get("product_count") or 0),
                 bootstrap_completed_at=str(row.get("bootstrap_completed_at") or ""),
                 last_sync_at=str(row.get("last_sync_at") or ""),
+                theme_overrides=row.get("theme_overrides") or None,
             )
+        except (ValueError, SupabaseError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.patch(
+        "/v1/tenants/{tenant_id}/theme-overrides",
+        response_model=TenantStatusResponse,
+    )
+    def patch_theme_overrides(
+        tenant_id: str,
+        payload: UpdateThemeOverridesRequest,
+    ) -> TenantStatusResponse:
+        """Replace the tenant's captured theme settings.
+
+        Called from vibe-app on install + on every `themes/update`
+        webhook. Empty payload is OK and clears the overrides
+        (Vibe will fall back to Confident Luxe defaults).
+        """
+        try:
+            if not tenant_repo.get_by_tenant_id(tenant_id):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"tenant_id {tenant_id} not found",
+                )
+            overrides = payload.model_dump()
+            tenant_repo.set_theme_overrides(tenant_id, overrides)
+            row = tenant_repo.get_by_tenant_id(tenant_id) or {}
+            return TenantStatusResponse(
+                tenant_id=str(row.get("tenant_id") or ""),
+                shopify_shop_domain=str(row.get("shopify_shop_domain") or ""),
+                bootstrap_status=str(row.get("bootstrap_status") or ""),
+                product_count=int(row.get("product_count") or 0),
+                bootstrap_completed_at=str(row.get("bootstrap_completed_at") or ""),
+                last_sync_at=str(row.get("last_sync_at") or ""),
+                theme_overrides=row.get("theme_overrides") or None,
+            )
+        except HTTPException:
+            raise
         except (ValueError, SupabaseError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1084,6 +1123,7 @@ def create_app() -> FastAPI:
                         product_count=int(r.get("product_count") or 0),
                         bootstrap_completed_at=str(r.get("bootstrap_completed_at") or ""),
                         last_sync_at=str(r.get("last_sync_at") or ""),
+                        theme_overrides=r.get("theme_overrides") or None,
                     )
                     for r in rows
                 ]
@@ -1110,6 +1150,7 @@ def create_app() -> FastAPI:
                 product_count=int(row.get("product_count") or 0),
                 bootstrap_completed_at=str(row.get("bootstrap_completed_at") or ""),
                 last_sync_at=str(row.get("last_sync_at") or ""),
+                theme_overrides=row.get("theme_overrides") or None,
             )
         except HTTPException:
             raise

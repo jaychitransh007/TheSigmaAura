@@ -39,6 +39,14 @@ uri = "https://vibe-app-five.vercel.app/webhooks/products/upsert"
 topics = [ "products/delete" ]
 uri = "https://vibe-app-five.vercel.app/webhooks/products/delete"
 
+# PR #478: theme settings inheritance. Re-read the merchant's active
+# theme settings whenever they publish a new theme or change the
+# current one — keeps Vibe's font + accent color aligned with the
+# host store. read_themes scope grants access.
+[[webhooks.subscriptions]]
+topics = [ "themes/update" ]
+uri = "https://vibe-app-five.vercel.app/webhooks/themes/update"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 #

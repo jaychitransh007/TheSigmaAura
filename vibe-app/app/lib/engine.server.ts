@@ -1487,6 +1487,15 @@ function mockResultBody(jobId: string): TurnResult {
 // (all cache hits, just metadata refresh).
 // ─────────────────────────────────────────────────────────────────────
 
+export type TenantThemeOverrides = {
+  font_body?: string;
+  color_primary?: string;
+  color_background?: string;
+  color_text?: string;
+  logo_url?: string;
+  updated_at_iso?: string;
+};
+
 export type TenantStatus = {
   tenant_id: string;
   shopify_shop_domain: string;
@@ -1494,6 +1503,7 @@ export type TenantStatus = {
   product_count: number;
   bootstrap_completed_at: string;
   last_sync_at: string;
+  theme_overrides?: TenantThemeOverrides | null;
 };
 
 export type BootstrapProductInput = {
@@ -1534,6 +1544,53 @@ export async function lookupOrCreateTenant(args: {
     shopify_shop_gid: args.shopGid ?? "",
   };
   return postJson<TenantStatus>("/v1/tenants/lookup-or-create", body);
+}
+
+export async function patchTenantThemeOverrides(args: {
+  tenantId: string;
+  overrides: {
+    font_body?: string;
+    color_primary?: string;
+    color_background?: string;
+    color_text?: string;
+    logo_url?: string;
+  };
+}): Promise<TenantStatus> {
+  if (USE_MOCK) {
+    return {
+      tenant_id: args.tenantId,
+      shopify_shop_domain: "mock.myshopify.com",
+      bootstrap_status: "ready",
+      product_count: 0,
+      bootstrap_completed_at: "",
+      last_sync_at: "",
+      theme_overrides: args.overrides,
+    };
+  }
+  // The engine route is a PATCH; postJson is hard-wired to POST so
+  // we do it inline.
+  let resp: Response;
+  try {
+    resp = await fetch(
+      `${ENGINE_API_URL}/v1/tenants/${encodeURIComponent(args.tenantId)}/theme-overrides`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(args.overrides ?? {}),
+        signal: fetchTimeout(),
+      },
+    );
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new EngineError(0, `Engine theme-overrides PATCH unreachable: ${reason}`);
+  }
+  if (!resp.ok) {
+    throw new EngineError(
+      resp.status,
+      `Engine theme-overrides PATCH → ${resp.status}: ${await readErrorBody(resp)}`,
+    );
+  }
+  return (await resp.json()) as TenantStatus;
 }
 
 export async function getTenantStatus(tenantId: string): Promise<TenantStatus> {
