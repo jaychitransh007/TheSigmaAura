@@ -59,10 +59,12 @@ function themeOverridesDiffer(
       // item is `{title, url}`. Compare by property so key-order
       // differences between probe + stored copy don't produce a
       // spurious "differs" result (JSON.stringify is order-sensitive).
+      // Optional-chain in case a malformed engine payload ever
+      // surfaces a null entry — better a spurious PATCH than a 500.
       for (let i = 0; i < value.length; i++) {
-        const v = value[i] as { title?: string; url?: string };
-        const e = exArr[i] as { title?: string; url?: string };
-        if (v.title !== e.title || v.url !== e.url) return true;
+        const v = value[i] as { title?: string; url?: string } | null | undefined;
+        const e = exArr[i] as { title?: string; url?: string } | null | undefined;
+        if (v?.title !== e?.title || v?.url !== e?.url) return true;
       }
       continue;
     }
