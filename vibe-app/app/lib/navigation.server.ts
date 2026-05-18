@@ -110,7 +110,11 @@ export async function ensureVibeMenuItems(admin: AdminGraphqlClient): Promise<{
     ...itemsToAdd.map((it) => ({
       title: it.title,
       url: it.url,
-      type: "FRONTEND_LINK",
+      // `HTTP` is Shopify's MenuItemType for arbitrary external URLs
+      // (App Proxy paths fall under this — they're served by Shopify
+      // but proxied to our app). The old `FRONTEND_LINK` value was
+      // removed in 2026-04.
+      type: "HTTP",
     })),
   ];
   const ok = await writeMenuItems(admin, menu.id, menu.title || "Main menu", menu.handle || "main-menu", merged);
@@ -331,7 +335,7 @@ function toMenuItemInput(item: MenuItem): Record<string, unknown> {
   // type rather than us hard-coding the allow-list.
   const input: Record<string, unknown> = {
     title: item.title,
-    type: item.type || "FRONTEND_LINK",
+    type: item.type || "HTTP",
     items: (item.items ?? []).map(toMenuItemInput),
   };
   if (item.id) input.id = item.id;
