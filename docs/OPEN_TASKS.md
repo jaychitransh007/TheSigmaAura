@@ -6,11 +6,11 @@ This file lists what's open **now**. Shipped work history lives in `docs/RELEASE
 
 ## Active focus: Shopify split — storefront + Vibe app + multi-tenant engine
 
-The engine, today a single-tenant server-rendered app, is being split into three deployments:
+The engine is split into three deployments and now has partial multi-tenancy (per-tenant catalog ingestion + tenant-scoped retrieval; full Phase C engine-wide scoping still deferred):
 
 1. **Shopify storefront** — live at `thesigmavibe.shop`. Catalog imported, branded, ready for customers. India / INR only. Manual fulfillment to original retailers.
-2. **Vibe (Shopify App)** — deployed to Vercel at `vibe-app-five.vercel.app`. App Proxy serves the Conversation page at `thesigmavibe.shop/apps/vibe/style` (and on dev store `vibe-test-nmt8wy3q.myshopify.com/apps/vibe/style`). Chat loop end-to-end against the real engine. Merchant admin still on the stock Polaris "Generate a product" template — D.M.1 replaces it.
-3. **Vibe Engine** — deployed to Fly.io Mumbai (`vibe-engine.fly.dev`, single 1GB shared-cpu-1x always-on). `vibe_storefront` channel now bypasses the onboarding gate so partial-profile customers can chat. Multi-tenant refactor (Phase C) still deferred until Vibe UX validates.
+2. **Vibe (Shopify App)** — deployed to Vercel at `vibe-app-five.vercel.app`. App Proxy serves the Conversation page at `thesigmavibe.shop/apps/vibe/style` (and on dev store `vibe-test-nmt8wy3q.myshopify.com/apps/vibe/style`). Chat loop end-to-end against the real engine. **Merchant admin home** ([app._index.tsx](../vibe-app/app/routes/app._index.tsx)) replaced the stock Polaris template — D.M.1 done, with `SyncProgressCard` driving install-time bootstrap and `SyncSuccessBanner` showing post-sync confirmation.
+3. **Vibe Engine** — deployed to Fly.io Mumbai (`vibe-engine.fly.dev`, single 1GB shared-cpu-1x always-on). `vibe_storefront` channel bypasses the onboarding gate. **Tenant model live**: `tenants` table, opaque `tenant_id`, per-tenant `catalog_enriched` + `catalog_item_embeddings`, tenant-scoped retrieval RPC (`match_catalog_item_embeddings_v2`), idempotent install-time bootstrap, vision-attribute enrichment via OpenAI Batch API, `products/*` webhooks for real-time catalog updates, daily Vercel cron as drift safety net + enrichment poller. Full Phase C (every engine query tenant-scoped) still deferred — current scope-set is enough for one tenant + Vibe Test dev store.
 
 ### Locked infrastructure (2026-05-14/15)
 
@@ -224,19 +224,19 @@ Can ship after D.C lands AND F.2 + G.1/G.2 are live — the admin pages are most
 - [ ] **D.P.2.** End-to-end real-card test: customer arrives → talks to Vibe → adds outfit → checkout → real order → manual fulfillment.
 - [ ] **D.P.3.** Public App Store listing assets: privacy policy, support page, screenshots, demo video.
 
-## Phase C — Engine multi-tenancy (deferred until Vibe validates)
+## Phase C — Engine multi-tenancy (partial; full refactor still deferred)
 
-Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible value until tenant #2 onboards. Validating Vibe's UX on `thesigmavibe.shop` matters more right now.
+Phase F shipped the **catalog read path** as fully tenant-scoped (every retrieval query carries `p_tenant_id`; `match_catalog_item_embeddings_v2` RAISEs on empty). The rest of Phase C (conversations / wardrobe / model_call_logs / turn_traces / cache keys) is still single-tenant. Acceptable today: only TheSigmaVibe + Vibe Test exist, and the catalog read path was the cross-tenant leak risk.
 
-- [ ] **C.1.** Audit every DB query in `platform_core` + `agentic_application` for tenant-scoping requirements.
-- [ ] **C.2.** Migration: add `tenant_id` to all tenant-scoped tables (`conversations`, `user_profiles`, `wardrobe_items`, `model_call_logs`, `turn_traces`, etc.) + backfill.
-- [ ] **C.3.** Refactor every query to filter by `tenant_id`. Mechanical but high-stakes — every miss is a cross-tenant data leak.
-- [ ] **C.4.** Add `tenant_id` to every cache key (planner / retrieval / architect / composer caches).
-- [ ] **C.5.** Tenant-resolution middleware: Shopify shop domain → `tenant_id`.
-- [ ] **C.6.** `/v1/bootstrap` endpoint: given shop domain, returns `catalog_ready` status.
-- [ ] **C.7.** Strip `platform_core/ui.py` — server-rendered HTML migrates into the Vibe Shopify app.
-- [ ] **C.8.** Shopify session-token validation on API endpoints.
+- [x] **C.5 (partial).** Tenant resolution shipped via `TenantRepository.get_or_create` + `resolve_tenant_id_or_default` in [tenants.py](../modules/platform_core/src/platform_core/tenants.py). `vibe_storefront` channel mandates a `shop_domain`; engine raises rather than defaulting (protects against cross-tenant catalog leak in customer-facing turns).
+- [x] **C.6 (partial).** `POST /v1/tenants/lookup-or-create` returns `bootstrap_status` per tenant. Full status surface (catalog_ready, etc.) covered by `GET /v1/tenants/{tid}` + `GET /v1/tenants` (cron iteration).
 - [x] **C.9.** Deploy engine to Fly.io Mumbai (2026-05-15). `Dockerfile` + `fly.toml` at repo root; app `vibe-engine` running in `bom`. Secrets injected via `fly secrets set`. Health check at `/healthz`.
+- [ ] **C.1.** Audit every DB query in `platform_core` + `agentic_application` for tenant-scoping requirements. (Catalog audited via F.2.x; everything else outstanding.)
+- [ ] **C.2.** Migration: add `tenant_id` to all tenant-scoped tables (`conversations`, `user_profiles`, `wardrobe_items`, `model_call_logs`, `turn_traces`, etc.) + backfill.
+- [ ] **C.3.** Refactor every query to filter by `tenant_id`. Mechanical but high-stakes — every miss is a cross-tenant data leak. Required before tenant #2 (beyond TheSigmaVibe + Vibe Test) onboards.
+- [ ] **C.4.** Add `tenant_id` to every cache key (planner / retrieval / architect / composer caches). Currently keyed by `tenant_id="default"` for architect + composer caches — cached results bleed across tenants.
+- [ ] **C.7.** Strip `platform_core/ui.py` — server-rendered HTML migrates into the Vibe Shopify app.
+- [ ] **C.8.** Shopify session-token validation on API endpoints (the storefront chat path is HMAC-validated via App Proxy already, but admin-side endpoints aren't).
 
 ## Phase E — Manual fulfillment SOP
 
@@ -245,18 +245,23 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 
 ## Phase F — Catalog sync (per-merchant)
 
-**Goal.** Vibe recommends from the *merchant's actual Shopify catalog*, not from a single hard-coded `catalog_enriched` table. Required for any tenant past TheSigmaVibe and for the D.M.* admin pages to surface real data.
+**Goal.** Vibe recommends from the *merchant's actual Shopify catalog*, not from a single hard-coded `catalog_enriched` table.
 
-**Locked decisions (2026-05-17):**
-- **Multi-tenancy posture:** *punt Phase C, build Phase F with `tenant_id` columns ready.* Catalog ingestion writes `tenant_id` from the merchant's `shopify_shop_gid`; engine retrieval / RPCs still treat the catalog as one pool for now. Phase C populates tenant scoping into the read path later. Risk: a second tenant's products would mix with TheSigmaVibe's until Phase C lands — acceptable for one-tenant-only.
-- **Scope expansion path:** existing merchants reinstall once. New scopes documented in F.1.
+**Locked decisions (2026-05-17/18):**
+- **Multi-tenancy posture:** built with `tenant_id` columns + tenant-scoped retrieval RPC; full Phase C engine-wide scoping still deferred. Two tenants live now (TheSigmaVibe production catalog + Vibe Test dev store) cleanly isolated.
+- **Vision enrichment** uses OpenAI Batch API (50% cheaper than sync; 24h SLA) submitted at bootstrap-complete + polled by the F.3 daily cron. **Synchronous Responses API was rejected** because a 100-product install would exhaust Vercel's 60s function ceiling.
+- **Cost-bearing invariant:** vision pipeline NEVER re-runs on `row_status='ok'` rows, gated at the SQL level by `WHERE row_status='pending_enrichment' AND vision_batch_id IS NULL`. Verified by [tests/test_catalog_vision_enrichment_service.py](../tests/test_catalog_vision_enrichment_service.py).
+- **Webhook subset:** F.4 subscribes to `products/{create,update,delete}` (simpler than `inventory_levels/update`; payload carries variants directly so no resolution call needed).
 
 **Sub-tasks**
 
-- [x] **F.1.** Scope set expanded in [shopify.app.vibe.toml](../vibe-app/shopify.app.vibe.toml) — five new scopes (`read_products`, `read_inventory`, `read_orders`, `read_customers`, `read_themes`); dropped `write_products`. An initial draft also included `write_metafields` to tag attributed orders, but Shopify rejects it as invalid — granular metafield writes don't exist as a scope; the alternative `write_orders` is too broad. Vibe holds attribution metadata in its own `order_attribution` Prisma table instead. Each scope's *why* surfaces on the merchant welcome screen ([app._index.tsx](../vibe-app/app/routes/app._index.tsx)) via a new Permissions card that reads `session.scope` and maps each granted scope to a plain-English label + reason. **Deploy + re-grant procedure** documented in [docs/runbooks/F1_scope_reinstall.md](../docs/runbooks/F1_scope_reinstall.md).
-- [ ] **F.2.** **Initial sync job.** On install (or scope re-grant), Vibe walks the merchant's catalog via Admin GraphQL (paginated). For each product, writes to `catalog_enriched` with the merchant's `tenant_id`, runs the existing visual enrichment + embedding generation pipeline (~$0.003/row). Status surfaces on the merchant admin home screen ("Catalog syncing: 230 of 1,840 products…"). Idempotent — safe to re-run; skips already-enriched rows by `shopify_product_id` + content hash.
-- [ ] **F.3.** **Webhook-driven incremental sync.** Subscribe to `products/create`, `products/update`, `products/delete`, `inventory_levels/update`. Each fires a targeted re-enrichment or delete on the affected product. Avoids the slow path of periodic full re-syncs.
-- [ ] **F.4.** **Stock-aware retrieval.** Engine's `match_catalog_item_embeddings` RPC + post-retrieval filter respect `available_for_sale` so the stylist doesn't recommend OOS items. Inventory updates flow in via F.3.
+- [x] **F.1.** Scope set expanded in [shopify.app.vibe.toml](../vibe-app/shopify.app.vibe.toml) — five new scopes (`read_products`, `read_inventory`, `read_orders`, `read_customers`, `read_themes`); dropped `write_products`. `write_metafields` rejected as invalid by Shopify; Vibe holds attribution metadata in its own `order_attribution` Prisma table. Each scope's *why* surfaces on the merchant admin home ([app._index.tsx](../vibe-app/app/routes/app._index.tsx)) via a Permissions card. **Deploy + re-grant procedure** documented in [docs/runbooks/F1_scope_reinstall.md](../docs/runbooks/F1_scope_reinstall.md).
+- [x] **F.2.0/F.2.1.** Multi-tenant catalog retrieval (PRs #458 / #459). Migration `20260518000000_f20_f21_tenants_and_retrieval.sql` adds `tenants` table + `catalog_item_embeddings.tenant_id` + new RPC `match_catalog_item_embeddings_v2(p_tenant_id, ...)` that RAISEs on empty tenant. HNSW iterative scan with `max_scan_tuples=20000` validated for tenant-scoped filter selectivity (spike F.2.1).
+- [x] **F.2.2.** Idempotent install-time catalog sync (PRs #460 / #461). New `CatalogBootstrapService.process_products` does per-product existence check → cache-hit refreshes metadata only (no LLM cost), cache-miss embeds + inserts with `row_status='pending_enrichment'`. `product_id` tenant-prefixed (`{tenant_id}:{shopify_product_id}`) so two tenants importing the same Shopify GID don't collide on the global UNIQUE constraint. Engine endpoints: `POST /v1/tenants/lookup-or-create`, `POST /v1/tenants/{tid}/bootstrap-batch`, `POST /v1/tenants/{tid}/bootstrap-complete`, `GET /v1/tenants/{tid}`.
+- [x] **F.2.2b.** Vision attribute enrichment via OpenAI Batch API (PR #464 + #472 fix). New `CatalogVisionEnrichmentService` submits pending rows to `/v1/responses` Batch API, polls + ingests on completion. Migration `20260518100000_f22b_vision_enrichment_batches.sql` adds `tenant_enrichment_batches` table + `catalog_enriched.vision_batch_id`. Auto-submitted at `bootstrap_complete`. Polled by F.3 cron OR manually via `POST /v1/enrichment/poll-all`. **Cost-bearing invariant SQL-enforced** (no re-enrichment on `row_status='ok'`). Ingest mirrors 8 retrieval-filter columns to `catalog_item_embeddings` (lowercase) under the canonical mapping in [`vector_store.py:127`](../modules/catalog/src/catalog/retrieval/vector_store.py).
+- [x] **F.2.2c.** Vibe-app install-time bootstrap UI (PRs #462 / #463). `SyncProgressCard` on the merchant home runs a browser-driven polling loop against new `/app/api/bootstrap` route — one Shopify Admin GraphQL page per tick (50 products), engine call per page, well under Vercel's 60s ceiling. Post-reload `SyncSuccessBanner` shows "Catalog synced — N products ready" (PR #469). Each tick has structured `vibe_bootstrap_tick` log (PR #475).
+- [x] **F.3.** Daily Vercel cron (PR #466 + #470 + #467 fix). Route at [api.cron.daily-sync.tsx](../vibe-app/app/routes/api.cron.daily-sync.tsx) runs at 19:30 UTC. Two jobs: (1) per-tenant incremental Shopify walk (`updated_at:>=30h`) → forward to engine `bootstrap-batch` with `revive_soft_deleted=true` so cache-hits revive prior soft-deletes; (2) `POST /v1/enrichment/submit-pending-all` then `/v1/enrichment/poll-all` to keep vision enrichment caught up. `CRON_SECRET` validated; soft 45s wall budget; tenants ordered oldest-`last_sync_at`-first. Engine endpoint `GET /v1/tenants` enumerates ready tenants.
+- [x] **F.4.** `products/{create,update,delete}` webhooks (PR #465 + #467 + #470). Two webhook routes ([webhooks.products.upsert.tsx](../vibe-app/app/routes/webhooks.products.upsert.tsx) + [webhooks.products.delete.tsx](../vibe-app/app/routes/webhooks.products.delete.tsx)) forward raw Shopify payloads to engine endpoints `POST /v1/tenants/{tid}/products/webhook-{upsert,delete}`. Engine's `CatalogProductSyncService` translates REST payload → BootstrapProductInput, delegates upsert path to bootstrap service (idempotent), soft-deletes only on `products/delete` (preserves vision enrichment cost; reviveable via subsequent `products/create`). Migration `20260518110000_f4_availability_and_soft_delete.sql` adds `available_for_sale` + `deleted_at` columns on both `catalog_enriched` + `catalog_item_embeddings`; retrieval RPC filters `available_for_sale IS NOT FALSE`. Topic-aware revival: only `products/create` clears `deleted_at` (protects against out-of-order `products/update` retries). **`shopify app deploy` still required** to register the new webhook subscriptions in Partner Dashboard.
 
 ## Phase G — Purchase attribution
 
@@ -289,39 +294,43 @@ Per agreed sequencing — Phase C is a 1–2 week refactor with no user-visible 
 
 **Launch-blocking chain (your action):**
 
-1. **B.4 legal-page review + publish.** Drafts are ready in [docs/storefront/legal_pages/](../docs/storefront/legal_pages/); counsel reviews, you find-and-replace the `{{ PLACEHOLDER }}` tokens, paste into Shopify admin.
-2. **B.6 — Real-card test order.** Manual.
-3. **D.P.1 — Install Vibe on the production store** (`thesigmavibe.shop`). Unblocks **B.8** + **D.C.9**.
-4. **D.C.9 — Add-to-Cart prod verification** after B.8 lands real variant ids.
+1. **`shopify app deploy` from `vibe-app/`** — pushes the updated `shopify.app.vibe.toml` so Partner Dashboard registers the new `products/{create,update,delete}` webhook subscriptions. Without this F.4 stays inert in production.
+2. **B.4 legal-page review + publish.** Drafts are ready in [docs/storefront/legal_pages/](../docs/storefront/legal_pages/); counsel reviews, you find-and-replace the `{{ PLACEHOLDER }}` tokens, paste into Shopify admin.
+3. **B.6 — Real-card test order.** Manual.
+4. **D.P.1 — Install Vibe on the production store** (`thesigmavibe.shop`). Unblocks **B.8** + **D.C.9**.
+5. **D.C.9 — Add-to-Cart prod verification** after B.8 lands real variant ids.
 
-**Then — Merchant-admin build (F → G → D.M.*), roughly 8-10 weeks:**
+**Then — Merchant-admin build (G → D.M.*), now that F.2.x + F.3 + F.4 are shipped:**
 
-5. ~~**F.1 — Scope expansion + reinstall flow**~~ — shipped. Re-grant required on the dev store next time you open Vibe in admin.
-6. **F.2 — Initial catalog sync** (1 week). Per-merchant catalog ingestion + visual enrichment + embeddings; sync status surfaces in D.M.1.
-7. **G.1 + G.2 — Order webhooks + attribution engine** (1 week). Unlocks the D.M.4 Conversions section + Recommendation effectiveness.
-8. **F.3 — Webhook-driven incremental sync** (3 days). Production-readiness for F.2.
-9. **F.4 — Stock-aware retrieval** (2-3 days). Quality fix.
-10. **G.3 — Line-item attribution** (2-3 days). D.M.4 granularity ("which outfits drove which line items").
-11. **D.M.2 — Permissions panel** (3 days).
-12. **D.M.3 — Placement + catalog controls** (4 days).
-13. **D.M.4 — Analytics dashboard** (2 weeks). The merchant-value surface: Engagement, Wishlists, Try-ons, Conversions, Recommendation effectiveness.
-14. **D.M.5 — Settings** (3-4 days).
+6. **G.1 + G.2 — Order webhooks + attribution engine** (1 week). Unlocks the D.M.4 Conversions section + Recommendation effectiveness.
+7. **G.3 — Line-item attribution** (2-3 days). D.M.4 granularity ("which outfits drove which line items").
+8. **D.M.2 — Permissions panel** (3 days).
+9. **D.M.3 — Placement + catalog controls** (4 days).
+10. **D.M.4 — Analytics dashboard** (2 weeks). The merchant-value surface: Engagement, Wishlists, Try-ons, Conversions, Recommendation effectiveness.
+11. **D.M.5 — Settings** (3-4 days).
 
-**Later:** D.P.2 / D.P.3 (real-card e2e + App Store listing), Phase C (engine multi-tenancy — required before tenant #2 onboards), G.4 (refund handler), E.2 (internal fulfillment dashboard, if order volume justifies it), further try-on surfaces (per-garment, on-demand re-render) only if requested. **D.M.6 billing was dropped — no usage-based pricing for now.**
+**Later:** D.P.2 / D.P.3 (real-card e2e + App Store listing), Phase C completion (engine multi-tenancy beyond catalog — required before tenant #3 onboards), G.4 (refund handler), E.2 (internal fulfillment dashboard, if order volume justifies it), further try-on surfaces (per-garment, on-demand re-render) only if requested. **D.M.6 billing was dropped — no usage-based pricing for now.**
+
+**Engine multi-tenancy completion (Phase C):** required before tenant #3 onboards. Today the catalog read path is fully tenant-scoped (F.2.0/F.2.1); conversations, wardrobe, profiles, traces, and architect/composer caches are still single-tenant. Two-tenant scale (TheSigmaVibe + Vibe Test) is fine; adding a third merchant means a query-by-query Phase C sweep first.
 
 ---
 
 ## Trigger-driven (no work needed until trigger fires)
 
-### Observability gaps from the 2026-05-16 audit — "useful" tier
+### Observability gaps from the 2026-05-16 / 17 / 18 audits
 
-The May-16 audit flagged five observability gaps post in-chat-onboarding + Customer-Account-merge launches. The two blockers (channel-labeled `aura_turn_total` and status-labeled `aura_user_merge_total`) shipped in [#398](https://github.com/jaychitransh007/TheSigmaAura/pull/398). A follow-up audit on 2026-05-17 added a related sweep that shipped in [#436](https://github.com/jaychitransh007/TheSigmaAura/pull/436): `aura_onboarding_endpoint_total{endpoint, status, channel}` + `aura_onboarding_image_bytes{category, channel}` for the seven Vibe onboarding routes, channel-threaded from the Vibe client, plus Vibe-side structured logs (`vibe_init_outcome` / `vibe_merge_outcome` / `vibe_merge_identity_mismatch` / `vibe_turn_pairing_rewrite`).
+Three audit passes since the in-chat-onboarding launch:
 
-The three items below remain open — distinct from the per-endpoint outcome counter that #436 shipped (those track request volume and HTTP outcome per route; the items below track funnel stages, payload-level coverage, and merge-time data hygiene).
+- **May 16:** turn-channel + user-merge counters shipped in [#398](https://github.com/jaychitransh007/TheSigmaAura/pull/398).
+- **May 17:** onboarding endpoint + image-bytes counters + Vibe-side structured logs shipped in [#436](https://github.com/jaychitransh007/TheSigmaAura/pull/436).
+- **May 18:** F.2.x multi-tenant push audit. Critical gaps shipped in [#475](https://github.com/jaychitransh007/TheSigmaAura/pull/475): cart-wiring assertion (`aura_outfit_item_variant_ids_missing_total{source}` + warning log — would have caught PR #474), bootstrap-batch tick logs + counter (`aura_bootstrap_batch_total{status}` + per-outcome histogram, structured `vibe_bootstrap_tick` logs on the vibe-app side), webhook engine-side tenant context + counter (`aura_product_webhook_total{topic, status}`). Medium gaps shipped in [#476](https://github.com/jaychitransh007/TheSigmaAura/pull/476): enrichment batch lifecycle counters (`aura_enrichment_batch_total{status}` + row-count totals), catalog status-change events (`aura_catalog_status_change_total{action}`).
 
-- **Variant-id coverage histogram.** Tracks what fraction of items in each outfit response carry non-empty `shopify_variant_ids`. **Trigger:** after **D.P.1** + **B.8** run on a real catalog. Until then every response has 0% coverage (vibe-test only has 60 demo products), so the metric would just measure "nothing's wired". **Where:** new `aura_item_variant_id_coverage` histogram (buckets 0/25/50/75/100) in [`modules/platform_core/src/platform_core/metrics.py`](../modules/platform_core/src/platform_core/metrics.py); observe per outfit in the orchestrator response builder.
-- **Onboarding-stage reach counter.** `aura_onboarding_stage_reach_total` labeled by `stage` ∈ `{init, photo_uploaded, profile_submitted, complete}`. Lets us spot drop-off through the in-chat flow. **Trigger:** after the first real customer cohort flows through `/apps/vibe/style` on production (D.P.1 + a few live customers). **Where:** new counter in `metrics.py`; increment from the matching App Proxy resource routes (`apps.vibe.api.onboarding.*.tsx`) via a small server-side ping, OR from `process_turn` when the orchestrator first sees a vibe_storefront turn for that user.
-- **`acquisition_source` cross-contamination on merge.** When a vibe_storefront customer signs in via Shopify Customer Account, `repo.merge_external_user_identity` doesn't propagate the alias row's `acquisition_source` to the canonical row. Result: a customer who started as `vibe_storefront` and later signs in shows up in [Panel 01](../ops/dashboards/panel_01_acquisition_onboarding_funnel.sql) as `unknown` forever. **Trigger:** when Panel 01 starts seeing unexpectedly high `unknown` after merged customers exist in volume. **Where:** [`modules/platform_core/src/platform_core/repositories.py`](../modules/platform_core/src/platform_core/repositories.py) `merge_external_user_identity` — copy alias `acquisition_source` to canonical when canonical's is `unknown` (don't overwrite a real value).
+The three items below remain open:
+
+- **Variant-id coverage histogram** (originally May-16). Replaced by the simpler `aura_outfit_item_variant_ids_missing_total{source}` counter shipped in #475 (catalog-source nonzero rate alerts immediately; wardrobe-source rate is the baseline). The histogram form is still useful for "what fraction of items have variants" SLO dashboards — keep as low-priority follow-up.
+- **Onboarding-stage reach counter.** `aura_onboarding_stage_reach_total` labeled by `stage` ∈ `{init, photo_uploaded, profile_submitted, complete}`. Lets us spot drop-off through the in-chat flow. **Trigger:** after the first real customer cohort flows through `/apps/vibe/style` on production (D.P.1 + a few live customers).
+- **`acquisition_source` cross-contamination on merge.** When a vibe_storefront customer signs in via Shopify Customer Account, `repo.merge_external_user_identity` doesn't propagate the alias row's `acquisition_source` to the canonical row. Result: a customer who started as `vibe_storefront` and later signs in shows up in Panel 01 as `unknown` forever. **Trigger:** when Panel 01 starts seeing unexpectedly high `unknown` after merged customers exist in volume.
+- **Tenant-id consistency across `catalog_search_agent` logs** (added May-18). Retrieval gateway already carries `tenant_id`; per-match-loop logs in `_hydrate_matches` don't. **Trigger:** when multi-tenant retrieval debugging requires per-tenant grep within the search-agent log stream (today the gateway log is sufficient).
 
 ### Masculine `polo_tshirt` coverage
 

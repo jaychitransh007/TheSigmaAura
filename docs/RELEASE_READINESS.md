@@ -1,18 +1,20 @@
 # Release Readiness Criteria
 
-Last updated: May 17, 2026.
+Last updated: May 18, 2026.
 
-> **RELEASE TARGET (May 17, 2026).** The 4 gates below describe the readiness criteria for the *legacy standalone Aura web app* (port 8010 server-rendered HTML chat). The Shopify-hosted system has shipped on top of that:
+> **RELEASE TARGET (May 18, 2026).** The 4 gates below describe the readiness criteria for the *legacy standalone Aura web app* (port 8010 server-rendered HTML chat). The Shopify-hosted system has shipped on top of that and is now multi-tenant:
 >
 > - Customer experience ships as a **Shopify storefront** (`thesigmavibe.shop`, live) + a **Vibe Shopify App** (Vercel `bom1`, live at `vibe-app-five.vercel.app`).
-> - **Engine deployed to Fly.io Mumbai** (`vibe-engine.fly.dev`, shared-cpu-1x always-on) with persistent `vibe_data` volume mounted at `/app/data` and `strategy = "immediate"` deploys — no longer a blocker.
-> - **Conversation page live** at `/apps/vibe/style` at full feature parity with the legacy `platform_core/ui.py` reference. In-chat onboarding flow (D.O.1–D.O.3): branched welcome, parallel photos + gender-DOB cards, HEIC handling, photo zoom/pan, combined ft/in height-waist card, post-onboarding analysis indicator + templated "what would you like to wear?" prompt. `name` step dropped 2026-05-17 (#424). Photos-card re-injects when engine reports the full-body image missing (volume-loss recovery, #422). Pairing-trigger auto-augmentation forces attached-piece turns through `pairing_request` (#403).
-> - **Shopify Customer Account merge** (D.S.3b) wired via `POST /v1/users/merge`, IDOR-guarded by the App-Proxy-signed `logged_in_customer_id`.
-> - **Observability** — engine: `aura_turn_total{channel}` (#398), `aura_user_merge_total{status}` (#398), `aura_onboarding_endpoint_total{endpoint, status, channel}` (#436), `aura_onboarding_image_bytes{category, channel}` (#436); structured `event=onboarding_endpoint` logs per request. Vibe: JSON-to-stdout structured logs (`vibe_init_outcome`, `vibe_merge_outcome`, `vibe_merge_identity_mismatch`, `vibe_turn_pairing_rewrite`) via [`vibe-app/app/lib/logger.server.ts`](../vibe-app/app/lib/logger.server.ts).
+> - **Engine deployed to Fly.io Mumbai** (`vibe-engine.fly.dev`, shared-cpu-1x always-on) with persistent `vibe_data` volume mounted at `/app/data` and `strategy = "immediate"` deploys.
+> - **Multi-tenant catalog now live** (F.2.x + F.3 + F.4, May 18). `tenants` table, opaque `tenant_id`, per-tenant `catalog_enriched` + `catalog_item_embeddings`, tenant-scoped retrieval RPC `match_catalog_item_embeddings_v2`. Idempotent install-time bootstrap with browser-driven SyncProgressCard. Vision attribute enrichment via OpenAI Batch API + poller. `products/{create,update,delete}` webhooks for real-time catalog updates. Daily Vercel cron for drift safety net + enrichment polling. Two tenants live: TheSigmaVibe production + Vibe Test dev store.
+> - **Conversation page live** at `/apps/vibe/style` at full feature parity with the legacy `platform_core/ui.py` reference. In-chat onboarding flow (D.O.1–D.O.3): branched welcome, parallel photos + gender-DOB cards, HEIC handling, photo zoom/pan, combined ft/in height-waist card, post-onboarding analysis indicator + templated "what would you like to wear?" prompt.
+> - **Add-to-Cart end-to-end working** (PR #474): response_formatter now passes `shopify_variant_ids` + `shopify_product_id` + `catalog_description` through to the storefront. PR #475 added a regression guard (`aura_outfit_item_variant_ids_missing_total` + WARNING log) so this bug class can't reappear silently.
+> - **Shopify Customer Account merge** (D.S.3b) wired via `POST /v1/users/merge`, IDOR-guarded.
+> - **Observability** — engine: `aura_turn_total{channel}`, `aura_user_merge_total{status}`, `aura_onboarding_endpoint_total{endpoint, status, channel}`, `aura_onboarding_image_bytes{category, channel}`, plus the F.2.x sweep added in #475/#476 (`aura_outfit_item_variant_ids_missing_total`, `aura_bootstrap_batch_total{status}` + per-outcome histogram, `aura_product_webhook_total{topic, status}`, `aura_enrichment_batch_total{status}` + row-count totals, `aura_catalog_status_change_total{action}`). Vibe: JSON-to-stdout structured logs (`vibe_init_outcome`, `vibe_merge_outcome`, `vibe_turn_pairing_rewrite`, `vibe_bootstrap_tick`, `vibe_cron_daily_sync_*`, `vibe_product_webhook_*`) via [`vibe-app/app/lib/logger.server.ts`](../vibe-app/app/lib/logger.server.ts).
 > - The standalone web UI is deprecated. Gates 3 (dependency/retention) and Gate 4 (design polish) targeting `platform_core/ui.py` are no longer the release blocker.
-> - **Remaining release blockers** for first-50 rollout, tracked in [`OPEN_TASKS.md`](OPEN_TASKS.md) § Next priorities: **D.M.1** (merchant welcome screen), **D.C.3/D.C.4/D.C.5** (Wardrobe / Looks / Outfit Check), **B.6** (real-card test order), **B.4** (mandatory legal pages), **D.P.1** (install on production — unblocks **B.8** GID capture which activates Add-to-Cart end-to-end), **D.S.4** (remaining GDPR webhooks for App Store listing).
+> - **Remaining release blockers** for first-50 rollout, tracked in [`OPEN_TASKS.md`](OPEN_TASKS.md) § Next priorities: **`shopify app deploy`** (registers F.4 webhook subscriptions), **B.6** (real-card test order), **B.4** (mandatory legal pages), **D.P.1** (install on production — unblocks **B.8** GID capture which activates Add-to-Cart end-to-end on prod).
 >
-> See **Recently Shipped — Shopify pivot (May 13–17)** below for what's already in place.
+> See **Recently Shipped — May 18** below for what's already in place.
 
 This document defines the concrete checklist that must be green before Aura
 ships beyond the current dev-complete state. It is the single source of
@@ -28,6 +30,46 @@ The companion artifacts are:
 - `ops/scripts/smoke_test_full_flow.sh` — end-to-end smoke test
 - `ops/scripts/validate_dependency_report.py` — dependency report validator
 - `docs/DESIGN_SYSTEM_VALIDATION.md` — manual UI QA checklist
+
+---
+
+## Recently Shipped — May 18, 2026 (Multi-tenant catalog — F.2.x + F.3 + F.4 + observability sweep)
+
+The largest single-day push of the project. The engine went from single-catalog to fully multi-tenant on the read path; the Vibe app installs and bootstraps a merchant's catalog end-to-end; product webhooks keep the catalog fresh in real time; a daily cron is the safety net + enrichment poller.
+
+### Multi-tenant retrieval foundation (F.2.0/F.2.1)
+- **PR #458** ([docs](../docs/OPEN_TASKS.md)) — F.2.1 spike validated HNSW iterative scan with tenant filter at 0.035% selectivity (5 rows out of 14,242) returns all rows in 185ms with `max_scan_tuples=20000`.
+- **PR #459** — `tenants` table + `catalog_item_embeddings.tenant_id` + new RPC `match_catalog_item_embeddings_v2(p_tenant_id, ...)` that RAISEs on empty tenant. Backfilled 1,065 orphan rows to TheSigmaVibe.
+
+### Idempotent install-time catalog sync (F.2.2 + F.2.2c)
+- **PR #460/#461** — `CatalogBootstrapService.process_products` with per-product existence check (cache-hit refreshes metadata only, no LLM cost; cache-miss embeds + inserts). Tenant-prefixed `product_id` avoids global UNIQUE collision when two tenants import the same Shopify GID. HTML stripping for `descriptionHtml` before embedding.
+- **PR #462/#463** — Browser-driven `SyncProgressCard` on the merchant home runs a polling loop against `/app/api/bootstrap` (new route). Each tick fetches one Shopify Admin GraphQL page (50 products), forwards to engine, returns cursor + done. Engine `bootstrap-complete` flips status to `ready` once pagination exhausts. Review fixes: server-side tenant derivation from `session.shop` (no body-trust), GraphQL error detection (don't false-complete on throttle), loader-failure banner.
+
+### Vision attribute enrichment (F.2.2b)
+- **PR #464** + **#468** UUID fix + **#472** ingest fix — OpenAI Batch API submit + poll. Migration adds `tenant_enrichment_batches` table + `catalog_enriched.vision_batch_id`. Cost-bearing invariant SQL-enforced: `row_status='pending_enrichment' AND vision_batch_id IS NULL`. Auto-submitted at `bootstrap_complete`. PR #472 fixed the ingest to mirror the 8 retrieval-filter columns to `catalog_item_embeddings` under the canonical lowercase mapping — without this, vision data landed but every retrieval filter excluded every row.
+
+### Real-time product webhooks (F.4)
+- **PR #465** + **#467** review fixes + **#470** revival — `products/{create,update,delete}` webhooks via two handlers ([webhooks.products.upsert.tsx](../vibe-app/app/routes/webhooks.products.upsert.tsx), [webhooks.products.delete.tsx](../vibe-app/app/routes/webhooks.products.delete.tsx)) forwarding to engine. Soft-delete only on `products/delete` (preserves vision enrichment cost). Topic-aware revival: only `products/create` clears `deleted_at` (protects against out-of-order `products/update` retries). Migration adds `available_for_sale` + `deleted_at` columns; retrieval RPC filters `IS NOT FALSE`.
+
+### Daily catalog sync cron (F.3)
+- **PR #466** + **#467** + **#470** — Vercel cron at 19:30 UTC. Per-tenant incremental Shopify walk (`updated_at:>=30h`), forwards to bootstrap-batch with `revive_soft_deleted=true` so cron-walks revive prior soft-deletes. Then `enrichment/submit-pending-all` + `enrichment/poll-all` to keep vision enrichment caught up. `CRON_SECRET` validated; soft 45s budget; tenants ordered oldest-`last_sync_at`-first.
+
+### Storefront wiring fixes
+- **PR #471** — threaded `shop_domain` from the App Proxy URL params into `startTurn` for both `apps.vibe.style` + `apps.vibe.api.check`. Engine's `resolve_tenant_id` refused to default for `vibe_storefront` channel; this had been quietly 500ing every customer turn since F.2.0 landed.
+- **PR #473** — `pollTurn` resilience: 8s → 20s abort timeout + soft-fail on transient (return `status="running"` so the storefront keeps polling instead of bubbling abort up as 500).
+- **PR #474** — **Cart-wiring fix**. `response_formatter._build_item_card` was silently dropping `shopify_variant_ids` + `shopify_product_id` + `catalog_description` + `is_anchor`. Every catalog item shipped to the storefront had `shopify_variant_ids={}`, which the cart code treats as "catalog hasn't finished syncing". Affected all tenants going through the catalog pipeline since F.2.x — we just hadn't exercised Add-to-Cart on a freshly-bootstrapped tenant before.
+
+### Observability sweep (#475 + #476)
+- **PR #475 (critical)**: `aura_outfit_item_variant_ids_missing_total` + WARNING log (would have caught #474 immediately); `aura_bootstrap_batch_total{status}` + per-outcome histogram + `vibe_bootstrap_tick` structured logs; `aura_product_webhook_total{topic, status}` + engine-side tenant context in `CatalogProductSyncService` logs.
+- **PR #476 (medium)**: `aura_enrichment_batch_total{status}` + `aura_enrichment_rows_{ingested,failed}_total`; `aura_catalog_status_change_total{action}` ticks separately on webhook revive vs cron revive vs soft-delete.
+
+### End-to-end verified on Vibe Test
+- Tenant row `t_IIZj3vNuxRMAAAAAago064SQLXlPuQMq` (`vibe-test-nmt8wy3q.myshopify.com`), 60 products bootstrapped, vision batch ingested (58/60 — 2 image-less products correctly skipped), all 8 retrieval filter columns populated. Customer storefront `/apps/vibe/style` returns real outfit recommendations ("Raven Angle Top + Black Edge Pants" for "sexy date night"), Buy Now / Add to Cart resolve to real variant gids.
+
+### What's next
+**Launch-blocking chain (user action):** `shopify app deploy` (registers F.4 webhook subscriptions) · B.4 legal pages · B.6 real-card test · D.P.1 install on production · B.8 GID capture (script in [scripts/seed_thesigmavibe_catalog/](../scripts/seed_thesigmavibe_catalog/)) · D.C.9 cart verify on prod.
+
+**Then:** Phase G (order webhooks + attribution) · D.M.2/.3/.4/.5 (admin pages) · Phase C completion (engine multi-tenancy beyond catalog — required before tenant #3).
 
 ---
 
