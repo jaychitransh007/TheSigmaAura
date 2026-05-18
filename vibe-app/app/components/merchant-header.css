@@ -57,6 +57,27 @@
   cursor: default;
 }
 
+.merchant-header-logo--img {
+  /* Replaces text padding when we're showing an image so the logo
+   * sizes from the asset, not from font metrics. */
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+.merchant-header-logo-image {
+  display: block;
+  max-height: 2.25rem;
+  width: auto;
+  object-fit: contain;
+}
+
+@media (max-width: 640px) {
+  .merchant-header-logo-image {
+    max-height: 1.85rem;
+  }
+}
+
 .merchant-header-nav {
   flex: 1 1 auto;
   display: flex;

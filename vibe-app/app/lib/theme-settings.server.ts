@@ -66,7 +66,12 @@ type ThemeFileQueryResult = {
 
 type ShopAndMenusIndexResult = {
   data?: {
-    shop?: { name?: string };
+    shop?: {
+      name?: string;
+      brand?: {
+        logo?: { image?: { url?: string } };
+      };
+    };
     menus?: {
       edges?: Array<{ node?: { id?: string; handle?: string } }>;
     };
@@ -104,6 +109,10 @@ export async function readMerchantThemeOverrides(
   const themeProbed = themeContent ? probeThemeSettings(themeContent) : EMPTY;
   return {
     ...themeProbed,
+    // shop.brand.logo via Admin GraphQL wins over the theme JSON
+    // probe (which is unreliable per theme). themeProbed.logo_url is
+    // always empty today, so the precedence is effectively one-way.
+    logo_url: shopAndMenu.logoUrl || themeProbed.logo_url,
     shop_name: shopAndMenu.shopName,
     main_menu: shopAndMenu.menuItems,
   };
@@ -147,29 +156,48 @@ async function fetchThemeSettings(admin: AdminGraphqlClient): Promise<string> {
 
 async function fetchShopAndMenu(
   admin: AdminGraphqlClient,
-): Promise<{ shopName: string; menuItems: Array<{ title: string; url: string }> }> {
+): Promise<{
+  shopName: string;
+  logoUrl: string;
+  menuItems: Array<{ title: string; url: string }>;
+}> {
   try {
     // The 2026-04 Admin API removed `menu(handle:)`. Two-step
-    // lookup: pull shop.name + the menus index (id+handle only) in
-    // one call, then fetch the chosen menu's top-level items by id
-    // in a second call. MerchantHeader only renders the top level —
-    // no nested `items` are fetched, no dropdown is wired.
+    // lookup: pull shop.name + brand.logo + the menus index
+    // (id+handle only) in one call, then fetch the chosen menu's
+    // top-level items by id in a second call. MerchantHeader only
+    // renders the top level — no nested `items` are fetched, no
+    // dropdown is wired.
+    //
+    // shop.brand.logo is the merchant-set brand asset (Shopify admin
+    // → Settings → Brand → Logos). When empty, the theme tends to
+    // fall back to text, so MerchantHeader does the same.
     const indexResp = await admin.graphql(
       `#graphql
       query VibeShopAndMenusIndex {
-        shop { name }
+        shop {
+          name
+          brand {
+            logo { image { url } }
+          }
+        }
         menus(first: 50) {
           edges { node { id handle } }
         }
       }`,
     );
-    if (!indexResp.ok) return { shopName: "", menuItems: [] };
+    if (!indexResp.ok) {
+      return { shopName: "", logoUrl: "", menuItems: [] };
+    }
     const idx = (await indexResp.json()) as ShopAndMenusIndexResult;
     const shopName = String(idx.data?.shop?.name ?? "").trim();
+    const logoUrl = String(
+      idx.data?.shop?.brand?.logo?.image?.url ?? "",
+    ).trim();
     const mainId = idx.data?.menus?.edges?.find(
       (e) => e.node?.handle === "main-menu",
     )?.node?.id;
-    if (!mainId) return { shopName, menuItems: [] };
+    if (!mainId) return { shopName, logoUrl, menuItems: [] };
 
     const menuResp = await admin.graphql(
       `#graphql
@@ -180,7 +208,7 @@ async function fetchShopAndMenu(
       }`,
       { variables: { id: mainId } },
     );
-    if (!menuResp.ok) return { shopName, menuItems: [] };
+    if (!menuResp.ok) return { shopName, logoUrl, menuItems: [] };
     const detail = (await menuResp.json()) as MenuTopLevelByIdResult;
     const items = detail.data?.menu?.items ?? [];
     const menuItems: Array<{ title: string; url: string }> = [];
@@ -189,9 +217,9 @@ async function fetchShopAndMenu(
       const url = String(it.url ?? "").trim();
       if (title && url) menuItems.push({ title, url });
     }
-    return { shopName, menuItems };
+    return { shopName, logoUrl, menuItems };
   } catch {
-    return { shopName: "", menuItems: [] };
+    return { shopName: "", logoUrl: "", menuItems: [] };
   }
 }
 

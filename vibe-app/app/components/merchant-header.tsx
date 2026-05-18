@@ -42,6 +42,7 @@ export function MerchantHeader({
 }) {
   const location = useLocation();
   const shopName = (overrides?.shop_name || "").trim();
+  const logoUrl = (overrides?.logo_url || "").trim();
   const menuItems = overrides?.main_menu ?? [];
   const cartCount = useCartCount();
   const accountHref = isAuthenticated ? "/account" : "/account/login";
@@ -51,11 +52,19 @@ export function MerchantHeader({
     <header className="merchant-header" data-testid="merchant-header">
       <div className="merchant-header-inner">
         <div className="merchant-header-brand">
-          {/* Text logo as the cheapest reliable inheritance — merchant
-              logo images live in theme assets, not in the
-              settings_data.json we probe. Can grow into a real <img>
-              once we capture the asset URL too. */}
-          {shopName ? (
+          {/* Prefer the merchant's brand logo asset (Settings → Brand)
+              over the text fallback. shop.brand.logo.image.url is
+              captured server-side; if absent, render the shop name.
+              If both are absent, the placeholder reads "Vibe". */}
+          {logoUrl ? (
+            <a href="/" className="merchant-header-logo merchant-header-logo--img">
+              <img
+                src={logoUrl}
+                alt={shopName || "Store"}
+                className="merchant-header-logo-image"
+              />
+            </a>
+          ) : shopName ? (
             <a href="/" className="merchant-header-logo">
               {shopName}
             </a>
@@ -128,25 +137,37 @@ export function MerchantHeader({
  * Read the customer's live cart count from Shopify's Ajax Cart endpoint
  * (`/cart.js`). Same-origin under the App Proxy, so cookies flow and
  * the response reflects the current cart for this browser session.
- * Returns 0 on any failure — the badge just hides.
+ *
+ * Re-fetches when the tab becomes visible again — handles the case
+ * where the customer adds-to-cart on another tab / the storefront and
+ * comes back: the badge updates without a full page reload. Returns 0
+ * on any failure.
  */
 function useCartCount(): number {
   const [count, setCount] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    fetch("/cart.js", { credentials: "same-origin" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return;
-        const c = (data as { item_count?: number }).item_count;
-        if (typeof c === "number" && c >= 0) setCount(c);
-      })
-      .catch(() => {
-        // Network / parse failure → leave at 0. The badge just hides;
-        // the cart link still works.
-      });
+    const fetchCount = async () => {
+      try {
+        const r = await fetch("/cart.js", { credentials: "same-origin" });
+        if (cancelled || !r.ok) return;
+        const data = (await r.json()) as { item_count?: number };
+        if (cancelled) return;
+        if (typeof data.item_count === "number" && data.item_count >= 0) {
+          setCount(data.item_count);
+        }
+      } catch {
+        // Network / parse failure → leave the current count alone.
+      }
+    };
+    void fetchCount();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void fetchCount();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
   return count;
