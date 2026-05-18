@@ -173,6 +173,69 @@ class SupabaseRestClient:
         rows = self.select_many(table, filters=filters, columns=columns, limit=1)
         return rows[0] if rows else None
 
+    def count(self, table: str, *, filters: Optional[Dict[str, str]] = None) -> int:
+        """Return the count of rows in ``table`` matching ``filters``.
+
+        Uses PostgREST's ``Prefer: count=exact`` semantics: the response
+        carries the total in the ``Content-Range`` header in the
+        ``0-N/<total>`` (or ``*/0``) form. We fetch only one row to
+        keep the body small while still getting the exact count —
+        memory-bounded regardless of how many rows match. Use this
+        instead of ``select_many`` + ``len`` when you only need the count.
+        """
+        url = f"{self.rest_url}/{table.lstrip('/')}"
+        query: Dict[str, Any] = {"select": "*", "limit": "1"}
+        if filters:
+            query.update(filters)
+        encoded = urlencode(query, doseq=True, safe="(),.*")
+        url = f"{url}?{encoded}"
+
+        import time as _time
+        started = _time.monotonic()
+        status = "ok"
+        try:
+            resp = self._http.get(
+                url,
+                headers={"Prefer": "count=exact"},
+            )
+            if resp.status_code >= 400:
+                status = f"http_{resp.status_code}"
+                raise SupabaseError(
+                    f"Supabase count failed ({resp.status_code}) GET {url}: {resp.text}"
+                )
+            # PostgREST returns ``0-N/<total>`` for non-empty results,
+            # ``*/0`` for empty (or older PostgREST versions). Either way
+            # the integer total lives after the final ``/``.
+            content_range = (
+                resp.headers.get("content-range")
+                or resp.headers.get("Content-Range")
+                or ""
+            )
+            if "/" not in content_range:
+                raise SupabaseError(
+                    f"count response missing Content-Range header for {table}: {content_range!r}"
+                )
+            total_part = content_range.rsplit("/", 1)[-1].strip()
+            if total_part in ("*", ""):
+                return 0
+            try:
+                return int(total_part)
+            except ValueError as exc:
+                raise SupabaseError(
+                    f"malformed count in Content-Range {content_range!r} for {table}"
+                ) from exc
+        finally:
+            try:
+                from .metrics import observe_external_call
+                observe_external_call(
+                    service="supabase",
+                    operation=f"GET-count {table.split('?')[0]}",
+                    status=status,
+                    latency_ms=(_time.monotonic() - started) * 1000.0,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
     def update_one(self, table: str, *, filters: Dict[str, str], patch: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         out = self._request("PATCH", table, query=filters, body=patch)
         if isinstance(out, list):

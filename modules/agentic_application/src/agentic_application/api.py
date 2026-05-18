@@ -714,12 +714,14 @@ def create_app() -> FastAPI:
         thread into bootstrap calls.
         """
         from platform_core.metrics import observe_tenant_lookup
-        # Probe first so we can attribute "created" vs "existing" to
-        # the counter. get_or_create itself does the same select
-        # internally; the extra query is acceptable on a low-volume
-        # endpoint (one call per admin home load + install).
-        existing = tenant_repo.get_by_shop_domain(payload.shopify_shop_domain)
         try:
+            # Probe first so we can attribute "created" vs "existing" to
+            # the counter. get_or_create itself does the same select
+            # internally; the extra query is acceptable on a low-volume
+            # endpoint (one call per admin home load + install).
+            # Inside the try block so a DB failure on this probe
+            # registers as outcome="error" instead of escaping unobserved.
+            existing = tenant_repo.get_by_shop_domain(payload.shopify_shop_domain)
             row = tenant_repo.get_or_create(
                 shop_domain=payload.shopify_shop_domain,
                 shopify_shop_gid=payload.shopify_shop_gid or None,
@@ -876,15 +878,24 @@ def create_app() -> FastAPI:
             # (~$0.003 per row, gated by the cost-bearing invariant
             # only after the freshly-inserted duplicates have already
             # paid the cost). Best-effort — never fail the bootstrap.
+            #
+            # Two `count()` calls (DB-side aggregation via PostgREST's
+            # ``Prefer: count=exact`` Content-Range header) instead of
+            # the original ``select_many(limit=50000)``. Memory-bounded
+            # regardless of catalog size and deterministic for tenants
+            # exceeding the prior cap.
             try:
-                rows = client.select_many(
+                total = client.count(
                     "catalog_enriched",
                     filters={"tenant_id": f"eq.{tenant_id}"},
-                    columns="shopify_product_id",
-                    limit=50000,
                 )
-                total = len(rows)
-                linked = sum(1 for r in rows if r.get("shopify_product_id"))
+                linked = client.count(
+                    "catalog_enriched",
+                    filters={
+                        "tenant_id": f"eq.{tenant_id}",
+                        "shopify_product_id": "not.is.null",
+                    },
+                )
                 observe_catalog_linkage(
                     tenant_id=tenant_id,
                     total_rows=total,
