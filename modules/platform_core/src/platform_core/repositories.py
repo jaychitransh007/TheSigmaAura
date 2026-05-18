@@ -108,7 +108,90 @@ class ConversationRepository:
                 patch={"user_id": canonical_external},
             )
 
+        # Propagate attribution (acquisition_source / campaign / referral
+        # / icp_tag) from the alias's onboarding_profile to the canonical's
+        # if alias has meaningful values and canonical is at defaults.
+        # Without this, a vibe_storefront customer who later signs in via
+        # Shopify Customer Account shows up in Panel 01 (acquisition
+        # funnel) as "unknown" forever, because the canonical users +
+        # onboarding_profiles rows were created with default values when
+        # the merge endpoint resolved the new shopify:{id} identity.
+        if (
+            alias_user_id
+            and canonical_user_id
+            and alias_user_id != canonical_user_id
+        ):
+            self._propagate_attribution(alias_user_id, canonical_user_id)
+
         return canonical_user
+
+    def _propagate_attribution(
+        self,
+        alias_user_id: str,
+        canonical_user_id: str,
+    ) -> None:
+        """Copy onboarding_profiles attribution fields from alias → canonical.
+
+        Fields: acquisition_source, acquisition_campaign, referral_code, icp_tag.
+
+        Only copies a field when:
+          - alias has a non-empty, non-default value
+          - canonical's current value IS the default (empty or "unknown")
+
+        Best-effort: any failure is logged and swallowed so merge itself
+        is never blocked by attribution propagation hiccups.
+        """
+        try:
+            alias_profile = self.client.select_one(
+                "onboarding_profiles",
+                filters={"user_id": f"eq.{alias_user_id}"},
+            )
+            if not alias_profile:
+                return
+            canonical_profile = self.client.select_one(
+                "onboarding_profiles",
+                filters={"user_id": f"eq.{canonical_user_id}"},
+            )
+            if not canonical_profile:
+                # Canonical row doesn't exist yet — ensureOnboardingProfile
+                # will create it later. No row to PATCH against today.
+                # Future enhancement: cache the alias attribution so the
+                # ensure path can apply it. Out of scope here.
+                return
+
+            # (field_name, default_values_treated_as_unset)
+            fields: tuple = (
+                ("acquisition_source", {"", "unknown"}),
+                ("acquisition_campaign", {""}),
+                ("referral_code", {""}),
+                ("icp_tag", {""}),
+            )
+
+            patch: Dict[str, Any] = {}
+            for field, defaults in fields:
+                alias_val = str(alias_profile.get(field) or "").strip()
+                canonical_val = str(canonical_profile.get(field) or "").strip()
+                if (
+                    alias_val
+                    and alias_val not in defaults
+                    and canonical_val in defaults
+                ):
+                    patch[field] = alias_val
+
+            if patch:
+                patch["updated_at"] = _now_iso()
+                self.client.update_one(
+                    "onboarding_profiles",
+                    filters={"user_id": f"eq.{canonical_user_id}"},
+                    patch=patch,
+                )
+        except Exception as exc:  # noqa: BLE001
+            _log.warning(
+                "merge_external_user_identity: attribution propagation failed alias=%s canonical=%s err=%s",
+                alias_user_id,
+                canonical_user_id,
+                exc,
+            )
 
     def update_conversation_context(self, conversation_id: str, session_context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return self.client.update_one(
