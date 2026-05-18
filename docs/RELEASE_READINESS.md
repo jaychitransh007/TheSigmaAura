@@ -10,7 +10,7 @@ Last updated: May 18, 2026.
 > - **Conversation page live** at `/apps/vibe/style` at full feature parity with the legacy `platform_core/ui.py` reference. In-chat onboarding flow (D.O.1–D.O.3): branched welcome, parallel photos + gender-DOB cards, HEIC handling, photo zoom/pan, combined ft/in height-waist card, post-onboarding analysis indicator + templated "what would you like to wear?" prompt.
 > - **Add-to-Cart end-to-end working** (PR #474): response_formatter now passes `shopify_variant_ids` + `shopify_product_id` + `catalog_description` through to the storefront. PR #475 added a regression guard (`aura_outfit_item_variant_ids_missing_total` + WARNING log) so this bug class can't reappear silently.
 > - **Shopify Customer Account merge** (D.S.3b) wired via `POST /v1/users/merge`, IDOR-guarded.
-> - **Observability** — engine: `aura_turn_total{channel}`, `aura_user_merge_total{status}`, `aura_onboarding_endpoint_total{endpoint, status, channel}`, `aura_onboarding_image_bytes{category, channel}`, plus the F.2.x sweep added in #475/#476 (`aura_outfit_item_variant_ids_missing_total`, `aura_bootstrap_batch_total{status}` + per-outcome histogram, `aura_product_webhook_total{topic, status}`, `aura_enrichment_batch_total{status}` + row-count totals, `aura_catalog_status_change_total{action}`). Vibe: JSON-to-stdout structured logs (`vibe_init_outcome`, `vibe_merge_outcome`, `vibe_turn_pairing_rewrite`, `vibe_bootstrap_tick`, `vibe_cron_daily_sync_*`, `vibe_product_webhook_*`) via [`vibe-app/app/lib/logger.server.ts`](../vibe-app/app/lib/logger.server.ts).
+> - **Observability** — engine: `aura_turn_total{channel}`, `aura_user_merge_total{status}`, `aura_onboarding_endpoint_total{endpoint, status, channel}`, `aura_onboarding_image_bytes{category, channel}`, plus the F.2.x sweep added in #475/#476 (`aura_outfit_item_variant_ids_missing_total`, `aura_bootstrap_batch_total{status}` + per-outcome histogram, `aura_product_webhook_total{topic, status}`, `aura_enrichment_batch_total{status}` + row-count totals, `aura_catalog_status_change_total{action}`), plus #498 (`aura_theme_overrides_patch_total{outcome}`). Vibe: JSON-to-stdout structured logs (`vibe_init_outcome`, `vibe_merge_outcome`, `vibe_turn_pairing_rewrite`, `vibe_bootstrap_tick`, `vibe_cron_daily_sync_*`, `vibe_product_webhook_*`, `vibe_theme_overrides_refresh`, `vibe_menu_injection_outcome`, `vibe_navigation_menu_{lookup,update}_failed`, `vibe_tenant_lookup_failed`) via [`vibe-app/app/lib/logger.server.ts`](../vibe-app/app/lib/logger.server.ts).
 > - The standalone web UI is deprecated. Gates 3 (dependency/retention) and Gate 4 (design polish) targeting `platform_core/ui.py` are no longer the release blocker.
 > - **Remaining release blockers** for first-50 rollout, tracked in [`OPEN_TASKS.md`](OPEN_TASKS.md) § Next priorities: **`shopify app deploy`** (registers F.4 webhook subscriptions), **B.6** (real-card test order), **B.4** (mandatory legal pages), **D.P.1** (install on production — unblocks **B.8** GID capture which activates Add-to-Cart end-to-end on prod).
 >
@@ -70,6 +70,47 @@ The largest single-day push of the project. The engine went from single-catalog 
 **Launch-blocking chain (user action):** `shopify app deploy` (registers F.4 webhook subscriptions) · B.4 legal pages · B.6 real-card test · D.P.1 install on production · B.8 GID capture (script in [scripts/seed_thesigmavibe_catalog/](../scripts/seed_thesigmavibe_catalog/)) · D.C.9 cart verify on prod.
 
 **Then:** Phase G (order webhooks + attribution) · D.M.2/.3/.4/.5 (admin pages) · Phase C completion (engine multi-tenancy beyond catalog — required before tenant #3).
+
+---
+
+## Recently Shipped — May 18, 2026 — afternoon push (Theme inheritance + replicated MerchantHeader + 2026-04 API drift)
+
+A separate push, same day. The catalog work shipped in the morning; the afternoon was about making `/apps/vibe/*` pages look + behave like part of the host store rather than an embedded widget.
+
+### Theme inheritance + `theme_overrides` PATCH (#478, #480, #483–#486, #494, #496)
+- New engine endpoint `PATCH /v1/tenants/{tenant_id}/theme-overrides` ([api.py](../modules/agentic_application/src/agentic_application/api.py)) writes a per-tenant `theme_overrides` JSONB column: `font_body`, `color_primary`, `color_background`, `color_text`, `logo_url`, `shop_name`, `main_menu`.
+- `readMerchantThemeOverrides` ([theme-settings.server.ts](../vibe-app/app/lib/theme-settings.server.ts)) probes the merchant's active theme's `config/settings_data.json` (Dawn / Studio / Refresh fallback chain for the font + colors), `shop.brand.logo.image.url`, `shop.name`, and the `main-menu` top-level items via Admin GraphQL.
+- Admin home loader ([app._index.tsx](../vibe-app/app/routes/app._index.tsx)) refreshes on every load with a `themeOverridesDiffer` check so unchanged-content PATCHes are skipped (avoids `updated_at_iso` churn). `themes/update` webhook handles ongoing drift.
+- Colors validated by anchored regex (`^rgba?\([^)]+\)$` or `^#[0-9a-f]{3,8}$`) before injection — prevents CSS injection via malformed theme values.
+
+### Replicated MerchantHeader on `/apps/vibe/*` (#479, #491, #492, #495, #496, #497)
+- New [merchant-header.tsx](../vibe-app/app/components/merchant-header.tsx) replaces the AURA-branded conv-header on customer-facing Vibe pages. Consumes `theme_overrides` via the loader.
+- **Logo**: brand asset image from `shop.brand.logo`; falls back to `shop_name` text; placeholder reads "Vibe".
+- **Nav**: merchant's `main-menu` items + the two Vibe-owned destinations get an active underline. Mixed-case / theme-font (no forced UPPERCASE, no forced Fraunces).
+- **Utility icons**: search → `/search`, account → `/account` (or `/account/login` if anonymous), cart → `/cart` with live item-count badge from `/cart.js`. `useCartCount` re-fetches on `visibilitychange` so the badge updates after add-to-cart in another tab.
+- **Chrome**: white background by default, `color-mix(in srgb, currentColor, transparent N%)` borders that adapt to dark themes. `<style>` injection from [theme-overrides.tsx](../vibe-app/app/components/theme-overrides.tsx) sets `--theme-color-primary` / `--theme-font-body` / `--theme-color-background` / `--theme-color-text` at `:root`.
+- **Chat body**: canvas flipped to `#ffffff` (was Confident Luxe cream). User messages render in a soft chip (`--user-message-bg: #f5f0e8`, left-aligned, content-sized).
+
+### Menu navigation injection — "Find your Vibe" + "Your Vibes" (#481, #482 self-review, #487, #488, #489, #490)
+- `ensureVibeMenuItems` ([navigation.server.ts](../vibe-app/app/lib/navigation.server.ts)) idempotently writes the two Vibe-owned items into the merchant's `main-menu` linklist via `menuUpdate`. Run on every admin home load.
+- `removeVibeMenuItems` runs from the `app/uninstalled` webhook so the merchant's nav stays clean after uninstall.
+- Round-trips existing item IDs (in-place update; previously stripped IDs → re-creates with new IDs on every load).
+- Fetches three levels of `items` nesting so deeper menus aren't silently truncated by the wholesale-replace semantics of `menuUpdate`.
+- **New scope**: `write_online_store_navigation` (replaces an invalid `write_navigation` first try). Existing installs get an inline re-grant nudge via App Bridge `scopes.request(...)`.
+
+### 2026-04 Admin GraphQL drift fixes — three back-to-back live breaks
+Surfaced one-by-one only after the previous fix let the next call reach the API:
+- **#487** — `menu(handle: "main-menu")` removed in 2026-04. Replaced with `menus(first: 50)` index + handle filter, then `menu(id: $id)` for the chosen menu. Two-step lookup applied to both [navigation.server.ts](../vibe-app/app/lib/navigation.server.ts) and [theme-settings.server.ts](../vibe-app/app/lib/theme-settings.server.ts).
+- **#489** — `menuUpdate(items:)` arg type changed from `[MenuItemCreateInput!]!` → `[MenuItemUpdateInput!]!`. Round-trip the `id` field on every item.
+- **#490** — `MenuItemType` enum dropped `FRONTEND_LINK`. Vibe items now `HTTP`; explicit rewrite of any legacy `FRONTEND_LINK` so cached items don't reject the whole mutation.
+- A parallel codebase sweep (Explore agent) confirmed the remaining GraphQL surfaces (`themes(first: 1)`, products pagination, webhooks) are clean against 2026-04.
+
+### Theme + menu observability (#498)
+- Engine: `aura_theme_overrides_patch_total{outcome}` counter (`applied | error`) via `observe_theme_overrides_patch` ([metrics.py](../modules/platform_core/src/platform_core/metrics.py)), wired into the PATCH handler at the happy path + both `HTTPException` paths.
+- Vibe-app: structured JSON events via [`logger.server.ts`](../vibe-app/app/lib/logger.server.ts) — `vibe_theme_overrides_refresh{outcome=applied|skipped_unchanged|skipped_empty_probe|failed}` (applied case carries `has_logo`, `has_font`, `has_color_primary`, `menu_items_count` for coverage queries); `vibe_menu_injection_outcome{outcome=added|already_present|skipped|failed}`; `vibe_navigation_menu_lookup_failed` / `vibe_navigation_menu_update_failed` with `stage` labels (replaces 6 `console.warn` sites); `vibe_tenant_lookup_failed` replaces a `console.error`.
+
+### What's next (afternoon push)
+Theme/menu infrastructure is fully wired. Optional follow-ups: announcement-bar replication, Shopify Markets currency selector, client-side cart-fetch beacon (needs new endpoint). None are launch-blocking.
 
 ---
 
