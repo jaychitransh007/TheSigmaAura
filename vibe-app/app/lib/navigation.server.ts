@@ -1,5 +1,4 @@
-// Inject + clean up Vibe's menu items in the merchant's main-menu
-// (PR #481).
+// Inject + clean up Vibe's menu items in the merchant's main-menu.
 //
 // Adds two link items to the merchant's "Main menu" linklist:
 //   - "Find your Vibe" → /apps/vibe/style
@@ -8,10 +7,8 @@
 // Idempotent — checks for existing items by URL before inserting.
 // On uninstall, removes items whose URL matches our Vibe paths.
 //
-// Required scope: `write_navigation` (added in PR #481, forces a
-// re-grant on the dev store + production stores). Without it the
-// menuUpdate mutation returns userErrors; we log + skip rather than
-// fail loudly.
+// Required scope: `write_navigation`. Without it the menuUpdate
+// mutation returns userErrors; we log + skip rather than fail loudly.
 
 type AdminGraphqlClient = {
   graphql(query: string, options?: unknown): Promise<Response>;
@@ -22,13 +19,13 @@ type MenuItem = {
   title: string;
   url: string;
   type: string;
-  // PR #482 fix: typed menu items (COLLECTION_LINK, PRODUCT_LINK,
-  // PAGE_LINK, BLOG_LINK, ARTICLE_LINK, METAOBJECT, etc.) carry a
-  // resource binding via resourceId. Without round-tripping it, the
-  // menuUpdate mutation either rejects with "resourceId is required"
-  // userErrors OR silently rewrites the items as broken links.
-  // Default Shopify main menus have at least one typed item (Catalog
-  // → COLLECTION_LINK, Contact → PAGE_LINK).
+  // Typed menu items (COLLECTION_LINK, PRODUCT_LINK, PAGE_LINK,
+  // BLOG_LINK, ARTICLE_LINK, METAOBJECT, etc.) carry a resource
+  // binding via resourceId. Without round-tripping it, the menuUpdate
+  // mutation either rejects with "resourceId is required" userErrors
+  // OR silently rewrites the items as broken links. Default Shopify
+  // main menus have at least one typed item (Catalog → COLLECTION_LINK,
+  // Contact → PAGE_LINK).
   resourceId?: string | null;
   tags?: string[] | null;
   items?: MenuItem[];
@@ -39,9 +36,10 @@ const VIBE_MENU_ITEMS: ReadonlyArray<{ title: string; url: string }> = [
   { title: "Your Vibes", url: "/apps/vibe/looks" },
 ];
 
-// URLs (lowercased) that identify Vibe-owned menu items. Used by
-// removeVibeMenuItems to recognise and prune them on uninstall.
-const VIBE_PATH_MARKERS = ["/apps/vibe/style", "/apps/vibe/looks"];
+// Derive from VIBE_MENU_ITEMS so a future addition stays in sync —
+// and so the values are guaranteed lowercase to match
+// urlAlreadyPresent's compare-on-lowercase contract.
+const VIBE_PATH_MARKERS = VIBE_MENU_ITEMS.map((it) => it.url.toLowerCase());
 
 type MenuQueryResult = {
   data?: {
@@ -79,8 +77,8 @@ export async function ensureVibeMenuItems(admin: AdminGraphqlClient): Promise<{
   skipped?: string;
 }> {
   const menu = await fetchMainMenu(admin);
-  if (!menu) {
-    return { added: 0, alreadyPresent: 0, skipped: "main-menu not found" };
+  if (!menu || !menu.id) {
+    return { added: 0, alreadyPresent: 0, skipped: "main-menu not found or missing id" };
   }
   const existingUrls = new Set(
     (menu.items ?? []).map((it) => (it.url || "").toLowerCase()),
@@ -104,7 +102,7 @@ export async function ensureVibeMenuItems(admin: AdminGraphqlClient): Promise<{
       type: "FRONTEND_LINK",
     })),
   ];
-  const ok = await writeMenuItems(admin, menu.id!, menu.title || "Main menu", menu.handle || "main-menu", merged);
+  const ok = await writeMenuItems(admin, menu.id, menu.title || "Main menu", menu.handle || "main-menu", merged);
   if (!ok) {
     return {
       added: 0,
@@ -128,7 +126,9 @@ export async function removeVibeMenuItems(admin: AdminGraphqlClient): Promise<{
   skipped?: string;
 }> {
   const menu = await fetchMainMenu(admin);
-  if (!menu) return { removed: 0, skipped: "main-menu not found" };
+  if (!menu || !menu.id) {
+    return { removed: 0, skipped: "main-menu not found or missing id" };
+  }
   const items = menu.items ?? [];
   const filtered = items.filter(
     (it) => !urlAlreadyPresent(
@@ -141,7 +141,7 @@ export async function removeVibeMenuItems(admin: AdminGraphqlClient): Promise<{
   }
   const ok = await writeMenuItems(
     admin,
-    menu.id!,
+    menu.id,
     menu.title || "Main menu",
     menu.handle || "main-menu",
     filtered.map(stripMenuItemId),
@@ -182,10 +182,20 @@ async function fetchMainMenu(
         }
       }`,
     );
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      console.warn(
+        "[vibe] fetchMainMenu HTTP error status=%d",
+        resp.status,
+      );
+      return null;
+    }
     const gql = (await resp.json()) as MenuQueryResult;
     return gql.data?.menu ?? null;
-  } catch {
+  } catch (err) {
+    console.warn(
+      "[vibe] fetchMainMenu threw: %s",
+      err instanceof Error ? err.message : String(err),
+    );
     return null;
   }
 }

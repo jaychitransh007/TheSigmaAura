@@ -126,8 +126,8 @@ class TenantStatusResponse(BaseModel):
     product_count: int = 0
     bootstrap_completed_at: str = ""
     last_sync_at: str = ""
-    # PR #478: per-tenant theme overrides captured from the merchant's
-    # active Shopify theme settings (font, primary color, logo URL).
+    # Per-tenant theme overrides captured from the merchant's active
+    # Shopify theme settings (font, primary color, logo URL).
     # NULL/empty dict = no overrides yet → Vibe uses Confident Luxe
     # defaults. Vibe-app's loader passes this to vibe-page-shell.tsx
     # which injects values as CSS variables.
@@ -144,9 +144,9 @@ class UpdateThemeOverridesRequest(BaseModel):
     captured by vibe-app at install + on every `themes/update` webhook.
     All fields optional — caller sends what it could probe.
 
-    `main_menu` + `shop_name` (PR #480) feed the MerchantHeader on
-    customer-facing Vibe pages so the header reads as the merchant's
-    own header rather than an AURA-branded stranger."""
+    `main_menu` + `shop_name` feed the MerchantHeader on customer-
+    facing Vibe pages so the header reads as the merchant's own header
+    rather than an AURA-branded stranger."""
 
     font_body: str = ""
     color_primary: str = ""

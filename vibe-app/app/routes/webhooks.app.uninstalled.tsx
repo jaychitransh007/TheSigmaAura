@@ -8,13 +8,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   console.log(`Received ${topic} webhook for ${shop}`);
 
-  // PR #481: best-effort cleanup of the "Find your Vibe" + "Your
-  // Vibes" menu items we injected at install. Shopify usually revokes
-  // the access token before delivering this webhook, so the admin
-  // client may not be reachable — silent failure is fine; the
-  // merchant can remove leftover items from Online Store → Navigation.
-  // Run BEFORE deleting the session so unauthenticated.admin can
-  // still see it briefly.
+  // Best-effort cleanup of the "Find your Vibe" + "Your Vibes" menu
+  // items we injected at install. Shopify usually revokes the access
+  // token before delivering this webhook, so the admin client may not
+  // be reachable — silent failure is fine; the merchant can remove
+  // leftover items from Online Store → Navigation. Run BEFORE
+  // deleting the session so unauthenticated.admin can still see it
+  // briefly.
   if (session) {
     try {
       const { admin } = await unauthenticated.admin(shop);

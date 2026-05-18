@@ -26,7 +26,8 @@ export type ShopifyThemeOverrides = {
   color_background: string;
   color_text: string;
   logo_url: string;
-  // PR #480 additions for MerchantHeader replication.
+  // Used by MerchantHeader to replicate the merchant's storefront
+  // brand + nav at the top of customer-facing Vibe pages.
   shop_name: string;
   main_menu: Array<{ title: string; url: string }>;
 };
@@ -78,26 +79,34 @@ type ShopAndMenuQueryResult = {
 };
 
 /**
- * Fetch theme settings + shop name + main menu in a single Admin
- * GraphQL round-trip. Returns an all-empty object on any failure so
- * the caller can safely PATCH it to the engine (engine treats empty
- * strings as "not provided" and stores NULL).
+ * Fetch theme settings + shop name + main menu via two parallel
+ * Admin GraphQL queries (themes vs. menu use different filter shapes
+ * so they don't compose into one document cleanly). Each query's
+ * failure is contained — a missing menu doesn't prevent capturing
+ * the font/color, and vice versa. Logo URL is left empty in this
+ * MVP; the MerchantHeader falls back to the shop's name as a text
+ * logo.
  *
- * The combined fetch is intentional — vibe-app PATCHes the whole
- * `theme_overrides` payload at once, so reading both in one query
- * avoids a second round-trip and keeps everything consistent at
- * write time. Logo URL is left empty in this MVP; the MerchantHeader
- * falls back to the shop's name as a text logo.
+ * Returns an all-empty object on total failure so the caller can
+ * safely PATCH it to the engine (engine treats empty strings as
+ * "not provided" and stores NULL).
  */
 export async function readMerchantThemeOverrides(
   admin: AdminGraphqlClient,
 ): Promise<ShopifyThemeOverrides> {
-  // Two independent queries because the `themes` query and `menu`
-  // query don't compose well in a single document (menu uses a
-  // handle, themes uses a role filter). Run sequentially; a failure
-  // on the first short-circuits the rest of the probe — Confident
-  // Luxe defaults take over.
-  let themeContent = "";
+  const [themeContent, shopAndMenu] = await Promise.all([
+    fetchThemeSettings(admin),
+    fetchShopAndMenu(admin),
+  ]);
+  const themeProbed = themeContent ? probeThemeSettings(themeContent) : EMPTY;
+  return {
+    ...themeProbed,
+    shop_name: shopAndMenu.shopName,
+    main_menu: shopAndMenu.menuItems,
+  };
+}
+
+async function fetchThemeSettings(admin: AdminGraphqlClient): Promise<string> {
   try {
     const resp = await admin.graphql(
       `#graphql
@@ -122,18 +131,20 @@ export async function readMerchantThemeOverrides(
         }
       }`,
     );
-    if (resp.ok) {
-      const gql = (await resp.json()) as ThemeFileQueryResult;
-      themeContent =
-        gql.data?.themes?.edges?.[0]?.node?.files?.edges?.[0]?.node?.body
-          ?.content ?? "";
-    }
+    if (!resp.ok) return "";
+    const gql = (await resp.json()) as ThemeFileQueryResult;
+    return (
+      gql.data?.themes?.edges?.[0]?.node?.files?.edges?.[0]?.node?.body
+        ?.content ?? ""
+    );
   } catch {
-    // Continue — we'll still try the menu probe.
+    return "";
   }
+}
 
-  let shopName = "";
-  let menuItems: Array<{ title: string; url: string }> = [];
+async function fetchShopAndMenu(
+  admin: AdminGraphqlClient,
+): Promise<{ shopName: string; menuItems: Array<{ title: string; url: string }> }> {
   try {
     const resp = await admin.graphql(
       `#graphql
@@ -149,26 +160,20 @@ export async function readMerchantThemeOverrides(
         }
       }`,
     );
-    if (resp.ok) {
-      const gql = (await resp.json()) as ShopAndMenuQueryResult;
-      shopName = String(gql.data?.shop?.name ?? "").trim();
-      const items = gql.data?.menu?.items ?? [];
-      for (const it of items) {
-        const title = String(it.title ?? "").trim();
-        const url = String(it.url ?? "").trim();
-        if (title && url) menuItems.push({ title, url });
-      }
+    if (!resp.ok) return { shopName: "", menuItems: [] };
+    const gql = (await resp.json()) as ShopAndMenuQueryResult;
+    const shopName = String(gql.data?.shop?.name ?? "").trim();
+    const items = gql.data?.menu?.items ?? [];
+    const menuItems: Array<{ title: string; url: string }> = [];
+    for (const it of items) {
+      const title = String(it.title ?? "").trim();
+      const url = String(it.url ?? "").trim();
+      if (title && url) menuItems.push({ title, url });
     }
+    return { shopName, menuItems };
   } catch {
-    // Continue — partial probe is still useful.
+    return { shopName: "", menuItems: [] };
   }
-
-  const themeProbed = themeContent ? probeThemeSettings(themeContent) : EMPTY;
-  return {
-    ...themeProbed,
-    shop_name: shopName,
-    main_menu: menuItems,
-  };
 }
 
 /**
@@ -277,11 +282,15 @@ function pickColor(
     if (typeof raw !== "string") continue;
     const value = raw.trim();
     if (!value) continue;
-    // Accept hex (#RRGGBB or #RGB), rgb(), or rgba() — pass through
-    // verbatim. Anything else (theme variable names like `gradient`,
-    // empty CSS expressions) gets skipped.
+    // Accept hex (#RRGGBB or #RGB), rgb(...), or rgba(...). The
+    // anchored regex on rgb/rgba is load-bearing: this value gets
+    // injected into a <style> tag via dangerouslySetInnerHTML, so an
+    // open-ended `^rgba?\(` would let a malformed theme value like
+    // `rgb(0,0,0); } body { display: none; }` escape the CSS
+    // declaration. Requiring `\)$` at the end keeps the value
+    // contained inside the parens.
     if (/^#[0-9a-f]{3,8}$/i.test(value)) return value;
-    if (/^rgba?\(/i.test(value)) return value;
+    if (/^rgba?\([^)]+\)$/i.test(value)) return value;
   }
   return "";
 }

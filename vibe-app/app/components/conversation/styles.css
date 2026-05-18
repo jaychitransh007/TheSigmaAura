@@ -24,7 +24,7 @@
   --ink-soft: #2d1b14;
   --ink-muted: #806050;
   /* --accent is the action color (CTAs, sent bubble background, etc.).
-   * PR #478 lets the merchant's active theme override it via
+   * The merchant's active theme can override it via
    * --theme-color-primary (injected at :root by ThemeOverridesStyle).
    * Fallback chain: theme primary → Confident Luxe oxblood. */
   --accent: var(--theme-color-primary, #b45a3c);
@@ -43,9 +43,9 @@
   flex-direction: column;
 }
 
-/* PR #480 removed .conv-header / .conv-mock-badge / .conv-auth-pill —
- * the MerchantHeader took over the page top. Sign-in lives on the
- * merchant-header-account-pill class instead (merchant-header.css). */
+/* MerchantHeader took over the page top — .conv-header /
+ * .conv-mock-badge / .conv-auth-pill are no longer rendered. Sign-in
+ * lives on the merchant-header-account-pill class (merchant-header.css). */
 
 .conv-init-error {
   background: var(--rule-soft);
@@ -678,11 +678,11 @@
 }
 
 /* User message — full-width flat, italic Fraunces text on top, attached
- * image stacked below (PR #479). The bubble-on-the-right pattern was
- * replaced with a stacked-stack that reads more like a stylist's
- * brief: the question first, then the thing they're showing you.
- * No fill / no bubble — sits flat on the canvas so the assistant's
- * reply (left-ruled, also flat) lives in the same visual register. */
+ * image stacked below. The bubble-on-the-right pattern was replaced
+ * with a stacked layout that reads more like a stylist's brief: the
+ * question first, then the thing they're showing you. No fill, no
+ * bubble — sits flat on the canvas so the assistant's reply (left-
+ * ruled, also flat) lives in the same visual register. */
 .conv-message--user {
   align-self: stretch;
   max-width: 100%;
@@ -697,18 +697,17 @@
 
 .conv-message--user .conv-message-text {
   /* Italic Fraunces so the user's voice has clear typographic
-   * separation from the stylist's blocky body copy. */
+   * separation from the stylist's blocky body copy. Color inherits
+   * from the .conv-message--user parent. */
   font-family: "Fraunces", "Playfair Display", Georgia, serif;
   font-style: italic;
   font-size: 1.05rem;
   line-height: 1.45;
-  color: var(--ink-soft);
 }
 
-/* Stacked attachment preview — appears BELOW the user's question
- * text, sized as a small inset thumbnail (per the design screenshot).
- * No border-radius mask on the image itself; the surrounding card
- * frames it instead. */
+/* Stacked attachment preview — sits below the user's question text
+ * as a small inset thumbnail. align-items: flex-start on the parent
+ * handles the left alignment; no per-child override needed. */
 .conv-message-attachment {
   width: 100%;
   max-width: 180px;
@@ -716,7 +715,6 @@
   object-fit: cover;
   border-radius: 6px;
   display: block;
-  align-self: flex-start;
   background: var(--surface);
   box-shadow: 0 0 0 1px var(--rule);
 }

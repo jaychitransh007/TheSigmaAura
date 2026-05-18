@@ -1,12 +1,11 @@
-/* Merchant-header replicated on Vibe pages (PR #480).
+/* Merchant-header replicated on Vibe pages.
  *
  * Visual register: hairline-bordered horizontal bar at the very top
  * of every Vibe page. Brand text on the left, navigation chips in the
- * middle, no right-side widgets in this MVP (cart badge / customer
- * login deferred — see PR #480 description). Consumes the same
- * --theme-color-primary / --theme-font-body CSS vars that PR #478
- * injected, so when the merchant's theme exposes them the header
- * picks them up automatically.
+ * middle, account pill on the right. Consumes the
+ * --theme-color-primary / --theme-font-body CSS variables when the
+ * merchant's active theme exposes them, otherwise falls back to the
+ * Confident Luxe defaults declared on .conv-page / .vibe-page.
  *
  * Width matches the page content max-width (960px in conv-page,
  * wider in vibe-page). The .merchant-header itself stays full-width
