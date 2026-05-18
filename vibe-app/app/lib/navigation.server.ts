@@ -100,13 +100,13 @@ export async function ensureVibeMenuItems(admin: AdminGraphqlClient): Promise<{
   if (itemsToAdd.length === 0) {
     return { added: 0, alreadyPresent: VIBE_MENU_ITEMS.length };
   }
-  // menuUpdate replaces the items list wholesale, so we merge existing
-  // + new and write back. menuUpdate also expects MenuItemCreateInput
-  // (no `id`), so we strip the id field from existing items —
-  // Shopify will re-create them under new ids but the URLs + order
-  // round-trip cleanly.
+  // menuUpdate replaces the items list wholesale. With the 2026-04
+  // `MenuItemUpdateInput`, items keep their `id` to be updated in
+  // place; items without `id` are treated as new creates. So we
+  // round-trip existing items unchanged (with their ids) and append
+  // new ones without an id.
   const merged: MenuItem[] = [
-    ...(menu.items ?? []).map(stripMenuItemId),
+    ...(menu.items ?? []),
     ...itemsToAdd.map((it) => ({
       title: it.title,
       url: it.url,
@@ -155,7 +155,7 @@ export async function removeVibeMenuItems(admin: AdminGraphqlClient): Promise<{
     menu.id,
     menu.title || "Main menu",
     menu.handle || "main-menu",
-    filtered.map(stripMenuItemId),
+    filtered,
   );
   if (!ok) {
     return { removed: 0, skipped: "menuUpdate failed during cleanup" };
@@ -262,7 +262,7 @@ async function writeMenuItems(
   try {
     const resp = await admin.graphql(
       `#graphql
-      mutation VibeMenuUpdate($id: ID!, $title: String!, $handle: String!, $items: [MenuItemCreateInput!]!) {
+      mutation VibeMenuUpdate($id: ID!, $title: String!, $handle: String!, $items: [MenuItemUpdateInput!]!) {
         menuUpdate(id: $id, title: $title, handle: $handle, items: $items) {
           menu { id }
           userErrors { field message }
@@ -319,26 +319,22 @@ function urlAlreadyPresent(urls: Set<string>, candidate: string): boolean {
   return false;
 }
 
-function stripMenuItemId(item: MenuItem): MenuItem {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { id: _id, items, ...rest } = item;
-  return {
-    ...rest,
-    items: items?.map(stripMenuItemId),
-  };
-}
-
 function toMenuItemInput(item: MenuItem): Record<string, unknown> {
-  // Build the MenuItemCreateInput. resourceId is mandatory for typed
-  // links (COLLECTION_LINK / PRODUCT_LINK / PAGE_LINK / etc.) and
-  // forbidden for FRONTEND_LINK / HTTP. We pass it whenever non-null
-  // so the engine validates per-type rather than us hard-coding the
-  // allow-list.
+  // Build a MenuItemUpdateInput. `id` is required to update an
+  // existing item in place; new items omit it and get created. Items
+  // present on the menu but absent from this payload are deleted by
+  // Shopify, so we round-trip every existing item with its id.
+  //
+  // resourceId is mandatory for typed links (COLLECTION_LINK /
+  // PRODUCT_LINK / PAGE_LINK / etc.) and forbidden for FRONTEND_LINK
+  // / HTTP. We pass it whenever non-null so the API validates per-
+  // type rather than us hard-coding the allow-list.
   const input: Record<string, unknown> = {
     title: item.title,
     type: item.type || "FRONTEND_LINK",
     items: (item.items ?? []).map(toMenuItemInput),
   };
+  if (item.id) input.id = item.id;
   if (item.url) input.url = item.url;
   if (item.resourceId) input.resourceId = item.resourceId;
   if (item.tags && item.tags.length > 0) input.tags = item.tags;
