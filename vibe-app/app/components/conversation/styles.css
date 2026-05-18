@@ -739,30 +739,48 @@
   max-width: 75%;
 }
 
+/* User message — full-width flat, italic Fraunces text on top, attached
+ * image stacked below (PR #479). The bubble-on-the-right pattern was
+ * replaced with a stacked-stack that reads more like a stylist's
+ * brief: the question first, then the thing they're showing you.
+ * No fill / no bubble — sits flat on the canvas so the assistant's
+ * reply (left-ruled, also flat) lives in the same visual register. */
 .conv-message--user {
-  align-self: flex-end;
-  max-width: 75%;
-  background: var(--accent-deep);
-  color: var(--canvas);
-  padding: 0.6rem 0.85rem;
-  border-radius: 14px 14px 4px 14px;
-  line-height: 1.5;
-  font-size: 0.9rem;
+  align-self: stretch;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.5rem 0;
+  background: transparent;
+  color: var(--ink-soft);
 }
 
-/* Inline attachment preview inside the user bubble — small enough
-   to read as "what they sent" without dominating the message. */
+.conv-message--user .conv-message-text {
+  /* Italic Fraunces so the user's voice has clear typographic
+   * separation from the stylist's blocky body copy. */
+  font-family: "Fraunces", "Playfair Display", Georgia, serif;
+  font-style: italic;
+  font-size: 1.05rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+/* Stacked attachment preview — appears BELOW the user's question
+ * text, sized as a small inset thumbnail (per the design screenshot).
+ * No border-radius mask on the image itself; the surrounding card
+ * frames it instead. */
 .conv-message-attachment {
   width: 100%;
-  max-width: 220px;
+  max-width: 180px;
   max-height: 220px;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 6px;
   display: block;
   align-self: flex-start;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--rule);
 }
 
 .conv-message-text:empty {
