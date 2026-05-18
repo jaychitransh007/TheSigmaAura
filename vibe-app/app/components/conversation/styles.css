@@ -18,7 +18,11 @@
  */
 
 .conv-page {
-  --canvas: #faf5ee;
+  /* White page surface so the conversation reads as clean / spacious
+   * on top of whatever store header lives above it. User messages
+   * carry their own lightish chip below; everything else stays flat
+   * on white. */
+  --canvas: #ffffff;
   --surface: #ffffff;
   --ink: #16110e;
   --ink-soft: #2d1b14;
@@ -677,21 +681,21 @@
   max-width: 75%;
 }
 
-/* User message — full-width flat, italic Fraunces text on top, attached
- * image stacked below. The bubble-on-the-right pattern was replaced
- * with a stacked layout that reads more like a stylist's brief: the
- * question first, then the thing they're showing you. No fill, no
- * bubble — sits flat on the canvas so the assistant's reply (left-
- * ruled, also flat) lives in the same visual register. */
+/* User message — left-aligned soft chip on the white canvas. The
+ * subtle warm-tinted background visually separates the customer's
+ * voice from the assistant's left-ruled body copy without taking
+ * over the row (no full-width band, no opaque bubble). Image
+ * attachment stacks below the text inside the same chip. */
 .conv-message--user {
-  align-self: stretch;
-  max-width: 100%;
+  align-self: flex-start;
+  max-width: min(640px, 85%);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 0.85rem;
-  padding: 0.5rem 0;
-  background: transparent;
+  padding: 0.85rem 1.15rem;
+  background: #f5f0e8;
+  border-radius: 14px;
   color: var(--ink-soft);
 }
 
