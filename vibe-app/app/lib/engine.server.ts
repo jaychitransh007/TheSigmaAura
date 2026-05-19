@@ -523,6 +523,120 @@ export async function singleGarmentTryon(args: {
   return { ok: true, data_url: dataUrl };
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Multi-garment outfit try-on (Phase V — outfit-mode trigger).
+//
+// Calls the engine's `POST /v1/tryon-outfit`. Same response envelope
+// as the single-garment endpoint (success + image_base64 / mime_type
+// / data_url, or quality-gate refusal). Powers the in-chat
+// "Virtual Try On" button when the customer is on an outfit-mode
+// card (rather than having drilled into a single garment).
+//
+// Engine auto-renders outfit-level try-ons during turn output, but
+// the auto-render can fall through (flag off at the time, person
+// photo arrived late, Gemini timed out). This endpoint is the
+// explicit retrigger for those cases.
+// ─────────────────────────────────────────────────────────────────────
+
+export type OutfitTryonGarment = {
+  role?: string;
+  image_url: string;
+};
+
+export type OutfitTryonResult = SingleGarmentTryonResult;
+
+export async function outfitTryon(args: {
+  userId: string;
+  garments: OutfitTryonGarment[];
+}): Promise<OutfitTryonResult> {
+  if (USE_MOCK) {
+    return {
+      ok: true,
+      data_url: `https://picsum.photos/seed/${encodeURIComponent(args.userId + args.garments.map((g) => g.image_url).join("|"))}/600/900`,
+    };
+  }
+  if (args.garments.length === 0) {
+    return {
+      ok: false,
+      error: "No garments to render.",
+      status: 400,
+    };
+  }
+  const url = `${ENGINE_API_URL}/v1/tryon-outfit`;
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: args.userId,
+        garments: args.garments.map((g) => ({
+          role: g.role || "garment",
+          image_url: g.image_url,
+        })),
+      }),
+      // Same envelope as single-garment but multi-garment can be
+      // 1.5-2x slower because Gemini composites multiple sources.
+      // Bumped to 60s — still inside the Vercel function cap.
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Try-on request failed.";
+    return { ok: false, error: message, status: 502 };
+  }
+  if (!resp.ok) {
+    let detail = "";
+    let reason_code: string | undefined;
+    try {
+      const body = (await resp.json()) as {
+        detail?: string;
+        reason_code?: string;
+      };
+      detail = body.detail ?? "";
+      reason_code = body.reason_code;
+    } catch {
+      // fall through
+    }
+    return {
+      ok: false,
+      error: detail || `Try-on failed (HTTP ${resp.status})`,
+      reason_code,
+      status: resp.status,
+    };
+  }
+  let body: RawTryonSuccess | RawTryonFailure;
+  try {
+    body = (await resp.json()) as RawTryonSuccess | RawTryonFailure;
+  } catch {
+    return {
+      ok: false,
+      error: "Try-on response was not valid JSON.",
+      status: 502,
+    };
+  }
+  if (!body.success) {
+    return {
+      ok: false,
+      error: body.error || "Try-on did not produce an image.",
+      status: 502,
+    };
+  }
+  const dataUrl =
+    body.data_url ??
+    (body.image_base64 && body.mime_type
+      ? `data:${body.mime_type};base64,${body.image_base64}`
+      : "");
+  if (!dataUrl) {
+    return {
+      ok: false,
+      error: "Try-on response missing image payload.",
+      status: 502,
+    };
+  }
+  return { ok: true, data_url: dataUrl };
+}
+
 export async function startTurn(args: {
   conversationId: string;
   userId: string;

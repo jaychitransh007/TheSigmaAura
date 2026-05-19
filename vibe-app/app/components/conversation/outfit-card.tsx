@@ -76,6 +76,15 @@ export function OutfitCard({
   const [garmentTryon, setGarmentTryon] = useState<Record<string, TryonState>>(
     {},
   );
+  // Outfit-level virtual try-on state. The engine auto-renders this
+  // at outfit-generation time, but the auto-render falls through if
+  // the flag was off, the person photo arrived late, or Gemini timed
+  // out. This state powers the "Virtual Try On" button when the
+  // customer is in outfit mode — click → /apps/vibe/api/tryon-outfit
+  // → swap the hero to the rendered composite.
+  const [outfitTryonState, setOutfitTryonState] = useState<TryonState>({
+    kind: "idle",
+  });
 
   const tryonImage = outfit.tryon_image_url ?? null;
   const isOutfitMode = mode.kind === "outfit";
@@ -90,10 +99,23 @@ export function OutfitCard({
       : { kind: "idle" as const };
   const garmentHeroOverride =
     garmentTryonState.kind === "ready" ? garmentTryonState.dataUrl : null;
+  // Outfit hero precedence: a freshly-rendered outfit-level try-on
+  // (from clicking the button on this session) > the engine's
+  // pre-rendered try-on (from outfit-generation time) > the first
+  // item's catalog image as a last-resort placeholder.
+  const outfitHeroOverride =
+    outfitTryonState.kind === "ready" ? outfitTryonState.dataUrl : null;
 
   const heroImage = isOutfitMode
-    ? tryonImage ?? outfit.items[0]?.image_url ?? null
+    ? outfitHeroOverride ?? tryonImage ?? outfit.items[0]?.image_url ?? null
     : garmentHeroOverride ?? mode.item.image_url ?? null;
+  // Loading overlay should follow whichever mode the customer is in.
+  const isTryonLoading = isOutfitMode
+    ? outfitTryonState.kind === "loading"
+    : garmentTryonState.kind === "loading";
+  const activeTryonState: TryonState = isOutfitMode
+    ? outfitTryonState
+    : garmentTryonState;
 
   const pickSize = (garmentId: string, size: Size) => {
     // Picking a size clears any prior cart error so the customer
@@ -285,6 +307,86 @@ export function OutfitCard({
     }));
   };
 
+  // Phase V.2 — outfit-mode "Virtual Try On" click handler. Same
+  // shape as `handleTryOn` but fires the multi-garment endpoint
+  // (`/apps/vibe/api/tryon-outfit`) and stashes the result in the
+  // shared `outfitTryonState` so the outfit hero swaps to the
+  // rendered composite.
+  const handleTryOnOutfit = async () => {
+    if (mode.kind !== "outfit") return;
+    // Build the garment list. Skip wardrobe items — they're already
+    // the customer's pieces (the engine renders them differently
+    // during turn output) and the tryon endpoint can't reliably
+    // fetch a wardrobe-local file from outside the engine VM. Skip
+    // items without a usable URL too.
+    const garments = outfit.items
+      .filter((item) => !isWardrobe(item) && Boolean(item.image_url))
+      .map((item) => ({
+        role: (item as { role?: string }).role || "garment",
+        image_url: item.image_url as string,
+      }));
+    if (garments.length === 0) {
+      setOutfitTryonState({
+        kind: "error",
+        message: "No shoppable items to render in this outfit.",
+      });
+      return;
+    }
+    const sessionId = getOrCreateClientSessionId();
+    setOutfitTryonState({ kind: "loading" });
+    const form = new FormData();
+    form.set("sessionId", sessionId);
+    form.set("garments", JSON.stringify(garments));
+    let resp: Response;
+    try {
+      resp = await fetch("/apps/vibe/api/tryon-outfit", {
+        method: "POST",
+        body: form,
+      });
+    } catch (err) {
+      setOutfitTryonState({
+        kind: "error",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Couldn't reach the try-on service.",
+      });
+      return;
+    }
+    let body: {
+      ok?: boolean;
+      dataUrl?: string;
+      error?: string;
+      reasonCode?: string;
+    };
+    try {
+      body = (await resp.json()) as typeof body;
+    } catch {
+      setOutfitTryonState({
+        kind: "error",
+        message: `Try-on failed (HTTP ${resp.status}).`,
+      });
+      return;
+    }
+    if (!resp.ok || !body.ok) {
+      const message = body.error || `Try-on failed (HTTP ${resp.status}).`;
+      const isMissingPerson =
+        body.reasonCode === "missing_person_image" ||
+        message.toLowerCase().includes("full-body");
+      setOutfitTryonState(
+        isMissingPerson
+          ? {
+              kind: "missing_person",
+              message:
+                "Upload your full-body photo first — use the Photos card to share two photos, then come back and try this on.",
+            }
+          : { kind: "error", message },
+      );
+      return;
+    }
+    setOutfitTryonState({ kind: "ready", dataUrl: body.dataUrl! });
+  };
+
   return (
     <div className="conv-card" data-outfit-id={outfit.outfit_id}>
       <div className="conv-card-header">
@@ -327,11 +429,13 @@ export function OutfitCard({
               {isOutfitMode ? "Try-on rendering…" : "No image"}
             </div>
           )}
-          {/* V.2 — spinner overlay while the single-garment try-on
-              renders. Sits on top of the catalog image until Gemini
-              returns the rendered data URL (which then replaces the
-              catalog image via the heroImage fallback chain above). */}
-          {garmentTryonState.kind === "loading" && (
+          {/* V.2 — spinner overlay while a try-on renders. Sits on
+              top of the catalog image until Gemini returns the
+              rendered data URL (which then replaces the catalog
+              image via the heroImage fallback chain above). One
+              overlay for both modes: outfit-level multi-garment
+              render and single-garment render. */}
+          {isTryonLoading && (
             <div className="conv-hero-tryon-overlay">
               <span className="conv-hero-tryon-spinner" aria-hidden="true" />
               <span>Rendering try-on…</span>
@@ -361,37 +465,39 @@ export function OutfitCard({
           {cartError && <div className="conv-cart-error">{cartError}</div>}
 
           {/* V.2 — Virtual Try On button + status row. Sits above
-              the Buy / Add to Cart CTAs in garment mode only (the
-              outfit-level try-on is already the hero image when an
-              outfit-render exists). Hidden for wardrobe garments —
+              the Buy / Add to Cart CTAs. Outfit mode triggers the
+              multi-garment render; garment mode triggers the
+              single-garment render. Hidden for wardrobe garments —
               they don't have a Shopify product image URL the engine
-              can render against. */}
-          {mode.kind === "garment" && !isWardrobe(mode.item) && (
+              can render against. Hidden in outfit mode if every item
+              is from the wardrobe (nothing the engine can render). */}
+          {(() => {
+            if (mode.kind === "garment") return !isWardrobe(mode.item);
+            return outfit.items.some(
+              (item) => !isWardrobe(item) && Boolean(item.image_url),
+            );
+          })() && (
             <div className="conv-tryon-row">
               <button
                 type="button"
                 className="conv-cta conv-cta--secondary"
-                onClick={handleTryOn}
+                onClick={isOutfitMode ? handleTryOnOutfit : handleTryOn}
                 disabled={
-                  garmentTryonState.kind === "loading" ||
-                  !mode.item.image_url
+                  activeTryonState.kind === "loading" ||
+                  (mode.kind === "garment" && !mode.item.image_url)
                 }
               >
-                {garmentTryonState.kind === "loading"
+                {activeTryonState.kind === "loading"
                   ? "Rendering try-on…"
-                  : garmentTryonState.kind === "ready"
+                  : activeTryonState.kind === "ready"
                     ? "Try on again"
                     : "Virtual Try On"}
               </button>
-              {garmentTryonState.kind === "missing_person" && (
-                <p className="conv-tryon-note">
-                  {garmentTryonState.message}
-                </p>
+              {activeTryonState.kind === "missing_person" && (
+                <p className="conv-tryon-note">{activeTryonState.message}</p>
               )}
-              {garmentTryonState.kind === "error" && (
-                <p className="conv-tryon-error">
-                  {garmentTryonState.message}
-                </p>
+              {activeTryonState.kind === "error" && (
+                <p className="conv-tryon-error">{activeTryonState.message}</p>
               )}
             </div>
           )}
