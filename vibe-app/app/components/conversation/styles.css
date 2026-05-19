@@ -1164,6 +1164,23 @@
   padding: 0 0.25rem;
 }
 
+/* Per-slide context (used by the Looks page): shows the user's
+ * original prompt above the PDP for that slide. Flex-grow:1 so it
+ * eats the left half of the header row and pushes the counter +
+ * nav arrows to the right. font-style: italic mirrors the legacy
+ * Aura Outfits-tab look. */
+.conv-carousel-context {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-display, "Fraunces", serif);
+  font-style: italic;
+  font-size: 0.95rem;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .conv-carousel-counter {
   font-size: 0.8rem;
   font-weight: 600;

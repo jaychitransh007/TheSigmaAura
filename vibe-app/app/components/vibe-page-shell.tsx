@@ -22,7 +22,11 @@ export function VibePageShell({
   isAuthenticated,
   headerExtras,
 }: {
-  title: string;
+  /** Page-level h1. Omit (or pass an empty string) to drop the title
+   *  block entirely — the Looks page does this so its theme blocks
+   *  are the first thing the customer sees, matching the legacy
+   *  Aura Outfits-tab layout. */
+  title?: string;
   children: ReactNode;
   themeOverrides?: TenantThemeOverrides | null;
   /** Forwarded to MerchantHeader's account pill — "Sign in" when
@@ -36,6 +40,7 @@ export function VibePageShell({
    */
   headerExtras?: ReactNode;
 }) {
+  const showTitle = Boolean(title && title.length > 0);
   return (
     <div className="vibe-page">
       <ThemeOverridesStyle overrides={themeOverrides} />
@@ -43,12 +48,14 @@ export function VibePageShell({
         overrides={themeOverrides}
         isAuthenticated={isAuthenticated}
       />
-      <div className="vibe-page-title">
-        <h1>{title}</h1>
-        {headerExtras ? (
-          <div className="vibe-page-title-extras">{headerExtras}</div>
-        ) : null}
-      </div>
+      {showTitle ? (
+        <div className="vibe-page-title">
+          <h1>{title}</h1>
+          {headerExtras ? (
+            <div className="vibe-page-title-extras">{headerExtras}</div>
+          ) : null}
+        </div>
+      ) : null}
       <main className="vibe-page-body">{children}</main>
     </div>
   );
