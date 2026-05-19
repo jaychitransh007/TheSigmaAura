@@ -12,6 +12,8 @@
 // Required scope: `read_themes` (granted at F.1 — already in the
 // app's scope set).
 
+import { logWarn } from "./logger.server";
+
 // Minimal structural type for the Admin GraphQL client. We only need
 // the `graphql` method on it; pulling in `AdminApiContext` from the
 // SDK trips the package's typing surface (the export's shape differs
@@ -143,13 +145,43 @@ async function fetchThemeSettings(admin: AdminGraphqlClient): Promise<string> {
         }
       }`,
     );
-    if (!resp.ok) return "";
-    const gql = (await resp.json()) as ThemeFileQueryResult;
-    return (
+    if (!resp.ok) {
+      logWarn("vibe_theme_probe_failed", {
+        stage: "theme_settings_http",
+        http_status: resp.status,
+      });
+      return "";
+    }
+    const gql = (await resp.json()) as ThemeFileQueryResult & {
+      errors?: Array<{ message?: string; extensions?: Record<string, unknown> }>;
+    };
+    if (Array.isArray(gql.errors) && gql.errors.length > 0) {
+      logWarn("vibe_theme_probe_failed", {
+        stage: "theme_settings_gql",
+        errors: gql.errors.map((e) => ({
+          message: e.message ?? "",
+          code: (e.extensions as { code?: string } | undefined)?.code ?? "",
+        })),
+      });
+      return "";
+    }
+    const content =
       gql.data?.themes?.edges?.[0]?.node?.files?.edges?.[0]?.node?.body
-        ?.content ?? ""
-    );
-  } catch {
+        ?.content ?? "";
+    if (!content) {
+      logWarn("vibe_theme_probe_failed", {
+        stage: "theme_settings_empty",
+        themes_count: gql.data?.themes?.edges?.length ?? 0,
+        files_count:
+          gql.data?.themes?.edges?.[0]?.node?.files?.edges?.length ?? 0,
+      });
+    }
+    return content;
+  } catch (err) {
+    logWarn("vibe_theme_probe_failed", {
+      stage: "theme_settings_exception",
+      error: err instanceof Error ? err.message : String(err),
+    });
     return "";
   }
 }
@@ -187,9 +219,25 @@ async function fetchShopAndMenu(
       }`,
     );
     if (!indexResp.ok) {
+      logWarn("vibe_theme_probe_failed", {
+        stage: "shop_menu_index_http",
+        http_status: indexResp.status,
+      });
       return { shopName: "", logoUrl: "", menuItems: [] };
     }
-    const idx = (await indexResp.json()) as ShopAndMenusIndexResult;
+    const idx = (await indexResp.json()) as ShopAndMenusIndexResult & {
+      errors?: Array<{ message?: string; extensions?: Record<string, unknown> }>;
+    };
+    if (Array.isArray(idx.errors) && idx.errors.length > 0) {
+      logWarn("vibe_theme_probe_failed", {
+        stage: "shop_menu_index_gql",
+        errors: idx.errors.map((e) => ({
+          message: e.message ?? "",
+          code: (e.extensions as { code?: string } | undefined)?.code ?? "",
+        })),
+      });
+      return { shopName: "", logoUrl: "", menuItems: [] };
+    }
     const shopName = String(idx.data?.shop?.name ?? "").trim();
     const logoUrl = String(
       idx.data?.shop?.brand?.logo?.image?.url ?? "",
@@ -197,7 +245,17 @@ async function fetchShopAndMenu(
     const mainId = idx.data?.menus?.edges?.find(
       (e) => e.node?.handle === "main-menu",
     )?.node?.id;
-    if (!mainId) return { shopName, logoUrl, menuItems: [] };
+    if (!mainId) {
+      logWarn("vibe_theme_probe_failed", {
+        stage: "main_menu_not_found",
+        shop_name: shopName,
+        menus_count: idx.data?.menus?.edges?.length ?? 0,
+        menu_handles: (idx.data?.menus?.edges ?? [])
+          .map((e) => e.node?.handle ?? "")
+          .filter((h) => h),
+      });
+      return { shopName, logoUrl, menuItems: [] };
+    }
 
     const menuResp = await admin.graphql(
       `#graphql
@@ -208,8 +266,26 @@ async function fetchShopAndMenu(
       }`,
       { variables: { id: mainId } },
     );
-    if (!menuResp.ok) return { shopName, logoUrl, menuItems: [] };
-    const detail = (await menuResp.json()) as MenuTopLevelByIdResult;
+    if (!menuResp.ok) {
+      logWarn("vibe_theme_probe_failed", {
+        stage: "menu_detail_http",
+        http_status: menuResp.status,
+      });
+      return { shopName, logoUrl, menuItems: [] };
+    }
+    const detail = (await menuResp.json()) as MenuTopLevelByIdResult & {
+      errors?: Array<{ message?: string; extensions?: Record<string, unknown> }>;
+    };
+    if (Array.isArray(detail.errors) && detail.errors.length > 0) {
+      logWarn("vibe_theme_probe_failed", {
+        stage: "menu_detail_gql",
+        errors: detail.errors.map((e) => ({
+          message: e.message ?? "",
+          code: (e.extensions as { code?: string } | undefined)?.code ?? "",
+        })),
+      });
+      return { shopName, logoUrl, menuItems: [] };
+    }
     const items = detail.data?.menu?.items ?? [];
     const menuItems: Array<{ title: string; url: string }> = [];
     for (const it of items) {
@@ -218,7 +294,11 @@ async function fetchShopAndMenu(
       if (title && url) menuItems.push({ title, url });
     }
     return { shopName, logoUrl, menuItems };
-  } catch {
+  } catch (err) {
+    logWarn("vibe_theme_probe_failed", {
+      stage: "shop_menu_exception",
+      error: err instanceof Error ? err.message : String(err),
+    });
     return { shopName: "", logoUrl: "", menuItems: [] };
   }
 }
