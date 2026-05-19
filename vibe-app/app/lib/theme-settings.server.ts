@@ -70,9 +70,6 @@ type ShopAndMenusIndexResult = {
   data?: {
     shop?: {
       name?: string;
-      brand?: {
-        logo?: { image?: { url?: string } };
-      };
     };
     menus?: {
       edges?: Array<{ node?: { id?: string; handle?: string } }>;
@@ -194,24 +191,23 @@ async function fetchShopAndMenu(
   menuItems: Array<{ title: string; url: string }>;
 }> {
   try {
-    // The 2026-04 Admin API removed `menu(handle:)`. Two-step
-    // lookup: pull shop.name + brand.logo + the menus index
-    // (id+handle only) in one call, then fetch the chosen menu's
-    // top-level items by id in a second call. MerchantHeader only
-    // renders the top level — no nested `items` are fetched, no
-    // dropdown is wired.
+    // Two-step menu lookup (2026-04 Admin API removed `menu(handle:)`):
+    // pull shop.name + the menus index (id+handle only) in one call,
+    // then fetch the chosen menu's top-level items by id in a second
+    // call. MerchantHeader only renders the top level.
     //
-    // shop.brand.logo is the merchant-set brand asset (Shopify admin
-    // → Settings → Brand → Logos). When empty, the theme tends to
-    // fall back to text, so MerchantHeader does the same.
+    // `shop.brand` was dropped from this query 2026-05-20 — TheSigmaVibe's
+    // Admin API rejects it with "Field 'brand' doesn't exist on type
+    // 'Shop'" (the field is scope-gated and the Vibe scope set doesn't
+    // include the one that exposes it; previously a silent catch hid
+    // this and emptied the whole probe). MerchantHeader's text fallback
+    // (shop.name in the brand slot) is the same behaviour we've had on
+    // Vibe-Test all along since its logo_url was also null.
     const indexResp = await admin.graphql(
       `#graphql
       query VibeShopAndMenusIndex {
         shop {
           name
-          brand {
-            logo { image { url } }
-          }
         }
         menus(first: 50) {
           edges { node { id handle } }
@@ -239,9 +235,9 @@ async function fetchShopAndMenu(
       return { shopName: "", logoUrl: "", menuItems: [] };
     }
     const shopName = String(idx.data?.shop?.name ?? "").trim();
-    const logoUrl = String(
-      idx.data?.shop?.brand?.logo?.image?.url ?? "",
-    ).trim();
+    // shop.brand.logo intentionally dropped — see comment on the query
+    // above. MerchantHeader falls back to shopName as a text logo.
+    const logoUrl = "";
     const mainId = idx.data?.menus?.edges?.find(
       (e) => e.node?.handle === "main-menu",
     )?.node?.id;
