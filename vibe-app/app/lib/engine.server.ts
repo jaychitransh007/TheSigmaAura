@@ -396,6 +396,133 @@ export async function mergeUserIdentity(args: {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Single-garment virtual try-on (Phase V).
+//
+// Calls the engine's existing `POST /v1/tryon` (one product image →
+// rendered on the customer's stored full_body photo via Gemini Flash
+// Image). Powers both the storefront PDP modal (V.3) and the per-
+// garment "Virtual Try On" button in the Vibe Conversation outfit
+// card (V.2). Both surfaces share the same anonymous customer
+// identity (`vibe_session_id` localStorage UUID) and the same body
+// photo on the engine side.
+//
+// Engine returns a base64 data URL inline (no separate storage
+// fetch) — `image_base64` / `mime_type` / `data_url` on success,
+// `success: false` + `error` on failure. Quality-gate failures land
+// as HTTP 400 with a `reason_code` the client can surface verbatim.
+// ─────────────────────────────────────────────────────────────────────
+
+export type SingleGarmentTryonResult = {
+  ok: true;
+  data_url: string;
+} | {
+  ok: false;
+  error: string;
+  reason_code?: string;
+  status: number;
+};
+
+type RawTryonSuccess = {
+  success: true;
+  image_base64?: string;
+  mime_type?: string;
+  data_url?: string;
+};
+
+type RawTryonFailure = {
+  success: false;
+  error?: string;
+};
+
+export async function singleGarmentTryon(args: {
+  userId: string;
+  productImageUrl: string;
+}): Promise<SingleGarmentTryonResult> {
+  if (USE_MOCK) {
+    return {
+      ok: true,
+      data_url: `https://picsum.photos/seed/${encodeURIComponent(args.userId + args.productImageUrl)}/600/800`,
+    };
+  }
+  // Long timeout — Gemini Flash Image typically returns in 5-15s but
+  // worst-case can spike to ~25s on a cold path. The Vercel function
+  // duration cap is 60s on Hobby; we leave that envelope for the
+  // function itself to absorb timeouts cleanly.
+  const url = `${ENGINE_API_URL}/v1/tryon`;
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: args.userId,
+        product_image_url: args.productImageUrl,
+      }),
+      signal: AbortSignal.timeout(45_000),
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Try-on request failed.";
+    return { ok: false, error: message, status: 502 };
+  }
+  if (!resp.ok) {
+    // Engine surfaces a friendly `detail` string from
+    // graceful_policy_message — pass through to the client so the
+    // customer sees actionable copy ("Upload a full-body photo
+    // first", etc.) rather than a raw HTTP code.
+    let detail = "";
+    let reason_code: string | undefined;
+    try {
+      const body = (await resp.json()) as {
+        detail?: string;
+        reason_code?: string;
+      };
+      detail = body.detail ?? "";
+      reason_code = body.reason_code;
+    } catch {
+      // Engine errored before JSON-encoding; fall through to a
+      // generic message.
+    }
+    return {
+      ok: false,
+      error: detail || `Try-on failed (HTTP ${resp.status})`,
+      reason_code,
+      status: resp.status,
+    };
+  }
+  let body: RawTryonSuccess | RawTryonFailure;
+  try {
+    body = (await resp.json()) as RawTryonSuccess | RawTryonFailure;
+  } catch {
+    return {
+      ok: false,
+      error: "Try-on response was not valid JSON.",
+      status: 502,
+    };
+  }
+  if (!body.success) {
+    return {
+      ok: false,
+      error: body.error || "Try-on did not produce an image.",
+      status: 502,
+    };
+  }
+  const dataUrl =
+    body.data_url ??
+    (body.image_base64 && body.mime_type
+      ? `data:${body.mime_type};base64,${body.image_base64}`
+      : "");
+  if (!dataUrl) {
+    return {
+      ok: false,
+      error: "Try-on response missing image payload.",
+      status: 502,
+    };
+  }
+  return { ok: true, data_url: dataUrl };
+}
+
 export async function startTurn(args: {
   conversationId: string;
   userId: string;

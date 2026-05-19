@@ -298,6 +298,47 @@ Phase F shipped the **catalog read path** as fully tenant-scoped (every retrieva
 - [ ] **G.3.** **Line-item attribution.** For each line item on a Vibe-attributed order, check whether its `shopify_product_id` appeared in any outfit recommendation in the attribution session. Record per-line-item `vibe_recommended: bool` + `recommended_in_outfit_id`. Lets D.M.4 split "outfit-driven" from "spillover" revenue.
 - [ ] **G.4.** **Refund handler.** `orders/refunded` webhook adjusts attributed revenue downward when a Vibe-attributed order gets refunded. Edits the `order_attribution` row's refunded amount rather than deleting it (audit trail).
 
+## Phase V — Virtual Try-On (storefront PDPs + Vibe Conversation)
+
+**Goal.** Customer-facing "Virtual Try-On" surface available wherever a product is rendered:
+- **Surface 1 — Storefront PDPs** (every product page on the merchant's Shopify store, e.g. `thesigmavibe.shop/products/{handle}`).
+- **Surface 2 — Vibe Conversation per-garment card** (every PDP card inside the chat, when a customer clicks a thumbnail in the outfit rail and the card flips to garment mode).
+
+Both surfaces share one engine endpoint, one Vibe-app proxy route, one anonymous customer identity (the `vibe_session_id` localStorage UUID, same one the chat uses), and one persistent body photo (uploaded once, reused for every subsequent try-on). Activates automatically the moment a merchant installs the Vibe app — Surface 1 ships as a theme app extension block alongside the existing "Style with Vibe" + "Saved with Vibe" blocks.
+
+### Engine reuse (no engine changes)
+
+- **`POST /v1/tryon`** already exists ([api.py](../modules/agentic_application/src/agentic_application/api.py)) and takes `{user_id, product_image_url}`. Loads the customer's stored full-body photo via `onboarding_gateway.get_person_image_path`, calls `tryon_service.generate_tryon(person_image_path, product_image_url)`, runs the quality gate, persists to `virtual_tryon_images`, returns the rendered image. ~5–15s on Gemini Flash Image, ~$0.04/render.
+- **`TRYON_PROMPT_SINGLE`** is already tuned for the single-garment case (one product → preserves body silhouette, replaces clothing only, photorealism rules). Sits in [tryon_service.py:47](../modules/agentic_application/src/agentic_application/services/tryon_service.py:47). No new prompt needed for either surface.
+- **`POST /v1/onboarding/images/full_body`** handles the body-photo upload (already wired via [apps.vibe.api.onboarding.image.tsx](../vibe-app/app/routes/apps.vibe.api.onboarding.image.tsx)). The body photo persists across surfaces — a customer who uploads from a storefront PDP later sees the same photo in their Vibe Conversation onboarding state, and vice versa.
+
+### Sub-tasks
+
+- [ ] **V.1.** **Vibe-app proxy route** at [apps.vibe.api.tryon.tsx](../vibe-app/app/routes/apps.vibe.api.tryon.tsx) (new). POST body `{sessionId, productImageUrl}`. Validates HMAC via `authenticate.public.appProxy`, IDOR-guards `shopify:`-prefixed sessions, forwards to engine `POST /v1/tryon`. Returns `{ok, tryonImageUrl, errorMessage}`. New `singleGarmentTryon({userId, productImageUrl})` helper in [engine.server.ts](../vibe-app/app/lib/engine.server.ts). Errors land as `logWarn("vibe_tryon_failed", {...})` for grep-ability.
+- [ ] **V.2.** **Vibe Conversation per-garment "Virtual Try On" button.** [outfit-card.tsx](../vibe-app/app/components/conversation/outfit-card.tsx) gains a third CTA in garment mode (above Add to Cart / Buy Now), same size + visual register. On click:
+  - If the customer has no stored full_body photo (engine 400 with `missing_person_image`), surface an inline message: "Upload your full-body photo first (use the photos card to share two photos)" + don't fire the request.
+  - Otherwise POST to `/apps/vibe/api/tryon` with the garment's `image_url`. Replace the garment heroImage with a loading spinner while the request is in flight; once it returns, swap in the rendered URL. Local cache (`useState`) so a re-click within the same session doesn't re-render.
+  - Wardrobe garments (anchor items) get a "Try-on unavailable for your own pieces" inline note — no button. They don't have a Shopify product image URL the engine can use.
+- [ ] **V.3.** **Storefront theme app extension block.** Three new files under [extensions/vibe-storefront/](../vibe-app/extensions/vibe-storefront/):
+  - **`blocks/virtual-try-on.liquid`** — schema restricts to `templates/product`. Renders a `<button>` styled with theme CSS variables (`--color-button`, `--color-button-text`, `--color-button-text-hover`, `--font-button`) + neutral fallbacks so it matches the merchant's Buy / Add to Cart buttons. Above the form section (merchant places the block in the theme editor).
+  - **`assets/virtual-try-on.js`** — handles button click → opens a `<dialog>` modal. Modal has two image cards:
+    - **Card 1 (upload)**: file input + drag-drop, shows preview after pick. On commit, POST to `/apps/vibe/api/onboarding/image?category=full_body` (App Proxy) with the `sessionId` from `localStorage["vibe_session_id"]` (creates one if missing).
+    - **Card 2 (result)**: skeleton loader while upload is in flight, then while engine renders. Shows the rendered image once available. Error state surfaces the engine's reason-code message (`missing_person_image`, `quality_gate_failed`, etc.).
+    - Reads `{{ product.featured_image | image_url: width: 1200 }}` from the liquid context and passes it as `productImageUrl` to the try-on call.
+    - The dialog uses native `<dialog>` for focus management + escape-to-close. No external JS framework — vanilla ES module.
+  - **`assets/virtual-try-on.css`** — modal layout (two cards side-by-side on viewports ≥640px, stacked on mobile). Button styles use the theme variables listed above. No Tailwind / utility framework — plain CSS so it's loadable directly by Shopify's theme asset pipeline.
+- [ ] **V.4.** **Cross-surface session continuity.** Both Surface 1 and Surface 2 read `localStorage["vibe_session_id"]` ([session.client.ts](../vibe-app/app/lib/session.client.ts)). Customer who uploads a body photo from a storefront PDP can later open Vibe chat and see the same photo on the photos card (no re-onboarding); vice versa.
+- [ ] **V.5.** **Caching (follow-up, deferred).** Each try-on click costs ~$0.04 of Gemini render time even for the same `(user, product)` pair. Future: hash `(user_id, product_image_url)` → return the cached `tryon_image_url` from `virtual_tryon_images` if a render exists newer than N days. Saves cost on repeat clicks. Not a blocker — engine already persists every render, the lookup just isn't wired today.
+- [ ] **V.6.** **Observability.** Counter `aura_tryon_single_total{outcome="rendered|cached|quality_gate_failed|missing_person|error"}` on the engine side (one increment per `POST /v1/tryon` call). Vibe-app structured logs `vibe_tryon_outcome{surface="storefront|conversation", outcome, sessionId, productImageUrl_hash}` from the proxy route. Lets a future panel slice by surface and answer "what % of storefront PDP try-ons succeed end-to-end".
+
+### Acceptance criteria
+
+- Storefront PDP renders a "Virtual Try On" button above the Buy section once the merchant adds the block via theme editor. Button styling matches the theme.
+- Click opens a modal with two cards. Customer uploads → result card shows loading → renders within ~15s on the typical path.
+- Vibe Conversation garment-mode PDP shows a "Virtual Try On" button above the Buy Now / Add to Cart row. Click renders inline.
+- Body photo uploaded from storefront persists to engine, visible the next time the customer opens Vibe chat.
+- Engine cost stays under $0.05 per click (Gemini Flash Image + quality gate overhead). No re-renders on repeat clicks once V.5 lands.
+
 ## Done outside the original task list
 
 - [x] **Homepage hero** — "Style that gets you." copy locked, hero image generated, 4 value-prop card content drafted.

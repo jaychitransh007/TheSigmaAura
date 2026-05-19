@@ -26,6 +26,21 @@ import {
   addToCart,
   type CartNavigation,
 } from "../../lib/cart.client";
+import { getOrCreateClientSessionId } from "../../lib/session.client";
+
+// Per-garment virtual try-on state slice (Phase V.2). Keyed by
+// garment_id so switching garments inside the same outfit card
+// doesn't bleed a previous render into a different SKU. `loading`
+// gates the button + shows a spinner overlay on the hero; `dataUrl`
+// replaces the catalog image once Gemini returns; `missingPerson`
+// surfaces a friendly nudge when the engine 400s with
+// `missing_person_image` (customer hasn't onboarded photos yet).
+type TryonState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "ready"; dataUrl: string }
+  | { kind: "missing_person"; message: string }
+  | { kind: "error"; message: string };
 
 const SIZES = ["XS", "S", "M", "L", "XL"] as const;
 type Size = (typeof SIZES)[number];
@@ -53,13 +68,32 @@ export function OutfitCard({
   // Flash for the stay-on-page Add to Cart CTA so the customer has
   // visual confirmation without us drawing a toast component.
   const [addedFlash, setAddedFlash] = useState(false);
+  // Per-garment virtual try-on state (Phase V.2). Each garment_id
+  // maps to its own TryonState — the customer can swipe between
+  // garments without losing previously-rendered results, and a
+  // re-click within the same session reuses the cached dataUrl
+  // instead of paying for another Gemini render.
+  const [garmentTryon, setGarmentTryon] = useState<Record<string, TryonState>>(
+    {},
+  );
 
   const tryonImage = outfit.tryon_image_url ?? null;
   const isOutfitMode = mode.kind === "outfit";
 
+  // In garment mode, prefer a rendered single-garment try-on (if the
+  // customer hit "Virtual Try On" earlier on this card) over the
+  // catalog product image. The fallback chain keeps the card visually
+  // populated even when nothing has been rendered yet.
+  const garmentTryonState =
+    mode.kind === "garment"
+      ? garmentTryon[mode.item.garment_id] ?? { kind: "idle" }
+      : { kind: "idle" as const };
+  const garmentHeroOverride =
+    garmentTryonState.kind === "ready" ? garmentTryonState.dataUrl : null;
+
   const heroImage = isOutfitMode
     ? tryonImage ?? outfit.items[0]?.image_url ?? null
-    : mode.item.image_url ?? null;
+    : garmentHeroOverride ?? mode.item.image_url ?? null;
 
   const pickSize = (garmentId: string, size: Size) => {
     // Picking a size clears any prior cart error so the customer
@@ -165,6 +199,92 @@ export function OutfitCard({
     });
   };
 
+  // Phase V.2 — single-garment "Virtual Try On" click handler.
+  // Fires `/apps/vibe/api/tryon` with the current garment's image
+  // URL; the engine pulls the customer's stored full-body photo
+  // (uploaded via the in-chat onboarding photos card) and runs
+  // Gemini Flash Image. On success the rendered data URL takes
+  // over the garment hero image. Missing-person-image returns a
+  // friendly inline nudge instead of a generic error.
+  const handleTryOn = async () => {
+    if (mode.kind !== "garment") return;
+    const item = mode.item;
+    if (isWardrobe(item)) return;
+    if (!item.image_url) return;
+    const sessionId = getOrCreateClientSessionId();
+    // Optimistic loading state — hero overlay swaps to a spinner
+    // while we wait on Gemini (~5–15s).
+    setGarmentTryon((prev) => ({
+      ...prev,
+      [item.garment_id]: { kind: "loading" },
+    }));
+    const form = new FormData();
+    form.set("sessionId", sessionId);
+    form.set("productImageUrl", item.image_url);
+    let resp: Response;
+    try {
+      resp = await fetch("/apps/vibe/api/tryon", {
+        method: "POST",
+        body: form,
+      });
+    } catch (err) {
+      setGarmentTryon((prev) => ({
+        ...prev,
+        [item.garment_id]: {
+          kind: "error",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Couldn't reach the try-on service.",
+        },
+      }));
+      return;
+    }
+    let body: {
+      ok?: boolean;
+      dataUrl?: string;
+      error?: string;
+      reasonCode?: string;
+    };
+    try {
+      body = (await resp.json()) as typeof body;
+    } catch {
+      setGarmentTryon((prev) => ({
+        ...prev,
+        [item.garment_id]: {
+          kind: "error",
+          message: `Try-on failed (HTTP ${resp.status}).`,
+        },
+      }));
+      return;
+    }
+    if (!resp.ok || !body.ok) {
+      const message = body.error || `Try-on failed (HTTP ${resp.status}).`;
+      // Engine surfaces `missing_person_image` when the customer
+      // hasn't onboarded with a full-body photo yet — flag it
+      // separately so the UI can point them at the photos card
+      // instead of showing a generic error.
+      const isMissingPerson =
+        body.reasonCode === "missing_person_image" ||
+        message.toLowerCase().includes("full-body");
+      setGarmentTryon((prev) => ({
+        ...prev,
+        [item.garment_id]: isMissingPerson
+          ? {
+              kind: "missing_person",
+              message:
+                "Upload your full-body photo first — use the Photos card to share two photos, then come back and try this on.",
+            }
+          : { kind: "error", message },
+      }));
+      return;
+    }
+    setGarmentTryon((prev) => ({
+      ...prev,
+      [item.garment_id]: { kind: "ready", dataUrl: body.dataUrl! },
+    }));
+  };
+
   return (
     <div className="conv-card" data-outfit-id={outfit.outfit_id}>
       <div className="conv-card-header">
@@ -207,6 +327,16 @@ export function OutfitCard({
               {isOutfitMode ? "Try-on rendering…" : "No image"}
             </div>
           )}
+          {/* V.2 — spinner overlay while the single-garment try-on
+              renders. Sits on top of the catalog image until Gemini
+              returns the rendered data URL (which then replaces the
+              catalog image via the heroImage fallback chain above). */}
+          {garmentTryonState.kind === "loading" && (
+            <div className="conv-hero-tryon-overlay">
+              <span className="conv-hero-tryon-spinner" aria-hidden="true" />
+              <span>Rendering try-on…</span>
+            </div>
+          )}
         </div>
 
         <div className="conv-detail">
@@ -229,6 +359,42 @@ export function OutfitCard({
           )}
 
           {cartError && <div className="conv-cart-error">{cartError}</div>}
+
+          {/* V.2 — Virtual Try On button + status row. Sits above
+              the Buy / Add to Cart CTAs in garment mode only (the
+              outfit-level try-on is already the hero image when an
+              outfit-render exists). Hidden for wardrobe garments —
+              they don't have a Shopify product image URL the engine
+              can render against. */}
+          {mode.kind === "garment" && !isWardrobe(mode.item) && (
+            <div className="conv-tryon-row">
+              <button
+                type="button"
+                className="conv-cta conv-cta--secondary"
+                onClick={handleTryOn}
+                disabled={
+                  garmentTryonState.kind === "loading" ||
+                  !mode.item.image_url
+                }
+              >
+                {garmentTryonState.kind === "loading"
+                  ? "Rendering try-on…"
+                  : garmentTryonState.kind === "ready"
+                    ? "Try on again"
+                    : "Virtual Try On"}
+              </button>
+              {garmentTryonState.kind === "missing_person" && (
+                <p className="conv-tryon-note">
+                  {garmentTryonState.message}
+                </p>
+              )}
+              {garmentTryonState.kind === "error" && (
+                <p className="conv-tryon-error">
+                  {garmentTryonState.message}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="conv-cta-row">
             {isOutfitMode ? (
