@@ -87,6 +87,34 @@ export type Outfit = {
   tryon_image_url?: string;
 };
 
+/** A single outfit recommended in some past turn, annotated with the
+ *  context of that turn (user message, conversation/turn IDs) so the
+ *  Looks page can show "Dress me for a presentation tomorrow" above
+ *  the PDP and deep-link a tile-click back to the originating chat.
+ *  Mirrors the legacy `_turn_context` annotation pattern from
+ *  `platform_core/ui.py` § Outfits tab. */
+export type ThemedOutfit = Outfit & {
+  user_message: string;
+  conversation_id: string;
+  turn_id: string;
+  created_at: string;
+};
+
+/** One theme section on the Looks page — collapses related occasions
+ *  (sangeet/mehendi/engagement/wedding → "Festive & Wedding") into a
+ *  single user-recognisable bucket. The engine's `IntentHistoryThemeBlock`
+ *  carries groups → turns → outfits; we flatten that hierarchy into a
+ *  single `outfits` array per theme because the UI renders one
+ *  PDP carousel per theme (each slide carries its own `user_message`). */
+export type IntentHistoryTheme = {
+  theme_key: string;
+  theme_label: string;
+  theme_description: string;
+  most_recent_at: string;
+  total_outfit_count: number;
+  outfits: ThemedOutfit[];
+};
+
 export type TurnResult = {
   turn_id: string;
   message: string;
@@ -889,6 +917,155 @@ export async function getPastLooks(userId: string): Promise<PastLookSummary[]> {
     preview_image_url: rewriteEngineImageUrl(row.first_outfit_image) || "",
     created_at: String(row.created_at ?? ""),
   })).filter((it) => it.turn_id !== "");
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Intent-organized history — engine `GET /v1/users/{id}/intent-history`
+// (Phase 15C). Returns past styling turns grouped first by intent /
+// occasion, then collapsed into themes ("Office & Professional",
+// "Festive & Wedding", "Weekend & Everyday", ...). Powers the Looks
+// page's theme-grouped layout — the legacy Aura UI uses the exact
+// same shape under `platform_core/ui.py` § Outfits tab.
+//
+// We restrict to recommendation-shaped intents (occasion_recommendation
+// / pairing_request / capsule_or_trip_planning) because outfit_check
+// and garment_evaluation rows carry visual-evaluator-only fields the
+// post-V2 frontend can't render as PDP cards.
+// ─────────────────────────────────────────────────────────────────────
+
+type RawIntentHistoryTurn = {
+  turn_id?: string;
+  conversation_id?: string;
+  user_message?: string;
+  outfits?: RawEngineOutfit[];
+  created_at?: string;
+};
+
+type RawIntentHistoryGroup = {
+  conversation_id?: string;
+  intent?: string;
+  occasion?: string;
+  turns?: RawIntentHistoryTurn[];
+};
+
+type RawIntentHistoryThemeBlock = {
+  theme_key?: string;
+  theme_label?: string;
+  theme_description?: string;
+  total_outfit_count?: number;
+  most_recent_at?: string;
+  groups?: RawIntentHistoryGroup[];
+};
+
+type RawIntentHistoryResponse = {
+  user_id?: string;
+  themes?: RawIntentHistoryThemeBlock[];
+};
+
+const INTENT_HISTORY_TYPES =
+  "occasion_recommendation,pairing_request,capsule_or_trip_planning";
+
+export async function getIntentHistory(
+  userId: string,
+): Promise<IntentHistoryTheme[]> {
+  if (USE_MOCK) {
+    // Two mock themes so the styling work renders without an engine.
+    const mkOutfit = (
+      idx: number,
+      message: string,
+      conversationId: string,
+      turnId: string,
+    ): ThemedOutfit => ({
+      outfit_id: `mock-outfit-${idx}`,
+      name: `Mock outfit ${idx}`,
+      reasoning: "",
+      fashion_score: 88,
+      items: [
+        {
+          garment_id: `mock-item-${idx}`,
+          title: "Not So Average Stripe Top",
+          price: 780,
+          image_url: `https://picsum.photos/seed/vibe-mock-${idx}/600/800`,
+          description:
+            "A warm-beige, vertically striped blouse with a fitted, tailored cut.",
+          source: "catalog",
+        },
+      ],
+      tryon_image_url: `https://picsum.photos/seed/vibe-mock-${idx}/600/800`,
+      user_message: message,
+      conversation_id: conversationId,
+      turn_id: turnId,
+      created_at: new Date(Date.now() - idx * 86400000).toISOString(),
+    });
+    return [
+      {
+        theme_key: "office_professional",
+        theme_label: "Office & Professional",
+        theme_description: "",
+        most_recent_at: new Date().toISOString(),
+        total_outfit_count: 2,
+        outfits: [
+          mkOutfit(1, "Dress me for a big presentation tomorrow in office", "mock-conv-a", "mock-turn-a"),
+          mkOutfit(2, "Smart-casual for a client lunch", "mock-conv-b", "mock-turn-b"),
+        ],
+      },
+      {
+        theme_key: "weekend_everyday",
+        theme_label: "Weekend & Everyday",
+        theme_description: "",
+        most_recent_at: new Date(Date.now() - 86400000).toISOString(),
+        total_outfit_count: 1,
+        outfits: [
+          mkOutfit(3, "What goes with this top for market outing?", "mock-conv-c", "mock-turn-c"),
+        ],
+      },
+    ];
+  }
+  const path = `/v1/users/${encodeURIComponent(userId)}/intent-history?types=${INTENT_HISTORY_TYPES}`;
+  const raw = await getJson<RawIntentHistoryResponse>(path);
+  const out: IntentHistoryTheme[] = [];
+  for (const theme of raw.themes ?? []) {
+    const outfits: ThemedOutfit[] = [];
+    for (const group of theme.groups ?? []) {
+      const groupConvId = String(group.conversation_id ?? "");
+      for (const turn of group.turns ?? []) {
+        const turnConvId = String(turn.conversation_id ?? "") || groupConvId;
+        const turnId = String(turn.turn_id ?? "");
+        const userMessage = String(turn.user_message ?? "").trim();
+        const createdAt = String(turn.created_at ?? "");
+        const rawOutfits = turn.outfits ?? [];
+        for (let idx = 0; idx < rawOutfits.length; idx += 1) {
+          const normalized = normalizeOutfit(rawOutfits[idx], idx);
+          // Require some kind of preview image — outfits with no
+          // try-on render and no item images are unrenderable PDPs.
+          const hasPreview =
+            Boolean(normalized.tryon_image_url) ||
+            normalized.items.some((it) => Boolean(it.image_url));
+          if (!hasPreview) continue;
+          outfits.push({
+            ...normalized,
+            // Re-namespace outfit_id with the turn id so two turns'
+            // outfits with the same rank can't collide when flattened.
+            outfit_id: `${turnId || "noturn"}-${normalized.outfit_id}`,
+            user_message: userMessage,
+            conversation_id: turnConvId,
+            turn_id: turnId,
+            created_at: createdAt,
+          });
+        }
+      }
+    }
+    if (outfits.length === 0) continue;
+    out.push({
+      theme_key: String(theme.theme_key ?? ""),
+      theme_label: String(theme.theme_label ?? ""),
+      theme_description: String(theme.theme_description ?? ""),
+      most_recent_at: String(theme.most_recent_at ?? ""),
+      total_outfit_count: Number(theme.total_outfit_count ?? outfits.length),
+      outfits,
+    });
+  }
+  return out;
 }
 
 export async function pollTurn(args: {

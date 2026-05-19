@@ -1,0 +1,79 @@
+/* Looks page — theme-grouped recommendation history.
+ *
+ * Each theme renders as a "theme block" — italic-serif title +
+ * faint horizontal accent rule + one OutfitCarousel containing every
+ * outfit recommended within the theme (the carousel header shows the
+ * per-slide user prompt to the left of the counter / arrows). Mirrors
+ * the legacy `platform_core/ui.py` § Outfits tab layout so the Vibe
+ * customer-facing surface stays consistent with Aura's customer page.
+ */
+
+.looks-page {
+  max-width: 1024px;
+  margin: 0 auto;
+  padding: 24px 24px 96px;
+}
+
+.looks-theme-block {
+  margin-top: 48px;
+}
+
+.looks-theme-block:first-of-type {
+  margin-top: 16px;
+}
+
+.looks-theme-title {
+  margin: 0 0 8px;
+  font-family: var(--font-display, "Fraunces", serif);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.55rem;
+  color: var(--ink, #1c1c1c);
+  letter-spacing: -0.01em;
+}
+
+.looks-theme-rule {
+  border: 0;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    var(--accent, #b96346) 0%,
+    var(--accent-soft, rgba(185, 99, 70, 0.35)) 30%,
+    transparent 100%
+  );
+  margin: 0 0 16px;
+}
+
+.looks-empty {
+  margin: 64px auto;
+  max-width: 480px;
+  text-align: center;
+  color: var(--ink-muted, #767676);
+  font-family: var(--font-display, "Fraunces", serif);
+  font-style: italic;
+  font-size: 1.05rem;
+}
+
+.looks-loading,
+.looks-error {
+  margin: 64px auto;
+  max-width: 480px;
+  text-align: center;
+  color: var(--ink-muted, #767676);
+}
+
+.looks-error {
+  color: var(--danger, #b9342a);
+}
+
+@media (max-width: 640px) {
+  .looks-page {
+    padding: 16px 16px 64px;
+  }
+  .looks-theme-block {
+    margin-top: 32px;
+  }
+  .looks-theme-title {
+    font-size: 1.35rem;
+  }
+}

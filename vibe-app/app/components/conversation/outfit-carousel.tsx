@@ -16,11 +16,24 @@ const SWIPE_RATIO = 1.5;
 export function OutfitCarousel({
   outfits,
   onHide,
+  contextLabelForIndex,
+  alwaysShowHeader = false,
 }: {
   outfits: Outfit[];
   /** Same contract as OutfitCard.onHide — receives the outfit_id of
    *  the card the user dismissed; parent state owns the filtered list. */
   onHide?: (outfitId: string) => void;
+  /** Optional per-slide label rendered on the LEFT of the carousel
+   *  header (counter + arrows still anchor right). Used by the Looks
+   *  page to show the original user query above each PDP — the legacy
+   *  Aura Outfits tab displays it the same way. */
+  contextLabelForIndex?: (idx: number) => string;
+  /** Force the header to render even when there's only one slide.
+   *  Default false so single-outfit conversation results don't show a
+   *  noisy "1 / 1" counter; the Looks page sets it true so the
+   *  per-slide user-query context line still shows for a single-turn
+   *  theme. */
+  alwaysShowHeader?: boolean;
 }) {
   const [idx, setIdx] = useState(0);
   const slotRef = useRef<HTMLDivElement | null>(null);
@@ -35,40 +48,54 @@ export function OutfitCarousel({
   }, [outfits.length, idx]);
 
   if (outfits.length === 0) return null;
-  const current = outfits[Math.min(idx, outfits.length - 1)];
+  const currentIdx = Math.min(idx, outfits.length - 1);
+  const current = outfits[currentIdx];
   const total = outfits.length;
   const hasMultiple = total > 1;
+  const contextLabel = contextLabelForIndex
+    ? contextLabelForIndex(currentIdx)
+    : "";
+  const showHeader = hasMultiple || alwaysShowHeader;
 
   const goPrev = () => setIdx((i) => Math.max(0, i - 1));
   const goNext = () => setIdx((i) => Math.min(total - 1, i + 1));
 
   return (
     <div className="conv-carousel">
-      {hasMultiple && (
+      {showHeader && (
         <div className="conv-carousel-header">
-          <span className="conv-carousel-counter">
-            {Math.min(idx, total - 1) + 1} / {total}
-          </span>
-          <div className="conv-carousel-nav">
-            <button
-              type="button"
-              onClick={goPrev}
-              disabled={idx === 0}
-              aria-label="Previous outfit"
-              title="Previous"
-            >
-              ←
-            </button>
-            <button
-              type="button"
-              onClick={goNext}
-              disabled={idx >= total - 1}
-              aria-label="Next outfit"
-              title="Next"
-            >
-              →
-            </button>
-          </div>
+          {contextLabel ? (
+            <span className="conv-carousel-context" title={contextLabel}>
+              {contextLabel}
+            </span>
+          ) : null}
+          {hasMultiple ? (
+            <>
+              <span className="conv-carousel-counter">
+                {currentIdx + 1} / {total}
+              </span>
+              <div className="conv-carousel-nav">
+                <button
+                  type="button"
+                  onClick={goPrev}
+                  disabled={idx === 0}
+                  aria-label="Previous outfit"
+                  title="Previous"
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  onClick={goNext}
+                  disabled={idx >= total - 1}
+                  aria-label="Next outfit"
+                  title="Next"
+                >
+                  →
+                </button>
+              </div>
+            </>
+          ) : null}
         </div>
       )}
 
