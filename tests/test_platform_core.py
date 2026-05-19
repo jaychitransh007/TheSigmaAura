@@ -354,6 +354,117 @@ class PlatformCoreTests(unittest.TestCase):
         self.assertEqual("canonical-db", row["id"])
         client.update_one.assert_not_called()
 
+    def test_merge_external_user_identity_propagates_acquisition_source(self) -> None:
+        """An anonymous customer who started as `vibe_storefront` and later
+        signed in via Shopify Customer Account should NOT show up in
+        Panel 01 as `acquisition_source="unknown"`. The merge must copy
+        meaningful attribution from the alias's onboarding_profile to
+        the canonical's when the canonical is still at defaults."""
+        client = unittest.mock.Mock()
+        # select_one call sequence:
+        #   1. get_or_create_user(canonical) -> canonical user row
+        #   2. get_user_by_external_user_id(alias) -> alias user row
+        #   3. _propagate_attribution: alias's onboarding_profile
+        #   4. _propagate_attribution: canonical's onboarding_profile
+        client.select_one.side_effect = [
+            {"id": "canonical-db", "external_user_id": "shopify:42"},
+            {"id": "alias-db", "external_user_id": "vibe:abc-uuid"},
+            {
+                "user_id": "alias-db",
+                "acquisition_source": "vibe_storefront",
+                "acquisition_campaign": "spring2026",
+                "referral_code": "",
+                "icp_tag": "",
+            },
+            {
+                "user_id": "canonical-db",
+                "acquisition_source": "unknown",
+                "acquisition_campaign": "",
+                "referral_code": "",
+                "icp_tag": "",
+            },
+        ]
+        repo = ConversationRepository(client)
+
+        repo.merge_external_user_identity(
+            canonical_external_user_id="shopify:42",
+            alias_external_user_id="vibe:abc-uuid",
+        )
+
+        # Five existing updates (conversations + 4 history tables) plus
+        # one new onboarding_profiles update for the canonical row.
+        self.assertEqual(6, client.update_one.call_count)
+        last_update = client.update_one.call_args_list[-1]
+        self.assertEqual("onboarding_profiles", last_update.args[0])
+        self.assertEqual(
+            "eq.canonical-db",
+            last_update.kwargs["filters"]["user_id"],
+        )
+        patch = last_update.kwargs["patch"]
+        self.assertEqual("vibe_storefront", patch["acquisition_source"])
+        self.assertEqual("spring2026", patch["acquisition_campaign"])
+        self.assertNotIn("referral_code", patch)  # alias had default
+        self.assertNotIn("icp_tag", patch)  # alias had default
+        self.assertIn("updated_at", patch)
+
+    def test_merge_external_user_identity_skips_propagation_when_canonical_already_attributed(self) -> None:
+        """If the canonical's onboarding_profile already has a non-default
+        acquisition_source, don't overwrite it. Last-write wins is the
+        wrong policy when canonical may have its own (more specific)
+        attribution from a previous merge."""
+        client = unittest.mock.Mock()
+        client.select_one.side_effect = [
+            {"id": "canonical-db", "external_user_id": "shopify:42"},
+            {"id": "alias-db", "external_user_id": "vibe:abc-uuid"},
+            {
+                "user_id": "alias-db",
+                "acquisition_source": "vibe_storefront",
+                "acquisition_campaign": "",
+                "referral_code": "",
+                "icp_tag": "",
+            },
+            {
+                "user_id": "canonical-db",
+                "acquisition_source": "instagram_paid",
+                "acquisition_campaign": "",
+                "referral_code": "",
+                "icp_tag": "",
+            },
+        ]
+        repo = ConversationRepository(client)
+
+        repo.merge_external_user_identity(
+            canonical_external_user_id="shopify:42",
+            alias_external_user_id="vibe:abc-uuid",
+        )
+
+        # Five existing updates; NO onboarding_profiles update because
+        # canonical's acquisition_source was already non-default.
+        self.assertEqual(5, client.update_one.call_count)
+        tables_touched = [call.args[0] for call in client.update_one.call_args_list]
+        self.assertNotIn("onboarding_profiles", tables_touched)
+
+    def test_merge_external_user_identity_skips_propagation_when_alias_profile_missing(self) -> None:
+        """If the alias has no onboarding_profile, there's nothing to
+        propagate. Don't issue an update_one against onboarding_profiles."""
+        client = unittest.mock.Mock()
+        client.select_one.side_effect = [
+            {"id": "canonical-db", "external_user_id": "shopify:42"},
+            {"id": "alias-db", "external_user_id": "vibe:abc-uuid"},
+            None,  # alias's onboarding_profile missing
+        ]
+        repo = ConversationRepository(client)
+
+        repo.merge_external_user_identity(
+            canonical_external_user_id="shopify:42",
+            alias_external_user_id="vibe:abc-uuid",
+        )
+
+        # Five existing updates; nothing for onboarding_profiles.
+        self.assertEqual(5, client.update_one.call_count)
+        tables_touched = [call.args[0] for call in client.update_one.call_args_list]
+        self.assertNotIn("onboarding_profiles", tables_touched)
+
     def test_create_confidence_history_persists_expected_payload(self) -> None:
         client = unittest.mock.Mock()
         client.insert_one.return_value = {"id": "c1"}
