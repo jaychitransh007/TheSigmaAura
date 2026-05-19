@@ -865,6 +865,41 @@
   align-items: center;
   justify-content: center;
   color: var(--ink-muted);
+  position: relative;
+}
+
+/* V.2 — spinner overlay shown while the single-garment try-on is
+   rendering. Sits on top of the catalog hero image so the customer
+   sees motion without losing the product context. */
+.conv-hero-tryon-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(2px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+
+.conv-hero-tryon-spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid var(--rule);
+  border-top-color: var(--accent, #b96346);
+  animation: conv-hero-tryon-spin 0.9s linear infinite;
+}
+
+@keyframes conv-hero-tryon-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .conv-hero img {
@@ -1071,6 +1106,37 @@
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+/* V.2 — Virtual Try On row sits right above the Buy/Add to Cart row
+   in garment mode only. Inline note / error copy below the button so
+   the customer sees actionable next-steps (e.g. "upload a full-body
+   photo first") without a noisy modal. */
+.conv-tryon-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.conv-tryon-row .conv-cta {
+  width: 100%;
+  justify-content: center;
+}
+
+.conv-tryon-note {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.conv-tryon-error {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--danger, #b9342a);
 }
 
 .conv-cta {
