@@ -342,6 +342,76 @@ def synthesize_item_description(item_attrs: Dict[str, Any]) -> str:
     return f"{sentence_1} {sentence_2}".strip() if sentence_2 else sentence_1
 
 
+# Defensive cleanup for catalog_enriched.description columns.
+#
+# A handful of TheSigmaVibe catalog rows landed in `catalog_enriched`
+# with their description column set to a serialized Shopify product
+# dict — "title: X product_type: Y body_html: <html>… variants: …" —
+# instead of just the body_html. Rendering that verbatim through the
+# Vibe per-garment PDP exposed the raw metadata keys and HTML tags to
+# the customer.
+#
+# Sanitize at the API boundary so every client (Vibe Conversation,
+# Looks page, future surfaces) sees clean text without each having to
+# re-implement the same scrub. Pure no-op on already-clean strings.
+_BODY_HTML_KEY = "body_html:"
+_TRAILING_KEYS_RE = re.compile(
+    r"\s+(?:variants|metafields|tags|vendor|options|status|images|"
+    r"created_at|updated_at|published_at):.*$",
+    flags=re.DOTALL,
+)
+_BLOCK_TAG_CLOSE_RE = re.compile(
+    r"</(?:p|li|ul|ol|div|br|h[1-6])>",
+    flags=re.IGNORECASE,
+)
+_BR_TAG_RE = re.compile(r"<br\s*/?>", flags=re.IGNORECASE)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _sanitize_catalog_description(raw: str) -> str:
+    """Strip Shopify-CSV metadata prefix + HTML tags from a description."""
+    if not raw:
+        return ""
+    s = raw
+
+    # Detect the serialized-dict case once so the trailing-keys scrub
+    # (variants:, metafields:, …) only fires for descriptions that were
+    # mis-ingested. Clean descriptions that happen to contain a word
+    # like "tags:" in their natural prose won't get mangled.
+    was_serialized = _BODY_HTML_KEY in s
+    if was_serialized:
+        body_html_idx = s.find(_BODY_HTML_KEY)
+        s = s[body_html_idx + len(_BODY_HTML_KEY):]
+
+    # Strip HTML; turn block-level close tags into spaces so list bullets
+    # don't fuse into adjacent items.
+    s = _BLOCK_TAG_CLOSE_RE.sub(" ", s)
+    s = _BR_TAG_RE.sub(" ", s)
+    s = _HTML_TAG_RE.sub("", s)
+
+    # Now that HTML is gone, the trailing serialized keys
+    # (`</ul>variants:` → ` variants:`) have whitespace before them and
+    # the regex can find the boundary cleanly.
+    if was_serialized:
+        s = _TRAILING_KEYS_RE.sub("", s)
+
+    # Decode common entities; collapse whitespace.
+    for entity, char in (
+        ("&amp;", "&"),
+        ("&quot;", '"'),
+        ("&#39;", "'"),
+        ("&apos;", "'"),
+        ("&lt;", "<"),
+        ("&gt;", ">"),
+        ("&nbsp;", " "),
+    ):
+        s = s.replace(entity, char)
+    s = _WHITESPACE_RE.sub(" ", s).strip()
+
+    return s
+
+
 def _build_candidate_item(product: "RetrievedProduct", role: str = "") -> Dict[str, Any]:
     """Compact dict per item for an OutfitCandidate, fed to the visual
     evaluator and the response formatter.
@@ -416,7 +486,9 @@ def _build_candidate_item(product: "RetrievedProduct", role: str = "") -> Dict[s
         # outfit-level summary. Empty for wardrobe items (no catalog
         # row) — Vibe's GarmentDetail falls back to ``description``
         # in that case.
-        "catalog_description": str(enriched.get("description") or ""),
+        "catalog_description": _sanitize_catalog_description(
+            str(enriched.get("description") or "")
+        ),
     }
     explicit_source = str(enriched.get("source") or "").strip().lower()
     if explicit_source in ("wardrobe", "catalog"):
