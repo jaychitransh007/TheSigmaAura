@@ -80,7 +80,8 @@ from platform_core.ui import get_web_ui_html
 from pydantic import BaseModel
 
 from .intent_registry import Intent
-from .orchestrator import AgenticOrchestrator
+from .orchestrator import AgenticOrchestrator, _build_candidate_item
+from .schemas import RetrievedProduct
 from .services.comfort_learning import ComfortLearningService
 from .services.dependency_reporting import DependencyReportingService
 from .services.onboarding_gateway import ApplicationUserGateway
@@ -1256,6 +1257,7 @@ def create_app() -> FastAPI:
                 image_data=payload.image_data or "",
                 wardrobe_item_id=payload.wardrobe_item_id or "",
                 wishlist_product_id=payload.wishlist_product_id or "",
+                seed_product_id=payload.seed_product_id or "",
                 tenant_id=tenant_id,
             )
             return TurnResponse(**out)
@@ -1305,6 +1307,7 @@ def create_app() -> FastAPI:
                     image_data=payload.image_data or "",
                     wardrobe_item_id=payload.wardrobe_item_id or "",
                     wishlist_product_id=payload.wishlist_product_id or "",
+                    seed_product_id=payload.seed_product_id or "",
                     tenant_id=tenant_id,
                     stage_callback=append_stage,
                 )
@@ -1495,6 +1498,60 @@ def create_app() -> FastAPI:
                 status_code=400,
                 detail=graceful_policy_message(reason_code or "tryon_request_failed", default=str(exc)),
             ) from exc
+
+    @app.get("/v1/catalog/products/{handle}")
+    def lookup_catalog_product_by_handle(handle: str, tenant_id: str = "") -> dict:
+        """Catalog row lookup by Shopify handle, scoped to tenant.
+
+        Phase W gateway — the customer clicks "Virtual Try On" on a
+        storefront PDP, lands in Vibe with `?product=<handle>`, and
+        the Vibe-app loader hits this to fetch the catalog row for
+        the entry product without firing a planner / composer turn.
+        Returns the row shaped as an OutfitItem dict (same fields
+        the existing turn pipeline emits via _build_candidate_item),
+        so the client can wrap it as a synthetic single-item Outfit
+        and render the seeded PDP card immediately. No LLM cost on
+        entry; LLM only fires when the customer asks a follow-up.
+
+        Handle collisions across tenants are possible (two shops can
+        both ship a product handled "black-tee"), so tenant_id is
+        REQUIRED — the route would otherwise leak rows between
+        merchants. Empty tenant_id → 400; missing row → 404.
+        """
+        if not handle or not handle.strip():
+            raise HTTPException(status_code=400, detail="Missing handle")
+        if not tenant_id or not tenant_id.strip():
+            raise HTTPException(status_code=400, detail="Missing tenant_id")
+        try:
+            enriched = repo.client.select_one(
+                "catalog_enriched",
+                filters={
+                    "handle": f"eq.{handle.strip()}",
+                    "tenant_id": f"eq.{tenant_id.strip()}",
+                },
+            )
+        except SupabaseError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        if not enriched:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Product with handle '{handle}' not found in tenant '{tenant_id}'.",
+            )
+
+        # Build the OutfitItem the same way the turn pipeline does so
+        # the client gets an identically-shaped dict — catalog_description
+        # sanitization, image_url normalization, tag-attribute fanout,
+        # synthesized description fallback, all of it. Wrap the
+        # enriched dict in a minimal RetrievedProduct because the
+        # helper is typed against that.
+        seed_product = RetrievedProduct(
+            product_id=str(enriched.get("product_id") or ""),
+            similarity=1.0,
+            metadata={},
+            enriched_data=dict(enriched),
+        )
+        item = _build_candidate_item(seed_product, role="")
+        return {"ok": True, "item": item}
 
     @app.post("/v1/conversations/{conversation_id}/feedback")
     def submit_feedback(conversation_id: str, payload: FeedbackRequest) -> dict:

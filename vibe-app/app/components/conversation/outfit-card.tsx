@@ -56,7 +56,19 @@ export function OutfitCard({
   outfit: Outfit;
   onHide?: () => void;
 }) {
-  const [mode, setMode] = useState<Mode>({ kind: "outfit" });
+  // Default to outfit-level mode for multi-item outfits, garment mode
+  // for single-item outfits. Phase W's seed-product entry path
+  // emits a synthetic 1-item Outfit (the storefront product the
+  // customer landed on); the "Buy Outfit" framing doesn't make
+  // sense for a single item, so we open directly in garment mode
+  // and the customer sees Add to Cart / Buy Now / Try On.
+  // Multi-item turns still default to outfit mode so the
+  // outfit-level reasoning + cohesive Buy Outfit CTA show first.
+  const [mode, setMode] = useState<Mode>(() =>
+    outfit.items.length === 1
+      ? { kind: "garment", item: outfit.items[0] }
+      : { kind: "outfit" },
+  );
   const [liked, setLiked] = useState(false);
   // Per-item size selection. Keyed by garment_id because customers
   // need to pick a size for each Shopify SKU independently.

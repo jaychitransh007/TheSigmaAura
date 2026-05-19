@@ -637,6 +637,77 @@ export async function outfitTryon(args: {
   return { ok: true, data_url: dataUrl };
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Phase W — catalog product lookup by handle.
+//
+// Backs the storefront → Vibe gateway: customer clicks Virtual Try On
+// on a merchant's PDP, the Vibe screen opens in a new tab with
+// `?product=<handle>`, and the loader hits this helper to fetch the
+// entry product without firing a planner / composer turn. Returns the
+// catalog row as an OutfitItem — same shape the turn pipeline emits —
+// so the client wraps it as a synthetic single-item Outfit and renders
+// the seeded PDP card immediately. No LLM call on entry.
+//
+// 404 → product handle isn't in this merchant's catalog (typo,
+// hand-edited URL, etc.). Loader treats it as "fall back to the
+// unseeded conversation" so the customer still lands in Vibe.
+// ─────────────────────────────────────────────────────────────────────
+
+export async function lookupCatalogProductByHandle(args: {
+  handle: string;
+  tenantId: string;
+}): Promise<{ ok: true; item: OutfitItem } | { ok: false; status: number; error: string }> {
+  if (USE_MOCK) {
+    // Synthesize a plausible OutfitItem for offline dev. Keeps the
+    // storefront → Vibe flow testable without a live engine.
+    return {
+      ok: true,
+      item: {
+        product_id: `mock-${args.handle}`,
+        title: args.handle.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        image_url: `https://picsum.photos/seed/${encodeURIComponent(args.handle)}/800/1200`,
+        price: "0",
+        product_url: "#",
+        garment_category: "tops",
+        garment_subtype: "shirt",
+        source: "catalog",
+      },
+    };
+  }
+  const path = `/v1/catalog/products/${encodeURIComponent(args.handle.trim())}?tenant_id=${encodeURIComponent(args.tenantId.trim())}`;
+  let resp: Response;
+  try {
+    resp = await fetch(`${ENGINE_API_URL}${path}`, { signal: fetchTimeout() });
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    return { ok: false, status: 0, error: `Catalog lookup unreachable: ${reason}` };
+  }
+  if (!resp.ok) {
+    let detail = "";
+    try {
+      const body = (await resp.json()) as { detail?: string };
+      detail = body.detail ?? "";
+    } catch {
+      // ignore; fall through to a generic error
+    }
+    return {
+      ok: false,
+      status: resp.status,
+      error: detail || `Catalog lookup failed (HTTP ${resp.status})`,
+    };
+  }
+  let body: { ok?: boolean; item?: OutfitItem };
+  try {
+    body = (await resp.json()) as typeof body;
+  } catch {
+    return { ok: false, status: 502, error: "Catalog lookup response was not valid JSON." };
+  }
+  if (!body.ok || !body.item) {
+    return { ok: false, status: 502, error: "Catalog lookup response missing item." };
+  }
+  return { ok: true, item: body.item };
+}
+
 export async function startTurn(args: {
   conversationId: string;
   userId: string;
@@ -649,6 +720,13 @@ export async function startTurn(args: {
   /** Picked from the customer's wishlist (saved catalog products).
    *  Engine resolves to a catalog row and anchors on it. */
   wishlistProductId?: string;
+  /** Phase W — the product the customer landed on when they entered
+   *  Vibe via the storefront "Virtual Try On" button. Kept in
+   *  conversation-scoped client state and re-sent on every turn so
+   *  follow-up queries ("what shoes go with this?") anchor on the
+   *  entry garment. Engine threads it through process_turn the same
+   *  way it threads wishlist_product_id. */
+  seedProductId?: string;
   /** Shopify *.myshopify.com domain, extracted from the signed App
    *  Proxy URL params. Required for `vibe_storefront` traffic so the
    *  engine can resolve the right tenant_id for catalog retrieval —
@@ -690,6 +768,7 @@ export async function startTurn(args: {
       image_data: args.imageData,
       wardrobe_item_id: args.wardrobeItemId,
       wishlist_product_id: args.wishlistProductId,
+      seed_product_id: args.seedProductId,
     },
   );
 }
