@@ -54,6 +54,7 @@ import { MerchantHeader } from "../components/merchant-header";
 import "../components/merchant-header.css";
 import { ThemeOverridesStyle } from "../components/theme-overrides";
 import {
+  getResolvedMode,
   isCardStep,
   markKindResolved,
   nextStep,
@@ -522,18 +523,15 @@ function skippedSummary(kind: OnboardingMessageKind): string {
 const WELCOME_RETURNING =
   'Hey, welcome back — I\'m Vibe. Try something like "Dress me for tonight" or "I need an outfit for a wedding".';
 const WELCOME_NEW =
-  'Hi — I\'m Vibe, your styling co-pilot. Try something like "Dress me for tonight" — and a couple of basics below help me find what works on you.';
+  'Hi — I\'m Vibe, your styling co-pilot. Share a couple of quick photos below so I can read your colours and proportions, or skip and chat right away — try "Dress me for tonight".';
 
 // Steps the seed effect treats as "the customer is still in the
 // initial parallel onboarding phase" — photos + gender-DOB rendered
-// side-by-side. Anything past this and the customer has either
-// completed one of the initial cards or moved on to the height-waist
-// follow-up card.
-const INITIAL_PHASE: ReadonlySet<OnboardingStep> = new Set<OnboardingStep>([
-  "welcome",
-  "photos",
-  "gender-dob",
-]);
+// (D.O.5, 2026-05-20) The previous parallel onboarding (photos +
+// gender-DOB emitted side-by-side) was replaced by a sequential flow:
+// photos card first, gender-DOB only after photos completed, no
+// further cards after that. The `INITIAL_PHASE` set is no longer
+// needed — each step is emitted on its own.
 
 // Templated prompt the assistant sends right after onboarding wraps
 // (and analysis completes, if the customer uploaded photos). Carries
@@ -781,9 +779,11 @@ export default function ConversationPage() {
   //       localStorage's "past photos" pointer and re-emit the card.
   //       Step rolls back to "photos" so onAdvance promotes correctly.
   //
-  //   hasProfile = false
-  //     → existing new-customer flow (welcome + photos + gender-DOB
-  //       stacked, or resume mid-flow from persisted step).
+  //   hasProfile = false  (D.O.5 sequential flow, 2026-05-20)
+  //     → welcome + PhotosCard. Gender-DOB only emits AFTER photos
+  //       resolve with "completed" (handled by transformAdvance).
+  //       If the customer skips photos, no further cards emit and
+  //       the chat composer is unlocked.
   //
   // Waits until imagesUploaded is non-null — the init response hasn't
   // landed yet otherwise and we'd seed against a stale guess. seededRef
@@ -799,8 +799,7 @@ export default function ConversationPage() {
 
     // If the engine reports the photo missing, clear any stale
     // "photos" resolution from localStorage so the seed branches
-    // below re-emit the card. Otherwise resolved.has("photos") would
-    // suppress the new-customer-path emission below.
+    // below re-emit the card.
     if (needsPhotos) {
       unmarkKindResolved("photos");
     }
@@ -821,52 +820,49 @@ export default function ConversationPage() {
       return;
     }
 
-    // New-customer path. Two layers of persistence:
-    //   - vibe_onboarding_step: the furthest *sequence position* the
-    //     customer has reached. Drives where the next card slots in
-    //     once the initial parallel pair clears.
-    //   - vibe_onboarding_resolved_kinds: explicit list of cards
-    //     already saved/skipped. A reload during the parallel
-    //     photos+gender-DOB phase consults this so a completed
-    //     photos card doesn't re-emit (unless the engine just told
-    //     us the photo went missing — handled above).
-    let persisted = readOnboardingStep();
-    // If the engine reports photos missing but localStorage already
-    // advanced past them, roll the cursor back so the initial-phase
-    // branch fires and emits the card.
-    if (needsPhotos && !INITIAL_PHASE.has(persisted)) {
-      persisted = "photos";
-      writeOnboardingStep(persisted);
-    }
+    // New-customer path — D.O.5 sequential flow.
+    //
+    //   vibe_onboarding_step:           furthest sequence position
+    //   vibe_onboarding_resolved_kinds: Set of kinds the customer has
+    //                                   saved or skipped
+    //   vibe_onboarding_resolved_modes: how each was resolved
+    //
+    // On reload, the seed effect resumes at the right step by
+    // inspecting which kinds are already resolved and HOW they were
+    // resolved. Photos skipped means the customer explicitly opted
+    // out of the body-frame analysis — we honour that by not
+    // re-emitting gender-DOB.
     const resolved = readResolvedKinds();
-    const isInitialPhase = INITIAL_PHASE.has(persisted);
+    const photosMode = getResolvedMode("photos");
 
     const seeded: ChatMessage[] = [
       { role: "assistant", text: WELCOME_NEW },
     ];
 
-    if (isInitialPhase) {
-      if (!resolved.has("photos")) {
-        seeded.push({ role: "onboarding", kind: "photos", status: "active" });
-      }
-      if (!resolved.has("gender-dob")) {
-        seeded.push({
-          role: "onboarding",
-          kind: "gender-dob",
-          status: "active",
-        });
-      }
-      onboardingStepRef.current = "gender-dob";
-      writeOnboardingStep("gender-dob");
-    } else if (isCardStep(persisted) && !resolved.has(persisted)) {
+    if (!resolved.has("photos")) {
+      // Step 1: photos card.
+      seeded.push({ role: "onboarding", kind: "photos", status: "active" });
+      onboardingStepRef.current = "photos";
+      writeOnboardingStep("photos");
+    } else if (photosMode === "skipped") {
+      // Photos explicitly skipped → bypass gender-DOB entirely. The
+      // analysisPhase effect notices this and emits the
+      // "what would you like to wear?" prompt.
+      onboardingStepRef.current = "done";
+      writeOnboardingStep("done");
+    } else if (!resolved.has("gender-dob")) {
+      // Step 2: gender-DOB card (photos already completed).
       seeded.push({
         role: "onboarding",
-        kind: persisted as OnboardingMessageKind,
+        kind: "gender-dob",
         status: "active",
       });
-      onboardingStepRef.current = persisted;
+      onboardingStepRef.current = "gender-dob";
+      writeOnboardingStep("gender-dob");
     } else {
+      // Both cards resolved on a prior session.
       onboardingStepRef.current = "done";
+      writeOnboardingStep("done");
     }
 
     setMessages(seeded);
@@ -900,10 +896,35 @@ export default function ConversationPage() {
       setAnalysisPhase("complete");
       return;
     }
-    const photosCompleted = onbMessages.some(
-      (m) => m.kind === "photos" && m.status === "completed",
-    );
-    setAnalysisPhase(photosCompleted ? "running" : "complete");
+    // D.O.5 sequential flow — three terminal states:
+    //
+    //   photos skipped              → no analysis (no body-frame data)
+    //                                  → "complete", emit prompt
+    //   photos completed +
+    //     gender-DOB skipped        → no analysis (phase1 needs gender,
+    //                                  phase2 needs DOB)
+    //                                  → "complete", emit prompt
+    //   photos completed +
+    //     gender-DOB completed      → analysis can run
+    //                                  → "running", poll engine
+    const photosMessage = onbMessages.find((m) => m.kind === "photos");
+    const genderDobMessage = onbMessages.find((m) => m.kind === "gender-dob");
+    const photosCompleted = photosMessage?.status === "completed";
+    const genderDobCompleted = genderDobMessage?.status === "completed";
+
+    if (!photosCompleted) {
+      setAnalysisPhase("complete");
+      return;
+    }
+    if (genderDobMessage && !genderDobCompleted) {
+      // gender-DOB card was emitted but resolved with skip — analysis
+      // can't run, jump to chat.
+      setAnalysisPhase("complete");
+      return;
+    }
+    // Photos completed AND gender-DOB completed (or hasProfile recovery
+    // where gender-DOB was never emitted but the engine already has it).
+    setAnalysisPhase("running");
   }, [messages, analysisPhase]);
 
   // Poll the engine's analysis status until it terminates.
@@ -1222,28 +1243,29 @@ export default function ConversationPage() {
     if (!anyActive) {
       // Returning customer (hasProfile=true) only sees onboarding
       // cards in the recovery path — e.g. PhotosCard re-injected
-      // because the engine lost the photo. Their gender / DOB /
-      // measurements are already on the engine; promoting through
-      // the full new-customer ladder would force them to re-enter
-      // basics they've already saved. Jump straight to "done" after
-      // they resolve the recovery card.
+      // because the engine lost the photo. Their gender / DOB are
+      // already on the engine; promoting through the full new-
+      // customer ladder would force them to re-enter basics they've
+      // already saved. Jump straight to "done" after they resolve
+      // the recovery card.
       if (hasProfile) {
         return next;
       }
-      // New-customer flow: advance to the next sequential card.
-      // Derive the next step from the last onboarding message
-      // (resolved or not). findLast walks end→start internally — no
-      // copy + reverse needed. Sidesteps the ref entirely so the
-      // updater stays pure even under rapid successive calls.
-      const lastOnb = next.findLast((m) => m.role === "onboarding");
-      const currentStep: OnboardingStep = lastOnb
-        ? (lastOnb.kind as OnboardingStep)
-        : "welcome";
-      const newStep = nextStep(currentStep);
-      if (isCardStep(newStep)) {
+      // New-customer sequential flow (D.O.5):
+      //   - photos resolved with "completed" → emit gender-DOB
+      //   - photos resolved with "skipped"   → no further cards
+      //                                        (analysisPhase effect
+      //                                        will emit the prompt)
+      //   - gender-DOB resolved (any mode)   → no further cards
+      //                                        (analysisPhase effect
+      //                                        handles the transition
+      //                                        from idle → running →
+      //                                        complete based on the
+      //                                        resolution modes)
+      if (kind === "photos" && mode === "completed") {
         next.push({
           role: "onboarding",
-          kind: newStep as OnboardingMessageKind,
+          kind: "gender-dob",
           status: "active",
         });
       }
@@ -1260,12 +1282,25 @@ export default function ConversationPage() {
     // StrictMode's double invocation can't duplicate writes.
     setMessages((prev) => transformAdvance(prev, kind, mode));
     // Event handlers ARE safe for side effects (StrictMode doesn't
-    // double-invoke them). Record the resolved kind here instead of
-    // looping through every message in a useEffect — saves an O(N)
-    // localStorage scan on every messages change. Idempotent on the
-    // storage side (Set semantics) so a duplicate call from any
-    // future re-fire is harmless.
-    markKindResolved(kind);
+    // double-invoke them). Record the resolved kind + mode here
+    // instead of looping through every message in a useEffect —
+    // saves an O(N) localStorage scan on every messages change. The
+    // mode is load-bearing: the seed effect uses it on reload to
+    // distinguish photos-completed (emit gender-DOB next) from
+    // photos-skipped (bypass gender-DOB, jump to chat).
+    markKindResolved(kind, mode);
+    // D.O.5: when gender-DOB completes, the analysis prereqs (gender
+    // for phase1, DOB for phase2) are met for the first time. Fire
+    // the triggers immediately so the customer doesn't wait for the
+    // poll loop's self-heal cycle (~2s tick + 8s cooldown) to catch
+    // up. handleOnboardingPhotoUploaded fired earlier triggers that
+    // would have 400'd on the missing gender; this is the retry that
+    // actually succeeds. Best-effort — the poll-loop self-heal stays
+    // as the safety net.
+    if (kind === "gender-dob" && mode === "completed") {
+      void fireAnalysisTrigger("phase1");
+      void fireAnalysisTrigger("phase2");
+    }
   };
 
   // Side-effects effect: keep the persisted onboarding step in sync

@@ -1,58 +1,65 @@
 // Onboarding state machine — runs client-side on the conversation page.
 //
-// The customer's progress through the in-chat onboarding (welcome →
-// photos → gender-DOB → height-waist → done) is persisted in
-// localStorage so a page reload resumes mid-flow. Identity is keyed
-// off the vibe_session_id (D.S.3a) — when that's deleted (e.g. the
-// customer clears site data) the onboarding resets too, which is the
-// correct behaviour for an anonymous shopper.
+// Sequential flow (D.O.5, 2026-05-20):
 //
-// Skipping advances the step without saving. Completing advances the
-// step AFTER the backend confirms the save (so a transient network
-// failure doesn't lose the answer).
+//   welcome → photos card
+//       photos skipped     → done (no gender-DOB, jump to chat)
+//       photos completed   → gender-dob card
+//           gender-dob *   → done (analysis fires if gender-dob completed)
 //
-// D.O.3.
+// Persistence keys:
+//   - vibe_onboarding_step:            sequence position, drives seed
+//   - vibe_onboarding_resolved_kinds:  Set of kinds the customer has
+//                                      already saved or skipped
+//   - vibe_onboarding_resolved_modes:  JSON map of kind → "completed" |
+//                                      "skipped", so the seed effect can
+//                                      tell the customer's intent on
+//                                      reload (skipping photos has a
+//                                      different downstream effect than
+//                                      completing them — it bypasses
+//                                      gender-DOB entirely).
+//
+// Identity is keyed off vibe_session_id (D.S.3a) — when that's deleted
+// (e.g. the customer clears site data) the onboarding resets too,
+// which is the correct behaviour for an anonymous shopper.
 
 const STEP_KEY = "vibe_onboarding_step";
-// Set of onboarding-card kinds the customer has already resolved
-// (completed OR skipped). Stored as a JSON array of strings.
-// Consulted by the seed effect so a mid-flow reload doesn't re-emit
-// resolved cards as active. Without this, a customer who completes
-// the photos card and reloads sees the photos card re-appear,
-// effectively losing the resolution.
 const RESOLVED_KEY = "vibe_onboarding_resolved_kinds";
+const RESOLVED_MODES_KEY = "vibe_onboarding_resolved_modes";
 
 export type OnboardingStep =
   | "welcome"
   | "photos"
   // Combined gender + DOB card. Gender is chip-style (Male / Female /
-  // Non-binary), DOB is a DD/MM/YYYY segmented numeric input.
+  // Non-binary), DOB is a DD/MM/YYYY segmented numeric input. Skip is
+  // now exposed too (D.O.5) — a customer who doesn't want to share
+  // demographics can still chat, they just don't get the analysis-
+  // driven personalization.
   | "gender-dob"
-  // Combined height + waist card. Each measurement is ft + in
-  // segmented numeric inputs, converted to cm before save.
-  | "height-waist"
   | "done";
+
+export type OnboardingResolutionMode = "completed" | "skipped";
 
 const ORDER: readonly OnboardingStep[] = [
   "welcome",
   "photos",
   "gender-dob",
-  "height-waist",
   "done",
 ] as const;
 
 // Migration map for customers whose persisted step references a
 // kind no longer in the flow.
 //   - dob / gender → gender-dob (the combined card)
-//   - name → the next sensible step (now height-waist; previously
-//     "height" but that card was rolled into height-waist)
-//   - height / waist → the combined height-waist card
+//   - height / waist / height-waist / name → done (D.O.5 dropped the
+//     measurements card from the in-chat onboarding flow; the customer
+//     can fill those later via a profile edit surface)
 const LEGACY_STEP_ALIASES: Readonly<Record<string, OnboardingStep>> = {
   dob: "gender-dob",
   gender: "gender-dob",
-  name: "height-waist",
-  height: "height-waist",
-  waist: "height-waist",
+  name: "done",
+  height: "done",
+  waist: "done",
+  "height-waist": "done",
 };
 
 export function readOnboardingStep(): OnboardingStep {
@@ -115,12 +122,48 @@ export function readResolvedKinds(): Set<string> {
   }
 }
 
-export function markKindResolved(kind: string): void {
+/** Read the kind → mode map of how each resolved card was completed. */
+export function readResolvedModes(): Record<string, OnboardingResolutionMode> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(RESOLVED_MODES_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    const out: Record<string, OnboardingResolutionMode> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (v === "completed" || v === "skipped") {
+        out[k] = v;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** Convenience accessor — returns the mode for one kind, or null. */
+export function getResolvedMode(
+  kind: string,
+): OnboardingResolutionMode | null {
+  const modes = readResolvedModes();
+  return modes[kind] ?? null;
+}
+
+export function markKindResolved(
+  kind: string,
+  mode: OnboardingResolutionMode = "completed",
+): void {
   if (typeof window === "undefined") return;
   try {
     const current = readResolvedKinds();
     current.add(kind);
     window.localStorage.setItem(RESOLVED_KEY, JSON.stringify([...current]));
+    const modes = readResolvedModes();
+    modes[kind] = mode;
+    window.localStorage.setItem(RESOLVED_MODES_KEY, JSON.stringify(modes));
   } catch {
     // Best-effort.
   }
@@ -136,8 +179,14 @@ export function unmarkKindResolved(kind: string): void {
   if (typeof window === "undefined") return;
   try {
     const current = readResolvedKinds();
-    if (!current.delete(kind)) return;
-    window.localStorage.setItem(RESOLVED_KEY, JSON.stringify([...current]));
+    if (current.delete(kind)) {
+      window.localStorage.setItem(RESOLVED_KEY, JSON.stringify([...current]));
+    }
+    const modes = readResolvedModes();
+    if (modes[kind] !== undefined) {
+      delete modes[kind];
+      window.localStorage.setItem(RESOLVED_MODES_KEY, JSON.stringify(modes));
+    }
   } catch {
     // Best-effort.
   }
