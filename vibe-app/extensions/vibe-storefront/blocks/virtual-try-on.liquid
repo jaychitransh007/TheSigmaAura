@@ -27,7 +27,7 @@
 {%- liquid
   assign label = block.settings.label | default: 'Virtual Try On'
   assign modal_title = block.settings.modal_title | default: 'See it on you'
-  assign modal_subtitle = block.settings.modal_subtitle | default: 'Upload a full-body photo (head to toe, arms relaxed). I''ll render this piece on you in a few seconds.'
+  assign modal_subtitle = block.settings.modal_subtitle | default: "Upload a full-body photo (head to toe, arms relaxed). I'll render this piece on you in a few seconds."
   assign product_image = product.featured_image | image_url: width: 1200
 -%}
 
@@ -60,7 +60,6 @@
 {
   "name": "Virtual Try-On",
   "target": "section",
-  "available_if": "{{ app.metafields.shopify.installation-token != blank }}",
   "settings": [
     {
       "type": "text",
