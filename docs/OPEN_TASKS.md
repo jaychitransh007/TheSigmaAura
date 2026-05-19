@@ -339,6 +339,67 @@ Both surfaces share one engine endpoint, one Vibe-app proxy route, one anonymous
 - Body photo uploaded from storefront persists to engine, visible the next time the customer opens Vibe chat.
 - Engine cost stays under $0.05 per click (Gemini Flash Image + quality gate overhead). No re-renders on repeat clicks once V.5 lands.
 
+## Phase W — Virtual Try-On as the entry point to Vibe (flow redesign)
+
+**Pivot.** Virtual Try-On stops being a feature *on* the storefront ("click here to render a single-garment try-on as a modal popup") and becomes the gateway *into* Vibe ("click here, land in Vibe with your product, full stylist experience unlocks from there"). Phase V's per-card buttons inside the Vibe screen stay; the change is mostly upstream of them. The two-image-card modal we built in V.3 is retired.
+
+### What changes
+
+1. **Storefront PDP button = link, not modal.** Click → opens Vibe in a new tab → `/apps/vibe/style?product=<handle>`. No popup on the storefront.
+2. **Vibe screen accepts a product context.** The new query param seeds the conversation with a single product as the first PDP card. No carousel, no 3-outfit recommendation set — just the one product the customer came in on.
+3. **Body-photo state drives the entry UX.** No body photo → welcome + onboarding photos card first; skip → single-product PDP card with the catalog hero (no try-on). Body photo on file → skip onboarding, render the single-product PDP card immediately, auto-fire the try-on with a thumbnail loader, swap to the rendered hero on success.
+4. **Profile analysis fires in the background on try-on entry only when no profile exists yet.** Doesn't block the try-on or the chat. Re-using an existing profile is free; re-running burns OpenAI tokens + ~30s of background compute, so the trigger is gated. Next composer turn picks up the profile if it landed; if not, the engine continues with whatever it knows. Same self-heal poll loop as PR #500.
+5. **PDP card hero defaults to try-on once a body photo exists.** Catalog stock photo is the fallback only when the customer hasn't onboarded, when the engine refused the render, or while the render is in flight (hero-area loader on top of the catalog image as the loading state).
+6. **In-Vibe per-card try-on button** (already shipped in V.2) gains an onboarding-fallback path: clicking when no body photo exists surfaces the photo upload card inline instead of the current "Upload your full-body photo first" inline error. Skip → no try-on rendered; Save → try-on fires automatically.
+
+### Sub-tasks
+
+- [ ] **W.1.** **Storefront button → link (new tab).** Rewrite `vibe-storefront/blocks/virtual-try-on.liquid` so the trigger is `<a href="/apps/vibe/style?product={{ product.handle }}" target="_blank" rel="noopener">` styled to look identical to the current button. Strip the `data-vibe-tryon-open` hook and the modal-construction JS from `vibe-storefront/assets/virtual-try-on.js` (leave the file as a no-op until W.8 prunes it). Modal CSS in `virtual-try-on.css` becomes dead code; defer cleanup.
+
+- [ ] **W.2.** **Vibe screen reads `?product=<handle>` + seed product becomes the anchor for follow-up turns.** Two pieces, one logical unit (the seed product travels with the conversation):
+
+  - **(a) On entry — pure catalog lookup, no LLM.** `apps.vibe.style.tsx` loader reads the `product` query param and hits engine `GET /v1/catalog/products/{handle}?tenant_id=<id>`. Engine returns the catalog row shaped as an `OutfitItem` (same shape as a turn-returned item). Vibe-app wraps it in a synthetic single-item `Outfit` and passes to the client as initial state. Direct catalog read; no planner / composer / Gemini cost on entry.
+
+  - **(b) On follow-up turns — seed product = anchor.** Customer might say "what shoes go with this?" or "complete the look." The seed product carries forward as the anchor, exactly the way wardrobe items work today. Vibe-app remembers the seed product in React state and sends `seed_product_id` (sibling to `wardrobe_item_id` in `CreateTurnRequest`) on every `POST /v1/conversations/{cid}/turns` request. Engine's planner/composer receives it and biases retrieval + outfit composition around it. Engine-side: extend `CreateTurnRequest` + thread `seed_product_id` through the planner the same way `wardrobe_item_id` flows.
+
+  URL-param-less entry (`/apps/vibe/style` with no `product`) still works exactly as today — no seed, no anchor.
+
+- [ ] **W.3.** **Single-product PDP card mode.** When the conversation's first turn has 1 outfit with 1 item, render `OutfitCard` defaulted to garment mode (no Buy-Outfit framing — that's an outfit-scale CTA that doesn't make sense for a single product). Carousel pagination ("1 / 3") only renders when `outfits.length > 1`. Subsequent composer turns return 3-outfit recommendations as normal — the single-product mode is just the initial state on the seeded entry.
+
+- [ ] **W.4.** **Body-photo state check on entry.** Engine: `GET /v1/users/{user_id}/state` (or extend the existing `/v1/users/{user_id}/conversations` payload) returns `{ has_body_photo: bool, has_profile: bool, profile_status: "idle|running|ready", ... }`. Vibe-app loader hits this on every Vibe screen mount; the client uses `has_body_photo` to decide whether to show onboarding cards or jump straight to the seeded PDP card.
+
+- [ ] **W.5.** **Auto-fire try-on on card mount when body photo exists.** On `OutfitCard` first paint, if `hasBodyPhoto && !card.tryon_image_url`, fire `/apps/vibe/api/tryon` (garment mode) or `/apps/vibe/api/tryon-outfit` (outfit mode) immediately. Spinner on the TRY-ON thumbnail in the rail; hero swaps to the rendered image on success. Idempotent — re-clicking the button while in flight is a no-op (matches the V.2 state machine).
+
+- [ ] **W.6.** **In-Vibe try-on button → photo-card fallback when no body photo.** Currently the per-card "Virtual Try On" button shows an inline "Upload your full-body photo first…" error. Change the missing-person path to render the onboarding photo card inline instead. On save, fire the try-on automatically; on skip, leave the card as-is (catalog hero, no try-on).
+
+- [ ] **W.7.** **Parallel profile analysis trigger — gated on try-on entry, idempotent.** Fire the existing analysis trigger from PR #500 on Vibe screen mount **only when both conditions hold**:
+
+  1. Customer entered via the try-on path (`?product=<handle>` present in the URL — non-try-on entries don't fire), AND
+  2. No profile exists for the user yet (`has_profile === false` from the W.4 state endpoint).
+
+  If a profile already exists, the entry path re-uses it for the rest of the session. Re-running burns OpenAI tokens (~$0.03 + ~30s) for no value; the engine doesn't need a fresh analysis on every visit.
+
+  Non-blocking either way: the conversation works without a profile; the next composer turn picks up the profile if it landed since the customer's last visit. The self-heal poll loop already retries on `not_started` status with the 8s cooldown.
+
+- [ ] **W.8.** **Storefront modal cleanup.** Once W.1 is live and observed stable for one release, prune the `.vibe-tryon-modal*` CSS classes and the dialog-construction logic from `vibe-storefront/assets/`. Deferred from W.1 so we have an easy rollback if the link-only flow regresses.
+
+### Acceptance criteria
+
+- Clicking "Virtual Try On" on any TheSigmaVibe PDP opens `/apps/vibe/style?product=<handle>` in a new tab on the same domain. No modal on the storefront.
+- Customer without a body photo: welcome + photos card → on Save, single-product PDP card with try-on auto-fired; on Skip, single-product PDP card with catalog image as hero (no try-on).
+- Customer with a body photo: no onboarding shown; single-product PDP card with try-on already rendering (spinner on the TRY-ON thumbnail) on first paint; hero swaps to the rendered image when ready.
+- Single-product entry shows exactly one card; carousel pagination ("1 / 3") only appears when subsequent composer turns return multi-outfit recommendations.
+- Profile analysis fires on try-on entry **only when no profile exists yet** for the user; existing profiles are re-used as-is. The conversation never blocks waiting on it; subsequent composer turns integrate the profile when the engine has it.
+- Follow-up queries in a seeded conversation ("what shoes go with this?", "complete the look") return outfit recommendations anchored on the seed product — same anchor mechanic as wardrobe items today.
+- The PDP card hero never defaults to the catalog stock photo when the customer has a body photo on file — it shows the rendered try-on, or a loader, or (on hard render failure) the catalog with a "Retry try-on" affordance.
+- In-Vibe per-card "Virtual Try On" button on a customer with no body photo surfaces the photo upload card inline rather than the inline error.
+
+### Out of scope (deferred)
+
+- Caching by `(user, product)` for repeat try-on clicks — still V.5.
+- Cleanup of the `vibe-tryon-modal*` CSS / JS in the theme extension — W.8, deferred one release.
+- A dedicated "single-product" CTA layout that drops the size chip row or the "Buy Outfit" terminology — out of scope; existing garment-mode rendering covers this.
+
 ## Done outside the original task list
 
 - [x] **Homepage hero** — "Style that gets you." copy locked, hero image generated, 4 value-prop card content drafted.
