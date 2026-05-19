@@ -40,7 +40,7 @@ import {
   ENGINE_MOCK_ACTIVE,
   ensureOnboardingProfile,
   getOnboardingStatus,
-  lookupCatalogProductByHandle,
+  lookupCatalogProductByShopifyId,
   lookupOrCreateTenant,
   mergeUserIdentity,
   resolveConversation,
@@ -150,48 +150,50 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
 
-  // Phase W gateway — `?product=<handle>` set by the storefront
-  // Virtual Try On button. Look the catalog row up so the client
-  // can render a seeded single-product PDP card on first paint,
-  // without firing a planner / composer turn.
+  // Phase W gateway — `?productId=<numeric>` set by the storefront
+  // Virtual Try On button (sourced from liquid's `product.id`,
+  // which is the numeric portion of the Shopify product GID). Look
+  // the catalog row up so the client can render a seeded
+  // single-product PDP card on first paint, without firing a
+  // planner / composer turn.
   //
   // The lookup is best-effort:
   //   - Missing tenantId (couldn't resolve the shop) → skip, fall
   //     back to the unseeded entry path.
-  //   - 404 (handle not in this tenant's catalog) → skip, the
+  //   - 404 (id not mapped in this tenant's catalog) → skip, the
   //     customer still lands in Vibe with the welcome screen and
   //     no seeded card.
   //   - Engine unreachable → skip, log a warning, same fallback.
   // We never 500 the Vibe screen on a seed-product hiccup; that
   // would prevent the customer from getting to the chat at all.
-  const seedProductHandle = url.searchParams.get("product")?.trim() ?? "";
+  const seedProductNumericId = url.searchParams.get("productId")?.trim() ?? "";
   let seedProduct: OutfitItem | null = null;
-  if (seedProductHandle && tenantId) {
-    const lookup = await lookupCatalogProductByHandle({
-      handle: seedProductHandle,
+  if (seedProductNumericId && tenantId) {
+    const lookup = await lookupCatalogProductByShopifyId({
+      shopifyProductNumericId: seedProductNumericId,
       tenantId,
     });
     if (lookup.ok) {
       seedProduct = lookup.item;
       logInfo("vibe_seed_product_lookup", {
         outcome: "ok",
-        handle: seedProductHandle,
+        shopifyProductId: seedProductNumericId,
         tenantId,
         productId: lookup.item.product_id,
       });
     } else {
       logWarn("vibe_seed_product_lookup", {
         outcome: lookup.status === 404 ? "not_found" : "engine_error",
-        handle: seedProductHandle,
+        shopifyProductId: seedProductNumericId,
         tenantId,
         status: lookup.status,
         error: lookup.error,
       });
     }
-  } else if (seedProductHandle && !tenantId) {
+  } else if (seedProductNumericId && !tenantId) {
     logWarn("vibe_seed_product_lookup", {
       outcome: "missing_tenant",
-      handle: seedProductHandle,
+      shopifyProductId: seedProductNumericId,
     });
   }
 

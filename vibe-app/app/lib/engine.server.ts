@@ -638,23 +638,28 @@ export async function outfitTryon(args: {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Phase W — catalog product lookup by handle.
+// Phase W — catalog product lookup by Shopify numeric product id.
 //
 // Backs the storefront → Vibe gateway: customer clicks Virtual Try On
 // on a merchant's PDP, the Vibe screen opens in a new tab with
-// `?product=<handle>`, and the loader hits this helper to fetch the
-// entry product without firing a planner / composer turn. Returns the
-// catalog row as an OutfitItem — same shape the turn pipeline emits —
-// so the client wraps it as a synthetic single-item Outfit and renders
-// the seeded PDP card immediately. No LLM call on entry.
+// `?productId=<numeric>`, and the loader hits this helper to fetch
+// the entry product without firing a planner / composer turn. Returns
+// the catalog row as an OutfitItem — same shape the turn pipeline
+// emits — so the client wraps it as a synthetic single-item Outfit
+// and renders the seeded PDP card immediately. No LLM call on entry.
 //
-// 404 → product handle isn't in this merchant's catalog (typo,
-// hand-edited URL, etc.). Loader treats it as "fall back to the
-// unseeded conversation" so the customer still lands in Vibe.
+// The numeric product id comes from liquid's `product.id` variable;
+// the engine constructs the GraphQL GID and matches against
+// catalog_enriched.shopify_product_id.
+//
+// 404 → product id isn't in this merchant's catalog (Shopify
+// product not yet mapped, hand-edited URL, etc.). Loader treats
+// it as "fall back to the unseeded conversation" so the customer
+// still lands in Vibe.
 // ─────────────────────────────────────────────────────────────────────
 
-export async function lookupCatalogProductByHandle(args: {
-  handle: string;
+export async function lookupCatalogProductByShopifyId(args: {
+  shopifyProductNumericId: string;
   tenantId: string;
 }): Promise<{ ok: true; item: OutfitItem } | { ok: false; status: number; error: string }> {
   if (USE_MOCK) {
@@ -663,9 +668,9 @@ export async function lookupCatalogProductByHandle(args: {
     return {
       ok: true,
       item: {
-        product_id: `mock-${args.handle}`,
-        title: args.handle.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-        image_url: `https://picsum.photos/seed/${encodeURIComponent(args.handle)}/800/1200`,
+        product_id: `mock-${args.shopifyProductNumericId}`,
+        title: `Mock Product ${args.shopifyProductNumericId}`,
+        image_url: `https://picsum.photos/seed/${encodeURIComponent(args.shopifyProductNumericId)}/800/1200`,
         price: "0",
         product_url: "#",
         garment_category: "tops",
@@ -674,7 +679,7 @@ export async function lookupCatalogProductByHandle(args: {
       },
     };
   }
-  const path = `/v1/catalog/products/${encodeURIComponent(args.handle.trim())}?tenant_id=${encodeURIComponent(args.tenantId.trim())}`;
+  const path = `/v1/catalog/products/by-shopify-id/${encodeURIComponent(args.shopifyProductNumericId.trim())}?tenant_id=${encodeURIComponent(args.tenantId.trim())}`;
   let resp: Response;
   try {
     resp = await fetch(`${ENGINE_API_URL}${path}`, { signal: fetchTimeout() });

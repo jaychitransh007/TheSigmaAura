@@ -7,10 +7,15 @@
 
   Click behaviour (Phase W):
     Opens the Vibe screen in a new tab at
-    /apps/vibe/style?product={{ product.handle }}. The Vibe-app
-    loader picks up the handle, fetches the catalog row via the
-    engine's GET /v1/catalog/products/{handle}, and renders a
-    single-product PDP card as the first assistant turn.
+    /apps/vibe/style?productId={{ product.id }}. The Vibe-app
+    loader picks up the numeric id, fetches the catalog row via the
+    engine's GET /v1/catalog/products/by-shopify-id/{id}, and
+    renders a single-product PDP card as the first assistant turn.
+
+    `product.id` (not `product.handle`) because catalog_enriched
+    indexes by shopify_product_id (the GID) — the engine
+    constructs `gid://shopify/Product/{id}` server-side and
+    matches against that. Handles aren't a column on the table.
 
   The previous V.3 modal popup (file upload + result card in-place)
   is retired — the new tab IS the entry point to Vibe, where the
@@ -38,7 +43,7 @@
 >
   <a
     class="vibe-tryon-button"
-    href="/apps/vibe/style?product={{ product.handle | url_param_escape }}"
+    href="/apps/vibe/style?productId={{ product.id }}"
     target="_blank"
     rel="noopener"
   >

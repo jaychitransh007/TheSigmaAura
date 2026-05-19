@@ -1499,12 +1499,15 @@ def create_app() -> FastAPI:
                 detail=graceful_policy_message(reason_code or "tryon_request_failed", default=str(exc)),
             ) from exc
 
-    @app.get("/v1/catalog/products/{handle}")
-    def lookup_catalog_product_by_handle(handle: str, tenant_id: str = "") -> dict:
-        """Catalog row lookup by Shopify handle, scoped to tenant.
+    @app.get("/v1/catalog/products/by-shopify-id/{shopify_product_numeric_id}")
+    def lookup_catalog_product_by_shopify_id(
+        shopify_product_numeric_id: str,
+        tenant_id: str = "",
+    ) -> dict:
+        """Catalog row lookup by Shopify numeric product id, scoped to tenant.
 
         Phase W gateway — the customer clicks "Virtual Try On" on a
-        storefront PDP, lands in Vibe with `?product=<handle>`, and
+        storefront PDP, lands in Vibe with `?productId=<id>`, and
         the Vibe-app loader hits this to fetch the catalog row for
         the entry product without firing a planner / composer turn.
         Returns the row shaped as an OutfitItem dict (same fields
@@ -1513,20 +1516,27 @@ def create_app() -> FastAPI:
         and render the seeded PDP card immediately. No LLM cost on
         entry; LLM only fires when the customer asks a follow-up.
 
-        Handle collisions across tenants are possible (two shops can
-        both ship a product handled "black-tee"), so tenant_id is
-        REQUIRED — the route would otherwise leak rows between
+        Shopify's product.id liquid variable returns just the numeric
+        portion (e.g. "12345"); catalog_enriched.shopify_product_id
+        stores the full GraphQL GID (`gid://shopify/Product/12345`).
+        We construct the GID here and match by that — same shape the
+        B.8 capture script wrote.
+
+        Numeric ids collide across stores when two tenants happened
+        to ingest the same id, so tenant_id is REQUIRED to scope the
+        lookup; without it the route would leak rows between
         merchants. Empty tenant_id → 400; missing row → 404.
         """
-        if not handle or not handle.strip():
-            raise HTTPException(status_code=400, detail="Missing handle")
+        if not shopify_product_numeric_id or not shopify_product_numeric_id.strip():
+            raise HTTPException(status_code=400, detail="Missing product id")
         if not tenant_id or not tenant_id.strip():
             raise HTTPException(status_code=400, detail="Missing tenant_id")
+        gid = f"gid://shopify/Product/{shopify_product_numeric_id.strip()}"
         try:
             enriched = repo.client.select_one(
                 "catalog_enriched",
                 filters={
-                    "handle": f"eq.{handle.strip()}",
+                    "shopify_product_id": f"eq.{gid}",
                     "tenant_id": f"eq.{tenant_id.strip()}",
                 },
             )
@@ -1535,7 +1545,7 @@ def create_app() -> FastAPI:
         if not enriched:
             raise HTTPException(
                 status_code=404,
-                detail=f"Product with handle '{handle}' not found in tenant '{tenant_id}'.",
+                detail=f"Product with id '{shopify_product_numeric_id}' not found in tenant '{tenant_id}'.",
             )
 
         # Build the OutfitItem the same way the turn pipeline does so
