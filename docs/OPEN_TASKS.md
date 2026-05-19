@@ -187,6 +187,20 @@ Engine turn end-to-end takes 30–60s with try-on; up to 90s on cold path. Stage
   - **State persistence.** `localStorage` tracks current step (`vibe_onboarding_step`) and resolved kinds (`vibe_onboarding_resolved_kinds`) so a mid-flow reload doesn't re-emit completed cards.
   - **Functional state updates.** `setMessages` uses pure functional updaters; side effects (localStorage writes, ref sync) live in a dedicated useEffect that observes messages. Single reverse pass for step derivation.
 - [ ] **D.O.4.** **Meta OAuth integration** — **deferred indefinitely** in favour of Shopify Customer Account (D.S.3b, shipped). Customer Account is the same identity used at checkout / order history, so the merge surface is one round-trip; Meta would give name/DOB/gender prefill at the cost of 1-2 weeks of app review with no checkout-side value. Keep this row for posterity; revisit only if guest-checkout adoption is low and we want a faster sign-in path than Customer Account.
+- [x] **D.O.5.** **Sequential onboarding flow** (2026-05-20). Replaces the previous parallel emission (photos + gender-DOB cards stacked side-by-side, height-waist follow-up) with a strictly sequential conversation:
+  1. **Welcome** — single greeting message; only the photos card is shown initially.
+  2. **Photos card** resolves with either **completed** (both photos uploaded) or **skipped**.
+     - On **completed**: the gender-DOB card emits as the next message. Photo upload also fires `phase1` + `phase2` analysis triggers immediately, even though the engine 400s on the missing gender — the poll-loop self-heal (PR #500) catches up the moment prereqs are met.
+     - On **skipped**: no further onboarding cards emit. The "What would you like to wear?" prompt fires straight away, customer can chat.
+  3. **Gender-DOB card** resolves with **completed** or **skipped** (Skip button added — previously the card had Save only).
+     - On **completed**: `analysisPhase` flips to `running`, the "Analyzing your style…" indicator shows, an explicit `fireAnalysisTrigger("phase1") + ("phase2")` fires from `handleAdvanceOnboarding` so the customer doesn't wait the ~2s for the poll tick. Engine runs the 3 user-profile agents (`gpt-5.5`, ~30–90s). On completion the prompt emits.
+     - On **skipped**: `analysisPhase` flips straight to `complete` (engine can't run colour without gender, can't run other-details without DOB). Prompt emits, customer chats.
+  4. **Height-waist card dropped** from the in-chat flow. The engine still accepts those fields via `PATCH /v1/onboarding/profile/partial`; future work can re-introduce them via a profile edit surface if needed.
+  Implementation:
+  - [vibe-app/app/lib/onboarding.client.ts](../vibe-app/app/lib/onboarding.client.ts) — drop `height-waist` from `OnboardingStep` / `ORDER`; legacy persisted-step aliases (`height` / `waist` / `height-waist` / `name`) migrate to `done`; new `markKindResolved(kind, mode)` writes a parallel `vibe_onboarding_resolved_modes` JSONB map of kind → `"completed"` | `"skipped"`; new `getResolvedMode(kind)` accessor.
+  - [vibe-app/app/routes/apps.vibe.style.tsx](../vibe-app/app/routes/apps.vibe.style.tsx) — seed effect emits photos card alone for new customers; `transformAdvance` emits gender-DOB only when photos resolved with `"completed"`; `analysisPhase` setter routes `"complete"` (no analysis) on photos-skip or gender-DOB-skip, `"running"` only when both are completed; `INITIAL_PHASE` set deleted; explicit immediate trigger on gender-DOB save.
+  - [vibe-app/app/components/onboarding/gender-dob-card.tsx](../vibe-app/app/components/onboarding/gender-dob-card.tsx) — Skip button added next to Save, matching the photos-card action pattern.
+  Welcome copy updated to match the new flow ("Share a couple of quick photos below … or skip and chat right away") so the customer sees both paths in the very first message.
 
 ### D.M — Merchant admin UI (trust + control)
 

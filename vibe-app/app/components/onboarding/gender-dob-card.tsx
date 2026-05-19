@@ -264,10 +264,19 @@ export function GenderDobCard({
       )}
 
       <div className="onb-card__actions">
-        {/* No Skip button — gender + DOB are the only two
-            confidence-load-bearing fields in onboarding. canSubmit
-            gates the Save button until the customer commits at least
-            one of them. */}
+        {/* D.O.5 (2026-05-20): Skip exposed so a customer who doesn't
+            want to share demographics can still chat. Without these,
+            the engine can't run colour or other-details analysis, so
+            the customer goes straight to the chat composer rather
+            than the "analyzing your style…" indicator + prompt. */}
+        <button
+          type="button"
+          className="onb-card__skip"
+          onClick={() => onAdvance("skipped")}
+          disabled={saving}
+        >
+          Skip
+        </button>
         <button
           type="button"
           className="onb-card__primary"
