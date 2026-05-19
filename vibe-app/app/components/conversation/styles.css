@@ -1108,20 +1108,36 @@
   align-items: center;
 }
 
-/* V.2 — Virtual Try On row sits right above the Buy/Add to Cart row
-   in garment mode only. Inline note / error copy below the button so
-   the customer sees actionable next-steps (e.g. "upload a full-body
-   photo first") without a noisy modal. */
+/* V.2 — Virtual Try On row sits right above the Buy/Add to Cart row.
+   Inline note / error copy below the button so the customer sees
+   actionable next-steps (e.g. "upload a full-body photo first")
+   without a noisy modal.
+
+   `margin-top: auto` anchors the row to the bottom of the detail
+   column, same as `.conv-cta-row` does on cards without a try-on
+   row. The combined block (try-on + buy/add-to-cart) then stacks
+   together at the column floor instead of the buy button floating
+   below a gap. The `+ .conv-cta-row` sibling override below pulls
+   the CTA up to butt against this row. */
 .conv-tryon-row {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  margin-top: auto;
   margin-bottom: 0.75rem;
 }
 
 .conv-tryon-row .conv-cta {
   width: 100%;
   justify-content: center;
+}
+
+/* When the try-on row is present, it has already absorbed the
+   auto-margin push to the bottom — the CTA row sits naturally
+   below it instead of competing for the same auto-margin space
+   (which would re-introduce the gap). */
+.conv-tryon-row + .conv-cta-row {
+  margin-top: 0;
 }
 
 .conv-tryon-note {
