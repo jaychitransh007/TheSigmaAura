@@ -1348,6 +1348,20 @@ def create_app() -> FastAPI:
         user_id: str
         product_image_url: str
 
+    class TryonOutfitGarmentRequest(BaseModel):
+        # `role` is what Gemini's prompt uses to compose the outfit
+        # ("top", "bottom", "dress", "jacket", …). Defaults to a
+        # generic value so a single-garment caller works without
+        # bothering with the role; the multi-garment branch in
+        # TryonService.generate_tryon_outfit only switches prompt
+        # variant when `len(garments) >= 2`.
+        role: str = "garment"
+        image_url: str
+
+    class TryonOutfitRequest(BaseModel):
+        user_id: str
+        garments: List[TryonOutfitGarmentRequest]
+
     @app.post("/v1/tryon")
     def virtual_tryon(payload: TryonRequest) -> dict:
         reason_code = ""
@@ -1396,6 +1410,86 @@ def create_app() -> FastAPI:
                 user_id=payload.user_id,
                 source_channel="web",
                 metadata_json={"error": str(exc)},
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=graceful_policy_message(reason_code or "tryon_request_failed", default=str(exc)),
+            ) from exc
+
+    @app.post("/v1/tryon-outfit")
+    def virtual_tryon_outfit(payload: TryonOutfitRequest) -> dict:
+        """Multi-garment on-demand try-on.
+
+        Mirrors `POST /v1/tryon` but accepts a list of garments so the
+        client (e.g. Vibe Conversation's outfit-mode card) can render
+        a whole outfit on the customer in one round trip. The
+        orchestrator already runs this same code path automatically
+        at outfit-generation time and persists the result; this
+        endpoint exists for the cases where that auto-render didn't
+        fire (flag off at the time, person photo arrived late, Gemini
+        timed out, etc.) and the customer wants a fresh render from
+        the storefront / chat surface.
+
+        Inline base64 response — no persistence in this path. Caching
+        per (user, garment_ids) lands as V.5 of the Phase V plan.
+        """
+        reason_code = ""
+        try:
+            person_image_path = onboarding_gateway.get_person_image_path(payload.user_id)
+            if not person_image_path:
+                reason_code = "missing_person_image"
+                raise ValueError(graceful_policy_message(reason_code))
+            if not payload.garments:
+                reason_code = "tryon_request_failed"
+                raise ValueError("No garments provided.")
+            garment_urls: List[tuple[str, str]] = [
+                ((g.role or "garment").strip() or "garment", g.image_url.strip())
+                for g in payload.garments
+                if g.image_url and g.image_url.strip()
+            ]
+            if not garment_urls:
+                reason_code = "tryon_request_failed"
+                raise ValueError("No garment image URLs provided.")
+            result = tryon_service.generate_tryon_outfit(
+                person_image_path=person_image_path,
+                garment_urls=garment_urls,
+            )
+            if result.get("success"):
+                quality = tryon_quality_gate.evaluate(
+                    person_image_path=person_image_path,
+                    tryon_result=result,
+                )
+                result["quality_gate"] = quality
+                if not quality.get("passed"):
+                    reason_code = str(quality.get("reason_code") or "quality_gate_failed")
+                    raise ValueError(
+                        graceful_policy_message(
+                            reason_code,
+                            default=str(quality.get("message") or "Generated try-on output failed quality checks."),
+                        )
+                    )
+                log_policy_event(
+                    policy_event_type="virtual_tryon_guardrail",
+                    input_class=Intent.PAIRING_REQUEST,
+                    reason_code="quality_gate_passed",
+                    decision="allowed",
+                    user_id=payload.user_id,
+                    source_channel="web",
+                    metadata_json={"quality_gate": quality, "garment_count": len(garment_urls)},
+                )
+            return result
+        except (ValueError, FileNotFoundError, RuntimeError) as exc:
+            log_policy_event(
+                policy_event_type="virtual_tryon_guardrail",
+                input_class=Intent.PAIRING_REQUEST,
+                reason_code=reason_code or (
+                    "missing_person_image"
+                    if "No full-body onboarding image found" in str(exc)
+                    else "tryon_request_failed"
+                ),
+                user_id=payload.user_id,
+                source_channel="web",
+                metadata_json={"error": str(exc), "garment_count": len(payload.garments or [])},
             )
             raise HTTPException(
                 status_code=400,
