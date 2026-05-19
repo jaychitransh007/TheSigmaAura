@@ -262,6 +262,16 @@ class CreateTurnRequest(BaseModel):
     # wishlist picker, the frontend sends the product_id here.
     # The orchestrator loads the product from catalog_enriched.
     wishlist_product_id: str = Field(default="")
+    # When the customer entered Vibe via the Virtual Try-On button on
+    # a storefront PDP (Phase W gateway), the frontend keeps the
+    # entry product's id in conversation-scoped state and sends it on
+    # every follow-up turn. The orchestrator uses it as the outfit
+    # anchor — same mechanic as wardrobe_item_id and
+    # wishlist_product_id, just with the "Vibe entry product" as the
+    # provenance. Allows "what shoes go with this?" to compose an
+    # outfit around the entry garment without the customer
+    # re-uploading anything.
+    seed_product_id: str = Field(default="")
     # F.2.0 (2026-05-18): the merchant's *.myshopify.com domain. The
     # API resolves this to a tenant_id via the `tenants` table before
     # calling process_turn, so retrieval can be scoped to the right

@@ -19,6 +19,10 @@
 }
 
 .vibe-tryon-button {
+  /* Phase W — selector now also applies to an <a> element. Reset
+     anchor defaults (underline, blue/visited colours) so the link
+     reads as the merchant's primary button across every theme. */
+  text-decoration: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;

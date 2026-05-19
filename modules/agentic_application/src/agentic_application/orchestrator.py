@@ -1701,6 +1701,13 @@ class AgenticOrchestrator:
         image_data: str = "",
         wardrobe_item_id: str = "",
         wishlist_product_id: str = "",
+        # Phase W — the product the customer landed on when they
+        # entered Vibe via the storefront "Virtual Try On" button.
+        # Same anchor mechanic as wardrobe_item_id / wishlist_product_id;
+        # the frontend keeps it in conversation-scoped state and sends
+        # it on every follow-up turn so "what shoes go with this?"
+        # composes an outfit around the entry garment.
+        seed_product_id: str = "",
         # F.2.0 (2026-05-18): tenant_id is the partition key for catalog
         # retrieval. Defaults to TheSigmaVibe so the legacy `web` channel
         # + existing tests keep working unchanged. API entry points
@@ -1940,6 +1947,62 @@ class AgenticOrchestrator:
             except Exception:
                 trace_end("wishlist_selection", output_summary="load failed", status="error")
                 _log.warning("Failed to load wishlist product %s", wishlist_product_id, exc_info=True)
+
+        # ── Phase W seed-product selection (storefront try-on entry) ──
+        # Customer landed in Vibe via the storefront "Virtual Try On"
+        # button; the frontend persists the entry product's id in
+        # conversation-scoped state and sends it on every follow-up
+        # turn ("what shoes go with this?", "complete the look"). The
+        # planner anchors on it the same way it anchors on a wardrobe
+        # selection. Distinct attachment_source ("vibe_entry_product")
+        # so analytics can split entry-via-try-on outfits from
+        # wishlist-picker outfits later.
+        if seed_product_id and not image_data and not attached_item:
+            trace_start("seed_product_selection", input_summary=f"product_id={seed_product_id}")
+            try:
+                enriched = self.repo.client.select_one(
+                    "catalog_enriched",
+                    filters={"product_id": f"eq.{seed_product_id}"},
+                )
+                if enriched:
+                    attached_item = {
+                        "id": str(enriched.get("product_id") or seed_product_id),
+                        "title": str(enriched.get("title") or ""),
+                        "image_url": str(
+                            enriched.get("images_0_src")
+                            or enriched.get("images__0__src")
+                            or enriched.get("primary_image_url")
+                            or ""
+                        ),
+                        "image_path": "",
+                        "garment_category": str(enriched.get("GarmentCategory") or enriched.get("garment_category") or ""),
+                        "garment_subtype": str(enriched.get("GarmentSubtype") or enriched.get("garment_subtype") or ""),
+                        "primary_color": str(enriched.get("PrimaryColor") or enriched.get("primary_color") or ""),
+                        "secondary_color": str(enriched.get("SecondaryColor") or enriched.get("secondary_color") or ""),
+                        "formality_level": str(enriched.get("FormalityLevel") or enriched.get("formality_level") or ""),
+                        "occasion_fit": str(enriched.get("OccasionFit") or enriched.get("occasion_fit") or ""),
+                        "pattern_type": str(enriched.get("PatternType") or enriched.get("pattern_type") or ""),
+                        "source": "catalog",
+                        "attachment_source": "vibe_entry_product",
+                        "is_garment_photo": True,
+                        "garment_present_confidence": 1.0,
+                    }
+                    attached_context = self._attached_item_context(attached_item)
+                    if attached_context:
+                        effective_message = f"{message.strip()} {attached_context}".strip()
+                    effective_message = f"{effective_message} Image anchor source: vibe entry product.".strip()
+                    trace_end(
+                        "seed_product_selection",
+                        output_summary=f"loaded: {attached_item.get('title')}, {attached_item.get('garment_category')}",
+                    )
+                    trace.set_image_classification(is_garment_photo=True, garment_present_confidence=1.0)
+                    _log.info("Loaded seed product %s: %s", seed_product_id, attached_item.get("title"))
+                else:
+                    trace_end("seed_product_selection", output_summary="product not found", status="error")
+                    _log.warning("Seed product %s not found in catalog_enriched", seed_product_id)
+            except Exception:
+                trace_end("seed_product_selection", output_summary="load failed", status="error")
+                _log.warning("Failed to load seed product %s", seed_product_id, exc_info=True)
 
         # Wardrobe enrichment runs in a background thread so the planner
         # can run concurrently with it. The planner's intent

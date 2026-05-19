@@ -1,60 +1,59 @@
 {%- comment -%}
-  V.3 — "Virtual Try On" theme app extension block.
+  Phase W — "Virtual Try On" theme app extension block (gateway).
 
   Merchant drops this block onto the product template (typically inside
   the main product section, above the form / Buy section). Renders a
-  button styled with the theme's button CSS variables; clicking opens
-  a <dialog>-based modal with two image cards:
+  link styled like the theme's primary button.
 
-    Card 1 — upload your full-body photo (head to toe, arms relaxed)
-    Card 2 — try-on result; starts blank, switches to a skeleton while
-             the engine renders, then shows the rendered image
+  Click behaviour (Phase W):
+    Opens the Vibe screen in a new tab at
+    /apps/vibe/style?productId={{ product.id }}. The Vibe-app
+    loader picks up the numeric id, fetches the catalog row via the
+    engine's GET /v1/catalog/products/by-shopify-id/{id}, and
+    renders a single-product PDP card as the first assistant turn.
 
-  The block reads the current product's featured image via Liquid and
-  passes it as `data-product-image` to the JS module. On submit the
-  module POSTs the file to /apps/vibe/api/onboarding/image
-  (?category=full_body) and then /apps/vibe/api/tryon with the product
-  image URL — both routed through Shopify's App Proxy to the
-  vibe-app on Vercel.
+    `product.id` (not `product.handle`) because catalog_enriched
+    indexes by shopify_product_id (the GID) — the engine
+    constructs `gid://shopify/Product/{id}` server-side and
+    matches against that. Handles aren't a column on the table.
+
+  The previous V.3 modal popup (file upload + result card in-place)
+  is retired — the new tab IS the entry point to Vibe, where the
+  customer's body photo is on file (or onboarded in-chat) and the
+  try-on renders inline on the seeded PDP card. See Phase W in
+  docs/OPEN_TASKS.md for the full flow.
 
   Anonymous customer identity = localStorage["vibe_session_id"]. Same
   UUID the Vibe Conversation page uses, so the body photo persists
-  across surfaces.
+  across surfaces; the new tab inherits it because both surfaces sit
+  on the merchant's *.myshopify.com domain (same-origin localStorage).
 {%- endcomment -%}
 
 {{ 'virtual-try-on.css' | asset_url | stylesheet_tag }}
 
 {%- liquid
   assign label = block.settings.label | default: 'Virtual Try On'
-  assign modal_title = block.settings.modal_title | default: 'See it on you'
-  assign modal_subtitle = block.settings.modal_subtitle | default: "Upload a full-body photo (head to toe, arms relaxed). I'll render this piece on you in a few seconds."
-  assign product_image = product.featured_image | image_url: width: 1200
 -%}
 
 <div
   class="vibe-tryon-block"
   data-product-id="{{ product.id }}"
   data-product-handle="{{ product.handle }}"
-  data-product-title="{{ product.title | escape }}"
-  data-product-image="{{ product_image }}"
-  data-modal-title="{{ modal_title | escape }}"
-  data-modal-subtitle="{{ modal_subtitle | escape }}"
   {{ block.shopify_attributes }}
 >
-  <button
-    type="button"
+  <a
     class="vibe-tryon-button"
-    data-vibe-tryon-open
+    href="/apps/vibe/style?productId={{ product.id }}"
+    target="_blank"
+    rel="noopener"
   >
     <svg class="vibe-tryon-button-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
       <path d="M9 4l3-1 3 1 4 2v4l-2 1v9H7v-9l-2-1V6l4-2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
       <path d="M12 3v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
     </svg>
     <span>{{ label | escape }}</span>
-  </button>
+  </a>
 </div>
-
-<script src="{{ 'virtual-try-on.js' | asset_url }}" defer></script>
 
 {% schema %}
 {
@@ -66,18 +65,6 @@
       "id": "label",
       "label": "Button label",
       "default": "Virtual Try On"
-    },
-    {
-      "type": "text",
-      "id": "modal_title",
-      "label": "Modal title",
-      "default": "See it on you"
-    },
-    {
-      "type": "text",
-      "id": "modal_subtitle",
-      "label": "Modal subtitle",
-      "default": "Upload a full-body photo (head to toe, arms relaxed). I'll render this piece on you in a few seconds."
     }
   ]
 }

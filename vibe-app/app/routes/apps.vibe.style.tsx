@@ -24,7 +24,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs, LinksFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useFetcher, useLoaderData } from "@remix-run/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Composer, type Attachment } from "../components/conversation/composer";
 import {
@@ -40,12 +40,15 @@ import {
   ENGINE_MOCK_ACTIVE,
   ensureOnboardingProfile,
   getOnboardingStatus,
+  lookupCatalogProductByShopifyId,
   lookupOrCreateTenant,
   mergeUserIdentity,
   resolveConversation,
   startTurn,
   type OnboardingImageCategory,
   type OnboardingStatus,
+  type Outfit,
+  type OutfitItem,
   type TenantThemeOverrides,
   type TurnStatusResponse,
 } from "../lib/engine.server";
@@ -136,13 +139,62 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // defaults. Don't 500 the storefront chat on a tenant-lookup hiccup.
   const shopDomain = url.searchParams.get("shop")?.trim() ?? "";
   let themeOverrides: TenantThemeOverrides | null = null;
+  let tenantId = "";
   if (shopDomain) {
     try {
       const tenant = await lookupOrCreateTenant({ shopDomain });
       themeOverrides = tenant.theme_overrides ?? null;
+      tenantId = tenant.tenant_id;
     } catch {
       // Silent — fall back to Confident Luxe defaults.
     }
+  }
+
+  // Phase W gateway — `?productId=<numeric>` set by the storefront
+  // Virtual Try On button (sourced from liquid's `product.id`,
+  // which is the numeric portion of the Shopify product GID). Look
+  // the catalog row up so the client can render a seeded
+  // single-product PDP card on first paint, without firing a
+  // planner / composer turn.
+  //
+  // The lookup is best-effort:
+  //   - Missing tenantId (couldn't resolve the shop) → skip, fall
+  //     back to the unseeded entry path.
+  //   - 404 (id not mapped in this tenant's catalog) → skip, the
+  //     customer still lands in Vibe with the welcome screen and
+  //     no seeded card.
+  //   - Engine unreachable → skip, log a warning, same fallback.
+  // We never 500 the Vibe screen on a seed-product hiccup; that
+  // would prevent the customer from getting to the chat at all.
+  const seedProductNumericId = url.searchParams.get("productId")?.trim() ?? "";
+  let seedProduct: OutfitItem | null = null;
+  if (seedProductNumericId && tenantId) {
+    const lookup = await lookupCatalogProductByShopifyId({
+      shopifyProductNumericId: seedProductNumericId,
+      tenantId,
+    });
+    if (lookup.ok) {
+      seedProduct = lookup.item;
+      logInfo("vibe_seed_product_lookup", {
+        outcome: "ok",
+        shopifyProductId: seedProductNumericId,
+        tenantId,
+        productId: lookup.item.product_id,
+      });
+    } else {
+      logWarn("vibe_seed_product_lookup", {
+        outcome: lookup.status === 404 ? "not_found" : "engine_error",
+        shopifyProductId: seedProductNumericId,
+        tenantId,
+        status: lookup.status,
+        error: lookup.error,
+      });
+    }
+  } else if (seedProductNumericId && !tenantId) {
+    logWarn("vibe_seed_product_lookup", {
+      outcome: "missing_tenant",
+      shopifyProductId: seedProductNumericId,
+    });
   }
 
   return json({
@@ -150,6 +202,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     loggedInCustomerId,
     hasProfile,
     themeOverrides,
+    seedProduct,
   });
 };
 
@@ -411,7 +464,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         : "";
     const wardrobeItemId = String(form.get("wardrobeItemId") ?? "").trim();
     const wishlistProductId = String(form.get("wishlistProductId") ?? "").trim();
-    const hasAttachment = !!(imageData || wardrobeItemId || wishlistProductId);
+    // Phase W — the gateway product id, sent on every turn for the
+    // life of a seeded conversation so the planner anchors on it.
+    // Sticky: the client keeps it in React state and forwards it
+    // even on turns where the customer didn't explicitly pick a new
+    // attachment. Counts as an attachment for the pairing-rewrite
+    // path so "what shoes go with this?" routes into PAIRING_REQUEST.
+    const seedProductId = String(form.get("seedProductId") ?? "").trim();
+    const hasAttachment = !!(
+      imageData ||
+      wardrobeItemId ||
+      wishlistProductId ||
+      seedProductId
+    );
 
     if (!conversationId || !message) {
       return json<ActionResponse>(
@@ -467,6 +532,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       imageData: imageData || undefined,
       wardrobeItemId: wardrobeItemId || undefined,
       wishlistProductId: wishlistProductId || undefined,
+      seedProductId: seedProductId || undefined,
       shopDomain,
     });
     return json<ActionResponse>({
@@ -524,6 +590,12 @@ const WELCOME_RETURNING =
   'Hey, welcome back — I\'m Vibe. Try something like "Dress me for tonight" or "I need an outfit for a wedding".';
 const WELCOME_NEW =
   'Hi — I\'m Vibe, your styling co-pilot. Share a couple of quick photos below so I can read your colours and proportions, or skip and chat right away — try "Dress me for tonight".';
+// Phase W — emitted alongside the seed-product PDP card when the
+// customer entered via the storefront try-on button. Conversational
+// glue between the welcome and the card; the card itself carries
+// the product context.
+const WELCOME_SEEDED_PRODUCT =
+  "Here's the piece you came in on. Ask me to build a look around it, or try it on first.";
 
 // Steps the seed effect treats as "the customer is still in the
 // initial parallel onboarding phase" — photos + gender-DOB rendered
@@ -545,6 +617,7 @@ export default function ConversationPage() {
     loggedInCustomerId,
     hasProfile: hasProfileFromLoader,
     themeOverrides,
+    seedProduct,
   } = useLoaderData<typeof loader>();
   const [sessionId, setSessionId] = useState("");
   const [conversationId, setConversationId] = useState("");
@@ -637,6 +710,27 @@ export default function ConversationPage() {
   // this cooldown so a genuinely-failing prereq doesn't thunder at
   // the engine every 2s.
   const analysisTriggerCooldownRef = useRef<number>(0);
+  // Phase W — gates the one-shot emission of the seed-product PDP
+  // card so it doesn't get pushed twice (the seed effect runs once
+  // immediately for the hasProfile path, then transformAdvance can
+  // emit it again after onboarding resolves for the new-customer
+  // path). Independent of seededRef because the seed-product card
+  // can fire after the initial seed effect completes.
+  const seedProductEmittedRef = useRef<boolean>(false);
+
+  // Phase W — wrap the seedProduct OutfitItem in a synthetic
+  // single-item Outfit shape so the existing OutfitCard / carousel
+  // surfaces can render it without a special-case branch. outfit_id
+  // is deterministic on the product_id so a reload doesn't churn
+  // React keys.
+  const seedProductOutfit = useMemo<Outfit | null>(() => {
+    if (!seedProduct) return null;
+    return {
+      outfit_id: `vibe-entry-${seedProduct.product_id}`,
+      name: seedProduct.title || "Your pick",
+      items: [seedProduct],
+    };
+  }, [seedProduct]);
 
   // Best-effort POST to the engine's onboarding analysis start
   // endpoint, shared by the photo-upload handler and the poll loop's
@@ -815,6 +909,20 @@ export default function ConversationPage() {
       } else {
         onboardingStepRef.current = "done";
         writeOnboardingStep("done");
+        // Phase W — returning customer with photos on file landed
+        // via the storefront try-on button. Skip onboarding entirely
+        // and emit the seed-product PDP card as the first assistant
+        // turn. Setting the ref here prevents transformAdvance from
+        // emitting a duplicate when no onboarding cards needed to
+        // resolve.
+        if (seedProductOutfit) {
+          seeded.push({
+            role: "assistant",
+            text: WELCOME_SEEDED_PRODUCT,
+            outfits: [seedProductOutfit],
+          });
+          seedProductEmittedRef.current = true;
+        }
       }
       setMessages(seeded);
       return;
@@ -865,8 +973,27 @@ export default function ConversationPage() {
       writeOnboardingStep("done");
     }
 
+    // Phase W — if onboarding has already resolved on a prior
+    // session (both cards in `resolved`, OR photos skipped) AND the
+    // customer entered via the storefront try-on button, emit the
+    // seed-product PDP card right after the welcome so they don't
+    // wait through onboarding cards that won't actually render.
+    // For the still-needs-onboarding branches above we don't push
+    // here — transformAdvance handles emission when the customer
+    // resolves the last active card.
+    const noActiveOnboarding =
+      onboardingStepRef.current === "done";
+    if (seedProductOutfit && noActiveOnboarding) {
+      seeded.push({
+        role: "assistant",
+        text: WELCOME_SEEDED_PRODUCT,
+        outfits: [seedProductOutfit],
+      });
+      seedProductEmittedRef.current = true;
+    }
+
     setMessages(seeded);
-  }, [sessionId, conversationId, hasProfile, imagesUploaded]);
+  }, [sessionId, conversationId, hasProfile, imagesUploaded, seedProductOutfit]);
 
   // Detect "onboarding has wrapped up" and arm the analysis-watching
   // state machine. Triggers exactly once per page life when:
@@ -1148,6 +1275,19 @@ export default function ConversationPage() {
         form.set("wishlistProductId", attachment.productId);
       }
     }
+    // Phase W — when the customer entered via the storefront try-on
+    // button, the seed product id rides along with every turn so the
+    // planner can anchor on it ("what shoes go with this?" composes
+    // around the entry garment). Sent in addition to an explicit
+    // attachment when present; engine's process_turn prioritizes
+    // image_data / wardrobe / wishlist over seed_product so an
+    // explicit anchor on this turn wins. Empty after a turn whose
+    // first composer response shifts the conversation off the
+    // entry-product context — the customer can manually unset it
+    // via the planned "clear seed" affordance in a future iteration.
+    if (seedProduct?.product_id) {
+      form.set("seedProductId", seedProduct.product_id);
+    }
     // Clear the consumed-turn marker so the next action response — be
     // it a jobId or an error — gets picked up by the effect below.
     // Without this, two submissions in a row that produce the same
@@ -1268,6 +1408,26 @@ export default function ConversationPage() {
           kind: "gender-dob",
           status: "active",
         });
+      }
+      // Phase W — once onboarding has fully resolved (photos
+      // skipped, OR photos completed + gender-DOB resolved), emit
+      // the seed-product PDP card so the customer who came in via
+      // the try-on button finally sees their product. Idempotent
+      // via seedProductEmittedRef so a re-render or a double
+      // transformAdvance can't push it twice.
+      const onboardingDone =
+        (kind === "photos" && mode === "skipped") || kind === "gender-dob";
+      if (
+        onboardingDone &&
+        seedProductOutfit &&
+        !seedProductEmittedRef.current
+      ) {
+        next.push({
+          role: "assistant",
+          text: WELCOME_SEEDED_PRODUCT,
+          outfits: [seedProductOutfit],
+        });
+        seedProductEmittedRef.current = true;
       }
     }
     return next;
