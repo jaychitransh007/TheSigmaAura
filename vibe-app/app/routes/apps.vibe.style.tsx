@@ -167,6 +167,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // We never 500 the Vibe screen on a seed-product hiccup; that
   // would prevent the customer from getting to the chat at all.
   const seedProductNumericId = url.searchParams.get("productId")?.trim() ?? "";
+  // Fallback fields carried by the storefront link itself (handle,
+  // title, image, price) — used when the catalog_enriched lookup
+  // 404s because the product was never mapped to a GID by B.8.
+  // ~1,200 of TheSigmaVibe's 13,177 rows fall in that bucket today;
+  // the customer still deserves a seeded card on entry.
+  const seedHandle = url.searchParams.get("handle")?.trim() ?? "";
+  const seedTitle = url.searchParams.get("title")?.trim() ?? "";
+  const seedImage = url.searchParams.get("image")?.trim() ?? "";
+  const seedPriceRaw = url.searchParams.get("price")?.trim() ?? "";
   let seedProduct: OutfitItem | null = null;
   if (seedProductNumericId && tenantId) {
     const lookup = await lookupCatalogProductByShopifyId({
@@ -179,7 +188,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         outcome: "ok",
         shopifyProductId: seedProductNumericId,
         tenantId,
-        productId: lookup.item.product_id,
+        productId: lookup.item.garment_id,
       });
     } else {
       logWarn("vibe_seed_product_lookup", {
@@ -193,6 +202,33 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   } else if (seedProductNumericId && !tenantId) {
     logWarn("vibe_seed_product_lookup", {
       outcome: "missing_tenant",
+      shopifyProductId: seedProductNumericId,
+    });
+  }
+
+  // Fallback path — the catalog row wasn't found OR the tenant
+  // wasn't resolvable, but the storefront link gave us enough to
+  // render a seed card anyway. Build a minimal OutfitItem (no
+  // enrichment attributes, no Shopify variant ids — Add to Cart
+  // will be disabled until the customer chats further). The try-on
+  // auto-fire still works because it needs only an image_url to
+  // composite against the body photo.
+  if (!seedProduct && seedProductNumericId && seedTitle && seedImage) {
+    const priceNum = seedPriceRaw ? Number.parseFloat(seedPriceRaw) : NaN;
+    seedProduct = {
+      garment_id: seedProductNumericId,
+      title: seedTitle,
+      image_url: seedImage,
+      price: Number.isFinite(priceNum) ? priceNum : undefined,
+      product_url:
+        seedHandle && shopDomain
+          ? `https://${shopDomain}/products/${seedHandle}`
+          : undefined,
+      source: "catalog",
+      shopify_product_id: `gid://shopify/Product/${seedProductNumericId}`,
+    };
+    logInfo("vibe_seed_product_lookup", {
+      outcome: "fallback_url_params",
       shopifyProductId: seedProductNumericId,
     });
   }
@@ -1474,60 +1510,17 @@ export default function ConversationPage() {
       (m) => m.role === "onboarding" && m.status === "active",
     );
     if (!anyActive) {
-      // Phase W — emit the seed-product PDP card whenever onboarding
-      // has fully resolved on this session. Three paths land here:
-      //   (a) Returning customer in the recovery branch (hasProfile=
-      //       true) — they only ever saw a single PhotosCard, and
-      //       resolving it (either upload-completed or skipped) means
-      //       there's nothing else to gate on. The seed product
-      //       should emit regardless of resolution mode.
-      //   (b) New customer who skipped photos — analysisPhase emits
-      //       the prompt on its own, but the seed product should
-      //       still appear since the entry-via-try-on context is
-      //       still meaningful.
-      //   (c) New customer who resolved gender-DOB (either mode) —
-      //       the full onboarding ladder is done.
-      // Emission must precede the hasProfile early-return below;
-      // the prior implementation gated `onboardingDone` on the
-      // new-customer paths only, leaving path (a) unreachable.
-      const onboardingDone =
-        hasProfile ||
-        (kind === "photos" && mode === "skipped") ||
-        kind === "gender-dob";
-      if (
-        onboardingDone &&
-        seedProductOutfit &&
-        !seedProductEmittedRef.current
-      ) {
-        next.push({
-          role: "assistant",
-          text: WELCOME_SEEDED_PRODUCT,
-          outfits: [seedProductOutfit],
-        });
-        seedProductEmittedRef.current = true;
-      }
       // Returning customer (hasProfile=true) only sees onboarding
       // cards in the recovery path — e.g. PhotosCard re-injected
       // because the engine lost the photo. Their gender / DOB are
       // already on the engine; promoting through the full new-
-      // customer ladder would force them to re-enter basics they've
-      // already saved. Jump straight to "done" after they resolve
-      // the recovery card.
-      if (hasProfile) {
-        return next;
-      }
-      // New-customer sequential flow (D.O.5):
-      //   - photos resolved with "completed" → emit gender-DOB
-      //   - photos resolved with "skipped"   → no further cards
-      //                                        (analysisPhase effect
-      //                                        will emit the prompt)
-      //   - gender-DOB resolved (any mode)   → no further cards
-      //                                        (analysisPhase effect
-      //                                        handles the transition
-      //                                        from idle → running →
-      //                                        complete based on the
-      //                                        resolution modes)
-      if (kind === "photos" && mode === "completed") {
+      // customer ladder would force them to re-enter basics.
+      // No-op here; the seed-product emission below handles them.
+      if (!hasProfile && kind === "photos" && mode === "completed") {
+        // New-customer sequential flow (D.O.5):
+        //   - photos resolved with "completed" → emit gender-DOB
+        //   - photos resolved with "skipped"   → no further cards
+        //   - gender-DOB resolved (any mode)   → no further cards
         next.push({
           role: "onboarding",
           kind: "gender-dob",
@@ -1535,6 +1528,36 @@ export default function ConversationPage() {
         });
       }
     }
+
+    // Phase W — emit the seed-product PDP card as soon as the
+    // customer's photos card resolves (either upload-completed
+    // OR skipped), in parallel with gender-DOB / analysis. The
+    // earlier implementation gated emission on the full
+    // onboarding ladder being done, which made try-on sequential
+    // after gender-DOB instead of parallel — the original spec
+    // explicitly said try-on and profile analysis run in parallel.
+    //
+    // Returning customers (hasProfile=true) get the same emission
+    // when their recovery photos card resolves — they don't have
+    // a gender-DOB card to wait on.
+    //
+    // Pushed AFTER the gender-DOB card so the gender-DOB form
+    // sits above the seed-product card in the feed (next-action
+    // first, passive context second).
+    const photosJustResolved = kind === "photos";
+    if (
+      seedProductOutfit &&
+      !seedProductEmittedRef.current &&
+      (photosJustResolved || hasProfile)
+    ) {
+      next.push({
+        role: "assistant",
+        text: WELCOME_SEEDED_PRODUCT,
+        outfits: [seedProductOutfit],
+      });
+      seedProductEmittedRef.current = true;
+    }
+
     return next;
   };
 
