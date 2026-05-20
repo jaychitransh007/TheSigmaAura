@@ -1503,11 +1503,18 @@ export default function ConversationPage() {
       // engine's seed_product_selection branch prefers the
       // enriched row when present; these are only used as
       // fallback.
+      //
+      // Both fields are clamped to the engine's
+      // CreateTurnRequest max_length (300 / 2000). Without the
+      // clamp a Shopify product with an unusually long title or
+      // image URL would 422 the whole turn — quietly killing
+      // the conversation when the customer's only sin was
+      // shopping a verbose listing.
       if (seedProduct.title) {
-        form.set("seedProductTitle", seedProduct.title);
+        form.set("seedProductTitle", seedProduct.title.slice(0, 300));
       }
       if (seedProduct.image_url) {
-        form.set("seedProductImageUrl", seedProduct.image_url);
+        form.set("seedProductImageUrl", seedProduct.image_url.slice(0, 2000));
       }
     }
     // Clear the consumed-turn marker so the next action response — be

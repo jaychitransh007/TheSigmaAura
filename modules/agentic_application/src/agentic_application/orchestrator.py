@@ -2026,8 +2026,18 @@ class AgenticOrchestrator:
                     # no enriched data — best-effort pairing.
                     attached_item = {
                         "id": seed_product_id,
-                        "title": str(seed_product_title or ""),
-                        "image_url": str(seed_product_image_url),
+                        # product_id matches "id" — downstream
+                        # consumers read either key (_extract_garment_ids
+                        # for the try-on cache, _persist_catalog_interactions
+                        # for analytics). Mirror both so neither
+                        # path misses the seed product.
+                        "product_id": seed_product_id,
+                        # Fall back to the id when no title arrived
+                        # — empty title would render as a blank
+                        # bubble in any rail / detail surface that
+                        # didn't special-case it.
+                        "title": seed_product_title or seed_product_id or "",
+                        "image_url": seed_product_image_url,
                         "image_path": "",
                         "garment_category": "",
                         "garment_subtype": "",
@@ -2040,6 +2050,21 @@ class AgenticOrchestrator:
                         "attachment_source": "vibe_entry_product_external",
                         "is_garment_photo": True,
                         "garment_present_confidence": 1.0,
+                        # role marker — same key _build_candidate_item
+                        # stamps on the enriched-branch anchor. Used
+                        # by the composer to identify the entry
+                        # garment during outfit composition + by the
+                        # render path to label the item.
+                        "role": "anchor",
+                        # OutfitItem schema parity. Empty values
+                        # are correct: the row isn't mapped to a
+                        # Shopify GID (B.8 didn't run for it), so
+                        # Add to Cart wiring stays disabled until
+                        # a catalog update lands. Including the
+                        # keys explicitly avoids defensive
+                        # .get(..., {}) reads downstream.
+                        "shopify_product_id": "",
+                        "shopify_variant_ids": {},
                     }
                     attached_context = self._attached_item_context(attached_item)
                     if attached_context:
