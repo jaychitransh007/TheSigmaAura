@@ -664,17 +664,18 @@ export async function lookupCatalogProductByShopifyId(args: {
 }): Promise<{ ok: true; item: OutfitItem } | { ok: false; status: number; error: string }> {
   if (USE_MOCK) {
     // Synthesize a plausible OutfitItem for offline dev. Keeps the
-    // storefront → Vibe flow testable without a live engine.
+    // storefront → Vibe flow testable without a live engine. Note
+    // we emit the post-normalizeItem shape directly (`garment_id`,
+    // numeric price) — the live path runs normalizeItem on the
+    // engine response below, but the mock shortcuts straight to
+    // the OutfitItem shape the frontend consumes.
     return {
       ok: true,
       item: {
-        product_id: `mock-${args.shopifyProductNumericId}`,
+        garment_id: `mock-${args.shopifyProductNumericId}`,
         title: `Mock Product ${args.shopifyProductNumericId}`,
         image_url: `https://picsum.photos/seed/${encodeURIComponent(args.shopifyProductNumericId)}/800/1200`,
-        price: "0",
         product_url: "#",
-        garment_category: "tops",
-        garment_subtype: "shirt",
         source: "catalog",
       },
     };
@@ -701,7 +702,14 @@ export async function lookupCatalogProductByShopifyId(args: {
       error: detail || `Catalog lookup failed (HTTP ${resp.status})`,
     };
   }
-  let body: { ok?: boolean; item?: OutfitItem };
+  // Engine returns the row shaped like a RawEngineOutfitItem (the
+  // dict `_build_candidate_item` emits), not the post-normalize
+  // OutfitItem the frontend consumes. The translation matters:
+  // `product_id → garment_id`, `price` string → number, image-URL
+  // proxy rewrite, etc. Run the same normalizer the turn pipeline
+  // uses so the seed-product item is identical to a turn-returned
+  // item — OutfitCard / cart wiring all key on garment_id.
+  let body: { ok?: boolean; item?: RawEngineOutfitItem };
   try {
     body = (await resp.json()) as typeof body;
   } catch {
@@ -710,7 +718,7 @@ export async function lookupCatalogProductByShopifyId(args: {
   if (!body.ok || !body.item) {
     return { ok: false, status: 502, error: "Catalog lookup response missing item." };
   }
-  return { ok: true, item: body.item };
+  return { ok: true, item: normalizeItem(body.item) };
 }
 
 export async function startTurn(args: {

@@ -741,7 +741,7 @@ export default function ConversationPage() {
   const seedProductOutfit = useMemo<Outfit | null>(() => {
     if (!seedProduct) return null;
     return {
-      outfit_id: `vibe-entry-${seedProduct.product_id}`,
+      outfit_id: `vibe-entry-${seedProduct.garment_id}`,
       name: seedProduct.title || "Your pick",
       items: [seedProduct],
     };
@@ -1374,7 +1374,7 @@ export default function ConversationPage() {
     // entry-product context — the customer can manually unset it
     // via the planned "clear seed" affordance in a future iteration.
     if (seedProduct?.product_id) {
-      form.set("seedProductId", seedProduct.product_id);
+      form.set("seedProductId", seedProduct.garment_id);
     }
     // Clear the consumed-turn marker so the next action response — be
     // it a jobId or an error — gets picked up by the effect below.
@@ -1469,6 +1469,38 @@ export default function ConversationPage() {
       (m) => m.role === "onboarding" && m.status === "active",
     );
     if (!anyActive) {
+      // Phase W — emit the seed-product PDP card whenever onboarding
+      // has fully resolved on this session. Three paths land here:
+      //   (a) Returning customer in the recovery branch (hasProfile=
+      //       true) — they only ever saw a single PhotosCard, and
+      //       resolving it (either upload-completed or skipped) means
+      //       there's nothing else to gate on. The seed product
+      //       should emit regardless of resolution mode.
+      //   (b) New customer who skipped photos — analysisPhase emits
+      //       the prompt on its own, but the seed product should
+      //       still appear since the entry-via-try-on context is
+      //       still meaningful.
+      //   (c) New customer who resolved gender-DOB (either mode) —
+      //       the full onboarding ladder is done.
+      // Emission must precede the hasProfile early-return below;
+      // the prior implementation gated `onboardingDone` on the
+      // new-customer paths only, leaving path (a) unreachable.
+      const onboardingDone =
+        hasProfile ||
+        (kind === "photos" && mode === "skipped") ||
+        kind === "gender-dob";
+      if (
+        onboardingDone &&
+        seedProductOutfit &&
+        !seedProductEmittedRef.current
+      ) {
+        next.push({
+          role: "assistant",
+          text: WELCOME_SEEDED_PRODUCT,
+          outfits: [seedProductOutfit],
+        });
+        seedProductEmittedRef.current = true;
+      }
       // Returning customer (hasProfile=true) only sees onboarding
       // cards in the recovery path — e.g. PhotosCard re-injected
       // because the engine lost the photo. Their gender / DOB are
@@ -1496,26 +1528,6 @@ export default function ConversationPage() {
           kind: "gender-dob",
           status: "active",
         });
-      }
-      // Phase W — once onboarding has fully resolved (photos
-      // skipped, OR photos completed + gender-DOB resolved), emit
-      // the seed-product PDP card so the customer who came in via
-      // the try-on button finally sees their product. Idempotent
-      // via seedProductEmittedRef so a re-render or a double
-      // transformAdvance can't push it twice.
-      const onboardingDone =
-        (kind === "photos" && mode === "skipped") || kind === "gender-dob";
-      if (
-        onboardingDone &&
-        seedProductOutfit &&
-        !seedProductEmittedRef.current
-      ) {
-        next.push({
-          role: "assistant",
-          text: WELCOME_SEEDED_PRODUCT,
-          outfits: [seedProductOutfit],
-        });
-        seedProductEmittedRef.current = true;
       }
     }
     return next;

@@ -18,7 +18,7 @@
 //     friendly inline error from CartUnavailableError, never silent
 //     failures.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Outfit, OutfitItem } from "../../lib/engine.server";
 import {
@@ -254,7 +254,7 @@ export function OutfitCard({
   // Gemini Flash Image. On success the rendered data URL takes
   // over the garment hero image. Missing-person-image returns a
   // friendly inline nudge instead of a generic error.
-  const handleTryOn = async () => {
+  const handleTryOn = useCallback(async () => {
     if (mode.kind !== "garment") return;
     const item = mode.item;
     if (isWardrobe(item)) return;
@@ -339,14 +339,14 @@ export function OutfitCard({
       ...prev,
       [item.garment_id]: { kind: "ready", dataUrl: body.dataUrl! },
     }));
-  };
+  }, [mode, onRequestPhotosCard]);
 
   // Phase V.2 — outfit-mode "Virtual Try On" click handler. Same
   // shape as `handleTryOn` but fires the multi-garment endpoint
   // (`/apps/vibe/api/tryon-outfit`) and stashes the result in the
   // shared `outfitTryonState` so the outfit hero swaps to the
   // rendered composite.
-  const handleTryOnOutfit = async () => {
+  const handleTryOnOutfit = useCallback(async () => {
     if (mode.kind !== "outfit") return;
     // Build the garment list. Skip wardrobe items — they're already
     // the customer's pieces (the engine renders them differently
@@ -423,7 +423,7 @@ export function OutfitCard({
       return;
     }
     setOutfitTryonState({ kind: "ready", dataUrl: body.dataUrl! });
-  };
+  }, [mode.kind, outfit.items, onRequestPhotosCard]);
 
   // Phase W.5 — auto-fire the try-on render when the customer has a
   // body photo on file but the current card view doesn't already
@@ -453,6 +453,12 @@ export function OutfitCard({
   //     pass doesn't fire two Gemini calls back-to-back.
   const autoFiredOutfitRef = useRef<boolean>(false);
   const autoFiredGarmentRef = useRef<Set<string>>(new Set());
+  // Pull the garment_id out into a stable value so the effect's deps
+  // array stays narrow — re-running on every mode-object identity
+  // change isn't useful since the per-card refs already guard
+  // single-fire. The handlers are useCallback-memoized above so
+  // including them in deps doesn't churn.
+  const activeGarmentId = mode.kind === "garment" ? mode.item.garment_id : null;
   useEffect(() => {
     if (!hasBodyPhoto) return;
     if (mode.kind === "outfit") {
@@ -472,12 +478,16 @@ export function OutfitCard({
     if (garmentTryonState.kind !== "idle") return;
     autoFiredGarmentRef.current.add(item.garment_id);
     void handleTryOn();
-    // handleTryOn / handleTryOnOutfit are defined as inline arrow
-    // functions inside the component so they capture fresh state
-    // each render — re-including them in deps would loop. The refs
-    // above prevent double-fire under StrictMode.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasBodyPhoto, mode.kind, mode.kind === "garment" ? mode.item.garment_id : null]);
+  }, [
+    hasBodyPhoto,
+    mode,
+    activeGarmentId,
+    outfit.tryon_image_url,
+    outfitTryonState.kind,
+    garmentTryonState.kind,
+    handleTryOn,
+    handleTryOnOutfit,
+  ]);
 
   return (
     <div className="conv-card" data-outfit-id={outfit.outfit_id}>

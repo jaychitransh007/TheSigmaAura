@@ -1552,12 +1552,15 @@ def create_app() -> FastAPI:
         # the client gets an identically-shaped dict — catalog_description
         # sanitization, image_url normalization, tag-attribute fanout,
         # synthesized description fallback, all of it. Wrap the
-        # enriched dict in a minimal RetrievedProduct because the
-        # helper is typed against that.
+        # enriched dict in a minimal RetrievedProduct; populate BOTH
+        # `metadata` and `enriched_data` so downstream consumers find
+        # the PascalCase attribute keys (GarmentCategory, etc.)
+        # regardless of which bucket they read from — the same shape
+        # the orchestrator's seed-product anchor branch uses.
         seed_product = RetrievedProduct(
             product_id=str(enriched.get("product_id") or ""),
             similarity=1.0,
-            metadata={},
+            metadata=dict(enriched),
             enriched_data=dict(enriched),
         )
         item = _build_candidate_item(seed_product, role="")
