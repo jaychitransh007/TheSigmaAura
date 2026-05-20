@@ -948,6 +948,56 @@
      getting truncated text mid-thought ("…the skirt's…"). */
 }
 
+/* Variant used when the description is rendered as HTML — the poll
+   route hydrates `catalog_description` with the live Shopify
+   body_html (clean <p>/<ul>/<strong> from build_shopify_csv.py).
+   Style the nested tags so the "The vibe: Fit / Fabric / …" bullet
+   block reads the same way the storefront's PDP renders it. */
+.conv-detail-desc--html {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  line-height: 1.55;
+  margin: 0 0 1rem;
+}
+
+.conv-detail-desc--html p {
+  margin: 0 0 0.6rem;
+}
+
+.conv-detail-desc--html p:last-child {
+  margin-bottom: 0;
+}
+
+.conv-detail-desc--html strong,
+.conv-detail-desc--html b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.conv-detail-desc--html ul,
+.conv-detail-desc--html ol {
+  margin: 0.3rem 0 0.8rem;
+  padding-left: 1.1rem;
+}
+
+.conv-detail-desc--html li {
+  margin: 0 0 0.3rem;
+}
+
+.conv-detail-desc--html li:last-child {
+  margin-bottom: 0;
+}
+
+.conv-detail-desc--html h1,
+.conv-detail-desc--html h2,
+.conv-detail-desc--html h3,
+.conv-detail-desc--html h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0.4rem 0 0.4rem;
+}
+
 .conv-detail-brand {
   font-size: 0.7rem;
   font-weight: 600;
