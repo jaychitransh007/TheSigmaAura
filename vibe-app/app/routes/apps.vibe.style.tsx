@@ -208,75 +208,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   // Fallback path — the catalog row wasn't found OR the tenant
-  // wasn't resolvable. Try Shopify's public products JSON endpoint
-  // before falling back to URL params: it gives us the full
-  // description (body_html) and authoritative price/title/image,
-  // so the seed-product card looks like a normal Vibe PDP card
-  // even when B.8 hasn't mapped the product yet.
-  if (!seedProduct && seedHandle && shopDomain) {
-    try {
-      const resp = await fetch(
-        `https://${shopDomain}/products/${encodeURIComponent(seedHandle)}.json`,
-        { signal: AbortSignal.timeout(2500) },
-      );
-      if (resp.ok) {
-        const data = (await resp.json()) as {
-          product?: {
-            id?: number | string;
-            title?: string;
-            body_html?: string;
-            variants?: Array<{ price?: string; sku?: string }>;
-            images?: Array<{ src?: string }>;
-            image?: { src?: string };
-          };
-        };
-        const p = data.product;
-        if (p) {
-          const priceStr = p.variants?.[0]?.price ?? "";
-          const priceNum = priceStr ? Number.parseFloat(priceStr) : NaN;
-          const imageSrc =
-            p.image?.src || p.images?.[0]?.src || seedImage || "";
-          // Pass the raw Shopify body_html through. GarmentDetail
-          // renders catalog_description as HTML (sanitized via a
-          // small allowlist) so the structured "<p>lede</p>
-          // <p><strong>The vibe:</strong></p><ul>…</ul>" format
-          // shows up on the Vibe PDP card the same way it does on
-          // the storefront product page.
-          const bodyHtml = (p.body_html ?? "").trim();
-          seedProduct = {
-            garment_id: seedProductNumericId,
-            title: p.title || seedTitle,
-            image_url: imageSrc,
-            price: Number.isFinite(priceNum) ? priceNum : undefined,
-            product_url: `https://${shopDomain}/products/${seedHandle}`,
-            description: bodyHtml || undefined,
-            catalog_description: bodyHtml || undefined,
-            source: "catalog",
-            shopify_product_id: `gid://shopify/Product/${seedProductNumericId}`,
-          };
-          logInfo("vibe_seed_product_lookup", {
-            outcome: "fallback_shopify_json",
-            shopifyProductId: seedProductNumericId,
-            handle: seedHandle,
-          });
-        }
-      }
-    } catch (err) {
-      // Storefront /products/{handle}.json fetch failed (timeout,
-      // CORS, 404, …). Fall through to the URL-params fallback
-      // below so the customer still lands on a populated card.
-      logWarn("vibe_seed_product_lookup", {
-        outcome: "shopify_json_fetch_failed",
-        shopifyProductId: seedProductNumericId,
-        handle: seedHandle,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  // Last-resort URL-params fallback. Less polished than the
-  // Shopify JSON path above — no description, price comes from
-  // money_without_currency formatting — but always something.
+  // wasn't resolvable. Build a minimal OutfitItem from the
+  // storefront link's URL params (title / image / price). The
+  // description gets populated by the Shopify body_html hydrator
+  // below — these URL params no longer carry description.
   if (!seedProduct && seedProductNumericId && seedTitle && seedImage) {
     const priceNum = seedPriceRaw ? Number.parseFloat(seedPriceRaw) : NaN;
     seedProduct = {
@@ -297,42 +232,30 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
   }
 
-  // Hydrate the seed product's catalog_description with the live
-  // Shopify body_html so the seed card matches the storefront PDP's
-  // structured "<p>lede</p> <p><strong>The vibe:</strong></p>
-  // <ul>…</ul>" rendering. Same hydration as the poll route does
-  // for recommendation-turn items, just for the initial seed card.
-  //
-  // Skip when:
-  //   - no seedProduct (no entry context at all)
-  //   - Shopify-JSON fallback already populated body_html (catalog
-  //     hit didn't, but the JSON fetch did — no need to refetch)
-  //   - no shopDomain (can't authenticate against Admin API)
-  //
-  // Best-effort: failures fall through to whatever catalog text
-  // we already had.
+  // Description = live Shopify body_html only. Wipe whatever the
+  // engine wrote (catalog-hit path) or any leftover text, then set
+  // from Shopify. GarmentDetail renders catalog_description as
+  // HTML; if Shopify hydration fails the card shows no
+  // description (no engine / LLM / URL-params fallback by spec).
+  if (seedProduct) {
+    seedProduct = { ...seedProduct, catalog_description: "", description: "" };
+  }
   if (seedProduct && shopDomain && seedProductNumericId) {
-    const alreadyHasHtml =
-      typeof seedProduct.catalog_description === "string" &&
-      /<\w/.test(seedProduct.catalog_description);
-    if (!alreadyHasHtml) {
-      try {
-        const bodyHtmlMap = await fetchShopifyBodyHtmlBatch({
-          shopDomain,
-          numericProductIds: [seedProductNumericId],
-        });
-        const html = bodyHtmlMap.get(seedProductNumericId);
-        if (html) {
-          seedProduct = {
-            ...seedProduct,
-            catalog_description: html,
-            description: html,
-          };
-        }
-      } catch {
-        // Best-effort — keep the engine/URL-params description if
-        // the Shopify hydration call fails.
+    try {
+      const bodyHtmlMap = await fetchShopifyBodyHtmlBatch({
+        shopDomain,
+        numericProductIds: [seedProductNumericId],
+      });
+      const html = bodyHtmlMap.get(seedProductNumericId);
+      if (html) {
+        seedProduct = {
+          ...seedProduct,
+          catalog_description: html,
+        };
       }
+    } catch {
+      // Best-effort. catalog_description was already wiped above;
+      // a failed hydration leaves the card with no description.
     }
   }
 

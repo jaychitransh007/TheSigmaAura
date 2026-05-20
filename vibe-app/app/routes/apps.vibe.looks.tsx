@@ -53,7 +53,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 type LoadState =
   | { kind: "loading" }
-  | { kind: "ready"; themes: IntentHistoryTheme[] }
+  | { kind: "ready"; themes: IntentHistoryTheme[]; hasBodyPhoto: boolean }
   | { kind: "error"; message: string };
 
 export default function LooksPage() {
@@ -76,7 +76,7 @@ export default function LooksPage() {
         const params = new URLSearchParams({ sessionId });
         const resp = await fetch(`/apps/vibe/api/looks?${params.toString()}`);
         const body = (await resp.json()) as
-          | { ok: true; themes: IntentHistoryTheme[] }
+          | { ok: true; themes: IntentHistoryTheme[]; hasBodyPhoto?: boolean }
           | { ok: false; error: string };
         if (cancelled) return;
         if (!resp.ok || !body.ok) {
@@ -86,7 +86,11 @@ export default function LooksPage() {
           });
           return;
         }
-        setState({ kind: "ready", themes: body.themes });
+        setState({
+          kind: "ready",
+          themes: body.themes,
+          hasBodyPhoto: Boolean(body.hasBodyPhoto),
+        });
       } catch (err) {
         if (cancelled) return;
         const message = err instanceof Error ? err.message : "Network error";
@@ -130,6 +134,7 @@ export default function LooksPage() {
                   theme.outfits[idx]?.user_message ?? ""
                 }
                 alwaysShowHeader
+                hasBodyPhoto={state.hasBodyPhoto}
               />
             </section>
           ))}

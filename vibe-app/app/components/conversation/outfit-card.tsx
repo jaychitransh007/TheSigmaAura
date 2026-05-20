@@ -878,16 +878,16 @@ function sanitizeProductBodyHtml(html: string): string {
 }
 
 function GarmentDetail({ item }: { item: OutfitItem }) {
-  // PDP description: prefer the store catalog's own copy
-  // (catalog_description) so the customer reads the merchant's
-  // voice. The poll route hydrates this with the live Shopify
-  // body_html — the same clean HTML the storefront product page
-  // renders ("Your new everyday jean — …" + "The vibe:" bullets).
-  // Fall back to the composer's stylist-voice plain text when the
-  // catalog row has no description — common for wardrobe items,
-  // occasional for catalog items the hydrator couldn't fetch.
+  // PDP description comes EXCLUSIVELY from the live Shopify body_html
+  // for the product — hydrated upstream by the poll route (rec. turns),
+  // the seed-product loader (Phase W), and the Looks loader. The
+  // engine's catalog_description / description fields still exist for
+  // engine-internal use (embeddings, planner context, composer
+  // prompts) but are not rendered as a display fallback. If the
+  // Shopify hydration didn't land (network failure, unmapped product,
+  // missing token) the card shows no description text — same store
+  // text or nothing.
   const catalogHtml = item.catalog_description?.trim();
-  const stylistText = item.description?.trim();
   return (
     <>
       {item.brand && <div className="conv-detail-brand">{item.brand}</div>}
@@ -899,18 +899,16 @@ function GarmentDetail({ item }: { item: OutfitItem }) {
           {formatRupees(item.price as number)}
         </p>
       )}
-      {catalogHtml ? (
+      {catalogHtml && (
         // Render HTML to preserve the "<p>lede</p><p><strong>The
         // vibe:</strong></p><ul><li>…</li></ul>" structure Shopify
-        // serves. Plain rendering would collapse this into a wall
-        // of run-on text and lose the store-page parity.
+        // serves. The sanitizer strips script / iframe / inline
+        // event handlers as defense in depth.
         <div
           className="conv-detail-desc conv-detail-desc--html"
           dangerouslySetInnerHTML={{ __html: sanitizeProductBodyHtml(catalogHtml) }}
         />
-      ) : stylistText ? (
-        <p className="conv-detail-desc">{stylistText}</p>
-      ) : null}
+      )}
     </>
   );
 }

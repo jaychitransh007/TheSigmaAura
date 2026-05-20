@@ -70,14 +70,24 @@ async function hydrateDescriptions(
   shopDomain: string,
   outfits: Outfit[],
 ): Promise<void> {
-  // Walk every item across every outfit, collect unique Shopify
-  // numeric product ids (extracted from the gid stored in
-  // shopify_product_id). Items without a Shopify mapping (the
-  // ~1,200 unmapped TheSigmaVibe rows) get skipped — their
-  // catalog_description stays as the engine emitted it.
+  // Walk every item. We do TWO things here:
+  //   1. wipe catalog_description so the engine's pre-hydrated text
+  //      (sanitized plain text from catalog_enriched.description)
+  //      can't leak through as a display fallback. GarmentDetail
+  //      only renders catalog_description; if Shopify hydration
+  //      fails the card shows no description, by spec.
+  //   2. set catalog_description to the live Shopify body_html
+  //      when the helper resolved it.
+  // Items without shopify_product_id (the ~1,200 unmapped
+  // TheSigmaVibe rows, plus all wardrobe items) end up with an
+  // empty catalog_description — wardrobe items still render their
+  // "From your wardrobe" line in GarmentDetail.
   const itemsToHydrate: Array<{ item: OutfitItem; numericId: string }> = [];
   for (const outfit of outfits) {
     for (const item of outfit.items ?? []) {
+      // Wipe whatever the engine wrote — Shopify body_html is the
+      // single source of truth for the displayed description.
+      item.catalog_description = "";
       const numericId = shopifyNumericIdFromGid(item.shopify_product_id ?? "");
       if (!numericId) continue;
       itemsToHydrate.push({ item, numericId });
@@ -92,14 +102,8 @@ async function hydrateDescriptions(
   });
   if (bodyHtmlByNumericId.size === 0) return;
 
-  // Stamp body_html onto catalog_description in place. GarmentDetail
-  // (the per-item PDP rendering on the client) renders this field
-  // as trusted HTML now — see outfit-card.tsx for the
-  // dangerouslySetInnerHTML branch.
   for (const { item, numericId } of itemsToHydrate) {
     const html = bodyHtmlByNumericId.get(numericId);
-    if (html) {
-      item.catalog_description = html;
-    }
+    if (html) item.catalog_description = html;
   }
 }
