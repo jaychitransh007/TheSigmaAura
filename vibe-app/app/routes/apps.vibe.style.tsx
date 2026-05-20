@@ -788,38 +788,6 @@ export default function ConversationPage() {
     unmarkKindResolved("photos");
   }, []);
 
-  // Phase W.7 — fire the profile-analysis trigger on try-on entry,
-  // gated. Conditions, ALL of which must hold:
-  //   1. The customer entered via the storefront try-on button
-  //      (`seedProduct` resolved from `?productId=` on the URL).
-  //   2. The init response has landed (`hasProfileFromInit !== null`)
-  //      so we have a trustworthy hasProfile read.
-  //   3. No profile yet (hasProfile === false). Re-running on a
-  //      customer who already has a profile burns OpenAI tokens for
-  //      no value — the engine just re-uses the existing analysis.
-  //   4. Body photo is on file (hasBodyPhoto). Without it the
-  //      analysis can't run; the trigger would fail. The existing
-  //      "fire on photo upload" machinery picks the trigger up when
-  //      the customer uploads a photo later in the flow.
-  // Idempotent via phaseWProfileTriggerFiredRef so a re-render
-  // doesn't double-fire.
-  useEffect(() => {
-    if (phaseWProfileTriggerFiredRef.current) return;
-    if (!sessionId) return;
-    if (!seedProduct) return;
-    if (hasProfileFromInit === null) return;
-    if (hasProfileFromInit) return;
-    if (!hasBodyPhoto) return;
-    phaseWProfileTriggerFiredRef.current = true;
-    // No structured log here — logger.server isn't available to the
-    // component bundle. The trigger fetch itself surfaces in engine
-    // logs via the existing `vibe_onboarding_endpoint_failed` path on
-    // failure; success is silent (matches the rest of the analysis
-    // machinery).
-    void fireAnalysisTrigger("phase1");
-    void fireAnalysisTrigger("phase2");
-  }, [sessionId, seedProduct, hasProfileFromInit, hasBodyPhoto, fireAnalysisTrigger]);
-
   // Best-effort POST to the engine's onboarding analysis start
   // endpoint, shared by the photo-upload handler and the poll loop's
   // self-heal recovery. Surfaces HTTP + network failures to the
@@ -856,6 +824,43 @@ export default function ConversationPage() {
     },
     [sessionId],
   );
+
+  // Phase W.7 — fire the profile-analysis trigger on try-on entry,
+  // gated. Conditions, ALL of which must hold:
+  //   1. The customer entered via the storefront try-on button
+  //      (`seedProduct` resolved from `?productId=` on the URL).
+  //   2. The init response has landed (`hasProfileFromInit !== null`)
+  //      so we have a trustworthy hasProfile read.
+  //   3. No profile yet (hasProfile === false). Re-running on a
+  //      customer who already has a profile burns OpenAI tokens for
+  //      no value — the engine just re-uses the existing analysis.
+  //   4. Body photo is on file (hasBodyPhoto). Without it the
+  //      analysis can't run; the trigger would fail. The existing
+  //      "fire on photo upload" machinery picks the trigger up when
+  //      the customer uploads a photo later in the flow.
+  // Idempotent via phaseWProfileTriggerFiredRef so a re-render
+  // doesn't double-fire.
+  //
+  // Placed AFTER fireAnalysisTrigger's useCallback so we can
+  // reference it directly — putting this effect above the callback
+  // declaration (the original ordering) hit a temporal dead zone
+  // crash on the SSR render path and 500'd the whole route.
+  useEffect(() => {
+    if (phaseWProfileTriggerFiredRef.current) return;
+    if (!sessionId) return;
+    if (!seedProduct) return;
+    if (hasProfileFromInit === null) return;
+    if (hasProfileFromInit) return;
+    if (!hasBodyPhoto) return;
+    phaseWProfileTriggerFiredRef.current = true;
+    // No structured log here — logger.server isn't available to the
+    // component bundle. The trigger fetch itself surfaces in engine
+    // logs via the existing `vibe_onboarding_endpoint_failed` path on
+    // failure; success is silent (matches the rest of the analysis
+    // machinery).
+    void fireAnalysisTrigger("phase1");
+    void fireAnalysisTrigger("phase2");
+  }, [sessionId, seedProduct, hasProfileFromInit, hasBodyPhoto, fireAnalysisTrigger]);
 
   // Mount: pull session id from localStorage (or mint one) and resolve
   // the conversation. Anchors identity to this browser for the rest of
