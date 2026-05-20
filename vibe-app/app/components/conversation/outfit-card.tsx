@@ -70,14 +70,22 @@ export function OutfitCard({
    *  leaving the chat — supersedes the V.2 inline error nudge. */
   onRequestPhotosCard?: () => void;
 }) {
-  // Default to outfit-level mode for multi-item outfits, garment mode
-  // for single-item outfits. Phase W's seed-product entry path
-  // emits a synthetic 1-item Outfit (the storefront product the
-  // customer landed on); the "Buy Outfit" framing doesn't make
-  // sense for a single item, so we open directly in garment mode
-  // and the customer sees Add to Cart / Buy Now / Try On.
-  // Multi-item turns still default to outfit mode so the
-  // outfit-level reasoning + cohesive Buy Outfit CTA show first.
+  // Mode controls which view the customer is in:
+  //   outfit  → hero shows the try-on render (composite for
+  //             multi-item, single-item render for 1-item outfits)
+  //   garment → hero shows the catalog product image; customer
+  //             explicitly toggled to see the original photo
+  //
+  // Default for single-item outfits is GARMENT so the catalog
+  // photo paints immediately on first render (the try-on hasn't
+  // started yet — auto-fire runs after mount). Once the render
+  // returns we auto-switch to outfit-mode (try-on view) via the
+  // useEffect further down. Multi-item outfits default to outfit
+  // so the composite hero + Buy Outfit CTA show first.
+  //
+  // Single-item outfits surface per-item CTAs (Add to Cart / Buy
+  // Now) in BOTH modes — see the CTA branch below; mode = outfit
+  // with 1 item is treated as garment-CTA territory.
   const [mode, setMode] = useState<Mode>(() =>
     outfit.items.length === 1
       ? { kind: "garment", item: outfit.items[0] }
@@ -132,16 +140,16 @@ export function OutfitCard({
   const singleItemTryonUrl =
     singleItemTryon?.kind === "ready" ? singleItemTryon.dataUrl : null;
 
-  // In garment mode, prefer a rendered single-garment try-on (if the
-  // customer hit "Virtual Try On" earlier on this card) over the
-  // catalog product image. The fallback chain keeps the card visually
-  // populated even when nothing has been rendered yet.
+  // Garment-mode tryon state — drives the per-item button/spinner.
+  // We intentionally don't override the garment-mode HERO with the
+  // rendered try-on: clicking the garment thumbnail means the
+  // customer wants to see the catalog product photo. The rendered
+  // try-on lives in the TRY-ON thumbnail (which switches mode to
+  // outfit when clicked) and in the outfit-mode hero.
   const garmentTryonState =
     mode.kind === "garment"
       ? garmentTryon[mode.item.garment_id] ?? { kind: "idle" }
       : { kind: "idle" as const };
-  const garmentHeroOverride =
-    garmentTryonState.kind === "ready" ? garmentTryonState.dataUrl : null;
   // Outfit hero precedence: a freshly-rendered outfit-level try-on
   // (from clicking the button on this session) > the single-item
   // garment-level try-on (when this is a single-item outfit) > the
@@ -164,9 +172,13 @@ export function OutfitCard({
       ? outfitTryonState.dataUrl
       : singleItemTryonUrl ?? outfit.tryon_image_url ?? null;
 
+  // Garment-mode always shows the catalog image — the customer
+  // explicitly picked this view via the garment thumbnail to see
+  // the original product photo. Try-on view lives behind the
+  // TRY-ON thumbnail (outfit mode).
   const heroImage = isOutfitMode
     ? outfitHeroOverride ?? outfit.tryon_image_url ?? outfit.items[0]?.image_url ?? null
-    : garmentHeroOverride ?? mode.item.image_url ?? null;
+    : mode.item.image_url ?? null;
   // Loading overlay should follow whichever mode the customer is in.
   const isTryonLoading = isOutfitMode
     ? outfitTryonState.kind === "loading"
@@ -197,20 +209,34 @@ export function OutfitCard({
   // Wardrobe items (price == null) are excluded — the customer
   // already owns them, no cart write needed.
   const shoppableItems = outfit.items.filter((it) => !isWardrobe(it));
+  // The "current item" for per-garment CTAs (Add to Cart, Buy Now,
+  // Heart). In garment mode it's the picked item. In outfit mode
+  // on a SINGLE-item outfit it's the one item — outfit-mode with
+  // 1 item shows per-garment CTAs rather than the "Buy Outfit"
+  // composite (since there's nothing to compose).
+  const currentItem: OutfitItem | null =
+    mode.kind === "garment"
+      ? mode.item
+      : isSingleItem
+        ? outfit.items[0]
+        : null;
+  // True for outfit-mode + MULTI-item only — the only case where
+  // "Buy Outfit" is semantically meaningful.
+  const isCompositeOutfitMode = isOutfitMode && !isSingleItem;
   const canBuyOutfit =
-    isOutfitMode &&
+    isCompositeOutfitMode &&
     shoppableItems.length > 0 &&
     shoppableItems.every((item) => selectedSizes[item.garment_id] != null);
-  const garmentSelected =
-    mode.kind === "garment" ? selectedSizes[mode.item.garment_id] : undefined;
-  const canBuyGarment =
-    mode.kind === "garment" && garmentSelected !== undefined;
+  const garmentSelected = currentItem
+    ? selectedSizes[currentItem.garment_id]
+    : undefined;
+  const canBuyGarment = !!(currentItem && garmentSelected !== undefined);
 
   // Pull the variant ids for the picked sizes at click time. Missing
   // ids → the helper raises CartUnavailableError with a friendly
   // message; UI doesn't have to know about catalog-mapping state.
   function variantIdsForOutfit(): { variantId: string }[] {
-    if (mode.kind !== "outfit") return [];
+    if (!isCompositeOutfitMode) return [];
     return shoppableItems
       .map((it) => {
         const size = selectedSizes[it.garment_id];
@@ -221,9 +247,9 @@ export function OutfitCard({
   }
 
   function variantIdForCurrentGarment(): string | undefined {
-    if (mode.kind !== "garment") return undefined;
-    const size = selectedSizes[mode.item.garment_id];
-    return size ? mode.item.shopify_variant_ids?.[size] : undefined;
+    if (!currentItem) return undefined;
+    const size = selectedSizes[currentItem.garment_id];
+    return size ? currentItem.shopify_variant_ids?.[size] : undefined;
   }
 
   async function runCart(args: {
@@ -521,11 +547,33 @@ export function OutfitCard({
     handleTryOnOutfit,
   ]);
 
+  // Phase W auto-switch: once a single-item outfit's auto-fired
+  // try-on returns, flip the hero from catalog → try-on by
+  // switching mode garment → outfit. One-shot: if the customer
+  // later clicks the garment thumbnail (mode → garment), we
+  // respect that choice and don't keep snapping back.
+  const autoSwitchedToTryonRef = useRef(false);
+  useEffect(() => {
+    if (!isSingleItem) return;
+    if (autoSwitchedToTryonRef.current) return;
+    if (singleItemTryonUrl == null) return;
+    autoSwitchedToTryonRef.current = true;
+    setMode({ kind: "outfit" });
+  }, [isSingleItem, singleItemTryonUrl]);
+
+  // Also update header title to use currentItem for the
+  // garment-mode rendering: in outfit-mode with 1 item we now
+  // show the item's title (the synthetic outfit's `name` is the
+  // same string anyway).
+  const headerTitle = isCompositeOutfitMode
+    ? outfit.name ?? "Your look"
+    : currentItem?.title ?? outfit.name ?? "Your look";
+
   return (
     <div className="conv-card" data-outfit-id={outfit.outfit_id}>
       <div className="conv-card-header">
         <h3 className="conv-card-title">
-          {isOutfitMode ? outfit.name ?? "Your look" : mode.item.title}
+          {headerTitle}
         </h3>
         {onHide && (
           <button
@@ -578,66 +626,70 @@ export function OutfitCard({
         </div>
 
         <div className="conv-detail">
-          {isOutfitMode ? (
+          {isCompositeOutfitMode ? (
             <OutfitDetail
               outfit={outfit}
               selectedSizes={selectedSizes}
               onPickSize={pickSize}
             />
-          ) : (
+          ) : currentItem ? (
             <>
-              <GarmentDetail item={mode.item} />
-              {!isWardrobe(mode.item) && (
+              <GarmentDetail item={currentItem} />
+              {!isWardrobe(currentItem) && (
                 <SizeChips
-                  selected={selectedSizes[mode.item.garment_id] ?? null}
-                  onSelect={(size) => pickSize(mode.item.garment_id, size)}
+                  selected={selectedSizes[currentItem.garment_id] ?? null}
+                  onSelect={(size) => pickSize(currentItem.garment_id, size)}
                 />
               )}
             </>
-          )}
+          ) : null}
 
           {cartError && <div className="conv-cart-error">{cartError}</div>}
 
           {/* V.2 — Virtual Try On button + status row. Sits above
               the Buy / Add to Cart CTAs. Outfit mode triggers the
               multi-garment render; garment mode triggers the
-              single-garment render. Hidden for wardrobe garments —
-              they don't have a Shopify product image URL the engine
-              can render against. Hidden in outfit mode if every item
-              is from the wardrobe (nothing the engine can render). */}
-          {(() => {
-            if (mode.kind === "garment") return !isWardrobe(mode.item);
-            return outfit.items.some(
-              (item) => !isWardrobe(item) && Boolean(item.image_url),
-            );
-          })() && (
-            <div className="conv-tryon-row">
-              <button
-                type="button"
-                className="conv-cta conv-cta--secondary"
-                onClick={isOutfitMode ? handleTryOnOutfit : handleTryOn}
-                disabled={
-                  activeTryonState.kind === "loading" ||
-                  (mode.kind === "garment" && !mode.item.image_url)
-                }
-              >
-                {activeTryonState.kind === "loading"
-                  ? "Rendering try-on…"
-                  : activeTryonState.kind === "ready"
-                    ? "Try on again"
+              single-garment render.
+              Hidden when:
+                - active state is "ready" — try-on is already
+                  rendered and visible via the TRY-ON thumbnail /
+                  hero, no point repeating the button
+                - the current item is from the wardrobe (no
+                  Shopify URL the engine can render against)
+                - composite outfit mode has no shoppable items */}
+          {activeTryonState.kind !== "ready" &&
+            (() => {
+              if (mode.kind === "garment") return !isWardrobe(mode.item);
+              if (isSingleItem) return !isWardrobe(outfit.items[0]);
+              return outfit.items.some(
+                (item) => !isWardrobe(item) && Boolean(item.image_url),
+              );
+            })() && (
+              <div className="conv-tryon-row">
+                <button
+                  type="button"
+                  className="conv-cta conv-cta--secondary"
+                  onClick={isOutfitMode ? handleTryOnOutfit : handleTryOn}
+                  disabled={
+                    activeTryonState.kind === "loading" ||
+                    (currentItem != null && !currentItem.image_url)
+                  }
+                >
+                  {activeTryonState.kind === "loading"
+                    ? "Rendering try-on…"
                     : "Virtual Try On"}
-              </button>
-              {activeTryonState.kind === "missing_person" && (
-                <p className="conv-tryon-note">{activeTryonState.message}</p>
-              )}
-              {activeTryonState.kind === "error" && (
-                <p className="conv-tryon-error">{activeTryonState.message}</p>
-              )}
-            </div>
-          )}
+                </button>
+                {activeTryonState.kind === "missing_person" && (
+                  <p className="conv-tryon-note">{activeTryonState.message}</p>
+                )}
+                {activeTryonState.kind === "error" && (
+                  <p className="conv-tryon-error">{activeTryonState.message}</p>
+                )}
+              </div>
+            )}
 
           <div className="conv-cta-row">
-            {isOutfitMode ? (
+            {isCompositeOutfitMode ? (
               <button
                 type="button"
                 className="conv-cta"
@@ -647,7 +699,7 @@ export function OutfitCard({
               >
                 {cartBusy === "outfit" ? "Adding…" : "Buy outfit"}
               </button>
-            ) : isWardrobe(mode.item) ? (
+            ) : currentItem && isWardrobe(currentItem) ? (
               <div
                 className="conv-cta"
                 style={{
