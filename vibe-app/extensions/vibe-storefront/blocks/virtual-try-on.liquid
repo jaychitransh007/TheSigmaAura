@@ -7,15 +7,25 @@
 
   Click behaviour (Phase W):
     Opens the Vibe screen in a new tab at
-    /apps/vibe/style?productId={{ product.id }}. The Vibe-app
-    loader picks up the numeric id, fetches the catalog row via the
-    engine's GET /v1/catalog/products/by-shopify-id/{id}, and
-    renders a single-product PDP card as the first assistant turn.
+    /apps/vibe/style?productId=…&handle=…&title=…&image=…&price=…
+    The Vibe-app loader picks up the numeric id, fetches the
+    catalog row via the engine's
+    GET /v1/catalog/products/by-shopify-id/{id}, and renders a
+    single-product PDP card as the first assistant turn.
 
     `product.id` (not `product.handle`) because catalog_enriched
     indexes by shopify_product_id (the GID) — the engine
     constructs `gid://shopify/Product/{id}` server-side and
-    matches against that. Handles aren't a column on the table.
+    matches against that.
+
+    title / handle / image / price ride along as fallback fields:
+    ~1,200 of TheSigmaVibe's 13,177 rows weren't mapped to a
+    Shopify GID by B.8 (newer products, ingestion gaps, etc.) and
+    the catalog lookup 404s on them. When that happens the loader
+    synthesizes a minimal OutfitItem from these URL params so the
+    seed-product card still renders — the customer doesn't get a
+    dead "no product" screen just because their entry product
+    sits in the unmapped tail.
 
   The previous V.3 modal popup (file upload + result card in-place)
   is retired — the new tab IS the entry point to Vibe, where the
@@ -43,7 +53,7 @@
 >
   <a
     class="vibe-tryon-button"
-    href="/apps/vibe/style?productId={{ product.id }}"
+    href="/apps/vibe/style?productId={{ product.id }}&handle={{ product.handle | url_param_escape }}&title={{ product.title | url_param_escape }}&image={{ product.featured_image | image_url: width: 1200 | url_param_escape }}&price={{ product.price | money_without_currency | url_param_escape }}"
     target="_blank"
     rel="noopener"
   >
