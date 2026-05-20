@@ -740,6 +740,14 @@ export async function startTurn(args: {
    *  entry garment. Engine threads it through process_turn the same
    *  way it threads wishlist_product_id. */
   seedProductId?: string;
+  /** Phase W follow-up — title + image_url for the seed product,
+   *  used as the engine-side anchor fallback when seedProductId
+   *  misses against catalog_enriched (the ~1,200 unmapped rows in
+   *  TheSigmaVibe). Without these the engine has no way to build
+   *  an attached_item for the planner and the pairing intent
+   *  routes to "send me an image". */
+  seedProductTitle?: string;
+  seedProductImageUrl?: string;
   /** Shopify *.myshopify.com domain, extracted from the signed App
    *  Proxy URL params. Required for `vibe_storefront` traffic so the
    *  engine can resolve the right tenant_id for catalog retrieval —
@@ -782,6 +790,8 @@ export async function startTurn(args: {
       wardrobe_item_id: args.wardrobeItemId,
       wishlist_product_id: args.wishlistProductId,
       seed_product_id: args.seedProductId,
+      seed_product_title: args.seedProductTitle,
+      seed_product_image_url: args.seedProductImageUrl,
     },
   );
 }

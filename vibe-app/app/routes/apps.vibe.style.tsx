@@ -579,6 +579,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // attachment. Counts as an attachment for the pairing-rewrite
     // path so "what shoes go with this?" routes into PAIRING_REQUEST.
     const seedProductId = String(form.get("seedProductId") ?? "").trim();
+    // Phase W follow-up — title + image url, used as the engine-
+    // side anchor fallback when seedProductId misses against
+    // catalog_enriched (unmapped Shopify products).
+    const seedProductTitle = String(form.get("seedProductTitle") ?? "").trim();
+    const seedProductImageUrl = String(
+      form.get("seedProductImageUrl") ?? "",
+    ).trim();
     const hasAttachment = !!(
       imageData ||
       wardrobeItemId ||
@@ -641,6 +648,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       wardrobeItemId: wardrobeItemId || undefined,
       wishlistProductId: wishlistProductId || undefined,
       seedProductId: seedProductId || undefined,
+      seedProductTitle: seedProductTitle || undefined,
+      seedProductImageUrl: seedProductImageUrl || undefined,
       shopDomain,
     });
     return json<ActionResponse>({
@@ -1488,6 +1497,18 @@ export default function ConversationPage() {
     // via the planned "clear seed" affordance in a future iteration.
     if (seedProduct?.garment_id) {
       form.set("seedProductId", seedProduct.garment_id);
+      // Ride-along title + image url so the engine can synthesize
+      // an anchor when its catalog_enriched lookup misses (the
+      // ~1,200 unmapped Shopify rows on TheSigmaVibe). The
+      // engine's seed_product_selection branch prefers the
+      // enriched row when present; these are only used as
+      // fallback.
+      if (seedProduct.title) {
+        form.set("seedProductTitle", seedProduct.title);
+      }
+      if (seedProduct.image_url) {
+        form.set("seedProductImageUrl", seedProduct.image_url);
+      }
     }
     // Clear the consumed-turn marker so the next action response — be
     // it a jobId or an error — gets picked up by the effect below.

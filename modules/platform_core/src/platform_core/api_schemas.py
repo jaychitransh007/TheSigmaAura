@@ -272,6 +272,18 @@ class CreateTurnRequest(BaseModel):
     # outfit around the entry garment without the customer
     # re-uploading anything.
     seed_product_id: str = Field(default="")
+    # Phase W follow-up — title + image url for the seed product,
+    # used as the anchor fallback when the seed_product_id lookup
+    # against catalog_enriched misses (~1,200 of TheSigmaVibe's
+    # 13,177 rows aren't mapped to Shopify GIDs and the Phase W
+    # gateway falls back to Shopify's /products/{handle}.json on
+    # the vibe-app side). Without these the engine has no way to
+    # construct an attached_item for the planner, the pairing
+    # intent classifier sees no image, and the customer's
+    # "complete this outfit" follow-up gets routed to "send me an
+    # image" instead of composing around the entry garment.
+    seed_product_title: str = Field(default="", max_length=300)
+    seed_product_image_url: str = Field(default="", max_length=2000)
     # F.2.0 (2026-05-18): the merchant's *.myshopify.com domain. The
     # API resolves this to a tenant_id via the `tenants` table before
     # calling process_turn, so retrieval can be scoped to the right

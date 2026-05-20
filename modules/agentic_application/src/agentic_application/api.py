@@ -1258,6 +1258,8 @@ def create_app() -> FastAPI:
                 wardrobe_item_id=payload.wardrobe_item_id or "",
                 wishlist_product_id=payload.wishlist_product_id or "",
                 seed_product_id=payload.seed_product_id or "",
+                seed_product_title=payload.seed_product_title or "",
+                seed_product_image_url=payload.seed_product_image_url or "",
                 tenant_id=tenant_id,
             )
             return TurnResponse(**out)
@@ -1308,6 +1310,8 @@ def create_app() -> FastAPI:
                     wardrobe_item_id=payload.wardrobe_item_id or "",
                     wishlist_product_id=payload.wishlist_product_id or "",
                     seed_product_id=payload.seed_product_id or "",
+                    seed_product_title=payload.seed_product_title or "",
+                    seed_product_image_url=payload.seed_product_image_url or "",
                     tenant_id=tenant_id,
                     stage_callback=append_stage,
                 )
