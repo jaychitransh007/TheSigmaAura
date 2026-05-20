@@ -53,7 +53,7 @@
 >
   <a
     class="vibe-tryon-button"
-    href="/apps/vibe/style?productId={{ product.id }}&handle={{ product.handle | url_param_escape }}&title={{ product.title | url_param_escape }}&image={{ product.featured_image | image_url: width: 1200 | url_param_escape }}&price={{ product.price | money_without_currency | url_param_escape }}"
+    href="/apps/vibe/style?productId={{ product.id }}&handle={{ product.handle | url_param_escape }}&title={{ product.title | url_param_escape }}&image={{ product.featured_image | image_url: width: 1200 | prepend: 'https:' | url_param_escape }}&price={{ product.price | money_without_currency | url_param_escape }}"
     target="_blank"
     rel="noopener"
   >

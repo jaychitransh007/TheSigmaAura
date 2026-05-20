@@ -113,10 +113,20 @@ class TryonService:
             # wardrobe row stores image_path, never image_url). Dispatch
             # based on scheme so wardrobe-anchored try-ons don't try to
             # urlopen() a local path.
-            if url.startswith(("http://", "https://")):
-                img_bytes, img_mime = self._download_image(url)
+            #
+            # Shopify's liquid `image_url` filter returns
+            # protocol-relative URLs by default — "//shop.tld/cdn/…"
+            # without the leading scheme. Phase W's storefront URL
+            # params can carry these through into the engine; treat
+            # them as HTTPS downloads so they don't fall through to
+            # _load_local_image with a "Person image not found" error.
+            fetch_url = url
+            if fetch_url.startswith("//"):
+                fetch_url = f"https:{fetch_url}"
+            if fetch_url.startswith(("http://", "https://")):
+                img_bytes, img_mime = self._download_image(fetch_url)
             else:
-                img_bytes, img_mime = self._load_local_image(url)
+                img_bytes, img_mime = self._load_local_image(fetch_url)
             img_bytes, img_mime = self._maybe_resize(img_bytes, img_mime)
             garments.append((role, img_bytes, img_mime))
 
@@ -201,7 +211,13 @@ class TryonService:
     def _load_local_image(path: str) -> tuple[bytes, str]:
         p = Path(path).expanduser().resolve()
         if not p.exists():
-            raise FileNotFoundError(f"Person image not found: {path}")
+            # The path can be either a person photo (full_body /
+            # headshot from onboarding) OR a wardrobe garment file —
+            # both flow through this loader. Call out the path itself
+            # in the error so logs show which file actually missed
+            # instead of mislabelling every miss as a person-image
+            # problem.
+            raise FileNotFoundError(f"Image file not found: {path}")
         suffix = p.suffix.lower()
         mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
         mime = mime_map.get(suffix, "image/jpeg")
