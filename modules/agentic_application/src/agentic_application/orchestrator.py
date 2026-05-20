@@ -1708,6 +1708,11 @@ class AgenticOrchestrator:
         # it on every follow-up turn so "what shoes go with this?"
         # composes an outfit around the entry garment.
         seed_product_id: str = "",
+        # Phase W follow-up — title + image url for the seed product,
+        # used as the anchor fallback when seed_product_id misses
+        # against catalog_enriched (unmapped Shopify products).
+        seed_product_title: str = "",
+        seed_product_image_url: str = "",
         # F.2.0 (2026-05-18): tenant_id is the partition key for catalog
         # retrieval. Defaults to TheSigmaVibe so the legacy `web` channel
         # + existing tests keep working unchanged. API entry points
@@ -2006,6 +2011,50 @@ class AgenticOrchestrator:
                     )
                     trace.set_image_classification(is_garment_photo=True, garment_present_confidence=1.0)
                     _log.info("Loaded seed product %s: %s", seed_product_id, attached_item.get("title"))
+                elif seed_product_image_url:
+                    # Fallback for products not in catalog_enriched.
+                    # The Phase W gateway flow on the vibe-app side
+                    # already serves a card from Shopify's
+                    # /products/{handle}.json (title, image, body
+                    # description) for the unmapped ~1,200 rows;
+                    # mirror that here so the planner gets an
+                    # anchor with at least image + title even when
+                    # we can't fetch the enriched 46-attribute row.
+                    # The visual evaluator + composer can still
+                    # ground on the image; the architect's hard
+                    # attribute filters are skipped because we have
+                    # no enriched data — best-effort pairing.
+                    attached_item = {
+                        "id": seed_product_id,
+                        "title": str(seed_product_title or ""),
+                        "image_url": str(seed_product_image_url),
+                        "image_path": "",
+                        "garment_category": "",
+                        "garment_subtype": "",
+                        "primary_color": "",
+                        "secondary_color": "",
+                        "formality_level": "",
+                        "occasion_fit": "",
+                        "pattern_type": "",
+                        "source": "catalog",
+                        "attachment_source": "vibe_entry_product_external",
+                        "is_garment_photo": True,
+                        "garment_present_confidence": 1.0,
+                    }
+                    attached_context = self._attached_item_context(attached_item)
+                    if attached_context:
+                        effective_message = f"{message.strip()} {attached_context}".strip()
+                    effective_message = f"{effective_message} Image anchor source: vibe entry product.".strip()
+                    trace_end(
+                        "seed_product_selection",
+                        output_summary=f"fallback (no enriched row): {attached_item.get('title')}",
+                    )
+                    trace.set_image_classification(is_garment_photo=True, garment_present_confidence=1.0)
+                    _log.info(
+                        "Loaded seed product %s from vibe-app fallback fields: %s",
+                        seed_product_id,
+                        attached_item.get("title"),
+                    )
                 else:
                     trace_end("seed_product_selection", output_summary="product not found", status="error")
                     _log.warning("Seed product %s not found in catalog_enriched", seed_product_id)
