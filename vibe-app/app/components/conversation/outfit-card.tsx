@@ -453,12 +453,6 @@ export function OutfitCard({
   //     pass doesn't fire two Gemini calls back-to-back.
   const autoFiredOutfitRef = useRef<boolean>(false);
   const autoFiredGarmentRef = useRef<Set<string>>(new Set());
-  // Pull the garment_id out into a stable value so the effect's deps
-  // array stays narrow — re-running on every mode-object identity
-  // change isn't useful since the per-card refs already guard
-  // single-fire. The handlers are useCallback-memoized above so
-  // including them in deps doesn't churn.
-  const activeGarmentId = mode.kind === "garment" ? mode.item.garment_id : null;
   useEffect(() => {
     if (!hasBodyPhoto) return;
     if (mode.kind === "outfit") {
@@ -481,7 +475,6 @@ export function OutfitCard({
   }, [
     hasBodyPhoto,
     mode,
-    activeGarmentId,
     outfit.tryon_image_url,
     outfitTryonState.kind,
     garmentTryonState.kind,
