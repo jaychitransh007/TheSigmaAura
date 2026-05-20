@@ -18,6 +18,8 @@ export function OutfitCarousel({
   onHide,
   contextLabelForIndex,
   alwaysShowHeader = false,
+  hasBodyPhoto = false,
+  onRequestPhotosCard,
 }: {
   outfits: Outfit[];
   /** Same contract as OutfitCard.onHide — receives the outfit_id of
@@ -34,6 +36,12 @@ export function OutfitCarousel({
    *  per-slide user-query context line still shows for a single-turn
    *  theme. */
   alwaysShowHeader?: boolean;
+  /** Phase W.5 — forwarded to each OutfitCard so the auto-fire effect
+   *  knows whether a body photo is on file. */
+  hasBodyPhoto?: boolean;
+  /** Phase W.6 — forwarded to each OutfitCard so the missing-person
+   *  path can ask the parent to emit a photos onboarding card. */
+  onRequestPhotosCard?: () => void;
 }) {
   const [idx, setIdx] = useState(0);
   const slotRef = useRef<HTMLDivElement | null>(null);
@@ -140,6 +148,8 @@ export function OutfitCarousel({
           key={current.outfit_id}
           outfit={current}
           onHide={onHide ? () => onHide(current.outfit_id) : undefined}
+          hasBodyPhoto={hasBodyPhoto}
+          onRequestPhotosCard={onRequestPhotosCard}
         />
       </div>
     </div>

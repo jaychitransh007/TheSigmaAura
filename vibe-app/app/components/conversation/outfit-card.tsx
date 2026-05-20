@@ -18,7 +18,7 @@
 //     friendly inline error from CartUnavailableError, never silent
 //     failures.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { Outfit, OutfitItem } from "../../lib/engine.server";
 import {
@@ -52,9 +52,23 @@ type Mode =
 export function OutfitCard({
   outfit,
   onHide,
+  hasBodyPhoto = false,
+  onRequestPhotosCard,
 }: {
   outfit: Outfit;
   onHide?: () => void;
+  /** Phase W — whether the customer has a full_body photo on file
+   *  with the engine. Drives W.5 auto-fire (card auto-renders the
+   *  try-on on mount when true) and gates the missing-person path
+   *  away from the W.6 photo-card fallback (no point asking for an
+   *  upload if the engine already has one). */
+  hasBodyPhoto?: boolean;
+  /** Phase W — invoked when a try-on attempt 400s with
+   *  missing_person_image (or the customer clicks Try-On without a
+   *  body photo on file). Parent emits an inline photos onboarding
+   *  card to the conversation so the customer can upload without
+   *  leaving the chat — supersedes the V.2 inline error nudge. */
+  onRequestPhotosCard?: () => void;
 }) {
   // Default to outfit-level mode for multi-item outfits, garment mode
   // for single-item outfits. Phase W's seed-product entry path
@@ -311,6 +325,14 @@ export function OutfitCard({
             }
           : { kind: "error", message },
       }));
+      // Phase W.6 — surface the photos onboarding card inline so the
+      // customer can upload without leaving the chat. Parent emits
+      // the card into the message stream; the inline note above
+      // stays as a fallback for the brief window before the card
+      // mounts.
+      if (isMissingPerson) {
+        onRequestPhotosCard?.();
+      }
       return;
     }
     setGarmentTryon((prev) => ({
@@ -394,10 +416,68 @@ export function OutfitCard({
             }
           : { kind: "error", message },
       );
+      // Phase W.6 — same photo-card fallback as the garment path.
+      if (isMissingPerson) {
+        onRequestPhotosCard?.();
+      }
       return;
     }
     setOutfitTryonState({ kind: "ready", dataUrl: body.dataUrl! });
   };
+
+  // Phase W.5 — auto-fire the try-on render when the customer has a
+  // body photo on file but the current card view doesn't already
+  // show a rendered try-on. The customer's expectation, per the
+  // Phase W flow ("if user image exists, the image should be served
+  // with virtual try-on only"), is that every PDP card defaults to
+  // the rendered hero — not the catalog stock photo.
+  //
+  // Gates:
+  //   - `hasBodyPhoto`. Without a body photo there's nothing to
+  //     render against; the customer needs to upload first (W.6).
+  //   - Mode-aware:
+  //       outfit mode → fire when neither the engine's pre-render
+  //                    (outfit.tryon_image_url) nor a client-rendered
+  //                    state is in place. The engine auto-renders at
+  //                    turn-generation time; this auto-fire covers
+  //                    the cases where it didn't (synthetic
+  //                    seed-product outfit, engine flag off, etc.).
+  //       garment mode → fire when no per-garment try-on is on file
+  //                    yet. The engine never pre-renders single-
+  //                    garment views, so this auto-fire is the only
+  //                    path that paints a try-on hero in garment
+  //                    mode.
+  //   - State ≠ loading/ready. The handler is reused from the
+  //     manual-click path; re-entering loading would step on it.
+  //   - Per-card auto-fire ref so React StrictMode's double-effect
+  //     pass doesn't fire two Gemini calls back-to-back.
+  const autoFiredOutfitRef = useRef<boolean>(false);
+  const autoFiredGarmentRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!hasBodyPhoto) return;
+    if (mode.kind === "outfit") {
+      if (autoFiredOutfitRef.current) return;
+      if (outfit.tryon_image_url) return;
+      if (outfitTryonState.kind !== "idle") return;
+      // No try-on on file and we haven't already auto-fired.
+      autoFiredOutfitRef.current = true;
+      void handleTryOnOutfit();
+      return;
+    }
+    // garment mode
+    const item = mode.item;
+    if (isWardrobe(item)) return;
+    if (!item.image_url) return;
+    if (autoFiredGarmentRef.current.has(item.garment_id)) return;
+    if (garmentTryonState.kind !== "idle") return;
+    autoFiredGarmentRef.current.add(item.garment_id);
+    void handleTryOn();
+    // handleTryOn / handleTryOnOutfit are defined as inline arrow
+    // functions inside the component so they capture fresh state
+    // each render — re-including them in deps would loop. The refs
+    // above prevent double-fire under StrictMode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasBodyPhoto, mode.kind, mode.kind === "garment" ? mode.item.garment_id : null]);
 
   return (
     <div className="conv-card" data-outfit-id={outfit.outfit_id}>

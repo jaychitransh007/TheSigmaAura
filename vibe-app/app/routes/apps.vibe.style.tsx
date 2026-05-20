@@ -596,6 +596,12 @@ const WELCOME_NEW =
 // the product context.
 const WELCOME_SEEDED_PRODUCT =
   "Here's the piece you came in on. Ask me to build a look around it, or try it on first.";
+// Phase W.6 — preamble for the photos onboarding card injected when
+// the customer clicks Virtual Try On without a body photo on file.
+// Supersedes the V.2 inline "Upload your full-body photo first..."
+// nudge; the card itself does the work.
+const WELCOME_NEEDS_PHOTO =
+  "I'll need a quick full-body photo to render the try-on. Drop one below and I'll get it on you in a few seconds.";
 
 // Steps the seed effect treats as "the customer is still in the
 // initial parallel onboarding phase" — photos + gender-DOB rendered
@@ -717,6 +723,15 @@ export default function ConversationPage() {
   // path). Independent of seededRef because the seed-product card
   // can fire after the initial seed effect completes.
   const seedProductEmittedRef = useRef<boolean>(false);
+  // Phase W.7 — guards the gated profile-analysis trigger so it
+  // fires at most once per page life even though the effect's
+  // dependencies (sessionId, hasProfile, imagesUploaded) settle on
+  // different ticks.
+  const phaseWProfileTriggerFiredRef = useRef<boolean>(false);
+  // Phase W.6 — guards the in-Vibe missing-person → photos-card
+  // emission so a flurry of try-on attempts (one per garment in a
+  // multi-item outfit, say) only pushes one card.
+  const photoCardRequestedRef = useRef<boolean>(false);
 
   // Phase W — wrap the seedProduct OutfitItem in a synthetic
   // single-item Outfit shape so the existing OutfitCard / carousel
@@ -731,6 +746,79 @@ export default function ConversationPage() {
       items: [seedProduct],
     };
   }, [seedProduct]);
+
+  // Phase W.5 — does the customer have a full_body photo on file?
+  // Engine's init response includes the categories of onboarding
+  // photos present; "full_body" is the one the try-on engine needs.
+  // `imagesUploaded === null` means init hasn't landed yet — treat
+  // as "unknown, don't auto-fire" until we have the real answer.
+  const hasBodyPhoto = useMemo(
+    () => Boolean(imagesUploaded?.includes("full_body")),
+    [imagesUploaded],
+  );
+
+  // Phase W.6 — when an in-Vibe try-on attempt 400s with
+  // missing_person_image, the OutfitCard calls back to ask for an
+  // inline photos onboarding card so the customer can upload
+  // without leaving the chat. We push the card AFTER the existing
+  // messages so it appears just below the card the customer
+  // clicked try-on from. Idempotent via the ref so a multi-item
+  // outfit doesn't stack three cards on top of each other.
+  //
+  // The card uses the same kind/state shape as the onboarding-flow
+  // cards — handleAdvanceOnboarding / handleOnboardingPhotoUploaded
+  // already handle it correctly. On Save, the photos analysis
+  // trigger fires via the existing analysisPhase machinery; the
+  // next try-on click will then succeed.
+  const handleRequestPhotosCard = useCallback(() => {
+    if (photoCardRequestedRef.current) return;
+    photoCardRequestedRef.current = true;
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", text: WELCOME_NEEDS_PHOTO },
+      { role: "onboarding", kind: "photos", status: "active" },
+    ]);
+    // Mark the photos card as the current step so transformAdvance
+    // handles its resolution the same way it does for the initial
+    // onboarding flow. The customer ends up back at the seed-product
+    // card with a fresh body photo on file and the W.5 auto-fire
+    // kicks in on the next card mount / re-click.
+    onboardingStepRef.current = "photos";
+    writeOnboardingStep("photos");
+    unmarkKindResolved("photos");
+  }, []);
+
+  // Phase W.7 — fire the profile-analysis trigger on try-on entry,
+  // gated. Conditions, ALL of which must hold:
+  //   1. The customer entered via the storefront try-on button
+  //      (`seedProduct` resolved from `?productId=` on the URL).
+  //   2. The init response has landed (`hasProfileFromInit !== null`)
+  //      so we have a trustworthy hasProfile read.
+  //   3. No profile yet (hasProfile === false). Re-running on a
+  //      customer who already has a profile burns OpenAI tokens for
+  //      no value — the engine just re-uses the existing analysis.
+  //   4. Body photo is on file (hasBodyPhoto). Without it the
+  //      analysis can't run; the trigger would fail. The existing
+  //      "fire on photo upload" machinery picks the trigger up when
+  //      the customer uploads a photo later in the flow.
+  // Idempotent via phaseWProfileTriggerFiredRef so a re-render
+  // doesn't double-fire.
+  useEffect(() => {
+    if (phaseWProfileTriggerFiredRef.current) return;
+    if (!sessionId) return;
+    if (!seedProduct) return;
+    if (hasProfileFromInit === null) return;
+    if (hasProfileFromInit) return;
+    if (!hasBodyPhoto) return;
+    phaseWProfileTriggerFiredRef.current = true;
+    // No structured log here — logger.server isn't available to the
+    // component bundle. The trigger fetch itself surfaces in engine
+    // logs via the existing `vibe_onboarding_endpoint_failed` path on
+    // failure; success is silent (matches the rest of the analysis
+    // machinery).
+    void fireAnalysisTrigger("phase1");
+    void fireAnalysisTrigger("phase2");
+  }, [sessionId, seedProduct, hasProfileFromInit, hasBodyPhoto, fireAnalysisTrigger]);
 
   // Best-effort POST to the engine's onboarding analysis start
   // endpoint, shared by the photo-upload handler and the poll loop's
@@ -1568,6 +1656,8 @@ export default function ConversationPage() {
                 ),
               )
             }
+            hasBodyPhoto={hasBodyPhoto}
+            onRequestPhotosCard={handleRequestPhotosCard}
           />
         ))}
 

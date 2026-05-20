@@ -1,15 +1,17 @@
-/* V.3 — Virtual Try On block + modal styles.
+/* Phase W — Virtual Try On storefront button styles.
  *
- * Button styling pulls from the theme's CSS variables when available
- * (--color-button-background, --color-button-text, --color-foreground,
- * --color-base-text — Dawn / Studio / Refresh conventions) with
- * neutral fallbacks so any custom theme still gets a button that
- * doesn't look obviously foreign.
+ * The button is an <a> styled to read as the merchant's primary
+ * button across themes. Pulls from the theme's CSS variables when
+ * available (--color-button-background, --color-button-text,
+ * --color-foreground, --color-base-text — Dawn / Studio / Refresh
+ * conventions) with neutral fallbacks so any custom theme still gets
+ * a button that doesn't look obviously foreign.
  *
- * Modal uses native <dialog> + ::backdrop so focus management,
- * Escape-to-close, and inert-when-closed behaviour come for free
- * without a framework. Two image cards side-by-side on viewports
- * ≥640px, stacked on mobile.
+ * Modal styles from V.3 (.vibe-tryon-modal*, .vibe-tryon-card*,
+ * .vibe-tryon-modal__*) were pruned with Phase W.8 — the modal flow
+ * is replaced by the new-tab redirect into /apps/vibe/style. The
+ * in-Vibe try-on UI uses different CSS classes that live with the
+ * vibe-app component (vibe-app/app/components/conversation/styles.css).
  */
 
 .vibe-tryon-block {
@@ -19,9 +21,9 @@
 }
 
 .vibe-tryon-button {
-  /* Phase W — selector now also applies to an <a> element. Reset
-     anchor defaults (underline, blue/visited colours) so the link
-     reads as the merchant's primary button across every theme. */
+  /* Selector applies to an <a> element — reset anchor defaults
+     (underline, visited colours) so the link reads as the
+     merchant's primary button across every theme. */
   text-decoration: none;
   display: inline-flex;
   align-items: center;
@@ -66,203 +68,4 @@
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-}
-
-/* ── Modal ───────────────────────────────────────────────────────── */
-
-.vibe-tryon-modal {
-  width: min(960px, calc(100vw - 32px));
-  max-height: calc(100vh - 64px);
-  padding: 0;
-  border: 0;
-  border-radius: 12px;
-  background: #ffffff;
-  color: #1c1c1c;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
-  overflow: hidden;
-}
-
-.vibe-tryon-modal::backdrop {
-  background: rgba(20, 18, 16, 0.55);
-  backdrop-filter: blur(2px);
-}
-
-.vibe-tryon-modal__close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 0;
-  background: rgba(0, 0, 0, 0.06);
-  color: inherit;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  z-index: 1;
-}
-
-.vibe-tryon-modal__close:hover {
-  background: rgba(0, 0, 0, 0.12);
-}
-
-.vibe-tryon-modal__header {
-  padding: 24px 56px 12px 24px;
-}
-
-.vibe-tryon-modal__header h2 {
-  margin: 0 0 8px;
-  font-size: 1.4rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.vibe-tryon-modal__header p {
-  margin: 0;
-  color: #5c5c5c;
-  font-size: 0.95rem;
-  line-height: 1.5;
-}
-
-.vibe-tryon-modal__body {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  padding: 16px 24px 24px;
-  overflow-y: auto;
-}
-
-@media (max-width: 640px) {
-  .vibe-tryon-modal__body {
-    grid-template-columns: 1fr;
-  }
-  .vibe-tryon-modal__header {
-    padding: 20px 48px 12px 16px;
-  }
-  .vibe-tryon-modal__body {
-    padding: 12px 16px 16px;
-  }
-}
-
-/* ── Cards ───────────────────────────────────────────────────────── */
-
-.vibe-tryon-card {
-  border: 1px dashed rgba(0, 0, 0, 0.18);
-  border-radius: 10px;
-  /* Slightly darker than the modal background so the letterbox bars
-     around a `contain`-fitted photo read as deliberate framing rather
-     than an empty card. */
-  background: #f0eee9;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  /* Portrait 2:3 frame — matches the engine's preferred try-on
-     output ratio and accommodates full-body photos without
-     cropping the head or feet. */
-  aspect-ratio: 2 / 3;
-}
-
-.vibe-tryon-card__label {
-  padding: 12px 16px 0;
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #5c5c5c;
-}
-
-.vibe-tryon-card__body {
-  flex: 1 1 auto;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 12px 16px 16px;
-  text-align: center;
-  color: #5c5c5c;
-  font-size: 0.9rem;
-  line-height: 1.4;
-}
-
-.vibe-tryon-card__hint {
-  margin: 0;
-}
-
-.vibe-tryon-card__file-input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.vibe-tryon-card__cta {
-  margin-top: 12px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  background: #1c1c1c;
-  color: #ffffff;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-  border: 0;
-  pointer-events: none;
-}
-
-.vibe-tryon-card--has-image .vibe-tryon-card__body {
-  padding: 0;
-}
-
-.vibe-tryon-card__image {
-  width: 100%;
-  height: 100%;
-  /* `contain` — never crop the customer's photo. If their photo's
-     aspect ratio doesn't match the 2:3 frame, the card background
-     (#f0eee9) shows as letterbox bars rather than us silently cutting
-     off the head or feet (which is exactly what `cover` does on full-
-     body shots). */
-  object-fit: contain;
-  display: block;
-}
-
-.vibe-tryon-card__spinner-wrap {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.85);
-}
-
-.vibe-tryon-card__spinner {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 3px solid rgba(0, 0, 0, 0.12);
-  border-top-color: #1c1c1c;
-  animation: vibe-tryon-spin 0.9s linear infinite;
-}
-
-@keyframes vibe-tryon-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.vibe-tryon-card__status {
-  font-size: 0.9rem;
-  font-style: italic;
-}
-
-.vibe-tryon-card__error {
-  margin: 0;
-  padding: 12px 16px 16px;
-  color: #b9342a;
-  font-size: 0.85rem;
-  line-height: 1.4;
 }

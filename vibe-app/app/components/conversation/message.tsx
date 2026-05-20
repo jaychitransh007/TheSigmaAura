@@ -43,6 +43,8 @@ export function MessageView({
   onAdvanceOnboarding,
   onOnboardingPhotoUploaded,
   onHideOutfit,
+  hasBodyPhoto = false,
+  onRequestPhotosCard,
 }: {
   message: ChatMessage;
   sessionId: string;
@@ -58,6 +60,12 @@ export function MessageView({
   ) => void;
   onOnboardingPhotoUploaded?: (category: OnboardingImageCategory) => void;
   onHideOutfit?: (outfitId: string) => void;
+  /** Phase W.5 — passed through to OutfitCarousel → OutfitCard so
+   *  the auto-fire effect knows whether to render. */
+  hasBodyPhoto?: boolean;
+  /** Phase W.6 — passed through so the missing-person path can ask
+   *  the parent to inject a photos onboarding card inline. */
+  onRequestPhotosCard?: () => void;
 }) {
   if (message.role === "user") {
     // Stacked layout — query text on top, attached image below.
@@ -124,7 +132,12 @@ export function MessageView({
     <div className="conv-message conv-message--assistant">
       <p>{message.text}</p>
       {message.outfits && message.outfits.length > 0 && (
-        <OutfitCarousel outfits={message.outfits} onHide={onHideOutfit} />
+        <OutfitCarousel
+          outfits={message.outfits}
+          onHide={onHideOutfit}
+          hasBodyPhoto={hasBodyPhoto}
+          onRequestPhotosCard={onRequestPhotosCard}
+        />
       )}
     </div>
   );
