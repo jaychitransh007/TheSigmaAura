@@ -1373,7 +1373,7 @@ export default function ConversationPage() {
     // first composer response shifts the conversation off the
     // entry-product context — the customer can manually unset it
     // via the planned "clear seed" affordance in a future iteration.
-    if (seedProduct?.product_id) {
+    if (seedProduct?.garment_id) {
       form.set("seedProductId", seedProduct.garment_id);
     }
     // Clear the consumed-turn marker so the next action response — be
