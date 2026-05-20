@@ -53,6 +53,7 @@ import {
   type TurnStatusResponse,
 } from "../lib/engine.server";
 import { logInfo, logWarn, logError } from "../lib/logger.server";
+import { fetchShopifyBodyHtmlBatch } from "../lib/shopify-body-html.server";
 import { MerchantHeader } from "../components/merchant-header";
 import "../components/merchant-header.css";
 import { ThemeOverridesStyle } from "../components/theme-overrides";
@@ -235,30 +236,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           const priceNum = priceStr ? Number.parseFloat(priceStr) : NaN;
           const imageSrc =
             p.image?.src || p.images?.[0]?.src || seedImage || "";
-          // Strip HTML tags from body_html for plain-text display
-          // in GarmentDetail — the existing engine-side sanitizer
-          // (orchestrator._sanitize_catalog_description) does the
-          // same scrub; mirror it here for the fallback path.
-          const description = (p.body_html ?? "")
-            .replace(/<\/(?:p|li|ul|ol|div|br|h[1-6])>/gi, " ")
-            .replace(/<br\s*\/?>/gi, " ")
-            .replace(/<[^>]+>/g, "")
-            .replace(/&amp;/g, "&")
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">")
-            .replace(/&nbsp;/g, " ")
-            .replace(/\s+/g, " ")
-            .trim();
+          // Pass the raw Shopify body_html through. GarmentDetail
+          // renders catalog_description as HTML (sanitized via a
+          // small allowlist) so the structured "<p>lede</p>
+          // <p><strong>The vibe:</strong></p><ul>…</ul>" format
+          // shows up on the Vibe PDP card the same way it does on
+          // the storefront product page.
+          const bodyHtml = (p.body_html ?? "").trim();
           seedProduct = {
             garment_id: seedProductNumericId,
             title: p.title || seedTitle,
             image_url: imageSrc,
             price: Number.isFinite(priceNum) ? priceNum : undefined,
             product_url: `https://${shopDomain}/products/${seedHandle}`,
-            description: description || undefined,
-            catalog_description: description || undefined,
+            description: bodyHtml || undefined,
+            catalog_description: bodyHtml || undefined,
             source: "catalog",
             shopify_product_id: `gid://shopify/Product/${seedProductNumericId}`,
           };
@@ -303,6 +295,45 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       outcome: "fallback_url_params",
       shopifyProductId: seedProductNumericId,
     });
+  }
+
+  // Hydrate the seed product's catalog_description with the live
+  // Shopify body_html so the seed card matches the storefront PDP's
+  // structured "<p>lede</p> <p><strong>The vibe:</strong></p>
+  // <ul>…</ul>" rendering. Same hydration as the poll route does
+  // for recommendation-turn items, just for the initial seed card.
+  //
+  // Skip when:
+  //   - no seedProduct (no entry context at all)
+  //   - Shopify-JSON fallback already populated body_html (catalog
+  //     hit didn't, but the JSON fetch did — no need to refetch)
+  //   - no shopDomain (can't authenticate against Admin API)
+  //
+  // Best-effort: failures fall through to whatever catalog text
+  // we already had.
+  if (seedProduct && shopDomain && seedProductNumericId) {
+    const alreadyHasHtml =
+      typeof seedProduct.catalog_description === "string" &&
+      /<\w/.test(seedProduct.catalog_description);
+    if (!alreadyHasHtml) {
+      try {
+        const bodyHtmlMap = await fetchShopifyBodyHtmlBatch({
+          shopDomain,
+          numericProductIds: [seedProductNumericId],
+        });
+        const html = bodyHtmlMap.get(seedProductNumericId);
+        if (html) {
+          seedProduct = {
+            ...seedProduct,
+            catalog_description: html,
+            description: html,
+          };
+        }
+      } catch {
+        // Best-effort — keep the engine/URL-params description if
+        // the Shopify hydration call fails.
+      }
+    }
   }
 
   return json({

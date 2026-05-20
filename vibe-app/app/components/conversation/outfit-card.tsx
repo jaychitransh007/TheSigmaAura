@@ -854,15 +854,40 @@ function OutfitDetail({
   );
 }
 
+// Minimal allowlist sanitizer for Shopify body_html — defense in
+// depth even though the source is our own merchant content
+// (build_shopify_csv.py output, escape()-ed at generation time).
+// Strips script / iframe / object / embed tags and inline event
+// handlers; leaves the formatting tags (p, ul, li, strong, em, br,
+// h*) intact so the storefront's structured "The vibe: Fit / Fabric
+// / …" bullet layout renders inside the Vibe PDP card. Not a full
+// HTML parser — we trust the source shape; this just blocks the
+// obvious XSS shapes if a merchant later edits a product
+// description manually with bad input.
+function sanitizeProductBodyHtml(html: string): string {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, "")
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, "")
+    .replace(/<embed\b[^>]*\/?>/gi, "")
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
+    .replace(/\son\w+\s*=\s*[^\s>]+/gi, "")
+    .replace(/javascript:/gi, "");
+}
+
 function GarmentDetail({ item }: { item: OutfitItem }) {
   // PDP description: prefer the store catalog's own copy
-  // (catalog_description, sourced from Shopify's product description)
-  // so the customer reads the merchant's voice. Fall back to the
-  // composer's stylist-voice text when the catalog row has no
-  // description — common for wardrobe items, occasional for catalog
-  // items missing body_html at ingestion time.
-  const description =
-    item.catalog_description?.trim() || item.description?.trim();
+  // (catalog_description) so the customer reads the merchant's
+  // voice. The poll route hydrates this with the live Shopify
+  // body_html — the same clean HTML the storefront product page
+  // renders ("Your new everyday jean — …" + "The vibe:" bullets).
+  // Fall back to the composer's stylist-voice plain text when the
+  // catalog row has no description — common for wardrobe items,
+  // occasional for catalog items the hydrator couldn't fetch.
+  const catalogHtml = item.catalog_description?.trim();
+  const stylistText = item.description?.trim();
   return (
     <>
       {item.brand && <div className="conv-detail-brand">{item.brand}</div>}
@@ -874,7 +899,18 @@ function GarmentDetail({ item }: { item: OutfitItem }) {
           {formatRupees(item.price as number)}
         </p>
       )}
-      {description && <p className="conv-detail-desc">{description}</p>}
+      {catalogHtml ? (
+        // Render HTML to preserve the "<p>lede</p><p><strong>The
+        // vibe:</strong></p><ul><li>…</li></ul>" structure Shopify
+        // serves. Plain rendering would collapse this into a wall
+        // of run-on text and lose the store-page parity.
+        <div
+          className="conv-detail-desc conv-detail-desc--html"
+          dangerouslySetInnerHTML={{ __html: sanitizeProductBodyHtml(catalogHtml) }}
+        />
+      ) : stylistText ? (
+        <p className="conv-detail-desc">{stylistText}</p>
+      ) : null}
     </>
   );
 }
