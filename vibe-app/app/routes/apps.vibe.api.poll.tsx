@@ -50,11 +50,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // action only kicks the job off.
   //
   // shopDomain comes off the signed App Proxy params. Without it
-  // we can't authenticate against Shopify's Admin API; we
-  // gracefully return the engine's response untouched.
+  // we can't authenticate against Shopify's Admin API — but we
+  // still call hydrateDescriptions so its in-function wipe runs
+  // (catalog_description must NOT carry engine text as a display
+  // fallback per the Phase W spec; the empty wipe state is the
+  // correct behaviour when Shopify hydration can't happen).
   const shopDomain = url.searchParams.get("shop")?.trim() ?? "";
   if (
-    shopDomain &&
     status.status === "completed" &&
     status.result &&
     Array.isArray(status.result.outfits) &&
