@@ -54,11 +54,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       getIntentHistory(sessionId),
       getOnboardingStatus(sessionId).catch(() => null),
     ]);
-    // Hydrate every item's catalog_description with the live
-    // Shopify body_html. Same wipe-then-set as the poll route +
-    // seed-product loader, so Looks cards render the same store
-    // HTML the Vibe Conversation cards do.
-    if (shopDomain && themes.length > 0) {
+    // Wipe-then-set on every item's catalog_description. The
+    // wipe (inside hydrateLooksDescriptions) runs regardless of
+    // whether we have a shopDomain — the engine's plain-text
+    // description is NOT a display fallback per the Phase W
+    // single-source-of-truth spec, so an item without a Shopify
+    // hydration MUST land empty rather than leaking engine text.
+    // The Shopify fetch inside the helper short-circuits cleanly
+    // when shopDomain is empty.
+    if (themes.length > 0) {
       await hydrateLooksDescriptions(shopDomain, themes);
     }
     // Tell the client whether this customer has a full_body photo
@@ -67,8 +71,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // wasn't persisted at original turn time (rare but possible —
     // flag off at the time, quality gate blocked, etc.).
     const hasBodyPhoto = Boolean(
-      onboardingStatus && onboardingStatus !== null && onboardingStatus !== undefined &&
-        onboardingStatus.images_uploaded?.includes("full_body"),
+      onboardingStatus?.images_uploaded?.includes("full_body"),
     );
     return json({ ok: true, themes, hasBodyPhoto });
   } catch (err) {

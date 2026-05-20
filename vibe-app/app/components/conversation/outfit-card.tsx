@@ -27,6 +27,7 @@ import {
   type CartNavigation,
 } from "../../lib/cart.client";
 import { getOrCreateClientSessionId } from "../../lib/session.client";
+import { sanitizeProductBodyHtml } from "../../lib/sanitize-product-html";
 
 // Per-garment virtual try-on state slice (Phase V.2). Keyed by
 // garment_id so switching garments inside the same outfit card
@@ -852,29 +853,6 @@ function OutfitDetail({
       </ul>
     </>
   );
-}
-
-// Minimal allowlist sanitizer for Shopify body_html — defense in
-// depth even though the source is our own merchant content
-// (build_shopify_csv.py output, escape()-ed at generation time).
-// Strips script / iframe / object / embed tags and inline event
-// handlers; leaves the formatting tags (p, ul, li, strong, em, br,
-// h*) intact so the storefront's structured "The vibe: Fit / Fabric
-// / …" bullet layout renders inside the Vibe PDP card. Not a full
-// HTML parser — we trust the source shape; this just blocks the
-// obvious XSS shapes if a merchant later edits a product
-// description manually with bad input.
-function sanitizeProductBodyHtml(html: string): string {
-  return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, "")
-    .replace(/<embed\b[^>]*\/?>/gi, "")
-    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
-    .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
-    .replace(/\son\w+\s*=\s*[^\s>]+/gi, "")
-    .replace(/javascript:/gi, "");
 }
 
 function GarmentDetail({ item }: { item: OutfitItem }) {
