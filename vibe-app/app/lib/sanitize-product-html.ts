@@ -59,7 +59,16 @@ export function sanitizeProductBodyHtml(html: string): string {
     // anchor / image src — defense in depth even though we don't
     // allow those tags in the first place.
     ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
-    // Don't keep <script> or <style> bodies as text — drop them.
+    // When DOMPurify strips a non-allowed tag (e.g. <div>, <table>,
+    // <font>), keep its children. Some merchants' body_html wraps
+    // the actual description in a structural tag we don't allow;
+    // dropping the wrapper while preserving the inner text/bullets
+    // keeps the description visible. <script>, <style>, <iframe>,
+    // and the other FORBID_TAGS below have their content dropped
+    // unconditionally regardless of this flag — DOMPurify hardcodes
+    // that behaviour for those tags. So this flag only affects
+    // benign-but-unlisted wrappers, not the genuinely dangerous
+    // shapes.
     KEEP_CONTENT: true,
     // Belt-and-suspenders: block these even if a future tag list
     // accidentally allows them.
