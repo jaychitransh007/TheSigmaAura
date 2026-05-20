@@ -112,8 +112,25 @@ export function OutfitCard({
     kind: "idle",
   });
 
-  const tryonImage = outfit.tryon_image_url ?? null;
   const isOutfitMode = mode.kind === "outfit";
+
+  // Single-item outfits don't have a separate "outfit-level try-on"
+  // — the multi-garment endpoint with one garment renders the same
+  // image the single-garment endpoint does. Treat the garment-level
+  // state as the outfit-level fallback so:
+  //   - clicking the TRY-ON thumbnail (which sets mode=outfit)
+  //     keeps the rendered hero instead of falling back to the
+  //     catalog image
+  //   - the TRY-ON thumbnail picks up the rendered image without
+  //     waiting on a second Gemini call
+  //   - the auto-fire effect (below) skips outfit-mode firing
+  //     for single-item outfits entirely — one render, not two
+  const isSingleItem = outfit.items.length === 1;
+  const singleItemTryon = isSingleItem
+    ? garmentTryon[outfit.items[0].garment_id]
+    : undefined;
+  const singleItemTryonUrl =
+    singleItemTryon?.kind === "ready" ? singleItemTryon.dataUrl : null;
 
   // In garment mode, prefer a rendered single-garment try-on (if the
   // customer hit "Virtual Try On" earlier on this card) over the
@@ -126,14 +143,29 @@ export function OutfitCard({
   const garmentHeroOverride =
     garmentTryonState.kind === "ready" ? garmentTryonState.dataUrl : null;
   // Outfit hero precedence: a freshly-rendered outfit-level try-on
-  // (from clicking the button on this session) > the engine's
-  // pre-rendered try-on (from outfit-generation time) > the first
-  // item's catalog image as a last-resort placeholder.
+  // (from clicking the button on this session) > the single-item
+  // garment-level try-on (when this is a single-item outfit) > the
+  // engine's pre-rendered try-on (from outfit-generation time) > the
+  // first item's catalog image as a last-resort placeholder.
   const outfitHeroOverride =
-    outfitTryonState.kind === "ready" ? outfitTryonState.dataUrl : null;
+    outfitTryonState.kind === "ready"
+      ? outfitTryonState.dataUrl
+      : singleItemTryonUrl;
+
+  // What populates the TRY-ON thumbnail in the rail. The previous
+  // implementation only read outfit.tryon_image_url (engine pre-
+  // render) — for seed-product synthetic outfits the engine never
+  // pre-renders, so the thumbnail stayed empty even after the
+  // client-side try-on came back. Mirror the outfit-hero precedence
+  // here so the thumbnail reflects whatever the customer is about
+  // to see when they click it.
+  const tryonImage =
+    outfitTryonState.kind === "ready"
+      ? outfitTryonState.dataUrl
+      : singleItemTryonUrl ?? outfit.tryon_image_url ?? null;
 
   const heroImage = isOutfitMode
-    ? outfitHeroOverride ?? tryonImage ?? outfit.items[0]?.image_url ?? null
+    ? outfitHeroOverride ?? outfit.tryon_image_url ?? outfit.items[0]?.image_url ?? null
     : garmentHeroOverride ?? mode.item.image_url ?? null;
   // Loading overlay should follow whichever mode the customer is in.
   const isTryonLoading = isOutfitMode
@@ -459,6 +491,13 @@ export function OutfitCard({
       if (autoFiredOutfitRef.current) return;
       if (outfit.tryon_image_url) return;
       if (outfitTryonState.kind !== "idle") return;
+      // For single-item outfits the garment-mode auto-fire already
+      // renders THE try-on — outfit-mode is a synonym for the same
+      // single composite. Skip the outfit-mode fire to avoid a
+      // second $0.04 Gemini call for an identical image; the hero
+      // already pulls from the garment-level state via
+      // outfitHeroOverride.
+      if (isSingleItem) return;
       // No try-on on file and we haven't already auto-fired.
       autoFiredOutfitRef.current = true;
       void handleTryOnOutfit();
