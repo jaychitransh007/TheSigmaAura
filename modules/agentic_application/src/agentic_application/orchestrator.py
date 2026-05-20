@@ -1960,33 +1960,42 @@ class AgenticOrchestrator:
         if seed_product_id and not image_data and not attached_item:
             trace_start("seed_product_selection", input_summary=f"product_id={seed_product_id}")
             try:
+                # Tenant-scoped lookup. Without tenant_id the route would
+                # leak rows between merchants — a customer seeding from
+                # Store A could otherwise resolve to a Store B product
+                # if the product_ids happened to collide.
                 enriched = self.repo.client.select_one(
                     "catalog_enriched",
-                    filters={"product_id": f"eq.{seed_product_id}"},
+                    filters={
+                        "product_id": f"eq.{seed_product_id}",
+                        "tenant_id": f"eq.{tenant_id}",
+                    },
                 )
                 if enriched:
-                    attached_item = {
-                        "id": str(enriched.get("product_id") or seed_product_id),
-                        "title": str(enriched.get("title") or ""),
-                        "image_url": str(
-                            enriched.get("images_0_src")
-                            or enriched.get("images__0__src")
-                            or enriched.get("primary_image_url")
-                            or ""
-                        ),
-                        "image_path": "",
-                        "garment_category": str(enriched.get("GarmentCategory") or enriched.get("garment_category") or ""),
-                        "garment_subtype": str(enriched.get("GarmentSubtype") or enriched.get("garment_subtype") or ""),
-                        "primary_color": str(enriched.get("PrimaryColor") or enriched.get("primary_color") or ""),
-                        "secondary_color": str(enriched.get("SecondaryColor") or enriched.get("secondary_color") or ""),
-                        "formality_level": str(enriched.get("FormalityLevel") or enriched.get("formality_level") or ""),
-                        "occasion_fit": str(enriched.get("OccasionFit") or enriched.get("occasion_fit") or ""),
-                        "pattern_type": str(enriched.get("PatternType") or enriched.get("pattern_type") or ""),
-                        "source": "catalog",
-                        "attachment_source": "vibe_entry_product",
-                        "is_garment_photo": True,
-                        "garment_present_confidence": 1.0,
-                    }
+                    # Reuse the standard candidate-item builder so the
+                    # attached_item carries everything downstream needs:
+                    # Shopify variant ids (for cart wiring), sanitized
+                    # catalog_description (Phase V's description-blob
+                    # scrub), synthesized fallback description, etc.
+                    # _build_candidate_item expects a RetrievedProduct
+                    # with the enriched dict in BOTH `metadata` and
+                    # `enriched_data` so the downstream visual evaluator
+                    # finds PascalCase attribute keys regardless of which
+                    # bucket it reads from.
+                    seed_retrieved = RetrievedProduct(
+                        product_id=str(enriched.get("product_id") or seed_product_id),
+                        similarity=1.0,
+                        metadata=dict(enriched),
+                        enriched_data=dict(enriched),
+                    )
+                    attached_item = _build_candidate_item(seed_retrieved, role="anchor")
+                    # Stamp the wardrobe/wishlist-branch shape onto the
+                    # canonical OutfitItem dict so the rest of process_turn
+                    # treats it like any other anchor attachment.
+                    attached_item["id"] = attached_item.get("product_id") or seed_product_id
+                    attached_item["attachment_source"] = "vibe_entry_product"
+                    attached_item["is_garment_photo"] = True
+                    attached_item["garment_present_confidence"] = 1.0
                     attached_context = self._attached_item_context(attached_item)
                     if attached_context:
                         effective_message = f"{message.strip()} {attached_context}".strip()
